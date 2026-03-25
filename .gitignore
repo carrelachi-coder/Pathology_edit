@@ -8,7 +8,7 @@
 !*.yaml
 !*.yml
 !*.txt
-!*.
+!*.sh
 
 # 3. 允许上传 .gitignore 文件本身（建议保留）
 !.gitignore
