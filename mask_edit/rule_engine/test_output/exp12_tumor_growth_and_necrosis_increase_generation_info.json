@@ -1,0 +1,12 @@
+{
+  "id": "exp12",
+  "name": "tumor_growth_and_necrosis_increase",
+  "gen_method_requested": "auto",
+  "gen_method_actual": "9ch",
+  "change_region_pct": 41.09992980957031,
+  "auto_threshold": 0.35,
+  "conditioning_scale": 1.0,
+  "seed": 42,
+  "controlnet_9ch_path": "/data/huggingface/controlnet_6ch_v2_output/checkpoint-24000/flux_controlnet",
+  "controlnet_inpaint_path": "/data/huggingface/pathology_edit/inpaint_controlnet_output/checkpoint-8000/flux_controlnet"
+}

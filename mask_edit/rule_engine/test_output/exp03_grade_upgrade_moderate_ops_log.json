@@ -1,0 +1,35 @@
+{
+  "id": "exp03",
+  "name": "grade_upgrade_moderate",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "downgrade"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "none",
+      "degree": "moderate"
+    }
+  },
+  "ops_log": [],
+  "change_region_pct": 3.08380126953125,
+  "original_tissue": {
+    "tumor": 0.4412,
+    "stroma": 0.2122,
+    "necrosis_or_debris": 0.3466
+  },
+  "edited_tissue": {
+    "tumor": 0.4412,
+    "stroma": 0.2122,
+    "necrosis_or_debris": 0.3466
+  }
+}

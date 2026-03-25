@@ -1,0 +1,11 @@
+cd /home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/lama-main
+export PYTHONPATH=$(pwd)
+export TORCH_HOME=/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/weights
+
+python3 bin/train.py --config-name lama-fourier \
+  location=pathology \
+  data=custom \
+  run_title=pathology_FFC_v1 \
+  ++data.batch_size=16 \
+  ++trainer.max_epochs=40 \
+  ++trainer.gpus=1

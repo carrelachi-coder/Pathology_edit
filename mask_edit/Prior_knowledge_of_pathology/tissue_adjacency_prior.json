@@ -1,0 +1,200 @@
+{
+    "outside_roi": {
+        "tumor": 0.3534,
+        "stroma": 0.4279,
+        "lymphocytic_infiltrate": 0.0865,
+        "necrosis_or_debris": 0.0377,
+        "blood": 0.0011,
+        "exclude": 0.0135,
+        "metaplasia_NOS": 0.0034,
+        "fat": 0.0458,
+        "plasma_cells": 0.0213,
+        "normal_acinus_or_duct": 0.0011,
+        "undetermined": 0.0021,
+        "blood_vessel": 0.0055
+    },
+    "tumor": {
+        "outside_roi": 0.0241,
+        "stroma": 0.841,
+        "lymphocytic_infiltrate": 0.0163,
+        "necrosis_or_debris": 0.0461,
+        "glandular_secretions": 0.0012,
+        "blood": 0.0016,
+        "exclude": 0.0564,
+        "fat": 0.0034,
+        "plasma_cells": 0.0025,
+        "undetermined": 0.0027,
+        "blood_vessel": 0.0024
+    },
+    "stroma": {
+        "outside_roi": 0.0155,
+        "tumor": 0.4468,
+        "lymphocytic_infiltrate": 0.2885,
+        "necrosis_or_debris": 0.0335,
+        "blood": 0.0125,
+        "exclude": 0.0731,
+        "fat": 0.038,
+        "plasma_cells": 0.0618,
+        "other_immune_infiltrate": 0.0038,
+        "normal_acinus_or_duct": 0.0025,
+        "undetermined": 0.0033,
+        "blood_vessel": 0.0181
+    },
+    "lymphocytic_infiltrate": {
+        "outside_roi": 0.0098,
+        "tumor": 0.0269,
+        "stroma": 0.8986,
+        "necrosis_or_debris": 0.0012,
+        "blood": 0.0037,
+        "exclude": 0.0286,
+        "fat": 0.0062,
+        "plasma_cells": 0.0099,
+        "other_immune_infiltrate": 0.0011,
+        "normal_acinus_or_duct": 0.0019,
+        "blood_vessel": 0.011
+    },
+    "necrosis_or_debris": {
+        "outside_roi": 0.0205,
+        "tumor": 0.3679,
+        "stroma": 0.503,
+        "lymphocytic_infiltrate": 0.0059,
+        "blood": 0.0023,
+        "exclude": 0.0903,
+        "fat": 0.007
+    },
+    "glandular_secretions": {
+        "tumor": 0.3853,
+        "stroma": 0.3994,
+        "necrosis_or_debris": 0.0095,
+        "mucoid_material": 0.0702,
+        "normal_acinus_or_duct": 0.1292,
+        "blood_vessel": 0.006
+    },
+    "blood": {
+        "outside_roi": 0.0026,
+        "tumor": 0.0576,
+        "stroma": 0.8367,
+        "lymphocytic_infiltrate": 0.0796,
+        "necrosis_or_debris": 0.0102,
+        "exclude": 0.0031,
+        "plasma_cells": 0.0013,
+        "blood_vessel": 0.008
+    },
+    "exclude": {
+        "outside_roi": 0.0041,
+        "tumor": 0.2492,
+        "stroma": 0.6084,
+        "lymphocytic_infiltrate": 0.0764,
+        "necrosis_or_debris": 0.05,
+        "fat": 0.0029,
+        "plasma_cells": 0.0011,
+        "blood_vessel": 0.0025,
+        "dcis": 0.0031
+    },
+    "metaplasia_NOS": {
+        "outside_roi": 0.2922,
+        "tumor": 0.6342,
+        "stroma": 0.0724,
+        "blood_vessel": 0.0012
+    },
+    "fat": {
+        "outside_roi": 0.0372,
+        "tumor": 0.0407,
+        "stroma": 0.8508,
+        "lymphocytic_infiltrate": 0.0444,
+        "necrosis_or_debris": 0.0105,
+        "exclude": 0.0079,
+        "plasma_cells": 0.0064,
+        "blood_vessel": 0.0018
+    },
+    "plasma_cells": {
+        "outside_roi": 0.0114,
+        "tumor": 0.0197,
+        "stroma": 0.9097,
+        "lymphocytic_infiltrate": 0.0467,
+        "exclude": 0.0019,
+        "fat": 0.0042,
+        "other_immune_infiltrate": 0.0027,
+        "blood_vessel": 0.0029
+    },
+    "other_immune_infiltrate": {
+        "outside_roi": 0.0012,
+        "tumor": 0.0863,
+        "stroma": 0.7733,
+        "lymphocytic_infiltrate": 0.0737,
+        "necrosis_or_debris": 0.0108,
+        "exclude": 0.0058,
+        "plasma_cells": 0.0371,
+        "undetermined": 0.001,
+        "blood_vessel": 0.0106
+    },
+    "mucoid_material": {
+        "tumor": 0.3467,
+        "stroma": 0.1768,
+        "necrosis_or_debris": 0.0638,
+        "glandular_secretions": 0.2047,
+        "exclude": 0.2004,
+        "undetermined": 0.0076
+    },
+    "normal_acinus_or_duct": {
+        "outside_roi": 0.011,
+        "tumor": 0.0732,
+        "stroma": 0.6817,
+        "lymphocytic_infiltrate": 0.1697,
+        "glandular_secretions": 0.0574,
+        "exclude": 0.0024,
+        "plasma_cells": 0.0046
+    },
+    "lymphatics": {
+        "outside_roi": 0.0464,
+        "tumor": 0.0156,
+        "stroma": 0.2887,
+        "lymphocytic_infiltrate": 0.0417,
+        "plasma_cells": 0.0135,
+        "blood_vessel": 0.5941
+    },
+    "undetermined": {
+        "outside_roi": 0.0151,
+        "tumor": 0.2913,
+        "stroma": 0.6527,
+        "lymphocytic_infiltrate": 0.021,
+        "necrosis_or_debris": 0.0036,
+        "exclude": 0.0143,
+        "other_immune_infiltrate": 0.001
+    },
+    "nerve": {
+        "stroma": 1.0
+    },
+    "skin_adnexa": {
+        "tumor": 0.0044,
+        "stroma": 0.658,
+        "lymphocytic_infiltrate": 0.3348,
+        "blood_vessel": 0.0029
+    },
+    "blood_vessel": {
+        "outside_roi": 0.0082,
+        "tumor": 0.0532,
+        "stroma": 0.7457,
+        "lymphocytic_infiltrate": 0.1461,
+        "necrosis_or_debris": 0.0025,
+        "blood": 0.0049,
+        "exclude": 0.0125,
+        "fat": 0.0033,
+        "plasma_cells": 0.0081,
+        "other_immune_infiltrate": 0.0021,
+        "lymphatics": 0.0118,
+        "angioinvasion": 0.0011
+    },
+    "angioinvasion": {
+        "tumor": 0.0218,
+        "stroma": 0.909,
+        "lymphocytic_infiltrate": 0.0271,
+        "blood_vessel": 0.0421
+    },
+    "dcis": {
+        "tumor": 0.0074,
+        "stroma": 0.6587,
+        "exclude": 0.3339
+    },
+    "other": {}
+}

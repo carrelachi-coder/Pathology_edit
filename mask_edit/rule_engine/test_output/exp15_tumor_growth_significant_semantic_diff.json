@@ -1,0 +1,26 @@
+{
+  "id": "exp15",
+  "name": "tumor_growth_significant",
+  "desc": "Tumor Growth (significant) — gradient test",
+  "original_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in broad cords and nests, alternating with intervening stroma. The tumor nests contain densely packed, highly atypical neoplastic cells with frequent mitotic figures. The stroma consists of fibrous connective tissue distributed in bands interspersed among the tumor nests. A large area of coagulative necrosis is present in the lower-left portion of the field, containing scattered karyorrhectic debris and sparse inflammatory cell infiltration, directly abutting the viable tumor. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with extensive necrosis.",
+  "edited_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in large, solid sheets and confluent nests, occupying the vast majority of the field with diffuse infiltrative growth. Cellular density is extremely high with marked nuclear atypia and brisk mitotic activity. The stroma is drastically reduced, with only residual thin fibrous bands remaining. An area of coagulative necrosis is present on one side. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with diffuse infiltration.",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "increase",
+      "degree": "significant",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "decrease",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "decrease",
+      "degree": "moderate"
+    }
+  }
+}

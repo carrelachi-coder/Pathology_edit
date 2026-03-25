@@ -1,0 +1,24 @@
+-
+    input_img:  example_images/0.jpg
+    source_prompt: Histopathology of human nasal polyp, H&E stain. Polypoid architecture, surface pseudostratified ciliated columnar epithelium. Edematous stroma, loose pale background, abundant eosinophils with red granular cytoplasm. 
+    target_prompts:
+    - Histopathology of human nasal polyp, H&E stain. Polypoid architecture, surface pseudostratified ciliated columnar epithelium. Edematous stroma, loose pale background, sparse and occasional eosinophils with red granular cytoplasm. 
+    
+    target_codes:
+    - Sparse and occasional eosinophils 
+
+- 
+
+    input_img:  example_images/1.jpg
+    source_prompt: Histopathology of human nasal polyp, H&E stain. Polypoid architecture, surface pseudostratified ciliated columnar epithelium. Edematous stroma, loose pale background, abundant eosinophils with red granular cytoplasm. 
+   
+    target_prompts:
+    - Histopathology of human nasal polyp, H&E stain. Polypoid architecture, surface pseudostratified ciliated columnar epithelium. Dense collagenous fibrosis with thickened, pink stromal fibers, abundant eosinophils with red granular cytoplasm. 
+   
+    
+    target_codes:
+    - dense collagenous fibrosis with thickened, pink stromal fibers
+
+
+
+

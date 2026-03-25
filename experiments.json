@@ -1,0 +1,35 @@
+{
+    "_meta": {
+      "description": "Mask A experiments: tumor + stroma + necrosis",
+      "mask": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/conditioning/TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500_y0_x256.png",
+      "image": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/images/TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500_y0_x256.png"
+    },
+    "original_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in broad cords and nests, alternating with intervening stroma. The tumor nests contain densely packed, highly atypical neoplastic cells with frequent mitotic figures. The stroma consists of fibrous connective tissue distributed in bands interspersed among the tumor nests. A large area of coagulative necrosis is present in the lower-left portion of the field, containing scattered karyorrhectic debris and sparse inflammatory cell infiltration, directly abutting the viable tumor. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with extensive necrosis.",
+    "experiments": [
+      
+      {
+        "id": "exp06",
+        "name": "necrosis_fibrosis_moderate",
+        "desc": "Necrosis Fibrosis Repair (moderate)",
+        "edited_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in cords and nests, alternating with intervening stroma. The tumor nests are densely cellular with marked nuclear atypia. The necrotic area is limited in extent, with a peripheral fibrotic reparative zone containing macrophage infiltration and fibroblast proliferation; fibrous stroma is broadly distributed. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with post-necrotic fibrotic repair."
+      },
+      {
+        "id": "exp12",
+        "name": "tumor_growth_and_necrosis_increase",
+        "desc": "Tumor Growth (significant) + Necrosis Increase (extensive)",
+        "edited_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in large, confluent sheets and coalescing nests, occupying the majority of the field with a conspicuous infiltrative growth pattern. Cellularity is high with brisk mitotic activity. Extensive coagulative necrosis is distributed throughout the tumor, with increased karyorrhectic debris, representing the typical appearance of a rapidly proliferating tumor with central necrosis. The stroma is minimal, compressed into thin fibrous bands. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade, rapidly proliferating tumor with extensive necrosis."
+      },
+      {
+        "id": "exp14",
+        "name": "tumor_growth_mild",
+        "desc": "Tumor Growth (mild) — gradient test",
+        "edited_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in cords and nests, alternating with intervening stroma; the tumor occupies a moderate-to-high proportion of the field. The tumor nests are densely cellular with marked nuclear atypia and frequent mitotic figures. The stroma consists of fibrous connective tissue interspersed among the tumor nests. A large area of coagulative necrosis is present on one side, directly abutting the viable tumor. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with extensive necrosis."
+      },
+      {
+        "id": "exp15",
+        "name": "tumor_growth_significant",
+        "desc": "Tumor Growth (significant) — gradient test",
+        "edited_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in large, solid sheets and confluent nests, occupying the vast majority of the field with diffuse infiltrative growth. Cellular density is extremely high with marked nuclear atypia and brisk mitotic activity. The stroma is drastically reduced, with only residual thin fibrous bands remaining. An area of coagulative necrosis is present on one side. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with diffuse infiltration."
+      }
+    ]
+  }

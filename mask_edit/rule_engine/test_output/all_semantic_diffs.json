@@ -1,0 +1,97 @@
+{
+  "exp05": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "increase",
+      "extent": "extensive"
+    },
+    "stroma_change": {
+      "density": "none",
+      "degree": "moderate"
+    }
+  },
+  "exp06": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "decrease",
+      "extent": "moderate"
+    },
+    "stroma_change": {
+      "density": "increase",
+      "degree": "moderate"
+    }
+  },
+  "exp12": {
+    "tumor_change": {
+      "growth": "increase",
+      "degree": "significant",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "increase",
+      "extent": "extensive"
+    },
+    "stroma_change": {
+      "density": "decrease",
+      "degree": "moderate"
+    }
+  },
+  "exp14": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "extensive"
+    },
+    "stroma_change": {
+      "density": "none",
+      "degree": "moderate"
+    }
+  },
+  "exp15": {
+    "tumor_change": {
+      "growth": "increase",
+      "degree": "significant",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "decrease",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "decrease",
+      "degree": "moderate"
+    }
+  }
+}

@@ -1,0 +1,185 @@
+{
+    "outside_roi": {
+        "mean": 0.0301,
+        "std": 0.1045,
+        "occurrence_rate": 0.1304,
+        "max_observed": 0.9394
+    },
+    "tumor": {
+        "mean": 0.3889,
+        "std": 0.3565,
+        "occurrence_rate": 0.7522,
+        "max_observed": 1.0
+    },
+    "stroma": {
+        "mean": 0.3471,
+        "std": 0.3089,
+        "occurrence_rate": 0.8953,
+        "max_observed": 1.0
+    },
+    "lymphocytic_infiltrate": {
+        "mean": 0.1034,
+        "std": 0.2188,
+        "occurrence_rate": 0.3537,
+        "max_observed": 1.0
+    },
+    "necrosis_or_debris": {
+        "mean": 0.0646,
+        "std": 0.2004,
+        "occurrence_rate": 0.174,
+        "max_observed": 1.0
+    },
+    "glandular_secretions": {
+        "mean": 0.0004,
+        "std": 0.0096,
+        "occurrence_rate": 0.0065,
+        "max_observed": 0.4783
+    },
+    "blood": {
+        "mean": 0.0023,
+        "std": 0.023,
+        "occurrence_rate": 0.0576,
+        "max_observed": 0.9218
+    },
+    "exclude": {
+        "mean": 0.0197,
+        "std": 0.0602,
+        "occurrence_rate": 0.2127,
+        "max_observed": 0.5779
+    },
+    "metaplasia_NOS": {
+        "mean": 0.0007,
+        "std": 0.0221,
+        "occurrence_rate": 0.0018,
+        "max_observed": 0.9999
+    },
+    "fat": {
+        "mean": 0.0146,
+        "std": 0.0803,
+        "occurrence_rate": 0.0886,
+        "max_observed": 1.0
+    },
+    "plasma_cells": {
+        "mean": 0.0175,
+        "std": 0.0881,
+        "occurrence_rate": 0.0733,
+        "max_observed": 0.9958
+    },
+    "other_immune_infiltrate": {
+        "mean": 0.002,
+        "std": 0.0346,
+        "occurrence_rate": 0.0114,
+        "max_observed": 1.0
+    },
+    "mucoid_material": {
+        "mean": 0.0,
+        "std": 0.0014,
+        "occurrence_rate": 0.0013,
+        "max_observed": 0.1179
+    },
+    "normal_acinus_or_duct": {
+        "mean": 0.0009,
+        "std": 0.0117,
+        "occurrence_rate": 0.0105,
+        "max_observed": 0.4325
+    },
+    "lymphatics": {
+        "mean": 0.0001,
+        "std": 0.0051,
+        "occurrence_rate": 0.0019,
+        "max_observed": 0.5234
+    },
+    "undetermined": {
+        "mean": 0.0008,
+        "std": 0.0134,
+        "occurrence_rate": 0.014,
+        "max_observed": 0.6699
+    },
+    "nerve": {
+        "mean": 0.0,
+        "std": 0.0008,
+        "occurrence_rate": 0.0001,
+        "max_observed": 0.0862
+    },
+    "skin_adnexa": {
+        "mean": 0.0006,
+        "std": 0.0179,
+        "occurrence_rate": 0.0018,
+        "max_observed": 0.9928
+    },
+    "blood_vessel": {
+        "mean": 0.0055,
+        "std": 0.0321,
+        "occurrence_rate": 0.0897,
+        "max_observed": 0.8975
+    },
+    "angioinvasion": {
+        "mean": 0.0002,
+        "std": 0.0075,
+        "occurrence_rate": 0.0022,
+        "max_observed": 0.5174
+    },
+    "dcis": {
+        "mean": 0.0007,
+        "std": 0.0188,
+        "occurrence_rate": 0.002,
+        "max_observed": 1.0
+    },
+    "_tissue_cooccurrence": {
+        "outside_roi": {
+            "outside_roi": 1.0,
+            "tumor": -0.12826241597632215,
+            "stroma": -0.06962344231487297,
+            "lymphocytic_infiltrate": -0.005766145643773508,
+            "necrosis_or_debris": -0.047774219001139574,
+            "exclude": -0.061014916109978654
+        },
+        "tumor": {
+            "outside_roi": -0.12826241597632215,
+            "tumor": 1.0,
+            "stroma": -0.5526077673257074,
+            "lymphocytic_infiltrate": -0.47310018858211217,
+            "necrosis_or_debris": 0.027778202112255155,
+            "exclude": -0.06966552639235819
+        },
+        "stroma": {
+            "outside_roi": -0.06962344231487297,
+            "tumor": -0.5526077673257074,
+            "stroma": 1.0,
+            "lymphocytic_infiltrate": 0.15514122941596173,
+            "necrosis_or_debris": -0.3390243725118183,
+            "exclude": 0.021184007306841585
+        },
+        "lymphocytic_infiltrate": {
+            "outside_roi": -0.005766145643773508,
+            "tumor": -0.47310018858211217,
+            "stroma": 0.15514122941596173,
+            "lymphocytic_infiltrate": 1.0,
+            "necrosis_or_debris": -0.25964081691447877,
+            "exclude": 0.02355133353588964
+        },
+        "necrosis_or_debris": {
+            "outside_roi": -0.047774219001139574,
+            "tumor": 0.027778202112255155,
+            "stroma": -0.3390243725118183,
+            "lymphocytic_infiltrate": -0.25964081691447877,
+            "necrosis_or_debris": 1.0,
+            "exclude": 0.0591018440915539
+        },
+        "exclude": {
+            "outside_roi": -0.061014916109978654,
+            "tumor": -0.06966552639235819,
+            "stroma": 0.021184007306841585,
+            "lymphocytic_infiltrate": 0.02355133353588964,
+            "necrosis_or_debris": 0.0591018440915539,
+            "exclude": 1.0
+        }
+    },
+    "_pathology_rules": {
+        "stroma_to_tumor_ratio": {
+            "mean": 1.6826,
+            "median": 0.7137,
+            "std": 2.5507
+        }
+    }
+}

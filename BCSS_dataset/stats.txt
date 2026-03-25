@@ -1,0 +1,36 @@
+Dataset Statistics
+==================================================
+ROI images: 151
+Total patches: 26839
+Patch size: 512x512
+Stride: 256
+Min tissue ratio: 0.5
+
+Tissue types present (by patch count):
+  tumor                         :  20188 patches
+  stroma                        :  24029 patches
+  lymphocytic infiltrate        :   9492 patches
+  necrosis                      :   4671 patches
+  glandular secretions          :    174 patches
+  blood                         :   1545 patches
+  code_7                        :   5708 patches
+  metaplasia                    :     49 patches
+  fat                           :   2377 patches
+  plasma cells                  :   1966 patches
+  immune infiltrate             :    306 patches
+  mucoid material               :     35 patches
+  normal acinus or duct         :    283 patches
+  lymphatics                    :     50 patches
+  code_15                       :    377 patches
+  nerve                         :      4 patches
+  skin adnexa                   :     47 patches
+  blood vessel                  :   2408 patches
+  angioinvasion                 :     59 patches
+  DCIS                          :     53 patches
+
+Nuclei types present (by patch count):
+  neoplastic     :  23718 patches
+  inflammatory   :  25041 patches
+  connective     :  25867 patches
+  dead           :    505 patches
+  epithelial     :   1522 patches

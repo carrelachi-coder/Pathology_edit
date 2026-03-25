@@ -1,0 +1,1094 @@
+{
+    "outside_roi": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.3417,
+                0.3876
+            ],
+            "Inflammatory": [
+                0.2169,
+                0.2746
+            ],
+            "Connective": [
+                0.3407,
+                0.3234
+            ],
+            "Dead": [
+                0.0012,
+                0.0249
+            ],
+            "Epithelial": [
+                0.0024,
+                0.0235
+            ]
+        },
+        "density": {
+            "mean": 0.000622,
+            "std": 0.000809,
+            "min": 0.0,
+            "max": 0.02381
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000217,
+                0.000408
+            ],
+            "Inflammatory": [
+                0.000211,
+                0.000628
+            ],
+            "Connective": [
+                0.000192,
+                0.000315
+            ],
+            "Dead": [
+                0.0,
+                5e-06
+            ],
+            "Epithelial": [
+                2e-06,
+                2.6e-05
+            ]
+        }
+    },
+    "tumor": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.7587,
+                0.2586
+            ],
+            "Inflammatory": [
+                0.0621,
+                0.0992
+            ],
+            "Connective": [
+                0.1571,
+                0.1951
+            ],
+            "Dead": [
+                0.0,
+                0.0015
+            ],
+            "Epithelial": [
+                0.0058,
+                0.0508
+            ]
+        },
+        "density": {
+            "mean": 0.000644,
+            "std": 0.000594,
+            "min": 0.0,
+            "max": 0.047619
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000459,
+                0.000325
+            ],
+            "Inflammatory": [
+                5.6e-05,
+                0.000367
+            ],
+            "Connective": [
+                0.000121,
+                0.000316
+            ],
+            "Dead": [
+                0.0,
+                1e-06
+            ],
+            "Epithelial": [
+                8e-06,
+                9.9e-05
+            ]
+        }
+    },
+    "stroma": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.2323,
+                0.2944
+            ],
+            "Inflammatory": [
+                0.2212,
+                0.2173
+            ],
+            "Connective": [
+                0.4886,
+                0.2933
+            ],
+            "Dead": [
+                0.0001,
+                0.0077
+            ],
+            "Epithelial": [
+                0.0018,
+                0.0174
+            ]
+        },
+        "density": {
+            "mean": 0.000497,
+            "std": 0.00054,
+            "min": 0.0,
+            "max": 0.030303
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000128,
+                0.000353
+            ],
+            "Inflammatory": [
+                0.000136,
+                0.000315
+            ],
+            "Connective": [
+                0.000231,
+                0.000242
+            ],
+            "Dead": [
+                0.0,
+                7e-06
+            ],
+            "Epithelial": [
+                1e-06,
+                1.6e-05
+            ]
+        }
+    },
+    "lymphocytic_infiltrate": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.0881,
+                0.1684
+            ],
+            "Inflammatory": [
+                0.5909,
+                0.2607
+            ],
+            "Connective": [
+                0.2863,
+                0.2146
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0042,
+                0.0418
+            ]
+        },
+        "density": {
+            "mean": 0.001554,
+            "std": 0.001105,
+            "min": 0.0,
+            "max": 0.051282
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000137,
+                0.000389
+            ],
+            "Inflammatory": [
+                0.00095,
+                0.000903
+            ],
+            "Connective": [
+                0.000457,
+                0.000673
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                1e-05,
+                0.000102
+            ]
+        }
+    },
+    "necrosis_or_debris": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.4045,
+                0.3363
+            ],
+            "Inflammatory": [
+                0.2681,
+                0.2715
+            ],
+            "Connective": [
+                0.213,
+                0.2532
+            ],
+            "Dead": [
+                0.0079,
+                0.0469
+            ],
+            "Epithelial": [
+                0.0016,
+                0.026
+            ]
+        },
+        "density": {
+            "mean": 0.000443,
+            "std": 0.000554,
+            "min": 0.0,
+            "max": 0.010309
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000204,
+                0.000393
+            ],
+            "Inflammatory": [
+                0.000136,
+                0.000242
+            ],
+            "Connective": [
+                0.0001,
+                0.000219
+            ],
+            "Dead": [
+                3e-06,
+                2.6e-05
+            ],
+            "Epithelial": [
+                0.0,
+                8e-06
+            ]
+        }
+    },
+    "glandular_secretions": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.2711,
+                0.4131
+            ],
+            "Inflammatory": [
+                0.0702,
+                0.2323
+            ],
+            "Connective": [
+                0.0632,
+                0.2009
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0323,
+                0.149
+            ]
+        },
+        "density": {
+            "mean": 0.000118,
+            "std": 0.00031,
+            "min": 0.0,
+            "max": 0.002101
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                6e-05,
+                0.000151
+            ],
+            "Inflammatory": [
+                9e-06,
+                4.4e-05
+            ],
+            "Connective": [
+                4.6e-05,
+                0.000277
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                4e-06,
+                1.9e-05
+            ]
+        }
+    },
+    "blood": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.0752,
+                0.22
+            ],
+            "Inflammatory": [
+                0.1448,
+                0.2851
+            ],
+            "Connective": [
+                0.3206,
+                0.412
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0012,
+                0.0156
+            ]
+        },
+        "density": {
+            "mean": 0.000338,
+            "std": 0.000819,
+            "min": 0.0,
+            "max": 0.019608
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                4.3e-05,
+                0.000192
+            ],
+            "Inflammatory": [
+                8.7e-05,
+                0.000343
+            ],
+            "Connective": [
+                0.000208,
+                0.000714
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                6e-06
+            ]
+        }
+    },
+    "exclude": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.2351,
+                0.373
+            ],
+            "Inflammatory": [
+                0.1631,
+                0.2937
+            ],
+            "Connective": [
+                0.2515,
+                0.3551
+            ],
+            "Dead": [
+                0.0005,
+                0.0185
+            ],
+            "Epithelial": [
+                0.0016,
+                0.0322
+            ]
+        },
+        "density": {
+            "mean": 0.000222,
+            "std": 0.000463,
+            "min": 0.0,
+            "max": 0.011628
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                8.1e-05,
+                0.000342
+            ],
+            "Inflammatory": [
+                6.3e-05,
+                0.000218
+            ],
+            "Connective": [
+                7.7e-05,
+                0.000182
+            ],
+            "Dead": [
+                0.0,
+                2e-06
+            ],
+            "Epithelial": [
+                1e-06,
+                1.9e-05
+            ]
+        }
+    },
+    "metaplasia_NOS": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.3063,
+                0.2822
+            ],
+            "Inflammatory": [
+                0.0481,
+                0.0568
+            ],
+            "Connective": [
+                0.3131,
+                0.2764
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0263,
+                0.0603
+            ]
+        },
+        "density": {
+            "mean": 0.00028,
+            "std": 0.000233,
+            "min": 0.0,
+            "max": 0.000787
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000117,
+                0.000126
+            ],
+            "Inflammatory": [
+                1.8e-05,
+                2.5e-05
+            ],
+            "Connective": [
+                0.000133,
+                0.000145
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                1.2e-05,
+                2.9e-05
+            ]
+        }
+    },
+    "fat": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.0588,
+                0.1983
+            ],
+            "Inflammatory": [
+                0.1627,
+                0.2919
+            ],
+            "Connective": [
+                0.3611,
+                0.4132
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.003,
+                0.0307
+            ]
+        },
+        "density": {
+            "mean": 0.000119,
+            "std": 0.000428,
+            "min": 0.0,
+            "max": 0.016667
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                1.6e-05,
+                9.9e-05
+            ],
+            "Inflammatory": [
+                3.8e-05,
+                0.000209
+            ],
+            "Connective": [
+                6.4e-05,
+                0.000235
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                1e-06,
+                1.4e-05
+            ]
+        }
+    },
+    "plasma_cells": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.1801,
+                0.2779
+            ],
+            "Inflammatory": [
+                0.4464,
+                0.2453
+            ],
+            "Connective": [
+                0.354,
+                0.22
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0021,
+                0.0201
+            ]
+        },
+        "density": {
+            "mean": 0.001474,
+            "std": 0.000621,
+            "min": 0.0,
+            "max": 0.008333
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000249,
+                0.000411
+            ],
+            "Inflammatory": [
+                0.000685,
+                0.000516
+            ],
+            "Connective": [
+                0.000534,
+                0.000417
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                6e-06,
+                9.4e-05
+            ]
+        }
+    },
+    "other_immune_infiltrate": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.2914,
+                0.336
+            ],
+            "Inflammatory": [
+                0.4424,
+                0.3361
+            ],
+            "Connective": [
+                0.2172,
+                0.2529
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        },
+        "density": {
+            "mean": 0.001871,
+            "std": 0.002021,
+            "min": 0.0,
+            "max": 0.011601
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000393,
+                0.001014
+            ],
+            "Inflammatory": [
+                0.001061,
+                0.001645
+            ],
+            "Connective": [
+                0.000417,
+                0.000793
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        }
+    },
+    "mucoid_material": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.0,
+                0.0
+            ],
+            "Inflammatory": [
+                0.0,
+                0.0
+            ],
+            "Connective": [
+                0.0,
+                0.0
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        },
+        "density": {
+            "mean": 0.0,
+            "std": 0.0,
+            "min": 0.0,
+            "max": 0.0
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.0,
+                0.0
+            ],
+            "Inflammatory": [
+                0.0,
+                0.0
+            ],
+            "Connective": [
+                0.0,
+                0.0
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        }
+    },
+    "normal_acinus_or_duct": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.427,
+                0.3495
+            ],
+            "Inflammatory": [
+                0.1418,
+                0.2019
+            ],
+            "Connective": [
+                0.2485,
+                0.2668
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.1368,
+                0.2584
+            ]
+        },
+        "density": {
+            "mean": 0.00153,
+            "std": 0.001402,
+            "min": 0.0,
+            "max": 0.014286
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000521,
+                0.000467
+            ],
+            "Inflammatory": [
+                0.000248,
+                0.000411
+            ],
+            "Connective": [
+                0.00047,
+                0.001254
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.000292,
+                0.000637
+            ]
+        }
+    },
+    "lymphatics": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.12,
+                0.2955
+            ],
+            "Inflammatory": [
+                0.04,
+                0.137
+            ],
+            "Connective": [
+                0.24,
+                0.4314
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        },
+        "density": {
+            "mean": 8.6e-05,
+            "std": 0.000136,
+            "min": 0.0,
+            "max": 0.000462
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                4.2e-05,
+                0.000124
+            ],
+            "Inflammatory": [
+                6e-06,
+                1.9e-05
+            ],
+            "Connective": [
+                3.8e-05,
+                7.8e-05
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        }
+    },
+    "undetermined": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.2698,
+                0.3782
+            ],
+            "Inflammatory": [
+                0.0988,
+                0.2237
+            ],
+            "Connective": [
+                0.2257,
+                0.3378
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0052,
+                0.0507
+            ]
+        },
+        "density": {
+            "mean": 0.000698,
+            "std": 0.001402,
+            "min": 0.0,
+            "max": 0.009709
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000335,
+                0.001139
+            ],
+            "Inflammatory": [
+                9.4e-05,
+                0.000312
+            ],
+            "Connective": [
+                0.000252,
+                0.000704
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                1.7e-05,
+                0.00017
+            ]
+        }
+    },
+    "nerve": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.0,
+                0.0
+            ],
+            "Inflammatory": [
+                0.05,
+                0.0577
+            ],
+            "Connective": [
+                0.95,
+                0.0577
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        },
+        "density": {
+            "mean": 0.000464,
+            "std": 2.5e-05,
+            "min": 0.000443,
+            "max": 0.000486
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.0,
+                0.0
+            ],
+            "Inflammatory": [
+                2.2e-05,
+                2.6e-05
+            ],
+            "Connective": [
+                0.000442,
+                5e-05
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        }
+    },
+    "skin_adnexa": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.7298,
+                0.232
+            ],
+            "Inflammatory": [
+                0.1355,
+                0.1037
+            ],
+            "Connective": [
+                0.1135,
+                0.1171
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        },
+        "density": {
+            "mean": 0.000865,
+            "std": 0.000409,
+            "min": 0.0,
+            "max": 0.00226
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000588,
+                0.000253
+            ],
+            "Inflammatory": [
+                0.000145,
+                0.000215
+            ],
+            "Connective": [
+                0.000132,
+                0.000227
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        }
+    },
+    "blood_vessel": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.1771,
+                0.2817
+            ],
+            "Inflammatory": [
+                0.1587,
+                0.2556
+            ],
+            "Connective": [
+                0.5618,
+                0.3734
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0048,
+                0.0439
+            ]
+        },
+        "density": {
+            "mean": 0.000858,
+            "std": 0.001184,
+            "min": 0.0,
+            "max": 0.02439
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000174,
+                0.000429
+            ],
+            "Inflammatory": [
+                0.000158,
+                0.000568
+            ],
+            "Connective": [
+                0.000518,
+                0.000969
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                9e-06,
+                0.000108
+            ]
+        }
+    },
+    "angioinvasion": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.4278,
+                0.3415
+            ],
+            "Inflammatory": [
+                0.1249,
+                0.1988
+            ],
+            "Connective": [
+                0.2947,
+                0.3486
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        },
+        "density": {
+            "mean": 0.000374,
+            "std": 0.000251,
+            "min": 0.0,
+            "max": 0.001087
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000189,
+                0.000165
+            ],
+            "Inflammatory": [
+                6.8e-05,
+                0.000144
+            ],
+            "Connective": [
+                0.000117,
+                0.000194
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.0,
+                0.0
+            ]
+        }
+    },
+    "dcis": {
+        "cell_type_dist": {
+            "Neoplastic": [
+                0.2347,
+                0.2741
+            ],
+            "Inflammatory": [
+                0.0647,
+                0.0766
+            ],
+            "Connective": [
+                0.2595,
+                0.1645
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.441,
+                0.2475
+            ]
+        },
+        "density": {
+            "mean": 0.001355,
+            "std": 0.000432,
+            "min": 0.000635,
+            "max": 0.002661
+        },
+        "cell_density_per_type": {
+            "Neoplastic": [
+                0.000274,
+                0.000291
+            ],
+            "Inflammatory": [
+                0.000106,
+                0.000169
+            ],
+            "Connective": [
+                0.000381,
+                0.000309
+            ],
+            "Dead": [
+                0.0,
+                0.0
+            ],
+            "Epithelial": [
+                0.000593,
+                0.000353
+            ]
+        }
+    }
+}

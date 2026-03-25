@@ -1,0 +1,35 @@
+{
+  "id": "exp14",
+  "name": "tumor_growth_mild",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "extensive"
+    },
+    "stroma_change": {
+      "density": "none",
+      "degree": "moderate"
+    }
+  },
+  "ops_log": [],
+  "change_region_pct": 0.0,
+  "original_tissue": {
+    "tumor": 0.4412,
+    "stroma": 0.2122,
+    "necrosis_or_debris": 0.3466
+  },
+  "edited_tissue": {
+    "tumor": 0.4412,
+    "stroma": 0.2122,
+    "necrosis_or_debris": 0.3466
+  }
+}

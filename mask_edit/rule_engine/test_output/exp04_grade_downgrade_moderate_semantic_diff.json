@@ -1,0 +1,26 @@
+{
+  "id": "exp04",
+  "name": "grade_downgrade_moderate",
+  "desc": "Grade Downgrade (moderate, growth=none)",
+  "original_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in broad cords and nests, alternating with intervening stroma. The tumor nests contain densely packed, highly atypical neoplastic cells with frequent mitotic figures. The stroma consists of fibrous connective tissue distributed in bands interspersed among the tumor nests. A large area of coagulative necrosis is present in the lower-left portion of the field, containing scattered karyorrhectic debris and sparse inflammatory cell infiltration, directly abutting the viable tumor. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with extensive necrosis.",
+  "edited_report": "Invasive ductal carcinoma, intermediate-to-low histological grade. Tumor cells are arranged in cords and nests, alternating with intervening stroma. The neoplastic cells are well-differentiated with mild nuclear atypia, relatively uniform nuclear size, and rare mitotic figures. Cellularity is moderate, and focal glandular differentiation is noted. The stroma consists of fibrous connective tissue distributed in bands among the tumor nests. No significant necrosis is identified. No significant lymphocytic infiltration is identified. The overall morphology is consistent with an intermediate-to-low-grade, well-differentiated tumor.",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "decrease",
+      "degree": "moderate",
+      "grade_change": "downgrade"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "remove",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "none",
+      "degree": "moderate"
+    }
+  }
+}

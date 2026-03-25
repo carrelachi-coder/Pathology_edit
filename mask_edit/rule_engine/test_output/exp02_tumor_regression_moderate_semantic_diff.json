@@ -1,0 +1,26 @@
+{
+  "id": "exp02",
+  "name": "tumor_regression_moderate",
+  "desc": "Tumor Regression / Treatment Response (moderate)",
+  "original_report": "Invasive ductal carcinoma, high histological grade. Tumor cells are arranged in broad cords and nests, alternating with intervening stroma. The tumor nests contain densely packed, highly atypical neoplastic cells with frequent mitotic figures. The stroma consists of fibrous connective tissue distributed in bands interspersed among the tumor nests. A large area of coagulative necrosis is present in the lower-left portion of the field, containing scattered karyorrhectic debris and sparse inflammatory cell infiltration, directly abutting the viable tumor. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a high-grade tumor with extensive necrosis.",
+  "edited_report": "Invasive ductal carcinoma with treatment effect. Residual tumor nests are small in volume, scattered within a fibrotic stroma. The residual tumor shows decreased cellularity with scattered tumor cell necrosis and pyknotic nuclei; the proportion of viable neoplastic cells is reduced. The stroma occupies a broad area, exhibiting dense fibrotic reparative changes. A large area of coagulative necrosis is present on one side. No significant lymphocytic infiltration is identified. The overall morphology is consistent with a partial treatment response.",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "decrease",
+      "degree": "moderate",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "increase",
+      "degree": "moderate"
+    }
+  }
+}

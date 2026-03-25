@@ -1,0 +1,63 @@
+{
+  "id": "exp06",
+  "name": "necrosis_fibrosis_moderate",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "decrease",
+      "extent": "moderate"
+    },
+    "stroma_change": {
+      "density": "increase",
+      "degree": "moderate"
+    }
+  },
+  "ops_log": [
+    {
+      "op": "necrosis_fibrosis",
+      "direction": "expand",
+      "params": {
+        "target_delta": 0.277,
+        "remove_all": false
+      },
+      "log": {
+        "type": "necrosis_fibrosis",
+        "tissue_id": 4,
+        "tissue_name": "necrosis_or_debris",
+        "params": {
+          "target_delta": 0.277,
+          "actual_delta": 0.0447,
+          "alpha": 10.1,
+          "beta": 149.85,
+          "pixels_released": 11717,
+          "pixels_fragments_removed": 0
+        },
+        "area_change": {
+          "stroma": 0.0447,
+          "necrosis_or_debris": -0.0447
+        },
+        "accepted": true,
+        "rejection_reason": ""
+      }
+    }
+  ],
+  "change_region_pct": 5.408477783203125,
+  "original_tissue": {
+    "tumor": 0.4412,
+    "stroma": 0.2122,
+    "necrosis_or_debris": 0.3466
+  },
+  "edited_tissue": {
+    "tumor": 0.4412,
+    "stroma": 0.2569,
+    "necrosis_or_debris": 0.3019
+  }
+}

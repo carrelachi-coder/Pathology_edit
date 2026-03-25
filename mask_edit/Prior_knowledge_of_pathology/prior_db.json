@@ -1,0 +1,1373 @@
+{
+    "stroma": {
+        "area": {
+            "mean": 0.3471,
+            "std": 0.3089,
+            "occurrence_rate": 0.8953,
+            "max_observed": 1.0
+        },
+        "adjacency": {
+            "outside_roi": 0.0155,
+            "tumor": 0.4468,
+            "lymphocytic_infiltrate": 0.2885,
+            "necrosis_or_debris": 0.0335,
+            "blood": 0.0125,
+            "exclude": 0.0731,
+            "fat": 0.038,
+            "plasma_cells": 0.0618,
+            "other_immune_infiltrate": 0.0038,
+            "normal_acinus_or_duct": 0.0025,
+            "undetermined": 0.0033,
+            "blood_vessel": 0.0181
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.232,
+                "std": 0.294
+            },
+            "inflammatory": {
+                "mean": 0.221,
+                "std": 0.217
+            },
+            "connective": {
+                "mean": 0.489,
+                "std": 0.293
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.008
+            },
+            "epithelial": {
+                "mean": 0.002,
+                "std": 0.017
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000497,
+            "std": 0.00054,
+            "min": 0.0,
+            "max": 0.030303
+        },
+        "spatial_nnd": {
+            "connective": {
+                "nnd_mean": 64.7732,
+                "nnd_std": 44.4259,
+                "sample_count": 595740
+            },
+            "neoplastic": {
+                "nnd_mean": 83.8365,
+                "nnd_std": 67.786,
+                "sample_count": 154346
+            },
+            "inflammatory": {
+                "nnd_mean": 83.8065,
+                "nnd_std": 57.8105,
+                "sample_count": 276606
+            },
+            "epithelial": {
+                "nnd_mean": 58.1583,
+                "nnd_std": 65.4438,
+                "sample_count": 1345
+            }
+        }
+    },
+    "undetermined": {
+        "area": {
+            "mean": 0.0008,
+            "std": 0.0134,
+            "occurrence_rate": 0.014,
+            "max_observed": 0.6699
+        },
+        "adjacency": {
+            "outside_roi": 0.0151,
+            "tumor": 0.2913,
+            "stroma": 0.6527,
+            "lymphocytic_infiltrate": 0.021,
+            "necrosis_or_debris": 0.0036,
+            "exclude": 0.0143,
+            "other_immune_infiltrate": 0.001
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.27,
+                "std": 0.378
+            },
+            "inflammatory": {
+                "mean": 0.099,
+                "std": 0.224
+            },
+            "connective": {
+                "mean": 0.226,
+                "std": 0.338
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.005,
+                "std": 0.051
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000698,
+            "std": 0.001402,
+            "min": 0.0,
+            "max": 0.009709
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 70.2596,
+                "nnd_std": 64.8889,
+                "sample_count": 895
+            },
+            "connective": {
+                "nnd_mean": 78.1112,
+                "nnd_std": 50.3321,
+                "sample_count": 559
+            },
+            "inflammatory": {
+                "nnd_mean": 63.9544,
+                "nnd_std": 28.6366,
+                "sample_count": 272
+            }
+        }
+    },
+    "skin_adnexa": {
+        "area": {
+            "mean": 0.0006,
+            "std": 0.0179,
+            "occurrence_rate": 0.0018,
+            "max_observed": 0.9928
+        },
+        "adjacency": {
+            "tumor": 0.0044,
+            "stroma": 0.658,
+            "lymphocytic_infiltrate": 0.3348,
+            "blood_vessel": 0.0029
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.73,
+                "std": 0.232
+            },
+            "inflammatory": {
+                "mean": 0.136,
+                "std": 0.104
+            },
+            "connective": {
+                "mean": 0.114,
+                "std": 0.117
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.0,
+                "std": 0.0
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000865,
+            "std": 0.000409,
+            "min": 0.0,
+            "max": 0.00226
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 43.227,
+                "nnd_std": 15.0744,
+                "sample_count": 2234
+            },
+            "inflammatory": {
+                "nnd_mean": 106.672,
+                "nnd_std": 63.5784,
+                "sample_count": 298
+            },
+            "connective": {
+                "nnd_mean": 94.4147,
+                "nnd_std": 69.0547,
+                "sample_count": 210
+            }
+        }
+    },
+    "fat": {
+        "area": {
+            "mean": 0.0146,
+            "std": 0.0803,
+            "occurrence_rate": 0.0886,
+            "max_observed": 1.0
+        },
+        "adjacency": {
+            "outside_roi": 0.0372,
+            "tumor": 0.0407,
+            "stroma": 0.8508,
+            "lymphocytic_infiltrate": 0.0444,
+            "necrosis_or_debris": 0.0105,
+            "exclude": 0.0079,
+            "plasma_cells": 0.0064,
+            "blood_vessel": 0.0018
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.059,
+                "std": 0.198
+            },
+            "inflammatory": {
+                "mean": 0.163,
+                "std": 0.292
+            },
+            "connective": {
+                "mean": 0.361,
+                "std": 0.413
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.003,
+                "std": 0.031
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000119,
+            "std": 0.000428,
+            "min": 0.0,
+            "max": 0.016667
+        },
+        "spatial_nnd": {
+            "inflammatory": {
+                "nnd_mean": 94.0625,
+                "nnd_std": 73.5169,
+                "sample_count": 1441
+            },
+            "connective": {
+                "nnd_mean": 106.7986,
+                "nnd_std": 83.5697,
+                "sample_count": 3402
+            },
+            "neoplastic": {
+                "nnd_mean": 94.7469,
+                "nnd_std": 69.0281,
+                "sample_count": 496
+            },
+            "epithelial": {
+                "nnd_mean": 82.0814,
+                "nnd_std": 51.379,
+                "sample_count": 92
+            }
+        }
+    },
+    "nerve": {
+        "area": {
+            "mean": 0.0,
+            "std": 0.0008,
+            "occurrence_rate": 0.0001,
+            "max_observed": 0.0862
+        },
+        "adjacency": {
+            "stroma": 1.0
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "inflammatory": {
+                "mean": 0.05,
+                "std": 0.058
+            },
+            "connective": {
+                "mean": 0.95,
+                "std": 0.058
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.0,
+                "std": 0.0
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000464,
+            "std": 2.5e-05,
+            "min": 0.000443,
+            "max": 0.000486
+        }
+    },
+    "blood_vessel": {
+        "area": {
+            "mean": 0.0055,
+            "std": 0.0321,
+            "occurrence_rate": 0.0897,
+            "max_observed": 0.8975
+        },
+        "adjacency": {
+            "outside_roi": 0.0082,
+            "tumor": 0.0532,
+            "stroma": 0.7457,
+            "lymphocytic_infiltrate": 0.1461,
+            "necrosis_or_debris": 0.0025,
+            "blood": 0.0049,
+            "exclude": 0.0125,
+            "fat": 0.0033,
+            "plasma_cells": 0.0081,
+            "other_immune_infiltrate": 0.0021,
+            "lymphatics": 0.0118,
+            "angioinvasion": 0.0011
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.177,
+                "std": 0.282
+            },
+            "inflammatory": {
+                "mean": 0.159,
+                "std": 0.256
+            },
+            "connective": {
+                "mean": 0.562,
+                "std": 0.373
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.005,
+                "std": 0.044
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000858,
+            "std": 0.001184,
+            "min": 0.0,
+            "max": 0.02439
+        },
+        "spatial_nnd": {
+            "connective": {
+                "nnd_mean": 66.547,
+                "nnd_std": 52.2815,
+                "sample_count": 10314
+            },
+            "inflammatory": {
+                "nnd_mean": 75.7258,
+                "nnd_std": 58.9783,
+                "sample_count": 2026
+            },
+            "neoplastic": {
+                "nnd_mean": 67.9387,
+                "nnd_std": 55.5532,
+                "sample_count": 3090
+            },
+            "epithelial": {
+                "nnd_mean": 32.301,
+                "nnd_std": 28.3215,
+                "sample_count": 208
+            }
+        }
+    },
+    "other": {
+        "adjacency": {}
+    },
+    "angioinvasion": {
+        "area": {
+            "mean": 0.0002,
+            "std": 0.0075,
+            "occurrence_rate": 0.0022,
+            "max_observed": 0.5174
+        },
+        "adjacency": {
+            "tumor": 0.0218,
+            "stroma": 0.909,
+            "lymphocytic_infiltrate": 0.0271,
+            "blood_vessel": 0.0421
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.428,
+                "std": 0.342
+            },
+            "inflammatory": {
+                "mean": 0.125,
+                "std": 0.199
+            },
+            "connective": {
+                "mean": 0.295,
+                "std": 0.349
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.0,
+                "std": 0.0
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000374,
+            "std": 0.000251,
+            "min": 0.0,
+            "max": 0.001087
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 52.1289,
+                "nnd_std": 21.4945,
+                "sample_count": 382
+            },
+            "inflammatory": {
+                "nnd_mean": 100.586,
+                "nnd_std": 87.9131,
+                "sample_count": 53
+            }
+        }
+    },
+    "lymphatics": {
+        "area": {
+            "mean": 0.0001,
+            "std": 0.0051,
+            "occurrence_rate": 0.0019,
+            "max_observed": 0.5234
+        },
+        "adjacency": {
+            "outside_roi": 0.0464,
+            "tumor": 0.0156,
+            "stroma": 0.2887,
+            "lymphocytic_infiltrate": 0.0417,
+            "plasma_cells": 0.0135,
+            "blood_vessel": 0.5941
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.12,
+                "std": 0.295
+            },
+            "inflammatory": {
+                "mean": 0.04,
+                "std": 0.137
+            },
+            "connective": {
+                "mean": 0.24,
+                "std": 0.431
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.0,
+                "std": 0.0
+            }
+        },
+        "cell_density_raw": {
+            "mean": 8.6e-05,
+            "std": 0.000136,
+            "min": 0.0,
+            "max": 0.000462
+        }
+    },
+    "mucoid_material": {
+        "area": {
+            "mean": 0.0,
+            "std": 0.0014,
+            "occurrence_rate": 0.0013,
+            "max_observed": 0.1179
+        },
+        "adjacency": {
+            "tumor": 0.3467,
+            "stroma": 0.1768,
+            "necrosis_or_debris": 0.0638,
+            "glandular_secretions": 0.2047,
+            "exclude": 0.2004,
+            "undetermined": 0.0076
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "inflammatory": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "connective": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.0,
+                "std": 0.0
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.0,
+            "std": 0.0,
+            "min": 0.0,
+            "max": 0.0
+        }
+    },
+    "outside_roi": {
+        "area": {
+            "mean": 0.0301,
+            "std": 0.1045,
+            "occurrence_rate": 0.1304,
+            "max_observed": 0.9394
+        },
+        "adjacency": {
+            "tumor": 0.3534,
+            "stroma": 0.4279,
+            "lymphocytic_infiltrate": 0.0865,
+            "necrosis_or_debris": 0.0377,
+            "blood": 0.0011,
+            "exclude": 0.0135,
+            "metaplasia_NOS": 0.0034,
+            "fat": 0.0458,
+            "plasma_cells": 0.0213,
+            "normal_acinus_or_duct": 0.0011,
+            "undetermined": 0.0021,
+            "blood_vessel": 0.0055
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.342,
+                "std": 0.388
+            },
+            "inflammatory": {
+                "mean": 0.217,
+                "std": 0.275
+            },
+            "connective": {
+                "mean": 0.341,
+                "std": 0.323
+            },
+            "dead": {
+                "mean": 0.001,
+                "std": 0.025
+            },
+            "epithelial": {
+                "mean": 0.002,
+                "std": 0.024
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000622,
+            "std": 0.000809,
+            "min": 0.0,
+            "max": 0.02381
+        },
+        "spatial_nnd": {
+            "inflammatory": {
+                "nnd_mean": 45.5743,
+                "nnd_std": 36.1884,
+                "sample_count": 38639
+            },
+            "connective": {
+                "nnd_mean": 62.2594,
+                "nnd_std": 43.4323,
+                "sample_count": 34885
+            },
+            "neoplastic": {
+                "nnd_mean": 52.7692,
+                "nnd_std": 29.9028,
+                "sample_count": 44811
+            },
+            "epithelial": {
+                "nnd_mean": 32.9591,
+                "nnd_std": 30.2944,
+                "sample_count": 514
+            }
+        }
+    },
+    "metaplasia_NOS": {
+        "area": {
+            "mean": 0.0007,
+            "std": 0.0221,
+            "occurrence_rate": 0.0018,
+            "max_observed": 0.9999
+        },
+        "adjacency": {
+            "outside_roi": 0.2922,
+            "tumor": 0.6342,
+            "stroma": 0.0724,
+            "blood_vessel": 0.0012
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.306,
+                "std": 0.282
+            },
+            "inflammatory": {
+                "mean": 0.048,
+                "std": 0.057
+            },
+            "connective": {
+                "mean": 0.313,
+                "std": 0.276
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.026,
+                "std": 0.06
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.00028,
+            "std": 0.000233,
+            "min": 0.0,
+            "max": 0.000787
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 77.6941,
+                "nnd_std": 46.6304,
+                "sample_count": 625
+            },
+            "connective": {
+                "nnd_mean": 66.0874,
+                "nnd_std": 38.9487,
+                "sample_count": 871
+            },
+            "epithelial": {
+                "nnd_mean": 23.5058,
+                "nnd_std": 19.9811,
+                "sample_count": 91
+            },
+            "inflammatory": {
+                "nnd_mean": 153.3952,
+                "nnd_std": 126.0829,
+                "sample_count": 77
+            }
+        }
+    },
+    "necrosis_or_debris": {
+        "area": {
+            "mean": 0.0646,
+            "std": 0.2004,
+            "occurrence_rate": 0.174,
+            "max_observed": 1.0
+        },
+        "adjacency": {
+            "outside_roi": 0.0205,
+            "tumor": 0.3679,
+            "stroma": 0.503,
+            "lymphocytic_infiltrate": 0.0059,
+            "blood": 0.0023,
+            "exclude": 0.0903,
+            "fat": 0.007
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.405,
+                "std": 0.336
+            },
+            "inflammatory": {
+                "mean": 0.268,
+                "std": 0.272
+            },
+            "connective": {
+                "mean": 0.213,
+                "std": 0.253
+            },
+            "dead": {
+                "mean": 0.008,
+                "std": 0.047
+            },
+            "epithelial": {
+                "mean": 0.002,
+                "std": 0.026
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000443,
+            "std": 0.000554,
+            "min": 0.0,
+            "max": 0.010309
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 66.5055,
+                "nnd_std": 48.3649,
+                "sample_count": 60561
+            },
+            "inflammatory": {
+                "nnd_mean": 60.3953,
+                "nnd_std": 48.3286,
+                "sample_count": 61476
+            },
+            "connective": {
+                "nnd_mean": 77.3759,
+                "nnd_std": 60.5274,
+                "sample_count": 30429
+            },
+            "dead": {
+                "nnd_mean": 77.8436,
+                "nnd_std": 64.5178,
+                "sample_count": 1245
+            },
+            "epithelial": {
+                "nnd_mean": 138.3233,
+                "nnd_std": 99.0822,
+                "sample_count": 66
+            }
+        }
+    },
+    "tumor": {
+        "area": {
+            "mean": 0.3889,
+            "std": 0.3565,
+            "occurrence_rate": 0.7522,
+            "max_observed": 1.0
+        },
+        "adjacency": {
+            "outside_roi": 0.0241,
+            "stroma": 0.841,
+            "lymphocytic_infiltrate": 0.0163,
+            "necrosis_or_debris": 0.0461,
+            "glandular_secretions": 0.0012,
+            "blood": 0.0016,
+            "exclude": 0.0564,
+            "fat": 0.0034,
+            "plasma_cells": 0.0025,
+            "undetermined": 0.0027,
+            "blood_vessel": 0.0024
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.759,
+                "std": 0.259
+            },
+            "inflammatory": {
+                "mean": 0.062,
+                "std": 0.099
+            },
+            "connective": {
+                "mean": 0.157,
+                "std": 0.195
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.002
+            },
+            "epithelial": {
+                "mean": 0.006,
+                "std": 0.051
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000644,
+            "std": 0.000594,
+            "min": 0.0,
+            "max": 0.047619
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 50.0765,
+                "nnd_std": 24.6571,
+                "sample_count": 1208106
+            },
+            "inflammatory": {
+                "nnd_mean": 96.4593,
+                "nnd_std": 75.2532,
+                "sample_count": 81310
+            },
+            "connective": {
+                "nnd_mean": 80.149,
+                "nnd_std": 66.1484,
+                "sample_count": 189955
+            },
+            "epithelial": {
+                "nnd_mean": 33.4569,
+                "nnd_std": 31.6735,
+                "sample_count": 10337
+            }
+        }
+    },
+    "lymphocytic_infiltrate": {
+        "area": {
+            "mean": 0.1034,
+            "std": 0.2188,
+            "occurrence_rate": 0.3537,
+            "max_observed": 1.0
+        },
+        "adjacency": {
+            "outside_roi": 0.0098,
+            "tumor": 0.0269,
+            "stroma": 0.8986,
+            "necrosis_or_debris": 0.0012,
+            "blood": 0.0037,
+            "exclude": 0.0286,
+            "fat": 0.0062,
+            "plasma_cells": 0.0099,
+            "other_immune_infiltrate": 0.0011,
+            "normal_acinus_or_duct": 0.0019,
+            "blood_vessel": 0.011
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.088,
+                "std": 0.168
+            },
+            "inflammatory": {
+                "mean": 0.591,
+                "std": 0.261
+            },
+            "connective": {
+                "mean": 0.286,
+                "std": 0.215
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.004,
+                "std": 0.042
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.001554,
+            "std": 0.001105,
+            "min": 0.0,
+            "max": 0.051282
+        },
+        "spatial_nnd": {
+            "inflammatory": {
+                "nnd_mean": 34.7712,
+                "nnd_std": 19.2144,
+                "sample_count": 729502
+            },
+            "connective": {
+                "nnd_mean": 55.7729,
+                "nnd_std": 41.0391,
+                "sample_count": 235506
+            },
+            "epithelial": {
+                "nnd_mean": 29.8648,
+                "nnd_std": 31.4938,
+                "sample_count": 5581
+            },
+            "neoplastic": {
+                "nnd_mean": 57.763,
+                "nnd_std": 48.7453,
+                "sample_count": 81060
+            }
+        }
+    },
+    "dcis": {
+        "area": {
+            "mean": 0.0007,
+            "std": 0.0188,
+            "occurrence_rate": 0.002,
+            "max_observed": 1.0
+        },
+        "adjacency": {
+            "tumor": 0.0074,
+            "stroma": 0.6587,
+            "exclude": 0.3339
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.235,
+                "std": 0.274
+            },
+            "inflammatory": {
+                "mean": 0.065,
+                "std": 0.077
+            },
+            "connective": {
+                "mean": 0.26,
+                "std": 0.165
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.441,
+                "std": 0.247
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.001355,
+            "std": 0.000432,
+            "min": 0.000635,
+            "max": 0.002661
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 40.3267,
+                "nnd_std": 22.6628,
+                "sample_count": 1660
+            },
+            "connective": {
+                "nnd_mean": 48.602,
+                "nnd_std": 43.1229,
+                "sample_count": 1292
+            },
+            "epithelial": {
+                "nnd_mean": 33.3658,
+                "nnd_std": 17.6205,
+                "sample_count": 2683
+            },
+            "inflammatory": {
+                "nnd_mean": 90.7266,
+                "nnd_std": 61.7782,
+                "sample_count": 237
+            }
+        }
+    },
+    "normal_acinus_or_duct": {
+        "area": {
+            "mean": 0.0009,
+            "std": 0.0117,
+            "occurrence_rate": 0.0105,
+            "max_observed": 0.4325
+        },
+        "adjacency": {
+            "outside_roi": 0.011,
+            "tumor": 0.0732,
+            "stroma": 0.6817,
+            "lymphocytic_infiltrate": 0.1697,
+            "glandular_secretions": 0.0574,
+            "exclude": 0.0024,
+            "plasma_cells": 0.0046
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.427,
+                "std": 0.349
+            },
+            "inflammatory": {
+                "mean": 0.142,
+                "std": 0.202
+            },
+            "connective": {
+                "mean": 0.248,
+                "std": 0.267
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.137,
+                "std": 0.258
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.00153,
+            "std": 0.001402,
+            "min": 0.0,
+            "max": 0.014286
+        },
+        "spatial_nnd": {
+            "epithelial": {
+                "nnd_mean": 34.6364,
+                "nnd_std": 28.4151,
+                "sample_count": 1123
+            },
+            "connective": {
+                "nnd_mean": 55.1087,
+                "nnd_std": 51.08,
+                "sample_count": 1566
+            },
+            "neoplastic": {
+                "nnd_mean": 47.9248,
+                "nnd_std": 28.5632,
+                "sample_count": 2774
+            },
+            "inflammatory": {
+                "nnd_mean": 52.4345,
+                "nnd_std": 38.7102,
+                "sample_count": 1132
+            }
+        }
+    },
+    "plasma_cells": {
+        "area": {
+            "mean": 0.0175,
+            "std": 0.0881,
+            "occurrence_rate": 0.0733,
+            "max_observed": 0.9958
+        },
+        "adjacency": {
+            "outside_roi": 0.0114,
+            "tumor": 0.0197,
+            "stroma": 0.9097,
+            "lymphocytic_infiltrate": 0.0467,
+            "exclude": 0.0019,
+            "fat": 0.0042,
+            "other_immune_infiltrate": 0.0027,
+            "blood_vessel": 0.0029
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.18,
+                "std": 0.278
+            },
+            "inflammatory": {
+                "mean": 0.446,
+                "std": 0.245
+            },
+            "connective": {
+                "mean": 0.354,
+                "std": 0.22
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.002,
+                "std": 0.02
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.001474,
+            "std": 0.000621,
+            "min": 0.0,
+            "max": 0.008333
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 52.5843,
+                "nnd_std": 43.5205,
+                "sample_count": 25543
+            },
+            "inflammatory": {
+                "nnd_mean": 42.4405,
+                "nnd_std": 27.1759,
+                "sample_count": 84641
+            },
+            "connective": {
+                "nnd_mean": 50.6039,
+                "nnd_std": 34.4627,
+                "sample_count": 55711
+            },
+            "epithelial": {
+                "nnd_mean": 56.2492,
+                "nnd_std": 59.1561,
+                "sample_count": 297
+            }
+        }
+    },
+    "blood": {
+        "area": {
+            "mean": 0.0023,
+            "std": 0.023,
+            "occurrence_rate": 0.0576,
+            "max_observed": 0.9218
+        },
+        "adjacency": {
+            "outside_roi": 0.0026,
+            "tumor": 0.0576,
+            "stroma": 0.8367,
+            "lymphocytic_infiltrate": 0.0796,
+            "necrosis_or_debris": 0.0102,
+            "exclude": 0.0031,
+            "plasma_cells": 0.0013,
+            "blood_vessel": 0.008
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.075,
+                "std": 0.22
+            },
+            "inflammatory": {
+                "mean": 0.145,
+                "std": 0.285
+            },
+            "connective": {
+                "mean": 0.321,
+                "std": 0.412
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.001,
+                "std": 0.016
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000338,
+            "std": 0.000819,
+            "min": 0.0,
+            "max": 0.019608
+        },
+        "spatial_nnd": {
+            "connective": {
+                "nnd_mean": 84.1525,
+                "nnd_std": 74.5835,
+                "sample_count": 1216
+            },
+            "neoplastic": {
+                "nnd_mean": 77.9983,
+                "nnd_std": 58.4905,
+                "sample_count": 589
+            },
+            "inflammatory": {
+                "nnd_mean": 91.3984,
+                "nnd_std": 63.6794,
+                "sample_count": 641
+            }
+        }
+    },
+    "glandular_secretions": {
+        "area": {
+            "mean": 0.0004,
+            "std": 0.0096,
+            "occurrence_rate": 0.0065,
+            "max_observed": 0.4783
+        },
+        "adjacency": {
+            "tumor": 0.3853,
+            "stroma": 0.3994,
+            "necrosis_or_debris": 0.0095,
+            "mucoid_material": 0.0702,
+            "normal_acinus_or_duct": 0.1292,
+            "blood_vessel": 0.006
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.271,
+                "std": 0.413
+            },
+            "inflammatory": {
+                "mean": 0.07,
+                "std": 0.232
+            },
+            "connective": {
+                "mean": 0.063,
+                "std": 0.201
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.032,
+                "std": 0.149
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000118,
+            "std": 0.00031,
+            "min": 0.0,
+            "max": 0.002101
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 113.7641,
+                "nnd_std": 58.2088,
+                "sample_count": 86
+            }
+        }
+    },
+    "other_immune_infiltrate": {
+        "area": {
+            "mean": 0.002,
+            "std": 0.0346,
+            "occurrence_rate": 0.0114,
+            "max_observed": 1.0
+        },
+        "adjacency": {
+            "outside_roi": 0.0012,
+            "tumor": 0.0863,
+            "stroma": 0.7733,
+            "lymphocytic_infiltrate": 0.0737,
+            "necrosis_or_debris": 0.0108,
+            "exclude": 0.0058,
+            "plasma_cells": 0.0371,
+            "undetermined": 0.001,
+            "blood_vessel": 0.0106
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.291,
+                "std": 0.336
+            },
+            "inflammatory": {
+                "mean": 0.442,
+                "std": 0.336
+            },
+            "connective": {
+                "mean": 0.217,
+                "std": 0.253
+            },
+            "dead": {
+                "mean": 0.0,
+                "std": 0.0
+            },
+            "epithelial": {
+                "mean": 0.0,
+                "std": 0.0
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.001871,
+            "std": 0.002021,
+            "min": 0.0,
+            "max": 0.011601
+        },
+        "spatial_nnd": {
+            "inflammatory": {
+                "nnd_mean": 43.1869,
+                "nnd_std": 28.9806,
+                "sample_count": 6733
+            },
+            "neoplastic": {
+                "nnd_mean": 45.7691,
+                "nnd_std": 31.5982,
+                "sample_count": 5043
+            },
+            "connective": {
+                "nnd_mean": 54.0738,
+                "nnd_std": 42.95,
+                "sample_count": 2797
+            }
+        }
+    },
+    "exclude": {
+        "area": {
+            "mean": 0.0197,
+            "std": 0.0602,
+            "occurrence_rate": 0.2127,
+            "max_observed": 0.5779
+        },
+        "adjacency": {
+            "outside_roi": 0.0041,
+            "tumor": 0.2492,
+            "stroma": 0.6084,
+            "lymphocytic_infiltrate": 0.0764,
+            "necrosis_or_debris": 0.05,
+            "fat": 0.0029,
+            "plasma_cells": 0.0011,
+            "blood_vessel": 0.0025,
+            "dcis": 0.0031
+        },
+        "cell_distribution": {
+            "neoplastic": {
+                "mean": 0.235,
+                "std": 0.373
+            },
+            "inflammatory": {
+                "mean": 0.163,
+                "std": 0.294
+            },
+            "connective": {
+                "mean": 0.252,
+                "std": 0.355
+            },
+            "dead": {
+                "mean": 0.001,
+                "std": 0.018
+            },
+            "epithelial": {
+                "mean": 0.002,
+                "std": 0.032
+            }
+        },
+        "cell_density_raw": {
+            "mean": 0.000222,
+            "std": 0.000463,
+            "min": 0.0,
+            "max": 0.011628
+        },
+        "spatial_nnd": {
+            "neoplastic": {
+                "nnd_mean": 98.4314,
+                "nnd_std": 80.2863,
+                "sample_count": 4579
+            },
+            "inflammatory": {
+                "nnd_mean": 90.891,
+                "nnd_std": 70.5086,
+                "sample_count": 5951
+            },
+            "connective": {
+                "nnd_mean": 98.236,
+                "nnd_std": 75.4937,
+                "sample_count": 6814
+            },
+            "epithelial": {
+                "nnd_mean": 68.9692,
+                "nnd_std": 33.4736,
+                "sample_count": 67
+            }
+        }
+    },
+    "_meta": {
+        "cooccurrence_correlation": {
+            "outside_roi": {
+                "outside_roi": 1.0,
+                "tumor": -0.12826241597632215,
+                "stroma": -0.06962344231487297,
+                "lymphocytic_infiltrate": -0.005766145643773508,
+                "necrosis_or_debris": -0.047774219001139574,
+                "exclude": -0.061014916109978654
+            },
+            "tumor": {
+                "outside_roi": -0.12826241597632215,
+                "tumor": 1.0,
+                "stroma": -0.5526077673257074,
+                "lymphocytic_infiltrate": -0.47310018858211217,
+                "necrosis_or_debris": 0.027778202112255155,
+                "exclude": -0.06966552639235819
+            },
+            "stroma": {
+                "outside_roi": -0.06962344231487297,
+                "tumor": -0.5526077673257074,
+                "stroma": 1.0,
+                "lymphocytic_infiltrate": 0.15514122941596173,
+                "necrosis_or_debris": -0.3390243725118183,
+                "exclude": 0.021184007306841585
+            },
+            "lymphocytic_infiltrate": {
+                "outside_roi": -0.005766145643773508,
+                "tumor": -0.47310018858211217,
+                "stroma": 0.15514122941596173,
+                "lymphocytic_infiltrate": 1.0,
+                "necrosis_or_debris": -0.25964081691447877,
+                "exclude": 0.02355133353588964
+            },
+            "necrosis_or_debris": {
+                "outside_roi": -0.047774219001139574,
+                "tumor": 0.027778202112255155,
+                "stroma": -0.3390243725118183,
+                "lymphocytic_infiltrate": -0.25964081691447877,
+                "necrosis_or_debris": 1.0,
+                "exclude": 0.0591018440915539
+            },
+            "exclude": {
+                "outside_roi": -0.061014916109978654,
+                "tumor": -0.06966552639235819,
+                "stroma": 0.021184007306841585,
+                "lymphocytic_infiltrate": 0.02355133353588964,
+                "necrosis_or_debris": 0.0591018440915539,
+                "exclude": 1.0
+            }
+        },
+        "pathology_rules": {
+            "stroma_to_tumor_ratio": {
+                "mean": 1.6826,
+                "median": 0.7137,
+                "std": 2.5507
+            }
+        }
+    }
+}
