@@ -1,0 +1,59 @@
+{
+  "id": "exp21",
+  "name": "stroma fibrosis",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "increase",
+      "degree": "moderate"
+    }
+  },
+  "ops_log": [
+    {
+      "op": "stromal_fibrosis",
+      "direction": "expand",
+      "params": {
+        "target_delta": 0.226
+      },
+      "log": {
+        "type": "stromal_fibrosis",
+        "tissue_id": 2,
+        "tissue_name": "stroma",
+        "params": {
+          "target_delta": 0.226,
+          "actual_delta": 0.2264,
+          "alpha": 5.1,
+          "beta": 28.38,
+          "expandable_ratio": 0.283
+        },
+        "area_change": {
+          "stroma": 0.2264,
+          "lymphocytic_infiltrate": -0.2264
+        },
+        "accepted": true,
+        "rejection_reason": ""
+      }
+    }
+  ],
+  "change_region_pct": 24.405670166015625,
+  "original_tissue": {
+    "stroma": 0.7171,
+    "lymphocytic_infiltrate": 0.2829
+  },
+  "edited_tissue": {
+    "stroma": 0.9435,
+    "lymphocytic_infiltrate": 0.0565
+  }
+}

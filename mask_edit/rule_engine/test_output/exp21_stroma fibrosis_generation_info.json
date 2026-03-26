@@ -1,9 +1,9 @@
 {
-  "id": "exp06",
-  "name": "necrosis_fibrosis_moderate",
+  "id": "exp21",
+  "name": "stroma fibrosis",
   "gen_method_requested": "auto",
   "gen_method_actual": "inpaint",
-  "change_region_pct": 17.365264892578125,
+  "change_region_pct": 24.405670166015625,
   "auto_threshold": 0.35,
   "conditioning_scale": 1.0,
   "seed": 42,

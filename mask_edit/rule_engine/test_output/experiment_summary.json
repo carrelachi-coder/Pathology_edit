@@ -1,93 +1,41 @@
 {
   "config": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/experiments.json",
-  "mask_path": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/conditioning/TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500_y0_x512.png",
-  "image_path": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/images/TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500_y0_x512.png",
+  "mask_path": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/conditioning/TCGA-LL-A740-DX1_xmin39436_ymin24080_MPP-0.2500_y512_x256.png",
+  "image_path": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/images/TCGA-LL-A740-DX1_xmin39436_ymin24080_MPP-0.2500_y512_x256.png",
   "mask_shape": [
     512,
     512
   ],
   "experiments": {
-    "exp05": {
-      "name": "necrosis_increase_focal",
-      "desc": "Necrosis Increase (focal)",
+    "exp20": {
+      "name": "lymph growth",
+      "desc": "",
       "semantic_diff": {
         "tumor_change": {
           "growth": "none",
-          "degree": "mild",
+          "degree": "moderate",
           "grade_change": "none"
         },
         "lymphocyte_change": {
-          "infiltration": "none",
-          "degree": "mild"
+          "infiltration": "increase",
+          "degree": "significant"
         },
         "necrosis_change": {
-          "action": "increase",
-          "extent": "extensive"
-        },
-        "stroma_change": {
-          "density": "none",
-          "degree": "moderate"
-        }
-      },
-      "n_ops": 1,
-      "change_region_pct": 5.70068359375,
-      "gen_method": "inpaint"
-    },
-    "exp06": {
-      "name": "necrosis_fibrosis_moderate",
-      "desc": "Necrosis Fibrosis Repair (moderate)",
-      "semantic_diff": {
-        "tumor_change": {
-          "growth": "none",
-          "degree": "mild",
-          "grade_change": "none"
-        },
-        "lymphocyte_change": {
-          "infiltration": "none",
-          "degree": "mild"
-        },
-        "necrosis_change": {
-          "action": "decrease",
-          "extent": "moderate"
-        },
-        "stroma_change": {
-          "density": "increase",
-          "degree": "moderate"
-        }
-      },
-      "n_ops": 1,
-      "change_region_pct": 5.408477783203125,
-      "gen_method": "inpaint"
-    },
-    "exp12": {
-      "name": "tumor_growth_and_necrosis_increase",
-      "desc": "Tumor Growth (significant) + Necrosis Increase (extensive)",
-      "semantic_diff": {
-        "tumor_change": {
-          "growth": "increase",
-          "degree": "significant",
-          "grade_change": "none"
-        },
-        "lymphocyte_change": {
-          "infiltration": "none",
-          "degree": "mild"
-        },
-        "necrosis_change": {
-          "action": "increase",
-          "extent": "extensive"
+          "action": "none",
+          "extent": "focal"
         },
         "stroma_change": {
           "density": "decrease",
           "degree": "moderate"
         }
       },
-      "n_ops": 2,
-      "change_region_pct": 41.09992980957031,
-      "gen_method": "9ch"
+      "n_ops": 1,
+      "change_region_pct": 33.11309814453125,
+      "gen_method": "inpaint"
     },
-    "exp14": {
-      "name": "tumor_growth_mild",
-      "desc": "Tumor Growth (mild) — gradient test",
+    "exp21": {
+      "name": "stroma fibrosis",
+      "desc": "",
       "semantic_diff": {
         "tumor_change": {
           "growth": "none",
@@ -100,42 +48,16 @@
         },
         "necrosis_change": {
           "action": "none",
-          "extent": "extensive"
-        },
-        "stroma_change": {
-          "density": "none",
-          "degree": "moderate"
-        }
-      },
-      "n_ops": 0,
-      "change_region_pct": 0.0,
-      "gen_method": "skipped"
-    },
-    "exp15": {
-      "name": "tumor_growth_significant",
-      "desc": "Tumor Growth (significant) — gradient test",
-      "semantic_diff": {
-        "tumor_change": {
-          "growth": "increase",
-          "degree": "significant",
-          "grade_change": "none"
-        },
-        "lymphocyte_change": {
-          "infiltration": "none",
-          "degree": "mild"
-        },
-        "necrosis_change": {
-          "action": "decrease",
           "extent": "focal"
         },
         "stroma_change": {
-          "density": "decrease",
+          "density": "increase",
           "degree": "moderate"
         }
       },
-      "n_ops": 2,
-      "change_region_pct": 43.38722229003906,
-      "gen_method": "9ch"
+      "n_ops": 1,
+      "change_region_pct": 24.405670166015625,
+      "gen_method": "inpaint"
     }
   }
 }

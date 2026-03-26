@@ -66,8 +66,10 @@ NECROSIS_ID = 4
 # 执行顺序 (符合病理进程)
 # 间质纤维化排在最后: 先完成肿瘤/坏死/淋巴变化, 最后做基质重塑
 EXECUTION_ORDER = [
-    "tumor_dilate", "tumor_shrink",
-    "necrosis_replace", "necrosis_fibrosis",
+    "necrosis_replace",   # 先在现有肿瘤内建立坏死
+    "necrosis_fibrosis",
+    "tumor_dilate",       # 再扩张肿瘤
+    "tumor_shrink",
     "lymph_dilate",
     "stromal_fibrosis",
 ]
@@ -81,16 +83,16 @@ TUMOR_DELTA_MAP = {
 }
 
 LYMPH_DELTA_MAP = {
-    "mild":        (0.03, 0.06),
-    "moderate":    (0.06, 0.10),
-    "significant": (0.10, 0.15),
+    "mild":        (0.2, 0.3),
+    "moderate":    (0.3, 0.4),
+    "significant": (0.4, 0.5),
 }
 
 # necrosis extent → n_pick 映射
 NECROSIS_PICK_MAP = {
     "focal":     1,
-    "moderate":  1,  # 1个连通域, 但validator会控制合理性
-    "extensive": 2,
+    "moderate":  2,  # 1个连通域, 但validator会控制合理性
+    "extensive": 3,
 }
 
 # necrosis fibrosis: extent → degree 映射 + delta 范围
@@ -101,15 +103,15 @@ NECROSIS_EXTENT_TO_DEGREE = {
 }
 
 FIBROSIS_DELTA_MAP = {
-    "mild":        (0.03, 0.06),
-    "moderate":    (0.06, 0.12),
-    "significant": (0.12, 0.20),
+    "mild":        (0.1, 0.2),
+    "moderate":    (0.2, 0.3),
+    "significant": (0.3, 0.4),
 }
 
 STROMAL_DELTA_MAP = {
-    "mild":        (0.03, 0.08),
-    "moderate":    (0.08, 0.15),
-    "significant": (0.15, 0.25),
+    "mild":        (0.1, 0.2),
+    "moderate":    (0.2, 0.3),
+    "significant": (0.3, 0.4),
 }
 
 
@@ -681,11 +683,11 @@ class RuleEngine:
                 target_delta = float(self.rng.uniform(*delta_range))
                 logger.info(f"  Lymph: fallback delta={target_delta:.3f}")
 
-            target_delta = float(np.clip(target_delta, 0.03, 0.15))
+            target_delta = float(np.clip(target_delta, 0.03, 0.5))
 
             expandable = analyzer.ratio(2) + analyzer.ratio(9) + analyzer.ratio(10)
-            if target_delta > expandable * 0.5:
-                target_delta = max(expandable * 0.5, 0.02)
+            if target_delta > expandable * 0.8:
+                target_delta = max(expandable * 0.8, 0.02)
 
             return {
                 "op": "lymph_dilate",
@@ -713,7 +715,7 @@ class RuleEngine:
 
             current_ratio = analyzer.ratio(STROMA_ID)
 
-            expandable = sum(analyzer.ratio(tid) for tid in [9, 10, 12, 13, 14, 18])
+            expandable = sum(analyzer.ratio(tid) for tid in [3,9, 10, 12, 13, 14, 18])
             if expandable < 0.02:
                 logger.warning(f"No expandable tissue for stromal fibrosis ({expandable:.2%})")
                 return None
@@ -725,7 +727,7 @@ class RuleEngine:
                 target_delta = float(self.rng.uniform(*delta_range))
                 logger.info(f"  Stroma fibrosis: fallback delta={target_delta:.3f}")
 
-            target_delta = float(np.clip(target_delta, 0.03, 0.25))
+            target_delta = float(np.clip(target_delta, 0.03, 0.4))
 
             if target_delta > expandable * 0.8:
                 target_delta = max(expandable * 0.8, 0.02)

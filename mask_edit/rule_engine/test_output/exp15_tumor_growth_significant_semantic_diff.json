@@ -16,7 +16,7 @@
     },
     "necrosis_change": {
       "action": "decrease",
-      "extent": "focal"
+      "extent": "moderate"
     },
     "stroma_change": {
       "density": "decrease",

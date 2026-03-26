@@ -3,7 +3,7 @@
   "name": "tumor_growth_significant",
   "gen_method_requested": "auto",
   "gen_method_actual": "9ch",
-  "change_region_pct": 43.38722229003906,
+  "change_region_pct": 43.658447265625,
   "auto_threshold": 0.35,
   "conditioning_scale": 1.0,
   "seed": 42,

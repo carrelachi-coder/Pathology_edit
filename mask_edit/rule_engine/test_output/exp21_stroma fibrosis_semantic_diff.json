@@ -1,0 +1,26 @@
+{
+  "id": "exp21",
+  "name": "stroma fibrosis",
+  "desc": "",
+  "original_report": "The upper half of the field shows extensive dense lymphocytic infiltration in a band-like distribution, indicating active immune response. The lower half is predominantly composed of stroma with abundant interstitial fibers. Inflammatory cells are widely distributed throughout the field, with particularly high density within the lymphocytic infiltrate. Connective tissue cells are scattered, mainly in the stromal region.",
+  "edited_report": "The upper half of the field shows extensive dense lymphocytic infiltration in a band-like distribution, indicating active immune response. The lower half is predominantly composed of stroma with marked interstitial fibrosis and densely packed collagenous fibers. Inflammatory cells are widely distributed throughout the field, with particularly high density within the lymphocytic infiltrate. Connective tissue cells are scattered, mainly in the fibrotic stromal region.",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "mild",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "increase",
+      "degree": "moderate"
+    }
+  }
+}

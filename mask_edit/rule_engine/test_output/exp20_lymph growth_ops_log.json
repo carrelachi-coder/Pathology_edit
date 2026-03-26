@@ -1,0 +1,58 @@
+{
+  "id": "exp20",
+  "name": "lymph growth",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "moderate",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "increase",
+      "degree": "significant"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "decrease",
+      "degree": "moderate"
+    }
+  },
+  "ops_log": [
+    {
+      "op": "lymph_dilate",
+      "direction": "expand",
+      "params": {
+        "target_delta": 0.444
+      },
+      "log": {
+        "type": "lymph_dilate",
+        "tissue_id": 3,
+        "tissue_name": "lymphocytic_infiltrate",
+        "params": {
+          "target_delta": 0.444,
+          "actual_delta": 0.3048,
+          "alpha": 8.1,
+          "beta": 80.0
+        },
+        "area_change": {
+          "stroma": -0.3048,
+          "lymphocytic_infiltrate": 0.3048
+        },
+        "accepted": true,
+        "rejection_reason": ""
+      }
+    }
+  ],
+  "change_region_pct": 33.11309814453125,
+  "original_tissue": {
+    "stroma": 0.7171,
+    "lymphocytic_infiltrate": 0.2829
+  },
+  "edited_tissue": {
+    "stroma": 0.4123,
+    "lymphocytic_infiltrate": 0.5877
+  }
+}

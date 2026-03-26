@@ -13,7 +13,11 @@
     cd /home/lyw/wqx-DL/flow-edit/FlowEdit-main/mask_edit/rule_engine
 
     # 完整pipeline (需要GPU: LLM + ControlNet)
-   CUDA_VISIBLE_DEVICES=7 python test_pipeline.py      --mode experiment      --experiment-config /home/lyw/wqx-DL/flow-edit/FlowEdit-main/experiments.json      --output /home/lyw/wqx-DL/flow-edit/FlowEdit-main/mask_edit/rule_engine/test_output      --mask /home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/conditioning/TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500_y0_x512.png          --image /home/lyw/wqx-DL/flow-edit/FlowEdit-main/BCSS_dataset/images/TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500_y0_x512.png         --gen-method auto    --generate
+   CUDA_VISIBLE_DEVICES=7 python test_pipeline.py  \
+       --mode experiment    \
+    --experiment-config /home/lyw/wqx-DL/flow-edit/FlowEdit-main/experiments.json \
+          --gen-method auto   \
+             --generate
 
     # 跳过LLM, 直接给diff + 生成图像
     CUDA_VISIBLE_DEVICES=7 python test_pipeline.py --mode diff \
@@ -48,10 +52,8 @@ from rule_engine import RuleEngine, MaskEditor, MaskAnalyzer, SemanticEditor
 
 # =============================================================================
 # 默认配置
-# =============================================================================
-
 PRIOR_DB_PATH = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/mask_edit/Prior_knowledge_of_pathology/prior_db.json"
-PROB_NET_CKPT = "/data/huggingface/pathology_edit/prob_net/checkpoints/best.pt"
+PROB_NET_CKPT = "/data/huggingface/pathology_edit/prob_net/checkpoints/epoch_100.pt"
 NUCLEI_LIBRARY = "/data/huggingface/pathology_edit/nuclei_library"
 LLM_PATH = "/data/huggingface/Qwen2.5-VL-7B-Instruct"
 

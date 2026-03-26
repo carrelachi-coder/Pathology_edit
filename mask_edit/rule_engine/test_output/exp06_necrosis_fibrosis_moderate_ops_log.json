@@ -34,22 +34,22 @@
         "tissue_name": "necrosis_or_debris",
         "params": {
           "target_delta": 0.277,
-          "actual_delta": 0.0447,
+          "actual_delta": 0.1639,
           "alpha": 10.1,
-          "beta": 149.85,
-          "pixels_released": 11717,
+          "beta": 499.88,
+          "pixels_released": 42975,
           "pixels_fragments_removed": 0
         },
         "area_change": {
-          "stroma": 0.0447,
-          "necrosis_or_debris": -0.0447
+          "stroma": 0.1639,
+          "necrosis_or_debris": -0.1639
         },
         "accepted": true,
         "rejection_reason": ""
       }
     }
   ],
-  "change_region_pct": 5.408477783203125,
+  "change_region_pct": 17.365264892578125,
   "original_tissue": {
     "tumor": 0.4412,
     "stroma": 0.2122,
@@ -57,7 +57,7 @@
   },
   "edited_tissue": {
     "tumor": 0.4412,
-    "stroma": 0.2569,
-    "necrosis_or_debris": 0.3019
+    "stroma": 0.3761,
+    "necrosis_or_debris": 0.1827
   }
 }

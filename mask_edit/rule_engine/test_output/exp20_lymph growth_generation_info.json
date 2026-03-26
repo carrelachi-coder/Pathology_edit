@@ -1,9 +1,9 @@
 {
-  "id": "exp06",
-  "name": "necrosis_fibrosis_moderate",
+  "id": "exp20",
+  "name": "lymph growth",
   "gen_method_requested": "auto",
   "gen_method_actual": "inpaint",
-  "change_region_pct": 17.365264892578125,
+  "change_region_pct": 33.11309814453125,
   "auto_threshold": 0.35,
   "conditioning_scale": 1.0,
   "seed": 42,

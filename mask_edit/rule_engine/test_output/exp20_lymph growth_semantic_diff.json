@@ -1,0 +1,26 @@
+{
+  "id": "exp20",
+  "name": "lymph growth",
+  "desc": "",
+  "original_report": "The upper half of the field shows extensive dense lymphocytic infiltration in a band-like distribution, indicating active immune response. The lower half is predominantly composed of stroma with abundant interstitial fibers. Inflammatory cells are widely distributed throughout the field, with particularly high density within the lymphocytic infiltrate. Connective tissue cells are scattered, mainly in the stromal region.",
+  "edited_report": "The field shows extensive dense lymphocytic infiltration occupying the majority of the tissue, distributed in broad confluent sheets. The stroma is largely replaced by lymphocytic aggregates, with only residual interstitial fibers remaining in the lower portion. Inflammatory cells are densely packed throughout the field, forming a prominent immune-rich microenvironment. Connective tissue cells are sparse, confined to the limited residual stromal region.",
+  "semantic_diff": {
+    "tumor_change": {
+      "growth": "none",
+      "degree": "moderate",
+      "grade_change": "none"
+    },
+    "lymphocyte_change": {
+      "infiltration": "increase",
+      "degree": "significant"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "decrease",
+      "degree": "moderate"
+    }
+  }
+}
