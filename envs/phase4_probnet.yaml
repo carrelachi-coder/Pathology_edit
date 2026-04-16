@@ -1,0 +1,21 @@
+name: pathology-phase4
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy>=1.24
+  - scipy>=1.10
+  - opencv>=4.8
+  - pillow>=10
+  - tqdm>=4.66
+  - tensorboard>=2.15
+  - pyyaml>=6.0
+  - pytorch>=2.1
+  - torchvision>=0.16
+  - pytorch-cuda=12.1
+  - pip:
+      - typing_extensions>=4.8

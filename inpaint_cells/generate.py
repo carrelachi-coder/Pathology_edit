@@ -1,347 +1,534 @@
 #!/usr/bin/env python3
 """
-细胞核填充推理入口 — 基于统计库的规则填充 (Phase 4.2 多数据集适配)
+Unified ProbNet-centered nuclei mask generation.
 
-Phase 4.2 changes:
-  - 添加 --dataset 参数, 使用统一标签体系
-  - 推理时自动传入对应的 cancer_id
-  - AD-1: 输入 edited_tissue_mask.png(只读) + change_region_mask → 输出独立的 nuclei_mask.png
-  - 细胞库按数据集独立加载
+This is the Phase 4 inference entry point. ProbNet decides:
+  - occupancy / density field: P(nucleus) = 1 - P(background)
+  - spatial placement weights through weighted Poisson sampling
+  - nucleus type through P(type | center)
 
-用法:
-    # 批量测试（用 layered 格式 val 数据）
-    python inpaint_cells/generate.py \\
-        --dataset BCSS \\
-        --library /data/nuclei_library_BCSS \\
-        --test-dir /path/to/layered_dataset \\
-        --output-dir /path/to/results \\
-        --n 10
-
-    # 批量测试（用 legacy LaMa 格式 val 数据）
-    python inpaint_cells/generate.py \\
-        --dataset BCSS \\
-        --library /data/nuclei_library_BCSS \\
-        --test-dir /path/to/lama_dataset \\
-        --format legacy \\
-        --output-dir /path/to/results
-
-    # 单张推理（分层存储）
-    python inpaint_cells/generate.py \\
-        --dataset PANDA \\
-        --library /data/nuclei_library_PANDA \\
-        --input-tissue /path/to/edited_tissue_mask.png \\
-        --edit-region /path/to/edit_region_mask.png \\
-        --output /path/to/nuclei_mask.png
+The nuclei library is still used for realistic instance shapes and as a
+conservative density/area fallback. It no longer decides type distribution or
+places cells by rule-only statistics.
 """
 
-import os
-import sys
-import glob
 import argparse
+import json
+import os
+import random
+import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
+import torch
+import torch.nn.functional as F
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from inpaint_cells.nuclei_library.library import (
-    NucleiLibrary, fill_nuclei_in_region, fill_nuclei_in_region_layered,
-)
+from dataset_config import get_config
+from inpaint_cells.models.prob_unet import ProbUNet
+from inpaint_cells.nuclei_library.library import NucleiLibrary, place_nucleus_layered
 from inpaint_cells.utils.mask_utils import (
-    load_tissue_mask, load_nuclei_mask, save_nuclei_mask,
-    overlay, rgb_to_class_map, class_map_to_rgb,
+    NUM_NUCLEI,
+    NUCLEI_CLASSES,
+    load_tissue_mask,
+    load_nuclei_mask,
+    overlay,
+    save_nuclei_mask,
 )
 
 
-def test_on_val_layered(library, data_dir, output_dir, n=10, dataset_name=None):
-    """
-    在分层存储格式的验证集上测试。
+def parse_float_list(value):
+    """Parse '1,2,3' or repeated-looking strings into a list of floats."""
+    if isinstance(value, (list, tuple)):
+        return [float(v) for v in value]
+    return [float(v.strip()) for v in value.split(",") if v.strip()]
 
-    期望目录结构:
-        {data_dir}/val/ 或 {data_dir}/ 下有
-            gt_tissue/{name}.png  — tissue mask (uint8, 0-15)
-            gt_nuclei/{name}.png  — nuclei mask (uint8, 0/101-105)
-            masks/{name}.png      — edit region binary mask
-    """
-    os.makedirs(output_dir, exist_ok=True)
 
-    ds_info = f" [{dataset_name}]" if dataset_name else ""
-    print(f"Running layered validation{ds_info}...")
+def safe_name_float(value):
+    return str(value).replace(".", "p").replace("-", "m")
 
-    # 尝试 val 子目录
-    val_dir = os.path.join(data_dir, 'val')
-    if not os.path.isdir(val_dir):
-        val_dir = data_dir
 
-    gt_tissue_dir = os.path.join(val_dir, 'gt_tissue')
-    gt_nuclei_dir = os.path.join(val_dir, 'gt_nuclei')
-    masks_dir = os.path.join(val_dir, 'masks')
+def load_density_scale(path):
+    """Load optional tissue-specific semantic density scale JSON."""
+    if not path:
+        return {}
+    with open(path, "r") as f:
+        raw = json.load(f)
+    return {int(k): float(v) for k, v in raw.items()}
 
-    if not os.path.isdir(gt_tissue_dir):
-        print(f"No gt_tissue/ dir found in {val_dir}, trying subdirectory pattern...")
-        # Pattern: {val_dir}/{sample_name}/tissue_mask.png
-        subdirs = sorted(glob.glob(os.path.join(val_dir, '*', 'tissue_mask.png')))
-        if not subdirs:
-            print(f"No layered samples found in {val_dir}")
-            return
-        _test_subdir_pattern(library, subdirs[:n], output_dir)
-        return
 
-    tissue_files = sorted(glob.glob(os.path.join(gt_tissue_dir, '*.png')))
-    print(f"Found {len(tissue_files)} tissue mask files in {gt_tissue_dir}")
+def load_checkpoint_model(ckpt_path, device, base_ch):
+    model = ProbUNet(out_ch=NUM_NUCLEI, base_ch=base_ch).to(device)
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+    state = ckpt.get("model", ckpt)
+    model.load_state_dict(state)
+    model.eval()
+    return model
 
-    for idx in range(min(n, len(tissue_files))):
-        tissue_path = tissue_files[idx]
-        fname = os.path.basename(tissue_path)
-        nuclei_path = os.path.join(gt_nuclei_dir, fname)
-        mask_path = os.path.join(masks_dir, fname)
 
-        if not os.path.exists(nuclei_path) or not os.path.exists(mask_path):
+def predict_prob(model, tissue_map, input_nuclei, edit_mask, cancer_id, device):
+    tissue_t = torch.from_numpy(tissue_map.astype(np.int64))[None].to(device)
+    nuclei_t = torch.from_numpy(input_nuclei.astype(np.int64))[None].to(device)
+    mask_t = torch.from_numpy(edit_mask.astype(np.float32))[None, None].to(device)
+    cancer_t = torch.tensor([cancer_id], dtype=torch.int64, device=device)
+
+    with torch.no_grad():
+        logits = model(tissue_t, nuclei_t, mask_t, cancer_t)
+        prob = F.softmax(logits, dim=1)[0].detach().cpu().numpy()
+    return prob
+
+
+def weighted_mean_area(library, tissue_id, fallback):
+    stats = library.stats.get(str(tissue_id), {})
+    type_stats = stats.get("nuclei_types", {})
+    weighted = []
+    weights = []
+    for info in type_stats.values():
+        mean_area = float(info.get("mean_area", 0.0))
+        frac = float(info.get("fraction", 0.0))
+        if mean_area > 0 and frac > 0:
+            weighted.append(mean_area)
+            weights.append(frac)
+    if weighted and sum(weights) > 0:
+        return float(np.average(weighted, weights=weights))
+    return float(fallback)
+
+
+def adaptive_min_distance(expected_area, args, oversample_factor):
+    if args.min_distance_mode == "fixed":
+        base = args.min_distance
+    else:
+        diameter = np.sqrt(max(expected_area, 1.0) / np.pi) * 2.0
+        base = diameter * args.min_distance_scale
+        base = float(np.clip(base, args.min_distance_min, args.min_distance_max))
+
+    if args.shrink_distance_for_oversample:
+        base = base / np.sqrt(max(oversample_factor, 1.0))
+    return max(base, args.min_distance_floor)
+
+
+def poisson_candidates(region_mask, min_distance, max_attempts=30):
+    """Poisson disk candidates, intentionally local to keep this entry configurable."""
+    h, w = region_mask.shape
+    valid_ys, valid_xs = np.where(region_mask)
+    if len(valid_ys) == 0:
+        return []
+
+    cell_size = max(min_distance / np.sqrt(2.0), 1e-3)
+    grid_h = int(np.ceil(h / cell_size))
+    grid_w = int(np.ceil(w / cell_size))
+    grid = -np.ones((grid_h, grid_w), dtype=np.int64)
+
+    points = []
+    active = []
+    idx = random.randint(0, len(valid_ys) - 1)
+    start = (int(valid_ys[idx]), int(valid_xs[idx]))
+    points.append(start)
+    active.append(0)
+    grid[int(start[0] / cell_size), int(start[1] / cell_size)] = 0
+
+    while active:
+        active_idx = random.randint(0, len(active) - 1)
+        point_idx = active[active_idx]
+        py, px = points[point_idx]
+        found = False
+
+        for _ in range(max_attempts):
+            angle = random.uniform(0, 2 * np.pi)
+            dist = random.uniform(min_distance, 2 * min_distance)
+            ny = int(py + dist * np.sin(angle))
+            nx = int(px + dist * np.cos(angle))
+
+            if ny < 0 or ny >= h or nx < 0 or nx >= w or not region_mask[ny, nx]:
+                continue
+
+            ngy, ngx = int(ny / cell_size), int(nx / cell_size)
+            too_close = False
+            for dy in range(-2, 3):
+                for dx in range(-2, 3):
+                    gy, gx = ngy + dy, ngx + dx
+                    if 0 <= gy < grid_h and 0 <= gx < grid_w and grid[gy, gx] >= 0:
+                        ey, ex = points[grid[gy, gx]]
+                        if (ny - ey) ** 2 + (nx - ex) ** 2 < min_distance ** 2:
+                            too_close = True
+                            break
+                if too_close:
+                    break
+
+            if not too_close:
+                new_idx = len(points)
+                points.append((ny, nx))
+                active.append(new_idx)
+                grid[ngy, ngx] = new_idx
+                found = True
+                break
+
+        if not found:
+            active.pop(active_idx)
+
+    return points
+
+
+def compute_target_count(nuc_prob, tissue_region, tissue_id, library, expected_area, args, scale):
+    region_area = int(tissue_region.sum())
+    prob_count = float(nuc_prob[tissue_region].sum() / max(expected_area, 1.0))
+
+    library_density = float(library.get_density(tissue_id))
+    library_count = library_density * region_area / 10000.0
+
+    if library_count <= 0:
+        blended = prob_count
+    else:
+        blended = args.prob_count_weight * prob_count + (1.0 - args.prob_count_weight) * library_count
+
+    scaled = blended * scale
+    max_by_density = args.max_density_per_10k * region_area / 10000.0
+    max_allowed = max_by_density
+    if library_count > 0 and args.max_count_factor > 0:
+        max_allowed = min(max_allowed, library_count * args.max_count_factor)
+
+    clipped = float(np.clip(scaled, args.min_count, max_allowed))
+    return int(round(clipped)), {
+        "region_area": region_area,
+        "prob_count": prob_count,
+        "library_density_per_10k": library_density,
+        "library_count": library_count,
+        "semantic_scale": scale,
+        "blended_count": blended,
+        "clipped_count": clipped,
+    }
+
+
+def choose_weighted_centers(candidates, nuc_prob, target_count, gamma):
+    if target_count <= 0 or not candidates:
+        return []
+    n = min(target_count, len(candidates))
+    ys = np.array([p[0] for p in candidates], dtype=np.int64)
+    xs = np.array([p[1] for p in candidates], dtype=np.int64)
+    scores = np.power(np.clip(nuc_prob[ys, xs], 0.0, 1.0), gamma)
+    scores = scores + 1e-8
+    probs = scores / scores.sum()
+    chosen = np.random.choice(len(candidates), size=n, replace=False, p=probs)
+    return [candidates[int(i)] for i in chosen]
+
+
+def sample_type_at_center(prob, cy, cx, args):
+    type_probs = prob[1:, cy, cx].astype(np.float64)
+    total = type_probs.sum()
+    if total < args.type_prob_floor:
+        return None
+    type_probs = type_probs / total
+    idx = int(np.random.choice(len(type_probs), p=type_probs))
+    return NUCLEI_CLASSES[idx]
+
+
+def generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, args, density_scales):
+    nuc_prob = 1.0 - prob[0]
+    output = input_nuclei.copy()
+    output[edit_mask] = 0
+
+    diagnostics = {
+        "gamma": gamma,
+        "placed": 0,
+        "tissues": {},
+    }
+
+    for tissue_id in np.unique(tissue[edit_mask]):
+        tissue_id = int(tissue_id)
+        if tissue_id in args.skip_tissue_ids:
             continue
 
-        print(f"[{idx+1}/{n}] {fname}")
-
-        # Load layered storage
-        tissue = load_tissue_mask(tissue_path)                    # (H, W) int64, 0-15
-        gt_nuclei = load_nuclei_mask(nuclei_path, remap=True)    # (H, W) int64, 0-5
-        edit_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE) > 128
-
-        # Fill nuclei in edit region (operates on index 0-5)
-        output_nuclei = gt_nuclei.copy()
-        output_nuclei[edit_mask] = 0  # clear edit region
-        placed = fill_nuclei_in_region_layered(output_nuclei, tissue, edit_mask, library)
-        print(f"  Placed {placed} nuclei")
-
-        # Visualize
-        vis_input_nuc = gt_nuclei.copy()
-        vis_input_nuc[edit_mask] = 0
-        vis_input = overlay(tissue, vis_input_nuc)
-        vis_gt = overlay(tissue, gt_nuclei)
-        vis_pred = overlay(tissue, output_nuclei)
-
-        mask_uint8 = edit_mask.astype(np.uint8) * 255
-        contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for img in [vis_input, vis_gt, vis_pred]:
-            cv2.drawContours(img, contours, -1, (255, 255, 255), 2)
-
-        h, w = tissue.shape
-        row = np.concatenate([vis_input, vis_gt, vis_pred], axis=1)
-
-        labeled = np.zeros((h + 30, row.shape[1], 3), dtype=np.uint8)
-        labeled[30:] = row
-        labeled[:30] = 40
-
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(labeled, 'Input (erased)', (5, 22), font, 0.5, (255,255,255), 1)
-        cv2.putText(labeled, 'GT', (w+5, 22), font, 0.5, (255,255,255), 1)
-        cv2.putText(labeled, f'Generated ({placed} nuclei)', (w*2+5, 22), font, 0.5, (255,255,255), 1)
-
-        out_path = os.path.join(output_dir, f'gen_{idx:03d}_{fname}')
-        cv2.imwrite(out_path, cv2.cvtColor(labeled, cv2.COLOR_RGB2BGR))
-
-    print(f"\nResults saved to {output_dir}")
-
-
-def _test_subdir_pattern(library, tissue_paths, output_dir):
-    """Handle subdirectory per sample: {sample_dir}/tissue_mask.png, nuclei_mask.png, edit_mask.png"""
-    for idx, tissue_path in enumerate(tissue_paths):
-        sample_dir = os.path.dirname(tissue_path)
-        nuclei_path = os.path.join(sample_dir, 'nuclei_mask.png')
-        mask_path = os.path.join(sample_dir, 'edit_mask.png')
-
-        if not os.path.exists(nuclei_path) or not os.path.exists(mask_path):
+        tissue_region = edit_mask & (tissue == tissue_id)
+        if tissue_region.sum() < args.min_region_area:
             continue
 
-        fname = os.path.basename(sample_dir)
-        print(f"[{idx+1}] {fname}")
+        expected_area = weighted_mean_area(library, tissue_id, args.expected_nucleus_area)
+        scale = density_scales.get(tissue_id, args.density_scale)
+        target_count, count_info = compute_target_count(
+            nuc_prob, tissue_region, tissue_id, library, expected_area, args, scale
+        )
 
-        tissue = load_tissue_mask(tissue_path)
-        gt_nuclei = load_nuclei_mask(nuclei_path, remap=True)
-        edit_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE) > 128
+        oversample_factor = args.oversample_base * (1.0 + args.oversample_gamma_scale * max(gamma - 1.0, 0.0))
+        oversample_factor = float(np.clip(oversample_factor, args.oversample_min, args.oversample_max))
+        min_distance = adaptive_min_distance(expected_area, args, oversample_factor)
+        candidates = poisson_candidates(tissue_region, min_distance, args.poisson_attempts)
+        centers = choose_weighted_centers(candidates, nuc_prob, target_count, gamma)
 
-        output_nuclei = gt_nuclei.copy()
-        output_nuclei[edit_mask] = 0
-        placed = fill_nuclei_in_region_layered(output_nuclei, tissue, edit_mask, library)
-        print(f"  Placed {placed} nuclei")
+        placed = 0
+        for cy, cx in centers:
+            nuc_type = sample_type_at_center(prob, cy, cx, args)
+            if nuc_type is None:
+                continue
+            instance = library.sample_instance(tissue_id, nuc_type)
+            if instance is None:
+                instance = library.sample_instance(tissue_id)
+            if instance is None:
+                continue
+            if place_nucleus_layered(output, cy, cx, instance, augment=not args.no_augment_instances):
+                placed += 1
 
-        # Save result nuclei mask
-        save_nuclei_mask(output_nuclei, os.path.join(output_dir, f'{fname}_nuclei.png'))
+        diagnostics["placed"] += placed
+        diagnostics["tissues"][str(tissue_id)] = {
+            **count_info,
+            "expected_nucleus_area": expected_area,
+            "oversample_factor": oversample_factor,
+            "min_distance": min_distance,
+            "num_candidates": len(candidates),
+            "target_count": target_count,
+            "selected_centers": len(centers),
+            "placed": placed,
+        }
 
-        # Visualization
-        vis_input_nuc = gt_nuclei.copy()
-        vis_input_nuc[edit_mask] = 0
-        vis_input = overlay(tissue, vis_input_nuc)
-        vis_gt = overlay(tissue, gt_nuclei)
-        vis_pred = overlay(tissue, output_nuclei)
-
-        mask_uint8 = edit_mask.astype(np.uint8) * 255
-        contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for img in [vis_input, vis_gt, vis_pred]:
-            cv2.drawContours(img, contours, -1, (255, 255, 255), 2)
-
-        row = np.concatenate([vis_input, vis_gt, vis_pred], axis=1)
-        cv2.imwrite(os.path.join(output_dir, f'gen_{idx:03d}_{fname}.png'),
-                    cv2.cvtColor(row, cv2.COLOR_RGB2BGR))
-
-    print(f"\nResults saved to {output_dir}")
-
-
-def test_on_val_legacy(library, data_dir, output_dir, n=10, dataset_name=None):
-    """在旧 LaMa 格式的验证集上测试 (backward compatible)"""
-    gt_dir = os.path.join(data_dir, 'ground_truth')
-    val_dir = os.path.join(data_dir, 'val')
-    os.makedirs(output_dir, exist_ok=True)
-
-    ds_info = f" [{dataset_name}]" if dataset_name else ""
-    print(f"Running legacy validation{ds_info}...")
-
-    val_files = sorted([f for f in glob.glob(os.path.join(val_dir, '*.png')) if '_mask' not in f])
-
-    for idx in range(min(n, len(val_files))):
-        val_path = val_files[idx]
-        fname = os.path.basename(val_path)
-        gt_path = os.path.join(gt_dir, fname)
-        mask_path = val_path.replace('.png', '_mask001.png')
-
-        if not os.path.exists(gt_path) or not os.path.exists(mask_path):
-            continue
-
-        print(f"[{idx+1}/{n}] {fname}")
-
-        gt_rgb = cv2.cvtColor(cv2.imread(gt_path), cv2.COLOR_BGR2RGB)
-        input_rgb = cv2.cvtColor(cv2.imread(val_path), cv2.COLOR_BGR2RGB)
-        edit_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE) > 128
-
-        gt_map = rgb_to_class_map(gt_rgb)
-        input_map = rgb_to_class_map(input_rgb)
-
-        output_map = input_map.copy()
-        output_map[edit_mask & (output_map >= 100)] = 0
-
-        tissue_in_edit = input_map.copy()
-        tissue_in_edit[tissue_in_edit >= 100] = 0
-        output_map[edit_mask] = tissue_in_edit[edit_mask]
-
-        placed = fill_nuclei_in_region(output_map, edit_mask, library)
-        print(f"  Placed {placed} nuclei")
-
-        # 可视化
-        output_rgb = class_map_to_rgb(output_map)
-        gt_rgb_vis = gt_rgb.copy()
-        input_rgb_vis = input_rgb.copy()
-
-        mask_uint8 = edit_mask.astype(np.uint8) * 255
-        contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for img in [input_rgb_vis, gt_rgb_vis, output_rgb]:
-            cv2.drawContours(img, contours, -1, (255, 255, 255), 2)
-
-        h, w = gt_rgb.shape[:2]
-        row = np.concatenate([input_rgb_vis, gt_rgb_vis, output_rgb], axis=1)
-
-        labeled = np.zeros((h + 30, row.shape[1], 3), dtype=np.uint8)
-        labeled[30:] = row
-        labeled[:30] = 40
-
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(labeled, 'Input (erased)', (5, 22), font, 0.5, (255,255,255), 1)
-        cv2.putText(labeled, 'GT', (w+5, 22), font, 0.5, (255,255,255), 1)
-        cv2.putText(labeled, f'Generated ({placed} nuclei)', (w*2+5, 22), font, 0.5, (255,255,255), 1)
-
-        out_path = os.path.join(output_dir, f'gen_{idx:03d}_{fname}')
-        cv2.imwrite(out_path, cv2.cvtColor(labeled, cv2.COLOR_RGB2BGR))
-
-    print(f"\nResults saved to {output_dir}")
+    return output, diagnostics
 
 
-def single_inference_layered(library, tissue_path, edit_region_path, output_path,
-                             dataset_name=None):
-    """
-    单张推理 — 分层存储模式。
-    输入: edited_tissue_mask.png (只读) + edit_region_mask
-    输出: 独立的 nuclei_mask.png (0/101-105)
-    """
-    ds_info = f" [{dataset_name}]" if dataset_name else ""
-    print(f"Single inference{ds_info}")
+def heatmap_rgb(values, mask=None):
+    values = np.clip(values, 0.0, 1.0)
+    img = (values * 255).astype(np.uint8)
+    colored = cv2.applyColorMap(img, cv2.COLORMAP_INFERNO)
+    colored = cv2.cvtColor(colored, cv2.COLOR_BGR2RGB)
+    if mask is not None:
+        dim = np.zeros_like(colored)
+        dim[:] = [30, 30, 30]
+        colored = np.where(mask[..., None], colored, dim)
+    return colored
 
-    tissue = load_tissue_mask(tissue_path)  # (H, W) int64, 0-15
-    edit_mask = cv2.imread(edit_region_path, cv2.IMREAD_GRAYSCALE) > 128
 
-    # 从零生成 — edit 区域外也填零 (无已有 nuclei 信息时)
-    output_nuclei = np.zeros_like(tissue, dtype=np.int64)
-    placed = fill_nuclei_in_region_layered(output_nuclei, tissue, edit_mask, library)
-    print(f"Placed {placed} nuclei")
+def draw_edit_contour(rgb, edit_mask):
+    out = rgb.copy()
+    contours, _ = cv2.findContours((edit_mask.astype(np.uint8) * 255), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(out, contours, -1, (255, 255, 255), 2)
+    return out
 
-    # Save as raw nuclei mask (0/101-105)
-    save_nuclei_mask(output_nuclei, output_path)
-    print(f"Saved nuclei mask to {output_path}")
+
+def make_comparison(tissue, input_nuclei, outputs_by_gamma, nuc_prob, edit_mask):
+    panels = [
+        draw_edit_contour(overlay(tissue, input_nuclei), edit_mask),
+        draw_edit_contour(heatmap_rgb(nuc_prob, edit_mask), edit_mask),
+    ]
+    for gamma, nuclei in outputs_by_gamma:
+        panels.append(draw_edit_contour(overlay(tissue, nuclei), edit_mask))
+
+    h, w = tissue.shape
+    row = np.concatenate(panels, axis=1)
+    labeled = np.zeros((h + 34, row.shape[1], 3), dtype=np.uint8)
+    labeled[:34] = 35
+    labeled[34:] = row
+
+    labels = ["input", "P(nucleus)"] + [f"gamma={gamma:g}" for gamma, _ in outputs_by_gamma]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    for i, label in enumerate(labels):
+        cv2.putText(labeled, label, (i * w + 6, 23), font, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+    return labeled
+
+
+def run_single(args, model, library, config, density_scales, device):
+    tissue = load_tissue_mask(args.input_tissue)
+    edit_mask = cv2.imread(args.edit_region, cv2.IMREAD_GRAYSCALE)
+    if edit_mask is None:
+        raise FileNotFoundError(f"Cannot load edit region mask: {args.edit_region}")
+    edit_mask = edit_mask > 128
+
+    if args.input_nuclei:
+        input_nuclei = load_nuclei_mask(args.input_nuclei, remap=True)
+    else:
+        input_nuclei = np.zeros_like(tissue, dtype=np.int64)
+    input_nuclei = input_nuclei.copy()
+    input_nuclei[edit_mask] = 0
+
+    prob = predict_prob(model, tissue, input_nuclei, edit_mask, config.cancer_type_index, device)
+    outputs = []
+    diagnostics = []
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    gamma_values = parse_float_list(args.gamma_values)
+    for idx, gamma in enumerate(gamma_values):
+        nuclei, diag = generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, args, density_scales)
+        diagnostics.append(diag)
+
+        if idx == 0:
+            save_path = output_path
+        else:
+            save_path = output_path.with_name(f"{output_path.stem}_gamma_{safe_name_float(gamma)}{output_path.suffix}")
+        save_nuclei_mask(nuclei, str(save_path))
+        outputs.append((gamma, nuclei))
+        print(f"gamma={gamma:g}: placed {diag['placed']} nuclei -> {save_path}")
+
+    if args.vis_dir:
+        vis_dir = Path(args.vis_dir)
+        vis_dir.mkdir(parents=True, exist_ok=True)
+        comparison = make_comparison(tissue, input_nuclei, outputs, 1.0 - prob[0], edit_mask)
+        cv2.imwrite(str(vis_dir / "gamma_comparison.png"), cv2.cvtColor(comparison, cv2.COLOR_RGB2BGR))
+        with open(vis_dir / "diagnostics.json", "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+
+def discover_batch_samples(data_dir):
+    root = Path(data_dir)
+    val_dir = root / "val" if (root / "val").is_dir() else root
+    gt_tissue = val_dir / "gt_tissue"
+    gt_nuclei = val_dir / "gt_nuclei"
+    masks = val_dir / "masks"
+    if gt_tissue.is_dir() and masks.is_dir():
+        samples = []
+        for tissue_path in sorted(gt_tissue.glob("*.png")):
+            name = tissue_path.name
+            nuclei_path = gt_nuclei / name
+            mask_path = masks / name
+            if nuclei_path.exists() and mask_path.exists():
+                samples.append((tissue_path.stem, tissue_path, nuclei_path, mask_path))
+        return samples
+
+    samples = []
+    for tissue_path in sorted(val_dir.glob("*/tissue_mask.png")):
+        sample_dir = tissue_path.parent
+        nuclei_path = sample_dir / "nuclei_mask.png"
+        mask_path = sample_dir / "edit_mask.png"
+        if nuclei_path.exists() and mask_path.exists():
+            samples.append((sample_dir.name, tissue_path, nuclei_path, mask_path))
+    return samples
+
+
+def run_batch(args, model, library, config, density_scales, device):
+    samples = discover_batch_samples(args.test_dir)
+    if args.n > 0:
+        samples = samples[:args.n]
+    if not samples:
+        raise RuntimeError(f"No layered validation samples found in {args.test_dir}")
+
+    output_dir = Path(args.output_dir)
+    nuclei_dir = output_dir / "nuclei"
+    vis_dir = output_dir / "vis"
+    nuclei_dir.mkdir(parents=True, exist_ok=True)
+    if args.vis_dir:
+        vis_dir.mkdir(parents=True, exist_ok=True)
+
+    all_diag = {}
+    gamma_values = parse_float_list(args.gamma_values)
+    for idx, (name, tissue_path, nuclei_path, mask_path) in enumerate(samples):
+        tissue = load_tissue_mask(str(tissue_path))
+        gt_nuclei = load_nuclei_mask(str(nuclei_path), remap=True)
+        edit_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) > 128
+        input_nuclei = gt_nuclei.copy()
+        input_nuclei[edit_mask] = 0
+
+        prob = predict_prob(model, tissue, input_nuclei, edit_mask, config.cancer_type_index, device)
+        outputs = []
+        sample_diag = []
+        for gamma in gamma_values:
+            nuclei, diag = generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, args, density_scales)
+            suffix = "" if len(gamma_values) == 1 else f"_gamma_{safe_name_float(gamma)}"
+            out_path = nuclei_dir / f"{name}{suffix}_nuclei.png"
+            save_nuclei_mask(nuclei, str(out_path))
+            outputs.append((gamma, nuclei))
+            sample_diag.append(diag)
+
+        if args.vis_dir:
+            comparison = make_comparison(tissue, input_nuclei, outputs, 1.0 - prob[0], edit_mask)
+            cv2.imwrite(str(vis_dir / f"{idx:03d}_{name}.png"), cv2.cvtColor(comparison, cv2.COLOR_RGB2BGR))
+
+        all_diag[name] = sample_diag
+        print(f"[{idx + 1}/{len(samples)}] {name}: " + ", ".join(f"gamma={d['gamma']:g} placed={d['placed']}" for d in sample_diag))
+
+    with open(output_dir / "diagnostics.json", "w") as f:
+        json.dump(all_diag, f, indent=2)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(description="ProbNet-centered Phase 4 nuclei generation")
+    parser.add_argument("--dataset", required=True, help="Dataset name: BCSS, PANDA, GlaS, IGNITE, PUMA, ORCA")
+    parser.add_argument("--ckpt", required=True, help="ProbNet checkpoint")
+    parser.add_argument("--library", required=True, help="Nuclei instance library directory")
+    parser.add_argument("--base-ch", type=int, default=64, help="ProbUNet base channels used during training")
+    parser.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
+    parser.add_argument("--seed", type=int, default=42)
+
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--test-dir", help="Layered validation dataset directory for batch inference")
+    mode.add_argument("--input-tissue", help="Single edited tissue mask PNG")
+
+    parser.add_argument("--input-nuclei", default=None, help="Optional existing nuclei mask for single inference")
+    parser.add_argument("--edit-region", default=None, help="Single edit region mask PNG")
+    parser.add_argument("--output", default="nuclei_mask.png", help="Single output nuclei mask path")
+    parser.add_argument("--output-dir", default="phase4_probnet_generate", help="Batch output directory")
+    parser.add_argument("--n", type=int, default=10, help="Batch sample limit; <=0 means all")
+    parser.add_argument("--vis-dir", default=None, help="Write gamma comparison PNGs and diagnostics")
+
+    parser.add_argument("--gamma-values", default="1.0,2.0,3.0",
+                        help="Comma-separated gamma values for weighted center sampling")
+    parser.add_argument("--prob-count-weight", type=float, default=0.7,
+                        help="Blend weight for ProbNet count vs library density count")
+    parser.add_argument("--density-scale", type=float, default=1.0,
+                        help="Global semantic density multiplier")
+    parser.add_argument("--density-scale-json", default=None,
+                        help="Optional JSON mapping tissue_id -> semantic density multiplier")
+    parser.add_argument("--expected-nucleus-area", type=float, default=80.0,
+                        help="Fallback expected nucleus area in pixels")
+    parser.add_argument("--min-count", type=float, default=0.0)
+    parser.add_argument("--max-density-per-10k", type=float, default=900.0,
+                        help="Absolute count clip: max nuclei per 10k px")
+    parser.add_argument("--max-count-factor", type=float, default=2.5,
+                        help="If library density exists, cap count at this multiple of library count")
+    parser.add_argument("--min-region-area", type=int, default=50)
+    parser.add_argument("--type-prob-floor", type=float, default=0.03)
+
+    parser.add_argument("--min-distance-mode", choices=["adaptive", "fixed"], default="adaptive")
+    parser.add_argument("--min-distance", type=float, default=8.0,
+                        help="Fixed Poisson distance when --min-distance-mode=fixed")
+    parser.add_argument("--min-distance-scale", type=float, default=0.75,
+                        help="Adaptive distance = nucleus_diameter * scale before oversample shrinking")
+    parser.add_argument("--min-distance-min", type=float, default=4.0)
+    parser.add_argument("--min-distance-max", type=float, default=18.0)
+    parser.add_argument("--min-distance-floor", type=float, default=3.0)
+    parser.add_argument("--shrink-distance-for-oversample", action="store_true", default=True)
+    parser.add_argument("--no-shrink-distance-for-oversample", dest="shrink_distance_for_oversample",
+                        action="store_false")
+    parser.add_argument("--oversample-base", type=float, default=3.0)
+    parser.add_argument("--oversample-gamma-scale", type=float, default=0.35)
+    parser.add_argument("--oversample-min", type=float, default=1.5)
+    parser.add_argument("--oversample-max", type=float, default=8.0)
+    parser.add_argument("--poisson-attempts", type=int, default=30)
+    parser.add_argument("--skip-tissue-ids", type=int, nargs="*", default=[],
+                        help="Additional tissue IDs to skip")
+    parser.add_argument("--no-augment-instances", action="store_true")
+    return parser
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='细胞核填充推理 (Phase 4.2 多数据集适配)')
-    parser.add_argument('--dataset', type=str, default=None,
-                        help='Dataset name (BCSS, PANDA, GlaS, IGNITE, PUMA, ORCA). '
-                             'Used for logging and auto cancer_id lookup.')
-    parser.add_argument('--library', required=True,
-                        help='Path to nuclei library directory')
-    parser.add_argument('--test-dir', default=None,
-                        help='Dataset directory for testing')
-    parser.add_argument('--format', choices=['auto', 'layered', 'legacy'], default='auto',
-                        help='Data format: layered (AD-1), legacy (RGB combined), or auto-detect')
-    parser.add_argument('--output-dir', default='./nuclei_gen_results')
-    parser.add_argument('--n', type=int, default=10)
-    parser.add_argument('--input-tissue', default=None,
-                        help='Edited tissue mask (uint8 PNG, 0-15)')
-    parser.add_argument('--edit-region', default=None,
-                        help='Edit region binary mask')
-    parser.add_argument('--output', default=None,
-                        help='Output nuclei mask path')
-    args = parser.parse_args()
+    args = build_parser().parse_args()
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
-    # 数据集信息 (用于日志)
-    dataset_name = args.dataset
-    if dataset_name:
-        try:
-            from dataset_config import get_config
-            config = get_config(dataset_name)
-            print(f"Dataset: {config.name} ({config.cancer_type})")
-            print(f"  cancer_type_index: {config.cancer_type_index}")
-        except Exception as e:
-            print(f"Warning: Could not load config for '{dataset_name}': {e}")
+    config = get_config(args.dataset)
+    args.skip_tissue_ids = set(args.skip_tissue_ids) | set(config.skip_tissues)
+    density_scales = load_density_scale(args.density_scale_json)
 
-    print("Loading nuclei library...")
-    library = NucleiLibrary(args.library, dataset=dataset_name)
+    if args.input_tissue and not args.edit_region:
+        raise ValueError("--edit-region is required with --input-tissue")
+
+    if args.device == "auto":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(args.device)
+
+    print(f"Dataset: {config.name} ({config.cancer_type}), cancer_id={config.cancer_type_index}")
+    print(f"Device: {device}")
+    print(f"Gamma values: {parse_float_list(args.gamma_values)}")
+    print("Loading ProbNet...")
+    model = load_checkpoint_model(args.ckpt, device, args.base_ch)
+    print("Loading nuclei instance library...")
+    library = NucleiLibrary(args.library, dataset=config.name)
 
     if args.test_dir:
-        os.makedirs(args.output_dir, exist_ok=True)
-
-        # Auto-detect format
-        fmt = args.format
-        if fmt == 'auto':
-            has_layered = (
-                os.path.isdir(os.path.join(args.test_dir, 'gt_tissue'))
-                or os.path.isdir(os.path.join(args.test_dir, 'val', 'gt_tissue'))
-                or len(glob.glob(os.path.join(args.test_dir, '*', 'tissue_mask.png'))) > 0
-                or len(glob.glob(os.path.join(args.test_dir, 'val', '*', 'tissue_mask.png'))) > 0
-            )
-            fmt = 'layered' if has_layered else 'legacy'
-            print(f"Auto-detected format: {fmt}")
-
-        if fmt == 'layered':
-            test_on_val_layered(library, args.test_dir, args.output_dir, args.n,
-                                dataset_name=dataset_name)
-        else:
-            test_on_val_legacy(library, args.test_dir, args.output_dir, args.n,
-                               dataset_name=dataset_name)
-
-    elif args.input_tissue and args.edit_region:
-        out_path = args.output or 'nuclei_mask.png'
-        single_inference_layered(library, args.input_tissue, args.edit_region,
-                                 out_path, dataset_name=dataset_name)
-
+        run_batch(args, model, library, config, density_scales, device)
     else:
-        print("Please specify --test-dir or --input-tissue + --edit-region")
+        run_single(args, model, library, config, density_scales, device)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
