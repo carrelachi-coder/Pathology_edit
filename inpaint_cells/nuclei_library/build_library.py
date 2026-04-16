@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """
-阶段一：预处理 —— 从 GT mask 中提取核实例并建立统计库 (Phase 4.2 多数据集适配)
+阶段一：预处理 —— 从 GT mask 中提取核实例并建立统计库 (Phase 4.2/4.3 多数据集适配)
 
-支持两种输入格式:
+支持三种输入格式:
   1. 分层存储 (AD-1, 推荐): 每个 patch 有独立的 tissue_mask.png + nuclei_mask.png
   2. 旧 RGB 合并格式 (legacy): 单张 RGB PNG, tissue+nuclei 混合编码
+  3. CellViT JSON (Phase 4.3): tissue_mask.png + CellViT 推理输出的 JSON/GeoJSON
+
+核来源 (Phase 4.3):
+  - PUMA：原始含 10 类细胞核 GeoJSON，映射为 CellViT 5 类 → 直接建库
+  - BCSS：原始含 nuclei 标注 → 直接建库
+  - IGNITE/PANDA/GlaS/ORCA：需先用 CellViT 推理获取细胞核 → 建库
+    CellViT 推理后将结果存为 nuclei_mask.png (layered) 或 JSON 格式
 
 输出:
     {output_dir}/
@@ -28,6 +35,22 @@
         --gt-dir /data/BCSS_dataset/conditioning \\
         --format legacy \\
         --output-dir /data/nuclei_library_BCSS
+
+    # CellViT JSON 格式 (Phase 4.3: 适用于无原始核标注的数据集)
+    python inpaint_cells/nuclei_library/build_library.py \\
+        --dataset PANDA \\
+        --gt-dir /data/PANDA_patches \\
+        --format cellvit-json \\
+        --cellvit-dir /data/PANDA_cellvit_output \\
+        --output-dir /data/nuclei_library_PANDA
+
+    # PUMA GeoJSON (Phase 4.3: 10类核 → CellViT 5类)
+    python inpaint_cells/nuclei_library/build_library.py \\
+        --dataset PUMA \\
+        --gt-dir /data/PUMA_patches \\
+        --format geojson \\
+        --geojson-dir /data/PUMA_nuclei_geojson \\
+        --output-dir /data/nuclei_library_PUMA
 """
 
 import os
@@ -36,6 +59,7 @@ import json
 import argparse
 import glob
 from collections import defaultdict
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -47,8 +71,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from dataset_config import get_config
 from dataset_config.unified_labels import (
-    FINE_LABELS, NUM_FINE, UNIFIED_COLOR_MAP,
-    CELL_CLASSES, CELL_IDS, CELL_COLOR_MAP, FULL_COLOR_MAP, NON_BIO_IDS,
+    FINE_LABELS, NUM_FINE, CELL_IDS, FULL_COLOR_MAP,
 )
 
 # ============================================================
@@ -212,12 +235,235 @@ def extract_nuclei_from_classmap(class_map, min_area=10, max_area=5000):
 
 
 # ============================================================
+#  核提取: CellViT JSON 格式 (Phase 4.3)
+# ============================================================
+
+# CellViT 推理输出 JSON 中的类型 ID → CellViT 5 类映射
+CELLVIT_TYPE_MAP = {
+    1: 101,  # neoplastic
+    2: 102,  # inflammatory
+    3: 103,  # connective
+    4: 104,  # dead
+    5: 105,  # epithelial
+}
+
+
+def extract_nuclei_from_cellvit_json(tissue_map, json_path, min_area=10, max_area=5000):
+    """
+    从 CellViT 推理输出的 JSON 中提取核实例。
+
+    CellViT JSON 格式 (每个 patch 一个 JSON):
+        {
+            "nuc": {
+                "0": {"bbox": [y1,x1,y2,x2], "centroid": [y,x], "contour": [[x,y],...], "type": 1},
+                "1": {...},
+                ...
+            },
+            "mag": 40,
+            ...
+        }
+
+    Args:
+        tissue_map: (H, W) int, tissue fine IDs (0-15)
+        json_path: path to CellViT output JSON
+        min_area, max_area: 核面积过滤
+
+    Returns:
+        list of dict (same format as extract_nuclei_from_layered)
+    """
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+
+    nuc_dict = data.get('nuc', data.get('nuclei', {}))
+    if not nuc_dict:
+        return []
+
+    instances = []
+    H, W = tissue_map.shape
+
+    for nuc_id, nuc_info in nuc_dict.items():
+        nuc_type_cv = nuc_info.get('type', 0)
+        if nuc_type_cv not in CELLVIT_TYPE_MAP:
+            continue
+        nuc_class = CELLVIT_TYPE_MAP[nuc_type_cv]
+
+        contour = nuc_info.get('contour', None)
+        if contour is None:
+            continue
+
+        contour_np = np.array(contour, dtype=np.int32)  # [[x, y], ...]
+        if len(contour_np) < 3:
+            continue
+
+        # 绘制核 mask
+        nuc_mask_full = np.zeros((H, W), dtype=np.uint8)
+        cv2.fillPoly(nuc_mask_full, [contour_np], 1)
+
+        area = nuc_mask_full.sum()
+        if area < min_area or area > max_area:
+            continue
+
+        ys, xs = np.where(nuc_mask_full > 0)
+        if len(ys) == 0:
+            continue
+
+        y_min, y_max = ys.min(), ys.max()
+        x_min, x_max = xs.min(), xs.max()
+
+        # 排除边界核
+        if y_min == 0 or x_min == 0 or y_max >= H - 1 or x_max >= W - 1:
+            continue
+
+        local_mask = nuc_mask_full[y_min:y_max + 1, x_min:x_max + 1].astype(bool)
+
+        # 核所在组织类型: 从 tissue_map 取众数
+        tissue_values = tissue_map[nuc_mask_full > 0]
+        counts = np.bincount(tissue_values.astype(np.int64), minlength=NUM_FINE)
+        tissue_type = int(np.argmax(counts))
+
+        instances.append({
+            'type': nuc_class,
+            'tissue': tissue_type,
+            'mask': local_mask,
+            'area': int(area),
+        })
+
+    return instances
+
+
+# PUMA 10 类核 → CellViT 5 类映射
+PUMA_NUC_TYPE_MAP = {
+    # PUMA 原始类别 → CellViT 类别
+    'tumor': 101,
+    'lymphocyte': 102,
+    'plasma_cell': 102,       # → inflammatory
+    'macrophage': 102,        # → inflammatory
+    'neutrophil': 102,        # → inflammatory
+    'fibroblast': 103,        # → connective
+    'endothelial': 103,       # → connective
+    'apoptotic': 104,         # → dead
+    'epithelial': 105,
+    'melanocyte': 101,        # → neoplastic (melanoma context)
+}
+
+# PUMA 数值类型 ID 映射 (若 GeoJSON 使用数字 type)
+PUMA_NUC_TYPE_ID_MAP = {
+    0: 101,   # tumor / neoplastic
+    1: 102,   # lymphocyte / inflammatory
+    2: 102,   # plasma_cell → inflammatory
+    3: 102,   # macrophage → inflammatory
+    4: 102,   # neutrophil → inflammatory
+    5: 103,   # fibroblast → connective
+    6: 103,   # endothelial → connective
+    7: 104,   # apoptotic → dead
+    8: 105,   # epithelial
+    9: 101,   # melanocyte → neoplastic
+}
+
+
+def extract_nuclei_from_geojson(tissue_map, geojson_path, min_area=10, max_area=5000):
+    """
+    从 GeoJSON 核标注中提取实例 (PUMA 等有 GeoJSON 核标注的数据集).
+
+    GeoJSON 格式:
+        {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Polygon", "coordinates": [[[x, y], ...]]},
+                    "properties": {"classification": {"name": "tumor"}}
+                }, ...
+            ]
+        }
+
+    Args:
+        tissue_map: (H, W) int, tissue fine IDs (0-15)
+        geojson_path: path to GeoJSON file
+        min_area, max_area: filter thresholds
+
+    Returns:
+        list of dict (same format as extract_nuclei_from_layered)
+    """
+    with open(geojson_path, 'r') as f:
+        geo = json.load(f)
+
+    features = geo.get('features', [])
+    if not features:
+        return []
+
+    instances = []
+    H, W = tissue_map.shape
+
+    for feat in features:
+        geom = feat.get('geometry', {})
+        props = feat.get('properties', {})
+
+        if geom.get('type') != 'Polygon':
+            continue
+
+        coords = geom.get('coordinates', [[]])[0]  # 外环
+        if len(coords) < 3:
+            continue
+
+        # 确定核类型
+        classification = props.get('classification', {})
+        type_name = classification.get('name', '').lower().strip()
+        type_id = classification.get('type_id', None)
+
+        nuc_class = None
+        if type_name and type_name in PUMA_NUC_TYPE_MAP:
+            nuc_class = PUMA_NUC_TYPE_MAP[type_name]
+        elif type_id is not None and type_id in PUMA_NUC_TYPE_ID_MAP:
+            nuc_class = PUMA_NUC_TYPE_ID_MAP[type_id]
+
+        if nuc_class is None:
+            continue
+
+        # GeoJSON coordinates: [[x, y], ...] → numpy int32
+        contour_np = np.array(coords, dtype=np.float64)
+        contour_int = np.round(contour_np).astype(np.int32)
+
+        nuc_mask_full = np.zeros((H, W), dtype=np.uint8)
+        cv2.fillPoly(nuc_mask_full, [contour_int], 1)
+
+        area = nuc_mask_full.sum()
+        if area < min_area or area > max_area:
+            continue
+
+        ys, xs = np.where(nuc_mask_full > 0)
+        if len(ys) == 0:
+            continue
+
+        y_min, y_max = ys.min(), ys.max()
+        x_min, x_max = xs.min(), xs.max()
+
+        if y_min == 0 or x_min == 0 or y_max >= H - 1 or x_max >= W - 1:
+            continue
+
+        local_mask = nuc_mask_full[y_min:y_max + 1, x_min:x_max + 1].astype(bool)
+
+        tissue_values = tissue_map[nuc_mask_full > 0]
+        counts = np.bincount(tissue_values.astype(np.int64), minlength=NUM_FINE)
+        tissue_type = int(np.argmax(counts))
+
+        instances.append({
+            'type': nuc_class,
+            'tissue': tissue_type,
+            'mask': local_mask,
+            'area': int(area),
+        })
+
+    return instances
+
+
+# ============================================================
 #  主流程
 # ============================================================
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Build nuclei instance library (Phase 4.2 multi-dataset)')
+        description='Build nuclei instance library (Phase 4.2/4.3 multi-dataset)')
     parser.add_argument('--dataset', required=True,
                         help='Dataset name (BCSS, PANDA, GlaS, IGNITE, PUMA, ORCA)')
     parser.add_argument('--gt-dir', required=True,
@@ -225,8 +471,14 @@ def main():
                              'legacy: contains RGB mask PNGs)')
     parser.add_argument('--output-dir', required=True,
                         help='Output directory for nuclei library')
-    parser.add_argument('--format', choices=['auto', 'layered', 'legacy'], default='auto',
+    parser.add_argument('--format', choices=['auto', 'layered', 'legacy',
+                                             'cellvit-json', 'geojson'], default='auto',
                         help='Input format (default: auto-detect)')
+    parser.add_argument('--cellvit-dir', default=None,
+                        help='[cellvit-json] Directory containing CellViT inference JSON files. '
+                             'Each JSON corresponds to a tissue_mask.png in gt-dir.')
+    parser.add_argument('--geojson-dir', default=None,
+                        help='[geojson] Directory containing nuclei GeoJSON files (PUMA etc.).')
     parser.add_argument('--min-area', type=int, default=10,
                         help='Min nucleus area in pixels')
     parser.add_argument('--max-area', type=int, default=5000,
@@ -255,7 +507,14 @@ def main():
             len(glob.glob(os.path.join(args.gt_dir, '*', 'nuclei_mask.png'))) > 0
             or len(glob.glob(os.path.join(args.gt_dir, '**', 'nuclei_mask.png'), recursive=True)) > 0
         )
-        fmt = 'layered' if (has_tissue and has_nuclei) else 'legacy'
+        if has_tissue and has_nuclei:
+            fmt = 'layered'
+        elif has_tissue and args.cellvit_dir:
+            fmt = 'cellvit-json'
+        elif has_tissue and args.geojson_dir:
+            fmt = 'geojson'
+        else:
+            fmt = 'legacy'
         print(f"  Auto-detected format: {fmt}")
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -281,6 +540,14 @@ def main():
 
     if fmt == 'layered':
         total_instances = _process_layered(
+            args, config, skip_tissues, instances_dir,
+            tissue_stats, bucket_counts)
+    elif fmt == 'cellvit-json':
+        total_instances = _process_cellvit_json(
+            args, config, skip_tissues, instances_dir,
+            tissue_stats, bucket_counts)
+    elif fmt == 'geojson':
+        total_instances = _process_geojson(
             args, config, skip_tissues, instances_dir,
             tissue_stats, bucket_counts)
     else:
@@ -347,33 +614,170 @@ def _process_layered(args, config, skip_tissues, instances_dir,
         instances = extract_nuclei_from_layered(
             tissue_map, nuclei_map, args.min_area, args.max_area)
 
-        for inst in instances:
-            tissue_id = inst['tissue']
-            if tissue_id in skip_tissues:
-                continue
-            nuc_type = inst['type']
-
-            tissue_stats[tissue_id]['nuclei_counts'][nuc_type] += 1
-            tissue_stats[tissue_id]['nuclei_areas'][nuc_type].append(inst['area'])
-
-            if bucket_counts[tissue_id] < args.max_instances_per_bucket:
-                tissue_name = FINE_LABELS.get(tissue_id, f'tissue_{tissue_id}')
-                bucket_dir = os.path.join(instances_dir,
-                                          f'tissue_{tissue_id:02d}_{tissue_name}')
-                os.makedirs(bucket_dir, exist_ok=True)
-                inst_id = bucket_counts[tissue_id]
-
-                np.savez_compressed(
-                    os.path.join(bucket_dir, f'{inst_id:06d}.npz'),
-                    mask=inst['mask'].astype(np.bool_),
-                    type=np.array(nuc_type, dtype=np.int32),
-                    area=np.array(inst['area'], dtype=np.int32),
-                )
-                bucket_counts[tissue_id] += 1
-
-            total_instances += 1
+        total_instances += _save_instances(
+            instances, skip_tissues, instances_dir,
+            tissue_stats, bucket_counts, args.max_instances_per_bucket)
 
     return total_instances
+
+
+def _process_cellvit_json(args, config, skip_tissues, instances_dir,
+                          tissue_stats, bucket_counts):
+    """处理 CellViT JSON 格式 (Phase 4.3: 无原始核标注的数据集)"""
+    if not args.cellvit_dir:
+        print("Error: --cellvit-dir is required for cellvit-json format")
+        return 0
+
+    # 查找 tissue_mask 文件
+    tissue_files = sorted(glob.glob(os.path.join(args.gt_dir, '**', 'tissue_mask.png'),
+                                    recursive=True))
+    if not tissue_files:
+        gt_tissue_dir = os.path.join(args.gt_dir, 'gt_tissue')
+        if os.path.isdir(gt_tissue_dir):
+            tissue_files = sorted(glob.glob(os.path.join(gt_tissue_dir, '*.png')))
+
+    if not tissue_files:
+        print(f"No tissue mask files found in {args.gt_dir}")
+        return 0
+
+    print(f"Processing {len(tissue_files)} patches with CellViT JSON nuclei...")
+    total_instances = 0
+    cellvit_dir = Path(args.cellvit_dir)
+
+    for tissue_path in tqdm(tissue_files, desc='Extracting nuclei (cellvit-json)'):
+        tissue_map = cv2.imread(tissue_path, cv2.IMREAD_GRAYSCALE).astype(np.int64)
+
+        # 查找对应的 CellViT JSON
+        # 匹配策略: tissue_mask.png 所在目录名或文件名 → 同名 .json
+        parent = os.path.dirname(tissue_path)
+        basename = os.path.basename(tissue_path)
+
+        if basename == 'tissue_mask.png':
+            sample_name = os.path.basename(parent)
+        else:
+            sample_name = os.path.splitext(basename)[0]
+
+        json_path = None
+        for ext in ['.json', '.geojson']:
+            candidate = cellvit_dir / f'{sample_name}{ext}'
+            if candidate.exists():
+                json_path = str(candidate)
+                break
+
+        if json_path is None:
+            continue
+
+        # 统计组织面积
+        for tissue_id in range(NUM_FINE):
+            if tissue_id in skip_tissues:
+                continue
+            area = (tissue_map == tissue_id).sum()
+            if area > 0:
+                tissue_stats[tissue_id]['total_area'] += int(area)
+
+        # 从 CellViT JSON 提取核实例
+        instances = extract_nuclei_from_cellvit_json(
+            tissue_map, json_path, args.min_area, args.max_area)
+
+        total_instances += _save_instances(
+            instances, skip_tissues, instances_dir,
+            tissue_stats, bucket_counts, args.max_instances_per_bucket)
+
+    return total_instances
+
+
+def _process_geojson(args, config, skip_tissues, instances_dir,
+                     tissue_stats, bucket_counts):
+    """处理 GeoJSON 核标注格式 (Phase 4.3: PUMA 等有 GeoJSON 标注的数据集)"""
+    if not args.geojson_dir:
+        print("Error: --geojson-dir is required for geojson format")
+        return 0
+
+    # 查找 tissue_mask 文件
+    tissue_files = sorted(glob.glob(os.path.join(args.gt_dir, '**', 'tissue_mask.png'),
+                                    recursive=True))
+    if not tissue_files:
+        gt_tissue_dir = os.path.join(args.gt_dir, 'gt_tissue')
+        if os.path.isdir(gt_tissue_dir):
+            tissue_files = sorted(glob.glob(os.path.join(gt_tissue_dir, '*.png')))
+
+    if not tissue_files:
+        print(f"No tissue mask files found in {args.gt_dir}")
+        return 0
+
+    print(f"Processing {len(tissue_files)} patches with GeoJSON nuclei...")
+    total_instances = 0
+    geojson_dir = Path(args.geojson_dir)
+
+    for tissue_path in tqdm(tissue_files, desc='Extracting nuclei (geojson)'):
+        tissue_map = cv2.imread(tissue_path, cv2.IMREAD_GRAYSCALE).astype(np.int64)
+
+        parent = os.path.dirname(tissue_path)
+        basename = os.path.basename(tissue_path)
+
+        if basename == 'tissue_mask.png':
+            sample_name = os.path.basename(parent)
+        else:
+            sample_name = os.path.splitext(basename)[0]
+
+        geojson_path = None
+        for ext in ['.geojson', '.json']:
+            candidate = geojson_dir / f'{sample_name}{ext}'
+            if candidate.exists():
+                geojson_path = str(candidate)
+                break
+
+        if geojson_path is None:
+            continue
+
+        # 统计组织面积
+        for tissue_id in range(NUM_FINE):
+            if tissue_id in skip_tissues:
+                continue
+            area = (tissue_map == tissue_id).sum()
+            if area > 0:
+                tissue_stats[tissue_id]['total_area'] += int(area)
+
+        instances = extract_nuclei_from_geojson(
+            tissue_map, geojson_path, args.min_area, args.max_area)
+
+        total_instances += _save_instances(
+            instances, skip_tissues, instances_dir,
+            tissue_stats, bucket_counts, args.max_instances_per_bucket)
+
+    return total_instances
+
+
+def _save_instances(instances, skip_tissues, instances_dir,
+                    tissue_stats, bucket_counts, max_per_bucket):
+    """将提取的核实例保存到桶中 (公共函数, 供所有格式使用)"""
+    saved = 0
+    for inst in instances:
+        tissue_id = inst['tissue']
+        if tissue_id in skip_tissues:
+            continue
+        nuc_type = inst['type']
+
+        tissue_stats[tissue_id]['nuclei_counts'][nuc_type] += 1
+        tissue_stats[tissue_id]['nuclei_areas'][nuc_type].append(inst['area'])
+
+        if bucket_counts[tissue_id] < max_per_bucket:
+            tissue_name = FINE_LABELS.get(tissue_id, f'tissue_{tissue_id}')
+            bucket_dir = os.path.join(instances_dir,
+                                      f'tissue_{tissue_id:02d}_{tissue_name}')
+            os.makedirs(bucket_dir, exist_ok=True)
+            inst_id = bucket_counts[tissue_id]
+
+            np.savez_compressed(
+                os.path.join(bucket_dir, f'{inst_id:06d}.npz'),
+                mask=inst['mask'].astype(np.bool_),
+                type=np.array(nuc_type, dtype=np.int32),
+                area=np.array(inst['area'], dtype=np.int32),
+            )
+            bucket_counts[tissue_id] += 1
+
+        saved += 1
+    return saved
 
 
 def _process_legacy(args, config, skip_tissues, instances_dir,
@@ -399,31 +803,9 @@ def _process_legacy(args, config, skip_tissues, instances_dir,
         instances = extract_nuclei_from_classmap(
             class_map, args.min_area, args.max_area)
 
-        for inst in instances:
-            tissue_id = inst['tissue']
-            if tissue_id in skip_tissues:
-                continue
-            nuc_type = inst['type']
-
-            tissue_stats[tissue_id]['nuclei_counts'][nuc_type] += 1
-            tissue_stats[tissue_id]['nuclei_areas'][nuc_type].append(inst['area'])
-
-            if bucket_counts[tissue_id] < args.max_instances_per_bucket:
-                tissue_name = FINE_LABELS.get(tissue_id, f'tissue_{tissue_id}')
-                bucket_dir = os.path.join(instances_dir,
-                                          f'tissue_{tissue_id:02d}_{tissue_name}')
-                os.makedirs(bucket_dir, exist_ok=True)
-                inst_id = bucket_counts[tissue_id]
-
-                np.savez_compressed(
-                    os.path.join(bucket_dir, f'{inst_id:06d}.npz'),
-                    mask=inst['mask'].astype(np.bool_),
-                    type=np.array(nuc_type, dtype=np.int32),
-                    area=np.array(inst['area'], dtype=np.int32),
-                )
-                bucket_counts[tissue_id] += 1
-
-            total_instances += 1
+        total_instances += _save_instances(
+            instances, skip_tissues, instances_dir,
+            tissue_stats, bucket_counts, args.max_instances_per_bucket)
 
     return total_instances
 
