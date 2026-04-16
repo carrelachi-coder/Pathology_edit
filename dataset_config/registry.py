@@ -6,7 +6,7 @@ config file (bcss.py, panda.py, etc.) that defines a DatasetConfig instance.
 Use `get_config(dataset_name)` to retrieve the configuration for a dataset.
 
 Example:
-    from mask_edit.dataset_config import get_config
+    from dataset_config import get_config
     cfg = get_config("BCSS")
     print(cfg.tumor_ids)            # [1, 14, 15]
     print(cfg.available_edits)      # ["tumor_dilation", "tumor_shrink", ...]

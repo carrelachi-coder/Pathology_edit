@@ -5,7 +5,7 @@ Central registry for all pathology dataset configurations. Replaces
 hardcoded BCSS-specific constants scattered across the codebase.
 
 Quick Start:
-    from mask_edit.dataset_config import get_config, FINE_LABELS, UNIFIED_COLOR_MAP
+    from dataset_config import get_config, FINE_LABELS, UNIFIED_COLOR_MAP
 
     # Get a specific dataset config
     cfg = get_config("BCSS")
@@ -13,7 +13,7 @@ Quick Start:
     print(cfg.available_edits)   # ("tumor_dilation", "tumor_shrink", ...)
 
     # List all datasets
-    from mask_edit.dataset_config import list_datasets
+    from dataset_config import list_datasets
     print(list_datasets())       # ['BCSS', 'GLAS', 'IGNITE', 'ORCA', 'PANDA', 'PUMA']
 
     # Use unified labels
