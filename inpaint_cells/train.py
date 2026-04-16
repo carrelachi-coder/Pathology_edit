@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """
-ProbNet 训练入口
+ProbNet 训练入口 (Phase 4.1 — Embedding-based)
 
-任务：给定组织层 + 已有细胞核（编辑区域内清零）+ 编辑mask
+任务：给定组织层 + 已有细胞核（编辑区域内清零）+ 编辑mask + 癌种ID
      预测编辑区域内每个像素的核类型概率
 
-输入: tissue one-hot (22ch) + nuclei one-hot (6ch) + mask (1ch) = 29ch
+输入: tissue_map(int 0-15) + cell_map(int 0-5) + mask(float) + cancer_id(int 0-5)
+     → ProbNetInputEncoder (Embedding lookup) → (B, 17, H, W) → UNet
 输出: 核类型概率 (6ch): [背景, neoplastic, inflammatory, connective, dead, epithelial]
 
 用法:
-    # 训练
+    # 训练 (单数据集, 旧格式兼容)
     CUDA_VISIBLE_DEVICES=5 python inpaint_cells/train.py \
         --data-dir /data/huggingface/dataset_for_mask_edit \
+        --output-dir /data/huggingface/pathology_edit/prob_net \
+        --batch-size 16 --num-epochs 100
+
+    # 训练 (多数据集)
+    python inpaint_cells/train.py \
+        --datasets BCSS:/data/bcss_probnet PANDA:/data/panda_probnet \
         --output-dir /data/huggingface/pathology_edit/prob_net \
         --batch-size 16 --num-epochs 100
 
@@ -48,11 +55,16 @@ from tqdm import tqdm
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from inpaint_cells.models.prob_unet import ProbUNet
-from inpaint_cells.data.prob_dataset import NucleiProbDataset
+from inpaint_cells.data.prob_dataset import (
+    NucleiProbDatasetLayered, NucleiProbDatasetLegacy,
+    build_multi_dataset,
+)
 from inpaint_cells.losses.focal_dice import FocalDiceLoss
 from inpaint_cells.utils.mask_utils import (
     NUM_TISSUE, NUM_NUCLEI, NUCLEI_CLASSES,
+    NUCLEI_RAW_TO_INDEX, NUCLEI_INDEX_TO_RAW,
     overlay, index_to_rgb, NUCLEI_RGB, TISSUE_RGB_MAP,
+    load_tissue_mask, load_nuclei_mask, save_nuclei_mask,
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -118,27 +130,56 @@ def _resolve_resume_checkpoint(args):
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # 数据
-    train_dataset = NucleiProbDataset(
-        gt_dir=os.path.join(args.data_dir, 'ground_truth'),
-        train_dir=os.path.join(args.data_dir, 'train'),
-        out_size=args.img_size, augment=True,
-    )
-    val_dataset = NucleiProbDataset(
-        gt_dir=os.path.join(args.data_dir, 'ground_truth'),
-        train_dir=os.path.join(args.data_dir, 'val'),
-        out_size=args.img_size, augment=False,
-    )
+    # ---- 数据 ----
+    if args.datasets:
+        # 多数据集模式: --datasets BCSS:/data/bcss PANDA:/data/panda
+        dataset_configs = []
+        for spec in args.datasets:
+            name, path = spec.split(':', 1)
+            dataset_configs.append({'dataset_name': name, 'data_dir': path})
+        train_dataset, train_sampler = build_multi_dataset(
+            dataset_configs, split='train', out_size=args.img_size, augment=True)
+        val_dataset, _ = build_multi_dataset(
+            dataset_configs, split='val', out_size=args.img_size, augment=False)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
+                                  sampler=train_sampler, num_workers=4,
+                                  pin_memory=True, drop_last=True)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size,
+                                shuffle=False, num_workers=2, pin_memory=True)
+    else:
+        # 单数据集 (兼容旧目录结构)
+        cancer_idx = args.cancer_type_index
+        # Auto-detect format
+        has_layered = (
+            os.path.isdir(os.path.join(args.data_dir, 'gt_tissue'))
+            or len(glob.glob(os.path.join(args.data_dir, '*', 'tissue_mask.png'))) > 0
+        )
+        if has_layered:
+            train_dataset = NucleiProbDatasetLayered(
+                data_dir=os.path.join(args.data_dir, 'train') if os.path.isdir(os.path.join(args.data_dir, 'train')) else args.data_dir,
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=True)
+            val_dataset = NucleiProbDatasetLayered(
+                data_dir=os.path.join(args.data_dir, 'val') if os.path.isdir(os.path.join(args.data_dir, 'val')) else args.data_dir,
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=False)
+        else:
+            train_dataset = NucleiProbDatasetLegacy(
+                gt_dir=os.path.join(args.data_dir, 'ground_truth'),
+                train_dir=os.path.join(args.data_dir, 'train'),
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=True)
+            val_dataset = NucleiProbDatasetLegacy(
+                gt_dir=os.path.join(args.data_dir, 'ground_truth'),
+                train_dir=os.path.join(args.data_dir, 'val'),
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
-                              num_workers=4, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False,
-                            num_workers=2, pin_memory=True)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
+                                  num_workers=4, pin_memory=True, drop_last=True)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False,
+                                num_workers=2, pin_memory=True)
 
-    # 模型
-    model = ProbUNet(in_ch=NUM_TISSUE + NUM_NUCLEI + 1, out_ch=NUM_NUCLEI, base_ch=64).to(device)
+    # ---- 模型 (Phase 4.1: Embedding-based, 无需 in_ch 参数) ----
+    model = ProbUNet(out_ch=NUM_NUCLEI, base_ch=64).to(device)
     num_params = sum(p.numel() for p in model.parameters()) / 1e6
-    logger.info(f"ProbUNet parameters: {num_params:.1f}M")
+    logger.info(f"ProbUNet parameters: {num_params:.1f}M (Embedding input, 17ch)")
 
     # Loss + 优化器
     criterion = FocalDiceLoss(num_classes=NUM_NUCLEI, mask_weight=args.mask_weight).to(device)
@@ -187,12 +228,13 @@ def train(args):
 
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.num_epochs}')
         for batch in pbar:
-            tissue = batch['tissue'].to(device)
-            nuclei_input = batch['nuclei_input'].to(device)
-            mask = batch['mask'].to(device)
-            target = batch['target'].to(device)
+            tissue_map = batch['tissue_map'].to(device)    # (B, H, W) int64
+            cell_map = batch['cell_map'].to(device)        # (B, H, W) int64
+            mask = batch['mask'].to(device)                # (B, 1, H, W) float
+            cancer_id = batch['cancer_id'].to(device)      # (B,) int64
+            target = batch['target'].to(device)            # (B, H, W) int64
 
-            logits = model(tissue, nuclei_input, mask)
+            logits = model(tissue_map, cell_map, mask, cancer_id)
             loss, loss_dict = criterion(logits, target, mask)
 
             optimizer.zero_grad()
@@ -276,15 +318,16 @@ def validate(model, criterion, val_loader, device):
     n = 0
 
     for batch in val_loader:
-        tissue = batch['tissue'].to(device)
-        nuclei_input = batch['nuclei_input'].to(device)
+        tissue_map = batch['tissue_map'].to(device)
+        cell_map = batch['cell_map'].to(device)
         mask = batch['mask'].to(device)
+        cancer_id = batch['cancer_id'].to(device)
         target = batch['target'].to(device)
 
-        logits = model(tissue, nuclei_input, mask)
+        logits = model(tissue_map, cell_map, mask, cancer_id)
         loss, _ = criterion(logits, target, mask)
-        total_loss += loss.item() * tissue.shape[0]
-        n += tissue.shape[0]
+        total_loss += loss.item() * tissue_map.shape[0]
+        n += tissue_map.shape[0]
 
         pred = logits.argmax(dim=1)
         mask_bool = mask[:, 0] > 0.5
@@ -312,17 +355,18 @@ def visualize(model, val_loader, device, vis_dir, epoch):
     model.eval()
     batch = next(iter(val_loader))
 
-    tissue = batch['tissue'][:4].to(device)
-    nuclei_input = batch['nuclei_input'][:4].to(device)
-    mask = batch['mask'][:4].to(device)
-    target = batch['target'][:4].to(device)
+    tissue_map = batch['tissue_map'][:4].to(device)   # (B, H, W) int64
+    cell_map = batch['cell_map'][:4].to(device)       # (B, H, W) int64
+    mask = batch['mask'][:4].to(device)               # (B, 1, H, W)
+    cancer_id = batch['cancer_id'][:4].to(device)     # (B,)
+    target = batch['target'][:4].to(device)           # (B, H, W)
 
-    logits = model(tissue, nuclei_input, mask)
+    logits = model(tissue_map, cell_map, mask, cancer_id)
     pred = logits.argmax(dim=1).cpu().numpy()
 
     gt_np = target.cpu().numpy()
-    tissue_np = tissue.argmax(dim=1).cpu().numpy()
-    input_nuc_np = nuclei_input.argmax(dim=1).cpu().numpy()
+    tissue_np = tissue_map.cpu().numpy()     # already int IDs, no argmax needed
+    input_nuc_np = cell_map.cpu().numpy()    # already int indices, no argmax needed
     mask_np = mask[:, 0].cpu().numpy()
 
     rows = []
@@ -366,7 +410,8 @@ def visualize(model, val_loader, device, vis_dir, epoch):
 def inference_with_library(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = ProbUNet(in_ch=NUM_TISSUE + NUM_NUCLEI + 1, out_ch=NUM_NUCLEI, base_ch=64).to(device)
+    # ---- 加载模型 (Phase 4.1: 无 in_ch 参数) ----
+    model = ProbUNet(out_ch=NUM_NUCLEI, base_ch=64).to(device)
     ckpt = torch.load(args.ckpt, map_location=device, weights_only=False)
     model.load_state_dict(ckpt['model'])
     model.eval()
@@ -375,37 +420,51 @@ def inference_with_library(args):
     from inpaint_cells.nuclei_library.library import NucleiLibrary, poisson_disk_sampling
     library = NucleiLibrary(args.library)
 
-    val_dataset = NucleiProbDataset(
-        gt_dir=os.path.join(args.data_dir, 'ground_truth'),
-        train_dir=os.path.join(args.data_dir, 'val'),
-        out_size=args.img_size, augment=False,
+    # 推理数据集 — 兼容新旧格式
+    cancer_idx = args.cancer_type_index
+    has_layered = (
+        os.path.isdir(os.path.join(args.data_dir, 'gt_tissue'))
+        or len(glob.glob(os.path.join(args.data_dir, '*', 'tissue_mask.png'))) > 0
     )
+    if has_layered:
+        val_dir = os.path.join(args.data_dir, 'val') if os.path.isdir(os.path.join(args.data_dir, 'val')) else args.data_dir
+        val_dataset = NucleiProbDatasetLayered(
+            data_dir=val_dir, cancer_type_index=cancer_idx,
+            out_size=args.img_size, augment=False)
+    else:
+        val_dataset = NucleiProbDatasetLegacy(
+            gt_dir=os.path.join(args.data_dir, 'ground_truth'),
+            train_dir=os.path.join(args.data_dir, 'val'),
+            cancer_type_index=cancer_idx, out_size=args.img_size, augment=False)
 
     output_dir = os.path.join(args.output_dir, 'inference_results')
     os.makedirs(output_dir, exist_ok=True)
 
     for idx in range(min(args.n_samples, len(val_dataset))):
         sample = val_dataset[idx]
-        tissue = sample['tissue'].unsqueeze(0).to(device)
-        nuclei_input = sample['nuclei_input'].unsqueeze(0).to(device)
-        mask = sample['mask'].unsqueeze(0).to(device)
-        target = sample['target'].numpy()
+        tissue_map = sample['tissue_map'].unsqueeze(0).to(device)    # (1, H, W) int64
+        cell_map = sample['cell_map'].unsqueeze(0).to(device)        # (1, H, W) int64
+        mask = sample['mask'].unsqueeze(0).to(device)                # (1, 1, H, W)
+        cancer_id = sample['cancer_id'].unsqueeze(0).to(device)      # (1,)
+        target = sample['target'].numpy()                            # (H, W)
 
-        logits = model(tissue, nuclei_input, mask)
-        prob = F.softmax(logits, dim=1)[0].cpu().numpy()
+        logits = model(tissue_map, cell_map, mask, cancer_id)
+        prob = F.softmax(logits, dim=1)[0].cpu().numpy()  # (6, H, W)
 
-        tissue_map = tissue[0].argmax(dim=0).cpu().numpy()
-        mask_np = mask[0, 0].cpu().numpy() > 0.5
+        tissue_np = tissue_map[0].cpu().numpy()           # (H, W) int, 0-15
+        mask_np = mask[0, 0].cpu().numpy() > 0.5          # (H, W) bool
+        input_nuc_np = cell_map[0].cpu().numpy()          # (H, W) int, 0-5
 
-        output_nuclei = nuclei_input[0].argmax(dim=0).cpu().numpy()
+        # 输出: 在 edit 区域外保留原有核, 区域内由 ProbNet + Library 填充
+        output_nuclei = input_nuc_np.copy()
 
-        for tissue_id in np.unique(tissue_map[mask_np]):
+        for tissue_id in np.unique(tissue_np[mask_np]):
             tissue_id = int(tissue_id)
-            tissue_region = mask_np & (tissue_map == tissue_id)
+            tissue_region = mask_np & (tissue_np == tissue_id)
             if tissue_region.sum() < 50:
                 continue
 
-            nuc_prob = 1.0 - prob[0]
+            nuc_prob = 1.0 - prob[0]  # P(any nucleus)
             avg_nuc_prob = nuc_prob[tissue_region].mean()
             region_area = tissue_region.sum()
             num_nuclei = int(avg_nuc_prob * region_area / 80)
@@ -430,21 +489,21 @@ def inference_with_library(args):
                     continue
                 type_probs = type_probs / type_probs.sum()
                 nuc_type_idx = np.random.choice(5, p=type_probs)
-                nuc_type = NUCLEI_CLASSES[nuc_type_idx]
+                nuc_type_raw = NUCLEI_CLASSES[nuc_type_idx]
 
-                instance = library.sample_instance(tissue_id, nuc_type)
+                instance = library.sample_instance(tissue_id, nuc_type_raw)
                 if instance is None:
                     continue
 
-                # 简易放置
+                # 放置 (output_nuclei 使用 index 0-5)
                 _place_nucleus_simple(output_nuclei, cy, cx, instance)
 
-        # 可视化
-        vis_input = overlay(tissue_map, nuclei_input[0].argmax(dim=0).cpu().numpy())
-        vis_gt = overlay(tissue_map, target)
-        vis_pred = overlay(tissue_map, output_nuclei)
+        # 可视化: tissue + nuclei overlay
+        vis_input = overlay(tissue_np, input_nuc_np)
+        vis_gt = overlay(tissue_np, target)
+        vis_pred = overlay(tissue_np, output_nuclei)
 
-        m = (mask_np * 255).astype(np.uint8)
+        m = (mask_np.astype(np.uint8) * 255)
         contours, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for img in [vis_input, vis_gt, vis_pred]:
             cv2.drawContours(img, contours, -1, (255, 255, 255), 2)
@@ -458,10 +517,10 @@ def inference_with_library(args):
 
 
 def _place_nucleus_simple(nuclei_map, cy, cx, instance, augment=True):
-    """推理时使用的简化放置函数 (nuclei_map 值域 0-5)"""
+    """推理时使用的简化放置函数 (nuclei_map 值域 0-5, internal index)"""
     nuc_mask = instance['mask'].copy()
     nuc_type_raw = instance['type']
-    nuc_type_idx = NUCLEI_CLASSES.index(nuc_type_raw) + 1
+    nuc_type_idx = NUCLEI_RAW_TO_INDEX.get(nuc_type_raw, 0)  # 101→1, 102→2, ..., 105→5
 
     if augment:
         k = random.randint(0, 3)
@@ -507,10 +566,15 @@ def _place_nucleus_simple(nuclei_map, cy, cx, instance, augment=True):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='ProbNet 训练/推理')
+    parser = argparse.ArgumentParser(description='ProbNet 训练/推理 (Phase 4.1)')
     parser.add_argument('--mode', choices=['train', 'inference'], default='train')
     parser.add_argument('--data-dir', type=str,
-                        default='/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/lama_dataset')
+                        default='/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/lama_dataset',
+                        help='Single dataset dir (legacy compat)')
+    parser.add_argument('--datasets', type=str, nargs='*', default=None,
+                        help='Multi-dataset specs: NAME:PATH [NAME:PATH ...]')
+    parser.add_argument('--cancer-type-index', type=int, default=0,
+                        help='Cancer type index (0-5) for single dataset mode')
     parser.add_argument('--output-dir', type=str,
                         default='/data/huggingface/pathology_edit/prob_net')
     parser.add_argument('--img-size', type=int, default=256)

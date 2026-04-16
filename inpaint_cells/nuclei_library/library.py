@@ -17,7 +17,10 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
-from ..utils.mask_utils import TISSUE_NAMES, NUCLEI_CLASSES
+from ..utils.mask_utils import (
+    TISSUE_NAMES, NUCLEI_CLASSES, NUM_TISSUE,
+    NUCLEI_RAW_TO_INDEX, NUCLEI_INDEX_TO_RAW,
+)
 
 
 # ============================================================
@@ -45,8 +48,8 @@ class NucleiLibrary:
         self.instances = defaultdict(list)
         instances_dir = os.path.join(library_dir, 'nuclei_instances')
 
-        for tissue_id in range(22):
-            tissue_name = TISSUE_NAMES[tissue_id]
+        for tissue_id in range(NUM_TISSUE):  # 0-15 unified fine labels
+            tissue_name = TISSUE_NAMES.get(tissue_id, f'tissue_{tissue_id}')
             bucket_dir = os.path.join(instances_dir, f'tissue_{tissue_id:02d}_{tissue_name}')
             if not os.path.isdir(bucket_dir):
                 continue
@@ -88,7 +91,7 @@ class NucleiLibrary:
             candidates = [c for c in candidates if c['type'] == nuc_type]
         if not candidates:
             if nuc_type is not None:
-                for tid in range(22):
+                for tid in range(NUM_TISSUE):
                     fallback = [c for c in self.instances.get(tid, []) if c['type'] == nuc_type]
                     if fallback:
                         return random.choice(fallback)
@@ -315,6 +318,152 @@ def fill_nuclei_in_region(output_map, edit_mask, library):
             if instance is None:
                 continue
             if place_nucleus(output_map, cy, cx, instance, augment=True):
+                placed += 1
+
+        total_placed += placed
+
+    return total_placed
+
+
+# ============================================================
+#  Layered storage variants (AD-1)
+# ============================================================
+
+def place_nucleus_layered(nuclei_map, center_y, center_x, nuc_instance, augment=True):
+    """
+    把一个核实例贴到 nuclei_map 上 (AD-1: 分层存储, nuclei_map 值域 0-5 internal index)。
+
+    Args:
+        nuclei_map: (H, W) int64, values [0, 5] — 独立 nuclei 层 (原位修改)
+        center_y, center_x: 放置中心坐标
+        nuc_instance: dict with 'mask' (bool), 'type' (int, raw 101-105)
+        augment: 是否随机旋转/翻转/缩放
+
+    Returns:
+        True if placed successfully
+    """
+    nuc_mask = nuc_instance['mask'].copy()
+    nuc_type_raw = nuc_instance['type']
+    nuc_type_idx = NUCLEI_RAW_TO_INDEX.get(nuc_type_raw, 0)
+
+    if augment:
+        k = random.randint(0, 3)
+        nuc_mask = np.rot90(nuc_mask, k)
+        if random.random() > 0.5:
+            nuc_mask = np.fliplr(nuc_mask)
+        if random.random() > 0.5:
+            nuc_mask = np.flipud(nuc_mask)
+        scale = random.uniform(0.8, 1.2)
+        if abs(scale - 1.0) > 0.05:
+            new_h = max(1, int(nuc_mask.shape[0] * scale))
+            new_w = max(1, int(nuc_mask.shape[1] * scale))
+            nuc_mask = cv2.resize(
+                nuc_mask.astype(np.uint8), (new_w, new_h),
+                interpolation=cv2.INTER_NEAREST
+            ).astype(bool)
+
+    h, w = nuc_mask.shape
+    H, W = nuclei_map.shape
+
+    y1 = center_y - h // 2
+    x1 = center_x - w // 2
+    y2 = y1 + h
+    x2 = x1 + w
+
+    src_y1 = max(0, -y1)
+    src_x1 = max(0, -x1)
+    src_y2 = h - max(0, y2 - H)
+    src_x2 = w - max(0, x2 - W)
+
+    dst_y1 = max(0, y1)
+    dst_x1 = max(0, x1)
+    dst_y2 = min(H, y2)
+    dst_x2 = min(W, x2)
+
+    if dst_y2 <= dst_y1 or dst_x2 <= dst_x1:
+        return False
+
+    local_mask = nuc_mask[src_y1:src_y2, src_x1:src_x2]
+    target_region = nuclei_map[dst_y1:dst_y2, dst_x1:dst_x2]
+
+    # Overlap check: nuclei_map uses index 0-5 (0=background, 1-5=cell types)
+    overlap = (target_region > 0) & local_mask
+    if overlap.sum() > local_mask.sum() * 0.2:
+        return False
+
+    nuclei_map[dst_y1:dst_y2, dst_x1:dst_x2][local_mask] = nuc_type_idx
+    return True
+
+
+def fill_nuclei_in_region_layered(nuclei_map, tissue_map, edit_mask, library):
+    """
+    在 edit_mask 标记的区域内填充合理的细胞核 (AD-1: 分层存储)。
+
+    与 fill_nuclei_in_region 不同:
+      - nuclei_map 和 tissue_map 是独立的两层
+      - nuclei_map 使用 internal index (0-5)
+      - tissue_map 用于确定各区域的组织类型
+
+    Args:
+        nuclei_map: (H, W) int64, values [0, 5], 独立 nuclei 层 (原位修改)
+        tissue_map: (H, W) int64, values [0, 15], 独立 tissue 层 (只读)
+        edit_mask: (H, W) bool, 需要填充核的区域
+        library: NucleiLibrary
+
+    Modifies nuclei_map in-place.
+    Returns: int — 成功放置的核数量
+    """
+    tissue_types_in_region = np.unique(tissue_map[edit_mask])
+
+    total_placed = 0
+
+    for tissue_id in tissue_types_in_region:
+        tissue_id = int(tissue_id)
+        tissue_region = edit_mask & (tissue_map == tissue_id)
+        region_area = tissue_region.sum()
+
+        if region_area < 50:
+            continue
+
+        density = library.get_density(tissue_id)
+        type_dist = library.get_type_distribution(tissue_id)
+
+        if density == 0 or not type_dist:
+            continue
+
+        num_nuclei = int(density * region_area / 10000.0)
+        num_nuclei = max(0, int(num_nuclei * random.uniform(0.7, 1.3)))
+
+        if num_nuclei == 0:
+            continue
+
+        stats = library.stats.get(str(tissue_id), {})
+        mean_areas = [info['mean_area'] for nuc_str, info
+                      in stats.get('nuclei_types', {}).items()
+                      if info.get('mean_area', 0) > 0]
+        avg_area = np.mean(mean_areas) if mean_areas else 100
+        avg_diameter = np.sqrt(avg_area / np.pi) * 2
+        min_distance = max(avg_diameter * 1.5, 8)
+
+        centers = poisson_disk_sampling(tissue_region, min_distance)
+
+        if len(centers) > num_nuclei:
+            random.shuffle(centers)
+            centers = centers[:num_nuclei]
+
+        nuc_types_list = []
+        for nuc_type, frac in type_dist.items():
+            count = max(1, int(len(centers) * frac))
+            nuc_types_list.extend([nuc_type] * count)
+        random.shuffle(nuc_types_list)
+
+        placed = 0
+        for i, (cy, cx) in enumerate(centers):
+            nuc_type = nuc_types_list[i % len(nuc_types_list)] if nuc_types_list else 101
+            instance = library.sample_instance(tissue_id, nuc_type)
+            if instance is None:
+                continue
+            if place_nucleus_layered(nuclei_map, cy, cx, instance, augment=True):
                 placed += 1
 
         total_placed += placed
