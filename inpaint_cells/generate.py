@@ -1,32 +1,36 @@
 #!/usr/bin/env python3
 """
-细胞核填充推理入口 — 基于统计库的规则填充 (不需要 ProbNet)
+细胞核填充推理入口 — 基于统计库的规则填充 (Phase 4.2 多数据集适配)
 
-Phase 4.1 适配:
-  - AD-1: 分层存储 — 读取独立的 tissue_mask.png + nuclei_mask.png
-  - 输出独立的 nuclei_mask.png（值域 0/101-105）
-  - 可视化使用 overlay() 叠加 tissue + nuclei 两层
+Phase 4.2 changes:
+  - 添加 --dataset 参数, 使用统一标签体系
+  - 推理时自动传入对应的 cancer_id
+  - AD-1: 输入 edited_tissue_mask.png(只读) + change_region_mask → 输出独立的 nuclei_mask.png
+  - 细胞库按数据集独立加载
 
 用法:
     # 批量测试（用 layered 格式 val 数据）
-    python inpaint_cells/generate.py \
-        --library /data/huggingface/pathology_edit/nuclei_library \
-        --test-dir /path/to/layered_dataset \
-        --output-dir /path/to/results \
+    python inpaint_cells/generate.py \\
+        --dataset BCSS \\
+        --library /data/nuclei_library_BCSS \\
+        --test-dir /path/to/layered_dataset \\
+        --output-dir /path/to/results \\
         --n 10
 
     # 批量测试（用 legacy LaMa 格式 val 数据）
-    python inpaint_cells/generate.py \
-        --library /data/huggingface/pathology_edit/nuclei_library \
-        --test-dir /path/to/lama_dataset \
-        --format legacy \
+    python inpaint_cells/generate.py \\
+        --dataset BCSS \\
+        --library /data/nuclei_library_BCSS \\
+        --test-dir /path/to/lama_dataset \\
+        --format legacy \\
         --output-dir /path/to/results
 
     # 单张推理（分层存储）
-    python inpaint_cells/generate.py \
-        --library /data/huggingface/pathology_edit/nuclei_library \
-        --input-tissue /path/to/edited_tissue_mask.png \
-        --edit-region /path/to/edit_region_mask.png \
+    python inpaint_cells/generate.py \\
+        --dataset PANDA \\
+        --library /data/nuclei_library_PANDA \\
+        --input-tissue /path/to/edited_tissue_mask.png \\
+        --edit-region /path/to/edit_region_mask.png \\
         --output /path/to/nuclei_mask.png
 """
 
@@ -49,7 +53,7 @@ from inpaint_cells.utils.mask_utils import (
 )
 
 
-def test_on_val_layered(library, data_dir, output_dir, n=10):
+def test_on_val_layered(library, data_dir, output_dir, n=10, dataset_name=None):
     """
     在分层存储格式的验证集上测试。
 
@@ -60,6 +64,9 @@ def test_on_val_layered(library, data_dir, output_dir, n=10):
             masks/{name}.png      — edit region binary mask
     """
     os.makedirs(output_dir, exist_ok=True)
+
+    ds_info = f" [{dataset_name}]" if dataset_name else ""
+    print(f"Running layered validation{ds_info}...")
 
     # 尝试 val 子目录
     val_dir = os.path.join(data_dir, 'val')
@@ -179,11 +186,14 @@ def _test_subdir_pattern(library, tissue_paths, output_dir):
     print(f"\nResults saved to {output_dir}")
 
 
-def test_on_val_legacy(library, data_dir, output_dir, n=10):
+def test_on_val_legacy(library, data_dir, output_dir, n=10, dataset_name=None):
     """在旧 LaMa 格式的验证集上测试 (backward compatible)"""
     gt_dir = os.path.join(data_dir, 'ground_truth')
     val_dir = os.path.join(data_dir, 'val')
     os.makedirs(output_dir, exist_ok=True)
+
+    ds_info = f" [{dataset_name}]" if dataset_name else ""
+    print(f"Running legacy validation{ds_info}...")
 
     val_files = sorted([f for f in glob.glob(os.path.join(val_dir, '*.png')) if '_mask' not in f])
 
@@ -243,12 +253,16 @@ def test_on_val_legacy(library, data_dir, output_dir, n=10):
     print(f"\nResults saved to {output_dir}")
 
 
-def single_inference_layered(library, tissue_path, edit_region_path, output_path):
+def single_inference_layered(library, tissue_path, edit_region_path, output_path,
+                             dataset_name=None):
     """
     单张推理 — 分层存储模式。
     输入: edited_tissue_mask.png (只读) + edit_region_mask
     输出: 独立的 nuclei_mask.png (0/101-105)
     """
+    ds_info = f" [{dataset_name}]" if dataset_name else ""
+    print(f"Single inference{ds_info}")
+
     tissue = load_tissue_mask(tissue_path)  # (H, W) int64, 0-15
     edit_mask = cv2.imread(edit_region_path, cv2.IMREAD_GRAYSCALE) > 128
 
@@ -263,20 +277,40 @@ def single_inference_layered(library, tissue_path, edit_region_path, output_path
 
 
 def main():
-    parser = argparse.ArgumentParser(description='细胞核填充推理 (Phase 4.1)')
-    parser.add_argument('--library', required=True, help='Path to nuclei library directory')
-    parser.add_argument('--test-dir', default=None, help='Dataset directory for testing')
+    parser = argparse.ArgumentParser(
+        description='细胞核填充推理 (Phase 4.2 多数据集适配)')
+    parser.add_argument('--dataset', type=str, default=None,
+                        help='Dataset name (BCSS, PANDA, GlaS, IGNITE, PUMA, ORCA). '
+                             'Used for logging and auto cancer_id lookup.')
+    parser.add_argument('--library', required=True,
+                        help='Path to nuclei library directory')
+    parser.add_argument('--test-dir', default=None,
+                        help='Dataset directory for testing')
     parser.add_argument('--format', choices=['auto', 'layered', 'legacy'], default='auto',
                         help='Data format: layered (AD-1), legacy (RGB combined), or auto-detect')
     parser.add_argument('--output-dir', default='./nuclei_gen_results')
     parser.add_argument('--n', type=int, default=10)
-    parser.add_argument('--input-tissue', default=None, help='Edited tissue mask (uint8 PNG, 0-15)')
-    parser.add_argument('--edit-region', default=None, help='Edit region binary mask')
-    parser.add_argument('--output', default=None, help='Output nuclei mask path')
+    parser.add_argument('--input-tissue', default=None,
+                        help='Edited tissue mask (uint8 PNG, 0-15)')
+    parser.add_argument('--edit-region', default=None,
+                        help='Edit region binary mask')
+    parser.add_argument('--output', default=None,
+                        help='Output nuclei mask path')
     args = parser.parse_args()
 
+    # 数据集信息 (用于日志)
+    dataset_name = args.dataset
+    if dataset_name:
+        try:
+            from dataset_config import get_config
+            config = get_config(dataset_name)
+            print(f"Dataset: {config.name} ({config.cancer_type})")
+            print(f"  cancer_type_index: {config.cancer_type_index}")
+        except Exception as e:
+            print(f"Warning: Could not load config for '{dataset_name}': {e}")
+
     print("Loading nuclei library...")
-    library = NucleiLibrary(args.library)
+    library = NucleiLibrary(args.library, dataset=dataset_name)
 
     if args.test_dir:
         os.makedirs(args.output_dir, exist_ok=True)
@@ -294,13 +328,16 @@ def main():
             print(f"Auto-detected format: {fmt}")
 
         if fmt == 'layered':
-            test_on_val_layered(library, args.test_dir, args.output_dir, args.n)
+            test_on_val_layered(library, args.test_dir, args.output_dir, args.n,
+                                dataset_name=dataset_name)
         else:
-            test_on_val_legacy(library, args.test_dir, args.output_dir, args.n)
+            test_on_val_legacy(library, args.test_dir, args.output_dir, args.n,
+                               dataset_name=dataset_name)
 
     elif args.input_tissue and args.edit_region:
         out_path = args.output or 'nuclei_mask.png'
-        single_inference_layered(library, args.input_tissue, args.edit_region, out_path)
+        single_inference_layered(library, args.input_tissue, args.edit_region,
+                                 out_path, dataset_name=dataset_name)
 
     else:
         print("Please specify --test-dir or --input-tissue + --edit-region")

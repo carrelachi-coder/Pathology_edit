@@ -1,11 +1,17 @@
 """
-NucleiLibrary — 细胞核实例库 + 采样/放置工具
+NucleiLibrary — 细胞核实例库 + 采样/放置工具 (Phase 4.2 多数据集适配)
 
 包含：
-  - NucleiLibrary: 从 build_library.py 建好的库中加载实例，按组织类型分桶
+  - NucleiLibrary: 从 build_library.py 建好的库中加载实例，按统一 fine 组织类型分桶
   - poisson_disk_sampling: 在指定区域内做泊松盘采样，确定核中心点
   - place_nucleus: 将一个核实例贴到 output map 上（带增强和重叠检测）
   - fill_nuclei_in_region: 对编辑区域按组织类型自动填充核（统一调度）
+
+Phase 4.2 changes:
+  - NucleiLibrary 支持 dataset 参数，自动查找 per-dataset 细胞库
+  - 桶名使用统一 fine ID（如 tissue_01_Tumor/、tissue_08_Gleason 3/）
+  - statistics.json 新格式: 顶层含 dataset/cancer_type 元数据, statistics 在子字段中
+  - 兼容旧格式 statistics.json (Phase 4.1 及更早)
 """
 
 import os
@@ -33,37 +39,63 @@ class NucleiLibrary:
 
     目录结构：
         {library_dir}/
-            statistics.json
+            statistics.json         — 统计数据 (新格式含 dataset 元数据)
             nuclei_instances/
-                tissue_01_tumor/  → {id}.npz (mask, type, area)
-                tissue_02_stroma/
+                tissue_01_Tumor/    → {id}.npz (mask, type, area)
+                tissue_02_Stroma/
                 ...
+
+    Args:
+        library_dir: 细胞库根目录
+        dataset: 可选, 数据集名称 (用于日志)
     """
-    def __init__(self, library_dir):
+    def __init__(self, library_dir, dataset=None):
         self.library_dir = library_dir
+        self.dataset = dataset
 
         with open(os.path.join(library_dir, 'statistics.json'), 'r') as f:
-            self.stats = json.load(f)
+            raw_stats = json.load(f)
+
+        # 兼容新旧格式:
+        #   新格式 (Phase 4.2): {'dataset': ..., 'statistics': {tissue_id: {...}}}
+        #   旧格式 (Phase 4.1): {tissue_id: {...}} 直接平铺
+        if 'statistics' in raw_stats and isinstance(raw_stats['statistics'], dict):
+            self.meta = {k: v for k, v in raw_stats.items() if k != 'statistics'}
+            self.stats = raw_stats['statistics']
+        else:
+            self.meta = {}
+            self.stats = raw_stats
 
         self.instances = defaultdict(list)
         instances_dir = os.path.join(library_dir, 'nuclei_instances')
 
-        for tissue_id in range(NUM_TISSUE):  # 0-15 unified fine labels
-            tissue_name = TISSUE_NAMES.get(tissue_id, f'tissue_{tissue_id}')
-            bucket_dir = os.path.join(instances_dir, f'tissue_{tissue_id:02d}_{tissue_name}')
-            if not os.path.isdir(bucket_dir):
-                continue
-            npz_files = sorted(glob.glob(os.path.join(bucket_dir, '*.npz')))
-            for npz_path in npz_files:
-                data = np.load(npz_path, allow_pickle=True)
-                self.instances[tissue_id].append({
-                    'mask': data['mask'],
-                    'type': int(data['type']),
-                    'area': int(data['area']),
-                })
+        # 动态扫描所有 tissue_XX_xxx 子目录 (不假设固定数量)
+        if os.path.isdir(instances_dir):
+            for entry in sorted(os.listdir(instances_dir)):
+                bucket_path = os.path.join(instances_dir, entry)
+                if not os.path.isdir(bucket_path):
+                    continue
+                if not entry.startswith('tissue_'):
+                    continue
+
+                # 解析 tissue_id: tissue_01_Tumor → 1
+                try:
+                    tissue_id = int(entry.split('_')[1])
+                except (IndexError, ValueError):
+                    continue
+
+                npz_files = sorted(glob.glob(os.path.join(bucket_path, '*.npz')))
+                for npz_path in npz_files:
+                    data = np.load(npz_path, allow_pickle=True)
+                    self.instances[tissue_id].append({
+                        'mask': data['mask'],
+                        'type': int(data['type']),
+                        'area': int(data['area']),
+                    })
 
         total_loaded = sum(len(v) for v in self.instances.values())
-        print(f"Loaded {total_loaded} nuclei instances from {library_dir}")
+        ds_info = f" ({dataset})" if dataset else ""
+        print(f"Loaded {total_loaded} nuclei instances from {library_dir}{ds_info}")
 
     def get_density(self, tissue_id):
         """获取该组织类型的核密度（每 10000 px²）"""
@@ -91,8 +123,9 @@ class NucleiLibrary:
             candidates = [c for c in candidates if c['type'] == nuc_type]
         if not candidates:
             if nuc_type is not None:
-                for tid in range(NUM_TISSUE):
-                    fallback = [c for c in self.instances.get(tid, []) if c['type'] == nuc_type]
+                # Fallback: 从所有桶中找该类型的核
+                for tid in self.instances:
+                    fallback = [c for c in self.instances[tid] if c['type'] == nuc_type]
                     if fallback:
                         return random.choice(fallback)
             return None
