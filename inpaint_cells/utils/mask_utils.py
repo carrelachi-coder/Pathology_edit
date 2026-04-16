@@ -1,55 +1,100 @@
 """
-共享的 mask 工具函数
+Shared mask utility functions for the cell filling pipeline.
 
-提供 RGB ↔ class ID 转换、tissue/nuclei 分离、one-hot 编码等基础操作。
-三个原始文件 (train_prob_net.py, build_nuclei_library.py, generate_nuclei.py)
-都在重复定义这些常量和函数，统一到此处消除重复。
+Provides:
+  - Constants for unified 16-class tissue labels and Embedding dimensions
+  - Tissue/nuclei mask I/O (layered storage: separate tissue_mask.png + nuclei_mask.png)
+  - RGB <-> class ID conversion for visualization
+  - Overlay rendering
 
-NOTE: 当前使用 BCSS 22 类硬编码。
-Phase 4 适配时将改为从 dataset_config 的统一 16 类标签读取。
+Phase 4.1 changes:
+  - Replaced BCSS 22-class hardcoded constants with unified 16-class fine labels
+  - Added Embedding dimension constants (AD-4: Embedding lookup replaces one-hot)
+  - Simplified split_tissue_nuclei() -> direct file reads (AD-1: layered storage)
+  - Removed to_onehot() (no longer needed with Embedding input)
+  - Added load_tissue_mask() / load_nuclei_mask() for layered storage
 """
 
+import os
 import numpy as np
 import cv2
 
+# ============================================================
+#  Import from unified dataset_config
+# ============================================================
+from dataset_config.unified_labels import (
+    FINE_LABELS,
+    NUM_FINE,
+    UNIFIED_COLOR_MAP,
+    CELL_CLASSES,
+    CELL_COLOR_MAP,
+    CELL_IDS,
+    NUM_CELL_CLASSES,
+    FULL_COLOR_MAP,
+)
 
 # ============================================================
-#  颜色/类别常量 (BCSS 22 类 + CellViT 5 类细胞核)
+#  Constants
 # ============================================================
 
-COLOR_MAP = {
-    0: [30,30,30], 1: [180,60,60], 2: [60,150,60], 3: [140,60,180],
-    4: [60,60,180], 5: [180,180,80], 6: [160,40,40], 7: [40,40,40],
-    8: [80,150,150], 9: [200,170,100], 10: [180,120,150], 11: [120,120,190],
-    12: [100,190,190], 13: [200,140,60], 14: [140,200,100], 15: [140,140,140],
-    16: [200,200,130], 17: [150,80,60], 18: [60,140,100], 19: [190,40,40],
-    20: [80,60,150], 21: [170,170,170],
-    101: [255,0,0], 102: [0,255,0], 103: [0,80,255], 104: [255,255,0], 105: [255,0,255],
-}
+# Tissue: 16 unified fine classes (IDs 0-15)
+NUM_TISSUE = NUM_FINE  # 16
 
-TISSUE_NAMES = {
-    0: 'outside_roi', 1: 'tumor', 2: 'stroma', 3: 'lymphocytic_infiltrate',
-    4: 'necrosis_or_debris', 5: 'glandular_secretions', 6: 'blood', 7: 'exclude',
-    8: 'metaplasia_NOS', 9: 'fat', 10: 'plasma_cells', 11: 'other_immune_infiltrate',
-    12: 'mucoid_material', 13: 'normal_acinus_or_duct', 14: 'lymphatics',
-    15: 'undetermined', 16: 'nerve', 17: 'skin_adnexa', 18: 'blood_vessel',
-    19: 'angioinvasion', 20: 'dcis', 21: 'other',
-}
+# Nuclei: background(0) + 5 CellViT classes = 6 total embedding rows
+NUM_NUCLEI = NUM_CELL_CLASSES + 1  # 6
+
+# Cancer types: 6 datasets
+NUM_CANCER_TYPES = 6
+
+# Raw nuclei IDs in mask files (101-105) -> internal indices (1-5)
+NUCLEI_CLASSES = CELL_IDS  # [101, 102, 103, 104, 105]
+
+NUCLEI_RAW_TO_INDEX = {raw: i + 1 for i, raw in enumerate(NUCLEI_CLASSES)}
+# {101: 1, 102: 2, 103: 3, 104: 4, 105: 5}
+
+NUCLEI_INDEX_TO_RAW = {i + 1: raw for i, raw in enumerate(NUCLEI_CLASSES)}
+# {1: 101, 2: 102, 3: 103, 4: 104, 5: 105}
+
+# ----- AD-4: Embedding dimensions -----
+TISSUE_EMB_DIM = 8
+CELL_EMB_DIM = 4
+CANCER_EMB_DIM = 4
+PROBNET_IN_CH = TISSUE_EMB_DIM + CELL_EMB_DIM + 1 + CANCER_EMB_DIM  # 17
+
+# Tissue and nuclei name maps (from unified labels)
+TISSUE_NAMES = FINE_LABELS
 
 NUCLEI_NAMES = {
-    101: 'neoplastic', 102: 'inflammatory', 103: 'connective',
-    104: 'dead', 105: 'epithelial',
+    0: 'background',
+    1: 'neoplastic',
+    2: 'inflammatory',
+    3: 'connective',
+    4: 'dead',
+    5: 'epithelial',
 }
 
-NUCLEI_CLASSES = [101, 102, 103, 104, 105]
-NUM_TISSUE = 22
-NUM_NUCLEI = 6  # 背景(0) + 5类核
-
 
 # ============================================================
-#  RGB → class value 查找表
+#  Color Maps for visualization
 # ============================================================
 
+# Tissue RGB map: unified 16 classes
+TISSUE_RGB_MAP = {k: v for k, v in UNIFIED_COLOR_MAP.items()}
+
+# Nuclei RGB map: index-based (0-5)
+NUCLEI_RGB = {
+    0: [0, 0, 0],
+    1: [255, 0, 0],      # neoplastic
+    2: [0, 255, 0],      # inflammatory
+    3: [0, 80, 255],     # connective
+    4: [255, 255, 0],    # dead
+    5: [255, 0, 255],    # epithelial
+}
+
+# Combined color map (tissue IDs 0-15 + raw nuclei IDs 101-105)
+COLOR_MAP = {**UNIFIED_COLOR_MAP, **CELL_COLOR_MAP}
+
+# RGB -> value lookup table
 _rgb_to_val = {}
 for _val, _rgb in COLOR_MAP.items():
     _key = _rgb[0] * 65536 + _rgb[1] * 256 + _rgb[2]
@@ -59,14 +104,80 @@ _val_to_rgb = {v: rgb for v, rgb in COLOR_MAP.items()}
 
 
 # ============================================================
-#  转换函数
+#  Layered Storage I/O (AD-1)
+# ============================================================
+
+def load_tissue_mask(path):
+    """
+    Load tissue mask from a uint8 PNG file.
+
+    Args:
+        path: path to tissue_mask.png (uint8, values 0-15)
+
+    Returns:
+        numpy array (H, W), int64, values in [0, 15]
+    """
+    mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if mask is None:
+        raise FileNotFoundError(f"Cannot load tissue mask: {path}")
+    return mask.astype(np.int64)
+
+
+def load_nuclei_mask(path, remap=True):
+    """
+    Load nuclei mask from a uint8 PNG file.
+
+    Args:
+        path: path to nuclei_mask.png (uint8, values 0/101-105)
+        remap: if True, remap raw IDs (101-105) to internal indices (1-5)
+
+    Returns:
+        numpy array (H, W), int64
+        - If remap=True: values in [0, 5] (0=background, 1-5=cell types)
+        - If remap=False: values in {0, 101, 102, 103, 104, 105}
+    """
+    mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if mask is None:
+        raise FileNotFoundError(f"Cannot load nuclei mask: {path}")
+    mask = mask.astype(np.int64)
+
+    if remap:
+        remapped = np.zeros_like(mask)
+        for raw_id, idx in NUCLEI_RAW_TO_INDEX.items():
+            remapped[mask == raw_id] = idx
+        return remapped
+
+    return mask
+
+
+def save_nuclei_mask(mask, path, from_index=True):
+    """
+    Save nuclei mask to a uint8 PNG file.
+
+    Args:
+        mask: numpy array (H, W), nuclei mask
+        path: output path
+        from_index: if True, input uses internal indices (0-5), convert to raw IDs (0/101-105)
+    """
+    if from_index:
+        output = np.zeros_like(mask, dtype=np.uint8)
+        for idx, raw_id in NUCLEI_INDEX_TO_RAW.items():
+            output[mask == idx] = raw_id
+    else:
+        output = mask.astype(np.uint8)
+
+    cv2.imwrite(path, output)
+
+
+# ============================================================
+#  RGB <-> Class conversion (for legacy / visualization)
 # ============================================================
 
 def rgb_to_class_map(rgb_img):
-    """RGB 图像 → class value map (H, W), int64"""
-    encoded = (rgb_img[:,:,0].astype(np.int64) * 65536
-             + rgb_img[:,:,1].astype(np.int64) * 256
-             + rgb_img[:,:,2].astype(np.int64))
+    """RGB image -> class value map (H, W), int64."""
+    encoded = (rgb_img[:, :, 0].astype(np.int64) * 65536
+               + rgb_img[:, :, 1].astype(np.int64) * 256
+               + rgb_img[:, :, 2].astype(np.int64))
     result = np.zeros(rgb_img.shape[:2], dtype=np.int64)
     for key, val in _rgb_to_val.items():
         result[encoded == key] = val
@@ -74,7 +185,7 @@ def rgb_to_class_map(rgb_img):
 
 
 def class_map_to_rgb(class_map):
-    """class value map (H, W) → RGB 图像"""
+    """Class value map (H, W) -> RGB image."""
     h, w = class_map.shape
     rgb = np.zeros((h, w, 3), dtype=np.uint8)
     for val, color in _val_to_rgb.items():
@@ -82,53 +193,32 @@ def class_map_to_rgb(class_map):
     return rgb
 
 
-def split_tissue_nuclei(class_map):
+def split_tissue_nuclei(tissue_path, nuclei_path):
     """
-    将合并的 class map 拆分为 tissue layer 和 nuclei layer。
-    tissue 层中细胞核像素用 EDT 推断其下方组织。
-    nuclei 层值域: 0=背景, 1-5=五类核。
+    Load tissue and nuclei layers from separate files (AD-1 layered storage).
+
+    This replaces the old split_tissue_nuclei() which used EDT to infer
+    tissue under nuclei pixels from a merged class map.
+
+    Args:
+        tissue_path: path to tissue_mask.png (uint8, 0-15)
+        nuclei_path: path to nuclei_mask.png (uint8, 0/101-105)
+
+    Returns:
+        tissue: (H, W) int64, values [0, 15]
+        nuclei: (H, W) int64, values [0, 5] (remapped)
     """
-    tissue = class_map.copy()
-    nuclei = np.zeros_like(class_map)
-
-    for i, nuc_val in enumerate(NUCLEI_CLASSES):
-        mask = class_map == nuc_val
-        nuclei[mask] = i + 1
-
-    nuc_mask = class_map >= 100
-    if nuc_mask.any():
-        from scipy.ndimage import distance_transform_edt
-        _, nearest_idx = distance_transform_edt(
-            nuc_mask, return_distances=True, return_indices=True
-        )
-        tissue[nuc_mask] = class_map[nearest_idx[0][nuc_mask], nearest_idx[1][nuc_mask]]
-        tissue = np.clip(tissue, 0, 21)
-
+    tissue = load_tissue_mask(tissue_path)
+    nuclei = load_nuclei_mask(nuclei_path, remap=True)
     return tissue, nuclei
 
 
-def to_onehot(index_map, num_classes):
-    """index map → one-hot tensor (num_classes, H, W), float32"""
-    oh = np.zeros((num_classes, index_map.shape[0], index_map.shape[1]), dtype=np.float32)
-    for c in range(num_classes):
-        oh[c] = (index_map == c).astype(np.float32)
-    return oh
-
-
 # ============================================================
-#  可视化辅助
+#  Visualization Helpers
 # ============================================================
-
-NUCLEI_RGB = {
-    0: [0, 0, 0], 1: [255, 0, 0], 2: [0, 255, 0],
-    3: [0, 80, 255], 4: [255, 255, 0], 5: [255, 0, 255],
-}
-
-TISSUE_RGB_MAP = {i: COLOR_MAP[i] for i in range(22)}
-
 
 def index_to_rgb(index_map, color_map):
-    """通用的 index → RGB 可视化"""
+    """Generic index map -> RGB visualization."""
     h, w = index_map.shape
     rgb = np.zeros((h, w, 3), dtype=np.uint8)
     for idx, color in color_map.items():
@@ -137,7 +227,17 @@ def index_to_rgb(index_map, color_map):
 
 
 def overlay(tissue_map, nuclei_map):
-    """将 tissue 和 nuclei 两层叠加渲染为 RGB（nuclei 覆盖 tissue）"""
+    """
+    Overlay tissue and nuclei layers into a single RGB image.
+    Nuclei pixels overwrite tissue pixels.
+
+    Args:
+        tissue_map: (H, W) int, tissue fine IDs (0-15)
+        nuclei_map: (H, W) int, nuclei internal indices (0-5)
+
+    Returns:
+        (H, W, 3) uint8 RGB
+    """
     tissue_rgb = index_to_rgb(tissue_map, TISSUE_RGB_MAP)
     nuc_rgb = index_to_rgb(nuclei_map, NUCLEI_RGB)
     result = tissue_rgb.copy()
