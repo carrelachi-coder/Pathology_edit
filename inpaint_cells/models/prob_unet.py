@@ -14,7 +14,9 @@ Phase 4.1 changes (AD-4: Embedding lookup replaces one-hot):
   - Input channels: 17 = tissue_emb(8) + cell_emb(4) + mask(1) + cancer_emb(4)
   - Embeddings are trained end-to-end with the UNet
 """
-
+"""
+new version
+"""
 import torch
 import torch.nn as nn
 
