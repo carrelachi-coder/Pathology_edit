@@ -20,6 +20,8 @@
 # 5. 再次定义一些绝对不能上传的敏感/大型项（兜底）
 # 比如即使文件夹里有 .json，但如果是放在数据集目录下的也不要
 data/
+!inpaint_cells/data/
+!inpaint_cells/data/*.py
 datasets/
 **/__pycache__/
 .DS_Store
