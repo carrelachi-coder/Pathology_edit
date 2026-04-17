@@ -1,0 +1,25 @@
+{
+  "dataset": "IGNITE",
+  "cancer_type": "lung",
+  "cancer_type_index": 3,
+  "label_space": "unified_fine_16",
+  "input_format": "layered",
+  "n_augmentations": 3,
+  "seed": 42,
+  "total_samples": 27175,
+  "train_samples": 24467,
+  "val_samples": 2708,
+  "skipped": 30,
+  "mode_distribution": {
+    "negative": 1320,
+    "full_image": 5338,
+    "large_region": 5397,
+    "local": 15120
+  },
+  "output_format": "layered",
+  "output_structure": {
+    "gt_tissue": "uint8 PNG, values 0-15 (unified fine tissue IDs)",
+    "gt_nuclei": "uint8 PNG, values 0/101-105 (CellViT raw nuclei IDs)",
+    "masks": "uint8 PNG, values 0/255 (edit region binary mask)"
+  }
+}
