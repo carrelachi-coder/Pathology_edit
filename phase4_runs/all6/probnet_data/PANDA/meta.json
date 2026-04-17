@@ -1,0 +1,25 @@
+{
+  "dataset": "PANDA",
+  "cancer_type": "prostate",
+  "cancer_type_index": 1,
+  "label_space": "unified_fine_16",
+  "input_format": "layered",
+  "n_augmentations": 3,
+  "seed": 42,
+  "total_samples": 87806,
+  "train_samples": 79024,
+  "val_samples": 8782,
+  "skipped": 21,
+  "mode_distribution": {
+    "negative": 405,
+    "full_image": 17570,
+    "large_region": 17685,
+    "local": 52146
+  },
+  "output_format": "layered",
+  "output_structure": {
+    "gt_tissue": "uint8 PNG, values 0-15 (unified fine tissue IDs)",
+    "gt_nuclei": "uint8 PNG, values 0/101-105 (CellViT raw nuclei IDs)",
+    "masks": "uint8 PNG, values 0/255 (edit region binary mask)"
+  }
+}

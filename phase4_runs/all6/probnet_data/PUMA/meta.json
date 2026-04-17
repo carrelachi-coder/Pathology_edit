@@ -1,20 +1,20 @@
 {
-  "dataset": "IGNITE",
-  "cancer_type": "lung",
-  "cancer_type_index": 3,
+  "dataset": "PUMA",
+  "cancer_type": "melanoma",
+  "cancer_type_index": 4,
   "label_space": "unified_fine_16",
   "input_format": "layered",
   "n_augmentations": 3,
   "seed": 42,
-  "total_samples": 67294,
-  "train_samples": 60564,
-  "val_samples": 6730,
-  "skipped": 39,
+  "total_samples": 5532,
+  "train_samples": 4980,
+  "val_samples": 552,
+  "skipped": 0,
   "mode_distribution": {
-    "negative": 3258,
-    "full_image": 13316,
-    "large_region": 13538,
-    "local": 37182
+    "negative": 29,
+    "full_image": 1119,
+    "large_region": 1104,
+    "local": 3280
   },
   "output_format": "layered",
   "output_structure": {
