@@ -55,11 +55,23 @@ NUM_EPOCHS="${NUM_EPOCHS:-100}"
 N_AUGMENTATIONS="${N_AUGMENTATIONS:-3}"
 
 # Generation knobs.
-GAMMA_VALUES="${GAMMA_VALUES:-1.0,2.0,3.0}"
-PROB_COUNT_WEIGHT="${PROB_COUNT_WEIGHT:-0.7}"
-DENSITY_SCALE="${DENSITY_SCALE:-1.0}"
-MAX_DENSITY_PER_10K="${MAX_DENSITY_PER_10K:-900}"
-MAX_COUNT_FACTOR="${MAX_COUNT_FACTOR:-2.5}"
+PROFILE_DIR="${PROFILE_DIR:-${REPO_ROOT}/inpaint_cells/configs}"
+PROFILE_JSON="${PROFILE_JSON:-${PROFILE_DIR}/generation_profiles.json}"
+
+eval "$(
+  python scripts/phase4_generation_profile.py \
+    --dataset "${DATASET}" \
+    --profile-json "${PROFILE_JSON}" \
+    --profile-dir "${PROFILE_DIR}"
+)"
+
+GAMMA_VALUES="${GAMMA_VALUES:-${PROFILE_GAMMA_VALUES}}"
+PROB_COUNT_WEIGHT="${PROB_COUNT_WEIGHT:-${PROFILE_PROB_COUNT_WEIGHT}}"
+DENSITY_SCALE="${DENSITY_SCALE:-${PROFILE_DENSITY_SCALE}}"
+DENSITY_SCALE_JSON="${DENSITY_SCALE_JSON:-${PROFILE_DENSITY_SCALE_JSON}}"
+MAX_DENSITY_PER_10K="${MAX_DENSITY_PER_10K:-${PROFILE_MAX_DENSITY_PER_10K}}"
+MAX_COUNT_FACTOR="${MAX_COUNT_FACTOR:-${PROFILE_MAX_COUNT_FACTOR}}"
+MIN_DISTANCE_SCALE="${MIN_DISTANCE_SCALE:-${PROFILE_MIN_DISTANCE_SCALE}}"
 
 mkdir -p "${PHASE4_ROOT}" "${GEN_OUTPUT_DIR}"
 
@@ -73,6 +85,11 @@ echo "== Phase 4 ProbNet workflow =="
 echo "Dataset: ${DATASET}"
 echo "Raw patches: ${RAW_PATCH_DIR}"
 echo "Phase4 root: ${PHASE4_ROOT}"
+echo "Generation profile: ${PROFILE_DIR}/GENERATION_PROFILES.md"
+echo "Generation profile JSON: ${PROFILE_JSON}"
+echo "  gamma=${GAMMA_VALUES}, prob_count_weight=${PROB_COUNT_WEIGHT}, density_scale=${DENSITY_SCALE}"
+echo "  max_density_per_10k=${MAX_DENSITY_PER_10K}, max_count_factor=${MAX_COUNT_FACTOR}, min_distance_scale=${MIN_DISTANCE_SCALE}"
+[[ -n "${DENSITY_SCALE_JSON}" ]] && echo "  density_scale_json=${DENSITY_SCALE_JSON}"
 
 echo
 echo "== 0. Optional environment setup =="
@@ -128,6 +145,10 @@ echo "Using checkpoint: ${CKPT}"
 
 echo
 echo "== 4. Batch inference on validation split with gamma comparison =="
+DENSITY_JSON_ARGS=()
+if [[ -n "${DENSITY_SCALE_JSON}" ]]; then
+  DENSITY_JSON_ARGS+=(--density-scale-json "${DENSITY_SCALE_JSON}")
+fi
 python inpaint_cells/generate.py \
   --dataset "${DATASET}" \
   --ckpt "${CKPT}" \
@@ -139,10 +160,11 @@ python inpaint_cells/generate.py \
   --gamma-values "${GAMMA_VALUES}" \
   --prob-count-weight "${PROB_COUNT_WEIGHT}" \
   --density-scale "${DENSITY_SCALE}" \
+  "${DENSITY_JSON_ARGS[@]}" \
   --max-density-per-10k "${MAX_DENSITY_PER_10K}" \
   --max-count-factor "${MAX_COUNT_FACTOR}" \
   --min-distance-mode adaptive \
-  --min-distance-scale 0.75 \
+  --min-distance-scale "${MIN_DISTANCE_SCALE}" \
   --oversample-base 3.0 \
   --oversample-gamma-scale 0.35
 
@@ -160,9 +182,11 @@ if [[ -n "${SINGLE_EDITED_TISSUE}" && -n "${SINGLE_EDIT_REGION}" ]]; then
     --gamma-values "${GAMMA_VALUES}"
     --prob-count-weight "${PROB_COUNT_WEIGHT}"
     --density-scale "${DENSITY_SCALE}"
+    "${DENSITY_JSON_ARGS[@]}"
     --max-density-per-10k "${MAX_DENSITY_PER_10K}"
     --max-count-factor "${MAX_COUNT_FACTOR}"
     --min-distance-mode adaptive
+    --min-distance-scale "${MIN_DISTANCE_SCALE}"
   )
   if [[ -n "${SINGLE_INPUT_NUCLEI}" ]]; then
     SINGLE_ARGS+=(--input-nuclei "${SINGLE_INPUT_NUCLEI}")

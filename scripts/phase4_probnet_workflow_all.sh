@@ -27,11 +27,27 @@ CROP_MODE="${CROP_MODE:-mask}"
 PROBNET_RUN_DIR="${PROBNET_RUN_DIR:-${PHASE4_ROOT}/probnet_run}"
 GEN_OUTPUT_DIR="${GEN_OUTPUT_DIR:-${PHASE4_ROOT}/generated_masks}"
 
-GAMMA_VALUES="${GAMMA_VALUES:-1.0,2.0,3.0}"
-PROB_COUNT_WEIGHT="${PROB_COUNT_WEIGHT:-0.7}"
-DENSITY_SCALE="${DENSITY_SCALE:-1.0}"
-MAX_DENSITY_PER_10K="${MAX_DENSITY_PER_10K:-900}"
-MAX_COUNT_FACTOR="${MAX_COUNT_FACTOR:-2.5}"
+PROFILE_DIR="${PROFILE_DIR:-${REPO_ROOT}/inpaint_cells/configs}"
+PROFILE_JSON="${PROFILE_JSON:-${PROFILE_DIR}/generation_profiles.json}"
+
+profile_for_dataset() {
+  local dataset="$1"
+
+  eval "$(
+    python scripts/phase4_generation_profile.py \
+      --dataset "${dataset}" \
+      --profile-json "${PROFILE_JSON}" \
+      --profile-dir "${PROFILE_DIR}"
+  )"
+
+  PROFILE_GAMMA_VALUES="${GAMMA_VALUES:-${PROFILE_GAMMA_VALUES}}"
+  PROFILE_PROB_COUNT_WEIGHT="${PROB_COUNT_WEIGHT:-${PROFILE_PROB_COUNT_WEIGHT}}"
+  PROFILE_DENSITY_SCALE="${DENSITY_SCALE:-${PROFILE_DENSITY_SCALE}}"
+  PROFILE_DENSITY_SCALE_JSON="${DENSITY_SCALE_JSON:-${PROFILE_DENSITY_SCALE_JSON}}"
+  PROFILE_MAX_DENSITY_PER_10K="${MAX_DENSITY_PER_10K:-${PROFILE_MAX_DENSITY_PER_10K}}"
+  PROFILE_MAX_COUNT_FACTOR="${MAX_COUNT_FACTOR:-${PROFILE_MAX_COUNT_FACTOR}}"
+  PROFILE_MIN_DISTANCE_SCALE="${MIN_DISTANCE_SCALE:-${PROFILE_MIN_DISTANCE_SCALE}}"
+}
 
 mkdir -p "${PHASE4_ROOT}" "${GEN_OUTPUT_DIR}"
 
@@ -39,6 +55,8 @@ echo "== Phase 4 all-dataset ProbNet workflow =="
 echo "Edit datasets root: ${EDIT_DATASETS_ROOT}"
 echo "Phase4 root: ${PHASE4_ROOT}"
 echo "Datasets: ${DATASETS[*]}"
+echo "Generation profiles: ${PROFILE_DIR}/GENERATION_PROFILES.md"
+echo "Generation profile JSON: ${PROFILE_JSON}"
 
 TRAIN_SPECS=()
 
@@ -97,6 +115,18 @@ echo "Using checkpoint: ${CKPT}"
 echo
 echo "== Batch inference smoke test on each validation split =="
 for DATASET in "${DATASETS[@]}"; do
+  profile_for_dataset "${DATASET}"
+  DENSITY_JSON_ARGS=()
+  if [[ -n "${PROFILE_DENSITY_SCALE_JSON}" ]]; then
+    DENSITY_JSON_ARGS+=(--density-scale-json "${PROFILE_DENSITY_SCALE_JSON}")
+  fi
+
+  echo
+  echo "== ${DATASET}: generation profile =="
+  echo "  gamma=${PROFILE_GAMMA_VALUES}, prob_count_weight=${PROFILE_PROB_COUNT_WEIGHT}, density_scale=${PROFILE_DENSITY_SCALE}"
+  echo "  max_density_per_10k=${PROFILE_MAX_DENSITY_PER_10K}, max_count_factor=${PROFILE_MAX_COUNT_FACTOR}, min_distance_scale=${PROFILE_MIN_DISTANCE_SCALE}"
+  [[ -n "${PROFILE_DENSITY_SCALE_JSON}" ]] && echo "  density_scale_json=${PROFILE_DENSITY_SCALE_JSON}"
+
   python inpaint_cells/generate.py \
     --dataset "${DATASET}" \
     --ckpt "${CKPT}" \
@@ -105,13 +135,14 @@ for DATASET in "${DATASETS[@]}"; do
     --output-dir "${GEN_OUTPUT_DIR}/${DATASET}/val" \
     --vis-dir "${GEN_OUTPUT_DIR}/${DATASET}/val/vis" \
     --n 16 \
-    --gamma-values "${GAMMA_VALUES}" \
-    --prob-count-weight "${PROB_COUNT_WEIGHT}" \
-    --density-scale "${DENSITY_SCALE}" \
-    --max-density-per-10k "${MAX_DENSITY_PER_10K}" \
-    --max-count-factor "${MAX_COUNT_FACTOR}" \
+    --gamma-values "${PROFILE_GAMMA_VALUES}" \
+    --prob-count-weight "${PROFILE_PROB_COUNT_WEIGHT}" \
+    --density-scale "${PROFILE_DENSITY_SCALE}" \
+    "${DENSITY_JSON_ARGS[@]}" \
+    --max-density-per-10k "${PROFILE_MAX_DENSITY_PER_10K}" \
+    --max-count-factor "${PROFILE_MAX_COUNT_FACTOR}" \
     --min-distance-mode adaptive \
-    --min-distance-scale 0.75 \
+    --min-distance-scale "${PROFILE_MIN_DISTANCE_SCALE}" \
     --oversample-base 3.0 \
     --oversample-gamma-scale 0.35
 done

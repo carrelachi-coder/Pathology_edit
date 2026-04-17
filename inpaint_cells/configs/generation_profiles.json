@@ -1,0 +1,65 @@
+{
+  "BCSS": {
+    "gamma_values": "1.0,2.0,3.0",
+    "prob_count_weight": 0.65,
+    "density_scale": 1.0,
+    "density_scale_json": "density_scale_bcss.json",
+    "max_density_per_10k": 900,
+    "max_count_factor": 2.5,
+    "min_distance_scale": 0.75
+  },
+  "GlaS": {
+    "gamma_values": "1.0,2.0,3.0",
+    "prob_count_weight": 0.70,
+    "density_scale": 0.9,
+    "density_scale_json": "density_scale_glas.json",
+    "max_density_per_10k": 850,
+    "max_count_factor": 2.2,
+    "min_distance_scale": 0.80
+  },
+  "IGNITE": {
+    "gamma_values": "1.0,2.0,3.0",
+    "prob_count_weight": 0.65,
+    "density_scale": 1.0,
+    "density_scale_json": "density_scale_ignite.json",
+    "max_density_per_10k": 900,
+    "max_count_factor": 2.5,
+    "min_distance_scale": 0.75
+  },
+  "ORCA": {
+    "gamma_values": "2.0,3.0",
+    "prob_count_weight": 0.85,
+    "density_scale": 0.9,
+    "density_scale_json": "density_scale_orca.json",
+    "max_density_per_10k": 750,
+    "max_count_factor": 1.5,
+    "min_distance_scale": 0.90
+  },
+  "PANDA": {
+    "gamma_values": "1.0,2.0,3.0",
+    "prob_count_weight": 0.70,
+    "density_scale": 1.0,
+    "density_scale_json": "density_scale_panda.json",
+    "max_density_per_10k": 900,
+    "max_count_factor": 2.3,
+    "min_distance_scale": 0.80
+  },
+  "PUMA": {
+    "gamma_values": "1.0,1.5,2.0",
+    "prob_count_weight": 0.85,
+    "density_scale": 0.9,
+    "density_scale_json": "density_scale_puma.json",
+    "max_density_per_10k": 750,
+    "max_count_factor": 1.8,
+    "min_distance_scale": 0.85
+  },
+  "DEFAULT": {
+    "gamma_values": "1.0,2.0,3.0",
+    "prob_count_weight": 0.70,
+    "density_scale": 1.0,
+    "density_scale_json": "",
+    "max_density_per_10k": 900,
+    "max_count_factor": 2.5,
+    "min_distance_scale": 0.75
+  }
+}
