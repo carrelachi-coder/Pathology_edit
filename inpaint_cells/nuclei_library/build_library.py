@@ -499,13 +499,19 @@ def main():
     fmt = args.format
     if fmt == 'auto':
         # 检查是否有分层存储标记
+        has_flat_tissue = os.path.isdir(os.path.join(args.gt_dir, 'tissue_masks'))
+        has_flat_nuclei = os.path.isdir(os.path.join(args.gt_dir, 'nuclei_masks'))
         has_tissue = (
-            len(glob.glob(os.path.join(args.gt_dir, '*', 'tissue_mask.png'))) > 0
+            has_flat_tissue
+            or len(glob.glob(os.path.join(args.gt_dir, '*', 'tissue_mask.png'))) > 0
             or len(glob.glob(os.path.join(args.gt_dir, '**', 'tissue_mask.png'), recursive=True)) > 0
+            or os.path.isdir(os.path.join(args.gt_dir, 'gt_tissue'))
         )
         has_nuclei = (
-            len(glob.glob(os.path.join(args.gt_dir, '*', 'nuclei_mask.png'))) > 0
+            has_flat_nuclei
+            or len(glob.glob(os.path.join(args.gt_dir, '*', 'nuclei_mask.png'))) > 0
             or len(glob.glob(os.path.join(args.gt_dir, '**', 'nuclei_mask.png'), recursive=True)) > 0
+            or os.path.isdir(os.path.join(args.gt_dir, 'gt_nuclei'))
         )
         if has_tissue and has_nuclei:
             fmt = 'layered'
@@ -568,14 +574,22 @@ def _process_layered(args, config, skip_tissues, instances_dir,
                      tissue_stats, bucket_counts):
     """处理分层存储格式 (AD-1)"""
     # 查找所有 patch 目录 (含 tissue_mask.png + nuclei_mask.png)
-    tissue_files = sorted(glob.glob(os.path.join(args.gt_dir, '**', 'tissue_mask.png'),
-                                    recursive=True))
+    flat_tissue_dir = os.path.join(args.gt_dir, 'tissue_masks')
+    flat_nuclei_dir = os.path.join(args.gt_dir, 'nuclei_masks')
+    layered_mode = 'sample_dirs'
+    if os.path.isdir(flat_tissue_dir) and os.path.isdir(flat_nuclei_dir):
+        tissue_files = sorted(glob.glob(os.path.join(flat_tissue_dir, '*.png')))
+        layered_mode = 'tissue_masks'
+    else:
+        tissue_files = sorted(glob.glob(os.path.join(args.gt_dir, '**', 'tissue_mask.png'),
+                                        recursive=True))
     if not tissue_files:
         # 也尝试平面目录: gt_tissue/ + gt_nuclei/
         gt_tissue_dir = os.path.join(args.gt_dir, 'gt_tissue')
         gt_nuclei_dir = os.path.join(args.gt_dir, 'gt_nuclei')
         if os.path.isdir(gt_tissue_dir) and os.path.isdir(gt_nuclei_dir):
             tissue_files = sorted(glob.glob(os.path.join(gt_tissue_dir, '*.png')))
+            layered_mode = 'gt_tissue'
         else:
             print(f"No layered samples found in {args.gt_dir}")
             return 0
@@ -588,7 +602,9 @@ def _process_layered(args, config, skip_tissues, instances_dir,
         parent = os.path.dirname(tissue_path)
         basename = os.path.basename(tissue_path)
 
-        if basename == 'tissue_mask.png':
+        if layered_mode == 'tissue_masks':
+            nuclei_path = os.path.join(flat_nuclei_dir, basename)
+        elif basename == 'tissue_mask.png':
             nuclei_path = os.path.join(parent, 'nuclei_mask.png')
         else:
             # 平面目录模式: gt_tissue/xxx.png → gt_nuclei/xxx.png

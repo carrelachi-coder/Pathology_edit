@@ -43,6 +43,21 @@ from ..utils.mask_utils import (
 logger = logging.getLogger(__name__)
 
 
+def _choose_crop_origin(h: int, w: int, out_size: int, edit_mask: np.ndarray, mode: str) -> Tuple[int, int]:
+    """Choose a crop origin. Mask mode keeps the erased region visible when possible."""
+    max_y = max(0, h - out_size)
+    max_x = max(0, w - out_size)
+    if mode == 'mask' and edit_mask is not None and edit_mask.any():
+        ys, xs = np.where(edit_mask > 0.5)
+        idx = random.randrange(len(ys))
+        cy = int(ys[idx])
+        cx = int(xs[idx])
+        y = min(max(cy - out_size // 2, 0), max_y)
+        x = min(max(cx - out_size // 2, 0), max_x)
+        return y, x
+    return random.randint(0, max_y), random.randint(0, max_x)
+
+
 # ============================================================
 #  Single-dataset loader (layered storage, AD-1)
 # ============================================================
@@ -77,11 +92,13 @@ class NucleiProbDatasetLayered(Dataset):
         cancer_type_index: int,
         out_size: int = 256,
         augment: bool = True,
+        crop_mode: str = 'mask',
     ):
         self.data_dir = data_dir
         self.cancer_type_index = cancer_type_index
         self.out_size = out_size
         self.augment = augment
+        self.crop_mode = crop_mode
 
         self.samples = self._discover_samples()
         logger.info(
@@ -170,10 +187,10 @@ class NucleiProbDatasetLayered(Dataset):
 
         h, w = gt_tissue.shape[:2]
 
-        # Random crop
+        # Crop to the training size. Prefer edit-mask-centered crops so the
+        # supervised erased region remains visible after cropping.
         if h > self.out_size or w > self.out_size:
-            y = random.randint(0, max(0, h - self.out_size))
-            x = random.randint(0, max(0, w - self.out_size))
+            y, x = _choose_crop_origin(h, w, self.out_size, edit_mask, self.crop_mode)
             gt_tissue = gt_tissue[y:y+self.out_size, x:x+self.out_size]
             gt_nuclei = gt_nuclei[y:y+self.out_size, x:x+self.out_size]
             input_tissue = input_tissue[y:y+self.out_size, x:x+self.out_size]
@@ -264,12 +281,14 @@ class NucleiProbDatasetLegacy(Dataset):
         cancer_type_index: int = 0,
         out_size: int = 256,
         augment: bool = True,
+        crop_mode: str = 'mask',
     ):
         self.gt_dir = gt_dir
         self.train_dir = train_dir
         self.cancer_type_index = cancer_type_index
         self.out_size = out_size
         self.augment = augment
+        self.crop_mode = crop_mode
 
         all_gt = sorted(glob.glob(os.path.join(gt_dir, '*.png')))
         self.samples = []
@@ -297,10 +316,12 @@ class NucleiProbDatasetLegacy(Dataset):
 
         h, w = gt_rgb.shape[:2]
 
-        # Random crop
+        edit_mask_full = (mask_bin > 128).astype(np.float32)
+
+        # Crop to the training size. Prefer edit-mask-centered crops so the
+        # supervised erased region remains visible after cropping.
         if h > self.out_size or w > self.out_size:
-            y = random.randint(0, max(0, h - self.out_size))
-            x = random.randint(0, max(0, w - self.out_size))
+            y, x = _choose_crop_origin(h, w, self.out_size, edit_mask_full, self.crop_mode)
             gt_rgb = gt_rgb[y:y+self.out_size, x:x+self.out_size]
             input_rgb = input_rgb[y:y+self.out_size, x:x+self.out_size]
             mask_bin = mask_bin[y:y+self.out_size, x:x+self.out_size]
@@ -401,6 +422,7 @@ def build_multi_dataset(
     split: str = 'train',
     out_size: int = 256,
     augment: bool = True,
+    crop_mode: str = 'mask',
 ) -> Tuple[ConcatDataset, WeightedRandomSampler]:
     """
     Build a combined dataset from multiple data sources with weighted sampling.
@@ -443,6 +465,9 @@ def build_multi_dataset(
             # Check for layered storage markers
             has_layered = (
                 os.path.isdir(os.path.join(data_dir, 'gt_tissue'))
+                or os.path.isdir(os.path.join(data_dir, split, 'gt_tissue'))
+                or os.path.isdir(os.path.join(data_dir, 'train', 'gt_tissue'))
+                or os.path.isdir(os.path.join(data_dir, 'val', 'gt_tissue'))
                 or len(glob.glob(os.path.join(data_dir, '*', 'tissue_mask.png'))) > 0
             )
             fmt = 'layered' if has_layered else 'legacy'
@@ -454,6 +479,7 @@ def build_multi_dataset(
                 cancer_type_index=cancer_idx,
                 out_size=out_size,
                 augment=augment and (split == 'train'),
+                crop_mode=crop_mode,
             )
         else:
             # Legacy LaMa format
@@ -463,6 +489,7 @@ def build_multi_dataset(
                 cancer_type_index=cancer_idx,
                 out_size=out_size,
                 augment=augment and (split == 'train'),
+                crop_mode=crop_mode,
             )
 
         if len(ds) > 0:

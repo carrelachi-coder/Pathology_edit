@@ -435,6 +435,23 @@ def _discover_layered_samples(input_dir):
     """
     samples = []
 
+    # Pattern 0: upload staging/edit_datasets format:
+    #   {input_dir}/tissue_masks/{name}.png + nuclei_masks/{name}.png
+    tissue_masks_dir = os.path.join(input_dir, 'tissue_masks')
+    nuclei_masks_dir = os.path.join(input_dir, 'nuclei_masks')
+    if os.path.isdir(tissue_masks_dir) and os.path.isdir(nuclei_masks_dir):
+        tissue_files = sorted(glob.glob(os.path.join(tissue_masks_dir, '*.png')))
+        for t_path in tissue_files:
+            name = os.path.splitext(os.path.basename(t_path))[0]
+            n_path = os.path.join(nuclei_masks_dir, os.path.basename(t_path))
+            if os.path.exists(n_path):
+                samples.append({
+                    'name': name,
+                    'tissue': t_path,
+                    'nuclei': n_path,
+                })
+        return samples
+
     # Pattern 1: subdirectory per sample
     subdirs = sorted(glob.glob(os.path.join(input_dir, '*', 'tissue_mask.png')))
     if subdirs:

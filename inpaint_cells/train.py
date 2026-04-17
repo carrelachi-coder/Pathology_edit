@@ -138,9 +138,11 @@ def train(args):
             name, path = spec.split(':', 1)
             dataset_configs.append({'dataset_name': name, 'data_dir': path})
         train_dataset, train_sampler = build_multi_dataset(
-            dataset_configs, split='train', out_size=args.img_size, augment=True)
+            dataset_configs, split='train', out_size=args.img_size, augment=True,
+            crop_mode=args.crop_mode)
         val_dataset, _ = build_multi_dataset(
-            dataset_configs, split='val', out_size=args.img_size, augment=False)
+            dataset_configs, split='val', out_size=args.img_size, augment=False,
+            crop_mode=args.crop_mode)
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                                   sampler=train_sampler, num_workers=4,
                                   pin_memory=True, drop_last=True)
@@ -152,24 +154,30 @@ def train(args):
         # Auto-detect format
         has_layered = (
             os.path.isdir(os.path.join(args.data_dir, 'gt_tissue'))
+            or os.path.isdir(os.path.join(args.data_dir, 'train', 'gt_tissue'))
+            or os.path.isdir(os.path.join(args.data_dir, 'val', 'gt_tissue'))
             or len(glob.glob(os.path.join(args.data_dir, '*', 'tissue_mask.png'))) > 0
         )
         if has_layered:
             train_dataset = NucleiProbDatasetLayered(
                 data_dir=os.path.join(args.data_dir, 'train') if os.path.isdir(os.path.join(args.data_dir, 'train')) else args.data_dir,
-                cancer_type_index=cancer_idx, out_size=args.img_size, augment=True)
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=True,
+                crop_mode=args.crop_mode)
             val_dataset = NucleiProbDatasetLayered(
                 data_dir=os.path.join(args.data_dir, 'val') if os.path.isdir(os.path.join(args.data_dir, 'val')) else args.data_dir,
-                cancer_type_index=cancer_idx, out_size=args.img_size, augment=False)
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=False,
+                crop_mode=args.crop_mode)
         else:
             train_dataset = NucleiProbDatasetLegacy(
                 gt_dir=os.path.join(args.data_dir, 'ground_truth'),
                 train_dir=os.path.join(args.data_dir, 'train'),
-                cancer_type_index=cancer_idx, out_size=args.img_size, augment=True)
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=True,
+                crop_mode=args.crop_mode)
             val_dataset = NucleiProbDatasetLegacy(
                 gt_dir=os.path.join(args.data_dir, 'ground_truth'),
                 train_dir=os.path.join(args.data_dir, 'val'),
-                cancer_type_index=cancer_idx, out_size=args.img_size, augment=False)
+                cancer_type_index=cancer_idx, out_size=args.img_size, augment=False,
+                crop_mode=args.crop_mode)
 
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
                                   num_workers=4, pin_memory=True, drop_last=True)
@@ -578,6 +586,8 @@ def main():
     parser.add_argument('--output-dir', type=str,
                         default='/data/huggingface/pathology_edit/prob_net')
     parser.add_argument('--img-size', type=int, default=256)
+    parser.add_argument('--crop-mode', choices=['mask', 'random'], default='mask',
+                        help='Crop strategy for images larger than --img-size')
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--num-epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=2e-4)
