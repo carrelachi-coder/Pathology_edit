@@ -1,0 +1,105 @@
+IGNITE Dataset Statistics
+============================================================
+Source: 20x with_context ROIs → 40x 512×512 patches
+Resize: ROI × 2 (bilinear), then crop 512×512 (stride=256)
+Filter: (Unannotated+BG) < 50%, any edit-relevant tissue >= 5%
+Label remap: IGNITE 17-class → unified 8-class
+Organ filter: lung only
+
+Input ROIs: 327
+ROIs processed (has valid patches): 312
+ROIs skipped (no valid patches / errors): 15
+Total output patches: 22502
+Patches discarded: 43959
+  - bg_too_high: 41766
+  - no_relevant_tissue: 2193
+Processing time: 2629.4s
+
+Unique patients: 66
+Histological subtypes processed: {'adenocarcinoma': 173, 'squamous_cell_carcinoma': 135, 'adenosquamous': 4}
+
+Patches per patient:
+  patient1:   2709 patches
+  patient2:   1188 patches
+  patient3:    536 patches
+  patient4:    669 patches
+  patient5:    718 patches
+  patient6:    738 patches
+  patient7:    121 patches
+  patient8:    314 patches
+  patient9:    741 patches
+  patient10:    315 patches
+  patient11:    346 patches
+  patient12:    341 patches
+  patient13:    255 patches
+  patient14:    395 patches
+  patient15:    292 patches
+  patient16:   1755 patches
+  patient17:    196 patches
+  patient18:    215 patches
+  patient19:    245 patches
+  patient20:    334 patches
+  patient21:    452 patches
+  patient22:    206 patches
+  patient23:    164 patches
+  patient24:    149 patches
+  patient25:    186 patches
+  patient26:    281 patches
+  patient27:    319 patches
+  patient28:    328 patches
+  patient29:    107 patches
+  patient30:    169 patches
+  patient31:    183 patches
+  patient32:    212 patches
+  patient33:    258 patches
+  patient34:    170 patches
+  patient35:    179 patches
+  patient36:    116 patches
+  patient37:    218 patches
+  patient38:    140 patches
+  patient39:    249 patches
+  patient40:    168 patches
+  patient41:    167 patches
+  patient42:    187 patches
+  patient43:    148 patches
+  patient56:    445 patches
+  patient61:    169 patches
+  patient62:    502 patches
+  patient63:    153 patches
+  patient64:    195 patches
+  patient65:    460 patches
+  patient66:    227 patches
+  patient67:    197 patches
+  patient68:    200 patches
+  patient69:    397 patches
+  patient70:     39 patches
+  patient71:    394 patches
+  patient72:     60 patches
+  patient73:    240 patches
+  patient74:     37 patches
+  patient75:     55 patches
+  patient76:    131 patches
+  patient77:    356 patches
+  patient78:    226 patches
+  patient79:    170 patches
+  patient80:    239 patches
+  patient81:    215 patches
+  patient82:    216 patches
+
+Label distribution (unified 8-class, by patch count):
+  background                (val=0):  18053 patches
+  tumor                     (val=1):  12529 patches
+  stroma                    (val=2):  19434 patches
+  necrosis                  (val=3):   3654 patches
+  immune infiltrate         (val=4):   8362 patches
+  normal epithelium         (val=5):   5114 patches
+  other tissue              (val=7):   7659 patches
+
+Label distribution (unified 8-class, by pixel count):
+  background                (val=0):    807,498,578 px (13.69%)
+  tumor                     (val=1):  1,487,142,198 px (25.21%)
+  stroma                    (val=2):  2,249,983,158 px (38.14%)
+  necrosis                  (val=3):    230,209,000 px (3.90%)
+  immune infiltrate         (val=4):    589,152,726 px (9.99%)
+  normal epithelium         (val=5):    232,167,600 px (3.94%)
+  other tissue              (val=7):    302,611,028 px (5.13%)

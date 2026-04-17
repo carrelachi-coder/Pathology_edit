@@ -8,22 +8,26 @@ set -euo pipefail
 #   4. generate new nuclei masks with ProbNet-centered weighted Poisson sampling
 #
 # Usage:
-#   bash scripts/phase4_probnet_workflow.sh
+#   bash scripts/phase4_probnet_workflow.sh DATASET RAW_PATCH_DIR [PHASE4_ROOT]
 #
-# Before running, edit the variables in the "User paths" block.
+# Example:
+#   bash scripts/phase4_probnet_workflow.sh BCSS edit_datasets/BCSS phase4_runs/BCSS
+#
+# Most knobs can still be overridden with environment variables.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
 # -------------------------
-# User paths
+# Positional paths
 # -------------------------
-DATASET="${DATASET:-BCSS}"
+DATASET="${1:-${DATASET:-BCSS}}"
 
 # Input patch directory. Supported structures:
-#   A) ${RAW_PATCH_DIR}/{sample}/tissue_mask.png + nuclei_mask.png
-#   B) ${RAW_PATCH_DIR}/gt_tissue/*.png + gt_nuclei/*.png
-RAW_PATCH_DIR="${RAW_PATCH_DIR:-/path/to/${DATASET}_patches}"
+#   A) ${RAW_PATCH_DIR}/tissue_masks/*.png + nuclei_masks/*.png
+#   B) ${RAW_PATCH_DIR}/{sample}/tissue_mask.png + nuclei_mask.png
+#   C) ${RAW_PATCH_DIR}/gt_tissue/*.png + gt_nuclei/*.png
+RAW_PATCH_DIR="${2:-${RAW_PATCH_DIR:-${REPO_ROOT}/edit_datasets/${DATASET}}}"
 
 # Optional nuclei annotation sources for datasets without layered nuclei masks.
 # Set one of these when build_library.py cannot auto-detect nuclei_mask.png:
@@ -33,7 +37,7 @@ CELLVIT_DIR="${CELLVIT_DIR:-}"
 GEOJSON_DIR="${GEOJSON_DIR:-}"
 
 # Output workspace for Phase 4 artifacts.
-PHASE4_ROOT="${PHASE4_ROOT:-/path/to/phase4_${DATASET}}"
+PHASE4_ROOT="${3:-${PHASE4_ROOT:-${REPO_ROOT}/phase4_runs/${DATASET}}}"
 PROBNET_DATA_DIR="${PROBNET_DATA_DIR:-${PHASE4_ROOT}/probnet_data}"
 NUCLEI_LIBRARY_DIR="${NUCLEI_LIBRARY_DIR:-${PHASE4_ROOT}/nuclei_library}"
 PROBNET_RUN_DIR="${PROBNET_RUN_DIR:-${PHASE4_ROOT}/probnet_run}"
@@ -58,6 +62,12 @@ MAX_DENSITY_PER_10K="${MAX_DENSITY_PER_10K:-900}"
 MAX_COUNT_FACTOR="${MAX_COUNT_FACTOR:-2.5}"
 
 mkdir -p "${PHASE4_ROOT}" "${GEN_OUTPUT_DIR}"
+
+if [[ ! -d "${RAW_PATCH_DIR}" ]]; then
+  echo "ERROR: RAW_PATCH_DIR does not exist: ${RAW_PATCH_DIR}" >&2
+  echo "Usage: bash scripts/phase4_probnet_workflow.sh DATASET RAW_PATCH_DIR [PHASE4_ROOT]" >&2
+  exit 2
+fi
 
 echo "== Phase 4 ProbNet workflow =="
 echo "Dataset: ${DATASET}"

@@ -1,0 +1,37 @@
+GlaS Dataset Statistics
+============================================================
+Source: 20x variable-size patches → 40x 512×512 patches
+Resize: 2× bilinear upscale (20x → 40x), then crop 512×512 (stride=256)
+Filter: gland (HTE labels 5,11,12,13) > 5%
+Label scheme: Sirinukunwattana grades mapped to HTE fine IDs (no background, mod-to-poor merged with poorly diff)
+
+Input images: 165
+Images processed (has valid patches): 165
+Images skipped (no valid patches / errors): 0
+Total output patches: 2185
+Patches discarded: 164
+  - no_gland_above_threshold: 164
+Processing time: 238.9s
+
+Patches per Sirinukunwattana grade:
+  adenomatous                              (label=11):    408 patches
+  healthy                                  (label=5):    539 patches
+  moderately differentiated                (label=12):    593 patches
+  moderately-to-poorly differentated       (label=13):    286 patches
+  poorly differentiated                    (label=13):    359 patches
+
+Label distribution (by patch count):
+  unknown(0)                     (val=0):     22 patches
+  stroma                         (val=2):   2181 patches
+  normal epithelium              (val=5):    539 patches
+  adenomatous gland              (val=11):    408 patches
+  moderately differentiated      (val=12):    593 patches
+  poorly differentiated          (val=13):    645 patches
+
+Label distribution (by pixel count):
+  unknown(0)                     (val=0):            128 px (0.00%)
+  stroma                         (val=2):    257,887,428 px (45.02%)
+  normal epithelium              (val=5):     75,374,198 px (13.16%)
+  adenomatous gland              (val=11):     57,289,854 px (10.00%)
+  moderately differentiated      (val=12):     83,339,582 px (14.55%)
+  poorly differentiated          (val=13):     98,893,450 px (17.27%)
