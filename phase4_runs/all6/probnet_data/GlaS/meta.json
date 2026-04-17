@@ -1,0 +1,25 @@
+{
+  "dataset": "GlaS",
+  "cancer_type": "colorectal",
+  "cancer_type_index": 2,
+  "label_space": "unified_fine_16",
+  "input_format": "layered",
+  "n_augmentations": 3,
+  "seed": 42,
+  "total_samples": 6555,
+  "train_samples": 5901,
+  "val_samples": 654,
+  "skipped": 0,
+  "mode_distribution": {
+    "negative": 2,
+    "full_image": 1298,
+    "large_region": 1293,
+    "local": 3962
+  },
+  "output_format": "layered",
+  "output_structure": {
+    "gt_tissue": "uint8 PNG, values 0-15 (unified fine tissue IDs)",
+    "gt_nuclei": "uint8 PNG, values 0/101-105 (CellViT raw nuclei IDs)",
+    "masks": "uint8 PNG, values 0/255 (edit region binary mask)"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "seed": 20260417,
+  "samples": {
+    "BCSS": 10,
+    "GlaS": 10,
+    "IGNITE": 10,
+    "ORCA": 10,
+    "PANDA": 10,
+    "PUMA": 10
+  }
+}

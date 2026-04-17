@@ -1,0 +1,25 @@
+{
+  "dataset": "BCSS",
+  "cancer_type": "breast",
+  "cancer_type_index": 0,
+  "label_space": "unified_fine_16",
+  "input_format": "layered",
+  "n_augmentations": 3,
+  "seed": 42,
+  "total_samples": 68561,
+  "train_samples": 61706,
+  "val_samples": 6855,
+  "skipped": 8,
+  "mode_distribution": {
+    "negative": 1170,
+    "full_image": 13757,
+    "large_region": 13751,
+    "local": 39883
+  },
+  "output_format": "layered",
+  "output_structure": {
+    "gt_tissue": "uint8 PNG, values 0-15 (unified fine tissue IDs)",
+    "gt_nuclei": "uint8 PNG, values 0/101-105 (CellViT raw nuclei IDs)",
+    "masks": "uint8 PNG, values 0/255 (edit region binary mask)"
+  }
+}
