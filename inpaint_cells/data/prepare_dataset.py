@@ -103,8 +103,15 @@ def load_sample_layered(tissue_path, nuclei_path):
         nuclei_map: (H, W) int64, 0/101-105 (raw CellViT IDs)
         cell_mask: (H, W) bool, True where nuclei exist
     """
-    tissue_map = cv2.imread(tissue_path, cv2.IMREAD_GRAYSCALE).astype(np.int64)
-    nuclei_map = cv2.imread(nuclei_path, cv2.IMREAD_GRAYSCALE).astype(np.int64)
+    tissue_img = cv2.imread(tissue_path, cv2.IMREAD_GRAYSCALE)
+    if tissue_img is None:
+        raise FileNotFoundError(f"Cannot load tissue mask: {tissue_path}")
+    nuclei_img = cv2.imread(nuclei_path, cv2.IMREAD_GRAYSCALE)
+    if nuclei_img is None:
+        raise FileNotFoundError(f"Cannot load nuclei mask: {nuclei_path}")
+
+    tissue_map = tissue_img.astype(np.int64)
+    nuclei_map = nuclei_img.astype(np.int64)
     cell_mask = nuclei_map >= 101
     return tissue_map, nuclei_map, cell_mask
 

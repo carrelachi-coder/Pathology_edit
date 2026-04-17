@@ -37,9 +37,9 @@
       "target": "D:\\WQX\\Pathology_edit\\edit_datasets\\IGNITE",
       "counts": {
         "tissue_masks": 22502,
-        "nuclei_masks": 11467,
-        "paired_masks": 11467,
-        "unpaired_tissue_masks": 11035,
+        "nuclei_masks": 22502,
+        "paired_masks": 22502,
+        "unpaired_tissue_masks": 0,
         "unpaired_nuclei_masks": 0
       }
     },
@@ -63,9 +63,9 @@
       "target": "D:\\WQX\\Pathology_edit\\edit_datasets\\PANDA",
       "counts": {
         "tissue_masks": 29300,
-        "nuclei_masks": 2120,
-        "paired_masks": 2120,
-        "unpaired_tissue_masks": 27180,
+        "nuclei_masks": 29300,
+        "paired_masks": 29300,
+        "unpaired_tissue_masks": 0,
         "unpaired_nuclei_masks": 0
       }
     },

@@ -13,7 +13,7 @@ Total output patches: 22502
 Patches discarded: 43959
   - bg_too_high: 41766
   - no_relevant_tissue: 2193
-Processing time: 2629.4s
+Processing time: 2713.2s
 
 Unique patients: 66
 Histological subtypes processed: {'adenocarcinoma': 173, 'squamous_cell_carcinoma': 135, 'adenosquamous': 4}

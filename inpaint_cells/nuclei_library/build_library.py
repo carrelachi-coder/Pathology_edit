@@ -541,30 +541,31 @@ def main():
         'nuclei_areas': defaultdict(list),
     })
     bucket_counts = defaultdict(int)
+    stored_type_counts = defaultdict(lambda: defaultdict(int))
 
     total_instances = 0
 
     if fmt == 'layered':
         total_instances = _process_layered(
             args, config, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts)
+            tissue_stats, bucket_counts, stored_type_counts)
     elif fmt == 'cellvit-json':
         total_instances = _process_cellvit_json(
             args, config, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts)
+            tissue_stats, bucket_counts, stored_type_counts)
     elif fmt == 'geojson':
         total_instances = _process_geojson(
             args, config, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts)
+            tissue_stats, bucket_counts, stored_type_counts)
     else:
         total_instances = _process_legacy(
             args, config, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts)
+            tissue_stats, bucket_counts, stored_type_counts)
 
     print(f"\nTotal instances extracted: {total_instances}")
 
     # 计算并保存统计数据
-    _save_statistics(args, tissue_stats, bucket_counts, total_instances,
+    _save_statistics(args, tissue_stats, bucket_counts, stored_type_counts, total_instances,
                      skip_tissues, config)
 
     print(f"\nLibrary saved to {args.output_dir}")

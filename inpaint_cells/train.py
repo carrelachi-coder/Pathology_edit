@@ -159,6 +159,16 @@ def train(args):
             or len(glob.glob(os.path.join(args.data_dir, '*', 'tissue_mask.png'))) > 0
         )
         if has_layered:
+            has_train_val = (
+                os.path.isdir(os.path.join(args.data_dir, 'train'))
+                and os.path.isdir(os.path.join(args.data_dir, 'val'))
+            )
+            if args.mode == 'train' and not has_train_val and not args.allow_flat_single_dataset:
+                raise ValueError(
+                    "Single-dataset layered training requires train/ and val/ subdirectories. "
+                    f"Got flat data_dir={args.data_dir}. Re-run prepare_dataset.py, or pass "
+                    "--allow-flat-single-dataset only for intentional debugging."
+                )
             train_dataset = NucleiProbDatasetLayered(
                 data_dir=os.path.join(args.data_dir, 'train') if os.path.isdir(os.path.join(args.data_dir, 'train')) else args.data_dir,
                 cancer_type_index=cancer_idx, out_size=args.img_size, augment=True,
@@ -588,6 +598,8 @@ def main():
     parser.add_argument('--img-size', type=int, default=256)
     parser.add_argument('--crop-mode', choices=['mask', 'random'], default='mask',
                         help='Crop strategy for images larger than --img-size')
+    parser.add_argument('--allow-flat-single-dataset', action='store_true',
+                        help='Allow single-dataset layered train/val to reuse a flat data_dir')
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--num-epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=2e-4)

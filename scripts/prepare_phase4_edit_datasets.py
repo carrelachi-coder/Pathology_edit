@@ -87,8 +87,8 @@ def stage_dataset(source_root, output_root, dataset, mode, include_images):
 
 def main():
     parser = argparse.ArgumentParser(description="Prepare Pathology_edit/edit_datasets for upload")
-    parser.add_argument("--source-root", default="../datasets", help="Root containing the original datasets")
-    parser.add_argument("--output-root", default="edit_datasets", help="Staging output directory")
+    parser.add_argument("--source-root", default=r"D:\WQX\datasets", help="Root containing the original datasets")
+    parser.add_argument("--output-root", default=r"D:\WQX\Pathology_edit\edit_datasets", help="Staging output directory")
     parser.add_argument("--datasets", nargs="*", default=list(DATASET_PATCH_DIRS), help="Datasets to stage")
     parser.add_argument("--mode", choices=["hardlink", "copy", "symlink"], default="hardlink")
     parser.add_argument("--include-images", action="store_true", help="Also stage RGB images and conditioning masks")
