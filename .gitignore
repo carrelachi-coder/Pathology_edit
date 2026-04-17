@@ -26,3 +26,4 @@ datasets/
 **/__pycache__/
 .DS_Store
 .git/
+inpaint_cells/data/prepare_dataset.py
