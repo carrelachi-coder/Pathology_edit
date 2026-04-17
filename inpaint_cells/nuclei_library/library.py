@@ -116,13 +116,13 @@ class NucleiLibrary:
                 dist[nuc_type] = info['fraction']
         return dist
 
-    def sample_instance(self, tissue_id, nuc_type=None):
+    def sample_instance(self, tissue_id, nuc_type=None, allow_cross_tissue=True):
         """从指定组织类型的桶中随机抽一个核实例"""
         candidates = self.instances.get(tissue_id, [])
         if nuc_type is not None:
             candidates = [c for c in candidates if c['type'] == nuc_type]
         if not candidates:
-            if nuc_type is not None:
+            if nuc_type is not None and allow_cross_tissue:
                 # Fallback: 从所有桶中找该类型的核
                 for tid in self.instances:
                     fallback = [c for c in self.instances[tid] if c['type'] == nuc_type]

@@ -572,7 +572,7 @@ def main():
 
 
 def _process_layered(args, config, skip_tissues, instances_dir,
-                     tissue_stats, bucket_counts):
+                     tissue_stats, bucket_counts, stored_type_counts):
     """处理分层存储格式 (AD-1)"""
     # 查找所有 patch 目录 (含 tissue_mask.png + nuclei_mask.png)
     flat_tissue_dir = os.path.join(args.gt_dir, 'tissue_masks')
@@ -633,13 +633,14 @@ def _process_layered(args, config, skip_tissues, instances_dir,
 
         total_instances += _save_instances(
             instances, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts, args.max_instances_per_bucket)
+            tissue_stats, bucket_counts, stored_type_counts,
+            args.max_instances_per_bucket)
 
     return total_instances
 
 
 def _process_cellvit_json(args, config, skip_tissues, instances_dir,
-                          tissue_stats, bucket_counts):
+                          tissue_stats, bucket_counts, stored_type_counts):
     """处理 CellViT JSON 格式 (Phase 4.3: 无原始核标注的数据集)"""
     if not args.cellvit_dir:
         print("Error: --cellvit-dir is required for cellvit-json format")
@@ -698,13 +699,14 @@ def _process_cellvit_json(args, config, skip_tissues, instances_dir,
 
         total_instances += _save_instances(
             instances, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts, args.max_instances_per_bucket)
+            tissue_stats, bucket_counts, stored_type_counts,
+            args.max_instances_per_bucket)
 
     return total_instances
 
 
 def _process_geojson(args, config, skip_tissues, instances_dir,
-                     tissue_stats, bucket_counts):
+                     tissue_stats, bucket_counts, stored_type_counts):
     """处理 GeoJSON 核标注格式 (Phase 4.3: PUMA 等有 GeoJSON 标注的数据集)"""
     if not args.geojson_dir:
         print("Error: --geojson-dir is required for geojson format")
@@ -760,13 +762,15 @@ def _process_geojson(args, config, skip_tissues, instances_dir,
 
         total_instances += _save_instances(
             instances, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts, args.max_instances_per_bucket)
+            tissue_stats, bucket_counts, stored_type_counts,
+            args.max_instances_per_bucket)
 
     return total_instances
 
 
 def _save_instances(instances, skip_tissues, instances_dir,
-                    tissue_stats, bucket_counts, max_per_bucket):
+                    tissue_stats, bucket_counts, stored_type_counts,
+                    max_per_bucket):
     """将提取的核实例保存到桶中 (公共函数, 供所有格式使用)"""
     saved = 0
     for inst in instances:
@@ -792,13 +796,14 @@ def _save_instances(instances, skip_tissues, instances_dir,
                 area=np.array(inst['area'], dtype=np.int32),
             )
             bucket_counts[tissue_id] += 1
+            stored_type_counts[tissue_id][nuc_type] += 1
 
         saved += 1
     return saved
 
 
 def _process_legacy(args, config, skip_tissues, instances_dir,
-                    tissue_stats, bucket_counts):
+                    tissue_stats, bucket_counts, stored_type_counts):
     """处理旧 RGB 合并格式 (backward compatible)"""
     gt_files = sorted(glob.glob(os.path.join(args.gt_dir, '*.png')))
     print(f"Processing {len(gt_files)} legacy GT files...")
@@ -822,16 +827,19 @@ def _process_legacy(args, config, skip_tissues, instances_dir,
 
         total_instances += _save_instances(
             instances, skip_tissues, instances_dir,
-            tissue_stats, bucket_counts, args.max_instances_per_bucket)
+            tissue_stats, bucket_counts, stored_type_counts,
+            args.max_instances_per_bucket)
 
     return total_instances
 
 
-def _save_statistics(args, tissue_stats, bucket_counts, total_instances,
+def _save_statistics(args, tissue_stats, bucket_counts, stored_type_counts, total_instances,
                      skip_tissues, config):
     """保存统计数据和摘要"""
     stats_output = {}
     summary_lines = []
+    warning_lines = []
+    min_bucket_instances = 20
     summary_lines.append(f"{'=' * 80}")
     summary_lines.append(f"Nuclei Library Statistics — {config.name} ({config.cancer_type})")
     summary_lines.append(f"{'=' * 80}")
@@ -858,6 +866,7 @@ def _save_statistics(args, tissue_stats, bucket_counts, total_instances,
         type_dist = {}
         for nuc_type in NUCLEI_CLASSES:
             count = ts['nuclei_counts'].get(nuc_type, 0)
+            stored_count = stored_type_counts[tissue_id].get(nuc_type, 0)
             frac = count / total_nuclei if total_nuclei > 0 else 0
             areas = ts['nuclei_areas'].get(nuc_type, [])
             mean_area = np.mean(areas) if areas else 0
@@ -865,10 +874,23 @@ def _save_statistics(args, tissue_stats, bucket_counts, total_instances,
 
             type_dist[str(nuc_type)] = {
                 'count': int(count),
+                'stored_count': int(stored_count),
                 'fraction': round(frac, 4),
                 'mean_area': round(float(mean_area), 1),
                 'std_area': round(float(std_area), 1),
             }
+            if count > 0 and stored_count < min_bucket_instances:
+                warning_lines.append(
+                    f"LOW_BUCKET tissue {tissue_id} ({tissue_name}) "
+                    f"{NUCLEI_NAMES[nuc_type]}: stored={stored_count}, extracted={count}"
+                )
+
+        necrosis_dead_stored = stored_type_counts[tissue_id].get(104, 0)
+        if tissue_id == 3 and total_area > 0 and necrosis_dead_stored < min_bucket_instances:
+            warning_lines.append(
+                f"NECROSIS_DEAD_SPARSE tissue 3 ({tissue_name}): "
+                f"dead stored={necrosis_dead_stored}; generation will avoid arbitrary same-tissue fallback"
+            )
 
         stats_output[str(tissue_id)] = {
             'name': tissue_name,
@@ -889,7 +911,13 @@ def _save_statistics(args, tissue_stats, bucket_counts, total_instances,
             if td['count'] > 0:
                 summary_lines.append(
                     f"    {NUCLEI_NAMES[nuc_type]:15s}: {td['count']:6d} ({td['fraction'] * 100:5.1f}%) "
-                    f"area={td['mean_area']:.0f}+/-{td['std_area']:.0f}")
+                    f"stored={td['stored_count']:6d} area={td['mean_area']:.0f}+/-{td['std_area']:.0f}")
+        summary_lines.append("")
+
+    if warning_lines:
+        summary_lines.append("Bucket health warnings:")
+        for line in warning_lines:
+            summary_lines.append(f"  WARNING: {line}")
         summary_lines.append("")
 
     # 保存 metadata
@@ -899,6 +927,7 @@ def _save_statistics(args, tissue_stats, bucket_counts, total_instances,
         'cancer_type_index': config.cancer_type_index,
         'label_space': 'unified_fine_16',
         'statistics': stats_output,
+        'bucket_health_warnings': warning_lines,
     }
 
     with open(os.path.join(args.output_dir, 'statistics.json'), 'w') as f:

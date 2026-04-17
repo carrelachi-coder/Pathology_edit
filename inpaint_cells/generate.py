@@ -261,9 +261,13 @@ def generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, ar
             nuc_type = sample_type_at_center(prob, cy, cx, args)
             if nuc_type is None:
                 continue
-            instance = library.sample_instance(tissue_id, nuc_type)
+            instance = library.sample_instance(
+                tissue_id,
+                nuc_type,
+                allow_cross_tissue=(tissue_id != 3),
+            )
             if instance is None and tissue_id == 3:
-                instance = library.sample_instance(tissue_id, 104)
+                instance = library.sample_instance(tissue_id, 104, allow_cross_tissue=True)
             if instance is None and tissue_id != 3:
                 instance = library.sample_instance(tissue_id)
             if instance is None:
