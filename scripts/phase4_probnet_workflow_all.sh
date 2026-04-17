@@ -5,13 +5,33 @@ set -euo pipefail
 # one ProbNet across all datasets.
 #
 # Usage:
-#   bash scripts/phase4_probnet_workflow_all.sh [EDIT_DATASETS_ROOT] [PHASE4_ROOT]
+#   bash scripts/phase4_probnet_workflow_all.sh [ACTION] [EDIT_DATASETS_ROOT] [PHASE4_ROOT]
 #
 # Example:
-#   bash scripts/phase4_probnet_workflow_all.sh edit_datasets phase4_runs/all6
+#   bash scripts/phase4_probnet_workflow_all.sh prepare_dataset
+#   bash scripts/phase4_probnet_workflow_all.sh all edit_datasets phase4_runs/all6
+#
+# ACTION:
+#   prepare_dataset  Prepare ProbNet train/val data only.
+#   build_library    Build nuclei libraries only.
+#   train            Train ProbNet from existing prepared data.
+#   generate         Run validation smoke-test generation from an existing checkpoint.
+#   all              Run the full workflow. This is the default.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
+
+ACTION="${1:-all}"
+case "${ACTION}" in
+  prepare_dataset|build_library|train|generate|all)
+    shift || true
+    ;;
+  *)
+    # Backward compatible form:
+    #   bash scripts/phase4_probnet_workflow_all.sh edit_datasets phase4_runs/all6
+    ACTION="all"
+    ;;
+esac
 
 EDIT_DATASETS_ROOT="${1:-${EDIT_DATASETS_ROOT:-${REPO_ROOT}/edit_datasets}}"
 PHASE4_ROOT="${2:-${PHASE4_ROOT:-${REPO_ROOT}/phase4_runs/all6}}"
@@ -52,6 +72,8 @@ profile_for_dataset() {
 mkdir -p "${PHASE4_ROOT}" "${GEN_OUTPUT_DIR}"
 
 echo "== Phase 4 all-dataset ProbNet workflow =="
+echo "Action: ${ACTION}"
+echo "Repo root: ${REPO_ROOT}"
 echo "Edit datasets root: ${EDIT_DATASETS_ROOT}"
 echo "Phase4 root: ${PHASE4_ROOT}"
 echo "Datasets: ${DATASETS[*]}"
@@ -59,6 +81,39 @@ echo "Generation profiles: ${PROFILE_DIR}/GENERATION_PROFILES.md"
 echo "Generation profile JSON: ${PROFILE_JSON}"
 
 TRAIN_SPECS=()
+
+prepare_probnet_data() {
+  local dataset="$1"
+  local raw_patch_dir="$2"
+  local probnet_data_dir="$3"
+
+  echo
+  echo "== ${dataset}: prepare ProbNet training data =="
+  python inpaint_cells/data/prepare_dataset.py \
+    --dataset "${dataset}" \
+    --input-dir "${raw_patch_dir}" \
+    --output-dir "${probnet_data_dir}" \
+    --format auto \
+    --n-augmentations "${N_AUGMENTATIONS}" \
+    --val-ratio 0.1 \
+    --seed 42
+}
+
+build_nuclei_library() {
+  local dataset="$1"
+  local raw_patch_dir="$2"
+  local nuclei_library_dir="$3"
+
+  echo
+  echo "== ${dataset}: build nuclei instance library =="
+  python inpaint_cells/nuclei_library/build_library.py \
+    --dataset "${dataset}" \
+    --gt-dir "${raw_patch_dir}" \
+    --output-dir "${nuclei_library_dir}" \
+    --format auto \
+    --min-area 10 \
+    --max-area 5000
+}
 
 for DATASET in "${DATASETS[@]}"; do
   RAW_PATCH_DIR="${EDIT_DATASETS_ROOT}/${DATASET}"
@@ -70,47 +125,54 @@ for DATASET in "${DATASETS[@]}"; do
     exit 2
   fi
 
-  echo
-  echo "== ${DATASET}: prepare ProbNet training data =="
-  python inpaint_cells/data/prepare_dataset.py \
-    --dataset "${DATASET}" \
-    --input-dir "${RAW_PATCH_DIR}" \
-    --output-dir "${PROBNET_DATA_DIR}" \
-    --format auto \
-    --n-augmentations "${N_AUGMENTATIONS}" \
-    --val-ratio 0.1 \
-    --seed 42
+  if [[ "${ACTION}" == "prepare_dataset" || "${ACTION}" == "all" ]]; then
+    prepare_probnet_data "${DATASET}" "${RAW_PATCH_DIR}" "${PROBNET_DATA_DIR}"
+  fi
 
-  echo
-  echo "== ${DATASET}: build nuclei instance library =="
-  python inpaint_cells/nuclei_library/build_library.py \
-    --dataset "${DATASET}" \
-    --gt-dir "${RAW_PATCH_DIR}" \
-    --output-dir "${NUCLEI_LIBRARY_DIR}" \
-    --format auto \
-    --min-area 10 \
-    --max-area 5000
+  if [[ "${ACTION}" == "build_library" || "${ACTION}" == "all" ]]; then
+    build_nuclei_library "${DATASET}" "${RAW_PATCH_DIR}" "${NUCLEI_LIBRARY_DIR}"
+  fi
 
   TRAIN_SPECS+=("${DATASET}:${PROBNET_DATA_DIR}")
 done
 
-echo
-echo "== Train one ProbNet on all datasets =="
-python inpaint_cells/train.py \
-  --mode train \
-  --datasets "${TRAIN_SPECS[@]}" \
-  --output-dir "${PROBNET_RUN_DIR}" \
-  --img-size "${IMG_SIZE}" \
-  --crop-mode "${CROP_MODE}" \
-  --batch-size "${BATCH_SIZE}" \
-  --num-epochs "${NUM_EPOCHS}" \
-  --resume-from-checkpoint latest
+if [[ "${ACTION}" == "prepare_dataset" ]]; then
+  echo
+  echo "Done. Prepared ProbNet data: ${PHASE4_ROOT}/probnet_data"
+  exit 0
+fi
+
+if [[ "${ACTION}" == "build_library" ]]; then
+  echo
+  echo "Done. Nuclei libraries: ${PHASE4_ROOT}/nuclei_library"
+  exit 0
+fi
+
+if [[ "${ACTION}" == "train" || "${ACTION}" == "all" ]]; then
+  echo
+  echo "== Train one ProbNet on all datasets =="
+  python inpaint_cells/train.py \
+    --mode train \
+    --datasets "${TRAIN_SPECS[@]}" \
+    --output-dir "${PROBNET_RUN_DIR}" \
+    --img-size "${IMG_SIZE}" \
+    --crop-mode "${CROP_MODE}" \
+    --batch-size "${BATCH_SIZE}" \
+    --num-epochs "${NUM_EPOCHS}" \
+    --resume-from-checkpoint latest
+fi
 
 CKPT="${PROBNET_RUN_DIR}/checkpoints/best.pt"
 if [[ ! -f "${CKPT}" ]]; then
   CKPT="$(ls -1 "${PROBNET_RUN_DIR}"/checkpoints/epoch_*.pt | sort | tail -n 1)"
 fi
 echo "Using checkpoint: ${CKPT}"
+
+if [[ "${ACTION}" == "train" ]]; then
+  echo
+  echo "Done. Checkpoint: ${CKPT}"
+  exit 0
+fi
 
 echo
 echo "== Batch inference smoke test on each validation split =="
