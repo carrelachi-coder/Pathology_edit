@@ -8,6 +8,14 @@ ControlNet Train
 
 - `hte_embedding.py`
   Phase 5 的核心新模块。负责把 `tissue_mask` 的 `int` ID map 编码成 HTE 特征。
+- `tissue_condition_downsampler.py`
+  把 full-resolution HTE 特征下采样到 FLUX latent resolution。
+- `nuclei_condition_encoder.py`
+  把 `nuclei_mask` 的 raw ID map 编码成 learned nuclei condition feature。
+- `change_mask_encoder.py`
+  把 binary `change_region_mask` 投影成轻量 4-channel learned feature。
+- `conditioning.py`
+  放置 Phase 5 条件拼接辅助函数；当前已提供 `cross V0` 的单路 spatial concat helper。
 - `legacy_rgb_vae/`
   归档旧版 BCSS-only / RGB mask / VAE mask latent 流程，避免和 Phase 5 新方案混用。
 
@@ -55,6 +63,25 @@ Phase 5 推荐后续落位
    用 `ref_image + ref_mask(HTE) + target_mask(HTE)` 训练新的 ControlNet。
 4. `val_controlnet_flux.py`
    验证新 HTE conditioning 的推理链路。
+
+当前实现范围
+------------
+
+这轮代码先对齐 `.claude/plans/plan.md` 的 `5.1` 基础设施部分：
+
+- 已完成：
+  - `HierarchicalTissueEmbedding`
+  - `TissueConditionDownsampler`
+  - `NucleiConditionEncoder`
+  - `ChangeMaskEncoder`
+  - `cross V0 spatial concat baseline` 的公共拼接 helper
+- 暂未实现：
+  - `ReferenceMorphologyEncoder`
+  - `cross V1 reference branch`
+
+也就是说，当前 `cross controlnet` 先按计划里的 `V0` 收敛：把
+`reference_image_latent + reference_tissue_feat + reference_nuclei_feat + target_tissue_feat + target_nuclei_feat`
+拼成单一路 `controlnet_cond`。
 
 迁移原则
 --------
