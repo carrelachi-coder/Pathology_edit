@@ -2,11 +2,11 @@ import unittest
 
 import torch
 
-from controlnet_train.change_mask_encoder import ChangeMaskEncoder
-from controlnet_train.conditioning import build_cross_v0_condition
-from controlnet_train.hte_embedding import HierarchicalTissueEmbedding
-from controlnet_train.nuclei_condition_encoder import NucleiConditionEncoder
-from controlnet_train.tissue_condition_downsampler import TissueConditionDownsampler
+from controlnet_train.modules.change_mask_encoder import ChangeMaskEncoder
+from controlnet_train.modules.conditioning import build_cross_v0_condition
+from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
+from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
+from controlnet_train.modules.tissue_condition_downsampler import TissueConditionDownsampler
 
 
 class HierarchicalTissueEmbeddingTests(unittest.TestCase):

@@ -6,25 +6,22 @@ ControlNet Train
 当前分层
 --------
 
-- `hte_embedding.py`
-  Phase 5 的核心新模块。负责把 `tissue_mask` 的 `int` ID map 编码成 HTE 特征。
-- `tissue_condition_downsampler.py`
-  把 full-resolution HTE 特征下采样到 FLUX latent resolution。
-- `nuclei_condition_encoder.py`
-  把 `nuclei_mask` 的 raw ID map 编码成 learned nuclei condition feature。
-- `change_mask_encoder.py`
-  把 binary `change_region_mask` 投影成轻量 4-channel learned feature。
-- `conditioning.py`
-  放置 Phase 5 条件拼接辅助函数；当前已提供 `cross V0` 的单路 spatial concat helper。
+- `modules/`
+  Phase 5 的条件编码模块层。
+  - `hte_embedding.py`: 把 `tissue_mask` 的 `int` ID map 编码成 HTE 特征。
+  - `tissue_condition_downsampler.py`: 把 full-resolution HTE 特征下采样到 FLUX latent resolution。
+  - `nuclei_condition_encoder.py`: 把 `nuclei_mask` 的 raw ID map 编码成 learned nuclei condition feature。
+  - `change_mask_encoder.py`: 把 binary `change_region_mask` 投影成轻量 4-channel learned feature。
+  - `conditioning.py`: 放置 Phase 5 条件拼接辅助函数；当前已提供 `cross V0` 的单路 spatial concat helper。
 - `data/`
   Phase 5 的新数据层。
   - `common.py`: 共享 layered patch 读取、prompt、nuclei remap、train/val split
   - `inpaint.py`: `local-preservation` / inpaint metadata builder + `InpaintDataset`
   - `cross.py`: `same-WSI cross-reconstruction` metadata builder + `CrossReconstructionDataset`
-- `build_inpaint_dataset.py`
-  把上游编辑样本清单归一化为 `metadata_inpaint_{train,val}.jsonl`。
-- `generate_training_pairs.py`
-  从多数据集 layered patch 根目录生成 `metadata_cross_{train,val}.json`。
+- `cli/`
+  Phase 5 的脚本入口层。
+  - `build_inpaint_dataset.py`: 把上游编辑样本清单归一化为 `metadata_inpaint_{train,val}.jsonl`。
+  - `generate_training_pairs.py`: 从多数据集 layered patch 根目录生成 `metadata_cross_{train,val}.json`。
 - `legacy_rgb_vae/`
   归档旧版 BCSS-only / RGB mask / VAE mask latent 流程，避免和 Phase 5 新方案混用。
 
@@ -64,9 +61,9 @@ Phase 5 推荐后续落位
 
 建议后续把新脚本按下面的职责继续补齐：
 
-1. `build_inpaint_dataset.py`
+1. `cli/build_inpaint_dataset.py`
    扫描多数据集分层数据，直接读取 `tissue_mask.png`，生成训练清单和 prompt 元数据。
-2. `generate_training_pairs.py`
+2. `cli/generate_training_pairs.py`
    依据多数据集 patch / WSI 分组逻辑，生成 cross-reconstruction pairs。
 3. `train_controlnet_flux_inpaint.py`
    用 `ref_image + ref_mask(HTE) + target_mask(HTE)` 训练新的 ControlNet。
@@ -132,7 +129,7 @@ Phase 5 现在明确分成两类 DataLoader：
 Inpaint Metadata 约定
 ---------------------
 
-`build_inpaint_dataset.py` 不再负责 BCSS-only 的旧式 RGB mask 造数，而是负责把上游编辑结果
+`cli/build_inpaint_dataset.py` 不再负责 BCSS-only 的旧式 RGB mask 造数，而是负责把上游编辑结果
 归一化成统一 schema。输入 `jsonl` 中每条记录至少要有：
 
 - `dataset`
@@ -162,7 +159,7 @@ Inpaint Metadata 约定
 Cross Metadata 约定
 -------------------
 
-`generate_training_pairs.py` 专门负责 `same-WSI cross-reconstruction`。
+`cli/generate_training_pairs.py` 专门负责 `same-WSI cross-reconstruction`。
 它会从多个 layered patch 根目录中读取样本，并输出：
 
 - `metadata_cross_train.json`
@@ -193,7 +190,7 @@ Cross Metadata 约定
 inpaint metadata 归一化：
 
 ```bash
-python controlnet_train/build_inpaint_dataset.py ^
+python controlnet_train/cli/build_inpaint_dataset.py ^
   --input-jsonl path\\to\\edited_samples.jsonl ^
   --output-dir phase5_runs\\inpaint_meta
 ```
@@ -201,7 +198,7 @@ python controlnet_train/build_inpaint_dataset.py ^
 cross metadata 构建：
 
 ```bash
-python controlnet_train/generate_training_pairs.py ^
+python controlnet_train/cli/generate_training_pairs.py ^
   --dataset-root BCSS=D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES ^
   --dataset-root PANDA=D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES ^
   --dataset-root GlaS=D:\\WQX\\datasets\\GlaS\\GlaS_PATCHES ^

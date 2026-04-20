@@ -1,7 +1,5 @@
 """ControlNet training utilities for pathology editing."""
 
-from .change_mask_encoder import ChangeMaskEncoder
-from .conditioning import build_cross_v0_condition
 from .data import (
     CrossReconstructionDataset,
     InpaintDataset,
@@ -9,9 +7,13 @@ from .data import (
     build_inpaint_metadata,
     load_layered_dataset_samples,
 )
-from .hte_embedding import HierarchicalTissueEmbedding
-from .nuclei_condition_encoder import NucleiConditionEncoder
-from .tissue_condition_downsampler import TissueConditionDownsampler
+from .modules import (
+    ChangeMaskEncoder,
+    HierarchicalTissueEmbedding,
+    NucleiConditionEncoder,
+    TissueConditionDownsampler,
+    build_cross_v0_condition,
+)
 
 __all__ = [
     "ChangeMaskEncoder",
