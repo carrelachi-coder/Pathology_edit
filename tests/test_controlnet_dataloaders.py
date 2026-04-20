@@ -12,7 +12,7 @@ from controlnet_train.data.common import load_layered_dataset_samples
 from controlnet_train.data.cross import CrossReconstructionDataset, build_cross_metadata
 from controlnet_train.data.inpaint import InpaintDataset, build_inpaint_metadata
 
-_TMP_ROOT = Path(__file__).resolve().parents[3] / ".tmp_testdata"
+_TMP_ROOT = Path.cwd() / ".tmp_testdata"
 _TMP_ROOT.mkdir(exist_ok=True)
 
 
