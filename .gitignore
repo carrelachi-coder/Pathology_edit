@@ -26,6 +26,7 @@ data/
 !inpaint_cells/data/
 !inpaint_cells/data/*.py
 datasets/
+.worktrees/
 .tmp_testdata/
 **/__pycache__/
 .DS_Store
