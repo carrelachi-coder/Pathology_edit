@@ -7,6 +7,7 @@ from .data import (
     build_inpaint_metadata,
     load_layered_dataset_samples,
 )
+from .inference import EditPipelineInputs, EditPipelineResult, resolve_prompt, run_edit_pipeline
 from .modules import (
     ChangeMaskEncoder,
     HierarchicalTissueEmbedding,
@@ -19,6 +20,8 @@ from .modules import (
 __all__ = [
     "ChangeMaskEncoder",
     "CrossReconstructionDataset",
+    "EditPipelineInputs",
+    "EditPipelineResult",
     "HierarchicalTissueEmbedding",
     "InpaintDataset",
     "NucleiConditionEncoder",
@@ -28,4 +31,6 @@ __all__ = [
     "build_inpaint_condition",
     "build_inpaint_metadata",
     "load_layered_dataset_samples",
+    "resolve_prompt",
+    "run_edit_pipeline",
 ]

@@ -258,3 +258,64 @@ Phase 5.3 架构说明
 - 所有标签解释都从 `dataset_config/` 读取。
 - HTE 只负责离散 tissue ID 的语义编码，不负责图像重建。
 - `5.2` 的 DataLoader 分为 `inpaint` 和 `cross` 两类，不再混用单一 schema。
+Phase 5.4 Unified Inference
+---------------------------
+
+Phase 5.4 adds a dedicated `inference/` package so inference logic no longer
+lives inside `training/` or ad-hoc validation scripts.
+
+Current Phase 5.4 layout:
+
+- `controlnet_train/inference/router.py`
+  - computes `change_region_mask = (reference_tissue_mask != target_tissue_mask)`
+  - computes `change_ratio`
+  - selects `inpaint` or `cross`
+- `controlnet_train/inference/pipeline.py`
+  - validates the five required spatial inputs
+  - resolves the FLUX prompt
+  - dispatches to the selected inference runner
+  - saves `final.png`, `change_region_mask.png`, and `run_summary.json`
+- `controlnet_train/cli/edit_pipeline.py`
+  - unified CLI entrypoint for Phase 5.4 editing
+
+Phase 5.4 required spatial inputs:
+
+- `reference_image`
+- `reference_tissue_mask`
+- `reference_nuclei_mask`
+- `target_tissue_mask`
+- `target_nuclei_mask`
+
+Prompt resolution order:
+
+1. `--prompt`
+2. `--dataset` -> `default_prompt_for_dataset(...)`
+3. fallback prompt: `H&E stained cancer histopathology at 40x magnification`
+
+Default routing thresholds:
+
+- `change_ratio <= 0.12` -> `inpaint`
+- `change_ratio >= 0.30` -> `cross`
+- middle band -> `inpaint`
+
+First-version scope limits:
+
+- no blending
+- no cross V1 morphology branch
+- no internal reference retrieval
+
+Recommended command:
+
+```bash
+python controlnet_train/cli/edit_pipeline.py ^
+  --reference-image path\to\reference.png ^
+  --reference-tissue-mask path\to\reference_tissue.png ^
+  --reference-nuclei-mask path\to\reference_nuclei.png ^
+  --target-tissue-mask path\to\target_tissue.png ^
+  --target-nuclei-mask path\to\target_nuclei.png ^
+  --pretrained-model-name-or-path black-forest-labs/FLUX.1-dev ^
+  --inpaint-checkpoint phase5_runs\controlnet_inpaint ^
+  --cross-checkpoint phase5_runs\controlnet_cross ^
+  --output-dir phase5_runs\edit_outputs ^
+  --dataset BCSS
+```

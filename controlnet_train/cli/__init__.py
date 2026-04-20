@@ -1,1 +1,1 @@
-"""Command-line entrypoints for ControlNet dataset preparation."""
+"""Command-line entrypoints for ControlNet training and inference."""
