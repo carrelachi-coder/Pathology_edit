@@ -115,6 +115,7 @@ build_nuclei_library() {
     --max-area 5000
 }
 
+
 for DATASET in "${DATASETS[@]}"; do
   RAW_PATCH_DIR="${EDIT_DATASETS_ROOT}/${DATASET}"
   PROBNET_DATA_DIR="${PHASE4_ROOT}/probnet_data/${DATASET}"

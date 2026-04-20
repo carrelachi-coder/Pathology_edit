@@ -1,0 +1,64 @@
+================================================================================
+Nuclei Library Statistics ¡ª PUMA (melanoma)
+================================================================================
+Total nuclei instances: 169790
+Cancer type index: 4
+Label space: unified 16-class fine labels
+
+Tissue  1 (Tumor):
+  Total area: 344,592,988 px
+  Total nuclei: 114,927
+  Density: 3.34 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  98067 ( 85.3%) stored=  8822 area=700+/-477
+    inflammatory   :  11640 ( 10.1%) stored=   638 area=363+/-192
+    connective     :   2668 (  2.3%) stored=   120 area=424+/-257
+    dead           :   2276 (  2.0%) stored=   420 area=342+/-285
+    epithelial     :    276 (  0.2%) stored=     0 area=653+/-315
+
+Tissue  2 (Stroma):
+  Total area: 117,626,981 px
+  Total nuclei: 48,227
+  Density: 4.10 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :   2275 (  4.7%) stored=   861 area=596+/-365
+    inflammatory   :  39562 ( 82.0%) stored=  7772 area=455+/-296
+    connective     :   5670 ( 11.8%) stored=  1031 area=419+/-244
+    dead           :    606 (  1.3%) stored=   336 area=215+/-206
+    epithelial     :    114 (  0.2%) stored=     0 area=564+/-321
+
+Tissue  3 (Necrosis):
+  Total area: 4,945,669 px
+  Total nuclei: 1,101
+  Density: 2.23 per 10k px^2
+  Stored instances: 1101
+    neoplastic     :    353 ( 32.1%) stored=   353 area=561+/-388
+    inflammatory   :     72 (  6.5%) stored=    72 area=412+/-240
+    dead           :    676 ( 61.4%) stored=   676 area=348+/-204
+
+Tissue  5 (Normal epithelium):
+  Total area: 10,138,351 px
+  Total nuclei: 3,414
+  Density: 3.37 per 10k px^2
+  Stored instances: 3414
+    neoplastic     :    193 (  5.7%) stored=   193 area=561+/-256
+    inflammatory   :    140 (  4.1%) stored=   140 area=749+/-597
+    connective     :     79 (  2.3%) stored=    79 area=445+/-252
+    epithelial     :   3002 ( 87.9%) stored=  3002 area=694+/-396
+
+Tissue  6 (Blood vessel):
+  Total area: 5,323,741 px
+  Total nuclei: 2,121
+  Density: 3.98 per 10k px^2
+  Stored instances: 2121
+    neoplastic     :     59 (  2.8%) stored=    59 area=490+/-226
+    inflammatory   :    370 ( 17.4%) stored=   370 area=404+/-245
+    connective     :   1675 ( 79.0%) stored=  1675 area=692+/-456
+    dead           :     16 (  0.8%) stored=    16 area=167+/-109
+    epithelial     :      1 (  0.1%) stored=     1 area=717+/-0
+
+Bucket health warnings:
+  WARNING: LOW_BUCKET tissue 1 (Tumor) epithelial: stored=0, extracted=276
+  WARNING: LOW_BUCKET tissue 2 (Stroma) epithelial: stored=0, extracted=114
+  WARNING: LOW_BUCKET tissue 6 (Blood vessel) dead: stored=16, extracted=16
+  WARNING: LOW_BUCKET tissue 6 (Blood vessel) epithelial: stored=1, extracted=1

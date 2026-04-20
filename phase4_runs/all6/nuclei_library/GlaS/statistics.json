@@ -1,0 +1,232 @@
+{
+  "dataset": "GlaS",
+  "cancer_type": "colorectal",
+  "cancer_type_index": 2,
+  "label_space": "unified_fine_16",
+  "statistics": {
+    "2": {
+      "name": "Stroma",
+      "total_area_pixels": 257887428,
+      "total_nuclei": 107409,
+      "density_per_10k_px": 4.16,
+      "nuclei_types": {
+        "101": {
+          "count": 21689,
+          "stored_count": 2644,
+          "fraction": 0.2019,
+          "mean_area": 458.0,
+          "std_area": 398.4
+        },
+        "102": {
+          "count": 26695,
+          "stored_count": 2111,
+          "fraction": 0.2485,
+          "mean_area": 234.5,
+          "std_area": 144.4
+        },
+        "103": {
+          "count": 56807,
+          "stored_count": 5001,
+          "fraction": 0.5289,
+          "mean_area": 316.8,
+          "std_area": 219.5
+        },
+        "104": {
+          "count": 376,
+          "stored_count": 0,
+          "fraction": 0.0035,
+          "mean_area": 170.3,
+          "std_area": 125.8
+        },
+        "105": {
+          "count": 1842,
+          "stored_count": 244,
+          "fraction": 0.0171,
+          "mean_area": 411.4,
+          "std_area": 380.4
+        }
+      },
+      "stored_instances": 10000
+    },
+    "5": {
+      "name": "Normal epithelium",
+      "total_area_pixels": 75374198,
+      "total_nuclei": 16008,
+      "density_per_10k_px": 2.12,
+      "nuclei_types": {
+        "101": {
+          "count": 5996,
+          "stored_count": 4399,
+          "fraction": 0.3746,
+          "mean_area": 879.3,
+          "std_area": 778.7
+        },
+        "102": {
+          "count": 312,
+          "stored_count": 252,
+          "fraction": 0.0195,
+          "mean_area": 205.7,
+          "std_area": 104.5
+        },
+        "103": {
+          "count": 611,
+          "stored_count": 358,
+          "fraction": 0.0382,
+          "mean_area": 359.5,
+          "std_area": 256.2
+        },
+        "104": {
+          "count": 0,
+          "stored_count": 0,
+          "fraction": 0.0,
+          "mean_area": 0.0,
+          "std_area": 0.0
+        },
+        "105": {
+          "count": 9089,
+          "stored_count": 4991,
+          "fraction": 0.5678,
+          "mean_area": 914.8,
+          "std_area": 785.6
+        }
+      },
+      "stored_instances": 10000
+    },
+    "11": {
+      "name": "Adenomatous gland",
+      "total_area_pixels": 57289854,
+      "total_nuclei": 11950,
+      "density_per_10k_px": 2.09,
+      "nuclei_types": {
+        "101": {
+          "count": 6436,
+          "stored_count": 5530,
+          "fraction": 0.5386,
+          "mean_area": 708.2,
+          "std_area": 700.0
+        },
+        "102": {
+          "count": 649,
+          "stored_count": 410,
+          "fraction": 0.0543,
+          "mean_area": 209.5,
+          "std_area": 123.9
+        },
+        "103": {
+          "count": 901,
+          "stored_count": 641,
+          "fraction": 0.0754,
+          "mean_area": 273.9,
+          "std_area": 187.5
+        },
+        "104": {
+          "count": 0,
+          "stored_count": 0,
+          "fraction": 0.0,
+          "mean_area": 0.0,
+          "std_area": 0.0
+        },
+        "105": {
+          "count": 3964,
+          "stored_count": 3419,
+          "fraction": 0.3317,
+          "mean_area": 845.6,
+          "std_area": 764.0
+        }
+      },
+      "stored_instances": 10000
+    },
+    "12": {
+      "name": "Moderately differentiated",
+      "total_area_pixels": 83339582,
+      "total_nuclei": 19117,
+      "density_per_10k_px": 2.29,
+      "nuclei_types": {
+        "101": {
+          "count": 16050,
+          "stored_count": 8350,
+          "fraction": 0.8396,
+          "mean_area": 1000.5,
+          "std_area": 890.3
+        },
+        "102": {
+          "count": 917,
+          "stored_count": 425,
+          "fraction": 0.048,
+          "mean_area": 192.8,
+          "std_area": 91.4
+        },
+        "103": {
+          "count": 752,
+          "stored_count": 374,
+          "fraction": 0.0393,
+          "mean_area": 279.2,
+          "std_area": 196.1
+        },
+        "104": {
+          "count": 1359,
+          "stored_count": 812,
+          "fraction": 0.0711,
+          "mean_area": 165.9,
+          "std_area": 103.5
+        },
+        "105": {
+          "count": 39,
+          "stored_count": 39,
+          "fraction": 0.002,
+          "mean_area": 708.3,
+          "std_area": 384.3
+        }
+      },
+      "stored_instances": 10000
+    },
+    "13": {
+      "name": "Poorly differentiated",
+      "total_area_pixels": 98893450,
+      "total_nuclei": 22841,
+      "density_per_10k_px": 2.31,
+      "nuclei_types": {
+        "101": {
+          "count": 21829,
+          "stored_count": 9706,
+          "fraction": 0.9557,
+          "mean_area": 1011.5,
+          "std_area": 910.1
+        },
+        "102": {
+          "count": 201,
+          "stored_count": 91,
+          "fraction": 0.0088,
+          "mean_area": 204.5,
+          "std_area": 84.7
+        },
+        "103": {
+          "count": 215,
+          "stored_count": 95,
+          "fraction": 0.0094,
+          "mean_area": 313.7,
+          "std_area": 184.1
+        },
+        "104": {
+          "count": 582,
+          "stored_count": 102,
+          "fraction": 0.0255,
+          "mean_area": 187.3,
+          "std_area": 123.2
+        },
+        "105": {
+          "count": 14,
+          "stored_count": 6,
+          "fraction": 0.0006,
+          "mean_area": 712.0,
+          "std_area": 427.0
+        }
+      },
+      "stored_instances": 10000
+    }
+  },
+  "bucket_health_warnings": [
+    "LOW_BUCKET tissue 2 (Stroma) dead: stored=0, extracted=376",
+    "LOW_BUCKET tissue 13 (Poorly differentiated) epithelial: stored=6, extracted=14"
+  ]
+}

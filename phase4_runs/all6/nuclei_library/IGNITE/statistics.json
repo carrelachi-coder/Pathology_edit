@@ -1,0 +1,276 @@
+{
+  "dataset": "IGNITE",
+  "cancer_type": "lung",
+  "cancer_type_index": 3,
+  "label_space": "unified_fine_16",
+  "statistics": {
+    "1": {
+      "name": "Tumor",
+      "total_area_pixels": 694344032,
+      "total_nuclei": 144844,
+      "density_per_10k_px": 2.09,
+      "nuclei_types": {
+        "101": {
+          "count": 108680,
+          "stored_count": 8128,
+          "fraction": 0.7503,
+          "mean_area": 1211.7,
+          "std_area": 752.2
+        },
+        "102": {
+          "count": 11882,
+          "stored_count": 1024,
+          "fraction": 0.082,
+          "mean_area": 462.5,
+          "std_area": 232.1
+        },
+        "103": {
+          "count": 16836,
+          "stored_count": 679,
+          "fraction": 0.1162,
+          "mean_area": 751.8,
+          "std_area": 428.3
+        },
+        "104": {
+          "count": 0,
+          "stored_count": 0,
+          "fraction": 0.0,
+          "mean_area": 0.0,
+          "std_area": 0.0
+        },
+        "105": {
+          "count": 7446,
+          "stored_count": 169,
+          "fraction": 0.0514,
+          "mean_area": 873.9,
+          "std_area": 587.2
+        }
+      },
+      "stored_instances": 10000
+    },
+    "2": {
+      "name": "Stroma",
+      "total_area_pixels": 1046498812,
+      "total_nuclei": 193114,
+      "density_per_10k_px": 1.85,
+      "nuclei_types": {
+        "101": {
+          "count": 16240,
+          "stored_count": 263,
+          "fraction": 0.0841,
+          "mean_area": 832.8,
+          "std_area": 499.6
+        },
+        "102": {
+          "count": 67439,
+          "stored_count": 3736,
+          "fraction": 0.3492,
+          "mean_area": 428.1,
+          "std_area": 216.3
+        },
+        "103": {
+          "count": 108509,
+          "stored_count": 5946,
+          "fraction": 0.5619,
+          "mean_area": 624.0,
+          "std_area": 383.6
+        },
+        "104": {
+          "count": 15,
+          "stored_count": 0,
+          "fraction": 0.0001,
+          "mean_area": 335.5,
+          "std_area": 271.6
+        },
+        "105": {
+          "count": 911,
+          "stored_count": 55,
+          "fraction": 0.0047,
+          "mean_area": 577.0,
+          "std_area": 288.9
+        }
+      },
+      "stored_instances": 10000
+    },
+    "3": {
+      "name": "Necrosis",
+      "total_area_pixels": 113435552,
+      "total_nuclei": 10250,
+      "density_per_10k_px": 0.9,
+      "nuclei_types": {
+        "101": {
+          "count": 1769,
+          "stored_count": 1689,
+          "fraction": 0.1726,
+          "mean_area": 692.5,
+          "std_area": 340.4
+        },
+        "102": {
+          "count": 5858,
+          "stored_count": 5772,
+          "fraction": 0.5715,
+          "mean_area": 379.9,
+          "std_area": 181.9
+        },
+        "103": {
+          "count": 2325,
+          "stored_count": 2275,
+          "fraction": 0.2268,
+          "mean_area": 521.3,
+          "std_area": 276.3
+        },
+        "104": {
+          "count": 120,
+          "stored_count": 92,
+          "fraction": 0.0117,
+          "mean_area": 308.4,
+          "std_area": 194.0
+        },
+        "105": {
+          "count": 178,
+          "stored_count": 172,
+          "fraction": 0.0174,
+          "mean_area": 555.2,
+          "std_area": 234.4
+        }
+      },
+      "stored_instances": 10000
+    },
+    "4": {
+      "name": "Immune infiltrate",
+      "total_area_pixels": 228778012,
+      "total_nuclei": 88307,
+      "density_per_10k_px": 3.86,
+      "nuclei_types": {
+        "101": {
+          "count": 10857,
+          "stored_count": 1341,
+          "fraction": 0.1229,
+          "mean_area": 719.4,
+          "std_area": 367.8
+        },
+        "102": {
+          "count": 56366,
+          "stored_count": 7341,
+          "fraction": 0.6383,
+          "mean_area": 525.8,
+          "std_area": 412.6
+        },
+        "103": {
+          "count": 19132,
+          "stored_count": 1284,
+          "fraction": 0.2167,
+          "mean_area": 578.0,
+          "std_area": 343.6
+        },
+        "104": {
+          "count": 15,
+          "stored_count": 1,
+          "fraction": 0.0002,
+          "mean_area": 299.7,
+          "std_area": 85.6
+        },
+        "105": {
+          "count": 1937,
+          "stored_count": 33,
+          "fraction": 0.0219,
+          "mean_area": 583.5,
+          "std_area": 479.1
+        }
+      },
+      "stored_instances": 10000
+    },
+    "5": {
+      "name": "Normal epithelium",
+      "total_area_pixels": 81663588,
+      "total_nuclei": 21723,
+      "density_per_10k_px": 2.66,
+      "nuclei_types": {
+        "101": {
+          "count": 6196,
+          "stored_count": 3496,
+          "fraction": 0.2852,
+          "mean_area": 947.6,
+          "std_area": 665.3
+        },
+        "102": {
+          "count": 4938,
+          "stored_count": 1976,
+          "fraction": 0.2273,
+          "mean_area": 479.8,
+          "std_area": 245.8
+        },
+        "103": {
+          "count": 6637,
+          "stored_count": 2608,
+          "fraction": 0.3055,
+          "mean_area": 605.8,
+          "std_area": 343.8
+        },
+        "104": {
+          "count": 0,
+          "stored_count": 0,
+          "fraction": 0.0,
+          "mean_area": 0.0,
+          "std_area": 0.0
+        },
+        "105": {
+          "count": 3952,
+          "stored_count": 1920,
+          "fraction": 0.1819,
+          "mean_area": 845.2,
+          "std_area": 738.8
+        }
+      },
+      "stored_instances": 10000
+    },
+    "7": {
+      "name": "Other tissue",
+      "total_area_pixels": 109411744,
+      "total_nuclei": 6461,
+      "density_per_10k_px": 0.59,
+      "nuclei_types": {
+        "101": {
+          "count": 694,
+          "stored_count": 694,
+          "fraction": 0.1074,
+          "mean_area": 796.0,
+          "std_area": 529.5
+        },
+        "102": {
+          "count": 3083,
+          "stored_count": 3083,
+          "fraction": 0.4772,
+          "mean_area": 411.3,
+          "std_area": 160.3
+        },
+        "103": {
+          "count": 2499,
+          "stored_count": 2499,
+          "fraction": 0.3868,
+          "mean_area": 557.7,
+          "std_area": 318.7
+        },
+        "104": {
+          "count": 44,
+          "stored_count": 44,
+          "fraction": 0.0068,
+          "mean_area": 284.5,
+          "std_area": 153.7
+        },
+        "105": {
+          "count": 141,
+          "stored_count": 141,
+          "fraction": 0.0218,
+          "mean_area": 696.2,
+          "std_area": 329.5
+        }
+      },
+      "stored_instances": 6461
+    }
+  },
+  "bucket_health_warnings": [
+    "LOW_BUCKET tissue 2 (Stroma) dead: stored=0, extracted=15",
+    "LOW_BUCKET tissue 4 (Immune infiltrate) dead: stored=1, extracted=15"
+  ]
+}

@@ -1,0 +1,74 @@
+================================================================================
+Nuclei Library Statistics ¡ª IGNITE (lung)
+================================================================================
+Total nuclei instances: 464699
+Cancer type index: 3
+Label space: unified 16-class fine labels
+
+Tissue  1 (Tumor):
+  Total area: 694,344,032 px
+  Total nuclei: 144,844
+  Density: 2.09 per 10k px^2
+  Stored instances: 10000
+    neoplastic     : 108680 ( 75.0%) stored=  8128 area=1212+/-752
+    inflammatory   :  11882 (  8.2%) stored=  1024 area=462+/-232
+    connective     :  16836 ( 11.6%) stored=   679 area=752+/-428
+    epithelial     :   7446 (  5.1%) stored=   169 area=874+/-587
+
+Tissue  2 (Stroma):
+  Total area: 1,046,498,812 px
+  Total nuclei: 193,114
+  Density: 1.85 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  16240 (  8.4%) stored=   263 area=833+/-500
+    inflammatory   :  67439 ( 34.9%) stored=  3736 area=428+/-216
+    connective     : 108509 ( 56.2%) stored=  5946 area=624+/-384
+    dead           :     15 (  0.0%) stored=     0 area=336+/-272
+    epithelial     :    911 (  0.5%) stored=    55 area=577+/-289
+
+Tissue  3 (Necrosis):
+  Total area: 113,435,552 px
+  Total nuclei: 10,250
+  Density: 0.90 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :   1769 ( 17.3%) stored=  1689 area=692+/-340
+    inflammatory   :   5858 ( 57.1%) stored=  5772 area=380+/-182
+    connective     :   2325 ( 22.7%) stored=  2275 area=521+/-276
+    dead           :    120 (  1.2%) stored=    92 area=308+/-194
+    epithelial     :    178 (  1.7%) stored=   172 area=555+/-234
+
+Tissue  4 (Immune infiltrate):
+  Total area: 228,778,012 px
+  Total nuclei: 88,307
+  Density: 3.86 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  10857 ( 12.3%) stored=  1341 area=719+/-368
+    inflammatory   :  56366 ( 63.8%) stored=  7341 area=526+/-413
+    connective     :  19132 ( 21.7%) stored=  1284 area=578+/-344
+    dead           :     15 (  0.0%) stored=     1 area=300+/-86
+    epithelial     :   1937 (  2.2%) stored=    33 area=584+/-479
+
+Tissue  5 (Normal epithelium):
+  Total area: 81,663,588 px
+  Total nuclei: 21,723
+  Density: 2.66 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :   6196 ( 28.5%) stored=  3496 area=948+/-665
+    inflammatory   :   4938 ( 22.7%) stored=  1976 area=480+/-246
+    connective     :   6637 ( 30.6%) stored=  2608 area=606+/-344
+    epithelial     :   3952 ( 18.2%) stored=  1920 area=845+/-739
+
+Tissue  7 (Other tissue):
+  Total area: 109,411,744 px
+  Total nuclei: 6,461
+  Density: 0.59 per 10k px^2
+  Stored instances: 6461
+    neoplastic     :    694 ( 10.7%) stored=   694 area=796+/-530
+    inflammatory   :   3083 ( 47.7%) stored=  3083 area=411+/-160
+    connective     :   2499 ( 38.7%) stored=  2499 area=558+/-319
+    dead           :     44 (  0.7%) stored=    44 area=284+/-154
+    epithelial     :    141 (  2.2%) stored=   141 area=696+/-330
+
+Bucket health warnings:
+  WARNING: LOW_BUCKET tissue 2 (Stroma) dead: stored=0, extracted=15
+  WARNING: LOW_BUCKET tissue 4 (Immune infiltrate) dead: stored=1, extracted=15

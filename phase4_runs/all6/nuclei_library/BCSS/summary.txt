@@ -1,0 +1,110 @@
+================================================================================
+Nuclei Library Statistics ¡ª BCSS (breast)
+================================================================================
+Total nuclei instances: 2417583
+Cancer type index: 0
+Label space: unified 16-class fine labels
+
+Tissue  1 (Tumor):
+  Total area: 2,652,183,579 px
+  Total nuclei: 921,051
+  Density: 3.47 per 10k px^2
+  Stored instances: 10000
+    neoplastic     : 756491 ( 82.1%) stored=  8969 area=779+/-525
+    inflammatory   :  61022 (  6.6%) stored=   433 area=232+/-100
+    connective     : 102217 ( 11.1%) stored=   598 area=400+/-232
+    dead           :     35 (  0.0%) stored=     0 area=133+/-82
+    epithelial     :   1286 (  0.1%) stored=     0 area=502+/-340
+
+Tissue  2 (Stroma):
+  Total area: 1,825,051,687 px
+  Total nuclei: 535,821
+  Density: 2.94 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  95266 ( 17.8%) stored=  1202 area=518+/-313
+    inflammatory   : 154378 ( 28.8%) stored=  3135 area=223+/-98
+    connective     : 285725 ( 53.3%) stored=  5663 area=344+/-216
+    dead           :     47 (  0.0%) stored=     0 area=108+/-55
+    epithelial     :    405 (  0.1%) stored=     0 area=330+/-172
+
+Tissue  3 (Necrosis):
+  Total area: 439,935,108 px
+  Total nuclei: 100,897
+  Density: 2.29 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  39468 ( 39.1%) stored=  4311 area=424+/-253
+    inflammatory   :  43494 ( 43.1%) stored=  4446 area=204+/-105
+    connective     :  17328 ( 17.2%) stored=  1213 area=300+/-169
+    dead           :    575 (  0.6%) stored=    30 area=145+/-99
+    epithelial     :     32 (  0.0%) stored=     0 area=287+/-112
+
+Tissue  4 (Immune infiltrate):
+  Total area: 831,453,551 px
+  Total nuclei: 836,910
+  Density: 10.07 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  88272 ( 10.5%) stored=  1088 area=406+/-223
+    inflammatory   : 597956 ( 71.5%) stored=  7003 area=258+/-140
+    connective     : 149271 ( 17.8%) stored=  1909 area=320+/-175
+    dead           :     10 (  0.0%) stored=     0 area=123+/-25
+    epithelial     :   1401 (  0.2%) stored=     0 area=289+/-151
+
+Tissue  5 (Normal epithelium):
+  Total area: 4,910,970 px
+  Total nuclei: 3,113
+  Density: 6.34 per 10k px^2
+  Stored instances: 3113
+    neoplastic     :   1841 ( 59.1%) stored=  1841 area=590+/-445
+    inflammatory   :    555 ( 17.8%) stored=   555 area=266+/-148
+    connective     :    495 ( 15.9%) stored=   495 area=350+/-242
+    epithelial     :    222 (  7.1%) stored=   222 area=506+/-271
+
+Tissue  6 (Blood vessel):
+  Total area: 28,146,547 px
+  Total nuclei: 9,874
+  Density: 3.51 per 10k px^2
+  Stored instances: 9874
+    neoplastic     :   2306 ( 23.4%) stored=  2306 area=540+/-314
+    inflammatory   :   2246 ( 22.8%) stored=  2246 area=227+/-99
+    connective     :   5308 ( 53.8%) stored=  5308 area=409+/-252
+    epithelial     :     14 (  0.1%) stored=    14 area=329+/-62
+
+Tissue  7 (Other tissue):
+  Total area: 63,084,527 px
+  Total nuclei: 5,873
+  Density: 0.93 per 10k px^2
+  Stored instances: 5873
+    neoplastic     :   2101 ( 35.8%) stored=  2101 area=600+/-389
+    inflammatory   :   1550 ( 26.4%) stored=  1550 area=218+/-88
+    connective     :   2209 ( 37.6%) stored=  2209 area=322+/-208
+    epithelial     :     13 (  0.2%) stored=    13 area=203+/-29
+
+Tissue 14 (DCIS):
+  Total area: 4,719,979 px
+  Total nuclei: 3,551
+  Density: 7.52 per 10k px^2
+  Stored instances: 3551
+    neoplastic     :   1822 ( 51.3%) stored=  1822 area=414+/-146
+    inflammatory   :    107 (  3.0%) stored=   107 area=164+/-43
+    connective     :    490 ( 13.8%) stored=   490 area=262+/-112
+    epithelial     :   1132 ( 31.9%) stored=  1132 area=334+/-164
+
+Tissue 15 (Angioinvasion):
+  Total area: 1,618,638 px
+  Total nuclei: 493
+  Density: 3.05 per 10k px^2
+  Stored instances: 493
+    neoplastic     :    296 ( 60.0%) stored=   296 area=824+/-475
+    inflammatory   :     76 ( 15.4%) stored=    76 area=194+/-46
+    connective     :    121 ( 24.5%) stored=   121 area=240+/-89
+
+Bucket health warnings:
+  WARNING: LOW_BUCKET tissue 1 (Tumor) dead: stored=0, extracted=35
+  WARNING: LOW_BUCKET tissue 1 (Tumor) epithelial: stored=0, extracted=1286
+  WARNING: LOW_BUCKET tissue 2 (Stroma) dead: stored=0, extracted=47
+  WARNING: LOW_BUCKET tissue 2 (Stroma) epithelial: stored=0, extracted=405
+  WARNING: LOW_BUCKET tissue 3 (Necrosis) epithelial: stored=0, extracted=32
+  WARNING: LOW_BUCKET tissue 4 (Immune infiltrate) dead: stored=0, extracted=10
+  WARNING: LOW_BUCKET tissue 4 (Immune infiltrate) epithelial: stored=0, extracted=1401
+  WARNING: LOW_BUCKET tissue 6 (Blood vessel) epithelial: stored=14, extracted=14
+  WARNING: LOW_BUCKET tissue 7 (Other tissue) epithelial: stored=13, extracted=13

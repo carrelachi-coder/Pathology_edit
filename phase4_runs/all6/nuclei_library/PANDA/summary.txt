@@ -1,0 +1,62 @@
+================================================================================
+Nuclei Library Statistics ¡ª PANDA (prostate)
+================================================================================
+Total nuclei instances: 1365183
+Cancer type index: 1
+Label space: unified 16-class fine labels
+
+Tissue  2 (Stroma):
+  Total area: 4,094,574,122 px
+  Total nuclei: 425,840
+  Density: 1.04 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  15175 (  3.6%) stored=   531 area=663+/-354
+    inflammatory   :  52462 ( 12.3%) stored=  1596 area=322+/-128
+    connective     : 342257 ( 80.4%) stored=  7183 area=507+/-292
+    epithelial     :  15946 (  3.7%) stored=   690 area=560+/-356
+
+Tissue  5 (Normal epithelium):
+  Total area: 10,366,860 px
+  Total nuclei: 2,701
+  Density: 2.61 per 10k px^2
+  Stored instances: 2701
+    neoplastic     :    760 ( 28.1%) stored=   760 area=812+/-511
+    inflammatory   :    163 (  6.0%) stored=   163 area=370+/-166
+    connective     :   1024 ( 37.9%) stored=  1024 area=567+/-313
+    epithelial     :    754 ( 27.9%) stored=   754 area=723+/-454
+
+Tissue  8 (Gleason 3):
+  Total area: 1,195,917,438 px
+  Total nuclei: 301,924
+  Density: 2.52 per 10k px^2
+  Stored instances: 10000
+    neoplastic     : 106637 ( 35.3%) stored=  4256 area=795+/-461
+    inflammatory   :  19367 (  6.4%) stored=   819 area=405+/-151
+    connective     :  99771 ( 33.1%) stored=  3504 area=552+/-296
+    dead           :     56 (  0.0%) stored=     0 area=391+/-282
+    epithelial     :  76093 ( 25.2%) stored=  1421 area=734+/-484
+
+Tissue  9 (Gleason 4):
+  Total area: 1,848,740,524 px
+  Total nuclei: 506,046
+  Density: 2.74 per 10k px^2
+  Stored instances: 10000
+    neoplastic     : 207773 ( 41.1%) stored=  4044 area=831+/-491
+    inflammatory   :  35957 (  7.1%) stored=   792 area=443+/-198
+    connective     : 131579 ( 26.0%) stored=  3012 area=608+/-334
+    dead           :      4 (  0.0%) stored=     0 area=198+/-10
+    epithelial     : 130733 ( 25.8%) stored=  2152 area=761+/-528
+
+Tissue 10 (Gleason 5):
+  Total area: 500,846,694 px
+  Total nuclei: 128,672
+  Density: 2.57 per 10k px^2
+  Stored instances: 10000
+    neoplastic     :  54121 ( 42.1%) stored=  7106 area=989+/-567
+    inflammatory   :   7483 (  5.8%) stored=   479 area=501+/-222
+    connective     :  46614 ( 36.2%) stored=  2185 area=758+/-432
+    epithelial     :  20454 ( 15.9%) stored=   230 area=864+/-592
+
+Bucket health warnings:
+  WARNING: LOW_BUCKET tissue 8 (Gleason 3) dead: stored=0, extracted=56
+  WARNING: LOW_BUCKET tissue 9 (Gleason 4) dead: stored=0, extracted=4

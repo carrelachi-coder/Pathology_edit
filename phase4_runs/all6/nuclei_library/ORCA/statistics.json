@@ -1,0 +1,102 @@
+{
+  "dataset": "ORCA",
+  "cancer_type": "oral_scc",
+  "cancer_type_index": 5,
+  "label_space": "unified_fine_16",
+  "statistics": {
+    "1": {
+      "name": "Tumor",
+      "total_area_pixels": 5176551512,
+      "total_nuclei": 1499743,
+      "density_per_10k_px": 2.9,
+      "nuclei_types": {
+        "101": {
+          "count": 1156014,
+          "stored_count": 8016,
+          "fraction": 0.7708,
+          "mean_area": 863.2,
+          "std_area": 550.7
+        },
+        "102": {
+          "count": 105448,
+          "stored_count": 488,
+          "fraction": 0.0703,
+          "mean_area": 261.5,
+          "std_area": 138.3
+        },
+        "103": {
+          "count": 220267,
+          "stored_count": 1496,
+          "fraction": 0.1469,
+          "mean_area": 485.0,
+          "std_area": 292.6
+        },
+        "104": {
+          "count": 560,
+          "stored_count": 0,
+          "fraction": 0.0004,
+          "mean_area": 167.8,
+          "std_area": 99.2
+        },
+        "105": {
+          "count": 17454,
+          "stored_count": 0,
+          "fraction": 0.0116,
+          "mean_area": 757.3,
+          "std_area": 549.0
+        }
+      },
+      "stored_instances": 10000
+    },
+    "7": {
+      "name": "Other tissue",
+      "total_area_pixels": 1979689196,
+      "total_nuclei": 631210,
+      "density_per_10k_px": 3.19,
+      "nuclei_types": {
+        "101": {
+          "count": 128086,
+          "stored_count": 3098,
+          "fraction": 0.2029,
+          "mean_area": 675.8,
+          "std_area": 424.0
+        },
+        "102": {
+          "count": 146016,
+          "stored_count": 1678,
+          "fraction": 0.2313,
+          "mean_area": 286.7,
+          "std_area": 162.1
+        },
+        "103": {
+          "count": 353231,
+          "stored_count": 5224,
+          "fraction": 0.5596,
+          "mean_area": 465.8,
+          "std_area": 298.1
+        },
+        "104": {
+          "count": 1174,
+          "stored_count": 0,
+          "fraction": 0.0019,
+          "mean_area": 176.3,
+          "std_area": 104.2
+        },
+        "105": {
+          "count": 2703,
+          "stored_count": 0,
+          "fraction": 0.0043,
+          "mean_area": 705.4,
+          "std_area": 494.2
+        }
+      },
+      "stored_instances": 10000
+    }
+  },
+  "bucket_health_warnings": [
+    "LOW_BUCKET tissue 1 (Tumor) dead: stored=0, extracted=560",
+    "LOW_BUCKET tissue 1 (Tumor) epithelial: stored=0, extracted=17454",
+    "LOW_BUCKET tissue 7 (Other tissue) dead: stored=0, extracted=1174",
+    "LOW_BUCKET tissue 7 (Other tissue) epithelial: stored=0, extracted=2703"
+  ]
+}

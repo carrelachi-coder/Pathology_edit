@@ -5,6 +5,32 @@
   "include_images": false,
   "datasets": [
     {
+      "dataset": "BCSS",
+      "status": "ready",
+      "source": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES",
+      "target": "D:\\WQX\\Pathology_edit\\edit_datasets\\BCSS",
+      "counts": {
+        "tissue_masks": 22870,
+        "nuclei_masks": 22870,
+        "paired_masks": 22870,
+        "unpaired_tissue_masks": 0,
+        "unpaired_nuclei_masks": 0
+      }
+    },
+    {
+      "dataset": "GlaS",
+      "status": "ready",
+      "source": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES",
+      "target": "D:\\WQX\\Pathology_edit\\edit_datasets\\GlaS",
+      "counts": {
+        "tissue_masks": 2185,
+        "nuclei_masks": 2185,
+        "paired_masks": 2185,
+        "unpaired_tissue_masks": 0,
+        "unpaired_nuclei_masks": 0
+      }
+    },
+    {
       "dataset": "IGNITE",
       "status": "ready",
       "source": "D:\\WQX\\datasets\\IGNITE_PATCHES",
@@ -13,6 +39,45 @@
         "tissue_masks": 9097,
         "nuclei_masks": 9097,
         "paired_masks": 9097,
+        "unpaired_tissue_masks": 0,
+        "unpaired_nuclei_masks": 0
+      }
+    },
+    {
+      "dataset": "ORCA",
+      "status": "ready",
+      "source": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES",
+      "target": "D:\\WQX\\Pathology_edit\\edit_datasets\\ORCA",
+      "counts": {
+        "tissue_masks": 29606,
+        "nuclei_masks": 29606,
+        "paired_masks": 29606,
+        "unpaired_tissue_masks": 0,
+        "unpaired_nuclei_masks": 0
+      }
+    },
+    {
+      "dataset": "PANDA",
+      "status": "ready",
+      "source": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES",
+      "target": "D:\\WQX\\Pathology_edit\\edit_datasets\\PANDA",
+      "counts": {
+        "tissue_masks": 29300,
+        "nuclei_masks": 29300,
+        "paired_masks": 29300,
+        "unpaired_tissue_masks": 0,
+        "unpaired_nuclei_masks": 0
+      }
+    },
+    {
+      "dataset": "PUMA",
+      "status": "ready",
+      "source": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES",
+      "target": "D:\\WQX\\Pathology_edit\\edit_datasets\\PUMA",
+      "counts": {
+        "tissue_masks": 1844,
+        "nuclei_masks": 1844,
+        "paired_masks": 1844,
         "unpaired_tissue_masks": 0,
         "unpaired_nuclei_masks": 0
       }
