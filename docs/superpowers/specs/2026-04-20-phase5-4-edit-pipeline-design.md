@@ -25,6 +25,8 @@ The first version of the pipeline accepts exactly these core inputs:
 - `target_tissue_mask`
 - `target_nuclei_mask`
 
+Prompt conditioning is also required by FLUX, but it is handled separately from the five core spatial inputs.
+
 Key semantic constraint:
 
 - `reference_image` is the original image and also the current reference state
@@ -267,10 +269,31 @@ The first version only supports `cross V0`.
 
 ### Optional arguments
 
+- `--prompt`
+- `--dataset`
 - `--force-mode inpaint|cross`
 - `--save-debug-artifacts`
 - `--device`
 - `--seed`
+
+### Prompt resolution
+
+FLUX requires text conditioning during inference, so the edit pipeline must always resolve a prompt string before model execution.
+
+The recommended priority order is:
+
+1. If `--prompt` is provided, use it directly
+2. Else if `--dataset` is provided, resolve the default dataset prompt via `dataset_config`, reusing the same logic as `default_prompt_for_dataset(...)`
+3. Else fall back to a generic prompt such as:
+   - `"H&E stained cancer histopathology at 40x magnification"`
+
+Rationale:
+
+- explicit user prompt should take precedence
+- dataset-aware defaults are already part of the training/data code path and should be reused in inference
+- the current five core file inputs do not carry a reliable dataset identity by themselves, so dataset-aware defaults should not be guessed from `reference_image` path structure alone
+
+The resolved prompt should be written into `run_summary.json` for reproducibility.
 
 ### Default outputs
 
@@ -298,6 +321,7 @@ The pipeline should fail early on inconsistent inputs.
 - reference and target tissue masks have compatible label ranges
 - reference and target nuclei masks have valid nuclei IDs
 - required checkpoints exist
+- prompt resolution succeeds
 - router thresholds are valid (`t_inpaint <= t_cross`)
 
 ### Explicit first-version behavior
