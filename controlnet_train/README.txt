@@ -22,6 +22,10 @@ ControlNet Train
   Phase 5 的脚本入口层。
   - `build_inpaint_dataset.py`: 把上游编辑样本清单归一化为 `metadata_inpaint_{train,val}.jsonl`。
   - `generate_training_pairs.py`: 从多数据集 layered patch 根目录生成 `metadata_cross_{train,val}.json`。
+- `training/`
+  Phase 5 的训练共享层。
+  - `conditioning.py`: 记录 `5.3` 的 cond 通道规格与 `controlnet_x_embedder` 宽度补丁。
+  - `flux_phase5.py`: 基于 `legacy_rgb_vae/` 中官方 FLUX ControlNet 训练流，接入新的 HTE / nuclei / change-mask 条件。
 - `legacy_rgb_vae/`
   归档旧版 BCSS-only / RGB mask / VAE mask latent 流程，避免和 Phase 5 新方案混用。
 
@@ -65,15 +69,15 @@ Phase 5 推荐后续落位
    扫描多数据集分层数据，直接读取 `tissue_mask.png`，生成训练清单和 prompt 元数据。
 2. `cli/generate_training_pairs.py`
    依据多数据集 patch / WSI 分组逻辑，生成 cross-reconstruction pairs。
-3. `train_controlnet_flux_inpaint.py`
+3. `cli/train_controlnet_flux_inpaint.py`
    用 `ref_image + ref_mask(HTE) + target_mask(HTE)` 训练新的 ControlNet。
-4. `val_controlnet_flux.py`
-   验证新 HTE conditioning 的推理链路。
+4. `cli/train_controlnet_flux_cross.py`
+   用 `reference_image + reference_tissue_mask + reference_nuclei_mask + target_*mask` 训练 `cross V0` baseline。
 
 当前实现范围
 ------------
 
-这轮代码先对齐 `.claude/plans/plan.md` 的 `5.1` 基础设施部分：
+这轮代码当前已经覆盖到 `.claude/plans/plan.md` 的 `5.1`、`5.2` 和 `5.3` 第一版骨架：
 
 - 已完成：
   - `HierarchicalTissueEmbedding`
@@ -81,9 +85,15 @@ Phase 5 推荐后续落位
   - `NucleiConditionEncoder`
   - `ChangeMaskEncoder`
   - `cross V0 spatial concat baseline` 的公共拼接 helper
+  - `build_inpaint_condition` 的公共拼接 helper
+  - `cli/train_controlnet_flux_inpaint.py`
+  - `cli/train_controlnet_flux_cross.py`
+  - `training/conditioning.py`
+  - `training/flux_phase5.py`
 - 暂未实现：
   - `ReferenceMorphologyEncoder`
   - `cross V1 reference branch`
+  - `Phase 5` 验证 / 推理脚本
 
 也就是说，当前 `cross controlnet` 先按计划里的 `V0` 收敛：把
 `reference_image_latent + reference_tissue_feat + reference_nuclei_feat + target_tissue_feat + target_nuclei_feat`
@@ -204,6 +214,41 @@ python controlnet_train/cli/generate_training_pairs.py ^
   --dataset-root GlaS=D:\\WQX\\datasets\\GlaS\\GlaS_PATCHES ^
   --output-dir phase5_runs\\cross_meta
 ```
+
+inpaint 训练：
+
+```bash
+python controlnet_train/cli/train_controlnet_flux_inpaint.py ^
+  --pretrained_model_name_or_path black-forest-labs/FLUX.1-dev ^
+  --train-metadata phase5_runs\\inpaint_meta\\metadata_inpaint_train.jsonl ^
+  --output-dir phase5_runs\\controlnet_inpaint
+```
+
+cross V0 训练：
+
+```bash
+python controlnet_train/cli/train_controlnet_flux_cross.py ^
+  --pretrained_model_name_or_path black-forest-labs/FLUX.1-dev ^
+  --train-metadata phase5_runs\\cross_meta\\metadata_cross_train.json ^
+  --output-dir phase5_runs\\controlnet_cross
+```
+
+Phase 5.3 架构说明
+-----------------
+
+- `5.3` 的训练流保留了 `legacy_rgb_vae/` 里基于官方 `diffusers` `FluxControlNetModel` 的训练主干。
+- 当前改动集中在两部分：
+  - `controlnet_cond` 不再依赖 mask VAE latent，而是改为 HTE / nuclei / change-mask learned features
+  - `controlnet_x_embedder` 的输入宽度按新的 packed cond 通道数显式扩展
+- 结合当前多数据集 patch 规模：
+  - BCSS: `22870`
+  - PANDA: `29300`
+  - ORCA: `29606`
+  - IGNITE: `9097`
+  - GlaS: `2185`
+  - PUMA: `1844`
+  - 合计约 `94902` patches
+- 这个数据规模足以先支撑当前 `5.3` 计划里的默认容量；第一版不建议额外增大 ControlNet 层数或引入更重的 morphology branch。
 
 迁移原则
 --------

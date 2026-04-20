@@ -13,6 +13,7 @@ from .modules import (
     NucleiConditionEncoder,
     TissueConditionDownsampler,
     build_cross_v0_condition,
+    build_inpaint_condition,
 )
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "TissueConditionDownsampler",
     "build_cross_metadata",
     "build_cross_v0_condition",
+    "build_inpaint_condition",
     "build_inpaint_metadata",
     "load_layered_dataset_samples",
 ]
