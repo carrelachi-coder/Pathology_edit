@@ -16,6 +16,15 @@ ControlNet Train
   把 binary `change_region_mask` 投影成轻量 4-channel learned feature。
 - `conditioning.py`
   放置 Phase 5 条件拼接辅助函数；当前已提供 `cross V0` 的单路 spatial concat helper。
+- `data/`
+  Phase 5 的新数据层。
+  - `common.py`: 共享 layered patch 读取、prompt、nuclei remap、train/val split
+  - `inpaint.py`: `local-preservation` / inpaint metadata builder + `InpaintDataset`
+  - `cross.py`: `same-WSI cross-reconstruction` metadata builder + `CrossReconstructionDataset`
+- `build_inpaint_dataset.py`
+  把上游编辑样本清单归一化为 `metadata_inpaint_{train,val}.jsonl`。
+- `generate_training_pairs.py`
+  从多数据集 layered patch 根目录生成 `metadata_cross_{train,val}.json`。
 - `legacy_rgb_vae/`
   归档旧版 BCSS-only / RGB mask / VAE mask latent 流程，避免和 Phase 5 新方案混用。
 
@@ -83,6 +92,122 @@ Phase 5 推荐后续落位
 `reference_image_latent + reference_tissue_feat + reference_nuclei_feat + target_tissue_feat + target_nuclei_feat`
 拼成单一路 `controlnet_cond`。
 
+数据准备
+--------
+
+Phase 5 现在明确分成两类 DataLoader：
+
+1. `InpaintDataset`
+   服务 `local-preservation / inpaint` 训练。
+2. `CrossReconstructionDataset`
+   服务 `same-WSI cross-reconstruction` 训练。
+
+两类任务的 metadata schema 分开，但共享同一层底层读取逻辑：
+
+- layered patch 根目录统一约定为：
+  - `images/`
+  - `tissue_masks/`
+  - `nuclei_masks/`
+  - `metadata.jsonl`
+  - `stats.txt`
+- `tissue_mask` 始终是 unified fine tissue ID，值域 `[0, 15]`
+- `nuclei_mask` 始终是 raw nuclei ID，值域 `0/101-105`
+- 训练时再在 loader 内做 nuclei remap：`0/101-105 -> 0..5`
+
+多数据集原始 patch 根目录
+------------------------
+
+当前仓库外部的实际 layered patch 根目录示例：
+
+- `D:\WQX\datasets\BCSS\BCSS_PATCHES`
+- `D:\WQX\datasets\PANDA\PANDA_PATCHES`
+- `D:\WQX\datasets\GlaS\GlaS_PATCHES`
+- `D:\WQX\datasets\IGNITE_PATCHES`
+- `D:\WQX\datasets\ORCA\ORCA_PATCHES`
+- `D:\WQX\datasets\PUMA\PUMA_PATCHES`
+
+这些目录是 `cross` metadata 构建的直接输入；脚本会从 `metadata.jsonl` 和同名的
+`images/tissue_masks/nuclei_masks` 中读取样本。
+
+Inpaint Metadata 约定
+---------------------
+
+`build_inpaint_dataset.py` 不再负责 BCSS-only 的旧式 RGB mask 造数，而是负责把上游编辑结果
+归一化成统一 schema。输入 `jsonl` 中每条记录至少要有：
+
+- `dataset`
+- `source_image`
+- `target_image`
+- `target_tissue_mask`
+- `target_nuclei_mask`
+- `change_region_mask`
+
+可选字段：
+
+- `erased_source_image`
+- `prompt`
+- `edit_type`
+- `change_ratio`
+- `sample_id`
+- `case_id`
+
+输出：
+
+- `metadata_inpaint_train.jsonl`
+- `metadata_inpaint_val.jsonl`
+
+如果输入里没有 `erased_source_image`，脚本会根据 `source_image + change_region_mask`
+自动生成灰色擦除版本。
+
+Cross Metadata 约定
+-------------------
+
+`generate_training_pairs.py` 专门负责 `same-WSI cross-reconstruction`。
+它会从多个 layered patch 根目录中读取样本，并输出：
+
+- `metadata_cross_train.json`
+- `metadata_cross_val.json`
+
+每个 pair 至少包含：
+
+- `target_image`
+- `target_tissue_mask`
+- `target_nuclei_mask`
+- `reference_image`
+- `reference_tissue_mask`
+- `reference_nuclei_mask`
+- `dataset`
+- `sample_id`
+- `reference_sample_id`
+- `case_id`
+
+当前配对规则：
+
+- 只在同一 `case_id` / WSI 内配对
+- `reference` 必须覆盖 `target` 的 tissue 语义集合
+- nuclei 分布和 stain 只作为软排序信号
+
+推荐命令
+--------
+
+inpaint metadata 归一化：
+
+```bash
+python controlnet_train/build_inpaint_dataset.py ^
+  --input-jsonl path\\to\\edited_samples.jsonl ^
+  --output-dir phase5_runs\\inpaint_meta
+```
+
+cross metadata 构建：
+
+```bash
+python controlnet_train/generate_training_pairs.py ^
+  --dataset-root BCSS=D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES ^
+  --dataset-root PANDA=D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES ^
+  --dataset-root GlaS=D:\\WQX\\datasets\\GlaS\\GlaS_PATCHES ^
+  --output-dir phase5_runs\\cross_meta
+```
+
 迁移原则
 --------
 
@@ -90,3 +215,4 @@ Phase 5 推荐后续落位
 - 不再为 mask 生成 RGB PNG 或 VAE latent。
 - 所有标签解释都从 `dataset_config/` 读取。
 - HTE 只负责离散 tissue ID 的语义编码，不负责图像重建。
+- `5.2` 的 DataLoader 分为 `inpaint` 和 `cross` 两类，不再混用单一 schema。
