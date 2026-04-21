@@ -13,7 +13,11 @@ from controlnet_train.data.common import load_layered_dataset_samples
 from controlnet_train.data.cross import CrossReconstructionDataset, build_cross_metadata
 from controlnet_train.data.inpaint import InpaintDataset, build_inpaint_metadata
 from controlnet_train.data.inpaint_synthesis import (
+    expand_band,
     _build_near_identity_mask,
+    replace_like_blob,
+    shrink_band,
+    synthesize_change_region,
     build_synthetic_inpaint_metadata,
 )
 
@@ -129,6 +133,11 @@ class InpaintDatasetTests(unittest.TestCase):
 
 
 class InpaintSynthesisTests(unittest.TestCase):
+    def _make_component_mask(self) -> np.ndarray:
+        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
+        tissue_mask[2:6, 2:6] = 1
+        return tissue_mask
+
     def test_build_synthetic_metadata_identity_writes_trace_fields(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
         try:
@@ -201,6 +210,12 @@ class InpaintSynthesisTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    def test_synthesize_change_region_rejects_invalid_forced_bucket(self):
+        tissue_mask = self._make_component_mask()
+
+        with self.assertRaises(ValueError):
+            synthesize_change_region(tissue_mask, forced_bucket="unsupported_bucket", seed=11)
+
     def test_synthetic_metadata_loads_through_inpaint_dataset_and_near_identity_has_change(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
         try:
@@ -249,6 +264,100 @@ class InpaintSynthesisTests(unittest.TestCase):
         mask = _build_near_identity_mask(tissue_mask, change_pixels=2)
 
         self.assertEqual(int(np.count_nonzero(mask)), 2)
+
+    def test_expand_band_stays_near_exterior_boundary_and_keeps_center_clear(self):
+        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
+        tissue_mask[0:4, 0:4] = 1
+
+        mask = expand_band(tissue_mask, seed=11)
+
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertEqual(int(mask[1, 1]), 0)
+        self.assertTrue(np.any((mask > 0) & (tissue_mask == 0)))
+        self.assertFalse(np.any((mask > 0) & (tissue_mask > 0)))
+
+    def test_expand_band_returns_empty_for_full_frame_component(self):
+        tissue_mask = np.ones((8, 8), dtype=np.uint8)
+
+        mask = expand_band(tissue_mask, seed=11)
+
+        self.assertEqual(int(np.count_nonzero(mask)), 0)
+
+    def test_expand_band_prefers_the_largest_component_when_multiple_are_present(self):
+        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
+        tissue_mask[1:4, 1:4] = 1
+        tissue_mask[5:7, 5:7] = 1
+
+        mask = expand_band(tissue_mask, seed=11)
+
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertGreater(int(np.count_nonzero(mask[:5, :5])), 0)
+        self.assertEqual(int(np.count_nonzero(mask[5:, 5:])), 0)
+
+    def test_expand_band_tie_break_is_seeded_for_equal_components(self):
+        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
+        tissue_mask[1:3, 1:3] = 1
+        tissue_mask[5:7, 5:7] = 1
+
+        first = expand_band(tissue_mask, seed=11)
+        second = expand_band(tissue_mask, seed=11)
+
+        self.assertTrue(np.array_equal(first, second))
+        self.assertNotEqual(
+            int(np.count_nonzero(first[:4, :4])) > 0,
+            int(np.count_nonzero(first[5:, 5:])) > 0,
+        )
+
+    def test_shrink_band_preserves_component_core(self):
+        tissue_mask = self._make_component_mask()
+
+        mask = shrink_band(tissue_mask, seed=11)
+
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertEqual(int(mask[4, 4]), 0)
+        self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+
+    def test_shrink_band_never_absorbs_a_thin_component(self):
+        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
+        tissue_mask[4, 2:7] = 1
+
+        mask = shrink_band(tissue_mask, seed=11)
+
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertLess(int(np.count_nonzero(mask)), int(np.count_nonzero(tissue_mask)))
+        self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+
+    def test_replace_like_blob_attaches_to_boundary_without_center_hole(self):
+        tissue_mask = self._make_component_mask()
+
+        mask = replace_like_blob(tissue_mask, seed=11)
+
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertEqual(int(mask[4, 4]), 0)
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+        self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
+
+    def test_replace_like_blob_never_seeds_from_protected_core_on_thin_component(self):
+        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
+        tissue_mask[4, 2:7] = 1
+
+        mask = replace_like_blob(tissue_mask, seed=1)
+
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertLess(int(np.count_nonzero(mask)), int(np.count_nonzero(tissue_mask)))
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+        self.assertEqual(int(mask[4, 4]), 0)
+
+    def test_synthesize_change_region_respects_forced_bucket(self):
+        tissue_mask = self._make_component_mask()
+
+        for forced_bucket in ("expand_band", "shrink_band", "replace_like_blob"):
+            mask, bucket = synthesize_change_region(tissue_mask, forced_bucket=forced_bucket, seed=11)
+
+            self.assertEqual(bucket, forced_bucket)
+            self.assertGreater(int(np.count_nonzero(mask)), 0)
 
 
 class CrossDatasetTests(unittest.TestCase):
