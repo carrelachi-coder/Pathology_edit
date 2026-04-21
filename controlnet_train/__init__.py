@@ -5,6 +5,7 @@ from .data import (
     InpaintDataset,
     build_cross_metadata,
     build_inpaint_metadata,
+    build_synthetic_inpaint_metadata,
     load_layered_dataset_samples,
 )
 from .inference import EditPipelineInputs, EditPipelineResult, resolve_prompt, run_edit_pipeline
@@ -30,6 +31,7 @@ __all__ = [
     "build_cross_v0_condition",
     "build_inpaint_condition",
     "build_inpaint_metadata",
+    "build_synthetic_inpaint_metadata",
     "load_layered_dataset_samples",
     "resolve_prompt",
     "run_edit_pipeline",
