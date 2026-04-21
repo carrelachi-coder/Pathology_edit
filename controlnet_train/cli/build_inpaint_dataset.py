@@ -10,6 +10,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from controlnet_train.data import build_inpaint_metadata, build_synthetic_inpaint_metadata
+from controlnet_train.data.inpaint_synthesis import _VALID_FORCED_MODES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +31,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", required=True, type=Path, help="Directory for metadata_inpaint_{train,val}.jsonl")
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--forced-mode",
+        default="identity",
+        choices=sorted(_VALID_FORCED_MODES),
+        help="Synthetic GT edit mode for --dataset-root. Defaults to identity.",
+    )
     parser.add_argument("--samples-per-dataset", type=int, default=None)
     parser.add_argument("--max-attempts-per-sample", type=int, default=None)
     return parser
@@ -53,9 +60,13 @@ def main(argv=None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.input_jsonl:
-        if args.samples_per_dataset is not None or args.max_attempts_per_sample is not None:
+        if (
+            args.samples_per_dataset is not None
+            or args.max_attempts_per_sample is not None
+            or args.forced_mode != "identity"
+        ):
             parser.error(
-                "--samples-per-dataset and --max-attempts-per-sample are only supported with --dataset-root."
+                "--samples-per-dataset, --max-attempts-per-sample, and --forced-mode are only supported with --dataset-root."
             )
         train_path, val_path = build_inpaint_metadata(
             input_jsonl_paths=args.input_jsonl,
@@ -77,6 +88,7 @@ def main(argv=None) -> None:
         train_path, val_path = build_synthetic_inpaint_metadata(
             dataset_roots=dataset_roots,
             output_dir=args.output_dir,
+            forced_mode=args.forced_mode,
             val_ratio=args.val_ratio,
             seed=args.seed,
             samples_per_dataset=args.samples_per_dataset,

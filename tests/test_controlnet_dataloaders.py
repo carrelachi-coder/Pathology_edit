@@ -209,6 +209,23 @@ class InpaintCliTests(unittest.TestCase):
 
         self.assertIn("Expected DATASET=PATH", stderr.getvalue())
 
+    def test_parse_args_rejects_invalid_forced_mode_with_argparse_error(self):
+        stderr = StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit):
+                build_inpaint_dataset.parse_args(
+                    [
+                        "--dataset-root",
+                        "PANDA=D:/datasets/PANDA",
+                        "--output-dir",
+                        "D:/tmp/out",
+                        "--forced-mode",
+                        "unsupported_mode",
+                    ]
+                )
+
+        self.assertIn("invalid choice", stderr.getvalue())
+
     def test_main_rejects_non_positive_samples_per_dataset_with_argparse_error(self):
         stderr = StringIO()
         with contextlib.redirect_stderr(stderr):
