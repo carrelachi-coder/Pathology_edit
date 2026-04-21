@@ -21,6 +21,7 @@ from controlnet_train.data.inpaint import InpaintDataset, build_inpaint_metadata
 from controlnet_train.data.inpaint_synthesis import (
     expand_band,
     _build_near_identity_mask,
+    _size_bucket_for_change_ratio,
     replace_like_blob,
     shrink_band,
     synthesize_change_region,
@@ -475,7 +476,13 @@ class InpaintCliTests(unittest.TestCase):
 
             seeds_seen: list[int] = []
 
-            def synthesize_side_effect(tissue_mask, forced_bucket=None, seed=None):
+            def synthesize_side_effect(
+                tissue_mask,
+                forced_bucket=None,
+                size_bucket=None,
+                seed=None,
+                preferred_labels=None,
+            ):
                 seeds_seen.append(seed)
                 if seed == 17:
                     return np.zeros_like(tissue_mask, dtype=np.uint8), "replace_like_blob"
@@ -505,6 +512,59 @@ class InpaintCliTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    def test_build_synthetic_metadata_retries_when_change_ratio_exceeds_maximum(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_retry_ratio_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 88)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 8, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 102, dtype=np.uint8))
+            (root / "metadata.jsonl").write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            seeds_seen: list[int] = []
+
+            def synthesize_side_effect(
+                tissue_mask,
+                forced_bucket=None,
+                size_bucket=None,
+                seed=None,
+                preferred_labels=None,
+            ):
+                seeds_seen.append(seed)
+                if seed == 17:
+                    return np.full_like(tissue_mask, 255, dtype=np.uint8), "expand_band"
+                mask = np.zeros_like(tissue_mask, dtype=np.uint8)
+                mask[:4, :4] = 255
+                return mask, "expand_band"
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.synthesize_change_region",
+                side_effect=synthesize_side_effect,
+            ):
+                train_path, _ = build_synthetic_inpaint_metadata(
+                    dataset_roots={"PANDA": root},
+                    output_dir=root / "synthetic_output",
+                    forced_mode="expand_band",
+                    val_ratio=0.0,
+                    seed=17,
+                    samples_per_dataset=1,
+                    max_attempts_per_sample=2,
+                )
+
+            self.assertEqual(seeds_seen, [17, 18])
+            row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+            self.assertLessEqual(float(row["change_ratio"]), 0.7)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def test_build_synthetic_metadata_emits_extra_variant_only_for_tumor_plus_other_patches(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
         try:
@@ -520,7 +580,7 @@ class InpaintCliTests(unittest.TestCase):
             _write_rgb(root / "images" / pure_name, 96)
 
             mixed_tissue = np.full((8, 8), 8, dtype=np.uint8)
-            mixed_tissue[:, :2] = 2
+            mixed_tissue[:, :3] = 2
             pure_tissue = np.full((8, 8), 8, dtype=np.uint8)
 
             _write_mask(root / "tissue_masks" / mixed_name, mixed_tissue)
@@ -905,7 +965,7 @@ class InpaintSynthesisTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def test_synthetic_metadata_supports_replace_like_blob_medium_bucket(self):
+    def test_synthetic_metadata_replace_like_blob_erases_the_selected_component(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
         try:
             root = Path(tmpdir) / "PANDA"
@@ -914,9 +974,11 @@ class InpaintSynthesisTests(unittest.TestCase):
             (root / "nuclei_masks").mkdir()
 
             sample_name = "case3_py0_px0.png"
-            Image.fromarray(np.full((4, 4, 3), 88, dtype=np.uint8)).save(root / "images" / sample_name)
-            _write_mask(root / "tissue_masks" / sample_name, np.full((4, 4), 1, dtype=np.uint8))
-            _write_mask(root / "nuclei_masks" / sample_name, np.full((4, 4), 102, dtype=np.uint8))
+            Image.fromarray(np.full((32, 32, 3), 88, dtype=np.uint8)).save(root / "images" / sample_name)
+            tissue_mask = np.zeros((32, 32), dtype=np.uint8)
+            tissue_mask[8:24, 8:24] = 1
+            _write_mask(root / "tissue_masks" / sample_name, tissue_mask)
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((32, 32), 102, dtype=np.uint8))
 
             metadata_path = root / "metadata.jsonl"
             metadata_path.write_text(
@@ -928,7 +990,6 @@ class InpaintSynthesisTests(unittest.TestCase):
                 dataset_roots={"PANDA": root},
                 output_dir=root / "synthetic_output",
                 forced_mode="replace_like_blob",
-                forced_bucket="medium",
                 val_ratio=0.0,
                 seed=17,
             )
@@ -936,16 +997,14 @@ class InpaintSynthesisTests(unittest.TestCase):
             dataset = InpaintDataset(train_path)
             sample = dataset[0]
             row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+            change_mask = np.asarray(Image.open(row["change_region_mask"]))
 
             self.assertEqual(len(dataset), 1)
             self.assertEqual(row["mask_mode"], "replace_like_blob")
-            self.assertEqual(row["size_bucket"], "medium")
-            self.assertGreater(float(row["change_ratio"]), 0.12)
-            self.assertLess(float(row["change_ratio"]), 0.30)
-            self.assertGreater(float(sample["change_ratio"]), 0.12)
-            self.assertLess(float(sample["change_ratio"]), 0.30)
+            self.assertTrue(np.array_equal(change_mask > 0, tissue_mask > 0))
+            self.assertEqual(float(row["change_ratio"]), float(sample["change_ratio"]))
             self.assertTrue(Path(sample["erased_source_image_path"]).exists())
-            self.assertTrue(int(np.asarray(Image.open(row["change_region_mask"])).sum()) > 0)
+            self.assertEqual(row["size_bucket"], "large")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -957,16 +1016,21 @@ class InpaintSynthesisTests(unittest.TestCase):
 
         self.assertEqual(int(np.count_nonzero(mask)), 2)
 
-    def test_expand_band_stays_near_exterior_boundary_and_keeps_center_clear(self):
-        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
-        tissue_mask[0:4, 0:4] = 1
+    def test_expand_band_intersects_component_boundary_without_crossing_background(self):
+        tissue_mask = np.zeros((64, 64), dtype=np.uint8)
+        tissue_mask[12:52, 12:52] = 1
 
         mask = expand_band(tissue_mask, seed=11)
+        boundary = np.zeros_like(tissue_mask, dtype=bool)
+        boundary[12, 12:52] = True
+        boundary[51, 12:52] = True
+        boundary[12:52, 12] = True
+        boundary[12:52, 51] = True
 
         self.assertGreater(int(np.count_nonzero(mask)), 0)
-        self.assertEqual(int(mask[1, 1]), 0)
         self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
         self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+        self.assertTrue(np.any((mask > 0) & boundary))
 
     def test_expand_band_prefers_a_dominant_tissue_label(self):
         tissue_mask = np.zeros((8, 8), dtype=np.uint8)
@@ -980,13 +1044,14 @@ class InpaintSynthesisTests(unittest.TestCase):
         self.assertFalse(np.any((mask > 0) & (tissue_mask == 2)))
         self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
 
-    def test_expand_band_returns_tissue_edge_for_full_frame_component(self):
+    def test_expand_band_falls_back_to_interior_when_no_non_frame_boundary_exists(self):
         tissue_mask = np.ones((8, 8), dtype=np.uint8)
 
         mask = expand_band(tissue_mask, seed=11)
 
         self.assertGreater(int(np.count_nonzero(mask)), 0)
-        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+        self.assertGreater(int(mask[4, 4]), 0)
+        self.assertEqual(int(mask[0, 0]), 0)
 
     def test_expand_band_prefers_the_largest_component_when_multiple_are_present(self):
         tissue_mask = np.zeros((8, 8), dtype=np.uint8)
@@ -1013,15 +1078,16 @@ class InpaintSynthesisTests(unittest.TestCase):
             int(np.count_nonzero(first[5:, 5:])) > 0,
         )
 
-    def test_shrink_band_preserves_component_core(self):
-        tissue_mask = self._make_component_mask()
+    def test_shrink_band_targets_component_interior(self):
+        tissue_mask = np.zeros((64, 64), dtype=np.uint8)
+        tissue_mask[8:56, 8:56] = 1
 
         mask = shrink_band(tissue_mask, seed=11)
 
         self.assertGreater(int(np.count_nonzero(mask)), 0)
-        self.assertEqual(int(mask[4, 4]), 0)
         self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
         self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+        self.assertGreater(int(np.count_nonzero(mask[24:40, 24:40])), 0)
 
     def test_shrink_band_never_absorbs_a_thin_component(self):
         tissue_mask = np.zeros((8, 8), dtype=np.uint8)
@@ -1034,26 +1100,104 @@ class InpaintSynthesisTests(unittest.TestCase):
         self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
         self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
 
-    def test_replace_like_blob_attaches_to_boundary_without_center_hole(self):
+    def test_replace_like_blob_erases_the_entire_selected_component(self):
         tissue_mask = self._make_component_mask()
 
         mask = replace_like_blob(tissue_mask, seed=11)
 
         self.assertGreater(int(np.count_nonzero(mask)), 0)
-        self.assertEqual(int(mask[4, 4]), 0)
         self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
-        self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
+        self.assertTrue(np.array_equal(mask > 0, tissue_mask > 0))
 
-    def test_replace_like_blob_never_seeds_from_protected_core_on_thin_component(self):
+    def test_replace_like_blob_small_bucket_returns_the_full_component(self):
+        tissue_mask = np.zeros((128, 128), dtype=np.uint8)
+        tissue_mask[32:80, 32:80] = 1
+
+        mask = replace_like_blob(tissue_mask, seed=11, size_bucket="small")
+
+        component_pixels = int(np.count_nonzero(tissue_mask))
+        changed_pixels = int(np.count_nonzero(mask))
+        changed_fraction = changed_pixels / component_pixels
+
+        self.assertEqual(changed_fraction, 1.0)
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+
+    def test_replace_like_blob_remains_a_single_component_on_thin_component(self):
         tissue_mask = np.zeros((8, 8), dtype=np.uint8)
         tissue_mask[4, 2:7] = 1
 
         mask = replace_like_blob(tissue_mask, seed=1)
 
         self.assertGreater(int(np.count_nonzero(mask)), 0)
-        self.assertLess(int(np.count_nonzero(mask)), int(np.count_nonzero(tissue_mask)))
         self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
-        self.assertEqual(int(mask[4, 4]), 0)
+        self.assertTrue(np.array_equal(mask > 0, tissue_mask > 0))
+
+    def test_expand_and_shrink_scale_change_area_with_size_bucket(self):
+        tissue_mask = np.zeros((32, 32), dtype=np.uint8)
+        tissue_mask[4:28, 4:28] = 1
+
+        for fn in (expand_band, shrink_band):
+            small = fn(tissue_mask, seed=11, size_bucket="small")
+            medium = fn(tissue_mask, seed=11, size_bucket="medium")
+            large = fn(tissue_mask, seed=11, size_bucket="large")
+
+            small_ratio = float(np.count_nonzero(small) / small.size)
+            medium_ratio = float(np.count_nonzero(medium) / medium.size)
+            large_ratio = float(np.count_nonzero(large) / large.size)
+
+            self.assertLess(small_ratio, medium_ratio)
+            self.assertLess(medium_ratio, large_ratio)
+            self.assertGreater(small_ratio, 0.05)
+            self.assertGreater(medium_ratio, 0.10)
+            self.assertGreater(large_ratio, 0.18)
+
+    def test_build_synthetic_metadata_prefers_tumor_component_over_larger_non_tumor_region(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_tumor_priority_py0_px0.png"
+            Image.fromarray(np.full((64, 64, 3), 88, dtype=np.uint8)).save(root / "images" / sample_name)
+            tissue_mask = np.zeros((64, 64), dtype=np.uint8)
+            tissue_mask[6:58, 6:30] = 2
+            tissue_mask[18:46, 34:58] = 8
+            _write_mask(root / "tissue_masks" / sample_name, tissue_mask)
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((64, 64), 102, dtype=np.uint8))
+            (root / "metadata.jsonl").write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            train_path, _ = build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": root},
+                output_dir=root / "synthetic_output",
+                forced_mode="replace_like_blob",
+                val_ratio=0.0,
+                seed=17,
+            )
+
+            row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+            change_mask = np.asarray(Image.open(row["change_region_mask"])) > 0
+
+            self.assertTrue(np.any(change_mask & (tissue_mask == 8)))
+            self.assertFalse(np.any(change_mask & (tissue_mask == 2)))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_expand_and_shrink_medium_large_masks_are_not_one_pixel_traces(self):
+        tissue_mask = np.zeros((64, 64), dtype=np.uint8)
+        tissue_mask[8:56, 8:56] = 1
+
+        expand_medium = expand_band(tissue_mask, seed=11, size_bucket="medium")
+        shrink_large = shrink_band(tissue_mask, seed=11, size_bucket="large")
+
+        self.assertGreater(int(np.count_nonzero(expand_medium)), 200)
+        self.assertGreater(int(np.count_nonzero(shrink_large)), 600)
+        self.assertGreaterEqual(int(expand_medium[32, 32]), 0)
+        self.assertGreater(int(shrink_large[32, 32]), 0)
 
     def test_synthesize_change_region_respects_forced_bucket(self):
         tissue_mask = self._make_component_mask()
