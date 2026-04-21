@@ -33,9 +33,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--forced-mode",
-        default="identity",
+        default="mixed",
         choices=sorted(_VALID_FORCED_MODES),
-        help="Synthetic GT edit mode for --dataset-root. Defaults to identity.",
+        help="Synthetic GT edit mode for --dataset-root. Defaults to mixed.",
     )
     parser.add_argument(
         "--forced-size-bucket",
@@ -69,7 +69,7 @@ def main(argv=None) -> None:
         if (
             args.samples_per_dataset is not None
             or args.max_attempts_per_sample is not None
-            or args.forced_mode != "identity"
+            or args.forced_mode != "mixed"
             or args.forced_size_bucket is not None
         ):
             parser.error(

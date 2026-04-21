@@ -9,7 +9,7 @@ from .inpaint_synthesis import build_synthetic_inpaint_metadata as _build_synthe
 def build_synthetic_inpaint_metadata(
     dataset_roots,
     output_dir,
-    forced_mode: str = "identity",
+    forced_mode: str = "mixed",
     forced_bucket: str | None = None,
     val_ratio: float = 0.1,
     seed: int = 42,

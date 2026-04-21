@@ -9,6 +9,7 @@ from typing import Mapping
 
 import numpy as np
 from PIL import Image
+from dataset_config import get_config
 
 from .common import (
     default_prompt_for_dataset,
@@ -20,8 +21,15 @@ from .common import (
 
 
 _VALID_GEOMETRY_BUCKETS = {"expand_band", "shrink_band", "replace_like_blob"}
-_VALID_FORCED_MODES = {"identity", "near_identity"} | _VALID_GEOMETRY_BUCKETS
+_VALID_FORCED_MODES = {"identity", "near_identity", "mixed"} | _VALID_GEOMETRY_BUCKETS
 _VALID_SIZE_BUCKETS = {"identity", "small", "medium", "large"}
+_MODE_WEIGHTS = {
+    "identity": 10,
+    "near_identity": 10,
+    "expand_band": 30,
+    "shrink_band": 25,
+    "replace_like_blob": 25,
+}
 
 # Keep the synthetic edits small and local so they behave like inpainting
 # patches rather than wholesale shape replacements.
@@ -38,6 +46,44 @@ class _SyntheticInpaintConfig:
     forced_bucket: str | None = None
     seed: int = 42
     near_identity_change_pixels: int = _DEFAULT_NEAR_IDENTITY_CHANGE_PIXELS
+
+
+def _sample_effective_mode(
+    *,
+    config: _SyntheticInpaintConfig,
+    sample,
+    attempt_seed: int | None,
+    variant_index: int = 0,
+    excluded_modes: tuple[str, ...] = (),
+) -> str:
+    if config.forced_mode != "mixed":
+        return config.forced_mode
+
+    candidate_modes = _candidate_modes_for_config(config)
+    filtered_modes = [mode for mode in candidate_modes if mode not in excluded_modes]
+    if filtered_modes:
+        candidate_modes = filtered_modes
+
+    weights = [_MODE_WEIGHTS[mode] for mode in candidate_modes]
+    seed_value = (
+        f"{config.seed}::{sample.dataset_name}::{sample.sample_id}::{attempt_seed}::{variant_index}"
+    )
+    rng = random.Random(seed_value)
+    return rng.choices(candidate_modes, weights=weights, k=1)[0]
+
+
+def _candidate_modes_for_config(config: _SyntheticInpaintConfig) -> list[str]:
+    if config.forced_mode != "mixed":
+        return [config.forced_mode]
+
+    if config.forced_bucket == "identity":
+        return ["identity"]
+
+    if config.forced_bucket == "small":
+        return ["near_identity", *sorted(_VALID_GEOMETRY_BUCKETS)]
+    if config.forced_bucket in {"medium", "large"}:
+        return sorted(_VALID_GEOMETRY_BUCKETS)
+    return list(_MODE_WEIGHTS.keys())
 
 
 def _normalize_binary_mask(mask: np.ndarray) -> np.ndarray:
@@ -327,7 +373,7 @@ def _validate_synthesized_change_region(
 def build_synthetic_inpaint_metadata(
     dataset_roots: Mapping[str, str | Path],
     output_dir: str | Path,
-    forced_mode: str,
+    forced_mode: str = "mixed",
     forced_bucket: str | None = None,
     val_ratio: float = 0.1,
     seed: int = 42,
@@ -356,14 +402,22 @@ def build_synthetic_inpaint_metadata(
         samples = load_layered_dataset_samples(dataset_name, dataset_root)
         selected_samples = _select_samples(samples, samples_per_dataset, seed, dataset_name)
         for sample in selected_samples:
-            records.append(
-                _build_synthetic_record_with_attempts(
-                    sample=sample,
-                    output_dir=output_dir,
-                    config=config,
-                    attempts=attempt_limit,
-                )
-            )
+            try:
+                prior_modes: list[str] = []
+                for variant_index in range(_variant_count_for_sample(sample=sample, config=config)):
+                    record = _build_synthetic_record_with_attempts(
+                        sample=sample,
+                        output_dir=output_dir,
+                        config=config,
+                        attempts=attempt_limit,
+                        variant_index=variant_index,
+                        excluded_modes=tuple(prior_modes),
+                    )
+                    if "mask_mode" in record:
+                        prior_modes.append(record["mask_mode"])
+                    records.append(record)
+            except OSError as exc:
+                print(f"Skipping unreadable sample {sample.sample_id} from {dataset_name}: {exc}")
 
     train_records, val_records = split_records_by_case(
         records,
@@ -397,6 +451,8 @@ def _build_synthetic_record_with_attempts(
     output_dir: Path,
     config: _SyntheticInpaintConfig,
     attempts: int,
+    variant_index: int = 0,
+    excluded_modes: tuple[str, ...] = (),
 ) -> dict:
     last_error: Exception | None = None
     for attempt_index in range(attempts):
@@ -406,6 +462,8 @@ def _build_synthetic_record_with_attempts(
                 output_dir=output_dir,
                 config=config,
                 attempt_seed=config.seed + attempt_index,
+                variant_index=variant_index,
+                excluded_modes=excluded_modes,
             )
         except Exception as exc:  # pragma: no cover - exercised through retry tests
             last_error = exc
@@ -419,15 +477,23 @@ def _build_synthetic_record(
     output_dir: Path,
     config: _SyntheticInpaintConfig,
     attempt_seed: int | None = None,
+    variant_index: int = 0,
+    excluded_modes: tuple[str, ...] = (),
 ) -> dict:
     dataset_name = sample.dataset_name
     source_image = sample.image_path
     target_image = sample.image_path
     target_tissue_mask = sample.tissue_mask_path
     target_nuclei_mask = sample.nuclei_mask_path
-    mask_mode = config.forced_mode
+    mask_mode = _sample_effective_mode(
+        config=config,
+        sample=sample,
+        attempt_seed=attempt_seed,
+        variant_index=variant_index,
+        excluded_modes=excluded_modes,
+    )
 
-    if config.forced_mode == "identity":
+    if mask_mode == "identity":
         change_region_mask_array = np.zeros_like(load_mask_array(sample.tissue_mask_path), dtype=np.uint8)
         change_ratio, size_bucket = _validate_synthesized_change_region(
             mask_mode=mask_mode,
@@ -439,15 +505,16 @@ def _build_synthetic_record(
             dataset_name=dataset_name,
             sample_id=sample.sample_id,
             mask=change_region_mask_array,
+            variant_index=variant_index,
         )
         erased_source_image = source_image
-    elif config.forced_mode == "near_identity":
+    elif mask_mode == "near_identity":
         change_region_mask_array = _build_near_identity_mask(
             load_mask_array(sample.tissue_mask_path),
             change_pixels=config.near_identity_change_pixels,
         )
         change_ratio, size_bucket = _validate_synthesized_change_region(
-            mask_mode=config.forced_mode,
+            mask_mode=mask_mode,
             change_region_mask=change_region_mask_array,
             expected_bucket=config.forced_bucket,
         )
@@ -456,6 +523,7 @@ def _build_synthetic_record(
             dataset_name=dataset_name,
             sample_id=sample.sample_id,
             mask=change_region_mask_array,
+            variant_index=variant_index,
         )
         erased_source_image = _materialize_erased_source_image(
             dataset_name=dataset_name,
@@ -463,11 +531,12 @@ def _build_synthetic_record(
             source_image=source_image,
             change_region_mask=change_region_mask,
             output_dir=output_dir,
+            variant_index=variant_index,
         )
     else:
         change_region_mask_array, mask_mode = synthesize_change_region(
             load_mask_array(sample.tissue_mask_path),
-            forced_bucket=config.forced_mode,
+            forced_bucket=mask_mode,
             seed=attempt_seed if attempt_seed is not None else config.seed,
         )
         change_ratio, size_bucket = _validate_synthesized_change_region(
@@ -480,6 +549,7 @@ def _build_synthetic_record(
             dataset_name=dataset_name,
             sample_id=sample.sample_id,
             mask=change_region_mask_array,
+            variant_index=variant_index,
         )
         erased_source_image = _materialize_erased_source_image(
             dataset_name=dataset_name,
@@ -487,6 +557,7 @@ def _build_synthetic_record(
             source_image=source_image,
             change_region_mask=change_region_mask,
             output_dir=output_dir,
+            variant_index=variant_index,
         )
 
     return {
@@ -500,11 +571,33 @@ def _build_synthetic_record(
         "target_nuclei_mask": str(target_nuclei_mask),
         "change_region_mask": str(change_region_mask),
         "prompt": sample.prompt or default_prompt_for_dataset(dataset_name),
-        "edit_type": config.forced_mode,
+        "edit_type": mask_mode,
         "change_ratio": change_ratio,
         "mask_mode": mask_mode,
         "size_bucket": size_bucket,
+        "variant_index": variant_index,
     }
+
+
+def _variant_count_for_sample(*, sample, config: _SyntheticInpaintConfig) -> int:
+    if config.forced_mode != "mixed":
+        return 1
+    if len(_candidate_modes_for_config(config)) <= 1:
+        return 1
+    return 2 if _is_high_value_patch(sample) else 1
+
+
+def _is_high_value_patch(sample) -> bool:
+    config = get_config(sample.dataset_name)
+    tissue_mask = load_mask_array(sample.tissue_mask_path)
+    foreground_labels = {
+        int(label) for label in np.unique(tissue_mask) if int(label) not in config.skip_tissues
+    }
+    if not foreground_labels:
+        return False
+    has_tumor = any(label in config.tumor_ids for label in foreground_labels)
+    has_other_tissue = any(label not in config.tumor_ids for label in foreground_labels)
+    return has_tumor and has_other_tissue
 
 
 def _build_near_identity_mask(tissue_mask: np.ndarray, change_pixels: int) -> np.ndarray:
@@ -542,10 +635,11 @@ def _materialize_erased_source_image(
     source_image: Path,
     change_region_mask: Path,
     output_dir: Path,
+    variant_index: int = 0,
 ) -> Path:
     erased_dir = output_dir / "erased_source_images" / dataset_name
     erased_dir.mkdir(parents=True, exist_ok=True)
-    erased_path = erased_dir / f"{sample_id}.png"
+    erased_path = erased_dir / _variant_filename(sample_id, variant_index)
 
     source = np.asarray(Image.open(source_image).convert("RGB"), dtype=np.uint8)
     change_mask = np.asarray(Image.open(change_region_mask))
@@ -560,9 +654,21 @@ def _materialize_erased_source_image(
     return erased_path
 
 
-def _write_change_region_mask(*, output_dir: Path, dataset_name: str, sample_id: str, mask: np.ndarray) -> Path:
+def _write_change_region_mask(
+    *,
+    output_dir: Path,
+    dataset_name: str,
+    sample_id: str,
+    mask: np.ndarray,
+    variant_index: int = 0,
+) -> Path:
     mask_dir = output_dir / "change_region_masks" / dataset_name
     mask_dir.mkdir(parents=True, exist_ok=True)
-    mask_path = mask_dir / f"{sample_id}.png"
+    mask_path = mask_dir / _variant_filename(sample_id, variant_index)
     Image.fromarray(mask.astype(np.uint8)).save(mask_path)
     return mask_path
+
+
+def _variant_filename(sample_id: str, variant_index: int) -> str:
+    suffix = "" if variant_index == 0 else f"__v{variant_index}"
+    return f"{sample_id}{suffix}.png"

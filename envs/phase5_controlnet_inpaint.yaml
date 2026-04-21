@@ -1,0 +1,31 @@
+name: pathology-phase5-inpaint
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - git
+  - numpy>=1.24
+  - scipy>=1.10
+  - pillow>=10
+  - pyyaml>=6.0
+  - tqdm>=4.66
+  - packaging>=23
+  - tensorboard>=2.15
+  - sentencepiece>=0.1.99
+  - protobuf>=4.25
+  - safetensors>=0.4
+  - pytorch>=2.1
+  - torchvision>=0.16
+  - pytorch-cuda=12.1
+  - pip:
+      - accelerate>=0.31
+      - bitsandbytes>=0.43
+      - diffusers>=0.30
+      - einops>=0.8
+      - huggingface_hub>=0.24
+      - transformers>=4.44
+      - xformers>=0.0.27

@@ -187,6 +187,7 @@ class InpaintCliTests(unittest.TestCase):
 
         self.assertEqual(args.dataset_root, ["PANDA=D:/datasets/PANDA"])
         self.assertEqual(args.output_dir, Path("D:/tmp/out"))
+        self.assertEqual(args.forced_mode, "mixed")
         self.assertIsNone(args.samples_per_dataset)
         self.assertIsNone(args.max_attempts_per_sample)
         self.assertIsNone(args.input_jsonl)
@@ -376,7 +377,7 @@ class InpaintCliTests(unittest.TestCase):
         mock_build.assert_called_once_with(
             dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
             output_dir=Path("D:/tmp/out"),
-            forced_mode="identity",
+            forced_mode="mixed",
             forced_bucket=None,
             val_ratio=0.1,
             seed=42,
@@ -398,7 +399,6 @@ class InpaintCliTests(unittest.TestCase):
             train_path, val_path = exported_build_synthetic_inpaint_metadata(
                 dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
                 output_dir=Path("D:/tmp/out"),
-                forced_mode="identity",
                 val_ratio=0.25,
                 seed=9,
                 samples_per_dataset=4,
@@ -410,13 +410,49 @@ class InpaintCliTests(unittest.TestCase):
         mock_build.assert_called_once_with(
             dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
             output_dir=Path("D:/tmp/out"),
-            forced_mode="identity",
+            forced_mode="mixed",
             forced_bucket=None,
             val_ratio=0.25,
             seed=9,
             samples_per_dataset=4,
             max_attempts_per_sample=6,
         )
+
+    def test_build_synthetic_metadata_defaults_to_mixed_modes(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_mixed_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 72)
+            tissue = np.full((8, 8), 8, dtype=np.uint8)
+            tissue[:, :2] = 2
+            _write_mask(root / "tissue_masks" / sample_name, tissue)
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 101, dtype=np.uint8))
+            (root / "metadata.jsonl").write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            train_path, _ = build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": root},
+                output_dir=root / "synthetic_output",
+                val_ratio=0.0,
+                seed=7,
+                samples_per_dataset=1,
+                max_attempts_per_sample=3,
+            )
+
+            row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+            self.assertIn(
+                row["mask_mode"],
+                {"identity", "near_identity", "expand_band", "shrink_band", "replace_like_blob"},
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_build_synthetic_metadata_retries_with_varying_seeds_for_structured_modes(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
@@ -466,6 +502,66 @@ class InpaintCliTests(unittest.TestCase):
             row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
             self.assertEqual(row["mask_mode"], "replace_like_blob")
             self.assertEqual(row["size_bucket"], "small")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_emits_extra_variant_only_for_tumor_plus_other_patches(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            mixed_name = "case_tumor_other_py0_px0.png"
+            pure_name = "case_pure_tumor_py0_px0.png"
+
+            _write_rgb(root / "images" / mixed_name, 72)
+            _write_rgb(root / "images" / pure_name, 96)
+
+            mixed_tissue = np.full((8, 8), 8, dtype=np.uint8)
+            mixed_tissue[:, :2] = 2
+            pure_tissue = np.full((8, 8), 8, dtype=np.uint8)
+
+            _write_mask(root / "tissue_masks" / mixed_name, mixed_tissue)
+            _write_mask(root / "tissue_masks" / pure_name, pure_tissue)
+            _write_mask(root / "nuclei_masks" / mixed_name, np.full((8, 8), 101, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / pure_name, np.full((8, 8), 101, dtype=np.uint8))
+
+            (root / "metadata.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"image": f"images\\{mixed_name}", "text": "prostate prompt"}),
+                        json.dumps({"image": f"images\\{pure_name}", "text": "prostate prompt"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf8",
+            )
+
+            train_path, _ = build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": root},
+                output_dir=root / "synthetic_output",
+                forced_mode="mixed",
+                val_ratio=0.0,
+                seed=7,
+            )
+
+            rows = [json.loads(line) for line in train_path.read_text(encoding="utf8").splitlines() if line]
+            self.assertEqual(len(rows), 3)
+
+            rows_by_sample: dict[str, list[dict]] = {}
+            for row in rows:
+                rows_by_sample.setdefault(row["sample_id"], []).append(row)
+
+            self.assertEqual(len(rows_by_sample["case_tumor_other_py0_px0"]), 2)
+            self.assertEqual(
+                sorted(row["variant_index"] for row in rows_by_sample["case_tumor_other_py0_px0"]),
+                [0, 1],
+            )
+            self.assertEqual(len({row["mask_mode"] for row in rows_by_sample["case_tumor_other_py0_px0"]}), 2)
+            self.assertEqual(len(rows_by_sample["case_pure_tumor_py0_px0"]), 1)
+            self.assertEqual(rows_by_sample["case_pure_tumor_py0_px0"][0]["variant_index"], 0)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -629,10 +725,11 @@ class InpaintSynthesisTests(unittest.TestCase):
             ):
                 with patch(
                     "controlnet_train.data.inpaint_synthesis._build_synthetic_record",
-                    side_effect=lambda *, sample, output_dir, config, attempt_seed=None: {
+                    side_effect=lambda *, sample, output_dir, config, attempt_seed=None, **_: {
                         "dataset": sample.dataset_name,
                         "sample_id": sample.sample_id,
                         "case_id": sample.sample_id,
+                        "mask_mode": "identity",
                     },
                 ) as mock_build:
                     train_path, _ = build_synthetic_inpaint_metadata(
@@ -667,6 +764,7 @@ class InpaintSynthesisTests(unittest.TestCase):
                             "dataset": "PANDA",
                             "sample_id": "sample_retry",
                             "case_id": "sample_retry",
+                            "mask_mode": "identity",
                         },
                     ],
                 ) as mock_build:
@@ -682,6 +780,50 @@ class InpaintSynthesisTests(unittest.TestCase):
 
             self.assertEqual(mock_build.call_count, 2)
             self.assertEqual(len(train_path.read_text(encoding="utf8").splitlines()), 1)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_skips_unreadable_source_images(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            good_name = "case_good_py0_px0.png"
+            bad_name = "case_bad_py0_px0.png"
+
+            _write_rgb(root / "images" / good_name, 72)
+            (root / "images" / bad_name).write_bytes(b"not-a-real-png")
+
+            for sample_name in (good_name, bad_name):
+                _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 1, dtype=np.uint8))
+                _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 101, dtype=np.uint8))
+
+            (root / "metadata.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"image": f"images\\{good_name}", "text": "prostate prompt"}),
+                        json.dumps({"image": f"images\\{bad_name}", "text": "prostate prompt"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf8",
+            )
+
+            train_path, _ = build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": root},
+                output_dir=root / "synthetic_output",
+                forced_mode="near_identity",
+                val_ratio=0.0,
+                seed=13,
+                max_attempts_per_sample=2,
+            )
+
+            rows = [json.loads(line) for line in train_path.read_text(encoding="utf8").splitlines() if line]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["sample_id"], "case_good_py0_px0")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
