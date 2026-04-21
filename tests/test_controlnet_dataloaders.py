@@ -164,6 +164,8 @@ class InpaintCliTests(unittest.TestCase):
                     "D:/tmp/input.jsonl",
                     "--output-dir",
                     "D:/tmp/out",
+                    "--forced-mode",
+                    "replace_like_blob",
                     "--samples-per-dataset",
                     "3",
                 ],
@@ -262,6 +264,8 @@ class InpaintCliTests(unittest.TestCase):
                     "BCSS=D:/datasets/BCSS",
                     "--output-dir",
                     "D:/tmp/out",
+                    "--forced-mode",
+                    "replace_like_blob",
                     "--val-ratio",
                     "0.25",
                     "--seed",
@@ -280,6 +284,7 @@ class InpaintCliTests(unittest.TestCase):
                 "BCSS": Path("D:/datasets/BCSS"),
             },
             output_dir=Path("D:/tmp/out"),
+            forced_mode="replace_like_blob",
             val_ratio=0.25,
             seed=99,
             samples_per_dataset=3,
@@ -334,6 +339,7 @@ class InpaintCliTests(unittest.TestCase):
         mock_build.assert_called_once_with(
             dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
             output_dir=Path("D:/tmp/out"),
+            forced_mode="identity",
             val_ratio=0.1,
             seed=42,
             samples_per_dataset=None,
@@ -372,6 +378,57 @@ class InpaintCliTests(unittest.TestCase):
             samples_per_dataset=4,
             max_attempts_per_sample=6,
         )
+
+    def test_build_synthetic_metadata_retries_with_varying_seeds_for_structured_modes(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_retry_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 88)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 102, dtype=np.uint8))
+
+            metadata_path = root / "metadata.jsonl"
+            metadata_path.write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            seeds_seen: list[int] = []
+
+            def synthesize_side_effect(tissue_mask, forced_bucket=None, seed=None):
+                seeds_seen.append(seed)
+                if seed == 17:
+                    return np.zeros_like(tissue_mask, dtype=np.uint8), "replace_like_blob"
+                mask = np.zeros_like(tissue_mask, dtype=np.uint8)
+                mask[0, 0] = 255
+                return mask, "replace_like_blob"
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.synthesize_change_region",
+                side_effect=synthesize_side_effect,
+            ):
+                train_path, _ = build_synthetic_inpaint_metadata(
+                    dataset_roots={"PANDA": root},
+                    output_dir=root / "synthetic_output",
+                    forced_mode="replace_like_blob",
+                    forced_bucket="small",
+                    val_ratio=0.0,
+                    seed=17,
+                    samples_per_dataset=1,
+                    max_attempts_per_sample=2,
+                )
+
+            self.assertEqual(seeds_seen, [17, 18])
+            row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+            self.assertEqual(row["mask_mode"], "replace_like_blob")
+            self.assertEqual(row["size_bucket"], "small")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class InpaintSynthesisTests(unittest.TestCase):
@@ -452,6 +509,43 @@ class InpaintSynthesisTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    def test_build_synthetic_metadata_rejects_empty_non_identity_mask(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_empty_py0_px0.png"
+            Image.fromarray(np.full((4, 4, 3), 72, dtype=np.uint8)).save(root / "images" / sample_name)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((4, 4), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((4, 4), 101, dtype=np.uint8))
+
+            metadata_path = root / "metadata.jsonl"
+            metadata_path.write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.synthesize_change_region",
+                return_value=(np.zeros((4, 4), dtype=np.uint8), "replace_like_blob"),
+            ):
+                with self.assertRaises(ValueError) as ctx:
+                    build_synthetic_inpaint_metadata(
+                        dataset_roots={"PANDA": root},
+                        output_dir=root / "synthetic_output",
+                        forced_mode="replace_like_blob",
+                        forced_bucket="medium",
+                        val_ratio=0.0,
+                        seed=13,
+                    )
+
+            self.assertIn("non-empty", str(ctx.exception))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def test_build_synthetic_metadata_limits_samples_per_dataset(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
         try:
@@ -467,7 +561,7 @@ class InpaintSynthesisTests(unittest.TestCase):
             ):
                 with patch(
                     "controlnet_train.data.inpaint_synthesis._build_synthetic_record",
-                    side_effect=lambda *, sample, output_dir, config: {
+                    side_effect=lambda *, sample, output_dir, config, attempt_seed=None: {
                         "dataset": sample.dataset_name,
                         "sample_id": sample.sample_id,
                         "case_id": sample.sample_id,
@@ -598,6 +692,50 @@ class InpaintSynthesisTests(unittest.TestCase):
             self.assertGreater(float(row["change_ratio"]), 0.0)
             self.assertTrue(Path(sample["erased_source_image_path"]).exists())
             self.assertFalse(torch.equal(sample["source_image"], sample["erased_source_image"]))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_synthetic_metadata_supports_replace_like_blob_medium_bucket(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case3_py0_px0.png"
+            Image.fromarray(np.full((4, 4, 3), 88, dtype=np.uint8)).save(root / "images" / sample_name)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((4, 4), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((4, 4), 102, dtype=np.uint8))
+
+            metadata_path = root / "metadata.jsonl"
+            metadata_path.write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            train_path, _ = build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": root},
+                output_dir=root / "synthetic_output",
+                forced_mode="replace_like_blob",
+                forced_bucket="medium",
+                val_ratio=0.0,
+                seed=17,
+            )
+
+            dataset = InpaintDataset(train_path)
+            sample = dataset[0]
+            row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+
+            self.assertEqual(len(dataset), 1)
+            self.assertEqual(row["mask_mode"], "replace_like_blob")
+            self.assertEqual(row["size_bucket"], "medium")
+            self.assertGreater(float(row["change_ratio"]), 0.12)
+            self.assertLess(float(row["change_ratio"]), 0.30)
+            self.assertGreater(float(sample["change_ratio"]), 0.12)
+            self.assertLess(float(sample["change_ratio"]), 0.30)
+            self.assertTrue(Path(sample["erased_source_image_path"]).exists())
+            self.assertTrue(int(np.asarray(Image.open(row["change_region_mask"])).sum()) > 0)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -757,6 +895,18 @@ class CrossDatasetTests(unittest.TestCase):
             self.assertEqual(tuple(sample["reference_tissue_mask"].shape), (8, 8))
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class InpaintReadmeTests(unittest.TestCase):
+    def test_readme_covers_dataset_root_synthesis_and_trace_fields(self):
+        readme = Path(__file__).resolve().parents[1] / "controlnet_train" / "README.txt"
+        readme_text = readme.read_text(encoding="utf8")
+
+        self.assertIn("--dataset-root", readme_text)
+        self.assertIn("replace_like_blob", readme_text)
+        self.assertIn("mask_mode", readme_text)
+        self.assertIn("size_bucket", readme_text)
+        self.assertIn("change_ratio", readme_text)
 
 
 if __name__ == "__main__":

@@ -194,6 +194,33 @@ Cross Metadata 约定
 - `reference` 必须覆盖 `target` 的 tissue 语义集合
 - nuclei 分布和 stain 只作为软排序信号
 
+GT synthesis mode
+------------------
+
+`cli/build_inpaint_dataset.py` 也可以直接从 layered patch 根目录生成 synthetic GT inpaint metadata：
+
+```bash
+python controlnet_train/cli/build_inpaint_dataset.py ^
+  --dataset-root PANDA=D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES ^
+  --dataset-root BCSS=D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES ^
+  --forced-mode replace_like_blob ^
+  --output-dir phase5_runs\\inpaint_meta
+```
+
+Supported synthesized `mask_mode` values:
+
+- `identity`
+- `near_identity`
+- `expand_band`
+- `shrink_band`
+- `replace_like_blob`
+
+Each output row traces the edit with:
+
+- `mask_mode`
+- `size_bucket`
+- `change_ratio`
+
 推荐命令
 --------
 

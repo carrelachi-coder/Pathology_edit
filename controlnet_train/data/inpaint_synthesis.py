@@ -19,8 +19,9 @@ from .common import (
 )
 
 
-_VALID_FORCED_MODES = {"identity", "near_identity"}
 _VALID_GEOMETRY_BUCKETS = {"expand_band", "shrink_band", "replace_like_blob"}
+_VALID_FORCED_MODES = {"identity", "near_identity"} | _VALID_GEOMETRY_BUCKETS
+_VALID_SIZE_BUCKETS = {"identity", "small", "medium", "large"}
 
 # Keep the synthetic edits small and local so they behave like inpainting
 # patches rather than wholesale shape replacements.
@@ -34,6 +35,8 @@ _DEFAULT_NEAR_IDENTITY_CHANGE_PIXELS = 1
 @dataclass(frozen=True)
 class _SyntheticInpaintConfig:
     forced_mode: str
+    forced_bucket: str | None = None
+    seed: int = 42
     near_identity_change_pixels: int = _DEFAULT_NEAR_IDENTITY_CHANGE_PIXELS
 
 
@@ -274,10 +277,42 @@ def synthesize_change_region(
     return replace_like_blob(tissue_mask, seed=seed), bucket
 
 
+def _size_bucket_for_change_ratio(change_ratio: float) -> str:
+    if change_ratio <= 0.0:
+        return "identity"
+    if change_ratio <= 0.12:
+        return "small"
+    if change_ratio <= 0.30:
+        return "medium"
+    return "large"
+
+
+def _validate_synthesized_change_region(
+    *,
+    mask_mode: str,
+    change_region_mask: np.ndarray,
+    expected_bucket: str | None = None,
+) -> tuple[float, str]:
+    change_pixels = int((change_region_mask > 0).sum())
+    if mask_mode != "identity" and change_pixels <= 0:
+        raise ValueError(f"Synthesized change mask for {mask_mode} must be non-empty")
+
+    change_ratio = float(change_pixels / change_region_mask.size)
+    size_bucket = _size_bucket_for_change_ratio(change_ratio)
+    if size_bucket not in _VALID_SIZE_BUCKETS:
+        raise ValueError(f"Unsupported synthesized size bucket: {size_bucket}")
+    if expected_bucket is not None and size_bucket != expected_bucket:
+        raise ValueError(
+            f"Synthesized change mask for {mask_mode} landed in {size_bucket}, expected {expected_bucket}"
+        )
+    return change_ratio, size_bucket
+
+
 def build_synthetic_inpaint_metadata(
     dataset_roots: Mapping[str, str | Path],
     output_dir: str | Path,
     forced_mode: str,
+    forced_bucket: str | None = None,
     val_ratio: float = 0.1,
     seed: int = 42,
     samples_per_dataset: int | None = None,
@@ -293,8 +328,10 @@ def build_synthetic_inpaint_metadata(
         raise ValueError(
             f"max_attempts_per_sample must be positive, got {max_attempts_per_sample}"
         )
+    if forced_bucket is not None and forced_bucket not in _VALID_SIZE_BUCKETS:
+        raise ValueError(f"Unsupported forced_bucket for synthetic inpaint metadata: {forced_bucket}")
 
-    config = _SyntheticInpaintConfig(forced_mode=forced_mode)
+    config = _SyntheticInpaintConfig(forced_mode=forced_mode, forced_bucket=forced_bucket, seed=seed)
     output_dir = Path(output_dir)
     attempt_limit = max_attempts_per_sample or 1
 
@@ -346,36 +383,57 @@ def _build_synthetic_record_with_attempts(
     attempts: int,
 ) -> dict:
     last_error: Exception | None = None
-    for _ in range(attempts):
+    for attempt_index in range(attempts):
         try:
-            return _build_synthetic_record(sample=sample, output_dir=output_dir, config=config)
+            return _build_synthetic_record(
+                sample=sample,
+                output_dir=output_dir,
+                config=config,
+                attempt_seed=config.seed + attempt_index,
+            )
         except Exception as exc:  # pragma: no cover - exercised through retry tests
             last_error = exc
     assert last_error is not None
     raise last_error
 
 
-def _build_synthetic_record(*, sample, output_dir: Path, config: _SyntheticInpaintConfig) -> dict:
+def _build_synthetic_record(
+    *,
+    sample,
+    output_dir: Path,
+    config: _SyntheticInpaintConfig,
+    attempt_seed: int | None = None,
+) -> dict:
     dataset_name = sample.dataset_name
     source_image = sample.image_path
     target_image = sample.image_path
     target_tissue_mask = sample.tissue_mask_path
     target_nuclei_mask = sample.nuclei_mask_path
+    mask_mode = config.forced_mode
 
     if config.forced_mode == "identity":
+        change_region_mask_array = np.zeros_like(load_mask_array(sample.tissue_mask_path), dtype=np.uint8)
+        change_ratio, size_bucket = _validate_synthesized_change_region(
+            mask_mode=mask_mode,
+            change_region_mask=change_region_mask_array,
+            expected_bucket=config.forced_bucket,
+        )
         change_region_mask = _write_change_region_mask(
             output_dir=output_dir,
             dataset_name=dataset_name,
             sample_id=sample.sample_id,
-            mask=np.zeros_like(load_mask_array(sample.tissue_mask_path), dtype=np.uint8),
+            mask=change_region_mask_array,
         )
         erased_source_image = source_image
-        change_ratio = 0.0
-        size_bucket = "identity"
     elif config.forced_mode == "near_identity":
         change_region_mask_array = _build_near_identity_mask(
             load_mask_array(sample.tissue_mask_path),
             change_pixels=config.near_identity_change_pixels,
+        )
+        change_ratio, size_bucket = _validate_synthesized_change_region(
+            mask_mode=config.forced_mode,
+            change_region_mask=change_region_mask_array,
+            expected_bucket=config.forced_bucket,
         )
         change_region_mask = _write_change_region_mask(
             output_dir=output_dir,
@@ -390,10 +448,30 @@ def _build_synthetic_record(*, sample, output_dir: Path, config: _SyntheticInpai
             change_region_mask=change_region_mask,
             output_dir=output_dir,
         )
-        change_ratio = float((change_region_mask_array > 0).sum() / change_region_mask_array.size)
-        size_bucket = "small"
     else:
-        raise ValueError(f"Unsupported forced_mode for synthetic inpaint metadata: {config.forced_mode}")
+        change_region_mask_array, mask_mode = synthesize_change_region(
+            load_mask_array(sample.tissue_mask_path),
+            forced_bucket=config.forced_mode,
+            seed=attempt_seed if attempt_seed is not None else config.seed,
+        )
+        change_ratio, size_bucket = _validate_synthesized_change_region(
+            mask_mode=mask_mode,
+            change_region_mask=change_region_mask_array,
+            expected_bucket=config.forced_bucket,
+        )
+        change_region_mask = _write_change_region_mask(
+            output_dir=output_dir,
+            dataset_name=dataset_name,
+            sample_id=sample.sample_id,
+            mask=change_region_mask_array,
+        )
+        erased_source_image = _materialize_erased_source_image(
+            dataset_name=dataset_name,
+            sample_id=sample.sample_id,
+            source_image=source_image,
+            change_region_mask=change_region_mask,
+            output_dir=output_dir,
+        )
 
     return {
         "dataset": dataset_name,
@@ -408,7 +486,7 @@ def _build_synthetic_record(*, sample, output_dir: Path, config: _SyntheticInpai
         "prompt": sample.prompt or default_prompt_for_dataset(dataset_name),
         "edit_type": config.forced_mode,
         "change_ratio": change_ratio,
-        "mask_mode": config.forced_mode,
+        "mask_mode": mask_mode,
         "size_bucket": size_bucket,
     }
 
