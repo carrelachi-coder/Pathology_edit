@@ -3,6 +3,7 @@ import shutil
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -11,6 +12,10 @@ from PIL import Image
 from controlnet_train.data.common import load_layered_dataset_samples
 from controlnet_train.data.cross import CrossReconstructionDataset, build_cross_metadata
 from controlnet_train.data.inpaint import InpaintDataset, build_inpaint_metadata
+from controlnet_train.data.inpaint_synthesis import (
+    _build_near_identity_mask,
+    build_synthetic_inpaint_metadata,
+)
 
 _TMP_ROOT = Path.cwd() / ".tmp_testdata"
 _TMP_ROOT.mkdir(exist_ok=True)
@@ -121,6 +126,129 @@ class InpaintDatasetTests(unittest.TestCase):
             self.assertIn("prostate", sample["prompt"].lower())
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class InpaintSynthesisTests(unittest.TestCase):
+    def test_build_synthetic_metadata_identity_writes_trace_fields(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case1_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 72)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 101, dtype=np.uint8))
+
+            metadata_path = root / "metadata.jsonl"
+            metadata_path.write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            train_path, _ = build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": root},
+                output_dir=root / "synthetic_output",
+                forced_mode="identity",
+                val_ratio=0.0,
+                seed=13,
+            )
+
+            rows = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+
+            self.assertEqual(rows["mask_mode"], "identity")
+            self.assertEqual(rows["size_bucket"], "identity")
+            self.assertEqual(float(rows["change_ratio"]), 0.0)
+            self.assertEqual(rows["target_image"], rows["source_image"])
+            self.assertEqual(rows["erased_source_image"], rows["source_image"])
+            self.assertEqual(int(np.asarray(Image.open(rows["change_region_mask"])).sum()), 0)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_rejects_invalid_forced_mode(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_invalid_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 72)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 101, dtype=np.uint8))
+
+            metadata_path = root / "metadata.jsonl"
+            metadata_path.write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.load_layered_dataset_samples",
+                side_effect=AssertionError("dataset loading should not run for invalid forced_mode"),
+            ):
+                with self.assertRaises(ValueError):
+                    build_synthetic_inpaint_metadata(
+                        dataset_roots={"PANDA": root},
+                        output_dir=root / "synthetic_output",
+                        forced_mode="unsupported_mode",
+                        val_ratio=0.0,
+                        seed=13,
+                    )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_synthetic_metadata_loads_through_inpaint_dataset_and_near_identity_has_change(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case2_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 88)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 102, dtype=np.uint8))
+
+            metadata_path = root / "metadata.jsonl"
+            metadata_path.write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            train_path, _ = build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": root},
+                output_dir=root / "synthetic_output",
+                forced_mode="near_identity",
+                val_ratio=0.0,
+                seed=17,
+            )
+
+            dataset = InpaintDataset(train_path)
+            sample = dataset[0]
+            row = json.loads(train_path.read_text(encoding="utf8").splitlines()[0])
+
+            self.assertEqual(len(dataset), 1)
+            self.assertGreater(float(sample["change_ratio"]), 0.0)
+            self.assertEqual(row["mask_mode"], "near_identity")
+            self.assertEqual(row["size_bucket"], "small")
+            self.assertGreater(float(row["change_ratio"]), 0.0)
+            self.assertTrue(Path(sample["erased_source_image_path"]).exists())
+            self.assertFalse(torch.equal(sample["source_image"], sample["erased_source_image"]))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_near_identity_mask_can_satisfy_requested_change_pixels(self):
+        tissue_mask = np.zeros((4, 4), dtype=np.uint8)
+        tissue_mask[3, 3] = 1
+
+        mask = _build_near_identity_mask(tissue_mask, change_pixels=2)
+
+        self.assertEqual(int(np.count_nonzero(mask)), 2)
 
 
 class CrossDatasetTests(unittest.TestCase):
