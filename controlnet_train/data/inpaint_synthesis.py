@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -279,24 +280,35 @@ def build_synthetic_inpaint_metadata(
     forced_mode: str,
     val_ratio: float = 0.1,
     seed: int = 42,
+    samples_per_dataset: int | None = None,
+    max_attempts_per_sample: int | None = None,
 ) -> tuple[Path, Path]:
     if forced_mode not in _VALID_FORCED_MODES:
         raise ValueError(
             f"Unsupported forced_mode for synthetic inpaint metadata: {forced_mode}"
         )
+    if samples_per_dataset is not None and samples_per_dataset <= 0:
+        raise ValueError(f"samples_per_dataset must be positive, got {samples_per_dataset}")
+    if max_attempts_per_sample is not None and max_attempts_per_sample <= 0:
+        raise ValueError(
+            f"max_attempts_per_sample must be positive, got {max_attempts_per_sample}"
+        )
 
     config = _SyntheticInpaintConfig(forced_mode=forced_mode)
     output_dir = Path(output_dir)
+    attempt_limit = max_attempts_per_sample or 1
 
     records: list[dict] = []
     for dataset_name, dataset_root in dataset_roots.items():
         samples = load_layered_dataset_samples(dataset_name, dataset_root)
-        for sample in samples:
+        selected_samples = _select_samples(samples, samples_per_dataset, seed, dataset_name)
+        for sample in selected_samples:
             records.append(
-                _build_synthetic_record(
+                _build_synthetic_record_with_attempts(
                     sample=sample,
                     output_dir=output_dir,
                     config=config,
+                    attempts=attempt_limit,
                 )
             )
 
@@ -310,6 +322,37 @@ def build_synthetic_inpaint_metadata(
     train_path = write_jsonl(output_dir / "metadata_inpaint_train.jsonl", train_records)
     val_path = write_jsonl(output_dir / "metadata_inpaint_val.jsonl", val_records)
     return train_path, val_path
+
+
+def _select_samples(
+    samples: list,
+    samples_per_dataset: int | None,
+    seed: int,
+    dataset_name: str,
+) -> list:
+    if samples_per_dataset is None or samples_per_dataset >= len(samples):
+        return list(samples)
+
+    dataset_rng = random.Random(f"{seed}::{dataset_name}")
+    selected_indexes = sorted(dataset_rng.sample(range(len(samples)), k=samples_per_dataset))
+    return [samples[index] for index in selected_indexes]
+
+
+def _build_synthetic_record_with_attempts(
+    *,
+    sample,
+    output_dir: Path,
+    config: _SyntheticInpaintConfig,
+    attempts: int,
+) -> dict:
+    last_error: Exception | None = None
+    for _ in range(attempts):
+        try:
+            return _build_synthetic_record(sample=sample, output_dir=output_dir, config=config)
+        except Exception as exc:  # pragma: no cover - exercised through retry tests
+            last_error = exc
+    assert last_error is not None
+    raise last_error
 
 
 def _build_synthetic_record(*, sample, output_dir: Path, config: _SyntheticInpaintConfig) -> dict:

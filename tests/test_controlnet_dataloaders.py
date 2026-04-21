@@ -1,14 +1,20 @@
+import contextlib
 import json
 import shutil
 import unittest
 import uuid
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 import torch
 from PIL import Image
 
+import controlnet_train
+from controlnet_train.cli import build_inpaint_dataset
+from controlnet_train.data import build_synthetic_inpaint_metadata as exported_build_synthetic_inpaint_metadata
 from controlnet_train.data.common import load_layered_dataset_samples
 from controlnet_train.data.cross import CrossReconstructionDataset, build_cross_metadata
 from controlnet_train.data.inpaint import InpaintDataset, build_inpaint_metadata
@@ -132,6 +138,242 @@ class InpaintDatasetTests(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+class InpaintCliTests(unittest.TestCase):
+    def test_parse_args_rejects_both_input_jsonl_and_dataset_root(self):
+        with contextlib.redirect_stderr(StringIO()):
+            with self.assertRaises(SystemExit):
+                build_inpaint_dataset.parse_args(
+                    [
+                        "--input-jsonl",
+                        "D:/tmp/input.jsonl",
+                        "--dataset-root",
+                        "PANDA=D:/datasets/PANDA",
+                        "--output-dir",
+                        "D:/tmp/out",
+                    ]
+                )
+
+    def test_main_rejects_synthetic_only_knobs_in_input_jsonl_mode(self):
+        stderr = StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with patch(
+                "sys.argv",
+                [
+                    "build_inpaint_dataset.py",
+                    "--input-jsonl",
+                    "D:/tmp/input.jsonl",
+                    "--output-dir",
+                    "D:/tmp/out",
+                    "--samples-per-dataset",
+                    "3",
+                ],
+            ):
+                with self.assertRaises(SystemExit):
+                    build_inpaint_dataset.main()
+
+        self.assertIn("only supported with --dataset-root", stderr.getvalue())
+
+    def test_parse_args_accepts_dataset_root_mode(self):
+        args = build_inpaint_dataset.parse_args(
+            [
+                "--dataset-root",
+                "PANDA=D:/datasets/PANDA",
+                "--output-dir",
+                "D:/tmp/out",
+            ]
+        )
+
+        self.assertEqual(args.dataset_root, ["PANDA=D:/datasets/PANDA"])
+        self.assertEqual(args.output_dir, Path("D:/tmp/out"))
+        self.assertIsNone(args.samples_per_dataset)
+        self.assertIsNone(args.max_attempts_per_sample)
+        self.assertIsNone(args.input_jsonl)
+
+    def test_main_rejects_invalid_dataset_root_format_with_argparse_error(self):
+        stderr = StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with patch(
+                "sys.argv",
+                [
+                    "build_inpaint_dataset.py",
+                    "--dataset-root",
+                    "PANDA",
+                    "--output-dir",
+                    "D:/tmp/out",
+                ],
+            ):
+                with self.assertRaises(SystemExit):
+                    build_inpaint_dataset.main()
+
+        self.assertIn("Expected DATASET=PATH", stderr.getvalue())
+
+    def test_main_rejects_non_positive_samples_per_dataset_with_argparse_error(self):
+        stderr = StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with patch(
+                "sys.argv",
+                [
+                    "build_inpaint_dataset.py",
+                    "--dataset-root",
+                    "PANDA=D:/datasets/PANDA",
+                    "--output-dir",
+                    "D:/tmp/out",
+                    "--samples-per-dataset",
+                    "0",
+                ],
+            ):
+                with self.assertRaises(SystemExit):
+                    build_inpaint_dataset.main()
+
+        self.assertIn("--samples-per-dataset must be positive, got 0", stderr.getvalue())
+
+    def test_main_rejects_non_positive_max_attempts_per_sample_with_argparse_error(self):
+        stderr = StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with patch(
+                "sys.argv",
+                [
+                    "build_inpaint_dataset.py",
+                    "--dataset-root",
+                    "PANDA=D:/datasets/PANDA",
+                    "--output-dir",
+                    "D:/tmp/out",
+                    "--max-attempts-per-sample",
+                    "0",
+                ],
+            ):
+                with self.assertRaises(SystemExit):
+                    build_inpaint_dataset.main()
+
+        self.assertIn("--max-attempts-per-sample must be positive, got 0", stderr.getvalue())
+
+    def test_main_routes_dataset_root_mode_to_synthetic_builder(self):
+        with patch(
+            "controlnet_train.cli.build_inpaint_dataset.build_synthetic_inpaint_metadata",
+            return_value=(Path("train.jsonl"), Path("val.jsonl")),
+        ) as mock_build:
+            with patch(
+                "sys.argv",
+                [
+                    "build_inpaint_dataset.py",
+                    "--dataset-root",
+                    "PANDA=D:/datasets/PANDA",
+                    "--dataset-root",
+                    "BCSS=D:/datasets/BCSS",
+                    "--output-dir",
+                    "D:/tmp/out",
+                    "--val-ratio",
+                    "0.25",
+                    "--seed",
+                    "99",
+                    "--samples-per-dataset",
+                    "3",
+                    "--max-attempts-per-sample",
+                    "5",
+                ],
+            ):
+                build_inpaint_dataset.main()
+
+        mock_build.assert_called_once_with(
+            dataset_roots={
+                "PANDA": Path("D:/datasets/PANDA"),
+                "BCSS": Path("D:/datasets/BCSS"),
+            },
+            output_dir=Path("D:/tmp/out"),
+            val_ratio=0.25,
+            seed=99,
+            samples_per_dataset=3,
+            max_attempts_per_sample=5,
+        )
+
+    def test_main_routes_input_jsonl_mode_to_legacy_builder(self):
+        with patch(
+            "controlnet_train.cli.build_inpaint_dataset.build_inpaint_metadata",
+            return_value=(Path("train.jsonl"), Path("val.jsonl")),
+        ) as mock_build:
+            with patch(
+                "sys.argv",
+                [
+                    "build_inpaint_dataset.py",
+                    "--input-jsonl",
+                    "D:/tmp/input.jsonl",
+                    "--output-dir",
+                    "D:/tmp/out",
+                    "--val-ratio",
+                    "0.25",
+                    "--seed",
+                    "99",
+                ],
+            ):
+                build_inpaint_dataset.main()
+
+        mock_build.assert_called_once_with(
+            input_jsonl_paths=[Path("D:/tmp/input.jsonl")],
+            output_dir=Path("D:/tmp/out"),
+            val_ratio=0.25,
+            seed=99,
+        )
+
+    def test_main_keeps_dataset_root_knobs_optional_when_omitted(self):
+        with patch(
+            "controlnet_train.cli.build_inpaint_dataset.build_synthetic_inpaint_metadata",
+            return_value=(Path("train.jsonl"), Path("val.jsonl")),
+        ) as mock_build:
+            with patch(
+                "sys.argv",
+                [
+                    "build_inpaint_dataset.py",
+                    "--dataset-root",
+                    "PANDA=D:/datasets/PANDA",
+                    "--output-dir",
+                    "D:/tmp/out",
+                ],
+            ):
+                build_inpaint_dataset.main()
+
+        mock_build.assert_called_once_with(
+            dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+            output_dir=Path("D:/tmp/out"),
+            val_ratio=0.1,
+            seed=42,
+            samples_per_dataset=None,
+            max_attempts_per_sample=None,
+        )
+
+    def test_build_synthetic_inpaint_metadata_is_exported(self):
+        self.assertIs(
+            exported_build_synthetic_inpaint_metadata,
+            controlnet_train.build_synthetic_inpaint_metadata,
+        )
+
+    def test_package_wrapper_forwards_sizing_knobs_to_synthesis_helper(self):
+        with patch(
+            "controlnet_train.data._build_synthetic_inpaint_metadata",
+            return_value=(Path("train.jsonl"), Path("val.jsonl")),
+        ) as mock_build:
+            train_path, val_path = exported_build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+                output_dir=Path("D:/tmp/out"),
+                forced_mode="identity",
+                val_ratio=0.25,
+                seed=9,
+                samples_per_dataset=4,
+                max_attempts_per_sample=6,
+            )
+
+        self.assertEqual(train_path, Path("train.jsonl"))
+        self.assertEqual(val_path, Path("val.jsonl"))
+        mock_build.assert_called_once_with(
+            dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+            output_dir=Path("D:/tmp/out"),
+            forced_mode="identity",
+            val_ratio=0.25,
+            seed=9,
+            samples_per_dataset=4,
+            max_attempts_per_sample=6,
+        )
+
+
 class InpaintSynthesisTests(unittest.TestCase):
     def _make_component_mask(self) -> np.ndarray:
         tissue_mask = np.zeros((8, 8), dtype=np.uint8)
@@ -207,6 +449,108 @@ class InpaintSynthesisTests(unittest.TestCase):
                         val_ratio=0.0,
                         seed=13,
                     )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_limits_samples_per_dataset(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            samples = [
+                SimpleNamespace(sample_id="sample_a", dataset_name="PANDA", image_path=Path("a.png")),
+                SimpleNamespace(sample_id="sample_b", dataset_name="PANDA", image_path=Path("b.png")),
+                SimpleNamespace(sample_id="sample_c", dataset_name="PANDA", image_path=Path("c.png")),
+            ]
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.load_layered_dataset_samples",
+                return_value=samples,
+            ):
+                with patch(
+                    "controlnet_train.data.inpaint_synthesis._build_synthetic_record",
+                    side_effect=lambda *, sample, output_dir, config: {
+                        "dataset": sample.dataset_name,
+                        "sample_id": sample.sample_id,
+                        "case_id": sample.sample_id,
+                    },
+                ) as mock_build:
+                    train_path, _ = build_synthetic_inpaint_metadata(
+                        dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+                        output_dir=tmpdir / "synthetic_output",
+                        forced_mode="identity",
+                        val_ratio=0.0,
+                        seed=13,
+                        samples_per_dataset=2,
+                        max_attempts_per_sample=1,
+                    )
+
+            self.assertEqual(mock_build.call_count, 2)
+            self.assertEqual(len(train_path.read_text(encoding="utf8").splitlines()), 2)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_retries_failed_samples(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            sample = SimpleNamespace(sample_id="sample_retry", dataset_name="PANDA", image_path=Path("retry.png"))
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.load_layered_dataset_samples",
+                return_value=[sample],
+            ):
+                with patch(
+                    "controlnet_train.data.inpaint_synthesis._build_synthetic_record",
+                    side_effect=[
+                        RuntimeError("temporary failure"),
+                        {
+                            "dataset": "PANDA",
+                            "sample_id": "sample_retry",
+                            "case_id": "sample_retry",
+                        },
+                    ],
+                ) as mock_build:
+                    train_path, _ = build_synthetic_inpaint_metadata(
+                        dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+                        output_dir=tmpdir / "synthetic_output",
+                        forced_mode="identity",
+                        val_ratio=0.0,
+                        seed=13,
+                        samples_per_dataset=1,
+                        max_attempts_per_sample=2,
+                    )
+
+            self.assertEqual(mock_build.call_count, 2)
+            self.assertEqual(len(train_path.read_text(encoding="utf8").splitlines()), 1)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_preserves_final_retry_exception_type_and_message(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            sample = SimpleNamespace(sample_id="sample_retry", dataset_name="PANDA", image_path=Path("retry.png"))
+
+            class SentinelRetryError(RuntimeError):
+                pass
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.load_layered_dataset_samples",
+                return_value=[sample],
+            ):
+                with patch(
+                    "controlnet_train.data.inpaint_synthesis._build_synthetic_record",
+                    side_effect=SentinelRetryError("permanent failure"),
+                ):
+                    with self.assertRaises(SentinelRetryError) as ctx:
+                        build_synthetic_inpaint_metadata(
+                            dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+                            output_dir=tmpdir / "synthetic_output",
+                            forced_mode="identity",
+                            val_ratio=0.0,
+                            seed=13,
+                            samples_per_dataset=1,
+                            max_attempts_per_sample=2,
+                        )
+
+            self.assertEqual(str(ctx.exception), "permanent failure")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
