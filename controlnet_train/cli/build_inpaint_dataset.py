@@ -37,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(_VALID_FORCED_MODES),
         help="Synthetic GT edit mode for --dataset-root. Defaults to identity.",
     )
+    parser.add_argument(
+        "--forced-size-bucket",
+        choices=("small", "medium", "large"),
+        default=None,
+        help="Force a non-identity size bucket for synthetic GT modes.",
+    )
     parser.add_argument("--samples-per-dataset", type=int, default=None)
     parser.add_argument("--max-attempts-per-sample", type=int, default=None)
     return parser
@@ -64,9 +70,10 @@ def main(argv=None) -> None:
             args.samples_per_dataset is not None
             or args.max_attempts_per_sample is not None
             or args.forced_mode != "identity"
+            or args.forced_size_bucket is not None
         ):
             parser.error(
-                "--samples-per-dataset, --max-attempts-per-sample, and --forced-mode are only supported with --dataset-root."
+                "--samples-per-dataset, --max-attempts-per-sample, --forced-mode, and --forced-size-bucket are only supported with --dataset-root."
             )
         train_path, val_path = build_inpaint_metadata(
             input_jsonl_paths=args.input_jsonl,
@@ -89,6 +96,7 @@ def main(argv=None) -> None:
             dataset_roots=dataset_roots,
             output_dir=args.output_dir,
             forced_mode=args.forced_mode,
+            forced_bucket=args.forced_size_bucket,
             val_ratio=args.val_ratio,
             seed=args.seed,
             samples_per_dataset=args.samples_per_dataset,

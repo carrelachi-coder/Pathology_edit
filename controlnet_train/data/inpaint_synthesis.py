@@ -88,14 +88,30 @@ def _select_single_component(mask: np.ndarray, seed: int | None = None) -> np.nd
     """Pick one connected component from a possibly multi-component tissue mask.
 
     The public geometry helpers intentionally work on a single component even if
-    the caller passes a full tissue mask with several disjoint regions. By
-    default we choose the largest component in discovery order; if several
-    components tie for the largest area, ``seed`` controls which tied component
-    is selected.
+    the caller passes a full tissue mask with several disjoint regions. When the
+    mask carries multiple tissue labels, we first choose the dominant nonzero
+    label so structured synthesis stays tissue-aware instead of collapsing all
+    foreground labels together. Within that label, we choose the largest
+    connected component in discovery order; if several components tie for the
+    largest area, ``seed`` controls which tied component is selected.
     """
-    components = _connected_components(mask)
+    raw_mask = np.asarray(mask)
+    foreground_labels = [int(label) for label in np.unique(raw_mask) if int(label) > 0]
+    if not foreground_labels:
+        return np.zeros_like(raw_mask, dtype=bool)
+
+    label_areas = {label: int(np.count_nonzero(raw_mask == label)) for label in foreground_labels}
+    max_area = max(label_areas.values())
+    dominant_labels = [label for label, area in label_areas.items() if area == max_area]
+    if len(dominant_labels) == 1 or seed is None:
+        selected_label = dominant_labels[0]
+    else:
+        rng = np.random.default_rng(seed)
+        selected_label = dominant_labels[int(rng.integers(0, len(dominant_labels)))]
+
+    components = _connected_components(raw_mask == selected_label)
     if not components:
-        return np.zeros_like(mask, dtype=bool)
+        return np.zeros_like(raw_mask, dtype=bool)
     components.sort(key=lambda component: int(component.sum()), reverse=True)
     if seed is None or len(components) == 1:
         return components[0]
@@ -222,12 +238,12 @@ def _boundary_attached_blob(component: np.ndarray, seed: int | None = None) -> n
 
 
 def expand_band(tissue_mask: np.ndarray, seed: int | None = None) -> np.ndarray:
-    """Create an exterior band around one connected tissue component."""
+    """Create a tissue-side boundary band around one connected tissue component."""
     component = _select_single_component(tissue_mask, seed=seed)
     if not component.any():
         return np.zeros_like(component, dtype=np.uint8)
 
-    band = _dilate(component, steps=1) & ~component
+    band = _component_boundary(component)
     return band.astype(np.uint8) * 255
 
 

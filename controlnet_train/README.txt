@@ -204,6 +204,7 @@ python controlnet_train/cli/build_inpaint_dataset.py ^
   --dataset-root PANDA=D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES ^
   --dataset-root BCSS=D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES ^
   --forced-mode replace_like_blob ^
+  --forced-size-bucket medium ^
   --output-dir phase5_runs\\inpaint_meta
 ```
 
@@ -214,6 +215,9 @@ Supported synthesized `mask_mode` values:
 - `expand_band`
 - `shrink_band`
 - `replace_like_blob`
+
+Use `--forced-size-bucket` to bias the synthetic GT masks toward a requested
+trace bucket such as `small`, `medium`, or `large`.
 
 Each output row traces the edit with:
 

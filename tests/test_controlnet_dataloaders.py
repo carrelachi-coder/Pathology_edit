@@ -226,6 +226,23 @@ class InpaintCliTests(unittest.TestCase):
 
         self.assertIn("invalid choice", stderr.getvalue())
 
+    def test_parse_args_rejects_invalid_forced_size_bucket_with_argparse_error(self):
+        stderr = StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit):
+                build_inpaint_dataset.parse_args(
+                    [
+                        "--dataset-root",
+                        "PANDA=D:/datasets/PANDA",
+                        "--output-dir",
+                        "D:/tmp/out",
+                        "--forced-size-bucket",
+                        "extra_large",
+                    ]
+                )
+
+        self.assertIn("invalid choice", stderr.getvalue())
+
     def test_main_rejects_non_positive_samples_per_dataset_with_argparse_error(self):
         stderr = StringIO()
         with contextlib.redirect_stderr(stderr):
@@ -283,6 +300,8 @@ class InpaintCliTests(unittest.TestCase):
                     "D:/tmp/out",
                     "--forced-mode",
                     "replace_like_blob",
+                    "--forced-size-bucket",
+                    "medium",
                     "--val-ratio",
                     "0.25",
                     "--seed",
@@ -302,6 +321,7 @@ class InpaintCliTests(unittest.TestCase):
             },
             output_dir=Path("D:/tmp/out"),
             forced_mode="replace_like_blob",
+            forced_bucket="medium",
             val_ratio=0.25,
             seed=99,
             samples_per_dataset=3,
@@ -357,6 +377,7 @@ class InpaintCliTests(unittest.TestCase):
             dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
             output_dir=Path("D:/tmp/out"),
             forced_mode="identity",
+            forced_bucket=None,
             val_ratio=0.1,
             seed=42,
             samples_per_dataset=None,
@@ -390,6 +411,7 @@ class InpaintCliTests(unittest.TestCase):
             dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
             output_dir=Path("D:/tmp/out"),
             forced_mode="identity",
+            forced_bucket=None,
             val_ratio=0.25,
             seed=9,
             samples_per_dataset=4,
@@ -446,6 +468,35 @@ class InpaintCliTests(unittest.TestCase):
             self.assertEqual(row["size_bucket"], "small")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_package_wrapper_forwards_forced_bucket_to_synthesis_helper(self):
+        with patch(
+            "controlnet_train.data._build_synthetic_inpaint_metadata",
+            return_value=(Path("train.jsonl"), Path("val.jsonl")),
+        ) as mock_build:
+            train_path, val_path = exported_build_synthetic_inpaint_metadata(
+                dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+                output_dir=Path("D:/tmp/out"),
+                forced_mode="replace_like_blob",
+                forced_bucket="medium",
+                val_ratio=0.25,
+                seed=9,
+                samples_per_dataset=4,
+                max_attempts_per_sample=6,
+            )
+
+        self.assertEqual(train_path, Path("train.jsonl"))
+        self.assertEqual(val_path, Path("val.jsonl"))
+        mock_build.assert_called_once_with(
+            dataset_roots={"PANDA": Path("D:/datasets/PANDA")},
+            output_dir=Path("D:/tmp/out"),
+            forced_mode="replace_like_blob",
+            forced_bucket="medium",
+            val_ratio=0.25,
+            seed=9,
+            samples_per_dataset=4,
+            max_attempts_per_sample=6,
+        )
 
 
 class InpaintSynthesisTests(unittest.TestCase):
@@ -772,15 +823,28 @@ class InpaintSynthesisTests(unittest.TestCase):
 
         self.assertGreater(int(np.count_nonzero(mask)), 0)
         self.assertEqual(int(mask[1, 1]), 0)
-        self.assertTrue(np.any((mask > 0) & (tissue_mask == 0)))
-        self.assertFalse(np.any((mask > 0) & (tissue_mask > 0)))
+        self.assertTrue(np.any((mask > 0) & (tissue_mask > 0)))
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
 
-    def test_expand_band_returns_empty_for_full_frame_component(self):
+    def test_expand_band_prefers_a_dominant_tissue_label(self):
+        tissue_mask = np.zeros((8, 8), dtype=np.uint8)
+        tissue_mask[0:5, 0:4] = 1
+        tissue_mask[0:4, 4:8] = 2
+
+        mask = expand_band(tissue_mask, seed=11)
+
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertTrue(np.any((mask > 0) & (tissue_mask == 1)))
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 2)))
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
+
+    def test_expand_band_returns_tissue_edge_for_full_frame_component(self):
         tissue_mask = np.ones((8, 8), dtype=np.uint8)
 
         mask = expand_band(tissue_mask, seed=11)
 
-        self.assertEqual(int(np.count_nonzero(mask)), 0)
+        self.assertGreater(int(np.count_nonzero(mask)), 0)
+        self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
 
     def test_expand_band_prefers_the_largest_component_when_multiple_are_present(self):
         tissue_mask = np.zeros((8, 8), dtype=np.uint8)
@@ -857,6 +921,7 @@ class InpaintSynthesisTests(unittest.TestCase):
 
             self.assertEqual(bucket, forced_bucket)
             self.assertGreater(int(np.count_nonzero(mask)), 0)
+            self.assertFalse(np.any((mask > 0) & (tissue_mask == 0)))
 
 
 class CrossDatasetTests(unittest.TestCase):
