@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": null,
-  "outputDirectory": "textbook_tool_static"
+  "outputDirectory": "textbook_tool_static/public"
 }
