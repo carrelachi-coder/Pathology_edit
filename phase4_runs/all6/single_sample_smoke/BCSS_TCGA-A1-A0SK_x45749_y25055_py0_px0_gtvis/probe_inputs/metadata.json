@@ -1,0 +1,17 @@
+{
+  "dataset": "BCSS",
+  "cancer_type": "breast",
+  "cancer_type_index": 0,
+  "source_tissue": "D:\\WQX\\Pathology_edit\\edit_datasets\\BCSS\\tissue_masks\\TCGA-A1-A0SK_x45749_y25055_py0_px0.png",
+  "source_nuclei": "D:\\WQX\\Pathology_edit\\edit_datasets\\BCSS\\nuclei_masks\\TCGA-A1-A0SK_x45749_y25055_py0_px0.png",
+  "erasure_mode": "local",
+  "requested_erasure_mode": "local",
+  "seed": 7,
+  "edit_region_pixels": 184905,
+  "gt_nuclei_pixels_in_edit": 25818,
+  "gt_nuclei_pixels_total": 39630,
+  "gt_nuclei_fraction_in_edit": 0.6514761544284633,
+  "min_erased_nuclei_pixels": 0,
+  "min_erased_nuclei_fraction": 0.4,
+  "min_edit_region_pixels": 0
+}

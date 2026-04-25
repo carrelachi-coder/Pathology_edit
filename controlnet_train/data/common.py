@@ -84,8 +84,13 @@ def write_json(path: str | Path, payload: dict) -> Path:
     return path
 
 
+def normalize_metadata_path_value(path_value: str | Path) -> str:
+    """Normalize JSON metadata paths written on Windows for POSIX servers."""
+    return str(path_value).replace("\\", "/")
+
+
 def resolve_path(path_value: str | Path, base_dir: str | Path) -> Path:
-    candidate = Path(path_value)
+    candidate = Path(normalize_metadata_path_value(path_value))
     if candidate.is_absolute():
         return candidate
     return Path(base_dir) / candidate

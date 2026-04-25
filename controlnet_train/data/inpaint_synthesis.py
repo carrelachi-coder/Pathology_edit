@@ -67,6 +67,10 @@ _PATCH_FRAME_MARGIN = 1
 _DEFAULT_NEAR_IDENTITY_CHANGE_PIXELS = 1
 
 
+class _SkippableSyntheticSampleError(ValueError):
+    """Raised when one synthetic sample should be discarded without aborting the build."""
+
+
 @dataclass(frozen=True)
 class _SyntheticInpaintConfig:
     forced_mode: str
@@ -806,7 +810,7 @@ def _validate_synthesized_change_region(
 
     change_ratio = float(change_pixels / change_region_mask.size)
     if mask_mode != "identity" and change_ratio > _MAX_CHANGE_RATIO:
-        raise ValueError(
+        raise _SkippableSyntheticSampleError(
             f"Synthesized change mask for {mask_mode} exceeded max change ratio {_MAX_CHANGE_RATIO:.2f}: {change_ratio:.4f}"
         )
     size_bucket = _size_bucket_for_change_ratio(change_ratio)
@@ -820,7 +824,7 @@ def _validate_synthesized_change_region(
             and _SIZE_BUCKET_ORDER[size_bucket] >= _SIZE_BUCKET_ORDER[expected_bucket]
         ):
             return change_ratio, size_bucket
-        raise ValueError(
+        raise _SkippableSyntheticSampleError(
             f"Synthesized change mask for {mask_mode} landed in {size_bucket}, expected {expected_bucket}"
         )
     return change_ratio, size_bucket
@@ -872,6 +876,8 @@ def build_synthetic_inpaint_metadata(
                     if "mask_mode" in record:
                         prior_modes.append(record["mask_mode"])
                     records.append(record)
+            except _SkippableSyntheticSampleError as exc:
+                print(f"Skipping synthetic sample {sample.sample_id} from {dataset_name}: {exc}")
             except OSError as exc:
                 print(f"Skipping unreadable sample {sample.sample_id} from {dataset_name}: {exc}")
 

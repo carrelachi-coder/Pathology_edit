@@ -1,0 +1,165 @@
+{
+  "dataset": "ORCA",
+  "cancer_type": "oral_scc",
+  "library_key": "oral",
+  "target_mpp": 0.25,
+  "source_library_dir": "phase4_runs\\all6\\nuclei_library\\ORCA",
+  "stored_instance_count": 20000,
+  "stored_instance_count_by_type": {
+    "101": 11114,
+    "102": 2166,
+    "103": 6720
+  },
+  "stored_instance_count_by_tissue": {
+    "1": 10000,
+    "7": 10000
+  },
+  "density_per_10k_px_weighted": 2.9778,
+  "expected_nuclei_per_512_patch_weighted": 78.0601,
+  "tumor_density_per_10k_px": 2.8972,
+  "tumor_neoplastic_fraction": 0.7708,
+  "type_stats": {
+    "101": {
+      "stored_count": 11114,
+      "nucleus_area_px_p25": 529.0,
+      "nucleus_area_px_median": 789.5,
+      "nucleus_area_px_p75": 1075.75,
+      "nucleus_diameter_px_p25": 25.9527,
+      "nucleus_diameter_px_median": 31.7052,
+      "nucleus_diameter_px_p75": 37.0093,
+      "nucleus_diameter_um_p25": 6.4882,
+      "nucleus_diameter_um_median": 7.9263,
+      "nucleus_diameter_um_p75": 9.2523
+    },
+    "102": {
+      "stored_count": 2166,
+      "nucleus_area_px_p25": 199.0,
+      "nucleus_area_px_median": 295.0,
+      "nucleus_area_px_p75": 374.0,
+      "nucleus_diameter_px_p25": 15.9177,
+      "nucleus_diameter_px_median": 19.3805,
+      "nucleus_diameter_px_p75": 21.8218,
+      "nucleus_diameter_um_p25": 3.9794,
+      "nucleus_diameter_um_median": 4.8451,
+      "nucleus_diameter_um_p75": 5.4555
+    },
+    "103": {
+      "stored_count": 6720,
+      "nucleus_area_px_p25": 292.0,
+      "nucleus_area_px_median": 430.0,
+      "nucleus_area_px_p75": 613.0,
+      "nucleus_diameter_px_p25": 19.2818,
+      "nucleus_diameter_px_median": 23.3986,
+      "nucleus_diameter_px_p75": 27.9374,
+      "nucleus_diameter_um_p25": 4.8204,
+      "nucleus_diameter_um_median": 5.8496,
+      "nucleus_diameter_um_p75": 6.9843
+    }
+  },
+  "tissue_stats": {
+    "1": {
+      "name": "Tumor",
+      "total_area_pixels": 5176551512,
+      "total_nuclei": 1499743,
+      "density_per_10k_px": 2.9,
+      "nuclei_types": {
+        "101": {
+          "count": 1156014,
+          "stored_count": 8016,
+          "fraction": 0.7708,
+          "mean_area": 863.2,
+          "std_area": 550.7
+        },
+        "102": {
+          "count": 105448,
+          "stored_count": 488,
+          "fraction": 0.0703,
+          "mean_area": 261.5,
+          "std_area": 138.3
+        },
+        "103": {
+          "count": 220267,
+          "stored_count": 1496,
+          "fraction": 0.1469,
+          "mean_area": 485.0,
+          "std_area": 292.6
+        },
+        "104": {
+          "count": 560,
+          "stored_count": 0,
+          "fraction": 0.0004,
+          "mean_area": 167.8,
+          "std_area": 99.2
+        },
+        "105": {
+          "count": 17454,
+          "stored_count": 0,
+          "fraction": 0.0116,
+          "mean_area": 757.3,
+          "std_area": 549.0
+        }
+      }
+    },
+    "7": {
+      "name": "Other tissue",
+      "total_area_pixels": 1979689196,
+      "total_nuclei": 631210,
+      "density_per_10k_px": 3.19,
+      "nuclei_types": {
+        "101": {
+          "count": 128086,
+          "stored_count": 3098,
+          "fraction": 0.2029,
+          "mean_area": 675.8,
+          "std_area": 424.0
+        },
+        "102": {
+          "count": 146016,
+          "stored_count": 1678,
+          "fraction": 0.2313,
+          "mean_area": 286.7,
+          "std_area": 162.1
+        },
+        "103": {
+          "count": 353231,
+          "stored_count": 5224,
+          "fraction": 0.5596,
+          "mean_area": 465.8,
+          "std_area": 298.1
+        },
+        "104": {
+          "count": 1174,
+          "stored_count": 0,
+          "fraction": 0.0019,
+          "mean_area": 176.3,
+          "std_area": 104.2
+        },
+        "105": {
+          "count": 2703,
+          "stored_count": 0,
+          "fraction": 0.0043,
+          "mean_area": 705.4,
+          "std_area": 494.2
+        }
+      }
+    }
+  },
+  "nucleus_area_px_p25": 353.0,
+  "nucleus_area_px_median": 570.0,
+  "nucleus_area_px_p75": 894.25,
+  "nucleus_diameter_px_p25": 21.2003,
+  "nucleus_diameter_px_median": 26.9397,
+  "nucleus_diameter_px_p75": 33.7431,
+  "nucleus_diameter_um_p25": 5.3001,
+  "nucleus_diameter_um_median": 6.7349,
+  "nucleus_diameter_um_p75": 8.4358,
+  "neoplastic_area_px_p25": 529.0,
+  "neoplastic_area_px_median": 789.5,
+  "neoplastic_area_px_p75": 1075.75,
+  "neoplastic_diameter_px_p25": 25.9527,
+  "neoplastic_diameter_px_median": 31.7052,
+  "neoplastic_diameter_px_p75": 37.0093,
+  "neoplastic_diameter_um_p25": 6.4882,
+  "neoplastic_diameter_um_median": 7.9263,
+  "neoplastic_diameter_um_p75": 9.2523
+}

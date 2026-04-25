@@ -1,0 +1,23 @@
+{
+  "probe_inputs": {
+    "tissue_path": "D:\\WQX\\Pathology_edit\\phase4_runs\\all6\\single_sample_smoke\\BCSS_TCGA-A1-A0SK_x45749_y25055_py0_px0_cc\\probe_inputs\\input_tissue.png",
+    "gt_nuclei_path": "D:\\WQX\\Pathology_edit\\phase4_runs\\all6\\single_sample_smoke\\BCSS_TCGA-A1-A0SK_x45749_y25055_py0_px0_cc\\probe_inputs\\gt_nuclei.png",
+    "erased_nuclei_path": "D:\\WQX\\Pathology_edit\\phase4_runs\\all6\\single_sample_smoke\\BCSS_TCGA-A1-A0SK_x45749_y25055_py0_px0_cc\\probe_inputs\\input_nuclei_erased.png",
+    "edit_region_path": "D:\\WQX\\Pathology_edit\\phase4_runs\\all6\\single_sample_smoke\\BCSS_TCGA-A1-A0SK_x45749_y25055_py0_px0_cc\\probe_inputs\\edit_region.png",
+    "metadata_path": "D:\\WQX\\Pathology_edit\\phase4_runs\\all6\\single_sample_smoke\\BCSS_TCGA-A1-A0SK_x45749_y25055_py0_px0_cc\\probe_inputs\\metadata.json"
+  },
+  "generated_nuclei": "D:\\WQX\\Pathology_edit\\phase4_runs\\all6\\single_sample_smoke\\BCSS_TCGA-A1-A0SK_x45749_y25055_py0_px0_cc\\generated\\pred_nuclei.png",
+  "comparison_vis": "D:\\WQX\\Pathology_edit\\phase4_runs\\all6\\single_sample_smoke\\BCSS_TCGA-A1-A0SK_x45749_y25055_py0_px0_cc\\vis\\gamma_comparison.png",
+  "metrics": {
+    "edit_region_pixels": 2988,
+    "gt_nuclei_pixels": 648,
+    "pred_nuclei_pixels": 106,
+    "pixel_density_ratio": 0.16358024691358025,
+    "gt_type_pixel_counts": {
+      "101": 648
+    },
+    "pred_type_pixel_counts": {
+      "102": 106
+    }
+  }
+}

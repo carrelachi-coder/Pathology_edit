@@ -1,0 +1,56 @@
+[
+  {
+    "gamma": 1.0,
+    "placed": 87,
+    "tissues": {
+      "2": {
+        "region_area": 284,
+        "prob_count": 0.15581557154655457,
+        "library_density_per_10k": 2.94,
+        "library_count": 0.083496,
+        "semantic_scale": 0.95,
+        "blended_count": 0.13050372150526046,
+        "clipped_count": 0.12397853542999743,
+        "expected_nucleus_area": 339.74255999999997,
+        "oversample_factor": 3.0,
+        "min_distance": 9.005973667740887,
+        "num_candidates": 2,
+        "target_count": 0,
+        "selected_centers": 0,
+        "placed": 0
+      },
+      "3": {
+        "region_area": 184567,
+        "prob_count": 296.95404052734375,
+        "library_density_per_10k": 2.29,
+        "library_count": 42.265843,
+        "semantic_scale": 0.65,
+        "blended_count": 207.81317139277343,
+        "clipped_count": 105.66460749999999,
+        "expected_nucleus_area": 306.43834,
+        "oversample_factor": 3.0,
+        "min_distance": 8.553172794104672,
+        "num_candidates": 1588,
+        "target_count": 106,
+        "selected_centers": 106,
+        "placed": 87
+      },
+      "4": {
+        "region_area": 54,
+        "prob_count": 0.11665312945842743,
+        "library_density_per_10k": 10.07,
+        "library_count": 0.054377999999999996,
+        "semantic_scale": 1.1,
+        "blended_count": 0.09485683414797784,
+        "clipped_count": 0.10434251756277563,
+        "expected_nucleus_area": 284.534596540346,
+        "oversample_factor": 3.0,
+        "min_distance": 8.241822084956777,
+        "num_candidates": 2,
+        "target_count": 0,
+        "selected_centers": 0,
+        "placed": 0
+      }
+    }
+  }
+]

@@ -1,0 +1,36 @@
+[
+  {
+    "source_dataset": "TEXTBOOK",
+    "image_id": "001",
+    "image": "001.png",
+    "organ": "lung",
+    "cancer_type": "lung adenocarcinoma in situ",
+    "nuclei_library_key": "lung",
+    "source_mpp": null,
+    "source_objective": "unknown",
+    "source_magnification_notes": null,
+    "scale_bar_available": false,
+    "image_width_px": 330,
+    "image_height_px": 444,
+    "image_mode": "RGBA",
+    "global_description": "肺原位腺癌。镜下表现：病变界限较清楚，可见形态一致且温和的Ⅱ型肺泡细胞沿肺泡壁生长，肺泡间隔略增宽，但无间质反应，未见胸膜受侵，未见其他非附壁成分。",
+    "annotation_status": "not_started"
+  },
+  {
+    "source_dataset": "TEXTBOOK",
+    "image_id": "002",
+    "image": "002.png",
+    "organ": "lung",
+    "cancer_type": "lung adenocarcinoma in situ",
+    "nuclei_library_key": "lung",
+    "source_mpp": null,
+    "source_objective": "unknown",
+    "source_magnification_notes": null,
+    "scale_bar_available": false,
+    "image_width_px": 211,
+    "image_height_px": 284,
+    "image_mode": "RGBA",
+    "global_description": "肺原位腺癌。镜下表现：病变界限较清楚，可见形态一致且温和的Ⅱ型肺泡细胞沿肺泡壁生长，肺泡间隔略增宽，但无间质反应，未见胸膜受侵，未见其他非附壁成分。",
+    "annotation_status": "not_started"
+  }
+]

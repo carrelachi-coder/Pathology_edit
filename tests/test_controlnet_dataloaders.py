@@ -15,7 +15,7 @@ from PIL import Image
 import controlnet_train
 from controlnet_train.cli import build_inpaint_dataset
 from controlnet_train.data import build_synthetic_inpaint_metadata as exported_build_synthetic_inpaint_metadata
-from controlnet_train.data.common import load_layered_dataset_samples
+from controlnet_train.data.common import load_layered_dataset_samples, normalize_metadata_path_value
 from controlnet_train.data.cross import CrossReconstructionDataset, build_cross_metadata
 from controlnet_train.data.inpaint import InpaintDataset, build_inpaint_metadata
 from controlnet_train.data.inpaint_synthesis import (
@@ -44,6 +44,12 @@ def _write_mask(path: Path, values: np.ndarray) -> None:
 
 
 class CommonLayeredDataTests(unittest.TestCase):
+    def test_normalize_metadata_path_value_converts_windows_separators(self):
+        self.assertEqual(
+            normalize_metadata_path_value("images\\caseA_py0_px0.png"),
+            "images/caseA_py0_px0.png",
+        )
+
     def test_load_layered_dataset_samples_reads_metadata_and_parses_case_id(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
         try:
@@ -915,6 +921,79 @@ class InpaintSynthesisTests(unittest.TestCase):
                         )
 
             self.assertEqual(str(ctx.exception), "permanent failure")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_skips_samples_that_only_exceed_max_change_ratio(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "PANDA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_skip_ratio_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 88)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 8, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 102, dtype=np.uint8))
+            (root / "metadata.jsonl").write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "prostate prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.synthesize_change_region",
+                return_value=(np.full((8, 8), 255, dtype=np.uint8), "replace_like_blob"),
+            ):
+                train_path, val_path = build_synthetic_inpaint_metadata(
+                    dataset_roots={"PANDA": root},
+                    output_dir=root / "synthetic_output",
+                    forced_mode="replace_like_blob",
+                    val_ratio=0.0,
+                    seed=13,
+                    max_attempts_per_sample=2,
+                )
+
+            self.assertEqual(train_path.read_text(encoding="utf8").strip(), "")
+            self.assertEqual(val_path.read_text(encoding="utf8").strip(), "")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_synthetic_metadata_skips_samples_when_forced_bucket_is_unreachable(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "ORCA"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_bucket_py0_px0.png"
+            _write_rgb(root / "images" / sample_name, 88)
+            _write_mask(root / "tissue_masks" / sample_name, np.full((20, 20), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((20, 20), 101, dtype=np.uint8))
+            (root / "metadata.jsonl").write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "oral prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            small_mask = np.zeros((20, 20), dtype=np.uint8)
+            small_mask[0:2, 0:2] = 255
+            with patch(
+                "controlnet_train.data.inpaint_synthesis.synthesize_change_region",
+                return_value=(small_mask, "shrink_band"),
+            ):
+                train_path, val_path = build_synthetic_inpaint_metadata(
+                    dataset_roots={"ORCA": root},
+                    output_dir=root / "synthetic_output",
+                    forced_mode="mixed",
+                    forced_bucket="medium",
+                    val_ratio=0.0,
+                    seed=13,
+                    max_attempts_per_sample=2,
+                )
+
+            self.assertEqual(train_path.read_text(encoding="utf8").strip(), "")
+            self.assertEqual(val_path.read_text(encoding="utf8").strip(), "")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
