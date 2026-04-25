@@ -56,14 +56,13 @@
           </label>
         </section>
 
-        <section>
+        <section id="tissueSection">
           <h2>2. Tissue</h2>
           <div class="segmented" id="tissueLabels"></div>
-          <label class="field inline">
-            <span>Brush</span>
-            <input id="brushSize" type="range" min="3" max="80" value="18" />
-          </label>
-          <button id="clearTissue">Clear tissue mask</button>
+          <div class="buttonRow">
+            <button id="clearTissue">Clear last polygon</button>
+            <button id="confirmTissue" class="primary">Confirm tissue</button>
+          </div>
         </section>
 
         <section>
@@ -90,12 +89,14 @@
 
       <section class="workspace">
         <div class="toolbar">
-          <button id="tissueMode" class="active">Tissue brush</button>
+          <button id="tissueMode" class="active">Tissue polygon</button>
+          <button id="zoomMode">Zoom</button>
+          <button id="cellToolbarMode">Mark tumor cells</button>
           <button id="reviewMode">Patch review</button>
           <button id="nucleiMode">Patch nuclei</button>
           <span id="status" class="status">Load an image to begin.</span>
         </div>
-        <div class="canvasWrap">
+        <div id="canvasWrap" class="canvasWrap">
           <canvas id="mainCanvas"></canvas>
         </div>
         <section class="patches">

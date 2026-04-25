@@ -1,4 +1,5 @@
-import { TISSUE, selectBoundaryPatches, patchesOverlap } from "./patchSelection.js";
+import { selectBoundaryPatches, patchesOverlap } from "./patchSelection.js";
+import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
 import { buildZip } from "./zip.js";
 
 const tissueLabels = [
@@ -26,6 +27,9 @@ const state = {
   imageName: "",
   metadata: {},
   tissueMask: null,
+  tissuePolygons: [],
+  currentPolygon: [],
+  tissueLocked: false,
   tumorCells: [],
   normalized: null,
   patches: [],
@@ -35,22 +39,24 @@ const state = {
   mode: "tissue",
   tissueLabel: 1,
   nucleiLabel: 101,
-  librarySummary: null
+  librarySummary: null,
+  zoomEnabled: false,
+  viewZoom: 1
 };
 
 const els = {};
 for (const id of [
   "downloadZip", "imageInput", "metadataInput", "imageId", "organ", "cancerType",
-  "libraryKey", "globalDescription", "tissueLabels", "brushSize", "clearTissue",
+  "libraryKey", "globalDescription", "tissueSection", "tissueLabels", "clearTissue",
+  "confirmTissue",
   "cellRadius", "cellMode", "clearCells", "scaleStatus", "normalizeAndSelect",
-  "nucleiLabels", "nucleusRadius", "tissueMode", "reviewMode", "nucleiMode",
-  "status", "mainCanvas", "patchGrid"
+  "nucleiLabels", "nucleusRadius", "tissueMode", "zoomMode", "cellToolbarMode",
+  "reviewMode", "nucleiMode", "status", "mainCanvas", "canvasWrap", "patchGrid"
 ]) {
   els[id] = document.getElementById(id);
 }
 
 const ctx = els.mainCanvas.getContext("2d", { willReadFrequently: true });
-let isDrawing = false;
 
 init();
 
@@ -66,11 +72,8 @@ function bindEvents() {
   els.imageInput.addEventListener("change", handleImageInput);
   els.metadataInput.addEventListener("change", handleMetadataInput);
   els.libraryKey.addEventListener("change", loadLibrarySummary);
-  els.clearTissue.addEventListener("click", () => {
-    if (!state.tissueMask) return;
-    state.tissueMask.fill(0);
-    drawMainCanvas();
-  });
+  els.clearTissue.addEventListener("click", clearLastTissuePolygon);
+  els.confirmTissue.addEventListener("click", confirmTissue);
   els.cellMode.addEventListener("click", () => setMode("cell"));
   els.clearCells.addEventListener("click", () => {
     state.tumorCells = [];
@@ -79,15 +82,16 @@ function bindEvents() {
   });
   els.normalizeAndSelect.addEventListener("click", normalizeAndSelect);
   els.tissueMode.addEventListener("click", () => setMode("tissue"));
+  els.zoomMode.addEventListener("click", toggleZoomMode);
+  els.cellToolbarMode.addEventListener("click", () => setMode("cell"));
   els.reviewMode.addEventListener("click", () => setMode("review"));
   els.nucleiMode.addEventListener("click", () => setMode("nuclei"));
   els.downloadZip.addEventListener("click", downloadZip);
 
   els.mainCanvas.addEventListener("pointerdown", handlePointerDown);
-  els.mainCanvas.addEventListener("pointermove", handlePointerMove);
-  window.addEventListener("pointerup", () => {
-    isDrawing = false;
-  });
+  els.mainCanvas.addEventListener("dblclick", handleCanvasDoubleClick);
+  els.canvasWrap.addEventListener("wheel", handleWheelZoom, { passive: false });
+  window.addEventListener("keydown", handleKeyDown);
 }
 
 function renderLabelButtons(container, labels, kind) {
@@ -97,10 +101,12 @@ function renderLabelButtons(container, labels, kind) {
     button.type = "button";
     button.textContent = `${name} (${value})`;
     button.style.borderLeft = `8px solid ${color}`;
+    button.disabled = kind === "tissue" && state.tissueLocked;
     if ((kind === "tissue" && value === state.tissueLabel) || (kind === "nuclei" && value === state.nucleiLabel)) {
       button.classList.add("active");
     }
     button.addEventListener("click", () => {
+      if (kind === "tissue" && state.tissueLocked) return;
       if (kind === "tissue") state.tissueLabel = value;
       if (kind === "nuclei") state.nucleiLabel = value;
       renderLabelButtons(container, labels, kind);
@@ -116,13 +122,19 @@ async function handleImageInput(event) {
   state.image = await createImageBitmap(file);
   state.imageBitmap = state.image;
   state.tissueMask = new Uint8Array(state.image.width * state.image.height);
+  state.tissuePolygons = [];
+  state.currentPolygon = [];
+  state.tissueLocked = false;
   state.tumorCells = [];
   state.normalized = null;
   state.patches = [];
   state.acceptedPatchIds.clear();
   state.nucleiByPatch.clear();
+  state.viewZoom = 1;
   els.imageId.value = file.name.replace(/\.[^.]+$/, "");
   resizeCanvas(state.image.width, state.image.height);
+  updateTissueLockUI();
+  setMode("tissue");
   drawMainCanvas();
   renderPatches();
   updateScaleStatus();
@@ -158,11 +170,21 @@ async function loadLibrarySummary() {
 }
 
 function setMode(mode) {
+  if (mode === "tissue" && state.tissueLocked) {
+    setStatus("Tissue annotation is locked.");
+    return;
+  }
   state.mode = mode;
-  for (const [button, name] of [[els.tissueMode, "tissue"], [els.reviewMode, "review"], [els.nucleiMode, "nuclei"]]) {
+  for (const [button, name] of [
+    [els.tissueMode, "tissue"],
+    [els.cellToolbarMode, "cell"],
+    [els.reviewMode, "review"],
+    [els.nucleiMode, "nuclei"]
+  ]) {
     button.classList.toggle("active", mode === name);
   }
   els.cellMode.classList.toggle("active", mode === "cell");
+  updateCanvasCursor();
   drawMainCanvas();
 }
 
@@ -178,14 +200,19 @@ function handlePointerDown(event) {
     return;
   }
   if (state.mode === "tissue") {
-    isDrawing = true;
-    paintTissue(point);
+    if (state.tissueLocked) return;
+    if (event.detail >= 2) {
+      completeCurrentPolygon();
+      return;
+    }
+    addTissuePolygonPoint(point);
   }
 }
 
-function handlePointerMove(event) {
-  if (!isDrawing || state.mode !== "tissue") return;
-  paintTissue(canvasPoint(event));
+function handleCanvasDoubleClick(event) {
+  if (state.mode !== "tissue" || state.tissueLocked) return;
+  event.preventDefault();
+  completeCurrentPolygon();
 }
 
 function canvasPoint(event) {
@@ -196,10 +223,89 @@ function canvasPoint(event) {
   };
 }
 
-function paintTissue(point) {
-  const radius = Number(els.brushSize.value);
-  paintCircle(state.tissueMask, state.image.width, state.image.height, point.x, point.y, radius, state.tissueLabel);
+function addTissuePolygonPoint(point) {
+  state.currentPolygon.push(point);
   drawMainCanvas();
+}
+
+function completeCurrentPolygon() {
+  if (state.currentPolygon.length < 3 || !state.imageBitmap) {
+    state.currentPolygon = [];
+    drawMainCanvas();
+    return;
+  }
+  state.tissuePolygons.push({
+    label: state.tissueLabel,
+    points: state.currentPolygon.map((point) => ({ ...point }))
+  });
+  state.currentPolygon = [];
+  rebuildTissueMask();
+  drawMainCanvas();
+}
+
+function clearLastTissuePolygon() {
+  if (!state.imageBitmap || state.tissueLocked) return;
+  if (state.currentPolygon.length > 0) {
+    state.currentPolygon = [];
+    drawMainCanvas();
+    return;
+  }
+  state.tissuePolygons = removeLastPolygonForLabel(state.tissuePolygons, state.tissueLabel);
+  rebuildTissueMask();
+  drawMainCanvas();
+}
+
+function confirmTissue() {
+  if (!state.imageBitmap || state.tissueLocked) return;
+  completeCurrentPolygon();
+  state.tissueLocked = true;
+  updateTissueLockUI();
+  setMode("cell");
+  setStatus("Tissue annotation locked. Mark representative tumor cells.");
+}
+
+function rebuildTissueMask() {
+  if (!state.imageBitmap) return;
+  state.tissueMask = buildMaskFromPolygons(state.image.width, state.image.height, state.tissuePolygons);
+}
+
+function handleKeyDown(event) {
+  if (state.mode !== "tissue" || state.tissueLocked) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    completeCurrentPolygon();
+  }
+  if (event.key === "Backspace" || event.key === "Delete") {
+    event.preventDefault();
+    state.currentPolygon.pop();
+    drawMainCanvas();
+  }
+  if (event.key === "Escape") {
+    state.currentPolygon = [];
+    drawMainCanvas();
+  }
+}
+
+function toggleZoomMode() {
+  state.zoomEnabled = !state.zoomEnabled;
+  els.zoomMode.classList.toggle("active", state.zoomEnabled);
+  els.canvasWrap.classList.toggle("zooming", state.zoomEnabled);
+}
+
+function handleWheelZoom(event) {
+  if (!state.zoomEnabled || !state.imageBitmap) return;
+  event.preventDefault();
+  const wrap = els.canvasWrap;
+  const wrapRect = wrap.getBoundingClientRect();
+  const focalX = event.clientX - wrapRect.left;
+  const focalY = event.clientY - wrapRect.top;
+  const oldZoom = state.viewZoom;
+  const factor = event.deltaY < 0 ? 1.15 : 0.87;
+  state.viewZoom = clamp(oldZoom * factor, 0.25, 8);
+  applyCanvasZoom();
+  const ratio = state.viewZoom / oldZoom;
+  wrap.scrollLeft = (wrap.scrollLeft + focalX) * ratio - focalX;
+  wrap.scrollTop = (wrap.scrollTop + focalY) * ratio - focalY;
 }
 
 function addTumorCell(point) {
@@ -234,6 +340,7 @@ async function normalizeAndSelect() {
     source: index < selection.selected.length ? "selected" : "backup"
   }));
   state.acceptedPatchIds = new Set(state.patches.filter((patch) => patch.accepted).map((patch) => patch.id));
+  state.viewZoom = 1;
   resizeCanvas(width, height);
   renderPatches();
   drawMainCanvas();
@@ -314,6 +421,7 @@ function drawMainCanvas() {
   } else {
     ctx.drawImage(state.imageBitmap, 0, 0);
     drawMaskOverlay(ctx, state.tissueMask, state.image.width, state.image.height, 0.32);
+    drawCurrentPolygon();
     drawTumorCells();
   }
   if (state.mode === "nuclei" && state.selectedPatchId) {
@@ -329,6 +437,33 @@ function drawTumorCells() {
   for (const cell of state.tumorCells) {
     ctx.beginPath();
     ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawCurrentPolygon() {
+  if (state.mode !== "tissue" || state.currentPolygon.length === 0) return;
+  const color = tissueLabels.find((item) => item[1] === state.tissueLabel)?.[2] || "#0f766e";
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = `${color}33`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  state.currentPolygon.forEach((point, index) => {
+    if (index === 0) ctx.moveTo(point.x, point.y);
+    else ctx.lineTo(point.x, point.y);
+  });
+  if (state.currentPolygon.length >= 3) {
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  for (const point of state.currentPolygon) {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
@@ -513,6 +648,25 @@ function nucleiToCanvas(patch) {
 function resizeCanvas(width, height) {
   els.mainCanvas.width = width;
   els.mainCanvas.height = height;
+  applyCanvasZoom();
+}
+
+function applyCanvasZoom() {
+  els.mainCanvas.style.width = `${els.mainCanvas.width * state.viewZoom}px`;
+  els.mainCanvas.style.height = `${els.mainCanvas.height * state.viewZoom}px`;
+}
+
+function updateCanvasCursor() {
+  els.mainCanvas.classList.toggle("polygonMode", state.mode === "tissue" && !state.tissueLocked);
+}
+
+function updateTissueLockUI() {
+  els.tissueSection.classList.toggle("locked", state.tissueLocked);
+  els.clearTissue.disabled = state.tissueLocked;
+  els.confirmTissue.disabled = state.tissueLocked;
+  els.tissueMode.disabled = state.tissueLocked;
+  renderLabelButtons(els.tissueLabels, tissueLabels, "tissue");
+  updateCanvasCursor();
 }
 
 function drawScaledImage(bitmap, width, height) {

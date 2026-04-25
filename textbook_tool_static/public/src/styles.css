@@ -118,6 +118,18 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.buttonRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.locked {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
 .segmented {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -151,11 +163,19 @@ button:disabled {
   padding: 16px;
 }
 
+.canvasWrap.zooming {
+  cursor: zoom-in;
+}
+
 #mainCanvas {
   background: #fff;
   border: 1px solid var(--line);
-  max-width: 100%;
+  max-width: none;
   image-rendering: auto;
+}
+
+#mainCanvas.polygonMode {
+  cursor: crosshair;
 }
 
 .patches {
