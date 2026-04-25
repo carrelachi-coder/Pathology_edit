@@ -1,0 +1,10 @@
+{
+  "name": "textbook-benchmark-annotation-tool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/patchSelection.test.js && node tests/zip.test.js",
+    "serve": "node server.js"
+  }
+}
