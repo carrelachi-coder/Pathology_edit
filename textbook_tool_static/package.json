@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/prepare-public.mjs",
-    "test": "node tests/patchSelection.test.js && node tests/zip.test.js && node tests/tissuePolygons.test.js",
+    "test": "node tests/patchSelection.test.js && node tests/zip.test.js && node tests/tissuePolygons.test.js && node tests/cellPolygons.test.js",
     "serve": "node server.js"
   }
 }
