@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Textbook Benchmark Annotation</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Textbook Benchmark Annotation</h1>
+        <p>Images stay in this browser. Download the zip before closing the page.</p>
+      </div>
+      <button id="downloadZip" class="primary" disabled>Download zip</button>
+    </header>
+
+    <main class="layout">
+      <aside class="panel">
+        <section>
+          <h2>1. Image</h2>
+          <label class="field">
+            <span>Textbook image</span>
+            <input id="imageInput" type="file" accept="image/*" />
+          </label>
+          <label class="field">
+            <span>Metadata JSON</span>
+            <input id="metadataInput" type="file" accept=".json,application/json" />
+          </label>
+          <label class="field">
+            <span>Image ID</span>
+            <input id="imageId" value="textbook_image" />
+          </label>
+          <label class="field">
+            <span>Organ</span>
+            <input id="organ" value="lung" />
+          </label>
+          <label class="field">
+            <span>Cancer type</span>
+            <input id="cancerType" value="lung adenocarcinoma in situ" />
+          </label>
+          <label class="field">
+            <span>Nuclei library</span>
+            <select id="libraryKey">
+              <option value="lung">lung</option>
+              <option value="breast">breast</option>
+              <option value="prostate">prostate</option>
+              <option value="colorectal">colorectal</option>
+              <option value="melanoma">melanoma</option>
+              <option value="oral">oral</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Global description</span>
+            <textarea id="globalDescription" rows="5"></textarea>
+          </label>
+        </section>
+
+        <section>
+          <h2>2. Tissue</h2>
+          <div class="segmented" id="tissueLabels"></div>
+          <label class="field inline">
+            <span>Brush</span>
+            <input id="brushSize" type="range" min="3" max="80" value="18" />
+          </label>
+          <button id="clearTissue">Clear tissue mask</button>
+        </section>
+
+        <section>
+          <h2>3. Scale</h2>
+          <label class="field inline">
+            <span>Cell radius</span>
+            <input id="cellRadius" type="range" min="3" max="40" value="10" />
+          </label>
+          <button id="cellMode">Mark tumor cells</button>
+          <button id="clearCells">Clear cells</button>
+          <p id="scaleStatus" class="hint">Mark 10 representative tumor cells.</p>
+          <button id="normalizeAndSelect">Normalize + select patches</button>
+        </section>
+
+        <section>
+          <h2>4. Patch Nuclei</h2>
+          <div class="segmented" id="nucleiLabels"></div>
+          <label class="field inline">
+            <span>Nucleus radius</span>
+            <input id="nucleusRadius" type="range" min="2" max="30" value="7" />
+          </label>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="toolbar">
+          <button id="tissueMode" class="active">Tissue brush</button>
+          <button id="reviewMode">Patch review</button>
+          <button id="nucleiMode">Patch nuclei</button>
+          <span id="status" class="status">Load an image to begin.</span>
+        </div>
+        <div class="canvasWrap">
+          <canvas id="mainCanvas"></canvas>
+        </div>
+        <section class="patches">
+          <h2>Recommended boundary patches</h2>
+          <div id="patchGrid" class="patchGrid"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
