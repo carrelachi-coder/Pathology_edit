@@ -38,6 +38,16 @@ test("later polygons overwrite earlier tissue labels", () => {
   assert(at(mask, 10, 5, 5) === 2, "expected overlap to use later label");
 });
 
+test("polygons may extend outside the image but only rasterize image pixels", () => {
+  const mask = buildMaskFromPolygons(6, 6, [
+    { label: 1, points: [{ x: -5, y: -5 }, { x: 3, y: -5 }, { x: 3, y: 3 }, { x: -5, y: 3 }] }
+  ]);
+
+  assert(mask.length === 36, "expected mask size to stay inside image bounds");
+  assert(at(mask, 6, 1, 1) === 1, "expected in-image area inside extended polygon to be labeled");
+  assert(at(mask, 6, 5, 5) === 0, "expected in-image area outside polygon to remain background");
+});
+
 test("removeLastPolygonForLabel removes only the latest polygon for the active label", () => {
   const polygons = [
     { label: 1, points: [{ x: 1, y: 1 }, { x: 8, y: 1 }, { x: 8, y: 8 }, { x: 1, y: 8 }] },

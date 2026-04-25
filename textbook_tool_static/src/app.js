@@ -2,6 +2,8 @@ import { selectBoundaryPatches, patchesOverlap } from "./patchSelection.js";
 import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
 import { buildZip } from "./zip.js";
 
+const TISSUE_CANVAS_PADDING = 96;
+
 const tissueLabels = [
   ["background", 0, "#000000"],
   ["tumor", 1, "#d92d20"],
@@ -41,7 +43,8 @@ const state = {
   nucleiLabel: 101,
   librarySummary: null,
   zoomEnabled: false,
-  viewZoom: 1
+  viewZoom: 1,
+  canvasPadding: 0
 };
 
 const els = {};
@@ -132,13 +135,13 @@ async function handleImageInput(event) {
   state.nucleiByPatch.clear();
   state.viewZoom = 1;
   els.imageId.value = file.name.replace(/\.[^.]+$/, "");
-  resizeCanvas(state.image.width, state.image.height);
+  resizeCanvas(state.image.width, state.image.height, TISSUE_CANVAS_PADDING);
   updateTissueLockUI();
   setMode("tissue");
   drawMainCanvas();
   renderPatches();
   updateScaleStatus();
-  setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}).`);
+  setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}). Default tissue mask is background.`);
 }
 
 async function handleMetadataInput(event) {
@@ -217,9 +220,10 @@ function handleCanvasDoubleClick(event) {
 
 function canvasPoint(event) {
   const rect = els.mainCanvas.getBoundingClientRect();
+  const offset = imageOffset();
   return {
-    x: Math.floor((event.clientX - rect.left) * (els.mainCanvas.width / rect.width)),
-    y: Math.floor((event.clientY - rect.top) * (els.mainCanvas.height / rect.height))
+    x: Math.floor((event.clientX - rect.left) * (els.mainCanvas.width / rect.width) - offset.x),
+    y: Math.floor((event.clientY - rect.top) * (els.mainCanvas.height / rect.height) - offset.y)
   };
 }
 
@@ -309,6 +313,10 @@ function handleWheelZoom(event) {
 }
 
 function addTumorCell(point) {
+  if (!pointInsideImage(point)) {
+    setStatus("Tumor cell markers must be inside the image.");
+    return;
+  }
   state.tumorCells.push({ x: point.x, y: point.y, radius: Number(els.cellRadius.value) });
   updateScaleStatus();
   drawMainCanvas();
@@ -341,7 +349,7 @@ async function normalizeAndSelect() {
   }));
   state.acceptedPatchIds = new Set(state.patches.filter((patch) => patch.accepted).map((patch) => patch.id));
   state.viewZoom = 1;
-  resizeCanvas(width, height);
+  resizeCanvas(width, height, 0);
   renderPatches();
   drawMainCanvas();
   els.downloadZip.disabled = state.acceptedPatchIds.size === 0;
@@ -419,8 +427,12 @@ function drawMainCanvas() {
     drawMaskOverlay(ctx, state.normalized.mask, state.normalized.width, state.normalized.height, 0.26);
     drawPatchBoxes();
   } else {
-    ctx.drawImage(state.imageBitmap, 0, 0);
-    drawMaskOverlay(ctx, state.tissueMask, state.image.width, state.image.height, 0.32);
+    const offset = imageOffset();
+    ctx.fillStyle = "#eef1f5";
+    ctx.fillRect(0, 0, els.mainCanvas.width, els.mainCanvas.height);
+    ctx.drawImage(state.imageBitmap, offset.x, offset.y);
+    drawMaskOverlay(ctx, state.tissueMask, state.image.width, state.image.height, 0.32, offset.x, offset.y, 0.28);
+    drawImageBoundary(offset);
     drawCurrentPolygon();
     drawTumorCells();
   }
@@ -434,9 +446,10 @@ function drawTumorCells() {
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 2;
   ctx.fillStyle = "rgba(217,45,32,0.35)";
+  const offset = imageOffset();
   for (const cell of state.tumorCells) {
     ctx.beginPath();
-    ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
+    ctx.arc(offset.x + cell.x, offset.y + cell.y, cell.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
@@ -450,10 +463,13 @@ function drawCurrentPolygon() {
   ctx.strokeStyle = color;
   ctx.fillStyle = `${color}33`;
   ctx.lineWidth = 2;
+  const offset = imageOffset();
   ctx.beginPath();
   state.currentPolygon.forEach((point, index) => {
-    if (index === 0) ctx.moveTo(point.x, point.y);
-    else ctx.lineTo(point.x, point.y);
+    const x = offset.x + point.x;
+    const y = offset.y + point.y;
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   });
   if (state.currentPolygon.length >= 3) {
     ctx.closePath();
@@ -463,7 +479,7 @@ function drawCurrentPolygon() {
   ctx.fillStyle = "#ffffff";
   for (const point of state.currentPolygon) {
     ctx.beginPath();
-    ctx.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
+    ctx.arc(offset.x + point.x, offset.y + point.y, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
@@ -498,19 +514,29 @@ function drawPatchNuclei() {
   ctx.restore();
 }
 
-function drawMaskOverlay(targetCtx, mask, width, height, alpha) {
+function drawImageBoundary(offset) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(24,32,42,0.55)";
+  ctx.setLineDash([8, 6]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(offset.x, offset.y, state.image.width, state.image.height);
+  ctx.restore();
+}
+
+function drawMaskOverlay(targetCtx, mask, width, height, alpha, offsetX = 0, offsetY = 0, backgroundAlpha = 0) {
   if (!mask) return;
-  const imageData = targetCtx.getImageData(0, 0, width, height);
+  const imageData = targetCtx.getImageData(offsetX, offsetY, width, height);
   for (let i = 0; i < mask.length; i += 1) {
     const value = mask[i];
-    if (value === 0) continue;
-    const color = colorForTissue(value);
+    if (value === 0 && backgroundAlpha <= 0) continue;
+    const blendAlpha = value === 0 ? backgroundAlpha : alpha;
+    const color = value === 0 ? [60, 72, 88] : colorForTissue(value);
     const offset = i * 4;
-    imageData.data[offset] = imageData.data[offset] * (1 - alpha) + color[0] * alpha;
-    imageData.data[offset + 1] = imageData.data[offset + 1] * (1 - alpha) + color[1] * alpha;
-    imageData.data[offset + 2] = imageData.data[offset + 2] * (1 - alpha) + color[2] * alpha;
+    imageData.data[offset] = imageData.data[offset] * (1 - blendAlpha) + color[0] * blendAlpha;
+    imageData.data[offset + 1] = imageData.data[offset + 1] * (1 - blendAlpha) + color[1] * blendAlpha;
+    imageData.data[offset + 2] = imageData.data[offset + 2] * (1 - blendAlpha) + color[2] * blendAlpha;
   }
-  targetCtx.putImageData(imageData, 0, 0);
+  targetCtx.putImageData(imageData, offsetX, offsetY);
 }
 
 async function downloadZip() {
@@ -645,9 +671,10 @@ function nucleiToCanvas(patch) {
   return maskToCanvas(mask, patch.width, patch.height, { x: 0, y: 0, width: patch.width, height: patch.height });
 }
 
-function resizeCanvas(width, height) {
-  els.mainCanvas.width = width;
-  els.mainCanvas.height = height;
+function resizeCanvas(width, height, padding = 0) {
+  state.canvasPadding = padding;
+  els.mainCanvas.width = width + padding * 2;
+  els.mainCanvas.height = height + padding * 2;
   applyCanvasZoom();
 }
 
@@ -667,6 +694,16 @@ function updateTissueLockUI() {
   els.tissueMode.disabled = state.tissueLocked;
   renderLabelButtons(els.tissueLabels, tissueLabels, "tissue");
   updateCanvasCursor();
+}
+
+function imageOffset() {
+  return state.normalized ? { x: 0, y: 0 } : { x: state.canvasPadding, y: state.canvasPadding };
+}
+
+function pointInsideImage(point) {
+  const width = state.normalized?.width ?? state.image?.width ?? 0;
+  const height = state.normalized?.height ?? state.image?.height ?? 0;
+  return point.x >= 0 && point.y >= 0 && point.x < width && point.y < height;
 }
 
 function drawScaledImage(bitmap, width, height) {
