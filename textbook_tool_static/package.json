@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/prepare-public.mjs",
     "test": "node tests/patchSelection.test.js && node tests/zip.test.js",
     "serve": "node server.js"
   }
