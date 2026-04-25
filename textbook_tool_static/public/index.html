@@ -68,9 +68,16 @@
 
         <section>
           <h2>3. Scale</h2>
-          <button id="cellMode">Mark tumor cells</button>
+          <label class="field">
+            <span>Calibration cell type</span>
+            <select id="scaleCellType">
+              <option value="101">tumor / neoplastic (preferred)</option>
+            </select>
+          </label>
+          <p class="hint">Prefer tumor/neoplastic cells because the library is richer. If tumor cells are sparse, choose one backup cell type and use only that type for all 10 cells.</p>
+          <button id="cellMode">Mark scale cells</button>
           <button id="clearCells">Clear last cell</button>
-          <p id="scaleStatus" class="hint">Mark 10 representative tumor cells.</p>
+          <p id="scaleStatus" class="hint">Mark 10 representative cells of one selected type.</p>
           <button id="normalizeAndSelect">Normalize + select patches</button>
         </section>
 
@@ -94,7 +101,7 @@
         <div class="toolbar">
           <button id="tissueMode" class="active">Tissue polygon</button>
           <button id="zoomMode">Zoom</button>
-          <button id="cellToolbarMode">Mark tumor cells</button>
+          <button id="cellToolbarMode">Mark scale cells</button>
           <button id="reviewMode">Patch review</button>
           <button id="nucleiMode">Patch nuclei</button>
           <span id="status" class="status">Load an image to begin.</span>

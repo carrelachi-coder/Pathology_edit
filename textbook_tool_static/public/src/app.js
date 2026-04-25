@@ -2,6 +2,7 @@ import { selectBoundaryPatches, patchesOverlap } from "./patchSelection.js";
 import { buildMaskFromPolygons, removeLastPolygonForLabel, rasterizePolygon } from "./tissuePolygons.js";
 import { TARGET_TUMOR_CELLS, medianCellDiameter, remainingCellText } from "./cellPolygons.js";
 import { acceptanceConflict, nextPendingPatchIndex, queueCounts } from "./patchReview.js";
+import { availableCalibrationTypes, calibrationReferenceDiameter, calibrationTypeLabel } from "./scaleCalibration.js";
 import { buildZip } from "./zip.js";
 
 const TISSUE_CANVAS_PADDING = 96;
@@ -43,6 +44,7 @@ const state = {
   nucleiByPatch: new Map(),
   currentPatchIndex: -1,
   currentNucleusPolygon: [],
+  scaleCellType: "101",
   mode: "tissue",
   tissueLabel: 1,
   nucleiLabel: 101,
@@ -57,7 +59,7 @@ for (const id of [
   "downloadZip", "imageInput", "metadataInput", "imageId", "organ", "cancerType",
   "libraryKey", "globalDescription", "tissueSection", "tissueLabels", "clearTissue",
   "confirmTissue",
-  "cellMode", "clearCells", "scaleStatus", "normalizeAndSelect",
+  "scaleCellType", "cellMode", "clearCells", "scaleStatus", "normalizeAndSelect",
   "nucleiLabels", "patchQueueStatus", "acceptPatch", "rejectPatch", "annotatePatchNuclei",
   "clearPatchNucleus", "confirmPatch", "tissueMode", "zoomMode", "cellToolbarMode",
   "reviewMode", "nucleiMode", "status", "mainCanvas", "canvasWrap", "patchGrid"
@@ -81,6 +83,7 @@ function bindEvents() {
   els.imageInput.addEventListener("change", handleImageInput);
   els.metadataInput.addEventListener("change", handleMetadataInput);
   els.libraryKey.addEventListener("change", loadLibrarySummary);
+  els.scaleCellType.addEventListener("change", handleScaleCellTypeChange);
   els.clearTissue.addEventListener("click", clearLastTissuePolygon);
   els.confirmTissue.addEventListener("click", confirmTissue);
   els.cellMode.addEventListener("click", () => setMode("cell"));
@@ -180,11 +183,38 @@ async function loadLibrarySummary() {
     const response = await fetch(`./nuclei_library_stats/${key}.json`);
     if (!response.ok) throw new Error(`missing ${key}.json`);
     state.librarySummary = await response.json();
+    renderScaleCellTypeOptions();
     updateScaleStatus();
   } catch {
     state.librarySummary = null;
+    renderScaleCellTypeOptions();
     els.scaleStatus.textContent = `No nuclei summary found for ${key}.`;
   }
+}
+
+function renderScaleCellTypeOptions() {
+  const available = availableCalibrationTypes(state.librarySummary);
+  const options = available.length ? available : [{ id: "101" }];
+  els.scaleCellType.replaceChildren();
+  for (const type of options) {
+    const option = document.createElement("option");
+    option.value = type.id;
+    option.textContent = calibrationTypeLabel(type.id);
+    els.scaleCellType.appendChild(option);
+  }
+  if (!options.some((type) => type.id === state.scaleCellType)) {
+    state.scaleCellType = options[0].id;
+  }
+  els.scaleCellType.value = state.scaleCellType;
+}
+
+function handleScaleCellTypeChange() {
+  state.scaleCellType = els.scaleCellType.value;
+  state.tumorCells = [];
+  state.currentCellPolygon = [];
+  updateScaleStatus();
+  drawMainCanvas();
+  setStatus(`Scale cell type changed to ${calibrationTypeLabel(state.scaleCellType)}; previous scale cells cleared.`);
 }
 
 function setMode(mode) {
@@ -301,7 +331,7 @@ function confirmTissue() {
   state.tissueLocked = true;
   updateTissueLockUI();
   setMode("cell");
-  setStatus("Tissue annotation locked. Mark representative tumor cells.");
+  setStatus("Tissue annotation locked. Mark 10 cells of one selected scale type.");
 }
 
 function rebuildTissueMask() {
@@ -382,7 +412,7 @@ function handleWheelZoom(event) {
 
 function addTumorCellPoint(point) {
   if (!pointInsideImage(point)) {
-    setStatus("Tumor cell polygons must be inside the image.");
+    setStatus("Scale cell polygons must be inside the image.");
     return;
   }
   state.currentCellPolygon.push(point);
@@ -472,9 +502,7 @@ async function normalizeAndSelect() {
 
 function estimateScaleFactor() {
   const markedMedian = medianCellDiameter(state.tumorCells);
-  const reference = state.librarySummary?.neoplastic_diameter_px_median
-    || state.librarySummary?.nucleus_diameter_px_median
-    || 25;
+  const reference = calibrationReferenceDiameter(state.librarySummary, state.scaleCellType);
   if (!markedMedian) return 1;
   return clamp(reference / markedMedian, 0.4, 8);
 }
@@ -669,9 +697,10 @@ function drawTumorCells() {
   ctx.save();
   ctx.lineWidth = 2;
   const offset = imageOffset();
+  const selectedColor = nucleiLabels.find((item) => String(item[1]) === state.scaleCellType)?.[2] || "#d92d20";
   for (const [index, cell] of state.tumorCells.entries()) {
     drawPolygonPath(cell.points, offset);
-    ctx.fillStyle = "rgba(217,45,32,0.36)";
+    ctx.fillStyle = `${selectedColor}5c`;
     ctx.strokeStyle = "#ffffff";
     ctx.fill();
     ctx.stroke();
@@ -682,8 +711,8 @@ function drawTumorCells() {
   }
   if (state.mode === "cell" && state.currentCellPolygon.length > 0) {
     drawPolygonPath(state.currentCellPolygon, offset);
-    ctx.strokeStyle = "#d92d20";
-    ctx.fillStyle = "rgba(217,45,32,0.18)";
+    ctx.strokeStyle = selectedColor;
+    ctx.fillStyle = `${selectedColor}2e`;
     if (state.currentCellPolygon.length >= 3) {
       ctx.fill();
     }
@@ -692,7 +721,7 @@ function drawTumorCells() {
   for (const point of state.currentCellPolygon) {
     ctx.beginPath();
     ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#d92d20";
+    ctx.strokeStyle = selectedColor;
     ctx.arc(offset.x + point.x, offset.y + point.y, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
@@ -848,7 +877,9 @@ async function downloadZip() {
       doctor_notes: "",
       estimated_mpp: 0.25,
       scale_factor: state.normalized.scaleFactor,
-      scale_source: "doctor_marked_tumor_cells",
+      scale_source: "doctor_marked_cell_polygons",
+      scale_cell_type_id: state.scaleCellType,
+      scale_cell_type: calibrationTypeLabel(state.scaleCellType),
       scale_confidence: state.tumorCells.length >= TARGET_TUMOR_CELLS ? "medium" : "low",
       nuclei_library_key: els.libraryKey.value,
       annotation_quality: "accepted",
@@ -894,11 +925,11 @@ function imageLevelMetadata(imageId) {
 }
 
 function updateScaleStatus() {
-  const reference = state.librarySummary?.neoplastic_diameter_px_median || state.librarySummary?.nucleus_diameter_px_median;
+  const reference = calibrationReferenceDiameter(state.librarySummary, state.scaleCellType);
   const marked = medianCellDiameter(state.tumorCells);
   const scale = marked ? estimateScaleFactor() : null;
   const inProgress = state.currentCellPolygon.length > 0 ? " | drawing cell" : "";
-  els.scaleStatus.textContent = `${remainingCellText(state.tumorCells.length)}${inProgress}${reference ? ` | ref ${reference.toFixed(1)} px` : ""}${marked ? ` | median ${marked.toFixed(1)} px` : ""}${scale ? ` | scale ${scale.toFixed(2)}x` : ""}`;
+  els.scaleStatus.textContent = `${calibrationTypeLabel(state.scaleCellType)} | ${remainingCellText(state.tumorCells.length)}${inProgress}${reference ? ` | ref ${reference.toFixed(1)} px` : ""}${marked ? ` | median ${marked.toFixed(1)} px` : ""}${scale ? ` | scale ${scale.toFixed(2)}x` : ""}`;
 }
 
 function cropImageCanvas(source, patch) {
