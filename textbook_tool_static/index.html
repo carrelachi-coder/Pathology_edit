@@ -77,10 +77,16 @@
         <section>
           <h2>4. Patch Nuclei</h2>
           <div class="segmented" id="nucleiLabels"></div>
-          <label class="field inline">
-            <span>Nucleus radius</span>
-            <input id="nucleusRadius" type="range" min="2" max="30" value="7" />
-          </label>
+          <p id="patchQueueStatus" class="hint">Normalize and select patches first.</p>
+          <div class="buttonRow">
+            <button id="acceptPatch">Accept patch</button>
+            <button id="rejectPatch">Reject patch</button>
+          </div>
+          <div class="buttonRow">
+            <button id="annotatePatchNuclei">Annotate nuclei</button>
+            <button id="clearPatchNucleus">Clear last cell</button>
+          </div>
+          <button id="confirmPatch" class="primary">Confirm patch</button>
         </section>
       </aside>
 

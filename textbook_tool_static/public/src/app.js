@@ -1,6 +1,7 @@
 import { selectBoundaryPatches, patchesOverlap } from "./patchSelection.js";
-import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
+import { buildMaskFromPolygons, removeLastPolygonForLabel, rasterizePolygon } from "./tissuePolygons.js";
 import { TARGET_TUMOR_CELLS, medianCellDiameter, remainingCellText } from "./cellPolygons.js";
+import { acceptanceConflict, nextPendingPatchIndex, queueCounts } from "./patchReview.js";
 import { buildZip } from "./zip.js";
 
 const TISSUE_CANVAS_PADDING = 96;
@@ -40,6 +41,8 @@ const state = {
   acceptedPatchIds: new Set(),
   selectedPatchId: null,
   nucleiByPatch: new Map(),
+  currentPatchIndex: -1,
+  currentNucleusPolygon: [],
   mode: "tissue",
   tissueLabel: 1,
   nucleiLabel: 101,
@@ -55,7 +58,8 @@ for (const id of [
   "libraryKey", "globalDescription", "tissueSection", "tissueLabels", "clearTissue",
   "confirmTissue",
   "cellMode", "clearCells", "scaleStatus", "normalizeAndSelect",
-  "nucleiLabels", "nucleusRadius", "tissueMode", "zoomMode", "cellToolbarMode",
+  "nucleiLabels", "patchQueueStatus", "acceptPatch", "rejectPatch", "annotatePatchNuclei",
+  "clearPatchNucleus", "confirmPatch", "tissueMode", "zoomMode", "cellToolbarMode",
   "reviewMode", "nucleiMode", "status", "mainCanvas", "canvasWrap", "patchGrid"
 ]) {
   els[id] = document.getElementById(id);
@@ -91,12 +95,18 @@ function bindEvents() {
   els.cellToolbarMode.addEventListener("click", () => setMode("cell"));
   els.reviewMode.addEventListener("click", () => setMode("review"));
   els.nucleiMode.addEventListener("click", () => setMode("nuclei"));
+  els.acceptPatch.addEventListener("click", acceptCurrentPatch);
+  els.rejectPatch.addEventListener("click", rejectCurrentPatch);
+  els.annotatePatchNuclei.addEventListener("click", annotateCurrentPatchNuclei);
+  els.clearPatchNucleus.addEventListener("click", clearLastPatchNucleus);
+  els.confirmPatch.addEventListener("click", confirmCurrentPatch);
   els.downloadZip.addEventListener("click", downloadZip);
 
   els.mainCanvas.addEventListener("pointerdown", handlePointerDown);
   els.mainCanvas.addEventListener("dblclick", handleCanvasDoubleClick);
   els.canvasWrap.addEventListener("wheel", handleWheelZoom, { passive: false });
   window.addEventListener("keydown", handleKeyDown);
+  setPatchControlsDisabled(true);
 }
 
 function renderLabelButtons(container, labels, kind) {
@@ -136,6 +146,8 @@ async function handleImageInput(event) {
   state.patches = [];
   state.acceptedPatchIds.clear();
   state.nucleiByPatch.clear();
+  state.currentPatchIndex = -1;
+  state.currentNucleusPolygon = [];
   state.viewZoom = 1;
   els.imageId.value = file.name.replace(/\.[^.]+$/, "");
   resizeCanvas(state.image.width, state.image.height, TISSUE_CANVAS_PADDING);
@@ -180,6 +192,10 @@ function setMode(mode) {
     setStatus("Tissue annotation is locked.");
     return;
   }
+  if (mode === "nuclei" && currentPatch()?.status !== "accepted") {
+    setStatus("Accept the current patch before annotating nuclei.");
+    return;
+  }
   state.mode = mode;
   for (const [button, name] of [
     [els.tissueMode, "tissue"],
@@ -206,7 +222,11 @@ function handlePointerDown(event) {
     return;
   }
   if (state.mode === "nuclei" && state.selectedPatchId) {
-    addPatchNucleus(point);
+    if (event.detail >= 2) {
+      completeCurrentPatchNucleus();
+      return;
+    }
+    addPatchNucleusPoint(point);
     return;
   }
   if (state.mode === "tissue") {
@@ -227,6 +247,10 @@ function handleCanvasDoubleClick(event) {
   if (state.mode === "cell") {
     event.preventDefault();
     completeCurrentCellPolygon();
+  }
+  if (state.mode === "nuclei" && state.selectedPatchId) {
+    event.preventDefault();
+    completeCurrentPatchNucleus();
   }
 }
 
@@ -302,6 +326,22 @@ function handleKeyDown(event) {
     }
     return;
   }
+  if (state.mode === "nuclei" && state.selectedPatchId) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      completeCurrentPatchNucleus();
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault();
+      state.currentNucleusPolygon.pop();
+      drawMainCanvas();
+    }
+    if (event.key === "Escape") {
+      state.currentNucleusPolygon = [];
+      drawMainCanvas();
+    }
+    return;
+  }
   if (state.mode !== "tissue" || state.tissueLocked) return;
   if (event.key === "Enter") {
     event.preventDefault();
@@ -363,15 +403,38 @@ function completeCurrentCellPolygon() {
   drawMainCanvas();
 }
 
-function addPatchNucleus(point) {
-  const patch = state.patches.find((item) => item.id === state.selectedPatchId);
-  if (!patch) return;
-  const local = { x: point.x - patch.x, y: point.y - patch.y };
-  if (local.x < 0 || local.y < 0 || local.x >= patch.width || local.y >= patch.height) return;
-  const nuclei = state.nucleiByPatch.get(patch.id) || [];
-  nuclei.push({ x: local.x, y: local.y, radius: Number(els.nucleusRadius.value), label: state.nucleiLabel });
-  state.nucleiByPatch.set(patch.id, nuclei);
+function addPatchNucleusPoint(point) {
+  const patch = currentPatch();
+  if (!patch || patch.status !== "accepted") return;
+  if (point.x < 0 || point.y < 0 || point.x >= patch.width || point.y >= patch.height) return;
+  state.currentNucleusPolygon.push(point);
   drawMainCanvas();
+}
+
+function completeCurrentPatchNucleus() {
+  const patch = currentPatch();
+  if (!patch || patch.status !== "accepted") return;
+  if (state.currentNucleusPolygon.length < 3) {
+    state.currentNucleusPolygon = [];
+    drawMainCanvas();
+    return;
+  }
+  const nuclei = state.nucleiByPatch.get(patch.id) || [];
+  nuclei.push({
+    label: state.nucleiLabel,
+    points: state.currentNucleusPolygon.map((point) => ({ ...point }))
+  });
+  state.nucleiByPatch.set(patch.id, nuclei);
+  state.currentNucleusPolygon = [];
+  drawMainCanvas();
+}
+
+function setPatchControlsDisabled(disabled) {
+  els.acceptPatch.disabled = disabled;
+  els.rejectPatch.disabled = disabled;
+  els.annotatePatchNuclei.disabled = disabled;
+  els.clearPatchNucleus.disabled = disabled;
+  els.confirmPatch.disabled = disabled;
 }
 
 async function normalizeAndSelect() {
@@ -381,21 +444,30 @@ async function normalizeAndSelect() {
   const height = Math.max(1, Math.round(state.image.height * scale));
   const imageCanvas = drawScaledImage(state.imageBitmap, width, height);
   const mask = scaleMaskNearest(state.tissueMask, state.image.width, state.image.height, width, height);
-  const selection = selectBoundaryPatches(mask, width, height, { patchSize: 512, stride: 256 });
+  const selection = selectBoundaryPatches(mask, width, height, { patchSize: 512, stride: 256, backupCount: 48 });
   state.normalized = { imageCanvas, mask, width, height, scaleFactor: scale };
-  state.patches = [...selection.selected, ...selection.backup].map((patch, index) => ({
+  const queue = uniquePatches([...selection.selected, ...selection.backup, ...selection.candidates])
+    .sort((a, b) => b.selectionScore - a.selectionScore)
+    .slice(0, 48);
+  state.patches = queue.map((patch, index) => ({
     ...patch,
-    accepted: index < selection.selected.length,
-    source: index < selection.selected.length ? "selected" : "backup"
+    status: "pending",
+    rank: index + 1,
+    source: selection.selected.some((item) => item.id === patch.id) ? "selected" : "candidate"
   }));
-  state.acceptedPatchIds = new Set(state.patches.filter((patch) => patch.accepted).map((patch) => patch.id));
+  state.acceptedPatchIds = new Set();
+  state.currentPatchIndex = nextPendingPatchIndex(state.patches, -1);
+  state.selectedPatchId = state.patches[state.currentPatchIndex]?.id || null;
+  state.currentNucleusPolygon = [];
   state.viewZoom = 1;
-  resizeCanvas(width, height, 0);
+  const firstPatch = currentPatch();
+  resizeCanvas(firstPatch?.width || width, firstPatch?.height || height, 0);
   renderPatches();
   drawMainCanvas();
-  els.downloadZip.disabled = state.acceptedPatchIds.size === 0;
+  els.downloadZip.disabled = true;
   setMode("review");
-  setStatus(`Normalized ${width}x${height}; selected ${state.acceptedPatchIds.size} non-overlapping patches.`);
+  updatePatchQueueStatus();
+  setStatus(`Normalized ${width}x${height}; opened patch 1 of ${state.patches.length}.`);
 }
 
 function estimateScaleFactor() {
@@ -407,11 +479,23 @@ function estimateScaleFactor() {
   return clamp(reference / markedMedian, 0.4, 8);
 }
 
+function uniquePatches(patches) {
+  const seen = new Set();
+  const unique = [];
+  for (const patch of patches) {
+    if (seen.has(patch.id)) continue;
+    seen.add(patch.id);
+    unique.push(patch);
+  }
+  return unique;
+}
+
 function renderPatches() {
   els.patchGrid.replaceChildren();
-  for (const patch of state.patches) {
+  for (const [index, patch] of state.patches.entries()) {
     const card = document.createElement("article");
-    card.className = `patchCard${patch.accepted ? "" : " rejected"}`;
+    card.className = `patchCard ${patch.status}`;
+    card.classList.toggle("current", index === state.currentPatchIndex);
     const canvas = document.createElement("canvas");
     canvas.width = patch.width;
     canvas.height = patch.height;
@@ -423,50 +507,152 @@ function renderPatches() {
         0, 0, patch.width, patch.height
       );
     }
+    const stateLabel = document.createElement("span");
+    stateLabel.className = "state";
+    stateLabel.textContent = `${index + 1}/${state.patches.length} ${patch.status}`;
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = `${patch.editScale} | ${patch.boundaryType} | score ${patch.selectionScore}`;
-    const accept = document.createElement("button");
-    accept.textContent = patch.accepted ? "Accepted" : "Accept";
-    accept.classList.toggle("active", patch.accepted);
-    accept.addEventListener("click", () => {
-      if (!patch.accepted) {
-        const conflict = state.patches.find((item) => (
-          item.id !== patch.id
-          && state.acceptedPatchIds.has(item.id)
-          && patchesOverlap(item, patch)
-        ));
-        if (conflict) {
-          setStatus(`Cannot accept ${patch.id}; it overlaps accepted patch ${conflict.id}.`);
-          return;
-        }
-      }
-      patch.accepted = !patch.accepted;
-      if (patch.accepted) state.acceptedPatchIds.add(patch.id);
-      else state.acceptedPatchIds.delete(patch.id);
-      els.downloadZip.disabled = state.acceptedPatchIds.size === 0;
-      renderPatches();
-      drawMainCanvas();
+    const open = document.createElement("button");
+    open.textContent = index === state.currentPatchIndex ? "Open" : "Open patch";
+    open.classList.toggle("active", index === state.currentPatchIndex);
+    open.disabled = patch.status === "confirmed";
+    open.addEventListener("click", () => {
+      openPatchAt(index);
     });
-    const edit = document.createElement("button");
-    edit.textContent = "Annotate nuclei";
-    edit.addEventListener("click", () => {
-      state.selectedPatchId = patch.id;
-      setMode("nuclei");
-      drawMainCanvas();
-    });
-    card.append(canvas, meta, accept, edit);
+    card.append(canvas, stateLabel, meta, open);
     els.patchGrid.appendChild(card);
   }
+}
+
+function currentPatch() {
+  return state.currentPatchIndex >= 0 ? state.patches[state.currentPatchIndex] : null;
+}
+
+function openPatchAt(index) {
+  const patch = state.patches[index];
+  if (!patch || patch.status === "confirmed") return;
+  state.currentPatchIndex = index;
+  state.selectedPatchId = patch.id;
+  state.currentNucleusPolygon = [];
+  resizeCanvas(patch.width, patch.height, 0);
+  setMode(patch.status === "accepted" ? "nuclei" : "review");
+  updatePatchQueueStatus();
+  renderPatches();
+  drawMainCanvas();
+}
+
+function acceptCurrentPatch() {
+  const patch = currentPatch();
+  if (!patch || patch.status !== "pending") return;
+  const conflict = acceptanceConflict(patch, state.patches);
+  if (conflict) {
+    setStatus(`Cannot accept patch ${patch.rank}; it overlaps confirmed patch ${conflict.rank}.`);
+    return;
+  }
+  patch.status = "accepted";
+  state.selectedPatchId = patch.id;
+  setMode("nuclei");
+  updatePatchQueueStatus();
+  renderPatches();
+  drawMainCanvas();
+}
+
+function rejectCurrentPatch() {
+  const patch = currentPatch();
+  if (!patch || patch.status === "confirmed") return;
+  patch.status = "rejected";
+  state.currentNucleusPolygon = [];
+  state.nucleiByPatch.delete(patch.id);
+  advanceToNextPatch();
+}
+
+function annotateCurrentPatchNuclei() {
+  const patch = currentPatch();
+  if (!patch) return;
+  if (patch.status !== "accepted") {
+    setStatus("Accept this patch before annotating nuclei.");
+    return;
+  }
+  setMode("nuclei");
+}
+
+function clearLastPatchNucleus() {
+  const patch = currentPatch();
+  if (!patch || patch.status !== "accepted") return;
+  const nuclei = state.nucleiByPatch.get(patch.id) || [];
+  nuclei.pop();
+  state.nucleiByPatch.set(patch.id, nuclei);
+  drawMainCanvas();
+}
+
+function confirmCurrentPatch() {
+  const patch = currentPatch();
+  if (!patch || patch.status !== "accepted") return;
+  const nuclei = state.nucleiByPatch.get(patch.id) || [];
+  if (nuclei.length === 0) {
+    setStatus("Annotate nuclei before confirming this patch.");
+    return;
+  }
+  patch.status = "confirmed";
+  state.currentNucleusPolygon = [];
+  state.acceptedPatchIds.add(patch.id);
+  els.downloadZip.disabled = state.acceptedPatchIds.size === 0;
+  advanceToNextPatch();
+}
+
+function advanceToNextPatch() {
+  const nextIndex = nextPendingPatchIndex(state.patches, state.currentPatchIndex);
+  if (nextIndex >= 0) {
+    openPatchAt(nextIndex);
+    setStatus(`Opened patch ${nextIndex + 1} of ${state.patches.length}.`);
+    return;
+  }
+  state.currentPatchIndex = -1;
+  state.selectedPatchId = null;
+  if (state.normalized) {
+    resizeCanvas(state.normalized.width, state.normalized.height, 0);
+  }
+  setMode("review");
+  updatePatchQueueStatus();
+  renderPatches();
+  drawMainCanvas();
+  setStatus("Patch queue complete. Download zip when ready.");
+}
+
+function updatePatchQueueStatus() {
+  const counts = queueCounts(state.patches);
+  const current = currentPatch();
+  setPatchControlsDisabled(!current);
+  if (current) {
+    els.acceptPatch.disabled = current.status !== "pending";
+    els.rejectPatch.disabled = current.status === "confirmed";
+    els.annotatePatchNuclei.disabled = current.status !== "accepted";
+    els.clearPatchNucleus.disabled = current.status !== "accepted";
+    els.confirmPatch.disabled = current.status !== "accepted";
+  }
+  els.patchQueueStatus.textContent = state.patches.length
+    ? `Queue: ${counts.confirmed} confirmed, ${counts.rejected} rejected, ${counts.pending} pending${current ? ` | current ${state.currentPatchIndex + 1}/${state.patches.length}: ${current.status}` : ""}`
+    : "Normalize and select patches first.";
 }
 
 function drawMainCanvas() {
   ctx.clearRect(0, 0, els.mainCanvas.width, els.mainCanvas.height);
   if (!state.imageBitmap) return;
   if (state.normalized) {
-    ctx.drawImage(state.normalized.imageCanvas, 0, 0);
-    drawMaskOverlay(ctx, state.normalized.mask, state.normalized.width, state.normalized.height, 0.26);
-    drawPatchBoxes();
+    const patch = currentPatch();
+    if (patch) {
+      ctx.drawImage(
+        state.normalized.imageCanvas,
+        patch.x, patch.y, patch.width, patch.height,
+        0, 0, patch.width, patch.height
+      );
+      drawPatchNuclei();
+    } else {
+      ctx.drawImage(state.normalized.imageCanvas, 0, 0);
+      drawMaskOverlay(ctx, state.normalized.mask, state.normalized.width, state.normalized.height, 0.26);
+      drawPatchBoxes();
+    }
   } else {
     const offset = imageOffset();
     ctx.fillStyle = "#eef1f5";
@@ -476,9 +662,6 @@ function drawMainCanvas() {
     drawImageBoundary(offset);
     drawCurrentPolygon();
     drawTumorCells();
-  }
-  if (state.mode === "nuclei" && state.selectedPatchId) {
-    drawPatchNuclei();
   }
 }
 
@@ -563,14 +746,14 @@ function drawPatchBoxes() {
   ctx.save();
   ctx.lineWidth = 3;
   for (const patch of state.patches) {
-    ctx.strokeStyle = patch.accepted ? "#0f766e" : "rgba(102,112,133,0.55)";
+    ctx.strokeStyle = patch.status === "confirmed" ? "#0f766e" : "rgba(102,112,133,0.55)";
     ctx.strokeRect(patch.x, patch.y, patch.width, patch.height);
   }
   ctx.restore();
 }
 
 function drawPatchNuclei() {
-  const patch = state.patches.find((item) => item.id === state.selectedPatchId);
+  const patch = currentPatch();
   if (!patch) return;
   ctx.save();
   ctx.strokeStyle = "#fff";
@@ -578,11 +761,25 @@ function drawPatchNuclei() {
   const nuclei = state.nucleiByPatch.get(patch.id) || [];
   for (const nucleus of nuclei) {
     const color = nucleiLabels.find((item) => item[1] === nucleus.label)?.[2] || "#d92d20";
-    ctx.fillStyle = `${color}88`;
-    ctx.beginPath();
-    ctx.arc(patch.x + nucleus.x, patch.y + nucleus.y, nucleus.radius, 0, Math.PI * 2);
+    drawPolygonPath(nucleus.points, { x: 0, y: 0 });
+    ctx.fillStyle = `${color}66`;
     ctx.fill();
     ctx.stroke();
+  }
+  if (state.mode === "nuclei" && state.currentNucleusPolygon.length > 0) {
+    const color = nucleiLabels.find((item) => item[1] === state.nucleiLabel)?.[2] || "#d92d20";
+    drawPolygonPath(state.currentNucleusPolygon, { x: 0, y: 0 });
+    ctx.strokeStyle = color;
+    ctx.fillStyle = `${color}22`;
+    if (state.currentNucleusPolygon.length >= 3) ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    for (const point of state.currentNucleusPolygon) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -617,7 +814,7 @@ async function downloadZip() {
   const files = [];
   const records = [];
   const imageId = sanitize(els.imageId.value || "textbook_image");
-  const accepted = state.patches.filter((patch) => state.acceptedPatchIds.has(patch.id));
+  const accepted = state.patches.filter((patch) => patch.status === "confirmed");
   const overlap = findOverlappingPair(accepted);
   if (overlap) {
     setStatus(`Cannot export: accepted patches ${overlap[0].id} and ${overlap[1].id} overlap.`);
@@ -740,7 +937,7 @@ function nucleiToCanvas(patch) {
   const mask = new Uint8Array(patch.width * patch.height);
   const nuclei = state.nucleiByPatch.get(patch.id) || [];
   for (const nucleus of nuclei) {
-    paintCircle(mask, patch.width, patch.height, nucleus.x, nucleus.y, nucleus.radius, nucleus.label);
+    rasterizePolygon(mask, patch.width, patch.height, nucleus.points, nucleus.label);
   }
   return maskToCanvas(mask, patch.width, patch.height, { x: 0, y: 0, width: patch.width, height: patch.height });
 }
@@ -799,17 +996,6 @@ function scaleMaskNearest(mask, srcWidth, srcHeight, dstWidth, dstHeight) {
     }
   }
   return output;
-}
-
-function paintCircle(mask, width, height, cx, cy, radius, value) {
-  const r2 = radius * radius;
-  for (let y = Math.max(0, cy - radius); y <= Math.min(height - 1, cy + radius); y += 1) {
-    for (let x = Math.max(0, cx - radius); x <= Math.min(width - 1, cx + radius); x += 1) {
-      if ((x - cx) ** 2 + (y - cy) ** 2 <= r2) {
-        mask[y * width + x] = value;
-      }
-    }
-  }
 }
 
 function colorForTissue(value) {

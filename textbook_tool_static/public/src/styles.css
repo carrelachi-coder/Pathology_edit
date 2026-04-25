@@ -216,6 +216,22 @@ button:disabled {
   opacity: 0.55;
 }
 
+.patchCard.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.16);
+}
+
+.patchCard.confirmed {
+  opacity: 0.42;
+}
+
+.patchCard .state {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
 .hint {
   font-size: 12px;
 }
