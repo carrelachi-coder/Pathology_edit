@@ -1,0 +1,7 @@
+# Strategies listed here must produce valid edits on BCSS, PANDA, GlaS, IGNITE,
+# PUMA, and ORCA.
+strategies:
+  - name: tumor_burden_increase
+  - name: tumor_burden_decrease
+  - name: tumor_boundary_remodel
+
