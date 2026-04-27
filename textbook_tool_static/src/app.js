@@ -3,6 +3,7 @@ import { buildMaskFromPolygons, removeLastPolygonForLabel, rasterizePolygon } fr
 import { TARGET_TUMOR_CELLS, medianCellDiameter, remainingCellText } from "./cellPolygons.js";
 import { acceptanceConflict, nextPendingPatchIndex, queueCounts } from "./patchReview.js";
 import { availableCalibrationTypes, calibrationReferenceDiameter, calibrationTypeLabel } from "./scaleCalibration.js";
+import { buildPatchPathologyFacts, cropMaskToPatch } from "./pathologyFacts.js";
 import { buildZip } from "./zip.js";
 
 const TISSUE_CANVAS_PADDING = 96;
@@ -842,6 +843,7 @@ async function downloadZip() {
   if (!state.normalized) return;
   const files = [];
   const records = [];
+  const factsRecords = [];
   const imageId = sanitize(els.imageId.value || "textbook_image");
   const accepted = state.patches.filter((patch) => patch.status === "confirmed");
   const overlap = findOverlappingPair(accepted);
@@ -851,9 +853,31 @@ async function downloadZip() {
   }
   for (const patch of accepted) {
     const sampleId = `${imageId}_py${patch.y}_px${patch.x}`;
+    const tissuePatch = cropMaskToPatch(
+      state.normalized.mask,
+      state.normalized.width,
+      state.normalized.height,
+      patch
+    );
+    const nucleiPatchMask = buildNucleiMaskForPatch(patch);
+    const pathologyFacts = buildPatchPathologyFacts({
+      sampleId,
+      organ: els.organ.value,
+      cancerType: els.cancerType.value,
+      globalDescription: els.globalDescription.value,
+      tissueMask: tissuePatch.mask,
+      nucleiMask: nucleiPatchMask,
+      width: patch.width,
+      height: patch.height,
+      boundaryType: patch.boundaryType,
+      editScale: patch.editScale,
+      recommendedEditType: recommendedEditType(patch.boundaryType),
+      changeRatioTarget: patch.estimatedChangeRatio
+    });
+    factsRecords.push(pathologyFacts);
     const imageBlob = await canvasToBlob(cropImageCanvas(state.normalized.imageCanvas, patch));
     const tissueBlob = await canvasToBlob(maskToCanvas(state.normalized.mask, state.normalized.width, state.normalized.height, patch, "tissue"));
-    const nucleiBlob = await canvasToBlob(nucleiToCanvas(patch));
+    const nucleiBlob = await canvasToBlob(maskToCanvas(nucleiPatchMask, patch.width, patch.height, { x: 0, y: 0, width: patch.width, height: patch.height }));
     files.push(
       { name: `images/${sampleId}.png`, data: new Uint8Array(await imageBlob.arrayBuffer()) },
       { name: `tissue_masks/${sampleId}.png`, data: new Uint8Array(await tissueBlob.arrayBuffer()) },
@@ -888,12 +912,23 @@ async function downloadZip() {
       selection_score: patch.selectionScore,
       tumor_ratio: patch.tumorRatio,
       stroma_ratio: patch.stromaRatio,
-      background_ratio: patch.backgroundRatio
+      necrosis_ratio: pathologyFacts.tissue_composition.necrosis.ratio,
+      immune_ratio: pathologyFacts.tissue_composition.immune.ratio,
+      normal_ratio: pathologyFacts.tissue_composition.normal.ratio,
+      vessel_ratio: pathologyFacts.tissue_composition.vessel.ratio,
+      other_ratio: pathologyFacts.tissue_composition.other.ratio,
+      background_ratio: patch.backgroundRatio,
+      dominant_tissues: pathologyFacts.dominant_tissues,
+      nuclei_counts: pathologyFacts.nuclei_counts,
+      nuclei_density_level: pathologyFacts.nuclei_density_level,
+      pathology_facts_source: pathologyFacts.facts_source,
+      pathology_facts_version: pathologyFacts.pathology_facts_version
     });
   }
 
   files.push(
     { name: "metadata_textbook_edit.jsonl", data: records.map((row) => JSON.stringify(row)).join("\n") + "\n" },
+    { name: "patch_pathology_facts.jsonl", data: factsRecords.map((row) => JSON.stringify(row)).join("\n") + "\n" },
     { name: "image_level_metadata.jsonl", data: JSON.stringify(imageLevelMetadata(imageId)) + "\n" },
     { name: "manifest.json", data: JSON.stringify({ app_version: "0.1.0", exported_at: new Date().toISOString(), source_image: state.imageName }, null, 2) + "\n" }
   );
@@ -961,16 +996,13 @@ function maskToCanvas(mask, width, height, patch) {
   return canvas;
 }
 
-function nucleiToCanvas(patch) {
-  const canvas = document.createElement("canvas");
-  canvas.width = patch.width;
-  canvas.height = patch.height;
+function buildNucleiMaskForPatch(patch) {
   const mask = new Uint8Array(patch.width * patch.height);
   const nuclei = state.nucleiByPatch.get(patch.id) || [];
   for (const nucleus of nuclei) {
     rasterizePolygon(mask, patch.width, patch.height, nucleus.points, nucleus.label);
   }
-  return maskToCanvas(mask, patch.width, patch.height, { x: 0, y: 0, width: patch.width, height: patch.height });
+  return mask;
 }
 
 function resizeCanvas(width, height, padding = 0) {
