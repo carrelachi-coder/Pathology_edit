@@ -19,10 +19,14 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel
-from diffusers.models.controlnets.controlnet_flux import FluxControlNetModel
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    FluxControlNetModel,
+    FluxControlNetPipeline,
+    FluxTransformer2DModel,
+)
 from diffusers.optimization import get_scheduler
-from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
 from diffusers.training_utils import compute_density_for_timestep_sampling
 from diffusers.utils import is_wandb_available
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
@@ -484,13 +488,19 @@ def _run_training(
                         dtype=weight_dtype,
                     )
 
-                latent_image_ids = FluxControlNetPipeline._prepare_latent_image_ids(
-                    batch_size=bsz,
-                    height=pixel_latents.shape[2] // 2,
-                    width=pixel_latents.shape[3] // 2,
+                latent_image_ids = _prepare_packed_latent_image_ids(
+                    packed_height=pixel_latents.shape[2] // 2,
+                    packed_width=pixel_latents.shape[3] // 2,
                     device=accelerator.device,
                     dtype=weight_dtype,
                 )
+                if latent_image_ids.shape[0] != noisy_model_input.shape[1]:
+                    raise ValueError(
+                        "FLUX img_ids length must match packed latent sequence length: "
+                        f"img_ids={tuple(latent_image_ids.shape)}, "
+                        f"packed_latents={tuple(noisy_model_input.shape)}, "
+                        f"unpacked_latents={tuple(pixel_latents.shape)}"
+                    )
 
                 controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
                     hidden_states=noisy_model_input,
@@ -625,6 +635,29 @@ def _resolve_prompt_batch(
             batch_prompt.append(prompt_embeds)
             batch_pooled.append(pooled_prompt)
     return torch.stack(batch_prompt), torch.stack(batch_pooled)
+
+
+def _prepare_packed_latent_image_ids(
+    *,
+    packed_height: int,
+    packed_width: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Build FLUX image ids for already-packed latent tokens.
+
+    Diffusers helper semantics have changed across releases, so Phase 5 keeps
+    this tied directly to the packed latent grid used by `_pack_latents`.
+    """
+    if packed_height <= 0 or packed_width <= 0:
+        raise ValueError(
+            f"packed latent grid must be positive, got {packed_height}x{packed_width}."
+        )
+    latent_image_ids = torch.zeros(packed_height, packed_width, 3)
+    latent_image_ids[..., 1] = torch.arange(packed_height)[:, None]
+    latent_image_ids[..., 2] = torch.arange(packed_width)[None, :]
+    latent_image_ids = latent_image_ids.reshape(packed_height * packed_width, 3)
+    return latent_image_ids.to(device=device, dtype=dtype)
 
 
 def _encode_images_to_latents(vae: AutoencoderKL, images: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:

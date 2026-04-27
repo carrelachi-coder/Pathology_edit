@@ -13,7 +13,7 @@ import torch
 from PIL import Image
 
 import controlnet_train
-from controlnet_train.cli import build_inpaint_dataset
+from controlnet_train.cli import build_inpaint_dataset, generate_training_pairs
 from controlnet_train.data import build_synthetic_inpaint_metadata as exported_build_synthetic_inpaint_metadata
 from controlnet_train.data.common import load_layered_dataset_samples, normalize_metadata_path_value
 from controlnet_train.data.cross import CrossReconstructionDataset, build_cross_metadata
@@ -1342,6 +1342,174 @@ class CrossDatasetTests(unittest.TestCase):
             self.assertEqual(tuple(sample["reference_tissue_mask"].shape), (8, 8))
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_cross_metadata_can_mix_reference_coverage_difficulties(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "BCSS"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            target = np.zeros((8, 8), dtype=np.uint8)
+            target[:, :4] = 1
+            target[:, 4:] = 2
+            full = target.copy()
+            partial = np.full((8, 8), 1, dtype=np.uint8)
+            low = np.full((8, 8), 3, dtype=np.uint8)
+            sample_defs = [
+                ("case_mix_py0_px0.png", target, 101, 32),
+                ("case_mix_py0_px256.png", full, 101, 48),
+                ("case_mix_py256_px0.png", partial, 102, 64),
+                ("case_mix_py256_px256.png", low, 103, 80),
+            ]
+            for name, tissue, nuclei_id, image_value in sample_defs:
+                _write_rgb(root / "images" / name, image_value)
+                _write_mask(root / "tissue_masks" / name, tissue)
+                _write_mask(root / "nuclei_masks" / name, np.full((8, 8), nuclei_id, dtype=np.uint8))
+
+            with (root / "metadata.jsonl").open("w", encoding="utf8") as f:
+                for name, _, _, _ in sample_defs:
+                    f.write(json.dumps({"image": f"images\\{name}", "text": "breast prompt"}) + "\n")
+
+            train_path, _ = build_cross_metadata(
+                dataset_roots={"BCSS": root},
+                output_dir=root / "cross_output",
+                num_ref_per_target=3,
+                val_ratio=0.0,
+                seed=11,
+                top_k=3,
+                full_coverage_weight=1.0,
+                partial_coverage_weight=1.0,
+                low_coverage_weight=1.0,
+            )
+
+            rows = json.loads(train_path.read_text(encoding="utf8"))["pairs"]
+            target_rows = [row for row in rows if row["sample_id"] == "case_mix_py0_px0"]
+            difficulties = {row["pair_difficulty"] for row in target_rows}
+
+            self.assertEqual(difficulties, {"full", "partial", "low"})
+            partial_row = next(row for row in target_rows if row["pair_difficulty"] == "partial")
+            low_row = next(row for row in target_rows if row["pair_difficulty"] == "low")
+            self.assertEqual(partial_row["missing_target_tissue_ids"], [2])
+            self.assertAlmostEqual(partial_row["tissue_coverage_ratio"], 0.5)
+            self.assertAlmostEqual(partial_row["area_coverage_ratio"], 0.5)
+            self.assertEqual(low_row["missing_target_tissue_ids"], [1, 2])
+            self.assertEqual(low_row["tissue_coverage_ratio"], 0.0)
+            self.assertEqual(low_row["area_coverage_ratio"], 0.0)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_cross_metadata_skips_invalid_samples_and_reports_paths(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "BCSS"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_defs = [
+                ("case_bad_py0_px0.png", 1, 101, 32),
+                ("case_bad_py0_px256.png", 1, 101, 48),
+                ("case_bad_py256_px0.png", 1, 101, None),
+            ]
+            for name, tissue_id, nuclei_id, image_value in sample_defs:
+                if image_value is None:
+                    (root / "images" / name).write_bytes(b"\x89PNG\r\n\x1a\n")
+                else:
+                    _write_rgb(root / "images" / name, image_value)
+                _write_mask(root / "tissue_masks" / name, np.full((8, 8), tissue_id, dtype=np.uint8))
+                _write_mask(root / "nuclei_masks" / name, np.full((8, 8), nuclei_id, dtype=np.uint8))
+
+            with (root / "metadata.jsonl").open("w", encoding="utf8") as f:
+                for name, _, _, _ in sample_defs:
+                    f.write(json.dumps({"image": f"images\\{name}", "text": "breast prompt"}) + "\n")
+
+            train_path, _ = build_cross_metadata(
+                dataset_roots={"BCSS": root},
+                output_dir=root / "cross_output",
+                num_ref_per_target=1,
+                val_ratio=0.0,
+                seed=11,
+            )
+
+            rows = json.loads(train_path.read_text(encoding="utf8"))["pairs"]
+            skipped = json.loads((root / "cross_output" / "skipped_cross_samples.json").read_text(encoding="utf8"))
+
+            self.assertGreater(len(rows), 0)
+            self.assertTrue(all("case_bad_py256_px0" not in row["sample_id"] for row in rows))
+            self.assertEqual(skipped["skipped_count"], 1)
+            self.assertEqual(skipped["samples"][0]["sample_id"], "case_bad_py256_px0")
+            self.assertIn("image file", skipped["samples"][0]["error"].lower())
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_build_cross_metadata_can_fail_fast_on_invalid_samples(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "BCSS"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            sample_name = "case_strict_py0_px0.png"
+            (root / "images" / sample_name).write_bytes(b"\x89PNG\r\n\x1a\n")
+            _write_mask(root / "tissue_masks" / sample_name, np.full((8, 8), 1, dtype=np.uint8))
+            _write_mask(root / "nuclei_masks" / sample_name, np.full((8, 8), 101, dtype=np.uint8))
+            (root / "metadata.jsonl").write_text(
+                json.dumps({"image": f"images\\{sample_name}", "text": "breast prompt"}) + "\n",
+                encoding="utf8",
+            )
+
+            with self.assertRaises(OSError):
+                build_cross_metadata(
+                    dataset_roots={"BCSS": root},
+                    output_dir=root / "cross_output",
+                    val_ratio=0.0,
+                    skip_invalid_samples=False,
+                )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_generate_training_pairs_cli_forwards_reference_coverage_weights(self):
+        with patch(
+            "controlnet_train.cli.generate_training_pairs.build_cross_metadata",
+            return_value=(Path("train.json"), Path("val.json")),
+        ) as mock_build:
+            with patch(
+                "sys.argv",
+                [
+                    "generate_training_pairs.py",
+                    "--dataset-root",
+                    "BCSS=D:/datasets/BCSS",
+                    "--output-dir",
+                    "D:/tmp/cross",
+                    "--full-coverage-weight",
+                    "0.5",
+                    "--partial-coverage-weight",
+                    "0.4",
+                    "--low-coverage-weight",
+                    "0.1",
+                    "--progress-every",
+                    "250",
+                    "--strict",
+                ],
+            ):
+                generate_training_pairs.main()
+
+        mock_build.assert_called_once_with(
+            dataset_roots={"BCSS": Path("D:/datasets/BCSS")},
+            output_dir=Path("D:/tmp/cross"),
+            num_ref_per_target=2,
+            top_k=8,
+            val_ratio=0.1,
+            seed=42,
+            full_coverage_weight=0.5,
+            partial_coverage_weight=0.4,
+            low_coverage_weight=0.1,
+            skip_invalid_samples=False,
+            progress_every=250,
+        )
 
 
 class InpaintReadmeTests(unittest.TestCase):

@@ -25,6 +25,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--full-coverage-weight",
+        type=float,
+        default=0.6,
+        help="Sampling weight for references covering all target tissue IDs.",
+    )
+    parser.add_argument(
+        "--partial-coverage-weight",
+        type=float,
+        default=0.3,
+        help="Sampling weight for references covering some, but not all, target tissue IDs.",
+    )
+    parser.add_argument(
+        "--low-coverage-weight",
+        type=float,
+        default=0.1,
+        help="Sampling weight for references covering none of the target tissue IDs.",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail immediately on unreadable images or masks instead of skipping invalid samples.",
+    )
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=1000,
+        help="Print progress every N samples/targets. Use 0 to disable progress logs.",
+    )
     return parser.parse_args()
 
 
@@ -35,15 +64,20 @@ def main() -> None:
         if "=" not in spec:
             raise ValueError(f"Invalid --dataset-root spec '{spec}'. Expected DATASET=PATH.")
         dataset_name, path = spec.split("=", 1)
-        dataset_roots[dataset_name] = path
+        dataset_roots[dataset_name] = Path(path)
 
     train_path, val_path = build_cross_metadata(
         dataset_roots=dataset_roots,
-        output_dir=args.output_dir,
+        output_dir=Path(args.output_dir),
         num_ref_per_target=args.num_ref_per_target,
         top_k=args.top_k,
         val_ratio=args.val_ratio,
         seed=args.seed,
+        full_coverage_weight=args.full_coverage_weight,
+        partial_coverage_weight=args.partial_coverage_weight,
+        low_coverage_weight=args.low_coverage_weight,
+        skip_invalid_samples=not args.strict,
+        progress_every=args.progress_every,
     )
     print(f"train metadata: {train_path}")
     print(f"val metadata:   {val_path}")

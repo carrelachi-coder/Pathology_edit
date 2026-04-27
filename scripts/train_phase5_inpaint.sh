@@ -29,6 +29,7 @@ NUM_PROCESSES="${NUM_PROCESSES:-4}"
 
 RUN_DATASET_BUILD="${RUN_DATASET_BUILD:-1}"
 RUN_TRAIN="${RUN_TRAIN:-1}"
+USE_8BIT_ADAM="${USE_8BIT_ADAM:-1}"
 
 cd "${PROJECT_ROOT}"
 
@@ -48,6 +49,11 @@ if [[ "${RUN_DATASET_BUILD}" == "1" ]]; then
 fi
 
 if [[ "${RUN_TRAIN}" == "1" ]]; then
+  TRAIN_OPTIMIZER_ARGS=()
+  if [[ "${USE_8BIT_ADAM}" == "1" ]]; then
+    TRAIN_OPTIMIZER_ARGS+=(--use-8bit-adam)
+  fi
+
   accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" \
     controlnet_train/cli/train_controlnet_flux_inpaint.py \
     --pretrained_model_name_or_path "${MODEL_DIR}" \
@@ -65,7 +71,7 @@ if [[ "${RUN_TRAIN}" == "1" ]]; then
     --checkpoints-total-limit 3 \
     --mixed-precision "${MIXED_PRECISION}" \
     --gradient-checkpointing \
-    --use-8bit-adam \
+    "${TRAIN_OPTIMIZER_ARGS[@]}" \
     --allow-tf32 \
     --dataloader-num-workers 8 \
     --num-double-layers 4 \

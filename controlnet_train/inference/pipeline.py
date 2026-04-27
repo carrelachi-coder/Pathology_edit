@@ -473,8 +473,7 @@ def _load_flux_controlnet_pipeline(
     device: str,
     torch_dtype: torch.dtype,
 ) -> tuple[object, object]:
-    from diffusers.models.controlnets.controlnet_flux import FluxControlNetModel
-    from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
+    from diffusers import FluxControlNetModel, FluxControlNetPipeline
 
     controlnet = FluxControlNetModel.from_pretrained(checkpoint_path, torch_dtype=torch_dtype)
     patch_controlnet_x_embedder(controlnet, packed_channels)
@@ -570,7 +569,7 @@ def _sample_with_flux_controlnet(
     guidance_scale: float,
     controlnet_conditioning_scale: float,
 ) -> Image.Image:
-    from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
+    from diffusers import FluxControlNetPipeline
     from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
     height, width = output_size
