@@ -18,14 +18,17 @@ label_space:
     - Dead
     - Epithelial
 
+# ── Global assumptions ──────────────────────────────────────────────────────
+# All pixel-distance parameters assume 40x magnification (≈0.25 µm/px).
+# To adapt to other magnifications, scale proportionally:
+#   20x → ×0.5,  10x → ×0.25,  5x → ×0.125
+assumed_resolution:
+  magnification: 40
+  approx_um_per_px: 0.25
+
 defaults:
   intended_use: semantic_editing_and_deidentification
   change_area_buckets:
-    # Aligned with Phase 5 synthetic inpaint geometry targets in
-    # controlnet_train/data/inpaint_synthesis.py. Phase 5 inpaint currently
-    # buckets up to large=0.40 but allows max change ratio 0.70; xlarge is
-    # reserved for large replace/de-identification edits that may route away
-    # from local inpaint.
     small: [0.08, 0.14]
     medium: [0.14, 0.24]
     large: [0.24, 0.40]
@@ -40,8 +43,6 @@ defaults:
     require_nonempty_change_region: true
     forbid_background_leakage: true
     require_legal_output_labels: true
-    # A semantic edit used for de-identification should be visible enough to
-    # perturb tissue context. Tiny masks are reserved for smoke tests only.
     default_max_changed_area_fraction: 0.40
     max_changed_area_fraction: 0.70
     min_changed_area_fraction: 0.08
@@ -49,6 +50,10 @@ defaults:
     max_attempts: 10
 
 primitives:
+
+  # ════════════════════════════════════════════════════════════════════════
+  # 1. TUMOR BURDEN INCREASE
+  # ════════════════════════════════════════════════════════════════════════
   - name: tumor_burden_increase
     version: v1
     pathology_meaning: tumor growth and local invasion
@@ -97,6 +102,9 @@ primitives:
     overlap_guard:
       use_boundary_infiltration_for_tongues_or_budding_islands
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 2. TUMOR BURDEN DECREASE
+  # ════════════════════════════════════════════════════════════════════════
   - name: tumor_burden_decrease
     version: v1
     pathology_meaning: tumor regression without committing to one biological mechanism
@@ -128,7 +136,11 @@ primitives:
         moderate: [0.14, 0.24]
         significant: [0.24, 0.40]
         xlarge_deid: [0.40, 0.70]
-      min_remaining_tumor_fraction: 0.02
+      # ── CHANGED: min_remaining is now mode-dependent ──
+      # Teaching mode keeps a visible residual; deid mode allows full removal.
+      min_remaining_tumor_fraction:
+        default: 0.02
+        xlarge_deid: 0.0
     probnet_bias:
       default: none
       treatment_response_recipe:
@@ -137,16 +149,19 @@ primitives:
     validation_rules:
       - tumor_area_must_decrease
       - released_region_must_not_be_background
-      - remaining_tumor_above_minimum
+      - remaining_tumor_above_minimum_for_current_mode
     expected_failure_cases:
       - no_tumor
       - tumor_too_small
       - no_valid_backfill_tissue
-      - shrink_would_delete_tumor
+      - shrink_would_delete_tumor       # only fires when mode != xlarge_deid
     overlap_guard:
       use_necrosis_resolution_for_necrosis_repair
       use_stromal_desmoplasia_for_external_stromal_reaction
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 3. BOUNDARY INFILTRATION
+  # ════════════════════════════════════════════════════════════════════════
   - name: boundary_infiltration
     version: v1
     pathology_meaning: infiltrative tumor front with tongues, buds, and near-boundary islands
@@ -170,8 +185,12 @@ primitives:
       seed_region: tumor_boundary
       island_policy:
         enabled: true
-        max_distance_from_tumor_px: 32
-        max_island_area_px: 80
+        # ── CHANGED: pixel values now annotated with physical distances ──
+        # At 40x (0.25 µm/px):
+        #   120 px ≈ 30 µm  — realistic budding distance
+        #   200 px ≈ 50 µm  — outer limit for tumor budding
+        max_distance_from_tumor_px: 120     # was 32; ≈30 µm at 40x
+        max_island_area_px: 200             # was 80; ≈50 µm² at 40x
         max_islands_per_patch: 12
       expansion_mode: local_not_global
       noise: multi_scale_smooth
@@ -198,6 +217,9 @@ primitives:
     overlap_guard:
       use_tumor_burden_increase_for_broad_growth
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 4. BOUNDARY SMOOTHING
+  # ════════════════════════════════════════════════════════════════════════
   - name: boundary_smoothing
     version: v1
     pathology_meaning: pushing or regularized tumor border with reduced infiltrative irregularity
@@ -245,13 +267,20 @@ primitives:
     overlap_guard:
       use_tumor_burden_decrease_for_large_regression
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 5. NECROSIS APPEARANCE
+  # ════════════════════════════════════════════════════════════════════════
   - name: necrosis_appearance
     version: v1
     pathology_meaning: ischemic tumor necrosis
     required_tissue_labels:
       - Tumor
-      - Necrosis
+    # ── CHANGED: Necrosis moved from required to optional ──
+    # When existing Necrosis is absent the candidate map degrades gracefully
+    # to (tumor_interior + far_from_vessel) weights only, enabling the
+    # teaching scenario "add necrosis to a non-necrotic tumor".
     optional_tissue_labels:
+      - Necrosis
       - Blood vessel
       - Stroma
       - Immune infiltrate
@@ -262,9 +291,13 @@ primitives:
     spatial_pattern:
       candidate_map: necrosis_probability
       candidate_weights:
-        existing_necrosis_neighborhood: 0.45
+        existing_necrosis_neighborhood: 0.45    # drops to 0 when no Necrosis present
         tumor_interior_far_from_outer_boundary: 0.35
         tumor_region_far_from_blood_vessel: 0.20
+      # ── ADDED: fallback weights when no existing Necrosis ──
+      candidate_weights_no_existing_necrosis:
+        tumor_interior_far_from_outer_boundary: 0.60
+        tumor_region_far_from_blood_vessel: 0.40
       forbid_targets:
         - Background
         - Stroma
@@ -289,12 +322,15 @@ primitives:
       - new_region_must_not_be_too_small_or_fragmented
     expected_failure_cases:
       - no_tumor
-      - no_necrosis_label
       - tumor_too_small
       - no_high_probability_hypoxic_candidate_region
+      # removed: no_necrosis_label — now handled by fallback weights
     overlap_guard:
       use_necrosis_expansion_when_existing_necrosis_is_required
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 6. STROMAL IMMUNE INFILTRATION
+  # ════════════════════════════════════════════════════════════════════════
   - name: stromal_immune_infiltration
     version: v1
     pathology_meaning: stromal TIL increase around tumor
@@ -321,7 +357,7 @@ primitives:
         moderate: [0.14, 0.24]
         significant: [0.24, 0.35]
       max_changed_area_fraction: 0.40
-      max_distance_from_tumor_px: 64
+      max_distance_from_tumor_px: 64    # ≈16 µm at 40x
     probnet_bias:
       Inflammatory: up
       Connective: down_mild
@@ -338,6 +374,9 @@ primitives:
       use_intratumoral_immune_infiltration_for_within_tumor_changes
       use_peritumoral_inflammation_for_strict_ring_pattern_in_v1_5
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 7. INTRATUMORAL IMMUNE INFILTRATION
+  # ════════════════════════════════════════════════════════════════════════
   - name: intratumoral_immune_infiltration
     version: v1
     pathology_meaning: intratumoral TIL increase
@@ -355,8 +394,8 @@ primitives:
       region: inside_tumor
       spot_policy:
         max_total_area_fraction_of_tumor: 0.35
-        min_spot_area_px: 12
-        max_spot_area_px: 256
+        min_spot_area_px: 12      # ≈3 µm² at 40x; ~1-2 lymphocytes
+        max_spot_area_px: 256     # ≈64 µm² at 40x; small cluster
         max_spots_per_patch: 32
       avoid_large_sheet_replacement: true
     parameter_ranges:
@@ -380,6 +419,9 @@ primitives:
     overlap_guard:
       use_stromal_immune_infiltration_for_outside_tumor_changes
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 8. IMMUNE INFILTRATION DECREASE
+  # ════════════════════════════════════════════════════════════════════════
   - name: immune_infiltration_decrease
     version: v1
     pathology_meaning: immune-cold conversion or immune suppression
@@ -427,6 +469,9 @@ primitives:
     overlap_guard:
       do_not_use_for_tumor_expanding_into_immune
 
+  # ════════════════════════════════════════════════════════════════════════
+  # 9. STROMAL DESMOPLASIA
+  # ════════════════════════════════════════════════════════════════════════
   - name: stromal_desmoplasia
     version: v1
     pathology_meaning: peritumoral desmoplastic stromal reaction
@@ -463,7 +508,7 @@ primitives:
         moderate: [0.14, 0.24]
         significant: [0.24, 0.35]
         xlarge_deid: [0.35, 0.55]
-      max_distance_from_tumor_px: 64
+      max_distance_from_tumor_px: 64    # ≈16 µm at 40x
     probnet_bias:
       Connective: up
       Inflammatory: neutral_or_up_slight
@@ -485,7 +530,12 @@ primitives:
       do_not_use_for_tumor_to_stroma_regression
       do_not_use_for_primary_immune_decrease
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# COMPOSITE RECIPES
+# ═══════════════════════════════════════════════════════════════════════════
 composite_recipes:
+
   - name: treatment_response
     primitives:
       - tumor_burden_decrease
@@ -519,3 +569,50 @@ composite_recipes:
     optional_probnet_bias:
       Inflammatory: down
     recommended_bucket: xlarge
+
+  # ── ADDED ──
+  - name: desmoplastic_reaction
+    primitives:
+      - stromal_desmoplasia
+      - immune_infiltration_decrease
+    optional_probnet_bias:
+      Connective: up
+      Inflammatory: down
+    recommended_bucket: large
+    notes: >
+      Models the classic pancreatic-cancer-like microenvironment:
+      fibrosis increases while immune cells are excluded.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# v1 SCOPE NOTES  (intentional omissions for future versions)
+# ═══════════════════════════════════════════════════════════════════════════
+roadmap:
+  v1_5_candidates:
+    - name: angiogenesis_increase
+      reason_deferred: >
+        Blood vessel has complex lumen + endothelial morphology in H&E.
+        Mask-only editing cannot reliably instruct the generator to produce
+        convincing vessel structures. Revisit when generator supports
+        structure-aware conditioning.
+    - name: glandular_atrophy
+      description: Normal epithelium → Stroma (tumor-pressure atrophy)
+      reason_deferred: lower priority for v1 use cases
+    - name: dysplasia_progression
+      description: Normal epithelium → Tumor (pre-malignant transformation)
+      reason_deferred: requires careful grading-aware mask logic
+    - name: peritumoral_inflammation
+      description: strict Crohn-like ring pattern around tumor
+      reason_deferred: can be approximated by stromal_immune_infiltration in v1
+    - name: cell_level_deidentification
+      description: >
+        Keep tissue mask unchanged; regenerate all cells via ProbNet
+        conditioned on the original per-tissue cell distribution heatmap.
+        Tissue semantics and prompt stay identical, but cell-level
+        morphology (nuclear shape, placement, clustering) is completely
+        refreshed, breaking pixel-level traceability to the source slide.
+      reason_deferred: >
+        Requires ProbNet to support full-patch cell regeneration mode
+        (currently only runs on changed regions). Also needs evaluation
+        of whether cell-only regeneration produces sufficient visual
+        dissimilarity for de-identification compliance. Planned for v1.5
+        once ProbNet full-patch mode is validated.
