@@ -1,7 +1,521 @@
-# Strategies listed here must produce valid edits on BCSS, PANDA, GlaS, IGNITE,
-# PUMA, and ORCA.
-strategies:
-  - name: tumor_burden_increase
-  - name: tumor_burden_decrease
-  - name: tumor_boundary_remodel
+schema_version: 1
+primitive_set: phase3_generic_v1
 
+label_space:
+  tissue:
+    - Background
+    - Tumor
+    - Stroma
+    - Necrosis
+    - Immune infiltrate
+    - Normal epithelium
+    - Blood vessel
+    - Other tissue
+  cells:
+    - Neoplastic
+    - Inflammatory
+    - Connective
+    - Dead
+    - Epithelial
+
+defaults:
+  intended_use: semantic_editing_and_deidentification
+  change_area_buckets:
+    # Aligned with Phase 5 synthetic inpaint geometry targets in
+    # controlnet_train/data/inpaint_synthesis.py. Phase 5 inpaint currently
+    # buckets up to large=0.40 but allows max change ratio 0.70; xlarge is
+    # reserved for large replace/de-identification edits that may route away
+    # from local inpaint.
+    small: [0.08, 0.14]
+    medium: [0.14, 0.24]
+    large: [0.24, 0.40]
+    xlarge: [0.40, 0.70]
+  default_bucket: medium
+  cell_generation_policy:
+    unchanged_region: retain_original_cells
+    changed_region: probnet_generate
+    fallback: nuclei_library
+    manual_cell_mask_editing: false
+  validation:
+    require_nonempty_change_region: true
+    forbid_background_leakage: true
+    require_legal_output_labels: true
+    # A semantic edit used for de-identification should be visible enough to
+    # perturb tissue context. Tiny masks are reserved for smoke tests only.
+    default_max_changed_area_fraction: 0.40
+    max_changed_area_fraction: 0.70
+    min_changed_area_fraction: 0.08
+  retries:
+    max_attempts: 10
+
+primitives:
+  - name: tumor_burden_increase
+    version: v1
+    pathology_meaning: tumor growth and local invasion
+    required_tissue_labels:
+      - Tumor
+    required_context:
+      - editable_non_tumor_tissue
+    optional_tissue_labels:
+      - Stroma
+      - Normal epithelium
+      - Other tissue
+      - Immune infiltrate
+    mask_operation:
+      type: sdf_boundary_expansion
+      source: Tumor
+      target_priority:
+        - Stroma
+        - Normal epithelium
+        - Other tissue
+        - Immune infiltrate
+      preserve_source_subtype: nearest_boundary_tumor_label
+    spatial_pattern:
+      expansion_mode: broad_boundary_growth
+      noise: multi_scale_smooth
+      forbid_targets:
+        - Background
+    parameter_ranges:
+      target_area_delta_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.40]
+        xlarge_deid: [0.40, 0.60]
+    probnet_bias:
+      Neoplastic: up_slight
+      Connective: down_if_source_stroma
+      Epithelial: down_if_source_normal_epithelium
+    validation_rules:
+      - tumor_area_must_increase
+      - new_tumor_must_touch_or_neighbor_original_tumor
+      - changed_area_within_parameter_range
+    expected_failure_cases:
+      - no_tumor
+      - no_editable_non_tumor_tissue
+      - tumor_already_too_large
+      - expansion_would_touch_only_background
+    overlap_guard:
+      use_boundary_infiltration_for_tongues_or_budding_islands
+
+  - name: tumor_burden_decrease
+    version: v1
+    pathology_meaning: tumor regression without committing to one biological mechanism
+    required_tissue_labels:
+      - Tumor
+    required_context:
+      - valid_backfill_tissue
+    optional_tissue_labels:
+      - Stroma
+      - Other tissue
+      - Normal epithelium
+      - Immune infiltrate
+    mask_operation:
+      type: sdf_boundary_shrink
+      source: Tumor
+      backfill_priority:
+        - Stroma
+        - Other tissue
+        - Normal epithelium
+        - Immune infiltrate
+      preserve_remaining_tumor_subtype: true
+    spatial_pattern:
+      shrink_mode: inward_boundary_regression
+      edge_fade: true
+      fragment_cleanup: true
+    parameter_ranges:
+      target_area_decrease_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.40]
+        xlarge_deid: [0.40, 0.70]
+      min_remaining_tumor_fraction: 0.02
+    probnet_bias:
+      default: none
+      treatment_response_recipe:
+        Dead: up_optional
+        Connective: up_optional
+    validation_rules:
+      - tumor_area_must_decrease
+      - released_region_must_not_be_background
+      - remaining_tumor_above_minimum
+    expected_failure_cases:
+      - no_tumor
+      - tumor_too_small
+      - no_valid_backfill_tissue
+      - shrink_would_delete_tumor
+    overlap_guard:
+      use_necrosis_resolution_for_necrosis_repair
+      use_stromal_desmoplasia_for_external_stromal_reaction
+
+  - name: boundary_infiltration
+    version: v1
+    pathology_meaning: infiltrative tumor front with tongues, buds, and near-boundary islands
+    required_tissue_labels:
+      - Tumor
+    required_context:
+      - neighboring_editable_non_tumor_tissue
+    optional_tissue_labels:
+      - Stroma
+      - Immune infiltrate
+      - Normal epithelium
+      - Other tissue
+    mask_operation:
+      type: local_boundary_infiltration
+      source: Tumor
+      patterns:
+        - irregular_tongues
+        - thin_protrusions
+        - near_boundary_budding_islands
+    spatial_pattern:
+      seed_region: tumor_boundary
+      island_policy:
+        enabled: true
+        max_distance_from_tumor_px: 32
+        max_island_area_px: 80
+        max_islands_per_patch: 12
+      expansion_mode: local_not_global
+      noise: multi_scale_smooth
+    parameter_ranges:
+      total_new_tumor_area_fraction:
+        mild: [0.08, 0.12]
+        moderate: [0.12, 0.18]
+        significant: [0.18, 0.24]
+      max_changed_area_fraction: 0.30
+    probnet_bias:
+      Neoplastic: up_slight
+      Inflammatory: up_slight_at_invasion_edge
+    validation_rules:
+      - boundary_complexity_must_increase
+      - islands_must_stay_near_original_tumor
+      - island_area_and_count_within_limits
+      - total_new_area_below_tumor_burden_increase_range
+    expected_failure_cases:
+      - no_tumor
+      - tumor_boundary_too_short
+      - no_neighboring_editable_tissue
+      - islands_too_far
+      - islands_too_large_or_too_many
+    overlap_guard:
+      use_tumor_burden_increase_for_broad_growth
+
+  - name: boundary_smoothing
+    version: v1
+    pathology_meaning: pushing or regularized tumor border with reduced infiltrative irregularity
+    required_tissue_labels:
+      - Tumor
+    required_context:
+      - valid_backfill_tissue
+    optional_tissue_labels:
+      - Stroma
+      - Other tissue
+      - Normal epithelium
+    mask_operation:
+      type: tumor_contour_smoothing
+      source: Tumor
+      backfill_priority:
+        - Stroma
+        - Other tissue
+        - Normal epithelium
+    spatial_pattern:
+      remove_features:
+        - small_spikes
+        - jagged_edges
+        - isolated_tumor_islands
+      area_change_mode: near_conservative
+    parameter_ranges:
+      target_changed_area_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.20]
+        significant: [0.20, 0.28]
+      max_changed_area_fraction: 0.30
+      max_abs_tumor_area_delta_fraction: 0.08
+      min_component_area_px: 80
+    probnet_bias:
+      default: none
+      Stroma: Connective_up_slight_if_backfilled
+    validation_rules:
+      - boundary_complexity_must_decrease
+      - tumor_area_change_must_remain_small
+      - tumor_must_not_fragment_or_disappear
+    expected_failure_cases:
+      - no_tumor
+      - tumor_too_small
+      - tumor_already_smooth
+      - smoothing_would_delete_tumor
+    overlap_guard:
+      use_tumor_burden_decrease_for_large_regression
+
+  - name: necrosis_appearance
+    version: v1
+    pathology_meaning: ischemic tumor necrosis
+    required_tissue_labels:
+      - Tumor
+      - Necrosis
+    optional_tissue_labels:
+      - Blood vessel
+      - Stroma
+      - Immune infiltrate
+    mask_operation:
+      type: intratumoral_replacement
+      source: Tumor
+      target: Necrosis
+    spatial_pattern:
+      candidate_map: necrosis_probability
+      candidate_weights:
+        existing_necrosis_neighborhood: 0.45
+        tumor_interior_far_from_outer_boundary: 0.35
+        tumor_region_far_from_blood_vessel: 0.20
+      forbid_targets:
+        - Background
+        - Stroma
+      shape_mode:
+        - irregular_blob
+        - fissure_like_region
+    parameter_ranges:
+      target_changed_area_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.40]
+        xlarge_deid: [0.40, 0.60]
+      max_necrosis_fraction_of_tumor: 0.60
+    probnet_bias:
+      Dead: up
+      Neoplastic: down
+      Inflammatory: up_slight_at_necrosis_edge
+    validation_rules:
+      - necrosis_area_must_increase
+      - new_necrosis_must_be_inside_original_tumor
+      - candidate_region_must_have_high_necrosis_probability
+      - new_region_must_not_be_too_small_or_fragmented
+    expected_failure_cases:
+      - no_tumor
+      - no_necrosis_label
+      - tumor_too_small
+      - no_high_probability_hypoxic_candidate_region
+    overlap_guard:
+      use_necrosis_expansion_when_existing_necrosis_is_required
+
+  - name: stromal_immune_infiltration
+    version: v1
+    pathology_meaning: stromal TIL increase around tumor
+    required_tissue_labels:
+      - Tumor
+      - Stroma
+      - Immune infiltrate
+    optional_tissue_labels:
+      - Other tissue
+      - Normal epithelium
+    mask_operation:
+      type: peritumoral_stroma_to_immune
+      source: Stroma
+      target: Immune infiltrate
+    spatial_pattern:
+      region: outside_tumor_within_radius
+      modes:
+        - patchy_stromal_infiltrate
+        - partial_peritumoral_band
+      avoid_replacing_tumor: true
+    parameter_ranges:
+      immune_area_delta_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.35]
+      max_changed_area_fraction: 0.40
+      max_distance_from_tumor_px: 64
+    probnet_bias:
+      Inflammatory: up
+      Connective: down_mild
+    validation_rules:
+      - immune_area_must_increase
+      - new_immune_must_be_mainly_outside_tumor
+      - tumor_area_must_remain_stable
+    expected_failure_cases:
+      - no_tumor
+      - no_stroma
+      - no_immune_label
+      - insufficient_peritumoral_stroma
+    overlap_guard:
+      use_intratumoral_immune_infiltration_for_within_tumor_changes
+      use_peritumoral_inflammation_for_strict_ring_pattern_in_v1_5
+
+  - name: intratumoral_immune_infiltration
+    version: v1
+    pathology_meaning: intratumoral TIL increase
+    required_tissue_labels:
+      - Tumor
+      - Immune infiltrate
+    optional_tissue_labels:
+      - Stroma
+    mask_operation:
+      type: intratumoral_immune_spots
+      source: Tumor
+      target: Immune infiltrate
+      bias_only_fallback: false
+    spatial_pattern:
+      region: inside_tumor
+      spot_policy:
+        max_total_area_fraction_of_tumor: 0.35
+        min_spot_area_px: 12
+        max_spot_area_px: 256
+        max_spots_per_patch: 32
+      avoid_large_sheet_replacement: true
+    parameter_ranges:
+      target_changed_area_fraction:
+        mild: [0.05, 0.10]
+        moderate: [0.10, 0.16]
+        significant: [0.16, 0.24]
+      max_changed_area_fraction: 0.30
+    probnet_bias:
+      Inflammatory: up
+      Neoplastic: down_mild
+    validation_rules:
+      - new_immune_must_be_inside_original_tumor
+      - tumor_body_must_remain
+      - no_bias_only_edit_without_immune_tissue_label
+    expected_failure_cases:
+      - no_tumor
+      - no_immune_label
+      - tumor_too_small
+      - insufficient_intratumoral_candidate_area
+    overlap_guard:
+      use_stromal_immune_infiltration_for_outside_tumor_changes
+
+  - name: immune_infiltration_decrease
+    version: v1
+    pathology_meaning: immune-cold conversion or immune suppression
+    required_tissue_labels:
+      - Immune infiltrate
+    required_context:
+      - valid_backfill_tissue
+    optional_tissue_labels:
+      - Stroma
+      - Tumor
+      - Other tissue
+    mask_operation:
+      type: immune_region_reduction
+      source: Immune infiltrate
+      backfill_priority:
+        - Stroma
+        - Other tissue
+        - Tumor
+    spatial_pattern:
+      reduce_priority:
+        - isolated_immune_components
+        - peripheral_immune_components
+        - immune_far_from_tumor
+      preserve_policy:
+        keep_fraction_near_tumor: true
+    parameter_ranges:
+      immune_area_decrease_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.35]
+        xlarge_deid: [0.35, 0.60]
+      min_remaining_immune_fraction: 0.005
+    probnet_bias:
+      Inflammatory: down
+      Connective: up_slight_if_backfilled_to_stroma
+    validation_rules:
+      - immune_area_must_decrease
+      - backfill_must_be_legal_tissue
+      - no_background_holes
+    expected_failure_cases:
+      - no_immune_label
+      - immune_area_too_small
+      - no_valid_backfill_tissue
+      - reduction_would_create_background_holes
+    overlap_guard:
+      do_not_use_for_tumor_expanding_into_immune
+
+  - name: stromal_desmoplasia
+    version: v1
+    pathology_meaning: peritumoral desmoplastic stromal reaction
+    required_tissue_labels:
+      - Tumor
+      - Stroma
+    optional_tissue_labels:
+      - Other tissue
+      - Normal epithelium
+      - Immune infiltrate
+    mask_operation:
+      type: peritumoral_stroma_expansion_or_reinforcement
+      primary_sources:
+        - Other tissue
+        - Normal epithelium
+      secondary_sources:
+        - Immune infiltrate
+      target: Stroma
+      forbid_sources:
+        - Tumor
+    spatial_pattern:
+      region: outside_tumor_adjacent_to_existing_stroma
+      expansion_order:
+        - expand_existing_stroma_boundary
+        - consume_other_or_normal_epithelium
+        - consume_small_stroma_adjacent_immune_components
+      immune_to_stroma_constraints:
+        max_fraction_of_total_desmoplasia_delta: 0.30
+        require_direct_stroma_adjacency: true
+      avoid_entering_tumor: true
+    parameter_ranges:
+      stroma_area_delta_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.35]
+        xlarge_deid: [0.35, 0.55]
+      max_distance_from_tumor_px: 64
+    probnet_bias:
+      Connective: up
+      Inflammatory: neutral_or_up_slight
+      Neoplastic: down_in_desmoplasia_region
+    validation_rules:
+      - stroma_area_or_generation_region_must_increase
+      - tumor_area_must_remain_stable
+      - change_region_must_be_outside_tumor
+      - immune_to_stroma_fraction_within_limit
+      - consumed_immune_must_touch_stroma
+    expected_failure_cases:
+      - no_tumor
+      - no_stroma
+      - no_peritumoral_editable_region
+      - operation_would_reduce_tumor_area
+      - immune_conversion_exceeds_limit
+      - immune_component_not_adjacent_to_stroma
+    overlap_guard:
+      do_not_use_for_tumor_to_stroma_regression
+      do_not_use_for_primary_immune_decrease
+
+composite_recipes:
+  - name: treatment_response
+    primitives:
+      - tumor_burden_decrease
+      - necrosis_appearance
+    optional_probnet_bias:
+      Dead: up
+      Connective: up
+    recommended_bucket: xlarge
+    notes: Dead bias belongs here, not in baseline tumor_burden_decrease.
+
+  - name: aggressive_progression
+    primitives:
+      - tumor_burden_increase
+      - boundary_infiltration
+      - necrosis_appearance
+    optional_probnet_bias:
+      Neoplastic: up
+    recommended_bucket: large
+
+  - name: immune_hot_conversion
+    primitives:
+      - stromal_immune_infiltration
+      - intratumoral_immune_infiltration
+    optional_probnet_bias:
+      Inflammatory: up
+    recommended_bucket: large
+
+  - name: immune_cold_conversion
+    primitives:
+      - immune_infiltration_decrease
+    optional_probnet_bias:
+      Inflammatory: down
+    recommended_bucket: xlarge
