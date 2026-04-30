@@ -532,7 +532,14 @@ def _load_single_diffusers_weight_file(weight_path: Path) -> dict[str, torch.Ten
         from safetensors.torch import load_file
 
         return load_file(weight_path)
-    return torch.load(weight_path, map_location="cpu")
+    return _torch_load_weights(weight_path)
+
+
+def _torch_load_weights(weight_path: Path) -> dict[str, torch.Tensor]:
+    try:
+        return torch.load(weight_path, map_location="cpu", weights_only=True)
+    except TypeError:
+        return torch.load(weight_path, map_location="cpu")
 
 
 def _load_condition_modules(
@@ -542,7 +549,7 @@ def _load_condition_modules(
     torch_dtype: torch.dtype,
     include_change_encoder: bool,
 ) -> dict[str, torch.nn.Module]:
-    state = torch.load(checkpoint_path / "phase5_conditioning.pt", map_location="cpu")
+    state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
     hte_state = state["hte"]
     tissue_state = state["tissue_downsampler"]
     nuclei_state = state["nuclei_encoder"]

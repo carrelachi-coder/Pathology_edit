@@ -33,4 +33,6 @@ class ChangeMaskEncoder(nn.Module):
             raise ValueError(
                 f"Expected change_mask with shape (B, C, H, W), got {tuple(change_mask.shape)}."
             )
-        return self.encoder(change_mask.float())
+        conv = self.encoder[0]
+        change_mask = change_mask.to(device=conv.weight.device, dtype=conv.weight.dtype)
+        return self.encoder(change_mask)

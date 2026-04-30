@@ -10,12 +10,14 @@ try:
     import torch.nn as nn
 
     from controlnet_train.inference import pipeline
+    from controlnet_train.modules import ChangeMaskEncoder
 except ModuleNotFoundError as exc:
     if exc.name != "torch":
         raise
     torch = None
     nn = None
     pipeline = None
+    ChangeMaskEncoder = None
 
 
 if nn is not None:
@@ -98,6 +100,15 @@ class Phase5InpaintInferenceLoaderTests(unittest.TestCase):
         self.assertIs(pipe.controlnet, controlnet)
         self.assertEqual(pipe.device, "cpu")
         self.assertTrue(pipe.progress_disabled)
+
+    @unittest.skipIf(torch is None, "torch is required for the change mask encoder test")
+    def test_change_mask_encoder_casts_input_to_module_dtype(self):
+        encoder = ChangeMaskEncoder(out_channels=4).to(dtype=torch.float64)
+        change_mask = torch.ones(1, 1, 8, 8, dtype=torch.float32)
+
+        output = encoder(change_mask)
+
+        self.assertEqual(output.dtype, torch.float64)
 
 
 if __name__ == "__main__":
