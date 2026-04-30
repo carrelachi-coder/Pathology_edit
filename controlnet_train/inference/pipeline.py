@@ -627,11 +627,12 @@ def _sample_with_flux_controlnet(
     from diffusers import FluxControlNetPipeline
     from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
+    torch_device = torch.device(device)
     height, width = output_size
     prompt_embeds, pooled_prompt_embeds, text_ids = pipe.encode_prompt(
         prompt=[prompt],
         prompt_2=[prompt],
-        device=device,
+        device=torch_device,
     )
     if text_ids.dim() == 3:
         text_ids = text_ids[0]
@@ -650,8 +651,8 @@ def _sample_with_flux_controlnet(
         height,
         width,
         prompt_embeds.dtype,
-        device,
-        generator=torch.Generator(device=device).manual_seed(42),
+        torch_device,
+        generator=torch.Generator(device=torch_device).manual_seed(42),
         latents=None,
     )
     sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
@@ -666,7 +667,7 @@ def _sample_with_flux_controlnet(
     timesteps, _ = retrieve_timesteps(
         pipe.scheduler,
         num_inference_steps,
-        device,
+        torch_device,
         sigmas=sigmas,
         mu=mu,
     )
@@ -676,7 +677,9 @@ def _sample_with_flux_controlnet(
         expanded_timestep = timestep.expand(latents.shape[0]).to(latents.dtype)
         guidance = None
         if controlnet.config.guidance_embeds:
-            guidance = torch.tensor([guidance_scale], device=device).expand(latents.shape[0])
+            guidance = torch.tensor([guidance_scale], device=torch_device).expand(
+                latents.shape[0]
+            )
         controlnet_block_samples, controlnet_single_block_samples = controlnet(
             hidden_states=latents,
             controlnet_cond=control_image,
@@ -693,7 +696,7 @@ def _sample_with_flux_controlnet(
         )
         transformer_guidance = None
         if pipe.transformer.config.guidance_embeds:
-            transformer_guidance = torch.tensor([guidance_scale], device=device).expand(
+            transformer_guidance = torch.tensor([guidance_scale], device=torch_device).expand(
                 latents.shape[0]
             )
         noise_pred = pipe.transformer(
