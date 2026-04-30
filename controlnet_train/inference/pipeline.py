@@ -475,8 +475,12 @@ def _load_flux_controlnet_pipeline(
 ) -> tuple[object, object]:
     from diffusers import FluxControlNetModel, FluxControlNetPipeline
 
-    controlnet = FluxControlNetModel.from_pretrained(checkpoint_path, torch_dtype=torch_dtype)
+    controlnet_config = FluxControlNetModel.load_config(checkpoint_path)
+    controlnet = FluxControlNetModel.from_config(controlnet_config)
     patch_controlnet_x_embedder(controlnet, packed_channels)
+    controlnet.load_state_dict(_load_diffusers_model_state_dict(checkpoint_path), strict=True)
+    controlnet.to(dtype=torch_dtype)
+
     pipe = FluxControlNetPipeline.from_pretrained(
         pretrained_model_name_or_path,
         controlnet=controlnet,
@@ -485,6 +489,50 @@ def _load_flux_controlnet_pipeline(
     pipe.to(device)
     pipe.set_progress_bar_config(disable=True)
     return pipe, controlnet
+
+
+def _load_diffusers_model_state_dict(checkpoint_path: Path) -> dict[str, torch.Tensor]:
+    safetensors_index = checkpoint_path / "diffusion_pytorch_model.safetensors.index.json"
+    bin_index = checkpoint_path / "diffusion_pytorch_model.bin.index.json"
+
+    if safetensors_index.exists():
+        return _load_sharded_diffusers_state_dict(safetensors_index)
+    if bin_index.exists():
+        return _load_sharded_diffusers_state_dict(bin_index)
+
+    for filename in (
+        "diffusion_pytorch_model.safetensors",
+        "diffusion_pytorch_model.bin",
+        "pytorch_model.bin",
+        "model.safetensors",
+    ):
+        weight_path = checkpoint_path / filename
+        if weight_path.exists():
+            return _load_single_diffusers_weight_file(weight_path)
+
+    raise FileNotFoundError(
+        f"No diffusers ControlNet weights found under checkpoint path: {checkpoint_path}"
+    )
+
+
+def _load_sharded_diffusers_state_dict(index_path: Path) -> dict[str, torch.Tensor]:
+    payload = json.loads(index_path.read_text(encoding="utf8"))
+    weight_map = payload.get("weight_map")
+    if not isinstance(weight_map, dict) or not weight_map:
+        raise ValueError(f"Invalid diffusers weight index file: {index_path}")
+
+    state_dict: dict[str, torch.Tensor] = {}
+    for filename in sorted(set(weight_map.values())):
+        state_dict.update(_load_single_diffusers_weight_file(index_path.parent / filename))
+    return state_dict
+
+
+def _load_single_diffusers_weight_file(weight_path: Path) -> dict[str, torch.Tensor]:
+    if weight_path.suffix == ".safetensors":
+        from safetensors.torch import load_file
+
+        return load_file(weight_path)
+    return torch.load(weight_path, map_location="cpu")
 
 
 def _load_condition_modules(
