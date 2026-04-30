@@ -274,6 +274,10 @@ python controlnet_train/cli/train_controlnet_flux_cross.py ^
   --output-dir phase5_runs\\controlnet_cross
 ```
 
+`cross` 训练默认使用 dataset-level prompt（每个数据集一个默认 prompt），避免把
+metadata 中大量 patch prompt 全部预编码到 prompt cache。若要显式使用 metadata prompt，
+可添加 `--prompt-source metadata`；若要全局固定一个 prompt，可添加 `--prompt "..."`。
+
 Phase 5.3 架构说明
 -----------------
 

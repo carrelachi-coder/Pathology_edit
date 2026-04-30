@@ -100,6 +100,7 @@ primitives:
       - tumor_already_too_large
       - expansion_would_touch_only_background
       - changed_area_below_minimum
+      - no_editable_non_tumor_tissue_only_necrosis_available
     overlap_guard:
       use_boundary_infiltration_for_tongues_or_budding_islands
 

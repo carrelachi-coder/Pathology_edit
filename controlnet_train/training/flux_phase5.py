@@ -36,6 +36,7 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
 from controlnet_train.data import CrossReconstructionDataset, InpaintDataset
+from controlnet_train.data.common import default_prompt_for_dataset
 from controlnet_train.modules import (
     ChangeMaskEncoder,
     HierarchicalTissueEmbedding,
@@ -198,6 +199,7 @@ def _run_training(
         set_seed(args.seed)
     if accelerator.is_main_process:
         os.makedirs(args.output_dir, exist_ok=True)
+    _apply_training_prompt_policy(dataset.records, args)
 
     tokenizer_one = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -591,11 +593,22 @@ def _build_prompt_cache(
     batch_size: int,
 ) -> tuple[dict[str, tuple[torch.Tensor, torch.Tensor]], tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
     unique_prompts = sorted(set(prompts))
+    logger.info(
+        "Encoding %s unique prompt(s) from %s training records",
+        len(unique_prompts),
+        len(prompts),
+    )
     prompt_cache: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
     text_ids = None
     with torch.no_grad():
         for start in range(0, len(unique_prompts), batch_size):
             prompt_batch = unique_prompts[start : start + batch_size]
+            logger.info(
+                "Encoding prompt cache batch %s-%s/%s",
+                start + 1,
+                start + len(prompt_batch),
+                len(unique_prompts),
+            )
             prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
                 prompt_batch,
                 prompt_2=prompt_batch,
@@ -614,6 +627,32 @@ def _build_prompt_cache(
         empty_pooled[0].to(dtype=weight_dtype, device="cpu"),
     )
     return prompt_cache, empty_prompt, text_ids.to(dtype=weight_dtype, device="cpu")
+
+
+def _apply_training_prompt_policy(records: list[dict], args: argparse.Namespace) -> None:
+    prompt_override = getattr(args, "prompt", None)
+    prompt_source = getattr(args, "prompt_source", "metadata")
+    if prompt_override:
+        for record in records:
+            record["prompt"] = prompt_override
+        logger.info("Using one explicit training prompt for all %s records", len(records))
+        return
+
+    if prompt_source == "metadata":
+        logger.info("Using prompts from training metadata")
+        return
+
+    if prompt_source != "dataset":
+        raise ValueError(f"Unsupported prompt source: {prompt_source}")
+
+    for record in records:
+        record["prompt"] = default_prompt_for_dataset(record["dataset"])
+    unique_prompts = sorted({record["prompt"] for record in records})
+    logger.info(
+        "Using dataset-level training prompts: %s unique prompt(s) for %s records",
+        len(unique_prompts),
+        len(records),
+    )
 
 
 def _resolve_prompt_batch(

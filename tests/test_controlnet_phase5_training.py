@@ -84,8 +84,27 @@ class TrainingCliTests(unittest.TestCase):
 
         self.assertEqual(args.train_metadata, "phase5_runs/cross_meta/metadata_cross_train.json")
         self.assertEqual(args.cross_version, "v0")
+        self.assertEqual(args.prompt_source, "dataset")
+        self.assertIsNone(args.prompt)
         self.assertEqual(args.tissue_embedding_dim, 64)
         self.assertEqual(args.nuclei_out_channels, 16)
+
+    def test_cross_cli_accepts_prompt_override(self):
+        args = parse_cross_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--prompt-source",
+                "metadata",
+                "--prompt",
+                "H&E stained pathology",
+            ]
+        )
+
+        self.assertEqual(args.prompt_source, "metadata")
+        self.assertEqual(args.prompt, "H&E stained pathology")
 
 
 if __name__ == "__main__":

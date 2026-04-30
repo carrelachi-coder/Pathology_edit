@@ -16,6 +16,22 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--controlnet_model_name_or_path", type=str, default=None)
     parser.add_argument("--train-metadata", type=str, required=True)
     parser.add_argument("--cross-version", type=str, default="v0", choices=["v0", "v1"])
+    parser.add_argument(
+        "--prompt-source",
+        type=str,
+        default="dataset",
+        choices=["dataset", "metadata"],
+        help=(
+            "Use dataset-level default prompts or the prompt stored in metadata. "
+            "Cross defaults to dataset prompts to keep prompt caching small."
+        ),
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Override every training sample with one prompt.",
+    )
     parser.add_argument("--output-dir", type=str, default="phase5-controlnet-cross")
     parser.add_argument("--logging-dir", type=str, default="logs")
     parser.add_argument("--variant", type=str, default=None)
