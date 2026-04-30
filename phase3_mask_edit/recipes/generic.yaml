@@ -99,6 +99,7 @@ primitives:
       - no_editable_non_tumor_tissue
       - tumor_already_too_large
       - expansion_would_touch_only_background
+      - changed_area_below_minimum
     overlap_guard:
       use_boundary_infiltration_for_tongues_or_budding_islands
 
@@ -275,6 +276,8 @@ primitives:
     pathology_meaning: ischemic tumor necrosis
     required_tissue_labels:
       - Tumor
+    required_context:
+      - intratumoral_hypoxic_candidate_region
     # ── CHANGED: Necrosis moved from required to optional ──
     # When existing Necrosis is absent the candidate map degrades gracefully
     # to (tumor_interior + far_from_vessel) weights only, enabling the
@@ -338,6 +341,8 @@ primitives:
       - Tumor
       - Stroma
       - Immune infiltrate
+    required_context:
+      - sufficient_peritumoral_stroma
     optional_tissue_labels:
       - Other tissue
       - Normal epithelium
@@ -383,6 +388,8 @@ primitives:
     required_tissue_labels:
       - Tumor
       - Immune infiltrate
+    required_context:
+      - sufficient_intratumoral_candidate_area
     optional_tissue_labels:
       - Stroma
     mask_operation:
@@ -478,6 +485,8 @@ primitives:
     required_tissue_labels:
       - Tumor
       - Stroma
+    required_context:
+      - peritumoral_editable_region
     optional_tissue_labels:
       - Other tissue
       - Normal epithelium
