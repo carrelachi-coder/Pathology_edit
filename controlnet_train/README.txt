@@ -278,6 +278,22 @@ python controlnet_train/cli/train_controlnet_flux_cross.py ^
 metadata 中大量 patch prompt 全部预编码到 prompt cache。若要显式使用 metadata prompt，
 可添加 `--prompt-source metadata`；若要全局固定一个 prompt，可添加 `--prompt "..."`。
 
+cross V0 可视化评估：
+
+```bash
+python controlnet_train/cli/eval_controlnet_flux_cross.py ^
+  --pretrained-model-name-or-path black-forest-labs/FLUX.1-dev ^
+  --checkpoint phase5_runs\\controlnet_cross ^
+  --metadata phase5_runs\\cross_meta\\metadata_cross_val.json ^
+  --output-dir phase5_runs\\eval_cross ^
+  --num-samples 16 ^
+  --prompt-source dataset
+```
+
+每个样本会输出 `reference.png`、`prediction.png`、`target.png`、mask、`abs_error.png`
+和 `panel.png`；总览输出到 `overview_grid.png`，指标输出到 `metrics.csv` /
+`metrics.jsonl` / `metrics_summary.json`。
+
 Phase 5.3 架构说明
 -----------------
 

@@ -27,7 +27,7 @@ class Phase3RecipeConfigTests(unittest.TestCase):
                 "tumor_burden_increase",
                 "tumor_burden_decrease",
                 "boundary_infiltration",
-                "boundary_smoothing",
+                "boundary_pushing_remodel",
                 "necrosis_appearance",
                 "stromal_immune_infiltration",
                 "intratumoral_immune_infiltration",
