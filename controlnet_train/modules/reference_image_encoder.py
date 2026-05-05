@@ -89,11 +89,6 @@ class ReferenceImageEncoder(nn.Module):
         x = F.interpolate(images, size=(224, 224), mode="bilinear", align_corners=False)
         x = (x - self.mean) / self.std
         features = self.uni.forward_features(x)
-        if features.ndim == 3 and features.shape[1] > 1:
-            # Strip CLS token if present (forward_features may prepend one)
-            # With no_embed_class=True + reg_tokens=8, shape is (B, 1+256+8, 1536)
-            # We keep all tokens — Perceiver resampler handles the spatial structure
-            pass
         return features
 
     def _resample(self, projected: torch.Tensor) -> torch.Tensor:
