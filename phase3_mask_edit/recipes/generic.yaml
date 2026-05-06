@@ -189,23 +189,40 @@ primitives:
         - near_boundary_budding_islands
     spatial_pattern:
       seed_region: tumor_boundary
+      expansion_mode: geodesic_cost_map
       island_policy:
-        enabled: true
-        # ── CHANGED: pixel values now annotated with physical distances ──
-        # At 40x (0.25 µm/px):
-        #   120 px ≈ 30 µm  — realistic budding distance
-        #   200 px ≈ 50 µm  — outer limit for tumor budding
-        max_distance_from_tumor_px: 120     # was 32; ≈30 µm at 40x
-        max_island_area_px: 200             # was 80; ≈50 µm² at 40x
-        max_islands_per_patch: 12
-      expansion_mode: local_not_global
-      noise: multi_scale_smooth
+        enabled: false
+        max_islands_per_patch: 0
+        max_island_fraction: 0.0
+        min_island_area_px: 12
+      tongue_policy:
+        num_tongues_range: [3, 7]
+        tongue_angular_width_rad: 0.25     # half-width of each angular wedge
+        tongue_closing_radius_px: 3        # morphological closing per tongue
+        min_tongue_angular_sep_rad: 0.35   # minimum angle between tongues (~20°)
+        tongue_budget_variance: 0.4        # ±40% per-tongue pixel budget variance
+      tissue_preference:
+        Stroma: 1.0
+        Necrosis: 0.85
+        Immune infiltrate: 0.60
+        Other tissue: 0.55
+        Normal epithelium: 0.30
+        Blood vessel: 0.05
+      cost_map:
+        cost_min: 1.0
+        cost_max: 10.0
+        barrier_preference_threshold: 0.15
+      noise_strength: 0.25
+      max_infiltration_depth_px: 120
     parameter_ranges:
       total_new_tumor_area_fraction:
         mild: [0.08, 0.12]
         moderate: [0.12, 0.18]
         significant: [0.18, 0.24]
       max_changed_area_fraction: 0.30
+      min_protrusion_area_px: 20
+      min_contact_px: 3
+      protrusion_smooth_radius_px: 2
     probnet_bias:
       Neoplastic: up_slight
       Inflammatory: up_slight_at_invasion_edge

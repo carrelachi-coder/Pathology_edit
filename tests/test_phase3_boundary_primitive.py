@@ -51,6 +51,12 @@ class Phase3BoundaryInfiltrationTests(unittest.TestCase):
             "reference_profile": "BCSS",
             "target_change_fraction": 6 / 64,
             "seed": 42,
+            "parameters": {
+                "min_protrusion_area_px": 2,
+                "min_contact_px": 1,
+                "max_infiltration_depth_px": 4,
+                "protrusion_smooth_radius_px": 0,
+            },
         })
 
         result = apply_boundary_infiltration(
@@ -126,6 +132,12 @@ class Phase3BoundaryInfiltrationTests(unittest.TestCase):
             "reference_profile": "ORCA",
             "target_change_fraction": 4 / 36,
             "seed": 7,
+            "parameters": {
+                "min_protrusion_area_px": 2,
+                "min_contact_px": 1,
+                "max_infiltration_depth_px": 3,
+                "protrusion_smooth_radius_px": 0,
+            },
         })
 
         result = apply_boundary_infiltration(
@@ -153,6 +165,12 @@ class Phase3BoundaryInfiltrationTests(unittest.TestCase):
             "reference_profile": "BCSS",
             "target_change_fraction": 4 / 42,
             "seed": 1,
+            "parameters": {
+                "min_protrusion_area_px": 2,
+                "min_contact_px": 1,
+                "max_infiltration_depth_px": 4,
+                "protrusion_smooth_radius_px": 0,
+            },
         })
 
         result = apply_boundary_infiltration(
@@ -162,6 +180,49 @@ class Phase3BoundaryInfiltrationTests(unittest.TestCase):
         bg_in_change = np.isin(result.target_mask, tuple(schema.skip_fine_ids)) & result.change_region
         new_bg_in_change = bg_in_change & ~(np.isin(old_mask, tuple(schema.skip_fine_ids)))
         self.assertEqual(np.count_nonzero(new_bg_in_change), 0)
+
+    def test_boundary_infiltration_protrusions_touch_tumor_body(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = np.array([
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 2, 2, 2, 2, 2, 2, 0],
+            [0, 2, 1, 1, 1, 2, 2, 0],
+            [0, 2, 1, 1, 1, 2, 2, 0],
+            [0, 2, 1, 1, 1, 2, 2, 0],
+            [0, 2, 2, 2, 2, 2, 2, 0],
+            [0, 2, 2, 2, 2, 2, 2, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+        ], dtype=np.int64)
+        context = MaskEditContext.from_mask(old_mask, schema)
+
+        intent = EditIntent.from_mapping({
+            "primitive": "boundary_infiltration",
+            "reference_profile": "BCSS",
+            "target_change_fraction": 6 / 64,
+            "seed": 42,
+            "parameters": {
+                "min_protrusion_area_px": 2,
+                "min_contact_px": 1,
+                "max_infiltration_depth_px": 4,
+                "protrusion_smooth_radius_px": 0,
+            },
+        })
+
+        result = apply_boundary_infiltration(
+            old_mask, schema, context, self.infiltration_config, intent,
+        )
+
+        # All change-region pixels must be in a component connected to tumor.
+        # Since islands are disabled, every pixel must be reachable from tumor.
+        combined = np.isin(result.target_mask, schema.tumor_fine_ids) | result.change_region
+        struct4 = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=bool)
+        labeled, _ = np.ndimage_label(combined, structure=struct4) if hasattr(np, 'ndimage_label') else (None, 0)
+        from scipy import ndimage as _ndimage
+        labeled, _ = _ndimage.label(combined, structure=struct4)
+        tumor_labels = set(np.unique(labeled[np.isin(result.target_mask, schema.tumor_fine_ids)])) - {0}
+        change_labels = set(np.unique(labeled[result.change_region])) - {0}
+        self.assertTrue(change_labels.issubset(tumor_labels),
+                        f"Detached change components: {change_labels - tumor_labels}")
 
 
 class Phase3BoundaryPushingRemodelTests(unittest.TestCase):

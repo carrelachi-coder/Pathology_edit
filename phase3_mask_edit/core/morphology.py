@@ -320,12 +320,20 @@ def generate_islands(
     max_islands: int,
     target_fraction: float,
     seed: int | None = None,
+    protrusion_mask: np.ndarray | None = None,
+    min_island_area_px: int = 12,
 ) -> tuple[np.ndarray, dict[str, int | bool]]:
     """Generate small island patches near the source mask within candidates.
 
     Each island is a connected region grown from a seed point. Islands
     are constrained by distance from source, maximum area, and maximum
     count. Used for tumor budding in boundary_infiltration.
+
+    Args:
+        protrusion_mask: Existing protrusion pixels to avoid when seeding.
+            Seeds are placed away from existing protrusions for variety.
+        min_island_area_px: Minimum island area to keep. Islands grown
+            smaller than this are discarded.
     """
 
     candidate = _as_2d_bool(candidate_mask)
@@ -337,6 +345,14 @@ def generate_islands(
 
     dist_to_source = ndimage.distance_transform_edt(~source)
     eligible = candidate & (dist_to_source <= max_distance_px) & ~source
+
+    # Avoid seeding on existing protrusions for variety.
+    if protrusion_mask is not None:
+        protrusion_bool = _as_2d_bool(protrusion_mask)
+        if protrusion_bool.shape != candidate.shape:
+            raise ValueError("protrusion_mask must have the same shape as candidate_mask.")
+        eligible = eligible & ~protrusion_bool
+
     eligible_indices = np.argwhere(eligible)
     if eligible_indices.size == 0:
         return np.zeros_like(candidate, dtype=bool), {
@@ -344,6 +360,12 @@ def generate_islands(
             "total_island_pixels": 0,
             "target_fraction_shortfall": target_fraction > 0,
         }
+
+    # Weighted seed selection: prefer pixels closer to source (near-boundary).
+    dist_values = dist_to_source[eligible_indices[:, 0], eligible_indices[:, 1]]
+    max_dist = float(dist_values.max()) if len(dist_values) > 0 else 1.0
+    weights = max_dist - dist_values + 1.0
+    weights = weights / weights.sum()
 
     target_pixels = max(1, int(round(candidate.size * target_fraction)))
     total_island_pixels = 0
@@ -363,18 +385,32 @@ def generate_islands(
         if remaining_indices.size == 0:
             break
 
-        idx = rng.integers(0, len(remaining_indices))
+        # Weighted random seed selection among remaining eligible pixels.
+        remaining_dist = dist_to_source[remaining_indices[:, 0], remaining_indices[:, 1]]
+        remaining_max_dist = float(remaining_dist.max()) if len(remaining_dist) > 0 else 1.0
+        remaining_weights = remaining_max_dist - remaining_dist + 1.0
+        remaining_weights = remaining_weights / remaining_weights.sum()
+
+        idx = rng.choice(len(remaining_indices), p=remaining_weights)
         seed_point = tuple(remaining_indices[idx])
+
+        # Vary island sizes: some small buds, some medium clusters.
+        area_budget = min(
+            max_island_area_px,
+            target_pixels - total_island_pixels,
+            max_island_area_px // 2 + rng.integers(0, max_island_area_px // 2 + 1),
+        )
+        area_budget = max(area_budget, min_island_area_px)
 
         island = _grow_single_island(
             candidate=eligible,
             seed_point=seed_point,
-            max_area=max_island_area_px,
+            max_area=area_budget,
             rng=rng,
             existing=result,
         )
         island_area = int(np.count_nonzero(island))
-        if island_area < 1:
+        if island_area < min_island_area_px:
             continue
 
         result |= island
