@@ -104,6 +104,43 @@ class Phase3TumorBurdenPrimitiveTests(unittest.TestCase):
         self.assertTrue(np.all(result.change_region <= (old_mask == 5)))
         self.assertEqual(result.ops_log["candidate_labels"], ["Normal epithelium"])
 
+    def test_tumor_burden_increase_does_not_fill_intratumoral_holes(self):
+        schema = MaskProfileSchema.from_reference_profile("ORCA")
+        old_mask = np.array(
+            [
+                [7, 7, 7, 7, 7, 7, 7],
+                [7, 1, 1, 1, 1, 1, 7],
+                [7, 1, 1, 1, 1, 1, 7],
+                [7, 1, 1, 0, 1, 1, 7],
+                [7, 1, 1, 1, 1, 1, 7],
+                [7, 1, 1, 1, 1, 1, 7],
+                [7, 7, 7, 7, 7, 7, 7],
+            ],
+            dtype=np.int64,
+        )
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "tumor_burden_increase",
+                "reference_profile": "ORCA",
+                "target_change_fraction": 8 / 49,
+            }
+        )
+
+        result = apply_tumor_burden_increase(
+            old_mask,
+            schema,
+            context,
+            self.increase_primitive,
+            intent,
+        )
+
+        self.assertEqual(result.target_mask[3, 3], 0)
+        self.assertFalse(result.change_region[3, 3])
+        self.assertTrue(np.all(result.change_region <= (old_mask == 7)))
+        self.assertTrue(np.any(result.change_region[0, :]))
+        self.assertTrue(np.any(result.change_region[-1, :]))
+
     def test_tumor_burden_increase_raises_when_no_editable_candidate_region_exists(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = np.array(
@@ -242,7 +279,7 @@ class Phase3TumorBurdenPrimitiveTests(unittest.TestCase):
         self.assertEqual(result.target_mask[2, 2], 2)
         self.assertTrue(result.ops_log["spatial"]["target_area_shortfall"])
 
-    def test_tumor_burden_decrease_allows_shrink_near_internal_background_hole(self):
+    def test_tumor_burden_decrease_ignores_internal_background_hole_boundary(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = np.array(
             [
@@ -275,7 +312,7 @@ class Phase3TumorBurdenPrimitiveTests(unittest.TestCase):
         )
 
         internal_hole_neighbors = [(2, 3), (3, 2), (3, 4), (4, 3)]
-        self.assertTrue(
+        self.assertFalse(
             any(result.change_region[row, col] for row, col in internal_hole_neighbors)
         )
         self.assertEqual(result.target_mask[3, 3], 0)

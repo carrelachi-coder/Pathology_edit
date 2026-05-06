@@ -309,7 +309,10 @@ def _select_sdf_expansion_region(
     *,
     target_fraction: float,
     intent: EditIntent,
+    geometry_source_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, float | int | bool | str]]:
+    if geometry_source_mask is None:
+        geometry_source_mask = source_mask
     target_count = _target_pixels(target_fraction, source_mask.size)
     if target_count == 0:
         return np.zeros_like(source_mask, dtype=bool), _sdf_spatial_info(
@@ -329,8 +332,8 @@ def _select_sdf_expansion_region(
         intent, "sdf_beta_max_px", _DEFAULT_EXPAND_BETA_MAX_PX
     )
 
-    sdf = _compute_sdf(source_mask)
-    weight = _compute_boundary_weight(source_mask, influence_radius)
+    sdf = _compute_sdf(geometry_source_mask)
+    weight = _compute_boundary_weight(geometry_source_mask, influence_radius)
     noise = _generate_smooth_noise(
         source_mask.shape,
         seed=intent.seed,
@@ -343,13 +346,13 @@ def _select_sdf_expansion_region(
 
     beta, selected = _calibrate_sdf_beta(
         region_for_beta=region_for_beta,
-        selectable_mask=candidate_mask & ~source_mask,
+        selectable_mask=candidate_mask & ~geometry_source_mask,
         target_count=target_count,
         beta_min=0.0,
         beta_max=beta_max,
     )
 
-    selected = _keep_growth_touching_source(selected, source_mask)
+    selected = _keep_growth_touching_source(selected, geometry_source_mask)
     info = _sdf_spatial_info(
         method="sdf_noise_expansion",
         target_count=target_count,
@@ -370,7 +373,10 @@ def _select_sdf_shrink_region(
     target_fraction: float,
     intent: EditIntent,
     max_selected_pixels: int | None = None,
+    geometry_source_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, float | int | bool | str]]:
+    if geometry_source_mask is None:
+        geometry_source_mask = source_mask
     target_count = _target_pixels(target_fraction, source_mask.size)
     shrinkable_mask = source_mask & ~protected_mask
     if target_count == 0 or not np.any(shrinkable_mask):
@@ -403,8 +409,8 @@ def _select_sdf_shrink_region(
     if not smoothing_enabled:
         smooth_sigma = 0.0
 
-    sdf = _compute_sdf(source_mask)
-    weight = _compute_boundary_weight(source_mask, influence_radius)
+    sdf = _compute_sdf(geometry_source_mask)
+    weight = _compute_boundary_weight(geometry_source_mask, influence_radius)
     effective_edge_margin = _effective_edge_fade_margin(source_mask.shape, edge_margin)
     if effective_edge_margin > 0:
         weight *= _compute_edge_fade_mask(source_mask.shape, effective_edge_margin)
@@ -438,7 +444,7 @@ def _select_sdf_shrink_region(
     if max_selected_pixels is not None:
         selected = _limit_selected_by_boundary_score(
             selected,
-            source_mask,
+            geometry_source_mask,
             backfill_mask,
             max_selected_pixels,
         )
@@ -468,6 +474,13 @@ def _compute_sdf(source_mask: np.ndarray) -> np.ndarray:
     if np.all(source):
         return ndimage.distance_transform_edt(source)
     return ndimage.distance_transform_edt(source) - ndimage.distance_transform_edt(~source)
+
+
+def _filled_tumor_geometry_mask(source_mask: np.ndarray) -> np.ndarray:
+    source = np.asarray(source_mask, dtype=bool)
+    if not np.any(source):
+        return source.copy()
+    return ndimage.binary_fill_holes(source)
 
 
 def _compute_boundary_weight(source_mask: np.ndarray, radius: float) -> np.ndarray:
