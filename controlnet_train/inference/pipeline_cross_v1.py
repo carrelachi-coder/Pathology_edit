@@ -162,7 +162,7 @@ def run_cross_v1_bundle(
         num_inference_steps=bundle.num_inference_steps,
         guidance_scale=bundle.guidance_scale,
         controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
-        joint_attention_kwargs={"ip_adapter_image_embeds": ref_features},
+        joint_attention_kwargs={"ip_adapter_image_embeds": [ref_features]},
     )
 
 
@@ -405,7 +405,7 @@ def _sample_with_flux_controlnet(
             controlnet_single_block_samples=controlnet_single_block_samples,
             txt_ids=text_ids,
             img_ids=latent_image_ids,
-            joint_attention_kwargs=joint_attention_kwargs,
+            joint_attention_kwargs=dict(joint_attention_kwargs) if joint_attention_kwargs is not None else None,
             return_dict=False,
             controlnet_blocks_repeat=controlnet_blocks_repeat,
         )[0]

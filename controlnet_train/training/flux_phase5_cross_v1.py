@@ -66,7 +66,20 @@ if is_torch_npu_available():
 # ---------------------------------------------------------------------------
 # IP-Adapter installation and helpers
 # ---------------------------------------------------------------------------
+class IPAdapterListProjection(nn.Module):
+    """Wraps IPAdapterFullImageProjection to handle list input/output."""
+    def __init__(self, proj: nn.Module):
+        super().__init__()
+        self.proj = proj
 
+    def forward(self, image_embeds):
+        # Force output dtype to match proj weights — mixed precision autocast
+        # can produce float32 output even when weights are bfloat16.
+        target_dtype = next(self.proj.parameters()).dtype
+        if isinstance(image_embeds, list):
+            return [self.proj(embed).to(dtype=target_dtype) for embed in image_embeds]
+        return self.proj(image_embeds).to(dtype=target_dtype)
+    
 def install_flux_ip_adapter_attention(
     transformer: FluxTransformer2DModel,
     hidden_dim: int = 3072,
@@ -78,18 +91,18 @@ def install_flux_ip_adapter_attention(
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
     from diffusers.models.embeddings import IPAdapterFullImageProjection
 
-    # 1. Add encoder_hid_proj (projects ip_adapter_image_embeds to ip_hidden_states)
-    transformer.encoder_hid_proj = IPAdapterFullImageProjection(
+    # 1. Add encoder_hid_proj
+    raw_proj = IPAdapterFullImageProjection(
         image_embed_dim=cross_attention_dim,
         cross_attention_dim=cross_attention_dim,
     )
-    # Zero-init Linear2 (the final output layer of FeedForward)
     with torch.no_grad():
-        ff_net = transformer.encoder_hid_proj.ff.net
+        ff_net = raw_proj.ff.net
         linear2 = ff_net[-1]
         linear2.weight.zero_()
         if linear2.bias is not None:
             linear2.bias.zero_()
+    transformer.encoder_hid_proj = IPAdapterListProjection(raw_proj)
 
     # 2. Replace attention processors on double-stream blocks
     for block in transformer.transformer_blocks:
@@ -99,7 +112,6 @@ def install_flux_ip_adapter_attention(
             num_tokens=(num_tokens,),
             scale=[scale],
         )
-        # Zero-init to_k_ip and to_v_ip
         with torch.no_grad():
             for linear in processor.to_k_ip:
                 linear.weight.zero_()
@@ -109,6 +121,8 @@ def install_flux_ip_adapter_attention(
                 linear.weight.zero_()
                 if linear.bias is not None:
                     linear.bias.zero_()
+
+
         block.attn.set_processor(processor)
 
 
@@ -181,21 +195,23 @@ def _build_cross_v1_control_batch(
     )
     return target_image_latent, control_tensor
 
-
 def _build_ip_adapter_kwargs(
     batch: dict,
     modules: dict[str, torch.nn.Module],
     accelerator: Accelerator,
     weight_dtype: torch.dtype,
+    transformer: FluxTransformer2DModel,
 ) -> dict:
-    """Extract UNI features from reference image and build joint_attention_kwargs."""
+    """Build joint_attention_kwargs with pre-projected ip_hidden_states."""
     ref_encoder = modules["ref_encoder"]
-    # Cast reference image to UNI backbone's dtype to avoid mixed precision mismatch
     uni_dtype = next(ref_encoder.uni.parameters()).dtype
     ref_ip_features = ref_encoder(
         batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
     ).to(dtype=weight_dtype)
-    return {"ip_adapter_image_embeds": ref_ip_features}
+    # Project through encoder_hid_proj and cast to weight_dtype
+    ip_hidden_states = transformer.encoder_hid_proj([ref_ip_features])
+    ip_hidden_states = [hs.to(dtype=weight_dtype) for hs in ip_hidden_states]
+    return {"ip_hidden_states": ip_hidden_states}
 
 
 # ---------------------------------------------------------------------------
@@ -518,6 +534,17 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
     # ---- freeze transformer, re-enable IP-Adapter modules ----
     flux_transformer.to(accelerator.device, dtype=weight_dtype)
+    # Ensure IP-Adapter modules (added after transformer creation) are also cast
+    if hasattr(flux_transformer, 'encoder_hid_proj'):
+        flux_transformer.encoder_hid_proj.to(dtype=weight_dtype)
+    logger.info("=== DEBUG dtype check ===")
+    for n, p in flux_transformer.encoder_hid_proj.named_parameters():
+        logger.info(f"encoder_hid_proj {n}: {p.dtype}")
+    for block_key in list(ip_adapter_modules.keys())[:3]:
+        mod = ip_adapter_modules[block_key]
+        for n, p in mod.named_parameters():
+            logger.info(f"{block_key} {n}: {p.dtype}")
+            break
     flux_transformer.requires_grad_(False)
     for module in ip_adapter_modules.values():
         module.requires_grad_(True)
@@ -541,7 +568,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         flux_transformer.enable_xformers_memory_efficient_attention()
         flux_controlnet.enable_xformers_memory_efficient_attention()
     if args.gradient_checkpointing:
-        flux_transformer.enable_gradient_checkpointing()
+        # Do NOT enable gradient checkpointing on transformer — diffusers 0.32.2's
+        # checkpointing wrapper doesn't pass joint_attention_kwargs to blocks,
+        # which breaks IP-Adapter. ControlNet checkpointing is fine.
         flux_controlnet.enable_gradient_checkpointing()
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -740,7 +769,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
                 # V1: build joint_attention_kwargs for IP-Adapter reference injection
                 joint_attention_kwargs = _build_ip_adapter_kwargs(
-                    batch, modules, accelerator, weight_dtype,
+                    batch, modules, accelerator, weight_dtype, flux_transformer,
                 )
 
                 noise_pred = flux_transformer(
@@ -759,7 +788,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     ),
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
-                    joint_attention_kwargs=joint_attention_kwargs,
+                    joint_attention_kwargs=dict(joint_attention_kwargs),
                     return_dict=False,
                 )[0]
 
