@@ -327,7 +327,7 @@ def generate_islands(
 
     Each island is a connected region grown from a seed point. Islands
     are constrained by distance from source, maximum area, and maximum
-    count. Used for tumor budding in boundary_infiltration.
+    count. Used for tumor budding near source boundaries.
 
     Args:
         protrusion_mask: Existing protrusion pixels to avoid when seeding.

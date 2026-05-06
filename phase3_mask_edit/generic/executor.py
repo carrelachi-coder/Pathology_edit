@@ -33,7 +33,6 @@ from phase3_mask_edit.generic.tumor_burden import (
     apply_tumor_burden_increase,
 )
 from phase3_mask_edit.generic.boundary import (
-    apply_boundary_infiltration,
     apply_boundary_pushing_remodel,
 )
 
@@ -66,7 +65,6 @@ def _auto_register() -> None:
         return
     register_primitive("tumor_burden_increase", apply_tumor_burden_increase)
     register_primitive("tumor_burden_decrease", apply_tumor_burden_decrease)
-    register_primitive("boundary_infiltration", apply_boundary_infiltration)
     register_primitive("boundary_pushing_remodel", apply_boundary_pushing_remodel)
 
 

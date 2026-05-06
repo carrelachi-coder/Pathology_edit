@@ -58,21 +58,17 @@ class Phase3TumorBurdenPrimitiveTests(unittest.TestCase):
             intent,
         )
 
-        expected_change = np.zeros_like(old_mask, dtype=bool)
-        expected_change[0, 2] = True
-        expected_change[1, 2] = True
-        expected_change[2, 0:3] = True
-
-        np.testing.assert_array_equal(result.change_region, expected_change)
-        self.assertTrue(np.all(result.target_mask[expected_change] == 1))
+        self.assertTrue(np.any(result.change_region))
+        self.assertTrue(np.all(result.change_region <= (old_mask == 2)))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 1))
         self.assertTrue(np.all(result.target_mask[old_mask == 0] == 0))
         self.assertGreater(
             int(np.count_nonzero(result.target_mask == 1)),
             int(np.count_nonzero(old_mask == 1)),
         )
-        self.assertEqual(result.changed_area_fraction, 5 / 25)
         self.assertEqual(result.ops_log["primitive"], "tumor_burden_increase")
         self.assertEqual(result.ops_log["candidate_labels"], ["Stroma"])
+        self.assertEqual(result.ops_log["spatial"]["method"], "sdf_noise_expansion")
 
     def test_tumor_burden_increase_honors_preserve_labels(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
@@ -355,7 +351,7 @@ class Phase3TumorBurdenPrimitiveTests(unittest.TestCase):
         )
 
         self.assertTrue(result.ops_log["spatial"]["smoothing_applied"])
-        self.assertEqual(result.ops_log["spatial"]["smoothing_method"], "gaussian_threshold")
+        self.assertEqual(result.ops_log["spatial"]["smoothing_method"], "sdf_gaussian")
         self.assertGreater(result.ops_log["spatial"]["smoothing_radius"], 0)
         self.assertTrue(np.all(result.change_region <= (old_mask == 1)))
 

@@ -12,7 +12,23 @@ from phase3_mask_edit.core.candidates import build_candidate_mask_by_priority
 from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
-from phase3_mask_edit.core.morphology import select_boundary_band_by_fraction
+
+
+_EXPAND_NOISE_OCTAVES: tuple[tuple[float, float], ...] = (
+    (40.0, 0.55),
+    (15.0, 0.30),
+    (5.0, 0.15),
+)
+_SHRINK_NOISE_OCTAVES: tuple[tuple[float, float], ...] = (
+    (45.0, 0.60),
+    (18.0, 0.28),
+    (6.0, 0.12),
+)
+_DEFAULT_INFLUENCE_RADIUS_PX = 45.0
+_DEFAULT_ALPHA_PX = 18.0
+_DEFAULT_EXPAND_BETA_MAX_PX = 80.0
+_DEFAULT_SHRINK_BETA_MAX_PX = 150.0
+_DEFAULT_EDGE_FADE_MARGIN_PX = 40
 
 
 class PrimitiveExecutionError(ValueError):
@@ -43,7 +59,6 @@ def apply_tumor_burden_increase(
     _validate_tumor_burden_increase_request(
         old_mask, schema, context, primitive_config, intent
     )
-    mask = np.asarray(old_mask)
     target_fraction = _target_fraction_for_intent(primitive_config, intent)
 
     candidate_selection = build_candidate_mask_by_priority(
@@ -64,14 +79,15 @@ def apply_tumor_burden_increase(
     source_mask = np.isin(context.normalized_mask, schema.tumor_fine_ids)
     if not np.any(source_mask):
         raise PrimitiveExecutionError("no tumor source region for tumor growth.")
+    geometry_source_mask = _filled_tumor_geometry_mask(source_mask)
+    internal_holes = geometry_source_mask & ~source_mask
 
-    max_radius = _max_radius_for_intent(intent, mask.shape)
-    change_region, spatial_info = select_boundary_band_by_fraction(
+    change_region, spatial_info = _select_sdf_expansion_region(
         source_mask,
-        candidate_selection.candidate_mask,
+        candidate_selection.candidate_mask & ~internal_holes,
         target_fraction=target_fraction,
-        min_radius=1,
-        max_radius=max_radius,
+        intent=intent,
+        geometry_source_mask=geometry_source_mask,
     )
     selected_pixels = int(np.count_nonzero(change_region))
     if selected_pixels == 0:
@@ -123,6 +139,7 @@ def apply_tumor_burden_decrease(
     target_fraction = _target_decrease_fraction_for_intent(primitive_config, intent)
 
     source_mask = np.isin(context.normalized_mask, schema.tumor_fine_ids)
+    geometry_source_mask = _filled_tumor_geometry_mask(source_mask)
     tumor_pixels = int(np.count_nonzero(source_mask))
     if tumor_pixels == 0:
         raise PrimitiveExecutionError("no_tumor")
@@ -144,28 +161,21 @@ def apply_tumor_burden_decrease(
     if max_removable_pixels < 1 or target_pixels > max_removable_pixels:
         raise PrimitiveExecutionError("shrink_would_delete_tumor")
 
-    max_radius = _max_radius_for_intent(intent, mask.shape)
     protected_boundary = _protected_tumor_boundary_mask(
         context.normalized_mask,
         source_mask,
         schema,
     )
-    change_region, spatial_info = _select_inward_boundary_band_by_fraction(
+    max_removable_mask_pixels = tumor_pixels - min_remaining_pixels
+    change_region, spatial_info = _select_sdf_shrink_region(
         source_mask,
         backfill_mask,
         protected_boundary,
         target_fraction=target_fraction,
-        min_radius=1,
-        max_radius=max_radius,
+        intent=intent,
+        max_selected_pixels=max_removable_mask_pixels,
+        geometry_source_mask=geometry_source_mask,
     )
-    change_region, smoothing_info = _maybe_smooth_decrease_region(
-        change_region,
-        source_mask,
-        backfill_mask,
-        protected_boundary,
-        intent,
-    )
-    spatial_info.update(smoothing_info)
     selected_pixels = int(np.count_nonzero(change_region))
     if selected_pixels == 0:
         raise PrimitiveExecutionError("tumor_too_small")
@@ -293,10 +303,386 @@ def _target_decrease_fraction_for_intent(
     return (lower + upper) / 2
 
 
-def _max_radius_for_intent(intent: EditIntent, mask_shape: tuple[int, int]) -> int:
-    value = intent.parameters.get("max_radius", max(mask_shape))
-    if not isinstance(value, int) or value < 1:
-        raise PrimitiveExecutionError("parameters.max_radius must be a positive integer.")
+def _select_sdf_expansion_region(
+    source_mask: np.ndarray,
+    candidate_mask: np.ndarray,
+    *,
+    target_fraction: float,
+    intent: EditIntent,
+) -> tuple[np.ndarray, dict[str, float | int | bool | str]]:
+    target_count = _target_pixels(target_fraction, source_mask.size)
+    if target_count == 0:
+        return np.zeros_like(source_mask, dtype=bool), _sdf_spatial_info(
+            method="sdf_noise_expansion",
+            target_count=target_count,
+            selected=np.zeros_like(source_mask, dtype=bool),
+            beta=0.0,
+            alpha=0.0,
+            candidate_mask=candidate_mask,
+        )
+
+    influence_radius = _positive_float_parameter(
+        intent, "sdf_influence_radius_px", _DEFAULT_INFLUENCE_RADIUS_PX
+    )
+    alpha = _positive_float_parameter(intent, "sdf_alpha_px", _DEFAULT_ALPHA_PX)
+    beta_max = _positive_float_parameter(
+        intent, "sdf_beta_max_px", _DEFAULT_EXPAND_BETA_MAX_PX
+    )
+
+    sdf = _compute_sdf(source_mask)
+    weight = _compute_boundary_weight(source_mask, influence_radius)
+    noise = _generate_smooth_noise(
+        source_mask.shape,
+        seed=intent.seed,
+        octaves=_EXPAND_NOISE_OCTAVES,
+    )
+
+    def region_for_beta(beta: float) -> np.ndarray:
+        shifted = sdf + weight * (alpha * noise + beta)
+        return shifted > 0
+
+    beta, selected = _calibrate_sdf_beta(
+        region_for_beta=region_for_beta,
+        selectable_mask=candidate_mask & ~source_mask,
+        target_count=target_count,
+        beta_min=0.0,
+        beta_max=beta_max,
+    )
+
+    selected = _keep_growth_touching_source(selected, source_mask)
+    info = _sdf_spatial_info(
+        method="sdf_noise_expansion",
+        target_count=target_count,
+        selected=selected,
+        beta=beta,
+        alpha=alpha,
+        candidate_mask=candidate_mask,
+    )
+    info["influence_radius_px"] = float(influence_radius)
+    return selected, info
+
+
+def _select_sdf_shrink_region(
+    source_mask: np.ndarray,
+    backfill_mask: np.ndarray,
+    protected_mask: np.ndarray,
+    *,
+    target_fraction: float,
+    intent: EditIntent,
+    max_selected_pixels: int | None = None,
+) -> tuple[np.ndarray, dict[str, float | int | bool | str]]:
+    target_count = _target_pixels(target_fraction, source_mask.size)
+    shrinkable_mask = source_mask & ~protected_mask
+    if target_count == 0 or not np.any(shrinkable_mask):
+        selected = np.zeros_like(source_mask, dtype=bool)
+        return selected, _sdf_spatial_info(
+            method="sdf_noise_shrink",
+            target_count=target_count,
+            selected=selected,
+            beta=0.0,
+            alpha=0.0,
+            candidate_mask=shrinkable_mask,
+        )
+
+    influence_radius = _positive_float_parameter(
+        intent, "sdf_influence_radius_px", _DEFAULT_INFLUENCE_RADIUS_PX
+    )
+    alpha = _positive_float_parameter(intent, "sdf_alpha_px", _DEFAULT_ALPHA_PX)
+    beta_max = _positive_float_parameter(
+        intent, "sdf_beta_max_px", _DEFAULT_SHRINK_BETA_MAX_PX
+    )
+    edge_margin = _nonnegative_int_parameter(
+        intent, "edge_fade_margin_px", _DEFAULT_EDGE_FADE_MARGIN_PX
+    )
+    smoothing_enabled = _bool_parameter(intent, "smooth_boundary", True)
+    smooth_sigma = _nonnegative_float_parameter(
+        intent,
+        "sdf_smooth_sigma_px",
+        4.0 if smoothing_enabled else 0.0,
+    )
+    if not smoothing_enabled:
+        smooth_sigma = 0.0
+
+    sdf = _compute_sdf(source_mask)
+    weight = _compute_boundary_weight(source_mask, influence_radius)
+    effective_edge_margin = _effective_edge_fade_margin(source_mask.shape, edge_margin)
+    if effective_edge_margin > 0:
+        weight *= _compute_edge_fade_mask(source_mask.shape, effective_edge_margin)
+    weight[protected_mask] = 0.0
+
+    noise = _generate_smooth_noise(
+        source_mask.shape,
+        seed=intent.seed,
+        octaves=_SHRINK_NOISE_OCTAVES,
+    )
+
+    def region_for_beta(beta: float) -> np.ndarray:
+        shifted = sdf - weight * (alpha * noise + beta)
+        if smooth_sigma > 0:
+            shifted = ndimage.gaussian_filter(shifted, sigma=smooth_sigma)
+        remaining = (shifted > 0) & source_mask
+        remaining |= source_mask & (weight <= 0)
+        return source_mask & ~remaining
+
+    beta, selected = _calibrate_sdf_beta(
+        region_for_beta=region_for_beta,
+        selectable_mask=shrinkable_mask,
+        target_count=target_count,
+        beta_min=0.0,
+        beta_max=beta_max,
+        prefer_under_target=True,
+    )
+
+    selected &= shrinkable_mask
+    selected = _keep_released_region_backfill_reachable(selected, backfill_mask)
+    if max_selected_pixels is not None:
+        selected = _limit_selected_by_boundary_score(
+            selected,
+            source_mask,
+            backfill_mask,
+            max_selected_pixels,
+        )
+    info = _sdf_spatial_info(
+        method="sdf_noise_shrink",
+        target_count=target_count,
+        selected=selected,
+        beta=beta,
+        alpha=alpha,
+        candidate_mask=shrinkable_mask,
+    )
+    info["influence_radius_px"] = float(influence_radius)
+    info["edge_fade_margin_px"] = int(effective_edge_margin)
+    info["requested_edge_fade_margin_px"] = int(edge_margin)
+    info["sdf_smooth_sigma_px"] = float(smooth_sigma)
+    info["smoothing_applied"] = bool(smooth_sigma > 0)
+    info["smoothing_method"] = "sdf_gaussian" if smooth_sigma > 0 else "none"
+    info["smoothing_radius"] = int(round(smooth_sigma * 2))
+    info["protected_pixels"] = int(np.count_nonzero(protected_mask))
+    return selected, info
+
+
+def _compute_sdf(source_mask: np.ndarray) -> np.ndarray:
+    source = np.asarray(source_mask, dtype=bool)
+    if not np.any(source):
+        return -ndimage.distance_transform_edt(np.ones_like(source, dtype=bool))
+    if np.all(source):
+        return ndimage.distance_transform_edt(source)
+    return ndimage.distance_transform_edt(source) - ndimage.distance_transform_edt(~source)
+
+
+def _compute_boundary_weight(source_mask: np.ndarray, radius: float) -> np.ndarray:
+    source = np.asarray(source_mask, dtype=bool)
+    if not np.any(source) or np.all(source):
+        return np.zeros(source.shape, dtype=float)
+
+    main_source = _largest_component(source)
+    dist_in = ndimage.distance_transform_edt(main_source)
+    dist_out = ndimage.distance_transform_edt(~main_source)
+    return np.clip(1.0 - np.minimum(dist_in, dist_out) / float(radius), 0.0, 1.0)
+
+
+def _largest_component(source_mask: np.ndarray) -> np.ndarray:
+    labeled, count = ndimage.label(source_mask, structure=_four_neighbor_structure())
+    if count <= 1:
+        return source_mask.astype(bool, copy=True)
+
+    areas = ndimage.sum(source_mask, labeled, range(1, count + 1))
+    largest_label = int(np.argmax(areas)) + 1
+    return labeled == largest_label
+
+
+def _compute_edge_fade_mask(shape: tuple[int, int], margin: int) -> np.ndarray:
+    if margin <= 0:
+        return np.ones(shape, dtype=float)
+
+    rows = np.arange(shape[0], dtype=float)
+    cols = np.arange(shape[1], dtype=float)
+    fade = np.ones(shape, dtype=float)
+    fade *= np.clip(rows / margin, 0.0, 1.0)[:, np.newaxis]
+    fade *= np.clip((shape[0] - 1 - rows) / margin, 0.0, 1.0)[:, np.newaxis]
+    fade *= np.clip(cols / margin, 0.0, 1.0)[np.newaxis, :]
+    fade *= np.clip((shape[1] - 1 - cols) / margin, 0.0, 1.0)[np.newaxis, :]
+    return fade
+
+
+def _effective_edge_fade_margin(shape: tuple[int, int], requested_margin: int) -> int:
+    if requested_margin <= 0:
+        return 0
+    small_patch_cap = max(1, min(shape) // 6)
+    return min(int(requested_margin), small_patch_cap)
+
+
+def _generate_smooth_noise(
+    shape: tuple[int, int],
+    *,
+    seed: int | None,
+    octaves: tuple[tuple[float, float], ...],
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    noise = np.zeros(shape, dtype=float)
+    for sigma, amplitude in octaves:
+        raw = rng.standard_normal(shape)
+        smoothed = ndimage.gaussian_filter(raw, sigma=sigma)
+        max_abs = float(np.abs(smoothed).max())
+        if max_abs > 0:
+            smoothed /= max_abs
+        noise += amplitude * smoothed
+
+    max_abs = float(np.abs(noise).max())
+    if max_abs > 0:
+        noise /= max_abs
+    return noise
+
+
+def _calibrate_sdf_beta(
+    *,
+    region_for_beta,
+    selectable_mask: np.ndarray,
+    target_count: int,
+    beta_min: float,
+    beta_max: float,
+    prefer_under_target: bool = False,
+) -> tuple[float, np.ndarray]:
+    selectable = np.asarray(selectable_mask, dtype=bool)
+    best_beta = float(beta_min)
+    best_region = np.zeros_like(selectable, dtype=bool)
+    best_error: int | None = None
+
+    for _ in range(32):
+        beta = (beta_min + beta_max) / 2.0
+        region = region_for_beta(beta) & selectable
+        count = int(np.count_nonzero(region))
+        error = abs(count - target_count)
+        is_better_tie = (
+            best_error is not None
+            and error == best_error
+            and prefer_under_target
+            and count <= target_count
+            and int(np.count_nonzero(best_region)) > target_count
+        )
+        if best_error is None or error < best_error or is_better_tie:
+            best_error = error
+            best_beta = float(beta)
+            best_region = region
+        if count < target_count:
+            beta_min = beta
+        else:
+            beta_max = beta
+
+    return best_beta, best_region
+
+
+def _keep_growth_touching_source(
+    change_region: np.ndarray, source_mask: np.ndarray
+) -> np.ndarray:
+    labeled, count = ndimage.label(change_region, structure=_four_neighbor_structure())
+    if count == 0:
+        return np.zeros_like(change_region, dtype=bool)
+    touching = ndimage.binary_dilation(source_mask, structure=_four_neighbor_structure())
+    result = np.zeros_like(change_region, dtype=bool)
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        if np.any(component & touching):
+            result |= component
+    return result
+
+
+def _keep_released_region_backfill_reachable(
+    change_region: np.ndarray, backfill_mask: np.ndarray
+) -> np.ndarray:
+    labeled, count = ndimage.label(change_region, structure=_four_neighbor_structure())
+    if count == 0:
+        return np.zeros_like(change_region, dtype=bool)
+    touching = ndimage.binary_dilation(backfill_mask, structure=_four_neighbor_structure())
+    result = np.zeros_like(change_region, dtype=bool)
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        if np.any(component & touching):
+            result |= component
+    return result
+
+
+def _limit_selected_by_boundary_score(
+    selected: np.ndarray,
+    source_mask: np.ndarray,
+    backfill_mask: np.ndarray,
+    max_pixels: int,
+) -> np.ndarray:
+    selected_count = int(np.count_nonzero(selected))
+    if max_pixels < 0:
+        max_pixels = 0
+    if selected_count <= max_pixels:
+        return selected
+    if max_pixels == 0:
+        return np.zeros_like(selected, dtype=bool)
+
+    selected_indices = np.argwhere(selected)
+    distance_to_backfill = ndimage.distance_transform_edt(~backfill_mask)
+    distance_to_tumor_core = ndimage.distance_transform_edt(source_mask)
+    score = distance_to_backfill + 0.01 * distance_to_tumor_core
+    values = score[selected_indices[:, 0], selected_indices[:, 1]]
+    order = np.argsort(values, kind="stable")
+    chosen = selected_indices[order[:max_pixels]]
+    limited = np.zeros_like(selected, dtype=bool)
+    limited[chosen[:, 0], chosen[:, 1]] = True
+    return limited
+
+
+def _sdf_spatial_info(
+    *,
+    method: str,
+    target_count: int,
+    selected: np.ndarray,
+    beta: float,
+    alpha: float,
+    candidate_mask: np.ndarray,
+) -> dict[str, float | int | bool | str]:
+    selected_pixels = int(np.count_nonzero(selected))
+    candidate_pixels = int(np.count_nonzero(candidate_mask))
+    return {
+        "method": method,
+        "target_pixels": int(target_count),
+        "selected_pixels": selected_pixels,
+        "actual_fraction": selected_pixels / selected.size,
+        "target_area_shortfall": selected_pixels < target_count,
+        "candidate_pixels": candidate_pixels,
+        "candidate_shortfall": candidate_pixels < target_count,
+        "alpha_px": float(alpha),
+        "beta_px": float(beta),
+    }
+
+
+def _positive_float_parameter(
+    intent: EditIntent, key: str, default: float
+) -> float:
+    value = intent.parameters.get(key, default)
+    if not isinstance(value, (int, float)) or float(value) <= 0:
+        raise PrimitiveExecutionError(f"parameters.{key} must be a positive number.")
+    return float(value)
+
+
+def _nonnegative_float_parameter(
+    intent: EditIntent, key: str, default: float
+) -> float:
+    value = intent.parameters.get(key, default)
+    if not isinstance(value, (int, float)) or float(value) < 0:
+        raise PrimitiveExecutionError(f"parameters.{key} must be a non-negative number.")
+    return float(value)
+
+
+def _nonnegative_int_parameter(
+    intent: EditIntent, key: str, default: int
+) -> int:
+    value = intent.parameters.get(key, default)
+    if not isinstance(value, int) or value < 0:
+        raise PrimitiveExecutionError(f"parameters.{key} must be a non-negative integer.")
+    return value
+
+
+def _bool_parameter(intent: EditIntent, key: str, default: bool) -> bool:
+    value = intent.parameters.get(key, default)
+    if not isinstance(value, bool):
+        raise PrimitiveExecutionError(f"parameters.{key} must be boolean.")
     return value
 
 
@@ -368,48 +754,6 @@ def _min_remaining_tumor_pixels(
     return int(np.ceil(float(value) * total_pixels))
 
 
-def _select_inward_boundary_band_by_fraction(
-    source_mask: np.ndarray,
-    backfill_mask: np.ndarray,
-    protected_mask: np.ndarray,
-    *,
-    target_fraction: float,
-    min_radius: int,
-    max_radius: int,
-) -> tuple[np.ndarray, dict[str, float | int | bool]]:
-    target_count = _target_pixels(target_fraction, source_mask.size)
-    if max_radius < min_radius:
-        raise PrimitiveExecutionError("max_radius must be >= min_radius.")
-
-    best_region = np.zeros_like(source_mask, dtype=bool)
-    best_radius = min_radius
-    best_error: int | None = None
-    reachable = np.asarray(backfill_mask, dtype=bool).copy()
-    structure = _four_neighbor_structure()
-
-    for radius in range(min_radius, max_radius + 1):
-        grown = ndimage.binary_dilation(reachable, structure=structure)
-        reachable |= grown & source_mask & ~protected_mask
-        region = reachable & source_mask & ~protected_mask
-        selected_pixels = int(np.count_nonzero(region))
-        error = abs(selected_pixels - target_count)
-        if best_error is None or error < best_error:
-            best_error = error
-            best_region = region
-            best_radius = radius
-        if error == 0:
-            break
-
-    selected_pixels = int(np.count_nonzero(best_region))
-    return best_region, {
-        "radius": best_radius,
-        "target_pixels": target_count,
-        "selected_pixels": selected_pixels,
-        "actual_fraction": selected_pixels / source_mask.size,
-        "target_area_shortfall": selected_pixels < target_count,
-    }
-
-
 def _protected_tumor_boundary_mask(
     mask: np.ndarray,
     source_mask: np.ndarray,
@@ -442,68 +786,6 @@ def _external_background_mask(mask: np.ndarray, skip_fine_ids: frozenset[int]) -
     if not border_labels:
         return np.zeros(mask.shape, dtype=bool)
     return np.isin(labeled, tuple(border_labels))
-
-
-def _maybe_smooth_decrease_region(
-    change_region: np.ndarray,
-    source_mask: np.ndarray,
-    backfill_mask: np.ndarray,
-    protected_mask: np.ndarray,
-    intent: EditIntent,
-) -> tuple[np.ndarray, dict[str, int | bool | str]]:
-    enabled = intent.parameters.get("smooth_boundary", True)
-    if not isinstance(enabled, bool):
-        raise PrimitiveExecutionError("parameters.smooth_boundary must be boolean.")
-
-    radius = intent.parameters.get("smooth_radius", 6)
-    if not isinstance(radius, int) or radius < 0:
-        raise PrimitiveExecutionError("parameters.smooth_radius must be a non-negative integer.")
-
-    if not enabled or radius == 0 or not np.any(change_region):
-        return change_region, {
-            "smoothing_applied": False,
-            "smoothing_method": "none",
-            "smoothing_radius": 0,
-        }
-
-    shrinkable_mask = source_mask & ~protected_mask
-    desired_pixels = int(np.count_nonzero(change_region))
-    sigma = max(1.0, radius / 2)
-    blurred_change = ndimage.gaussian_filter(change_region.astype(float), sigma=sigma)
-    distance_to_backfill = ndimage.distance_transform_edt(~backfill_mask)
-    score = blurred_change - 0.015 * distance_to_backfill
-
-    corrected = _select_top_scoring_region(
-        score,
-        shrinkable_mask,
-        desired_pixels,
-    )
-
-    return corrected, {
-        "smoothing_applied": True,
-        "smoothing_method": "gaussian_threshold",
-        "smoothing_radius": radius,
-    }
-
-
-def _select_top_scoring_region(
-    score: np.ndarray,
-    candidate_mask: np.ndarray,
-    desired_pixels: int,
-) -> np.ndarray:
-    selected = np.zeros(candidate_mask.shape, dtype=bool)
-    candidate_indices = np.argwhere(candidate_mask)
-    if candidate_indices.size == 0 or desired_pixels <= 0:
-        return selected
-
-    desired_pixels = min(desired_pixels, len(candidate_indices))
-    order = np.argsort(
-        -score[candidate_indices[:, 0], candidate_indices[:, 1]],
-        kind="stable",
-    )
-    chosen = candidate_indices[order[:desired_pixels]]
-    selected[chosen[:, 0], chosen[:, 1]] = True
-    return selected
 
 
 def _four_neighbor_structure() -> np.ndarray:
