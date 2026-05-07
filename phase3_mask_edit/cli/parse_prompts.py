@@ -1,5 +1,3 @@
-"""CLI for Phase 3 prompt parsing and intent planning."""
-
 from __future__ import annotations
 
 import argparse
@@ -7,8 +5,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from phase3_mask_edit.core.mask_io import load_id_mask, load_metadata, save_metadata
+from phase3_mask_edit.core.mask_io import load_id_mask, save_metadata
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
+from phase3_mask_edit.parser.qwen_local_parser import (
+    QwenLocalParserConfig,
+    parse_prompts_with_qwen_local,
+)
 from phase3_mask_edit.parser.semantic_diff import (
     load_semantic_diff,
     save_semantic_diff,
@@ -49,6 +51,35 @@ def main(argv: list[str] | None = None) -> int:
             "api_base_url": args.api_base_url,
             "api_key_env": args.api_key_env,
             "api_model": args.api_model,
+            "use_few_shot": not args.no_few_shot,
+        }
+    elif args.parser == "qwen-local":
+        if not args.qwen_model_path:
+            parser.error("--qwen-model-path is required when --parser qwen-local is used")
+        if old_prompt is None or new_prompt is None:
+            parser.error("--old-prompt/--new-prompt or prompt files are required")
+        config = QwenLocalParserConfig(
+            model_path=args.qwen_model_path,
+            device=args.qwen_device,
+            max_new_tokens=args.qwen_max_new_tokens,
+            temperature=args.qwen_temperature,
+            top_p=args.qwen_top_p,
+            do_sample=not args.qwen_greedy,
+            use_few_shot=not args.no_few_shot,
+        )
+        semantic_diff = parse_prompts_with_qwen_local(
+            old_prompt,
+            new_prompt,
+            config=config,
+        )
+        parser_info = {
+            "mode": "qwen-local",
+            "model_path": args.qwen_model_path,
+            "device": args.qwen_device,
+            "max_new_tokens": args.qwen_max_new_tokens,
+            "temperature": args.qwen_temperature,
+            "top_p": args.qwen_top_p,
+            "do_sample": not args.qwen_greedy,
             "use_few_shot": not args.no_few_shot,
         }
     else:
@@ -96,9 +127,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--parser",
-        choices=("api", "fixture"),
+        choices=("api", "qwen-local", "fixture"),
         default="fixture",
-        help="Parser mode. fixture requires --semantic-diff; api calls a model API.",
+        help=(
+            "Parser mode. fixture requires --semantic-diff; api calls a model API; "
+            "qwen-local loads a local Qwen model."
+        ),
     )
     parser.add_argument("--mask", type=Path, help="Optional original id mask for applicability.")
     parser.add_argument("--output", required=True, type=Path, help="Output directory.")
@@ -107,6 +141,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-model", help="Model name for API parser mode.")
     parser.add_argument("--api-timeout-sec", type=float, default=60.0)
     parser.add_argument("--api-temperature", type=float, default=0.0)
+    parser.add_argument("--qwen-model-path", help="Local Qwen model path.")
+    parser.add_argument("--qwen-device", default="cuda")
+    parser.add_argument("--qwen-max-new-tokens", type=int, default=256)
+    parser.add_argument("--qwen-temperature", type=float, default=0.1)
+    parser.add_argument("--qwen-top-p", type=float, default=0.9)
+    parser.add_argument("--qwen-greedy", action="store_true")
     parser.add_argument("--no-few-shot", action="store_true")
     parser.add_argument("--print-summary", action="store_true")
     return parser
@@ -122,3 +162,15 @@ def _read_text_arg(value: str | None, path: Path | None) -> str | None:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+"""
+python -m phase3_mask_edit.cli.parse_prompts \
+  --profile BCSS \
+  --old-prompt "High-grade carcinoma without necrosis." \
+  --new-prompt "High-grade carcinoma with focal necrosis." \
+  --parser api \
+  --api-base-url "https://api.cursorai.art/console/v1" \
+  --api-key-env "sk-dz8Ubk5NyvxyjG3384xyygUhgF18gBIFozee90C8FlI7vhhf" \
+  --api-model gpt-4o \
+  --output /Users/wangqinxin/Documents/GitHub/Pathology_edit/phase3_mask_edit/previews \
+  --print-summary
+"""

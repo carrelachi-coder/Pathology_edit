@@ -13,6 +13,8 @@ from phase3_mask_edit.parser.semantic_diff import (
     save_semantic_diff,
     validate_semantic_diff,
 )
+from phase3_mask_edit.parser.api_parser import FEW_SHOT_EXAMPLES, SYSTEM_PROMPT
+from phase3_mask_edit.parser.qwen_local_parser import canonicalize_qwen_response
 
 
 class Phase3SemanticDiffSchemaTests(unittest.TestCase):
@@ -82,6 +84,62 @@ class Phase3SemanticDiffSchemaTests(unittest.TestCase):
             loaded = load_semantic_diff(path)
 
         self.assertEqual(loaded, DEFAULT_SEMANTIC_DIFF)
+
+    def test_qwen_response_canonicalization_adds_schema_version(self):
+        response = json.dumps(
+            {
+                "tumor_change": {
+                    "growth": "none",
+                    "degree": "mild",
+                    "grade_change": "none",
+                },
+                "lymphocyte_change": {
+                    "infiltration": "increase",
+                    "degree": "moderate",
+                },
+                "necrosis_change": {
+                    "action": "add",
+                    "extent": "focal",
+                },
+                "stroma_change": {
+                    "density": "none",
+                    "degree": "moderate",
+                },
+            }
+        )
+
+        normalized = canonicalize_qwen_response(response)
+
+        self.assertEqual(normalized["schema_version"], "0.1")
+        self.assertEqual(normalized["lymphocyte_change"]["infiltration"], "increase")
+
+    def test_phase3_prompt_keeps_legacy_few_shot_coverage(self):
+        self.assertIn("CRITICAL RULES", SYSTEM_PROMPT)
+        self.assertIn("Stroma being consumed by tumor expansion", SYSTEM_PROMPT)
+        self.assertGreaterEqual(len(FEW_SHOT_EXAMPLES), 9)
+
+        outputs = [example[2] for example in FEW_SHOT_EXAMPLES]
+        self.assertTrue(
+            any(
+                output["tumor_change"]["growth"] == "decrease"
+                for output in outputs
+            )
+        )
+        self.assertTrue(
+            any(
+                output["necrosis_change"]["action"] == "decrease"
+                for output in outputs
+            )
+        )
+        self.assertTrue(
+            any(
+                output["stroma_change"]["density"] == "increase"
+                for output in outputs
+            )
+        )
+        self.assertTrue(
+            all(output["schema_version"] == "0.1" for output in outputs)
+        )
 
 
 if __name__ == "__main__":

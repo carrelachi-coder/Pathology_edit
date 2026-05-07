@@ -1,5 +1,6 @@
 """API-backed prompt parser for Phase 3 semantic diffs."""
 
+
 from __future__ import annotations
 
 import json
@@ -18,64 +19,198 @@ from phase3_mask_edit.parser.semantic_diff import (
 )
 
 
-SYSTEM_PROMPT = """You are a pathology report difference analyzer. Compare an ORIGINAL report and an EDITED report, then output ONLY a JSON object matching the schema.
+SYSTEM_PROMPT = """You are a pathology report difference analyzer. You compare an ORIGINAL report and an EDITED report, and output ONLY the changes as a JSON object.
 
-Rules:
-1. Only report changes explicitly stated in the text.
-2. If a feature is described the same way in both reports, or is not mentioned as changing, output "none" for that feature.
-3. Prefer false negatives over hallucinated edits.
-4. grade_change refers to histological grade or differentiation only, not tumor size.
-5. Treatment response, residual tumor, regression, or shrinkage means tumor growth is "decrease".
-6. Stroma density changes only when desmoplasia/fibrosis/stromal density is explicitly described as changing.
+The downstream consumer is the Phase3 pathology mask-edit planner. It will map this JSON into deterministic EditIntent primitives, so conservative explicit-change detection is more important than broad inference.
 
-Required JSON schema:
+CRITICAL RULES:
+1. ONLY report changes that are EXPLICITLY stated in the text. Do NOT infer or assume changes.
+2. If a feature (necrosis, lymphocytes, stroma, etc.) is described THE SAME WAY in both reports, or is NOT MENTIONED in the edited report, set it to "none".
+3. If necrosis is mentioned identically in both reports (e.g., both say "extensive necrosis"), necrosis_change.action = "none".
+4. If stroma is not explicitly discussed as changing, stroma_change.density = "none". Stroma being consumed by tumor expansion is NOT a stroma density change.
+5. When in doubt, output "none". It is much better to miss a subtle change than to hallucinate one.
+6. grade_change refers to histological grade / differentiation ONLY, not tumor size. If grade or differentiation changes but tumor extent does not, set growth = "none".
+7. If the report describes treatment effect (tumor regression, residual tumor, therapy response), set growth = "decrease".
+
+Output ONLY this JSON schema:
 {
   "schema_version": "0.1",
   "tumor_change": {
-    "growth": "none|increase|decrease",
-    "degree": "mild|moderate|significant",
-    "grade_change": "none|upgrade|downgrade"
+    "growth": "none" | "increase" | "decrease",
+    "degree": "mild" | "moderate" | "significant",
+    "grade_change": "none" | "upgrade" | "downgrade"
   },
   "lymphocyte_change": {
-    "infiltration": "none|increase|decrease",
-    "degree": "mild|moderate|significant"
+    "infiltration": "none" | "increase" | "decrease",
+    "degree": "mild" | "moderate" | "significant"
   },
   "necrosis_change": {
-    "action": "none|add|increase|decrease|remove",
-    "extent": "focal|moderate|extensive"
+    "action": "none" | "add" | "increase" | "decrease" | "remove",
+    "extent": "focal" | "moderate" | "extensive"
   },
   "stroma_change": {
-    "density": "none|increase|decrease",
-    "degree": "mild|moderate|significant"
+    "density": "none" | "increase" | "decrease",
+    "degree": "mild" | "moderate" | "significant"
   }
 }
+
+Field mapping rules:
+
+TUMOR_CHANGE:
+- growth: ONLY if the report explicitly describes tumor size/volume/extent changing. "expansion", "enlarged", "occupying majority" -> increase. "residual", "regression", "treatment effect", "shrinkage" -> decrease.
+- degree: mild = minor wording change. moderate = clear change. significant = dramatic change.
+- grade_change: ONLY if grade or differentiation explicitly changes. "well-differentiated" -> "poorly-differentiated" = upgrade. "high-grade" -> "intermediate-to-low-grade" = downgrade. If grade stays the same, = "none".
+
+LYMPHOCYTE_CHANGE:
+- infiltration: ONLY if TIL/lymphocyte description explicitly changes. "sparse" -> "dense" = increase. "brisk TILs" -> "sparse TILs" = decrease.
+- If lymphocytes are not mentioned in either report, set to "none".
+
+NECROSIS_CHANGE:
+- action: ONLY if necrosis description explicitly changes between the two reports.
+  - "no necrosis" -> "focal necrosis" = add
+  - "focal" -> "extensive" = increase
+  - "extensive necrosis" -> "limited necrosis with fibrotic repair" = decrease
+  - "necrosis" -> "no necrosis" = remove
+  - Both say "extensive necrosis" = "none" (NO CHANGE)
+- If necrosis is described the same way in both reports, action MUST be "none".
+
+STROMA_CHANGE:
+- density: ONLY if stromal density/desmoplasia/fibrosis is explicitly described as changing. "fibrous stroma" -> "dense desmoplastic stroma" = increase. Almost always "none".
+- degree: mild/moderate/significant, only meaningful when density != "none".
 
 Output JSON only. No markdown. No explanation."""
 
 
 FEW_SHOT_EXAMPLES: tuple[tuple[str, str, Mapping[str, Any]], ...] = (
     (
+        "Well-differentiated invasive ductal carcinoma forming tubular structures, with minimal lymphocytic response. No necrosis identified.",
+        "Poorly-differentiated invasive ductal carcinoma with solid growth pattern, moderate lymphocytic infiltrate and focal necrosis.",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "increase",
+                "degree": "moderate",
+                "grade_change": "upgrade",
+            },
+            "lymphocyte_change": {
+                "infiltration": "increase",
+                "degree": "moderate",
+            },
+            "necrosis_change": {"action": "add", "extent": "focal"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
+        "High-grade invasive ductal carcinoma with extensive necrosis. A small viable tumor island is present.",
+        "High-grade invasive ductal carcinoma with extensive necrosis. The viable tumor shows moderate expansion into surrounding stroma.",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "increase",
+                "degree": "moderate",
+                "grade_change": "none",
+            },
+            "lymphocyte_change": {"infiltration": "none", "degree": "mild"},
+            "necrosis_change": {"action": "none", "extent": "focal"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
+        "Invasive carcinoma with sparse peritumoral lymphocytes.",
+        "Invasive carcinoma with brisk tumor-infiltrating lymphocytes (TILs >50%).",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "none",
+                "degree": "mild",
+                "grade_change": "none",
+            },
+            "lymphocyte_change": {
+                "infiltration": "increase",
+                "degree": "significant",
+            },
+            "necrosis_change": {"action": "none", "extent": "focal"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
         "Grade II invasive ductal carcinoma with moderate TILs and focal necrosis.",
         "Grade II invasive ductal carcinoma with moderate TILs and focal necrosis.",
         DEFAULT_SEMANTIC_DIFF,
     ),
     (
-        "High-grade carcinoma without necrosis.",
-        "High-grade carcinoma with focal necrosis.",
+        "High-grade carcinoma with small foci of necrosis. Sparse TILs.",
+        "High-grade carcinoma with extensive comedo-type necrosis. Sparse TILs.",
         {
-            **DEFAULT_SEMANTIC_DIFF,
-            "necrosis_change": {"action": "add", "extent": "focal"},
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "none",
+                "degree": "mild",
+                "grade_change": "none",
+            },
+            "lymphocyte_change": {"infiltration": "none", "degree": "mild"},
+            "necrosis_change": {"action": "increase", "extent": "extensive"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
         },
     ),
     (
-        "Invasive carcinoma with sparse peritumoral lymphocytes.",
-        "Invasive carcinoma with brisk tumor-infiltrating lymphocytes.",
+        "High-grade invasive ductal carcinoma occupying most of the field. Moderate stromal component.",
+        "Invasive ductal carcinoma with treatment effect. Residual tumor nests are small, scattered within fibrotic stroma. Decreased cellularity with scattered tumor cell necrosis and pyknotic nuclei.",
         {
-            **DEFAULT_SEMANTIC_DIFF,
-            "lymphocyte_change": {
-                "infiltration": "increase",
-                "degree": "significant",
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "decrease",
+                "degree": "moderate",
+                "grade_change": "none",
             },
+            "lymphocyte_change": {"infiltration": "none", "degree": "mild"},
+            "necrosis_change": {"action": "none", "extent": "focal"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
+        "Invasive ductal carcinoma, high histological grade. Tumor cells with marked nuclear atypia and frequent mitotic figures.",
+        "Invasive ductal carcinoma, intermediate-to-low histological grade. Tumor cells are well-differentiated with mild nuclear atypia and rare mitotic figures.",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "none",
+                "degree": "moderate",
+                "grade_change": "downgrade",
+            },
+            "lymphocyte_change": {"infiltration": "none", "degree": "mild"},
+            "necrosis_change": {"action": "none", "extent": "focal"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
+        "High-grade carcinoma. Extensive coagulative necrosis occupies a large portion of the field.",
+        "High-grade carcinoma. The necrotic area is limited, with a peripheral fibrotic reparative zone containing macrophage infiltration and fibroblast proliferation.",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "none",
+                "degree": "mild",
+                "grade_change": "none",
+            },
+            "lymphocyte_change": {"infiltration": "none", "degree": "mild"},
+            "necrosis_change": {"action": "decrease", "extent": "moderate"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
+        "Invasive carcinoma with loose myxoid stroma and scattered adipose tissue between tumor nests.",
+        "Invasive carcinoma with dense desmoplastic stroma. Collagenous fibrous tissue replaces the previously loose stroma, with markedly reduced cellularity in the stromal compartment.",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "none",
+                "degree": "mild",
+                "grade_change": "none",
+            },
+            "lymphocyte_change": {"infiltration": "none", "degree": "mild"},
+            "necrosis_change": {"action": "none", "extent": "focal"},
+            "stroma_change": {"density": "increase", "degree": "moderate"},
         },
     ),
 )
