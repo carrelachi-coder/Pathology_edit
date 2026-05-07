@@ -1,6 +1,5 @@
 name: pathology-phase3-parser
 channels:
-  - pytorch
   - conda-forge
   - defaults
 dependencies:
@@ -13,11 +12,3 @@ dependencies:
   - pytest>=7.4
   - pandas>=2.0
   - matplotlib>=3.7
-  - pytorch>=2.1
-  - torchvision>=0.16
-  - pip:
-      - transformers>=4.45
-      - accelerate>=0.30
-      - safetensors>=0.4
-      - sentencepiece>=0.2
-      - protobuf>=4.25

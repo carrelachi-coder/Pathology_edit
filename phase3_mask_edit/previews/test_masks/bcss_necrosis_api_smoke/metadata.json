@@ -1,0 +1,22 @@
+{
+  "description": "Synthetic BCSS-style Phase3 id mask for prompt-to-mask smoke tests. Contains tumor and stroma but no necrosis, so necrosis_appearance can be tested.",
+  "profile": "BCSS",
+  "shape": [
+    256,
+    256
+  ],
+  "labels": {
+    "0": "Background",
+    "1": "Tumor",
+    "2": "Stroma",
+    "4": "Immune infiltrate",
+    "5": "Normal epithelium",
+    "6": "Blood vessel",
+    "7": "Other tissue",
+    "14": "DCIS tumor fine subtype"
+  },
+  "contains_necrosis": false,
+  "recommended_old_prompt": "High-grade carcinoma without necrosis.",
+  "recommended_new_prompt": "High-grade carcinoma with focal necrosis.",
+  "recommended_command_note": "Use source_mask.png as --mask with --profile BCSS and parse_prompts --execute."
+}

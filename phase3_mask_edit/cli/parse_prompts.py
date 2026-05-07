@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from phase3_mask_edit.cli.edit_from_intents import (
+    execute_intents_on_mask,
+    save_sequential_execution_output,
+)
 from phase3_mask_edit.core.mask_io import load_id_mask, save_metadata
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
@@ -105,6 +109,23 @@ def main(argv: list[str] | None = None) -> int:
     planning_summary["parser"] = parser_info
     save_metadata(planning_summary, output_dir / "planning_summary.json")
 
+    if args.execute:
+        if old_mask is None:
+            parser.error("--mask is required when --execute is used")
+        execution_result = execute_intents_on_mask(
+            old_mask,
+            plan.intents,
+            reference_profile=args.profile,
+            stop_on_failure=not args.continue_on_failure,
+        )
+        execution_dir = output_dir / "mask_edit"
+        save_sequential_execution_output(execution_result, execution_dir)
+        planning_summary["execution"] = {
+            "output_dir": str(execution_dir),
+            **execution_result.to_metadata(),
+        }
+        save_metadata(planning_summary, output_dir / "planning_summary.json")
+
     if args.print_summary:
         print(json.dumps(planning_summary, indent=2, ensure_ascii=False))
 
@@ -148,6 +169,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--qwen-top-p", type=float, default=0.9)
     parser.add_argument("--qwen-greedy", action="store_true")
     parser.add_argument("--no-few-shot", action="store_true")
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="After planning, execute intents on --mask and write edited mask artifacts.",
+    )
+    parser.add_argument("--continue-on-failure", action="store_true")
     parser.add_argument("--print-summary", action="store_true")
     return parser
 
@@ -162,15 +189,3 @@ def _read_text_arg(value: str | None, path: Path | None) -> str | None:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-"""
-python -m phase3_mask_edit.cli.parse_prompts \
-  --profile BCSS \
-  --old-prompt "High-grade carcinoma without necrosis." \
-  --new-prompt "High-grade carcinoma with focal necrosis." \
-  --parser api \
-  --api-base-url "https://api.cursorai.art/console/v1" \
-  --api-key-env "sk-dz8Ubk5NyvxyjG3384xyygUhgF18gBIFozee90C8FlI7vhhf" \
-  --api-model gpt-4o \
-  --output /Users/wangqinxin/Documents/GitHub/Pathology_edit/phase3_mask_edit/previews \
-  --print-summary
-"""
