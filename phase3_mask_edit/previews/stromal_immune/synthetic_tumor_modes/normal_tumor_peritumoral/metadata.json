@@ -1,0 +1,17 @@
+{
+  "case": "normal_tumor_peritumoral",
+  "target_change_fraction": 0.16,
+  "changed_area_fraction": 0.0927886962890625,
+  "changed_stroma_fraction": 0.1549102025219717,
+  "changed_stroma_immune_fraction": 0.1549102025219717,
+  "selected_pixels": 6081,
+  "tumor_mode": "normal",
+  "tumor_fraction": 0.1395416259765625,
+  "selected_components": 1,
+  "active_weights": {
+    "peritumoral_proximity": 0.6111111111111112,
+    "smooth_noise": 0.38888888888888884
+  },
+  "hard_distance_limit_px": null,
+  "panel": "phase3_mask_edit/previews/stromal_immune/synthetic_tumor_modes/normal_tumor_peritumoral/panel.png"
+}

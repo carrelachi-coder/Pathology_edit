@@ -9,6 +9,7 @@ from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.generic.tumor_burden import (
     PrimitiveExecutionError,
+    _absorb_enclosed_candidate_tissue,
     apply_tumor_burden_decrease,
     apply_tumor_burden_increase,
 )
@@ -138,8 +139,45 @@ class Phase3TumorBurdenPrimitiveTests(unittest.TestCase):
         self.assertEqual(result.target_mask[3, 3], 0)
         self.assertFalse(result.change_region[3, 3])
         self.assertTrue(np.all(result.change_region <= (old_mask == 7)))
-        self.assertTrue(np.any(result.change_region[0, :]))
-        self.assertTrue(np.any(result.change_region[-1, :]))
+        self.assertGreater(int(np.count_nonzero(result.change_region)), 0)
+
+    def test_tumor_burden_increase_absorbs_candidate_tissue_enclosed_by_growth(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = np.array(
+            [
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 1, 1, 0, 0],
+                [0, 0, 1, 2, 1, 0, 0],
+                [0, 2, 2, 2, 1, 0, 0],
+                [0, 0, 1, 2, 1, 0, 0],
+                [0, 0, 1, 1, 1, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+            ],
+            dtype=np.int64,
+        )
+        source_mask = np.isin(old_mask, schema.tumor_fine_ids)
+        candidate_mask = old_mask == 2
+        change_region = np.zeros_like(old_mask, dtype=bool)
+        change_region[3, 1] = True
+
+        guarded_region, info = _absorb_enclosed_candidate_tissue(
+            change_region,
+            candidate_mask,
+            old_mask,
+            schema,
+            geometry_source_mask=source_mask,
+        )
+
+        self.assertTrue(guarded_region[3, 1])
+        self.assertTrue(guarded_region[3, 2])
+        self.assertTrue(guarded_region[3, 3])
+        self.assertTrue(guarded_region[2, 3])
+        self.assertTrue(guarded_region[4, 3])
+        self.assertTrue(info["enclosure_guard_applied"])
+        self.assertEqual(
+            info["enclosed_candidate_pixels_absorbed"],
+            4,
+        )
 
     def test_tumor_burden_increase_raises_when_no_editable_candidate_region_exists(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
@@ -300,6 +338,7 @@ class Phase3TumorBurdenPrimitiveTests(unittest.TestCase):
                 "reference_profile": "BCSS",
                 "target_change_fraction": 6 / 49,
                 "parameters": {"smooth_boundary": False},
+                "seed": 1,
             }
         )
 

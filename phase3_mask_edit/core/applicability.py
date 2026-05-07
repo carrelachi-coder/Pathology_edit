@@ -64,6 +64,11 @@ def assess_edit_applicability(
         if label not in schema.readable_labels or label not in schema.writable_labels:
             reasons.append(f"required_label_not_readable_or_writable:{label}")
 
+    if source_label and source_label not in schema.readable_labels:
+        reasons.append(f"source_label_not_readable:{source_label}")
+    if target_label and target_label not in schema.writable_labels:
+        reasons.append(f"target_label_not_writable:{target_label}")
+
     if intent.target_label and intent.target_label not in schema.writable_labels:
         reasons.append(f"target_label_not_writable:{intent.target_label}")
 

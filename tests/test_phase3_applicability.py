@@ -66,7 +66,7 @@ class Phase3ApplicabilityTests(unittest.TestCase):
 
         self.assertEqual(decision.status, "rejected")
         self.assertIn(
-            "required_label_not_readable_or_writable:Immune infiltrate",
+            "target_label_not_writable:Immune infiltrate",
             decision.reasons,
         )
 

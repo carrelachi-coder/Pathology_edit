@@ -65,7 +65,15 @@ def validate_edit_result(
 
     # ── global checks ──────────────────────────────────────────
     checks.append(_check_change_area_nonempty(change_region, primitive_name))
-    checks.append(_check_change_area_range(changed_area_fraction, primitive_config))
+    checks.append(
+        _check_change_area_range(
+            changed_area_fraction,
+            primitive_config,
+            src_mask=src_mask,
+            change_region=change_region,
+            schema=schema,
+        )
+    )
     checks.append(_check_label_legality(target_mask, schema))
     checks.append(_check_no_background_leakage(src_mask, target_mask, change_region, schema))
 
@@ -114,10 +122,33 @@ def _check_change_area_nonempty(
 
 
 def _check_change_area_range(
-    changed_area_fraction: float, primitive_config: Mapping[str, Any]
+    changed_area_fraction: float,
+    primitive_config: Mapping[str, Any],
+    src_mask: np.ndarray | None = None,
+    change_region: np.ndarray | None = None,
+    schema: MaskProfileSchema | None = None,
 ) -> ValidationCheck:
     ranges = primitive_config.get("parameter_ranges", {})
     defaults = primitive_config.get("_defaults", {})
+
+    if (
+        primitive_config.get("name") == "necrosis_appearance"
+        and src_mask is not None
+        and change_region is not None
+        and schema is not None
+    ):
+        return _check_necrosis_tumor_relative_change_area(
+            src_mask, change_region, schema, ranges
+        )
+    if (
+        primitive_config.get("name") == "stromal_immune_infiltration"
+        and src_mask is not None
+        and change_region is not None
+        and schema is not None
+    ):
+        return _check_stromal_immune_compartment_relative_change_area(
+            src_mask, change_region, schema, ranges
+        )
 
     min_fraction = _resolve_min_changed_area(ranges, defaults)
     max_fraction = _resolve_max_changed_area(ranges, defaults)
@@ -136,6 +167,97 @@ def _check_change_area_range(
     return ValidationCheck(
         "change_area_within_range", False,
         f"changed_area_fraction={changed_area_fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _check_necrosis_tumor_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    ranges: Mapping[str, Any],
+) -> ValidationCheck:
+    tumor_pixels = int(np.count_nonzero(np.isin(src_mask, schema.tumor_fine_ids)))
+    if tumor_pixels == 0:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "no tumor pixels for tumor-relative necrosis change area.",
+        )
+
+    changed_tumor_fraction = int(np.count_nonzero(change_region)) / tumor_pixels
+    min_fraction = _min_interval_lower_bound(
+        ranges.get("target_changed_area_fraction", {})
+    )
+    max_fraction = float(ranges.get("max_necrosis_fraction_of_tumor", 0.60))
+    if min_fraction is None:
+        min_fraction = 0.0
+
+    if min_fraction <= changed_tumor_fraction <= max_fraction:
+        return ValidationCheck(
+            "change_area_within_range",
+            True,
+            f"changed_tumor_fraction={changed_tumor_fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "change_area_within_range",
+        False,
+        f"changed_tumor_fraction={changed_tumor_fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _check_stromal_immune_compartment_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    ranges: Mapping[str, Any],
+) -> ValidationCheck:
+    if "Stroma" not in schema.readable_labels:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "Stroma label not in schema for stromal-immune change area.",
+        )
+    if "Immune infiltrate" not in schema.readable_labels:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "Immune label not in schema for stromal-immune change area.",
+        )
+
+    stroma_ids = schema.resolve_fine_ids("Stroma")
+    immune_ids = schema.resolve_fine_ids("Immune infiltrate")
+    reference_pixels = int(
+        np.count_nonzero(np.isin(src_mask, stroma_ids + immune_ids))
+    )
+    if reference_pixels == 0:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "no stroma/immune pixels for compartment-relative change area.",
+        )
+
+    changed_fraction = int(np.count_nonzero(change_region)) / reference_pixels
+    min_fraction = _min_interval_lower_bound(
+        ranges.get("immune_area_delta_fraction", {})
+    )
+    max_fraction = float(ranges.get("max_changed_area_fraction", 0.40))
+    if min_fraction is None:
+        min_fraction = 0.0
+
+    if min_fraction <= changed_fraction <= max_fraction:
+        return ValidationCheck(
+            "change_area_within_range",
+            True,
+            f"changed_stroma_immune_fraction={changed_fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "change_area_within_range",
+        False,
+        f"changed_stroma_immune_fraction={changed_fraction:.4f} outside "
         f"[{min_fraction:.2f}, {max_fraction:.2f}]",
     )
 
@@ -778,6 +900,23 @@ def _resolve_min_changed_area(
     if isinstance(value, (int, float)):
         return float(value)
     return 0.08
+
+
+def _min_interval_lower_bound(value: Any) -> float | None:
+    lower_bounds: list[float] = []
+    if isinstance(value, Mapping):
+        for nested in value.values():
+            lower = _min_interval_lower_bound(nested)
+            if lower is not None:
+                lower_bounds.append(lower)
+    elif (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(isinstance(item, (int, float)) for item in value)
+    ):
+        lower_bounds.append(float(value[0]))
+
+    return min(lower_bounds) if lower_bounds else None
 
 
 def _resolve_max_changed_area(

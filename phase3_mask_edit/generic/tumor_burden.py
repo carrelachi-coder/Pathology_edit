@@ -80,15 +80,22 @@ def apply_tumor_burden_increase(
     if not np.any(source_mask):
         raise PrimitiveExecutionError("no tumor source region for tumor growth.")
     geometry_source_mask = _filled_tumor_geometry_mask(source_mask)
-    internal_holes = geometry_source_mask & ~source_mask
-
+    editable_candidate_mask = candidate_selection.candidate_mask
     change_region, spatial_info = _select_sdf_expansion_region(
         source_mask,
-        candidate_selection.candidate_mask & ~internal_holes,
+        editable_candidate_mask,
         target_fraction=target_fraction,
         intent=intent,
         geometry_source_mask=geometry_source_mask,
     )
+    change_region, enclosure_info = _absorb_enclosed_candidate_tissue(
+        change_region,
+        editable_candidate_mask,
+        context.normalized_mask,
+        schema,
+        geometry_source_mask=geometry_source_mask,
+    )
+    spatial_info.update(enclosure_info)
     selected_pixels = int(np.count_nonzero(change_region))
     if selected_pixels == 0:
         raise PrimitiveExecutionError("no editable boundary candidate region for tumor growth.")
@@ -598,6 +605,80 @@ def _keep_growth_touching_source(
         if np.any(component & touching):
             result |= component
     return result
+
+
+def _absorb_enclosed_candidate_tissue(
+    change_region: np.ndarray,
+    candidate_mask: np.ndarray,
+    mask: np.ndarray,
+    schema: MaskProfileSchema,
+    *,
+    geometry_source_mask: np.ndarray,
+) -> tuple[np.ndarray, dict[str, int | bool | tuple[int, ...]]]:
+    """Include editable tissue islands enclosed by the post-growth tumor boundary."""
+
+    necrosis_mask = _necrosis_mask(mask, schema)
+    barrier_mask = geometry_source_mask | change_region | necrosis_mask
+    external_non_barrier = _external_component_mask(~barrier_mask)
+    residual_candidates = candidate_mask & ~change_region
+    labeled, count = ndimage.label(
+        residual_candidates,
+        structure=_four_neighbor_structure(),
+    )
+
+    absorbed = np.zeros_like(change_region, dtype=bool)
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        if not np.any(component & external_non_barrier):
+            absorbed |= component
+
+    absorbed_pixels = int(np.count_nonzero(absorbed))
+    if absorbed_pixels == 0:
+        return change_region, {
+            "enclosed_candidate_components_absorbed": 0,
+            "enclosed_candidate_pixels_absorbed": 0,
+            "enclosure_guard_applied": False,
+            "enclosed_candidate_labels_absorbed": (),
+        }
+
+    absorbed_labels = tuple(
+        sorted(int(label) for label in np.unique(mask[absorbed]).tolist())
+    )
+    return change_region | absorbed, {
+        "enclosed_candidate_components_absorbed": int(
+            ndimage.label(absorbed, structure=_four_neighbor_structure())[1]
+        ),
+        "enclosed_candidate_pixels_absorbed": absorbed_pixels,
+        "enclosure_guard_applied": True,
+        "enclosed_candidate_labels_absorbed": absorbed_labels,
+    }
+
+
+def _necrosis_mask(mask: np.ndarray, schema: MaskProfileSchema) -> np.ndarray:
+    if "Necrosis" not in schema.readable_labels:
+        return np.zeros(mask.shape, dtype=bool)
+    return np.isin(mask, schema.resolve_fine_ids("Necrosis"))
+
+
+def _external_component_mask(mask: np.ndarray) -> np.ndarray:
+    component_mask = np.asarray(mask, dtype=bool)
+    if not np.any(component_mask):
+        return np.zeros(component_mask.shape, dtype=bool)
+
+    labeled, component_count = ndimage.label(
+        component_mask,
+        structure=_four_neighbor_structure(),
+    )
+    if component_count == 0:
+        return np.zeros(component_mask.shape, dtype=bool)
+
+    border_labels = set(int(label) for label in labeled[0, :] if label)
+    border_labels.update(int(label) for label in labeled[-1, :] if label)
+    border_labels.update(int(label) for label in labeled[:, 0] if label)
+    border_labels.update(int(label) for label in labeled[:, -1] if label)
+    if not border_labels:
+        return np.zeros(component_mask.shape, dtype=bool)
+    return np.isin(labeled, tuple(border_labels))
 
 
 def _keep_released_region_backfill_reachable(

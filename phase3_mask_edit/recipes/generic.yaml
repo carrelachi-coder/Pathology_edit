@@ -294,12 +294,12 @@ primitives:
     version: v1
     pathology_meaning: stromal TIL increase around tumor
     required_tissue_labels:
-      - Tumor
       - Stroma
-      - Immune infiltrate
     required_context:
       - sufficient_peritumoral_stroma
     optional_tissue_labels:
+      - Tumor
+      - Immune infiltrate
       - Other tissue
       - Normal epithelium
     mask_operation:
@@ -307,7 +307,8 @@ primitives:
       source: Stroma
       target: Immune infiltrate
     spatial_pattern:
-      region: outside_tumor_within_radius
+      region: outside_tumor_stroma
+      distance_policy: peritumoral_priority_no_hard_limit
       modes:
         - patchy_stromal_infiltrate
         - partial_peritumoral_band
@@ -318,7 +319,7 @@ primitives:
         moderate: [0.14, 0.24]
         significant: [0.24, 0.35]
       max_changed_area_fraction: 0.40
-      max_distance_from_tumor_px: 64    # ≈16 µm at 40x
+      peritumoral_falloff_radius_px: 96
     probnet_bias:
       Inflammatory: up
       Connective: down_mild
@@ -327,7 +328,6 @@ primitives:
       - new_immune_must_be_mainly_outside_tumor
       - tumor_area_must_remain_stable
     expected_failure_cases:
-      - no_tumor
       - no_stroma
       - no_immune_label
       - insufficient_peritumoral_stroma

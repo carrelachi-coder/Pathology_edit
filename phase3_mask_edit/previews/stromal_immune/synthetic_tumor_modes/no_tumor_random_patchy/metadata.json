@@ -1,0 +1,16 @@
+{
+  "case": "no_tumor_random_patchy",
+  "target_change_fraction": 0.12,
+  "changed_area_fraction": 0.0854949951171875,
+  "changed_stroma_fraction": 0.11576446280991735,
+  "changed_stroma_immune_fraction": 0.11576446280991735,
+  "selected_pixels": 5603,
+  "tumor_mode": "none",
+  "tumor_fraction": 0.0,
+  "selected_components": 4,
+  "active_weights": {
+    "smooth_noise": 1.0
+  },
+  "hard_distance_limit_px": null,
+  "panel": "phase3_mask_edit/previews/stromal_immune/synthetic_tumor_modes/no_tumor_random_patchy/panel.png"
+}
