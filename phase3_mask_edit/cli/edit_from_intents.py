@@ -230,3 +230,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+"""
+export CURSOR_API_KEY="sk-dz8Ubk5NyvxyjG3384xyygUhgF18gBIFozee90C8FlI7vhhf"
+
+python -m phase3_mask_edit.cli.parse_prompts \
+  --profile BCSS \
+  --mask phase3_mask_edit/previews/test_masks/bcss_necrosis_api_smoke/source_mask.png \
+  --old-prompt "High-grade carcinoma without necrosis." \
+  --new-prompt "High-grade carcinoma with focal necrosis." \
+  --parser api \
+  --api-base-url "https://api.cursorai.art/v1" \
+  --api-key-env CURSOR_API_KEY \
+  --api-model gpt-4o \
+  --output phase3_mask_edit/previews/api_prompt_to_mask/necrosis_add_focal \
+  --execute \
+  --print-summary
+"""
