@@ -1,6 +1,7 @@
 import json
-import tempfile
+import shutil
 import unittest
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -143,7 +144,9 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
             target_label="Necrosis",
         )
         WORKSPACE_TMP.mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=WORKSPACE_TMP) as tmp:
+        tmp = WORKSPACE_TMP / f"artifacts_{uuid.uuid4().hex}"
+        tmp.mkdir(parents=True)
+        try:
             result = execute_fixture_contour_backend(
                 old_mask=self.mask,
                 fixture_path="tests/fixtures/llm_contour_necrosis_bcss.json",
@@ -164,12 +167,16 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
                 "source_mask_llm_rgb_grid.png",
             ):
                 self.assertTrue((Path(tmp) / name).exists(), name)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_cli_runs_fixture_backend(self):
         WORKSPACE_TMP.mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=WORKSPACE_TMP) as tmp:
-            mask_path = Path(tmp) / "source_mask.png"
-            output_dir = Path(tmp) / "run"
+        tmp = WORKSPACE_TMP / f"cli_{uuid.uuid4().hex}"
+        tmp.mkdir(parents=True)
+        try:
+            mask_path = tmp / "source_mask.png"
+            output_dir = tmp / "run"
             save_id_mask(self.mask, mask_path)
 
             code = run_fixture_main(
@@ -191,6 +198,8 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
 
             self.assertEqual(code, 0)
             self.assertTrue((output_dir / "execution_summary.json").exists())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _synthetic_bcss_mask() -> np.ndarray:
@@ -236,15 +245,10 @@ def _proposal(*, primitive, target_label, source_labels, points):
 
 def _write_fixture(payload):
     WORKSPACE_TMP.mkdir(exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(
-        "w",
-        suffix=".json",
-        delete=False,
-        dir=WORKSPACE_TMP,
-    )
-    with handle:
+    path = WORKSPACE_TMP / f"fixture_{uuid.uuid4().hex}.json"
+    with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle)
-    return Path(handle.name)
+    return path
 
 
 if __name__ == "__main__":
