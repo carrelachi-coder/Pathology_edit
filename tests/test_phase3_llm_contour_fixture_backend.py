@@ -191,6 +191,9 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
                 "rasterized_region.png",
                 "projected_region.png",
                 "source_mask_llm_rgb_grid.png",
+                "visual_qa/visual_qa_manifest.json",
+                "visual_qa/v1_v2_side_by_side.png",
+                "visual_qa/final_score_heatmap.png",
             ):
                 self.assertTrue((Path(tmp) / name).exists(), name)
 
@@ -219,6 +222,14 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
 
             validation = load_metadata(tmp / "validation.json")
             self.assertTrue(validation["passed"])
+            manifest = load_metadata(tmp / "visual_qa" / "visual_qa_manifest.json")
+            self.assertIn("selected_raw_template_iou", manifest)
+            self.assertEqual(manifest["raw_template_pixels"], rasterized_pixels)
+            self.assertEqual(manifest["selected_pixels"], projected_pixels)
+            self.assertEqual(
+                manifest["ops_log_selected_raw_template_iou"],
+                ops_log["selected_raw_template_iou"],
+            )
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -286,6 +297,17 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue((output_dir / "v1_hard_projection" / "summary.json").exists())
             self.assertTrue((output_dir / "organic_v2" / "summary.json").exists())
+            self.assertTrue(
+                (
+                    output_dir
+                    / "organic_v2"
+                    / "visual_qa"
+                    / "visual_qa_manifest.json"
+                ).exists()
+            )
+            self.assertTrue(
+                (output_dir / "organic_v2" / "visual_qa" / "v1_v2_side_by_side.png").exists()
+            )
             comparison = load_metadata(output_dir / "projection_comparison_summary.json")
             self.assertEqual(comparison["primary_projection_mode"], "organic_v2")
             self.assertEqual(
@@ -315,6 +337,12 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
                 v2["edit_result"]["ops_log"]["projection_backend"],
                 "organic_score_projection_v2",
             )
+            manifest = load_metadata(
+                output_dir / "organic_v2" / "visual_qa" / "visual_qa_manifest.json"
+            )
+            self.assertEqual(manifest["projection_mode"], "organic_v2")
+            self.assertIn("selected_raw_template_iou", manifest)
+            self.assertGreater(manifest["union_pixels"], 0)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

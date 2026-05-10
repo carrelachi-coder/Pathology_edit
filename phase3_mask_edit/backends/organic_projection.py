@@ -104,6 +104,7 @@ def apply_organic_projected_label_write(
     legal_domain = policy.legal_domain
     legal_pixels = int(np.count_nonzero(legal_domain))
     raw_candidate_pixels = int(np.count_nonzero(candidate))
+    raw_legal_overlap = int(np.count_nonzero(candidate & legal_domain))
 
     if target_pixels is None:
         target_pixels = _target_pixels_from_config(
@@ -134,6 +135,24 @@ def apply_organic_projected_label_write(
             target_pixels=target_pixels,
             seed=seed,
             component_policy=policy,
+            raw_legal_overlap=raw_legal_overlap,
+        )
+    if raw_legal_overlap == 0:
+        return _empty_result(
+            mask,
+            schema=schema,
+            target_label=target_label,
+            source_labels=source_labels,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            primitive_name=primitive_name,
+            raw_candidate_pixels=raw_candidate_pixels,
+            legal_pixels=legal_pixels,
+            target_pixels=target_pixels,
+            seed=seed,
+            component_policy=policy,
+            raw_legal_overlap=raw_legal_overlap,
+            extra_warnings=("organic_projection_template_no_legal_overlap",),
         )
 
     template_score = _template_score(candidate, sigma=params.template_sigma)
@@ -167,7 +186,8 @@ def apply_organic_projected_label_write(
 
     selected_pixels = int(np.count_nonzero(selected))
     changed_area_fraction = selected_pixels / int(mask.size)
-    raw_legal_overlap = int(np.count_nonzero(candidate & legal_domain))
+    selected_template_intersection = int(np.count_nonzero(selected & candidate))
+    selected_template_union = int(np.count_nonzero(selected | candidate))
     warnings: list[str] = []
     if selected_pixels == 0:
         warnings.append("proposal_projected_region_empty")
@@ -197,6 +217,13 @@ def apply_organic_projected_label_write(
         "target_pixels": target_pixels,
         "projected_pixels": selected_pixels,
         "selected_pixels": selected_pixels,
+        "selected_raw_template_intersection_pixels": selected_template_intersection,
+        "selected_raw_template_union_pixels": selected_template_union,
+        "selected_raw_template_iou": (
+            selected_template_intersection / selected_template_union
+            if selected_template_union
+            else 0.0
+        ),
         "area_shortfall": int(max(target_pixels - selected_pixels, 0)),
         "projection_retained_fraction": (
             selected_pixels / raw_candidate_pixels if raw_candidate_pixels else 0.0
@@ -795,6 +822,8 @@ def _empty_result(
     target_pixels: int,
     seed: int,
     component_policy: OrganicProjectionPolicy | None = None,
+    raw_legal_overlap: int = 0,
+    extra_warnings: Sequence[str] = (),
 ) -> PrimitiveEditResult:
     target_ids = schema.resolve_fine_ids(target_label)
     empty = np.zeros(mask.shape, dtype=bool)
@@ -810,10 +839,17 @@ def _empty_result(
         "forbidden_labels": list(forbidden_labels),
         "raw_candidate_pixels": int(raw_candidate_pixels),
         "candidate_pixels": int(raw_candidate_pixels),
+        "raw_candidate_legal_overlap_pixels": int(raw_legal_overlap),
+        "template_overlap_with_legal_domain": (
+            raw_legal_overlap / raw_candidate_pixels if raw_candidate_pixels else 0.0
+        ),
         "legal_domain_pixels": int(legal_pixels),
         "target_pixels": int(target_pixels),
         "projected_pixels": 0,
         "selected_pixels": 0,
+        "selected_raw_template_intersection_pixels": 0,
+        "selected_raw_template_union_pixels": int(raw_candidate_pixels),
+        "selected_raw_template_iou": 0.0,
         "area_shortfall": int(target_pixels),
         "projection_retained_fraction": 0.0,
         "changed_area_fraction": 0.0,
@@ -830,6 +866,6 @@ def _empty_result(
         change_region=empty,
         changed_area_fraction=0.0,
         selected_pixels=0,
-        warnings=("proposal_projected_region_empty",),
+        warnings=tuple(dict.fromkeys(("proposal_projected_region_empty", *extra_warnings))),
         ops_log=ops_log,
     )

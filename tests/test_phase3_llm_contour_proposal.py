@@ -595,6 +595,90 @@ class LLMContourProposalTests(unittest.TestCase):
         )
         self.assertTrue(validation.passed)
 
+    def test_organic_projection_rejects_template_with_no_legal_overlap(self):
+        old_mask = np.zeros((64, 64), dtype=np.int64)
+        old_mask[8:56, 8:56] = 2
+        old_mask[24:40, 24:40] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[25:35, 25:35] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            primitive_config={
+                "name": "stromal_immune_infiltration",
+                "parameter_ranges": {
+                    "immune_area_delta_fraction": {"mild": [0.08, 0.14]},
+                },
+            },
+            seed=5,
+            target_pixels=100,
+        )
+
+        self.assertEqual(result.selected_pixels, 0)
+        self.assertEqual(result.ops_log["raw_candidate_legal_overlap_pixels"], 0)
+        self.assertEqual(result.ops_log["selected_raw_template_iou"], 0.0)
+        self.assertIn("organic_projection_template_no_legal_overlap", result.warnings)
+        np.testing.assert_array_equal(result.target_mask, old_mask)
+
+    def test_organic_projection_low_overlap_regression_uses_score_top_k(self):
+        old_mask = np.zeros((80, 80), dtype=np.int64)
+        old_mask[8:72, 8:72] = 2
+        old_mask[30:50, 30:50] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[:, 0:10] = True
+        raw_candidate[0:8, 10:50] = True
+        raw_overlap = int(np.count_nonzero(raw_candidate & (old_mask == 2)))
+        raw_pixels = int(np.count_nonzero(raw_candidate))
+        target_pixels = 900
+
+        hard = apply_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+        )
+        organic = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            primitive_config={
+                "name": "stromal_immune_infiltration",
+                "parameter_ranges": {
+                    "immune_area_delta_fraction": {"mild": [0.08, 0.14]},
+                    "organic_min_component_fraction": 0.0,
+                    "peritumoral_falloff_radius_px": 32,
+                },
+            },
+            seed=17,
+            target_pixels=target_pixels,
+        )
+
+        self.assertGreaterEqual(int(np.count_nonzero(old_mask == 2)), 3 * target_pixels)
+        self.assertGreaterEqual(raw_overlap / raw_pixels, 0.10)
+        self.assertLessEqual(raw_overlap / raw_pixels, 0.15)
+        self.assertLess(hard.selected_pixels, target_pixels)
+        self.assertEqual(organic.selected_pixels, target_pixels)
+        self.assertGreater(organic.selected_pixels, raw_overlap)
+        self.assertEqual(
+            organic.ops_log["raw_candidate_legal_overlap_pixels"],
+            raw_overlap,
+        )
+        self.assertAlmostEqual(
+            organic.ops_log["template_overlap_with_legal_domain"],
+            raw_overlap / raw_pixels,
+        )
+        self.assertIn("score_terms", organic.ops_log)
+        self.assertEqual(organic.ops_log["legal_domain_pixels"], int(np.count_nonzero(old_mask == 2)))
+        self.assertEqual(organic.ops_log["target_pixels"], target_pixels)
+        self.assertGreater(organic.ops_log["selected_raw_template_union_pixels"], 0)
+
     def test_organic_projection_necrosis_policy_caps_area_like_validation(self):
         old_mask = np.zeros((80, 80), dtype=np.int64)
         old_mask[8:72, 8:72] = 2

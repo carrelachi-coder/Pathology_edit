@@ -30,6 +30,7 @@ from phase3_mask_edit.backends.llm_preview import (
     add_coordinate_grid_overlay,
     id_mask_to_llm_preview_rgb,
 )
+from phase3_mask_edit.backends.visual_qa import save_visual_qa_bundle
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import (
@@ -220,6 +221,24 @@ def execute_fixture_contour_backend(
                     primary_projection_mode=PROJECTION_MODE_ORGANIC_V2,
                 )
             )
+        elif result.proposal is not None and result.edit_result is not None:
+            artifact_paths.update(
+                {
+                    f"visual_qa_{key}": value
+                    for key, value in save_visual_qa_bundle(
+                        source_mask=source_mask,
+                        proposal=result.proposal,
+                        schema=schema,
+                        edit_result=result.edit_result,
+                        validation=result.validation,
+                        output_dir=Path(output_dir) / "visual_qa",
+                        primitive_config=primitive_config,
+                        preserve_labels=intent.preserve_labels,
+                        forbidden_labels=intent.forbidden_labels,
+                        projection_mode=primary_projection_mode,
+                    ).items()
+                }
+            )
         result = _replace_artifacts(result, artifact_paths)
     return result
 
@@ -403,6 +422,38 @@ def _save_projection_comparison_artifacts(
     paths["projection_comparison_summary"] = str(
         save_metadata(comparison_results, output_dir / "projection_comparison_summary.json")
     )
+    primary_edit = execute_contour_proposal_write(
+        source_mask,
+        proposal,
+        schema=schema,
+        primitive_config=primitive_config,
+        preserve_labels=preserve_labels,
+        forbidden_labels=forbidden_labels,
+        projection_mode=primary_projection_mode,
+        organic_seed=organic_seed,
+    )
+    primary_validation = validate_edit_result(
+        src_mask=source_mask,
+        target_mask=primary_edit.target_mask,
+        change_region=primary_edit.change_region,
+        schema=schema,
+        primitive_config=primitive_config,
+        changed_area_fraction=primary_edit.changed_area_fraction,
+    )
+    visual_paths = save_visual_qa_bundle(
+        source_mask=source_mask,
+        proposal=proposal,
+        schema=schema,
+        edit_result=primary_edit,
+        validation=primary_validation,
+        output_dir=output_dir / primary_projection_mode / "visual_qa",
+        primitive_config=primitive_config,
+        preserve_labels=preserve_labels,
+        forbidden_labels=forbidden_labels,
+        projection_mode=primary_projection_mode,
+        comparison_summary=comparison_results,
+    )
+    paths.update({f"{primary_projection_mode}_visual_qa_{key}": value for key, value in visual_paths.items()})
     return paths
 
 
