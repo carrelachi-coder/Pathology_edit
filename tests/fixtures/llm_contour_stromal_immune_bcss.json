@@ -1,0 +1,24 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_immune_infiltration",
+  "reference_profile": "BCSS",
+  "target_label": "Immune infiltrate",
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 64,
+    "height": 64
+  },
+  "regions": [
+    {
+      "region_id": "stroma_band_left",
+      "type": "polygon",
+      "source_labels": ["Stroma"],
+      "points": [[6, 14], [17, 14], [17, 49], [6, 49]],
+      "confidence": 0.91
+    }
+  ]
+}

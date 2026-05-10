@@ -1,0 +1,24 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "necrosis_appearance",
+  "reference_profile": "BCSS",
+  "target_label": "Necrosis",
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 64,
+    "height": 64
+  },
+  "regions": [
+    {
+      "region_id": "intratumoral_necrosis_core",
+      "type": "polygon",
+      "source_labels": ["Tumor"],
+      "points": [[24, 22], [39, 22], [41, 39], [23, 41]],
+      "confidence": 0.88
+    }
+  ]
+}

@@ -15,7 +15,9 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 from PIL import Image, ImageDraw
 
+from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.core.labels import MaskProfileSchema, MaskProfileSchemaError
+from phase3_mask_edit.generic.tumor_burden import PrimitiveEditResult
 
 
 CONTOUR_PROPOSAL_SCHEMA_VERSION = "0.1"
@@ -175,6 +177,101 @@ def rasterize_contour_proposal(proposal: ContourProposal) -> np.ndarray:
     return candidate
 
 
+def execute_contour_proposal_write(
+    old_mask: np.ndarray,
+    proposal: ContourProposal,
+    *,
+    schema: MaskProfileSchema,
+    preserve_labels: Sequence[str] = (),
+    forbidden_labels: Sequence[str] = (),
+) -> PrimitiveEditResult:
+    """Project an LLM contour proposal and deterministically write its target.
+
+    Each region is projected using its own ``source_labels`` before being merged,
+    so labels declared for one polygon never authorize writes in another polygon.
+    """
+
+    if tuple(old_mask.shape) != (proposal.height, proposal.width):
+        raise ContourProposalValidationError(
+            "old_mask shape must match proposal coordinate system: "
+            f"{tuple(old_mask.shape)} != {(proposal.height, proposal.width)}."
+        )
+
+    projected_candidate = np.zeros((proposal.height, proposal.width), dtype=bool)
+    region_logs: list[dict[str, Any]] = []
+    for region in proposal.regions:
+        raw_region = rasterize_polygon(
+            region.points,
+            mask_shape=(proposal.height, proposal.width),
+        )
+        region_result = apply_projected_label_write(
+            old_mask,
+            raw_region,
+            schema=schema,
+            source_labels=region.source_labels,
+            target_label=proposal.target_label,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            backend=CONTOUR_PROPOSAL_BACKEND,
+        )
+        projected_candidate |= region_result.change_region
+        region_logs.append(
+            {
+                "region_id": region.region_id,
+                "source_labels": list(region.source_labels),
+                "confidence": region.confidence,
+                "candidate_pixels": region_result.ops_log["candidate_pixels"],
+                "projected_pixels": region_result.ops_log["projected_pixels"],
+                "selected_pixels": region_result.selected_pixels,
+                "projection_retained_fraction": region_result.ops_log[
+                    "projection_retained_fraction"
+                ],
+            }
+        )
+
+    selected_pixels = int(np.count_nonzero(projected_candidate))
+    target_ids = schema.resolve_fine_ids(proposal.target_label)
+    target_mask = np.array(old_mask, copy=True)
+    if selected_pixels > 0:
+        target_mask[projected_candidate] = int(target_ids[0])
+
+    raw_candidate = rasterize_contour_proposal(proposal)
+    candidate_pixels = int(np.count_nonzero(raw_candidate))
+    changed_area_fraction = selected_pixels / int(old_mask.size)
+    warnings = ("proposal_projected_region_empty",) if selected_pixels == 0 else ()
+    ops_log = {
+        "backend": CONTOUR_PROPOSAL_BACKEND,
+        "method": "per_region_source_label_projection_and_deterministic_write",
+        "primitive": proposal.primitive,
+        "reference_profile": schema.reference_profile,
+        "target_label": proposal.target_label,
+        "target_fine_id": int(target_ids[0]),
+        "candidate_pixels": candidate_pixels,
+        "projected_pixels": selected_pixels,
+        "selected_pixels": selected_pixels,
+        "projection_retained_fraction": (
+            selected_pixels / candidate_pixels if candidate_pixels > 0 else 0.0
+        ),
+        "changed_area_fraction": changed_area_fraction,
+        "preserve_labels": list(preserve_labels),
+        "forbidden_labels": list(forbidden_labels),
+        "raw_payload": dict(proposal.raw_payload),
+    }
+    ops_log["region_projection"] = region_logs
+    ops_log["source_labels"] = sorted(
+        {label for region in proposal.regions for label in region.source_labels}
+    )
+
+    return PrimitiveEditResult(
+        target_mask=target_mask,
+        change_region=projected_candidate,
+        changed_area_fraction=changed_area_fraction,
+        selected_pixels=selected_pixels,
+        warnings=warnings,
+        ops_log=ops_log,
+    )
+
+
 def _validate_region(
     region: Any,
     *,
@@ -299,4 +396,3 @@ def _require_equal(value: Any, expected: Any, key: str) -> None:
         raise ContourProposalValidationError(
             f"{key} must be {expected!r}; got {value!r}."
         )
-
