@@ -14,7 +14,9 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 from PIL import Image, ImageDraw
+from scipy import ndimage
 
+from phase3_mask_edit.backends.organic_projection import apply_organic_projected_label_write
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.core.labels import MaskProfileSchema, MaskProfileSchemaError
 from phase3_mask_edit.generic.tumor_burden import PrimitiveEditResult
@@ -22,6 +24,9 @@ from phase3_mask_edit.generic.tumor_burden import PrimitiveEditResult
 
 CONTOUR_PROPOSAL_SCHEMA_VERSION = "0.1"
 CONTOUR_PROPOSAL_BACKEND = "llm_contour_proposal"
+PROJECTION_MODE_HARD_V1 = "v1_hard_projection"
+PROJECTION_MODE_ORGANIC_V2 = "organic_v2"
+DEFAULT_PROJECTION_MODE = PROJECTION_MODE_ORGANIC_V2
 
 
 class ContourProposalValidationError(ValueError):
@@ -177,13 +182,34 @@ def rasterize_contour_proposal(proposal: ContourProposal) -> np.ndarray:
     return candidate
 
 
+def smooth_candidate_region(
+    candidate: np.ndarray,
+    *,
+    sigma: float = 1.5,
+    close_size: int = 5,
+    threshold: float = 0.35,
+) -> np.ndarray:
+    """Smooth a rasterized proposal before source-label projection."""
+
+    arr = np.asarray(candidate, dtype=bool)
+    if not np.any(arr):
+        return arr
+    closed = ndimage.binary_closing(arr, structure=np.ones((close_size, close_size)))
+    blurred = ndimage.gaussian_filter(closed.astype(float), sigma=float(sigma))
+    smoothed = blurred > float(threshold)
+    return smoothed.astype(bool)
+
+
 def execute_contour_proposal_write(
     old_mask: np.ndarray,
     proposal: ContourProposal,
     *,
     schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any] | None = None,
     preserve_labels: Sequence[str] = (),
     forbidden_labels: Sequence[str] = (),
+    projection_mode: str = DEFAULT_PROJECTION_MODE,
+    organic_seed: int = 0,
 ) -> PrimitiveEditResult:
     """Project an LLM contour proposal and deterministically write its target.
 
@@ -197,6 +223,65 @@ def execute_contour_proposal_write(
             f"{tuple(old_mask.shape)} != {(proposal.height, proposal.width)}."
         )
 
+    if projection_mode == PROJECTION_MODE_ORGANIC_V2:
+        source_label_sets = {region.source_labels for region in proposal.regions}
+        if len(source_label_sets) > 1:
+            result = _execute_hard_projection(
+                old_mask,
+                proposal,
+                schema=schema,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+            )
+            result.ops_log["projection_mode"] = PROJECTION_MODE_HARD_V1
+            result.ops_log["requested_projection_mode"] = PROJECTION_MODE_ORGANIC_V2
+            result.ops_log["projection_fallback_reason"] = (
+                "organic_v2_mvp_requires_uniform_region_source_labels"
+            )
+            return result
+        raw_candidate = rasterize_contour_proposal(proposal)
+        source_labels = tuple(
+            dict.fromkeys(
+                label for region in proposal.regions for label in region.source_labels
+            )
+        )
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=schema,
+            source_labels=source_labels,
+            target_label=proposal.target_label,
+            primitive_config=primitive_config,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            seed=organic_seed,
+        )
+        result.ops_log["raw_payload"] = dict(proposal.raw_payload)
+        result.ops_log["projection_mode"] = projection_mode
+        return result
+
+    if projection_mode != PROJECTION_MODE_HARD_V1:
+        raise ContourProposalValidationError(
+            f"unknown projection_mode {projection_mode!r}."
+        )
+
+    return _execute_hard_projection(
+        old_mask,
+        proposal,
+        schema=schema,
+        preserve_labels=preserve_labels,
+        forbidden_labels=forbidden_labels,
+    )
+
+
+def _execute_hard_projection(
+    old_mask: np.ndarray,
+    proposal: ContourProposal,
+    *,
+    schema: MaskProfileSchema,
+    preserve_labels: Sequence[str],
+    forbidden_labels: Sequence[str],
+) -> PrimitiveEditResult:
     projected_candidate = np.zeros((proposal.height, proposal.width), dtype=bool)
     region_logs: list[dict[str, Any]] = []
     for region in proposal.regions:
@@ -204,6 +289,7 @@ def execute_contour_proposal_write(
             region.points,
             mask_shape=(proposal.height, proposal.width),
         )
+        raw_region = smooth_candidate_region(raw_region)
         region_result = apply_projected_label_write(
             old_mask,
             raw_region,

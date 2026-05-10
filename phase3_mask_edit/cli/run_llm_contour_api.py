@@ -1,4 +1,4 @@
-"""Run a fixture LLM-contour proposal against one Phase 3 mask."""
+"""Run an API-backed text-only LLM contour proposal agent."""
 
 from __future__ import annotations
 
@@ -7,14 +7,17 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from phase3_mask_edit.backends.fixture_contour import (
-    STATUS_VALIDATED,
-    execute_fixture_contour_backend,
-)
+from phase3_mask_edit.backends.fixture_contour import STATUS_VALIDATED
 from phase3_mask_edit.backends.llm_contour import (
     DEFAULT_PROJECTION_MODE,
     PROJECTION_MODE_HARD_V1,
     PROJECTION_MODE_ORGANIC_V2,
+)
+from phase3_mask_edit.backends.llm_agent import (
+    FixtureContourProvider,
+    OpenAICompatibleMultimodalContourProvider,
+    OpenAICompatibleTextContourProvider,
+    execute_llm_contour_agent,
 )
 from phase3_mask_edit.core.config import load_recipe
 from phase3_mask_edit.core.intent import EditIntent
@@ -38,15 +41,44 @@ def main(argv: list[str] | None = None) -> int:
         forbidden_labels=args.forbidden_label,
     )
 
+    if args.provider == "api-text":
+        if not args.api_model:
+            parser.error("--api-model is required when --provider api-text is used")
+        provider = OpenAICompatibleTextContourProvider(
+            model=args.api_model,
+            api_base_url=args.api_base_url,
+            api_key_env=args.api_key_env,
+            timeout_sec=args.api_timeout_sec,
+            temperature=args.api_temperature,
+        )
+    elif args.provider == "api-multimodal":
+        if not args.api_model:
+            parser.error("--api-model is required when --provider api-multimodal is used")
+        provider = OpenAICompatibleMultimodalContourProvider(
+            model=args.api_model,
+            api_base_url=args.api_base_url,
+            api_key_env=args.api_key_env,
+            timeout_sec=args.api_timeout_sec,
+            temperature=args.api_temperature,
+            image_detail=args.api_image_detail,
+        )
+    elif args.provider == "fixture":
+        if not args.fixture:
+            parser.error("--fixture is required when --provider fixture is used")
+        provider = FixtureContourProvider(args.fixture)
+    else:  # pragma: no cover - argparse choices guard this.
+        parser.error(f"Unsupported provider: {args.provider}")
+
     schema = MaskProfileSchema.from_reference_profile(args.profile)
     mask = load_id_mask(args.mask)
-    result = execute_fixture_contour_backend(
+    result = execute_llm_contour_agent(
         old_mask=mask,
-        fixture_path=args.fixture,
         schema=schema,
         intent=intent,
         primitive_config=primitive_config,
+        provider=provider,
         output_dir=args.output,
+        max_attempts=args.max_attempts,
         max_regions=args.max_regions,
         max_points_per_region=args.max_points_per_region,
         projection_mode=args.projection_mode,
@@ -56,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.print_summary:
         print(json.dumps(result.to_metadata(), indent=2, ensure_ascii=False))
 
-    return 0 if result.status == STATUS_VALIDATED or args.allow_failed_validation else 1
+    return 0 if result.status == STATUS_VALIDATED or args.allow_failed else 1
 
 
 def _build_intent(
@@ -118,32 +150,44 @@ def _string_or_none(value: Any) -> str | None:
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run a saved llm_contour_proposal JSON fixture through Phase 3."
+        description="Run an API LLM contour proposal through Phase 3."
     )
     parser.add_argument("--profile", required=True, help="Reference profile, e.g. BCSS.")
     parser.add_argument("--primitive", required=True, help="Primitive name.")
     parser.add_argument("--strength", default="mild")
     parser.add_argument("--mask", required=True, type=Path, help="Source id mask PNG.")
-    parser.add_argument("--fixture", required=True, type=Path, help="Contour JSON fixture.")
     parser.add_argument("--output", required=True, type=Path, help="Output directory.")
     parser.add_argument(
         "--recipe",
         type=Path,
         default=Path("phase3_mask_edit/recipes/generic.yaml"),
     )
+    parser.add_argument(
+        "--provider",
+        choices=("api-text", "api-multimodal", "fixture"),
+        default="api-text",
+    )
+    parser.add_argument("--fixture", type=Path, help="Fixture JSON for provider=fixture.")
+    parser.add_argument("--api-base-url", default="https://api.openai.com/v1")
+    parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
+    parser.add_argument("--api-model", help="Model name, e.g. gpt-4o.")
+    parser.add_argument("--api-timeout-sec", type=float, default=60.0)
+    parser.add_argument("--api-temperature", type=float, default=0.0)
+    parser.add_argument("--api-image-detail", choices=("low", "high", "auto"), default="high")
     parser.add_argument("--source-label", action="append")
     parser.add_argument("--target-label")
     parser.add_argument("--preserve-label", action="append", default=[])
     parser.add_argument("--forbidden-label", action="append", default=[])
+    parser.add_argument("--max-attempts", type=int, default=4)
     parser.add_argument("--max-regions", type=int, default=8)
     parser.add_argument("--max-points-per-region", type=int, default=64)
     parser.add_argument(
         "--projection-mode",
-        choices=(PROJECTION_MODE_HARD_V1, PROJECTION_MODE_ORGANIC_V2, "compare_v1_v2"),
+        choices=(PROJECTION_MODE_HARD_V1, PROJECTION_MODE_ORGANIC_V2),
         default=DEFAULT_PROJECTION_MODE,
     )
     parser.add_argument("--organic-seed", type=int, default=0)
-    parser.add_argument("--allow-failed-validation", action="store_true")
+    parser.add_argument("--allow-failed", action="store_true")
     parser.add_argument("--print-summary", action="store_true")
     return parser
 

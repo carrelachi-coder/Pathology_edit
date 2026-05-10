@@ -9,11 +9,18 @@ from phase3_mask_edit.backends.llm_contour import (
     CONTOUR_PROPOSAL_BACKEND,
     CONTOUR_PROPOSAL_SCHEMA_VERSION,
     ContourProposalValidationError,
+    PROJECTION_MODE_HARD_V1,
+    PROJECTION_MODE_ORGANIC_V2,
     execute_contour_proposal_write,
     load_contour_proposal_json,
     rasterize_contour_proposal,
     rasterize_polygon,
+    smooth_candidate_region,
     validate_contour_proposal,
+)
+from phase3_mask_edit.backends.organic_projection import (
+    ORGANIC_PROJECTION_BACKEND,
+    apply_organic_projected_label_write,
 )
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.backends.llm_preview import (
@@ -327,6 +334,11 @@ class LLMContourProposalTests(unittest.TestCase):
         result = execute_contour_proposal_write(old_mask, proposal, schema=self.schema)
 
         self.assertGreater(result.selected_pixels, 0)
+        self.assertEqual(result.ops_log["projection_mode"], PROJECTION_MODE_HARD_V1)
+        self.assertEqual(
+            result.ops_log["projection_fallback_reason"],
+            "organic_v2_mvp_requires_uniform_region_source_labels",
+        )
         self.assertTrue(np.all(result.target_mask[10:31, 10:21] == 4))
         region_a_tumor_coords = np.argwhere(old_mask[10:31, 21:31] == 1)
         region_a_tumor_rows = region_a_tumor_coords[:, 0] + 10
@@ -352,7 +364,12 @@ class LLMContourProposalTests(unittest.TestCase):
             allowed_source_labels=("Stroma",),
         )
 
-        result = execute_contour_proposal_write(old_mask, proposal, schema=self.schema)
+        result = execute_contour_proposal_write(
+            old_mask,
+            proposal,
+            schema=self.schema,
+            projection_mode=PROJECTION_MODE_HARD_V1,
+        )
 
         self.assertEqual(result.selected_pixels, 0)
         self.assertIn("proposal_projected_region_empty", result.warnings)
@@ -373,6 +390,68 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertFalse(
             next(c for c in validation.checks if c.name == "change_area_nonempty").passed
         )
+
+    def test_smooth_candidate_region_preserves_nonempty_region(self):
+        candidate = np.zeros((64, 64), dtype=bool)
+        candidate[20:40, 20:40] = True
+        candidate[19, 19] = True
+        candidate[40, 40] = True
+
+        smoothed = smooth_candidate_region(candidate)
+
+        self.assertEqual(smoothed.shape, candidate.shape)
+        self.assertEqual(smoothed.dtype, np.bool_)
+        self.assertGreater(int(np.count_nonzero(smoothed)), 0)
+        self.assertTrue(smoothed[30, 30])
+
+    def test_contour_write_smoothing_still_projects_to_source_labels(self):
+        old_mask = np.zeros(self.mask_shape, dtype=np.int64)
+        old_mask[8:56, 8:56] = 2
+        old_mask[20:44, 20:44] = 1
+        proposal = validate_contour_proposal(
+            self._proposal(points=[[10, 10], [54, 10], [54, 54], [10, 54]]),
+            schema=self.schema,
+            mask_shape=self.mask_shape,
+            allowed_source_labels=("Stroma",),
+        )
+
+        result = execute_contour_proposal_write(
+            old_mask,
+            proposal,
+            schema=self.schema,
+            projection_mode=PROJECTION_MODE_HARD_V1,
+        )
+
+        self.assertGreater(result.selected_pixels, 0)
+        changed_old_labels = set(np.unique(old_mask[result.change_region]).astype(int).tolist())
+        self.assertEqual(changed_old_labels, {2})
+
+    def test_contour_write_defaults_to_organic_v2(self):
+        old_mask = np.zeros(self.mask_shape, dtype=np.int64)
+        old_mask[8:56, 8:56] = 2
+        old_mask[20:44, 20:44] = 1
+        proposal = validate_contour_proposal(
+            self._proposal(points=[[10, 10], [24, 10], [24, 24], [10, 24]]),
+            schema=self.schema,
+            mask_shape=self.mask_shape,
+            allowed_source_labels=("Stroma",),
+        )
+
+        result = execute_contour_proposal_write(
+            old_mask,
+            proposal,
+            schema=self.schema,
+            primitive_config={
+                "name": "stromal_immune_infiltration",
+                "parameter_ranges": {
+                    "immune_area_delta_fraction": {"mild": [0.08, 0.14]},
+                },
+            },
+        )
+
+        self.assertEqual(result.ops_log["projection_mode"], PROJECTION_MODE_ORGANIC_V2)
+        self.assertEqual(result.ops_log["projection_backend"], ORGANIC_PROJECTION_BACKEND)
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
 
     def test_validation_detects_projected_area_too_small(self):
         old_mask = np.zeros((20, 20), dtype=np.int64)
@@ -408,6 +487,171 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertFalse(
             next(c for c in validation.checks if c.name == "change_area_within_range").passed
         )
+
+    def test_organic_projection_selects_area_inside_legal_stroma(self):
+        old_mask = np.zeros((64, 64), dtype=np.int64)
+        old_mask[6:58, 6:58] = 2
+        old_mask[22:42, 22:42] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[10:20, 10:20] = True
+
+        primitive_config = {
+            "name": "stromal_immune_infiltration",
+            "parameter_ranges": {
+                "immune_area_delta_fraction": {"mild": [0.08, 0.14]},
+                "peritumoral_falloff_radius_px": 32,
+            },
+        }
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            primitive_config=primitive_config,
+            seed=7,
+        )
+
+        self.assertEqual(result.ops_log["backend"], ORGANIC_PROJECTION_BACKEND)
+        self.assertGreater(result.selected_pixels, int(np.count_nonzero(raw_candidate & (old_mask == 2))))
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 4))
+        validation = validate_edit_result(
+            src_mask=old_mask,
+            target_mask=result.target_mask,
+            change_region=result.change_region,
+            schema=self.schema,
+            primitive_config={
+                "name": "stromal_immune_infiltration",
+                "required_tissue_labels": ["Stroma"],
+                "parameter_ranges": {
+                    "immune_area_delta_fraction": {"mild": [0.08, 0.14]},
+                    "max_changed_area_fraction": 0.40,
+                },
+                "validation_rules": ["immune_area_must_increase"],
+            },
+            changed_area_fraction=result.changed_area_fraction,
+        )
+        self.assertTrue(validation.passed)
+
+    def test_organic_projection_necrosis_policy_caps_area_like_validation(self):
+        old_mask = np.zeros((80, 80), dtype=np.int64)
+        old_mask[8:72, 8:72] = 2
+        old_mask[20:60, 20:60] = 1
+        tumor_coords = np.argwhere(old_mask == 1)
+        existing_count = int(round(tumor_coords.shape[0] * 0.30))
+        old_mask[tumor_coords[:existing_count, 0], tumor_coords[:existing_count, 1]] = 3
+        raw_candidate = np.ones_like(old_mask, dtype=bool)
+        original_tumor_pixels = int(np.count_nonzero(old_mask == 1))
+        existing_necrosis_pixels = int(np.count_nonzero(old_mask == 3))
+        max_fraction = 0.60
+        expected_remaining = int(round(original_tumor_pixels * max_fraction)) - existing_necrosis_pixels
+
+        primitive_config = {
+            "name": "necrosis_appearance",
+            "required_tissue_labels": ["Tumor"],
+            "parameter_ranges": {
+                "target_changed_area_fraction": {"mild": [0.08, 0.14]},
+                "max_necrosis_fraction_of_tumor": max_fraction,
+                "organic_min_component_fraction": 0.0,
+            },
+            "validation_rules": [
+                "necrosis_area_must_increase",
+                "new_necrosis_must_be_inside_original_tumor",
+            ],
+        }
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config=primitive_config,
+            seed=9,
+            target_pixels=500,
+        )
+
+        self.assertEqual(result.selected_pixels, expected_remaining)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        policy = result.ops_log["component_policy"]
+        self.assertEqual(policy["policy_name"], "necrosis_intratumoral_hypoxic")
+        self.assertEqual(
+            policy["params"]["necrosis_denominator_policy"],
+            "original_tumor_fine_ids_only_matches_validation",
+        )
+        self.assertEqual(policy["params"]["tumor_pixels"], original_tumor_pixels)
+        self.assertEqual(
+            policy["params"]["existing_necrosis_pixels"],
+            existing_necrosis_pixels,
+        )
+        validation = validate_edit_result(
+            src_mask=old_mask,
+            target_mask=result.target_mask,
+            change_region=result.change_region,
+            schema=self.schema,
+            primitive_config=primitive_config,
+            changed_area_fraction=result.changed_area_fraction,
+        )
+        self.assertTrue(validation.passed)
+
+    def test_organic_projection_cleanup_refill_is_single_pass(self):
+        old_mask = np.zeros((32, 32), dtype=np.int64)
+        old_mask[2:30, 2:30] = 2
+        old_mask[12:20, 12:20] = 1
+        raw_candidate = np.ones_like(old_mask, dtype=bool)
+
+        primitive_config = {
+            "name": "stromal_immune_infiltration",
+            "parameter_ranges": {
+                "immune_area_delta_fraction": {"mild": [0.08, 0.14]},
+                "organic_min_component_fraction": 0.50,
+                "organic_fill_holes_max_area_px": 0,
+            },
+        }
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            primitive_config=primitive_config,
+            seed=2,
+            target_pixels=20,
+        )
+
+        self.assertEqual(result.ops_log["cleanup_iteration_limit"], 1)
+        self.assertTrue(result.ops_log["cleanup_single_pass"])
+        self.assertEqual(result.ops_log["target_pixels"], 20)
+        self.assertLessEqual(result.selected_pixels, 20)
+        self.assertEqual(
+            result.ops_log["post_cleanup_pixels"],
+            result.selected_pixels,
+        )
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
+
+    def test_organic_projection_generic_policy_is_label_safe_and_logged(self):
+        old_mask = np.zeros((24, 24), dtype=np.int64)
+        old_mask[2:22, 2:12] = 2
+        old_mask[2:22, 12:22] = 1
+        raw_candidate = np.ones_like(old_mask, dtype=bool)
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            primitive_config={"name": "unknown_future_primitive"},
+            seed=1,
+            target_pixels=30,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "generic_label_safe",
+        )
+        self.assertIn("organic_projection_generic_policy_used", result.warnings)
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
 
     def _proposal(
         self,

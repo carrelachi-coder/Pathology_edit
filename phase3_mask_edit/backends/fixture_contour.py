@@ -17,6 +17,9 @@ from phase3_mask_edit.backends.llm_contour import (
     CONTOUR_PROPOSAL_BACKEND,
     ContourProposal,
     ContourProposalValidationError,
+    DEFAULT_PROJECTION_MODE,
+    PROJECTION_MODE_HARD_V1,
+    PROJECTION_MODE_ORGANIC_V2,
     execute_contour_proposal_write,
     load_contour_proposal_json,
     rasterize_contour_proposal,
@@ -103,6 +106,8 @@ def execute_fixture_contour_backend(
     allowed_source_labels: Sequence[str] | None = None,
     max_regions: int = 8,
     max_points_per_region: int = 64,
+    projection_mode: str = DEFAULT_PROJECTION_MODE,
+    organic_seed: int = 0,
 ) -> FixtureContourExecutionResult:
     """Execute a saved contour proposal through the Phase 3 proposal path."""
 
@@ -155,8 +160,15 @@ def execute_fixture_contour_backend(
             source_mask,
             proposal,
             schema=schema,
+            primitive_config=primitive_config,
             preserve_labels=intent.preserve_labels,
             forbidden_labels=intent.forbidden_labels,
+            projection_mode=(
+                PROJECTION_MODE_ORGANIC_V2
+                if projection_mode == PROJECTION_MODE_ORGANIC_V2
+                else PROJECTION_MODE_HARD_V1
+            ),
+            organic_seed=organic_seed,
         )
         validation = validate_edit_result(
             src_mask=source_mask,
@@ -186,6 +198,23 @@ def execute_fixture_contour_backend(
             output_dir,
             fixture_path=fixture_path,
         )
+        if (
+            projection_mode == "compare_v1_v2"
+            and result.proposal is not None
+            and result.error is None
+        ):
+            artifact_paths.update(
+                _save_projection_comparison_artifacts(
+                    source_mask,
+                    result.proposal,
+                    schema=schema,
+                    primitive_config=primitive_config,
+                    preserve_labels=intent.preserve_labels,
+                    forbidden_labels=intent.forbidden_labels,
+                    output_dir=Path(output_dir),
+                    organic_seed=organic_seed,
+                )
+            )
         result = _replace_artifacts(result, artifact_paths)
     return result
 
@@ -282,6 +311,66 @@ def _save_rgb_array(rgb: np.ndarray, path: str | Path) -> Path:
     p.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB").save(p)
     return p
+
+
+def _save_projection_comparison_artifacts(
+    source_mask: np.ndarray,
+    proposal: ContourProposal,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    preserve_labels: Sequence[str],
+    forbidden_labels: Sequence[str],
+    output_dir: Path,
+    organic_seed: int,
+) -> dict[str, str]:
+    paths: dict[str, str] = {}
+    for mode in (PROJECTION_MODE_HARD_V1, PROJECTION_MODE_ORGANIC_V2):
+        edit = execute_contour_proposal_write(
+            source_mask,
+            proposal,
+            schema=schema,
+            primitive_config=primitive_config,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            projection_mode=mode,
+            organic_seed=organic_seed,
+        )
+        validation = validate_edit_result(
+            src_mask=source_mask,
+            target_mask=edit.target_mask,
+            change_region=edit.change_region,
+            schema=schema,
+            primitive_config=primitive_config,
+            changed_area_fraction=edit.changed_area_fraction,
+        )
+        mode_dir = output_dir / mode
+        mode_dir.mkdir(parents=True, exist_ok=True)
+        paths[f"{mode}_change_region"] = str(
+            save_change_region(edit.change_region, mode_dir / "change_region.png")
+        )
+        paths[f"{mode}_target_mask"] = str(
+            save_id_mask(edit.target_mask, mode_dir / "target_mask.png")
+        )
+        paths[f"{mode}_target_mask_rgb"] = str(
+            save_rgb_mask(edit.target_mask, mode_dir / "target_mask_rgb.png")
+        )
+        paths[f"{mode}_summary"] = str(
+            save_metadata(
+                {
+                    "projection_mode": mode,
+                    "edit_result": {
+                        "selected_pixels": edit.selected_pixels,
+                        "changed_area_fraction": edit.changed_area_fraction,
+                        "warnings": list(edit.warnings),
+                        "ops_log": edit.ops_log,
+                    },
+                    "validation": _jsonable_dataclass(validation),
+                },
+                mode_dir / "summary.json",
+            )
+        )
+    return paths
 
 
 def _jsonable_dataclass(value: Any) -> Any:

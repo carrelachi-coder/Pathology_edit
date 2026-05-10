@@ -270,6 +270,19 @@ primitives:
         significant: [0.24, 0.40]
         xlarge_deid: [0.40, 0.60]
       max_necrosis_fraction_of_tumor: 0.60
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.50
+        spatial: 0.40
+        noise: 0.10
+      organic_min_component_fraction: 0.01
+      organic_fill_holes_max_area_px: 0
+      tumor_boundary_margin_radius_px: 64
+      necrosis_neighbor_radius_px: 48
+      vessel_avoidance_radius_px: 96
+      vessel_avoidance_weight: 0.20
     probnet_bias:
       Dead: up
       Neoplastic: down
@@ -320,6 +333,18 @@ primitives:
         significant: [0.24, 0.35]
       max_changed_area_fraction: 0.40
       peritumoral_falloff_radius_px: 96
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.35
+        spatial: 0.55
+        noise: 0.10
+      organic_min_component_fraction: 0.01
+      organic_fill_holes_max_area_px: 0
+      immune_neighbor_radius_px: 48
+      necrosis_adjacency_penalty_radius_px: 32
+      necrosis_adjacency_penalty_weight: 0.20
     probnet_bias:
       Inflammatory: up
       Connective: down_mild

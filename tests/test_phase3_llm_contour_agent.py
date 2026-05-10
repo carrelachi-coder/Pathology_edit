@@ -1,0 +1,536 @@
+import shutil
+import unittest
+import uuid
+from pathlib import Path
+
+import numpy as np
+
+from phase3_mask_edit.backends.fixture_contour import (
+    STATUS_PROPOSAL_REJECTED,
+    STATUS_VALIDATED,
+    STATUS_VALIDATION_FAILED,
+)
+from phase3_mask_edit.backends.llm_agent import (
+    STATUS_PROPOSAL_FAILED,
+    FakeSequenceContourProvider,
+    FixtureContourProvider,
+    OpenAICompatibleMultimodalContourProvider,
+    OpenAICompatibleTextContourProvider,
+    execute_llm_contour_agent,
+)
+from phase3_mask_edit.backends.llm_contour import PROJECTION_MODE_HARD_V1
+from phase3_mask_edit.backends.llm_prompt import build_contour_prompt, build_mask_context
+from phase3_mask_edit.cli.run_llm_contour_api import main as run_api_main
+from phase3_mask_edit.core.config import load_recipe
+from phase3_mask_edit.core.intent import EditIntent
+from phase3_mask_edit.core.labels import MaskProfileSchema
+from phase3_mask_edit.core.mask_io import load_id_mask, load_metadata
+
+
+WORKSPACE_TMP = Path(".tmp_phase3_llm_contour_agent_tests")
+
+
+class LLMContourAgentTests(unittest.TestCase):
+    def setUp(self):
+        self.schema = MaskProfileSchema.from_reference_profile("BCSS")
+        self.recipe = load_recipe("phase3_mask_edit/recipes/generic.yaml")
+        self.mask = _synthetic_bcss_mask()
+        self.intent = EditIntent(
+            primitive="stromal_immune_infiltration",
+            strength="mild",
+            reference_profile="BCSS",
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+        )
+        self.primitive_config = _primitive(self.recipe, "stromal_immune_infiltration")
+
+    def test_prompt_context_contains_coordinate_contract(self):
+        context = build_mask_context(
+            self.mask,
+            schema=self.schema,
+            intent=self.intent,
+            primitive_config=self.primitive_config,
+            allowed_source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+        )
+
+        prompt = build_contour_prompt(context=context)
+
+        self.assertEqual(context["mask_shape"], [64, 64])
+        self.assertEqual(context["preview"]["point_format"], "[x, y]")
+        self.assertEqual(context["visual_label_legend"]["Stroma"], "green")
+        self.assertEqual(
+            context["target_area_hint"]["area_semantics"],
+            "projection_after_legal_source_label_filtering",
+        )
+        self.assertIn("Stroma", context["source_spatial_hints"])
+        self.assertGreater(
+            len(context["source_spatial_hints"]["Stroma"]["high_purity_grid_tiles"]),
+            0,
+        )
+        self.assertGreater(
+            len(context["source_spatial_hints"]["Stroma"]["components"]),
+            0,
+        )
+        self.assertIn("Stroma", context["source_contour_context"])
+        stroma_contours = context["source_contour_context"]["Stroma"]["components"]
+        self.assertGreater(len(stroma_contours), 0)
+        self.assertGreater(len(stroma_contours[0]["contour_simplified"]), 0)
+        self.assertIn("adjacent_tissue", stroma_contours[0])
+        self.assertEqual(context["target_area_hint"]["target_changed_pixels_min"], 122)
+        self.assertEqual(context["target_area_hint"]["target_changed_pixels_max"], 212)
+        self.assertEqual(
+            context["llm_task_requirements"]["pathology_goal"],
+            "Increase stromal tumor-infiltrating lymphocytes around tumor.",
+        )
+        self.assertIn(
+            "Prefer peritumoral Stroma near the red Tumor boundary.",
+            context["llm_task_requirements"]["where_to_draw"],
+        )
+        self.assertIn("area_requirement", context["llm_task_requirements"])
+        self.assertEqual(
+            context["contour_style_hint"]["recommended_region_count_range"],
+            [1, 2],
+        )
+        self.assertEqual(
+            context["contour_style_hint"]["points_per_region_range"],
+            [24, 48],
+        )
+        self.assertIn(
+            "Do not duplicate",
+            context["contour_style_hint"]["region_variation_requirement"],
+        )
+        self.assertIn("x is the horizontal column increasing right", prompt)
+        self.assertIn("y is the vertical row increasing down", prompt)
+        self.assertIn("after legal source-label projection", prompt)
+        self.assertIn("20-40% larger", prompt)
+        self.assertIn("source_spatial_hints", prompt)
+        self.assertIn("only as location anchors", prompt)
+        self.assertIn("natural, pathology-like irregular stromal immune patch", prompt)
+        self.assertIn("Avoid rectangles, diamonds", prompt)
+        self.assertIn("one large wedge-shaped band", prompt)
+        self.assertIn("prefer multiple patchy organic contours", prompt)
+        self.assertIn("do not add an identical copy", prompt)
+        self.assertIn("Follow llm_task_requirements exactly", prompt)
+        self.assertIn("Follow contour_style_hint", prompt)
+        self.assertIn("never output identical diamonds", prompt)
+        self.assertIn("Use source_contour_context as the primary geometry reference", prompt)
+        self.assertIn("adjacent tissue on the other side of the boundary", prompt)
+        self.assertIn("Stroma (green)", prompt)
+        self.assertIn("polygon vertices ONLY on allowed source tissue", prompt)
+        self.assertIn("Every polygon vertex must lie on a pixel", prompt)
+        self.assertIn("Consecutive points should be close together", prompt)
+        self.assertIn("All polygon vertices must be placed on Stroma", prompt)
+        self.assertIn("Tumor (red)", prompt)
+        self.assertIn("Necrosis (blue)", prompt)
+        self.assertIn('"target_label": "Immune infiltrate"', prompt)
+
+    def test_fixture_provider_runs_single_valid_attempt(self):
+        provider = FixtureContourProvider(
+            "tests/fixtures/llm_contour_stromal_immune_bcss.json"
+        )
+
+        result = execute_llm_contour_agent(
+            old_mask=self.mask,
+            schema=self.schema,
+            intent=self.intent,
+            primitive_config=self.primitive_config,
+            provider=provider,
+        )
+
+        self.assertEqual(result.status, STATUS_VALIDATED)
+        self.assertEqual(len(result.attempts), 1)
+        self.assertEqual(result.attempts[0].status, STATUS_VALIDATED)
+        self.assertIsNotNone(result.edit_result)
+        _assert_final_diff_labels(
+            self,
+            old_mask=self.mask,
+            target_mask=result.edit_result.target_mask,
+            allowed_source_ids={2},
+            target_id=4,
+        )
+
+    def test_fake_sequence_repairs_rejected_proposal_on_second_attempt(self):
+        bad = _proposal(points=[[1, 1], [99, 1], [1, 8]])
+        good = _proposal(points=[[2, 2], [17, 2], [17, 25], [2, 25]])
+        provider = FakeSequenceContourProvider((bad, good))
+
+        result = execute_llm_contour_agent(
+            old_mask=self.mask,
+            schema=self.schema,
+            intent=self.intent,
+            primitive_config=self.primitive_config,
+            provider=provider,
+            max_attempts=3,
+            projection_mode=PROJECTION_MODE_HARD_V1,
+        )
+
+        self.assertEqual(result.status, STATUS_VALIDATED)
+        self.assertEqual([a.status for a in result.attempts], [STATUS_PROPOSAL_REJECTED, STATUS_VALIDATED])
+        feedback = result.attempts[0].repair_feedback
+        self.assertIsNotNone(feedback)
+        self.assertIn("outside mask bounds", feedback["error"])
+        self.assertNotIn("repair_instruction", feedback)
+
+    def test_fake_sequence_repairs_validation_failure_on_second_attempt(self):
+        tiny = _proposal(points=[[1, 1], [6, 1], [6, 6], [1, 6]])
+        good = _proposal(points=[[2, 2], [17, 2], [17, 25], [2, 25]])
+        provider = FakeSequenceContourProvider((tiny, good))
+
+        result = execute_llm_contour_agent(
+            old_mask=self.mask,
+            schema=self.schema,
+            intent=self.intent,
+            primitive_config=self.primitive_config,
+            provider=provider,
+            max_attempts=3,
+            projection_mode=PROJECTION_MODE_HARD_V1,
+        )
+
+        self.assertEqual(result.status, STATUS_VALIDATED)
+        self.assertEqual([a.status for a in result.attempts], [STATUS_VALIDATION_FAILED, STATUS_VALIDATED])
+        feedback = result.attempts[0].repair_feedback
+        self.assertIsNotNone(feedback)
+        self.assertIn("failed_checks", feedback)
+        failed_names = {check["name"] for check in feedback["failed_checks"]}
+        self.assertIn("change_area_within_range", failed_names)
+        self.assertIn("projection", feedback)
+        self.assertNotIn("repair_instruction", feedback)
+
+    def test_max_attempts_returns_proposal_failed_and_saves_artifacts(self):
+        bad = _proposal(points=[[1, 1], [99, 1], [1, 8]])
+        provider = FakeSequenceContourProvider((bad,))
+        WORKSPACE_TMP.mkdir(exist_ok=True)
+        tmp = WORKSPACE_TMP / f"agent_{uuid.uuid4().hex}"
+        tmp.mkdir(parents=True)
+        try:
+            result = execute_llm_contour_agent(
+                old_mask=self.mask,
+                schema=self.schema,
+                intent=self.intent,
+                primitive_config=self.primitive_config,
+                provider=provider,
+                output_dir=tmp,
+                max_attempts=2,
+            )
+
+            self.assertEqual(result.status, STATUS_PROPOSAL_FAILED)
+            self.assertEqual(len(result.attempts), 2)
+            self.assertTrue((tmp / "mask_context.json").exists())
+            self.assertTrue((tmp / "source_mask_llm_rgb_grid.png").exists())
+            self.assertTrue((tmp / "attempt_001" / "repair_feedback.json").exists())
+            self.assertTrue((tmp / "attempt_002" / "prompt.txt").exists())
+            summary = load_metadata(tmp / "execution_summary.json")
+            self.assertEqual(summary["status"], STATUS_PROPOSAL_FAILED)
+            self.assertEqual(len(summary["attempts"]), 2)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_validated_run_saves_final_outputs(self):
+        provider = FixtureContourProvider(
+            "tests/fixtures/llm_contour_stromal_immune_bcss.json"
+        )
+        WORKSPACE_TMP.mkdir(exist_ok=True)
+        tmp = WORKSPACE_TMP / f"agent_valid_{uuid.uuid4().hex}"
+        tmp.mkdir(parents=True)
+        try:
+            result = execute_llm_contour_agent(
+                old_mask=self.mask,
+                schema=self.schema,
+                intent=self.intent,
+                primitive_config=self.primitive_config,
+                provider=provider,
+                output_dir=tmp,
+            )
+
+            self.assertEqual(result.status, STATUS_VALIDATED)
+            self.assertTrue((tmp / "final_target_mask.png").exists())
+            self.assertTrue((tmp / "final_change_region.png").exists())
+            self.assertTrue((tmp / "attempt_001" / "llm_request.json").exists())
+            request = load_metadata(tmp / "attempt_001" / "llm_request.json")
+            self.assertGreaterEqual(len(request["image_paths"]), 1)
+            self.assertEqual(request["provider_metadata"]["request_mode"], "text")
+            self.assertEqual(request["provider_metadata"]["image_parts_expected"], 0)
+            target_mask = load_id_mask(tmp / "final_target_mask.png")
+            _assert_final_diff_labels(
+                self,
+                old_mask=self.mask,
+                target_mask=target_mask,
+                allowed_source_ids={2},
+                target_id=4,
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_openai_compatible_text_provider_parses_chat_completion(self):
+        provider = OpenAICompatibleTextContourProvider(
+            model="gpt-4o",
+            api_base_url="https://relay.example/v1",
+            api_key_env="TEST_CONTOUR_API_KEY",
+        )
+        captured = {}
+
+        def fake_post(payload, *, api_base_url, api_key, timeout_sec):
+            captured["payload"] = payload
+            captured["api_base_url"] = api_base_url
+            captured["api_key"] = api_key
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json_dumps(_proposal(points=[[2, 2], [17, 2], [17, 25], [2, 25]]))
+                        }
+                    }
+                ]
+            }
+
+        import phase3_mask_edit.backends.llm_agent as llm_agent
+        old_post = llm_agent._post_chat_completion
+        import os
+        os.environ["TEST_CONTOUR_API_KEY"] = "secret"
+        try:
+            llm_agent._post_chat_completion = fake_post
+            context = build_mask_context(
+                self.mask,
+                schema=self.schema,
+                intent=self.intent,
+                primitive_config=self.primitive_config,
+                allowed_source_labels=("Stroma",),
+                target_label="Immune infiltrate",
+            )
+            request = llm_agent.ContourProposalRequest(
+                prompt=build_contour_prompt(context=context),
+                context=context,
+                attempt_index=1,
+                image_paths=("unused-grid.png",),
+                provider_metadata={"request_mode": "text"},
+            )
+
+            payload = provider.propose(request)
+
+            self.assertEqual(payload["backend"], "llm_contour_proposal")
+            self.assertEqual(captured["payload"]["model"], "gpt-4o")
+            self.assertEqual(captured["api_base_url"], "https://relay.example/v1")
+            self.assertEqual(captured["api_key"], "secret")
+            self.assertEqual(captured["payload"]["response_format"], {"type": "json_object"})
+        finally:
+            llm_agent._post_chat_completion = old_post
+            os.environ.pop("TEST_CONTOUR_API_KEY", None)
+
+    def test_openai_compatible_multimodal_provider_sends_one_grid_image(self):
+        provider = OpenAICompatibleMultimodalContourProvider(
+            model="gpt-4o",
+            api_base_url="https://relay.example/v1",
+            api_key_env="TEST_CONTOUR_API_KEY",
+            image_detail="high",
+        )
+        captured = {}
+        WORKSPACE_TMP.mkdir(exist_ok=True)
+        tmp = WORKSPACE_TMP / f"mm_{uuid.uuid4().hex}"
+        tmp.mkdir(parents=True)
+        grid_path = tmp / "grid.png"
+        plain_path = tmp / "plain.png"
+        grid_path.write_bytes(b"grid-bytes")
+        plain_path.write_bytes(b"plain-bytes")
+
+        def fake_post(payload, *, api_base_url, api_key, timeout_sec):
+            captured["payload"] = payload
+            captured["api_base_url"] = api_base_url
+            captured["api_key"] = api_key
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json_dumps(_proposal(points=[[2, 2], [17, 2], [17, 25], [2, 25]]))
+                        }
+                    }
+                ]
+            }
+
+        import phase3_mask_edit.backends.llm_agent as llm_agent
+        old_post = llm_agent._post_chat_completion
+        import os
+        os.environ["TEST_CONTOUR_API_KEY"] = "secret"
+        try:
+            llm_agent._post_chat_completion = fake_post
+            context = build_mask_context(
+                self.mask,
+                schema=self.schema,
+                intent=self.intent,
+                primitive_config=self.primitive_config,
+                allowed_source_labels=("Stroma",),
+                target_label="Immune infiltrate",
+            )
+            request = llm_agent.ContourProposalRequest(
+                prompt=build_contour_prompt(context=context),
+                context=context,
+                attempt_index=1,
+                image_paths=(str(grid_path), str(plain_path)),
+                provider_metadata={"request_mode": "multimodal"},
+            )
+
+            payload = provider.propose(request)
+
+            self.assertEqual(payload["backend"], "llm_contour_proposal")
+            user_content = captured["payload"]["messages"][1]["content"]
+            image_parts = [part for part in user_content if part["type"] == "image_url"]
+            self.assertEqual(len(image_parts), 1)
+            self.assertTrue(
+                image_parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
+            )
+            self.assertEqual(image_parts[0]["image_url"]["detail"], "high")
+            self.assertNotIn("plain-bytes", captured["payload"]["messages"][1]["content"][0]["text"])
+        finally:
+            llm_agent._post_chat_completion = old_post
+            os.environ.pop("TEST_CONTOUR_API_KEY", None)
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_api_cli_fixture_mode_runs_agent_entrypoint(self):
+        WORKSPACE_TMP.mkdir(exist_ok=True)
+        tmp = WORKSPACE_TMP / f"api_cli_{uuid.uuid4().hex}"
+        tmp.mkdir(parents=True)
+        try:
+            from phase3_mask_edit.core.mask_io import save_id_mask
+
+            mask_path = tmp / "source_mask.png"
+            output_dir = tmp / "run"
+            save_id_mask(self.mask, mask_path)
+
+            code = run_api_main(
+                [
+                    "--profile",
+                    "BCSS",
+                    "--primitive",
+                    "stromal_immune_infiltration",
+                    "--strength",
+                    "mild",
+                    "--mask",
+                    str(mask_path),
+                    "--output",
+                    str(output_dir),
+                    "--provider",
+                    "fixture",
+                    "--fixture",
+                    "tests/fixtures/llm_contour_stromal_immune_bcss.json",
+                ]
+            )
+
+            self.assertEqual(code, 0)
+            self.assertTrue((output_dir / "execution_summary.json").exists())
+            self.assertTrue((output_dir / "final_target_mask.png").exists())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_source_contour_context_groups_segments_by_adjacent_tissue(self):
+        mask = np.zeros((48, 48), dtype=np.int64)
+        mask[:, :16] = 1
+        mask[:, 16:32] = 2
+        mask[:, 32:] = 3
+        context = build_mask_context(
+            mask,
+            schema=self.schema,
+            intent=self.intent,
+            primitive_config=self.primitive_config,
+            allowed_source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            grid_spacing_px=16,
+        )
+
+        component = context["source_contour_context"]["Stroma"]["components"][0]
+        segments = component["contour_adjacency_segments"]
+
+        self.assertIn("Tumor", segments)
+        self.assertIn("Necrosis", segments)
+        self.assertGreater(len(segments["Tumor"]), 0)
+        self.assertGreater(len(segments["Necrosis"]), 0)
+        self.assertIn("points", segments["Tumor"][0])
+        prompt = build_contour_prompt(context=context)
+        self.assertIn("contour_adjacency_segments groups contour coordinates", prompt)
+        self.assertIn("prefer Stroma contour segments adjacent to Tumor", prompt)
+
+    def test_patch_edge_is_not_reported_as_background_adjacency_segment(self):
+        mask = np.zeros((48, 48), dtype=np.int64)
+        mask[:, :24] = 2
+        mask[:, 24:] = 1
+        context = build_mask_context(
+            mask,
+            schema=self.schema,
+            intent=self.intent,
+            primitive_config=self.primitive_config,
+            allowed_source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            grid_spacing_px=16,
+        )
+
+        component = context["source_contour_context"]["Stroma"]["components"][0]
+        segments = component["contour_adjacency_segments"]
+
+        self.assertIn("Tumor", segments)
+        self.assertNotIn("Background", segments)
+
+
+def _synthetic_bcss_mask() -> np.ndarray:
+    mask = np.zeros((64, 64), dtype=np.int64)
+    mask[8:56, 8:56] = 2
+    mask[18:46, 18:46] = 1
+    return mask
+
+
+def _primitive(recipe, name):
+    for primitive in recipe["primitives"]:
+        if primitive["name"] == name:
+            return primitive
+    raise AssertionError(f"missing primitive {name}")
+
+
+def _proposal(*, points):
+    return {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "stromal_immune_infiltration",
+        "reference_profile": "BCSS",
+        "target_label": "Immune infiltrate",
+        "coordinate_system": {
+            "origin": "top_left",
+            "point_format": "[x, y]",
+            "x_axis": "horizontal_column_right",
+            "y_axis": "vertical_row_down",
+            "width": 64,
+            "height": 64,
+        },
+        "regions": [
+            {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": ["Stroma"],
+                "points": points,
+                "confidence": 0.8,
+            }
+        ],
+    }
+
+
+def json_dumps(value):
+    import json
+
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _assert_final_diff_labels(
+    case,
+    *,
+    old_mask: np.ndarray,
+    target_mask: np.ndarray,
+    allowed_source_ids: set[int],
+    target_id: int,
+) -> None:
+    diff = old_mask != target_mask
+    case.assertGreater(int(np.count_nonzero(diff)), 0)
+    changed_old_labels = set(np.unique(old_mask[diff]).astype(int).tolist())
+    changed_new_labels = set(np.unique(target_mask[diff]).astype(int).tolist())
+    case.assertLessEqual(changed_old_labels, allowed_source_ids)
+    case.assertEqual(changed_new_labels, {target_id})
+
+
+if __name__ == "__main__":
+    unittest.main()
