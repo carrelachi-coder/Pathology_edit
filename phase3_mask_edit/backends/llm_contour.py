@@ -27,6 +27,38 @@ CONTOUR_PROPOSAL_BACKEND = "llm_contour_proposal"
 PROJECTION_MODE_HARD_V1 = "v1_hard_projection"
 PROJECTION_MODE_ORGANIC_V2 = "organic_v2"
 DEFAULT_PROJECTION_MODE = PROJECTION_MODE_ORGANIC_V2
+PROJECTION_MODE_COMPARE_V1_V2 = "compare_v1_v2"
+
+_REQUIRED_PROPOSAL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "backend",
+        "primitive",
+        "reference_profile",
+        "target_label",
+        "coordinate_system",
+        "regions",
+    }
+)
+_REQUIRED_REGION_FIELDS = frozenset(
+    {
+        "region_id",
+        "type",
+        "source_labels",
+        "points",
+        "confidence",
+    }
+)
+_KNOWN_OPTIONAL_V2_FIELDS = frozenset(
+    {
+        "source_component_ids",
+        "adjacency_side",
+        "placement_relation",
+        "template_role",
+        "shape_hints",
+    }
+)
+_KNOWN_TEMPLATE_ROLES = frozenset({"coarse_template"})
 
 
 class ContourProposalValidationError(ValueError):
@@ -87,6 +119,12 @@ def validate_contour_proposal(
     if not isinstance(payload, Mapping):
         raise ContourProposalValidationError("contour proposal must be a mapping.")
     height, width = _validate_mask_shape(mask_shape)
+    _validate_known_fields(
+        payload,
+        required_fields=_REQUIRED_PROPOSAL_FIELDS,
+        context="proposal",
+    )
+    _validate_optional_v2_fields(payload, context="proposal")
 
     _require_equal(
         payload.get("schema_version"),
@@ -260,18 +298,27 @@ def execute_contour_proposal_write(
         result.ops_log["projection_mode"] = projection_mode
         return result
 
+    if projection_mode == PROJECTION_MODE_COMPARE_V1_V2:
+        raise ContourProposalValidationError(
+            "compare_v1_v2 is an orchestration/debug mode and must not be "
+            "passed to execute_contour_proposal_write() as a single write backend."
+        )
+
     if projection_mode != PROJECTION_MODE_HARD_V1:
         raise ContourProposalValidationError(
             f"unknown projection_mode {projection_mode!r}."
         )
 
-    return _execute_hard_projection(
+    result = _execute_hard_projection(
         old_mask,
         proposal,
         schema=schema,
         preserve_labels=preserve_labels,
         forbidden_labels=forbidden_labels,
     )
+    result.ops_log["projection_mode"] = PROJECTION_MODE_HARD_V1
+    result.ops_log["projection_backend"] = PROJECTION_MODE_HARD_V1
+    return result
 
 
 def _execute_hard_projection(
@@ -327,13 +374,16 @@ def _execute_hard_projection(
     warnings = ("proposal_projected_region_empty",) if selected_pixels == 0 else ()
     ops_log = {
         "backend": CONTOUR_PROPOSAL_BACKEND,
+        "projection_backend": PROJECTION_MODE_HARD_V1,
         "method": "per_region_source_label_projection_and_deterministic_write",
         "primitive": proposal.primitive,
         "reference_profile": schema.reference_profile,
         "target_label": proposal.target_label,
         "target_fine_id": int(target_ids[0]),
         "candidate_pixels": candidate_pixels,
+        "raw_candidate_pixels": candidate_pixels,
         "projected_pixels": selected_pixels,
+        "intersected_pixels": selected_pixels,
         "selected_pixels": selected_pixels,
         "projection_retained_fraction": (
             selected_pixels / candidate_pixels if candidate_pixels > 0 else 0.0
@@ -369,6 +419,12 @@ def _validate_region(
 ) -> ContourRegion:
     if not isinstance(region, Mapping):
         raise ContourProposalValidationError("each region must be a mapping.")
+    _validate_known_fields(
+        region,
+        required_fields=_REQUIRED_REGION_FIELDS,
+        context="region",
+    )
+    _validate_optional_v2_fields(region, context="region")
     _require_equal(region.get("type"), "polygon", "region.type")
 
     region_id = _required_string(region, "region_id")
@@ -482,3 +538,54 @@ def _require_equal(value: Any, expected: Any, key: str) -> None:
         raise ContourProposalValidationError(
             f"{key} must be {expected!r}; got {value!r}."
         )
+
+
+def _validate_known_fields(
+    payload: Mapping[str, Any],
+    *,
+    required_fields: frozenset[str],
+    context: str,
+) -> None:
+    allowed = required_fields | _KNOWN_OPTIONAL_V2_FIELDS
+    unknown = sorted(str(key) for key in payload.keys() if key not in allowed)
+    if unknown:
+        raise ContourProposalValidationError(
+            f"{context} contains unknown field(s): {', '.join(unknown)}."
+        )
+
+
+def _validate_optional_v2_fields(payload: Mapping[str, Any], *, context: str) -> None:
+    if "source_component_ids" in payload:
+        value = payload["source_component_ids"]
+        if not isinstance(value, list) or not all(
+            isinstance(item, str) and item for item in value
+        ):
+            raise ContourProposalValidationError(
+                f"{context}.source_component_ids must be a list of strings."
+            )
+
+    if "template_role" in payload:
+        value = payload["template_role"]
+        if value not in _KNOWN_TEMPLATE_ROLES:
+            raise ContourProposalValidationError(
+                f"{context}.template_role must be one of "
+                f"{sorted(_KNOWN_TEMPLATE_ROLES)!r}; got {value!r}."
+            )
+
+    for key in ("adjacency_side", "placement_relation"):
+        if key not in payload:
+            continue
+        value = payload[key]
+        if not isinstance(value, str) or not value:
+            raise ContourProposalValidationError(
+                f"{context}.{key} must be a non-empty string."
+            )
+
+    if "shape_hints" in payload:
+        value = payload["shape_hints"]
+        if not isinstance(value, list) or not all(
+            isinstance(item, str) and item for item in value
+        ):
+            raise ContourProposalValidationError(
+                f"{context}.shape_hints must be a list of strings."
+            )

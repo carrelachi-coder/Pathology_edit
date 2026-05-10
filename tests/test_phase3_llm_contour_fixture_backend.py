@@ -286,7 +286,31 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue((output_dir / "v1_hard_projection" / "summary.json").exists())
             self.assertTrue((output_dir / "organic_v2" / "summary.json").exists())
+            comparison = load_metadata(output_dir / "projection_comparison_summary.json")
+            self.assertEqual(comparison["primary_projection_mode"], "organic_v2")
+            self.assertEqual(
+                comparison["repair_loop_consumes"],
+                "primary_result_only",
+            )
+            self.assertFalse(
+                comparison["results"]["v1_hard_projection"]["repair_loop_eligible"]
+            )
+            self.assertTrue(
+                comparison["results"]["organic_v2"]["repair_loop_eligible"]
+            )
+            execution_summary = load_metadata(output_dir / "execution_summary.json")
+            self.assertEqual(
+                execution_summary["edit_result"]["ops_log"]["projection_mode"],
+                "organic_v2",
+            )
+            self.assertEqual(
+                execution_summary["edit_result"]["ops_log"]["requested_projection_mode"],
+                "compare_v1_v2",
+            )
             v2 = load_metadata(output_dir / "organic_v2" / "summary.json")
+            v1 = load_metadata(output_dir / "v1_hard_projection" / "summary.json")
+            self.assertEqual(v2["branch_role"], "primary")
+            self.assertEqual(v1["branch_role"], "debug")
             self.assertEqual(
                 v2["edit_result"]["ops_log"]["projection_backend"],
                 "organic_score_projection_v2",

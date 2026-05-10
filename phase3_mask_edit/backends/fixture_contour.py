@@ -19,6 +19,7 @@ from phase3_mask_edit.backends.llm_contour import (
     ContourProposalValidationError,
     DEFAULT_PROJECTION_MODE,
     PROJECTION_MODE_HARD_V1,
+    PROJECTION_MODE_COMPARE_V1_V2,
     PROJECTION_MODE_ORGANIC_V2,
     execute_contour_proposal_write,
     load_contour_proposal_json,
@@ -156,6 +157,11 @@ def execute_fixture_contour_backend(
         return result
 
     try:
+        primary_projection_mode = (
+            PROJECTION_MODE_ORGANIC_V2
+            if projection_mode == PROJECTION_MODE_COMPARE_V1_V2
+            else projection_mode
+        )
         edit_result = execute_contour_proposal_write(
             source_mask,
             proposal,
@@ -163,13 +169,11 @@ def execute_fixture_contour_backend(
             primitive_config=primitive_config,
             preserve_labels=intent.preserve_labels,
             forbidden_labels=intent.forbidden_labels,
-            projection_mode=(
-                PROJECTION_MODE_ORGANIC_V2
-                if projection_mode == PROJECTION_MODE_ORGANIC_V2
-                else PROJECTION_MODE_HARD_V1
-            ),
+            projection_mode=primary_projection_mode,
             organic_seed=organic_seed,
         )
+        edit_result.ops_log["requested_projection_mode"] = projection_mode
+        edit_result.ops_log["primary_projection_mode"] = primary_projection_mode
         validation = validate_edit_result(
             src_mask=source_mask,
             target_mask=edit_result.target_mask,
@@ -199,7 +203,7 @@ def execute_fixture_contour_backend(
             fixture_path=fixture_path,
         )
         if (
-            projection_mode == "compare_v1_v2"
+            projection_mode == PROJECTION_MODE_COMPARE_V1_V2
             and result.proposal is not None
             and result.error is None
         ):
@@ -213,6 +217,7 @@ def execute_fixture_contour_backend(
                     forbidden_labels=intent.forbidden_labels,
                     output_dir=Path(output_dir),
                     organic_seed=organic_seed,
+                    primary_projection_mode=PROJECTION_MODE_ORGANIC_V2,
                 )
             )
         result = _replace_artifacts(result, artifact_paths)
@@ -323,8 +328,17 @@ def _save_projection_comparison_artifacts(
     forbidden_labels: Sequence[str],
     output_dir: Path,
     organic_seed: int,
+    primary_projection_mode: str,
 ) -> dict[str, str]:
     paths: dict[str, str] = {}
+    comparison_results: dict[str, Any] = {
+        "projection_mode": PROJECTION_MODE_COMPARE_V1_V2,
+        "primary_projection_mode": primary_projection_mode,
+        "debug_projection_modes": [PROJECTION_MODE_HARD_V1],
+        "repair_loop_consumes": "primary_result_only",
+        "debug_results_are_metadata_only": True,
+        "results": {},
+    }
     for mode in (PROJECTION_MODE_HARD_V1, PROJECTION_MODE_ORGANIC_V2):
         edit = execute_contour_proposal_write(
             source_mask,
@@ -344,8 +358,33 @@ def _save_projection_comparison_artifacts(
             primitive_config=primitive_config,
             changed_area_fraction=edit.changed_area_fraction,
         )
+        branch_role = "primary" if mode == primary_projection_mode else "debug"
         mode_dir = output_dir / mode
         mode_dir.mkdir(parents=True, exist_ok=True)
+        branch_summary = {
+            "projection_mode": mode,
+            "branch_role": branch_role,
+            "repair_loop_eligible": branch_role == "primary",
+            "edit_result": {
+                "selected_pixels": edit.selected_pixels,
+                "changed_area_fraction": edit.changed_area_fraction,
+                "warnings": list(edit.warnings),
+                "ops_log": edit.ops_log,
+            },
+            "validation": _jsonable_dataclass(validation),
+        }
+        comparison_results["results"][mode] = {
+            "branch_role": branch_role,
+            "repair_loop_eligible": branch_role == "primary",
+            "selected_pixels": edit.selected_pixels,
+            "changed_area_fraction": edit.changed_area_fraction,
+            "validation_passed": validation.passed,
+            "warnings": list(edit.warnings),
+            "projection_retained_fraction": edit.ops_log.get(
+                "projection_retained_fraction"
+            ),
+            "area_shortfall": edit.ops_log.get("area_shortfall"),
+        }
         paths[f"{mode}_change_region"] = str(
             save_change_region(edit.change_region, mode_dir / "change_region.png")
         )
@@ -357,19 +396,13 @@ def _save_projection_comparison_artifacts(
         )
         paths[f"{mode}_summary"] = str(
             save_metadata(
-                {
-                    "projection_mode": mode,
-                    "edit_result": {
-                        "selected_pixels": edit.selected_pixels,
-                        "changed_area_fraction": edit.changed_area_fraction,
-                        "warnings": list(edit.warnings),
-                        "ops_log": edit.ops_log,
-                    },
-                    "validation": _jsonable_dataclass(validation),
-                },
+                branch_summary,
                 mode_dir / "summary.json",
             )
         )
+    paths["projection_comparison_summary"] = str(
+        save_metadata(comparison_results, output_dir / "projection_comparison_summary.json")
+    )
     return paths
 
 

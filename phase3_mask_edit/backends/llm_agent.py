@@ -247,6 +247,7 @@ class LLMContourAgentResult:
     final_attempt: LLMContourAttempt | None
     context: dict[str, Any]
     artifact_paths: dict[str, str]
+    projection_mode: str = DEFAULT_PROJECTION_MODE
     error: str | None = None
 
     @property
@@ -261,6 +262,7 @@ class LLMContourAgentResult:
         return {
             "status": self.status,
             "backend": CONTOUR_PROPOSAL_BACKEND,
+            "projection_mode": self.projection_mode,
             "error": self.error,
             "context": self.context,
             "artifact_paths": dict(self.artifact_paths),
@@ -389,6 +391,7 @@ def execute_llm_contour_agent(
         final_attempt=final_attempt,
         context=context,
         artifact_paths={},
+        projection_mode=projection_mode,
         error=error,
     )
     if out is not None:
@@ -671,6 +674,7 @@ def _replace_result_paths(
         final_attempt=result.final_attempt,
         context=result.context,
         artifact_paths=artifact_paths,
+        projection_mode=result.projection_mode,
         error=result.error,
     )
 

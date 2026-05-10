@@ -95,6 +95,19 @@ def build_mask_context(
             "schema_version": CONTOUR_PROPOSAL_SCHEMA_VERSION,
             "max_regions": int(max_regions),
             "max_points_per_region": int(max_points_per_region),
+            "template_role": "coarse_template",
+            "known_optional_v2_fields": [
+                "source_component_ids",
+                "adjacency_side",
+                "placement_relation",
+                "template_role",
+                "shape_hints",
+            ],
+            "executor_contract": (
+                "LLM polygons are approximate organic intent templates. "
+                "Deterministic code projects them to legal source labels, "
+                "controls final area, and writes final pixels."
+            ),
         },
         "target_area_hint": target_area_hint,
         "llm_task_requirements": llm_task_requirements,
@@ -136,6 +149,9 @@ def build_contour_prompt(
         "primitive": context["primitive"],
         "reference_profile": context["reference_profile"],
         "target_label": context["target_label"],
+        "template_role": "coarse_template",
+        "placement_relation": _default_placement_relation(context),
+        "shape_hints": _default_shape_hints(context),
         "coordinate_system": {
             "origin": "top_left",
             "point_format": "[x, y]",
@@ -149,6 +165,10 @@ def build_contour_prompt(
                 "region_id": "r1",
                 "type": "polygon",
                 "source_labels": context["allowed_source_labels"],
+                "source_component_ids": ["source_1"],
+                "adjacency_side": _default_placement_relation(context),
+                "template_role": "coarse_template",
+                "shape_hints": _default_shape_hints(context),
                 "points": [
                     [205, 118],
                     [232, 126],
@@ -170,6 +190,7 @@ def build_contour_prompt(
     parts = [
         "Return only one valid JSON object. Do not use markdown fences.",
         "Propose one or more polygon change regions for the pathology mask edit.",
+        "Treat every polygon as a coarse organic template for pathology placement, not as the final changed-pixel mask.",
         "Coordinates must be in the original mask coordinate system, not a resized preview.",
         "Use [x, y] points: x is the horizontal column increasing right; y is the vertical row increasing down; origin is top-left.",
         "All points must be inside mask bounds.",
@@ -178,14 +199,16 @@ def build_contour_prompt(
         _task_requirements_instruction(context),
         _organic_shape_instruction(context),
         _contour_style_instruction(context),
-        "Use source_contour_context as the primary geometry reference. It gives source-label component contours and adjacent tissue on the other side of the boundary.",
-        "Within each source component, contour_adjacency_segments groups contour coordinates by the tissue just across the boundary.",
+        "Use source_contour_context as the primary placement reference. It gives source-label component ids, contours, and adjacent tissue on the other side of the boundary.",
+        "Within each source component, contour_adjacency_segments groups contour coordinates by the tissue just across the boundary. Prefer choosing component ids and adjacency sides before drawing points.",
         "For stromal immune infiltration, prefer Stroma contour segments adjacent to Tumor and avoid segments adjacent to Necrosis unless the recipe explicitly asks for necrosis-adjacent change.",
-        "Generate contours by following and modifying the source component contour naturally; do not guess coordinates from the image alone.",
-        "The downstream executor will rasterize, project to legal source labels, write the target label, and validate.",
-        "If target_area_hint is present, its target_changed_pixels_min/max refer to the desired area after legal source-label projection, not raw polygon area.",
-        "Draw raw polygons about 20-40% larger than the target projected area range to allow projection trimming.",
+        "For necrosis appearance, prefer Tumor interior components and avoid hugging the outer Tumor boundary unless the intent requires it.",
+        "Generate a rough organic template around the intended pathology location; do not optimize vertices to be pixel-perfect source-label coordinates.",
+        "The downstream executor will rasterize, project to legal source labels, control final changed area, write the target label, and validate.",
+        "If target_area_hint is present, its target_changed_pixels_min/max refer to the desired area after deterministic projection, not raw polygon area.",
+        "Draw raw templates broad enough to express placement and shape variety; the projector will trim and refill within the legal domain.",
         "Use source_spatial_hints only as location anchors. Do not trace tile boxes or component bboxes as the final shape.",
+        "Optional V2 fields are allowed only when named in proposal_policy. Use template_role='coarse_template' when you include template_role.",
         "",
         "Mask context JSON:",
         json.dumps(context, indent=2, ensure_ascii=False),
@@ -237,9 +260,44 @@ def build_repair_feedback(
             "projection_retained_fraction": ops_log.get(
                 "projection_retained_fraction"
             ),
+            "projection_mode": ops_log.get("projection_mode"),
+            "projection_backend": ops_log.get("projection_backend"),
+            "legal_domain_pixels": ops_log.get("legal_domain_pixels"),
+            "target_pixels": ops_log.get("target_pixels"),
+            "area_shortfall": ops_log.get("area_shortfall"),
+            "template_overlap_with_legal_domain": ops_log.get(
+                "template_overlap_with_legal_domain"
+            ),
+            "top_failed_reason": _top_projection_failed_reason(
+                validation=validation,
+                edit_result=edit_result,
+            ),
         }
         feedback["warnings"] = list(edit_result.warnings)
     return feedback
+
+
+def _top_projection_failed_reason(
+    *,
+    validation: ValidationResult | None,
+    edit_result: PrimitiveEditResult,
+) -> str | None:
+    ops_log = edit_result.ops_log
+    legal = ops_log.get("legal_domain_pixels")
+    target = ops_log.get("target_pixels")
+    selected = edit_result.selected_pixels
+    if isinstance(legal, int) and isinstance(target, int) and legal < target:
+        return "legal_domain_too_small"
+    if "organic_projection_area_shortfall" in edit_result.warnings:
+        return "projector_area_shortfall_after_cleanup"
+    overlap = ops_log.get("template_overlap_with_legal_domain")
+    if isinstance(overlap, (int, float)) and float(overlap) < 0.05:
+        return "template_overlap_with_legal_domain_too_low"
+    if validation is not None and validation.failed_checks:
+        return validation.failed_checks[0].name
+    if selected == 0:
+        return "selected_pixels_empty"
+    return None
 
 
 def save_prompt_text(prompt: str, path: str | Path) -> Path:
@@ -299,8 +357,9 @@ def _build_target_area_hint(
         "target_changed_pixels_min": projected_min,
         "target_changed_pixels_max": projected_max,
         "raw_polygon_margin_guidance": (
-            "Raw polygons should be about 20-40% larger than this projected "
-            "target range because Phase 3 will trim pixels outside allowed source labels."
+            "Raw polygons are coarse organic templates. They may be broader than "
+            "the projected target range because Phase 3 will select final legal "
+            "source-label pixels deterministically."
         ),
     }
 
@@ -461,13 +520,13 @@ def _area_requirement_text(target_area_hint: Mapping[str, Any] | None) -> str:
     if not target_area_hint:
         return "Follow the strength bucket from the recipe if present."
     return (
-        "After Phase 3 projects the polygon to legal source-label pixels, "
+        "After Phase 3 deterministically projects the coarse template to legal source-label pixels, "
         f"the changed area should be about {target_area_hint.get('target_changed_pixels_min')} "
         f"to {target_area_hint.get('target_changed_pixels_max')} pixels "
         f"({target_area_hint.get('target_fraction_min'):.2f}-"
         f"{target_area_hint.get('target_fraction_max'):.2f} of "
         f"{target_area_hint.get('reference_area_label')}). "
-        "The raw polygon may be larger because non-source pixels are trimmed."
+        "The raw polygon is only a coarse template; deterministic projection controls final area."
     )
 
 
@@ -869,12 +928,11 @@ def _source_label_visual_instruction(context: Mapping[str, Any]) -> str:
         if label not in allowed and isinstance(legend, Mapping) and label in legend:
             forbidden_examples.append(f"{label} ({legend[label]})")
     message = (
-        "In the grid image, place polygon vertices ONLY on allowed source tissue: "
+        "In the grid image, place each coarse template mainly over allowed source tissue: "
         + ", ".join(source_descriptions)
         + f". These pixels will be converted to {target}. "
-        "Every polygon vertex must lie on a pixel that currently has the source label. "
-        "Use the source_contour_context contours as your drawing guide: trace along or just inside "
-        "the source-label boundary, never crossing into adjacent tissue."
+        "The template does not need pixel-perfect vertices on source pixels; deterministic projection will keep only legal source-label pixels. "
+        "Use source_contour_context as the drawing guide for component choice, adjacency side, and approximate placement."
     )
     if forbidden_examples:
         message += (
@@ -889,11 +947,10 @@ def _organic_shape_instruction(context: Mapping[str, Any]) -> str:
     primitive = context.get("primitive")
     if primitive == "stromal_immune_infiltration":
         return (
-            "Shape style: propose a natural, pathology-like irregular stromal immune patch. "
+            "Shape style: propose a natural, pathology-like irregular stromal immune coarse template. "
             "For mild strength, prefer multiple patchy organic contours instead of one broad continuous band. "
-            "All polygon vertices must be placed on Stroma (green) pixels. "
-            "Trace along the Stroma side of the Stroma-Tumor boundary or other Stroma-adjacent boundary. "
-            "Do not place any vertex on Tumor (red), Necrosis (blue), or other non-Stroma pixels. "
+            "The intended placement should be on the Stroma side of the Tumor-Stroma interface, especially Tumor-adjacent Stroma. "
+            "The template may be rough near local boundaries because legal projection will keep final pixels inside Stroma. "
             "Use many boundary points, following contour_style_hint, for each substantial region and follow the green stromal compartment and nearby tissue boundaries. "
             "Avoid rectangles, diamonds, circles, symmetric shapes, repeated duplicate parts, tiny decorative polygons, and one large wedge-shaped band. "
             "If validation feedback says the area is too small, enlarge several existing patches or add a differently shaped patch; do not add an identical copy."
@@ -909,3 +966,21 @@ def _organic_shape_instruction(context: Mapping[str, Any]) -> str:
         "Shape style: use organic irregular polygon boundaries with enough points to avoid simple geometric templates. "
         "Avoid rectangles, diamonds, symmetric shapes, and repeated duplicate parts."
     )
+
+
+def _default_placement_relation(context: Mapping[str, Any]) -> str:
+    primitive = context.get("primitive")
+    if primitive == "stromal_immune_infiltration":
+        return "tumor_adjacent_stroma"
+    if primitive == "necrosis_appearance":
+        return "tumor_interior"
+    return "generic_label_safe"
+
+
+def _default_shape_hints(context: Mapping[str, Any]) -> list[str]:
+    primitive = context.get("primitive")
+    if primitive == "stromal_immune_infiltration":
+        return ["patchy", "band_like", "irregular_boundary"]
+    if primitive == "necrosis_appearance":
+        return ["patchy", "irregular_boundary"]
+    return ["irregular_boundary"]

@@ -10,6 +10,7 @@ from phase3_mask_edit.backends.llm_contour import (
     CONTOUR_PROPOSAL_SCHEMA_VERSION,
     ContourProposalValidationError,
     PROJECTION_MODE_HARD_V1,
+    PROJECTION_MODE_COMPARE_V1_V2,
     PROJECTION_MODE_ORGANIC_V2,
     execute_contour_proposal_write,
     load_contour_proposal_json,
@@ -199,6 +200,50 @@ class LLMContourProposalTests(unittest.TestCase):
                 schema=self.schema,
                 mask_shape=self.mask_shape,
                 allowed_source_labels=("Tumor",),
+            )
+
+    def test_known_optional_v2_fields_are_allowed_by_strict_validator(self):
+        payload = self._proposal()
+        payload["template_role"] = "coarse_template"
+        payload["placement_relation"] = "tumor_adjacent_stroma"
+        payload["shape_hints"] = ["patchy", "irregular_boundary"]
+        payload["regions"][0]["source_component_ids"] = ["source_1"]
+        payload["regions"][0]["adjacency_side"] = "tumor_adjacent_stroma"
+        payload["regions"][0]["template_role"] = "coarse_template"
+
+        proposal = validate_contour_proposal(
+            payload,
+            schema=self.schema,
+            mask_shape=self.mask_shape,
+            allowed_source_labels=("Stroma",),
+        )
+
+        self.assertEqual(proposal.raw_payload["template_role"], "coarse_template")
+        self.assertEqual(
+            proposal.raw_payload["regions"][0]["source_component_ids"],
+            ["source_1"],
+        )
+
+    def test_unknown_payload_fields_are_rejected_even_with_v2_allowlist(self):
+        payload = self._proposal()
+        payload["surprise_field"] = True
+
+        with self.assertRaisesRegex(ContourProposalValidationError, "unknown field"):
+            validate_contour_proposal(
+                payload,
+                schema=self.schema,
+                mask_shape=self.mask_shape,
+            )
+
+    def test_invalid_template_role_is_rejected(self):
+        payload = self._proposal()
+        payload["template_role"] = "final_mask"
+
+        with self.assertRaisesRegex(ContourProposalValidationError, "template_role"):
+            validate_contour_proposal(
+                payload,
+                schema=self.schema,
+                mask_shape=self.mask_shape,
             )
 
     def test_standalone_rasterize_polygon_validates_bounds(self):
@@ -452,6 +497,22 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.ops_log["projection_mode"], PROJECTION_MODE_ORGANIC_V2)
         self.assertEqual(result.ops_log["projection_backend"], ORGANIC_PROJECTION_BACKEND)
         self.assertTrue(np.all(old_mask[result.change_region] == 2))
+
+    def test_compare_mode_is_rejected_by_single_write_executor(self):
+        proposal = validate_contour_proposal(
+            self._proposal(),
+            schema=self.schema,
+            mask_shape=self.mask_shape,
+            allowed_source_labels=("Stroma",),
+        )
+
+        with self.assertRaisesRegex(ContourProposalValidationError, "orchestration"):
+            execute_contour_proposal_write(
+                np.zeros(self.mask_shape, dtype=np.int64),
+                proposal,
+                schema=self.schema,
+                projection_mode=PROJECTION_MODE_COMPARE_V1_V2,
+            )
 
     def test_validation_detects_projected_area_too_small(self):
         old_mask = np.zeros((20, 20), dtype=np.int64)
