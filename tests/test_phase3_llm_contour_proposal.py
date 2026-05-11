@@ -679,6 +679,54 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(organic.ops_log["target_pixels"], target_pixels)
         self.assertGreater(organic.ops_log["selected_raw_template_union_pixels"], 0)
 
+    def test_organic_projection_prefers_template_neighborhood_before_spillover(self):
+        old_mask = np.zeros((96, 96), dtype=np.int64)
+        old_mask[8:88, 8:88] = 2
+        old_mask[34:62, 54:82] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[24:48, 12:36] = True
+        target_pixels = 360
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Immune infiltrate",
+            primitive_config={
+                "name": "stromal_immune_infiltration",
+                "parameter_ranges": {
+                    "immune_area_delta_fraction": {"mild": [0.08, 0.14]},
+                    "organic_score_weights": {
+                        "template": 0.20,
+                        "spatial": 0.75,
+                        "noise": 0.05,
+                    },
+                    "organic_template_neighborhood_radius_px": 12,
+                    "organic_template_spillover_fraction": 0.15,
+                    "organic_min_template_legal_overlap_fraction": 0.01,
+                    "organic_min_selected_template_iou": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "peritumoral_falloff_radius_px": 16,
+                },
+            },
+            seed=4,
+            target_pixels=target_pixels,
+        )
+
+        policy = result.ops_log["selection_policy"]
+        self.assertEqual(policy["name"], "template_neighborhood_constrained_top_k")
+        self.assertEqual(result.selected_pixels, target_pixels)
+        self.assertGreaterEqual(
+            policy["selected_inside_primary_zone_pixels"],
+            int(round(target_pixels * 0.85)),
+        )
+        self.assertLessEqual(
+            policy["selected_outside_primary_zone_pixels"],
+            int(round(target_pixels * 0.15)),
+        )
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
+
     def test_organic_projection_necrosis_policy_caps_area_like_validation(self):
         old_mask = np.zeros((80, 80), dtype=np.int64)
         old_mask[8:72, 8:72] = 2

@@ -274,9 +274,13 @@ primitives:
       organic_noise_sigma_px: 18.0
       organic_noise_amplitude: 0.18
       organic_score_weights:
-        template: 0.50
-        spatial: 0.40
+        template: 0.60
+        spatial: 0.30
         noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_min_selected_template_iou: 0.08
+      organic_template_neighborhood_radius_px: 48
+      organic_template_spillover_fraction: 0.15
       organic_min_component_fraction: 0.01
       organic_fill_holes_max_area_px: 0
       tumor_boundary_margin_radius_px: 64
@@ -337,9 +341,13 @@ primitives:
       organic_noise_sigma_px: 18.0
       organic_noise_amplitude: 0.18
       organic_score_weights:
-        template: 0.35
-        spatial: 0.55
+        template: 0.65
+        spatial: 0.25
         noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_min_selected_template_iou: 0.08
+      organic_template_neighborhood_radius_px: 48
+      organic_template_spillover_fraction: 0.15
       organic_min_component_fraction: 0.01
       organic_fill_holes_max_area_px: 0
       immune_neighbor_radius_px: 48

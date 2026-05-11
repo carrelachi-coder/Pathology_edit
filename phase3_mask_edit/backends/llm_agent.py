@@ -41,6 +41,7 @@ from phase3_mask_edit.backends.llm_prompt import (
     build_repair_feedback,
     save_prompt_text,
 )
+from phase3_mask_edit.backends.visual_qa import save_visual_qa_bundle
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import (
@@ -364,6 +365,11 @@ def execute_llm_contour_agent(
                 attempt,
                 out / f"attempt_{attempt_index:03d}",
                 request=request,
+                source_mask=source_mask,
+                schema=schema,
+                intent=intent,
+                primitive_config=primitive_config,
+                projection_mode=projection_mode,
             )
             attempt = _replace_attempt_paths(attempt, attempt_paths)
         attempts.append(attempt)
@@ -558,6 +564,11 @@ def _save_attempt_artifacts(
     out: Path,
     *,
     request: ContourProposalRequest,
+    source_mask: np.ndarray,
+    schema: MaskProfileSchema,
+    intent: EditIntent,
+    primitive_config: Mapping[str, Any],
+    projection_mode: str,
 ) -> dict[str, str]:
     out.mkdir(parents=True, exist_ok=True)
     paths: dict[str, str] = {}
@@ -596,6 +607,24 @@ def _save_attempt_artifacts(
         paths["target_mask_rgb"] = str(
             save_rgb_mask(attempt.edit_result.target_mask, out / "target_mask_rgb.png")
         )
+        if attempt.proposal is not None:
+            paths.update(
+                {
+                    f"visual_qa_{key}": value
+                    for key, value in save_visual_qa_bundle(
+                        source_mask=source_mask,
+                        proposal=attempt.proposal,
+                        schema=schema,
+                        edit_result=attempt.edit_result,
+                        validation=attempt.validation,
+                        output_dir=out / "visual_qa",
+                        primitive_config=primitive_config,
+                        preserve_labels=intent.preserve_labels,
+                        forbidden_labels=intent.forbidden_labels,
+                        projection_mode=projection_mode,
+                    ).items()
+                }
+            )
     if attempt.validation is not None:
         paths["validation"] = str(
             save_metadata(_jsonable_dataclass(attempt.validation), out / "validation.json")

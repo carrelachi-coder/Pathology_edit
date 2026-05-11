@@ -171,7 +171,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-base-url", default="https://api.openai.com/v1")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--api-model", help="Model name, e.g. gpt-4o.")
-    parser.add_argument("--api-timeout-sec", type=float, default=60.0)
+    parser.add_argument("--api-timeout-sec", type=float, default=180.0)
     parser.add_argument("--api-temperature", type=float, default=0.0)
     parser.add_argument("--api-image-detail", choices=("low", "high", "auto"), default="high")
     parser.add_argument("--source-label", action="append")

@@ -39,6 +39,10 @@ class OrganicProjectionParams:
     min_component_fraction: float
     fill_holes_max_area_px: int
     decay_px: float
+    min_template_legal_overlap_fraction: float
+    min_selected_template_iou: float
+    template_neighborhood_radius_px: float
+    template_spillover_fraction: float
 
 
 def apply_organic_projected_label_write(
@@ -154,6 +158,26 @@ def apply_organic_projected_label_write(
             raw_legal_overlap=raw_legal_overlap,
             extra_warnings=("organic_projection_template_no_legal_overlap",),
         )
+    template_overlap_fraction = (
+        raw_legal_overlap / raw_candidate_pixels if raw_candidate_pixels else 0.0
+    )
+    if template_overlap_fraction < params.min_template_legal_overlap_fraction:
+        return _empty_result(
+            mask,
+            schema=schema,
+            target_label=target_label,
+            source_labels=source_labels,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            primitive_name=primitive_name,
+            raw_candidate_pixels=raw_candidate_pixels,
+            legal_pixels=legal_pixels,
+            target_pixels=target_pixels,
+            seed=seed,
+            component_policy=policy,
+            raw_legal_overlap=raw_legal_overlap,
+            extra_warnings=("organic_projection_template_legal_overlap_too_low",),
+        )
 
     template_score = _template_score(candidate, sigma=params.template_sigma)
     spatial_score = policy.spatial_score
@@ -171,7 +195,14 @@ def apply_organic_projected_label_write(
     final_score = np.asarray(final_score, dtype=float)
     final_score[~legal_domain] = -np.inf
 
-    selected = _top_k_mask(final_score, selected_target_pixels)
+    selected, selection_log = _template_constrained_top_k_mask(
+        final_score,
+        legal_domain=legal_domain,
+        raw_template=candidate,
+        target_pixels=selected_target_pixels,
+        neighborhood_radius_px=params.template_neighborhood_radius_px,
+        spillover_fraction=params.template_spillover_fraction,
+    )
     selected, cleanup_log = _cleanup_and_refill_once(
         selected,
         legal_domain=legal_domain,
@@ -188,6 +219,11 @@ def apply_organic_projected_label_write(
     changed_area_fraction = selected_pixels / int(mask.size)
     selected_template_intersection = int(np.count_nonzero(selected & candidate))
     selected_template_union = int(np.count_nonzero(selected | candidate))
+    selected_template_iou = (
+        selected_template_intersection / selected_template_union
+        if selected_template_union
+        else 0.0
+    )
     warnings: list[str] = []
     if selected_pixels == 0:
         warnings.append("proposal_projected_region_empty")
@@ -195,6 +231,12 @@ def apply_organic_projected_label_write(
         warnings.append("organic_projection_area_shortfall")
     if cleanup_log["post_cleanup_pixels"] < cleanup_log["pre_cleanup_pixels"]:
         warnings.append("organic_projection_cleanup_removed_pixels")
+    if (
+        params.min_selected_template_iou > 0
+        and selected_pixels > 0
+        and selected_template_iou < params.min_selected_template_iou
+    ):
+        warnings.append("organic_projection_selected_template_iou_low")
     warnings.extend(policy.warnings)
 
     ops_log = {
@@ -219,11 +261,11 @@ def apply_organic_projected_label_write(
         "selected_pixels": selected_pixels,
         "selected_raw_template_intersection_pixels": selected_template_intersection,
         "selected_raw_template_union_pixels": selected_template_union,
-        "selected_raw_template_iou": (
-            selected_template_intersection / selected_template_union
-            if selected_template_union
-            else 0.0
-        ),
+        "selected_raw_template_iou": selected_template_iou,
+        "selection_policy": {
+            "name": "template_neighborhood_constrained_top_k",
+            **selection_log,
+        },
         "area_shortfall": int(max(target_pixels - selected_pixels, 0)),
         "projection_retained_fraction": (
             selected_pixels / raw_candidate_pixels if raw_candidate_pixels else 0.0
@@ -239,6 +281,14 @@ def apply_organic_projected_label_write(
             "noise_sigma": float(params.noise_sigma),
             "noise_amplitude": float(params.noise_amplitude),
             "decay_px": float(params.decay_px),
+            "min_template_legal_overlap_fraction": float(
+                params.min_template_legal_overlap_fraction
+            ),
+            "min_selected_template_iou": float(params.min_selected_template_iou),
+            "template_neighborhood_radius_px": float(
+                params.template_neighborhood_radius_px
+            ),
+            "template_spillover_fraction": float(params.template_spillover_fraction),
         },
         "component_policy": {
             "policy_name": policy.policy_name,
@@ -324,6 +374,18 @@ def _projection_params(
         decay_px=_positive_float(
             decay_px, ranges.get("peritumoral_falloff_radius_px", 48.0)
         ),
+        min_template_legal_overlap_fraction=_nonnegative_float(
+            None, ranges.get("organic_min_template_legal_overlap_fraction", 0.05)
+        ),
+        min_selected_template_iou=_nonnegative_float(
+            None, ranges.get("organic_min_selected_template_iou", 0.0)
+        ),
+        template_neighborhood_radius_px=_positive_float(
+            None, ranges.get("organic_template_neighborhood_radius_px", 48.0)
+        ),
+        template_spillover_fraction=_fraction_float(
+            ranges.get("organic_template_spillover_fraction", 0.15)
+        ),
     )
 
 
@@ -339,6 +401,12 @@ def _nonnegative_float(value: float | None, default: Any) -> float:
     if not isinstance(raw, (int, float)) or float(raw) < 0:
         raise ValueError("organic projection parameter must be non-negative.")
     return float(raw)
+
+
+def _fraction_float(value: Any) -> float:
+    if not isinstance(value, (int, float)) or not 0 <= float(value) <= 1:
+        raise ValueError("organic projection fraction parameter must be in [0, 1].")
+    return float(value)
 
 
 def _policy_for_primitive(
@@ -622,6 +690,49 @@ def _top_k_mask(score: np.ndarray, k: int) -> np.ndarray:
     return result
 
 
+def _template_constrained_top_k_mask(
+    score: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    raw_template: np.ndarray,
+    target_pixels: int,
+    neighborhood_radius_px: float,
+    spillover_fraction: float,
+) -> tuple[np.ndarray, dict[str, int | float]]:
+    template_dist = ndimage.distance_transform_edt(~np.asarray(raw_template, dtype=bool))
+    primary_zone = legal_domain & (template_dist <= float(neighborhood_radius_px))
+    primary_budget = int(round(int(target_pixels) * (1.0 - float(spillover_fraction))))
+    primary_budget = min(max(primary_budget, 0), int(target_pixels))
+    selected = _top_k_mask_for_refill(
+        score,
+        legal_domain=primary_zone,
+        k=primary_budget,
+    )
+    primary_selected_pixels = int(np.count_nonzero(selected))
+
+    remaining = int(target_pixels) - primary_selected_pixels
+    secondary_selected_pixels = 0
+    if remaining > 0:
+        secondary = _top_k_mask_for_refill(
+            score,
+            legal_domain=legal_domain & ~selected,
+            k=remaining,
+        )
+        secondary_selected_pixels = int(np.count_nonzero(secondary))
+        selected |= secondary
+
+    return selected, {
+        "template_neighborhood_radius_px": float(neighborhood_radius_px),
+        "template_spillover_fraction": float(spillover_fraction),
+        "primary_zone_pixels": int(np.count_nonzero(primary_zone)),
+        "primary_budget_pixels": int(primary_budget),
+        "primary_selected_pixels": int(primary_selected_pixels),
+        "secondary_selected_pixels": int(secondary_selected_pixels),
+        "selected_inside_primary_zone_pixels": int(np.count_nonzero(selected & primary_zone)),
+        "selected_outside_primary_zone_pixels": int(np.count_nonzero(selected & ~primary_zone)),
+    }
+
+
 def _cleanup_and_refill_once(
     selected: np.ndarray,
     *,
@@ -823,6 +934,9 @@ def _empty_result(
     seed: int,
     component_policy: OrganicProjectionPolicy | None = None,
     raw_legal_overlap: int = 0,
+    selected_template_intersection: int = 0,
+    selected_template_union: int | None = None,
+    selected_template_iou: float = 0.0,
     extra_warnings: Sequence[str] = (),
 ) -> PrimitiveEditResult:
     target_ids = schema.resolve_fine_ids(target_label)
@@ -847,9 +961,11 @@ def _empty_result(
         "target_pixels": int(target_pixels),
         "projected_pixels": 0,
         "selected_pixels": 0,
-        "selected_raw_template_intersection_pixels": 0,
-        "selected_raw_template_union_pixels": int(raw_candidate_pixels),
-        "selected_raw_template_iou": 0.0,
+        "selected_raw_template_intersection_pixels": int(selected_template_intersection),
+        "selected_raw_template_union_pixels": int(
+            raw_candidate_pixels if selected_template_union is None else selected_template_union
+        ),
+        "selected_raw_template_iou": float(selected_template_iou),
         "area_shortfall": int(target_pixels),
         "projection_retained_fraction": 0.0,
         "changed_area_fraction": 0.0,
