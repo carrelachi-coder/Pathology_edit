@@ -97,6 +97,20 @@ def save_visual_qa_bundle(
         out / "selected_change_region.png",
     )
     paths["target_mask_rgb"] = save_rgb_mask(edit_result.target_mask, out / "target_mask_rgb.png")
+    paths["organic_projection_panel"] = _save_rgb(
+        _organic_projection_panel(
+            source_rgb=source_rgb,
+            raw_template=raw_template,
+            legal_domain=legal_domain,
+            score_maps=score_maps,
+            selected=selected,
+            target_rgb=id_mask_to_llm_preview_rgb(edit_result.target_mask),
+            validation=validation,
+            edit_result=edit_result,
+            projection_mode=projection_mode,
+        ),
+        out / "organic_projection_panel.png",
+    )
     paths["v1_v2_side_by_side"] = _save_rgb(
         _side_by_side_panel(
             source_rgb=source_rgb,
@@ -329,6 +343,223 @@ def _side_by_side_panel(
     return np.asarray(image, dtype=np.uint8)
 
 
+def _organic_projection_panel(
+    *,
+    source_rgb: np.ndarray,
+    raw_template: np.ndarray,
+    legal_domain: np.ndarray,
+    score_maps: Mapping[str, np.ndarray],
+    selected: np.ndarray,
+    target_rgb: np.ndarray,
+    validation: ValidationResult | None,
+    edit_result: PrimitiveEditResult,
+    projection_mode: str | None,
+) -> np.ndarray:
+    cleanup_overlay = _cleanup_overlay(
+        source_rgb=source_rgb,
+        selected=selected,
+        edit_result=edit_result,
+    )
+    tiles = [
+        ("source", source_rgb),
+        (
+            "raw template",
+            _overlay_mask(source_rgb, raw_template, color=(255, 142, 36), alpha=0.55),
+        ),
+        (
+            "legal domain",
+            _outline_mask(
+                _overlay_mask(source_rgb, legal_domain, color=(58, 167, 255), alpha=0.50),
+                legal_domain,
+                color=(255, 255, 255),
+            ),
+        ),
+        (
+            "template score",
+            _outline_mask(
+                _heatmap(score_maps["template_score"], legal_domain=legal_domain),
+                selected,
+                color=(255, 255, 255),
+            ),
+        ),
+        (
+            "spatial score",
+            _outline_mask(
+                _heatmap(score_maps["spatial_score"], legal_domain=legal_domain),
+                selected,
+                color=(255, 255, 255),
+            ),
+        ),
+        (
+            "noise score",
+            _outline_mask(
+                _heatmap(score_maps["noise_score"], legal_domain=legal_domain),
+                selected,
+                color=(255, 255, 255),
+            ),
+        ),
+        (
+            "final score",
+            _outline_mask(
+                _heatmap(score_maps["final_score"], legal_domain=legal_domain),
+                selected,
+                color=(255, 255, 255),
+            ),
+        ),
+        (
+            "selected",
+            _overlay_mask(source_rgb, selected, color=(255, 255, 255), alpha=0.70),
+        ),
+        ("target", target_rgb),
+        ("cleanup/refill", cleanup_overlay),
+        ("validation", _validation_tile(source_rgb.shape[:2], validation=validation)),
+        ("metadata", _metadata_tile(source_rgb.shape[:2], edit_result, projection_mode)),
+    ]
+    return _labeled_tile_grid(
+        tiles,
+        cols=3,
+        footer_lines=_panel_footer_lines(
+            validation=validation,
+            edit_result=edit_result,
+            projection_mode=projection_mode,
+        ),
+    )
+
+
+def _cleanup_overlay(
+    *,
+    source_rgb: np.ndarray,
+    selected: np.ndarray,
+    edit_result: PrimitiveEditResult,
+) -> np.ndarray:
+    ops = edit_result.ops_log
+    overlay = _overlay_mask(source_rgb, selected, color=(255, 255, 255), alpha=0.45)
+    overlay = _outline_mask(overlay, selected, color=(255, 255, 255))
+    image = Image.fromarray(overlay, mode="RGB")
+    draw = ImageDraw.Draw(image)
+    lines = [
+        f"removed: {ops.get('cleanup_removed_pixels', 'n/a')}",
+        f"refilled: {ops.get('cleanup_refill_pixels', 'n/a')}",
+        f"post: {ops.get('post_cleanup_pixels', 'n/a')}",
+    ]
+    _draw_text_lines(draw, lines, x=6, y=8, fill=(0, 0, 0), line_h=14)
+    return np.asarray(image, dtype=np.uint8)
+
+
+def _validation_tile(
+    shape: tuple[int, int],
+    *,
+    validation: ValidationResult | None,
+) -> np.ndarray:
+    height, width = shape
+    image = Image.new("RGB", (width, height), (245, 245, 245))
+    draw = ImageDraw.Draw(image)
+    if validation is None:
+        lines = ["validation: n/a"]
+    else:
+        failed = [check.name for check in validation.failed_checks]
+        lines = [
+            f"validation: {'pass' if validation.passed else 'fail'}",
+            f"failed: {', '.join(failed) if failed else 'none'}",
+        ]
+        lines.extend(_wrap_text("; ".join(validation.warnings), max_chars=42)[:5])
+    _draw_text_lines(draw, lines, x=6, y=8, fill=(0, 0, 0), line_h=14)
+    return np.asarray(image, dtype=np.uint8)
+
+
+def _metadata_tile(
+    shape: tuple[int, int],
+    edit_result: PrimitiveEditResult,
+    projection_mode: str | None,
+) -> np.ndarray:
+    height, width = shape
+    image = Image.new("RGB", (width, height), (245, 245, 245))
+    draw = ImageDraw.Draw(image)
+    ops = edit_result.ops_log
+    target = _int_or_none(ops.get("target_pixels"))
+    selected = int(edit_result.selected_pixels)
+    ratio = selected / target if target else None
+    policy = ops.get("component_policy", {})
+    policy_name = policy.get("policy_name") if isinstance(policy, Mapping) else None
+    lines = [
+        f"primitive: {ops.get('primitive', 'n/a')}",
+        f"mode: {projection_mode or ops.get('projection_mode', 'n/a')}",
+        f"backend: {ops.get('projection_backend', 'n/a')}",
+        f"target/selected: {target if target is not None else 'n/a'} / {selected}",
+        f"ratio: {ratio:.3f}" if ratio is not None else "ratio: n/a",
+        f"legal: {ops.get('legal_domain_pixels', 'n/a')}",
+        f"policy: {policy_name or 'n/a'}",
+        f"seed: {ops.get('noise_seed', 'n/a')}",
+        f"shortfall: {ops.get('area_shortfall', 'n/a')}",
+    ]
+    warning_text = ", ".join(edit_result.warnings) if edit_result.warnings else "none"
+    lines.extend(_wrap_text(f"warnings: {warning_text}", max_chars=42)[:4])
+    _draw_text_lines(draw, lines, x=6, y=8, fill=(0, 0, 0), line_h=14)
+    return np.asarray(image, dtype=np.uint8)
+
+
+def _labeled_tile_grid(
+    tiles: Sequence[tuple[str, np.ndarray]],
+    *,
+    cols: int,
+    footer_lines: Sequence[str] = (),
+) -> np.ndarray:
+    tile_h, tile_w = tiles[0][1].shape[:2]
+    label_h = 22
+    footer_h = 18 * len(footer_lines)
+    rows = int(np.ceil(len(tiles) / cols))
+    panel = np.full(
+        (rows * (tile_h + label_h) + footer_h, cols * tile_w, 3),
+        255,
+        dtype=np.uint8,
+    )
+    image = Image.fromarray(panel, mode="RGB")
+    draw = ImageDraw.Draw(image)
+    for index, (label, tile) in enumerate(tiles):
+        row = index // cols
+        col = index % cols
+        x = col * tile_w
+        y = row * (tile_h + label_h)
+        image.paste(Image.fromarray(tile.astype(np.uint8), mode="RGB"), (x, y + label_h))
+        draw.text((x + 4, y + 4), label, fill=(0, 0, 0))
+
+    footer_y = rows * (tile_h + label_h) + 3
+    _draw_text_lines(draw, footer_lines, x=4, y=footer_y, fill=(0, 0, 0), line_h=16)
+    return np.asarray(image, dtype=np.uint8)
+
+
+def _panel_footer_lines(
+    *,
+    validation: ValidationResult | None,
+    edit_result: PrimitiveEditResult,
+    projection_mode: str | None,
+) -> list[str]:
+    ops = edit_result.ops_log
+    validation_status = "n/a" if validation is None else str(bool(validation.passed))
+    target = _int_or_none(ops.get("target_pixels"))
+    selected = int(edit_result.selected_pixels)
+    ratio = selected / target if target else None
+    policy = ops.get("component_policy", {})
+    policy_name = policy.get("policy_name") if isinstance(policy, Mapping) else "n/a"
+    return [
+        (
+            f"primitive={ops.get('primitive', 'n/a')} | "
+            f"mode={projection_mode or ops.get('projection_mode', 'n/a')} | "
+            f"policy={policy_name} | seed={ops.get('noise_seed', 'n/a')}"
+        ),
+        (
+            f"target={target if target is not None else 'n/a'} | "
+            f"selected={selected} | "
+            f"legal={ops.get('legal_domain_pixels', 'n/a')} | "
+            f"ratio={ratio:.3f}" if ratio is not None else "ratio=n/a"
+        ),
+        (
+            f"validation={validation_status} | "
+            f"warnings={','.join(edit_result.warnings) or 'none'}"
+        ),
+    ]
+
+
 def _manifest(
     *,
     source_mask: np.ndarray,
@@ -342,20 +573,37 @@ def _manifest(
 ) -> dict[str, Any]:
     intersection = int(np.count_nonzero(selected & raw_template))
     union = int(np.count_nonzero(selected | raw_template))
+    selected_pixels = int(np.count_nonzero(selected))
+    target_pixels = _int_or_none(edit_result.ops_log.get("target_pixels"))
+    target_ratio = selected_pixels / target_pixels if target_pixels else None
+    component_count = int(ndimage.label(selected)[1]) if selected_pixels else 0
+    validation_failed = (
+        [check.name for check in validation.failed_checks] if validation is not None else []
+    )
     return {
         "projection_mode": projection_mode or edit_result.ops_log.get("projection_mode"),
         "projection_backend": edit_result.ops_log.get("projection_backend"),
         "primitive": edit_result.ops_log.get("primitive"),
-        "target_pixels": edit_result.ops_log.get("target_pixels"),
-        "selected_pixels": int(np.count_nonzero(selected)),
+        "target_pixels": target_pixels,
+        "selected_pixels": selected_pixels,
+        "target_selected_ratio": target_ratio,
         "legal_domain_pixels": int(np.count_nonzero(legal_domain)),
         "raw_template_pixels": int(np.count_nonzero(raw_template)),
         "intersection_pixels": intersection,
         "union_pixels": union,
         "selected_raw_template_iou": intersection / union if union else 0.0,
+        "selected_raw_template_intersection_pixels": intersection,
+        "selected_raw_template_union_pixels": union,
         "ops_log_selected_raw_template_iou": edit_result.ops_log.get(
             "selected_raw_template_iou"
         ),
+        "component_count": component_count,
+        "cleanup_removed_pixels": edit_result.ops_log.get("cleanup_removed_pixels"),
+        "cleanup_refill_pixels": edit_result.ops_log.get("cleanup_refill_pixels"),
+        "post_cleanup_pixels": edit_result.ops_log.get("post_cleanup_pixels"),
+        "policy_name": _policy_name(edit_result.ops_log.get("component_policy")),
+        "noise_seed": edit_result.ops_log.get("noise_seed"),
+        "area_shortfall": edit_result.ops_log.get("area_shortfall"),
         "label_safety_visible": None,
         "pathology_placement": None,
         "boundary_naturalness": None,
@@ -365,6 +613,7 @@ def _manifest(
         "artifact_explainability": None,
         "reviewer_notes": "",
         "validation_passed": None if validation is None else validation.passed,
+        "validation_failed_checks": validation_failed,
         "warnings": list(edit_result.warnings),
         "artifact_paths": dict(artifact_paths),
         "source_shape": list(source_mask.shape),
@@ -380,3 +629,47 @@ def _save_rgb(rgb: np.ndarray, path: str | Path) -> Path:
 
 def _float(value: Any, default: float) -> float:
     return float(value) if isinstance(value, (int, float)) else float(default)
+
+
+def _int_or_none(value: Any) -> int | None:
+    return int(value) if isinstance(value, (int, np.integer)) else None
+
+
+def _policy_name(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        name = value.get("policy_name")
+        if isinstance(name, str):
+            return name
+    return None
+
+
+def _wrap_text(text: str, *, max_chars: int) -> list[str]:
+    if not text:
+        return []
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = word if not current else f"{current} {word}"
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+        current = word[:max_chars]
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _draw_text_lines(
+    draw: ImageDraw.ImageDraw,
+    lines: Sequence[str],
+    *,
+    x: int,
+    y: int,
+    fill: tuple[int, int, int],
+    line_h: int,
+) -> None:
+    for index, line in enumerate(lines):
+        draw.text((x, y + index * line_h), line, fill=fill)

@@ -192,6 +192,7 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
                 "projected_region.png",
                 "source_mask_llm_rgb_grid.png",
                 "visual_qa/visual_qa_manifest.json",
+                "visual_qa/organic_projection_panel.png",
                 "visual_qa/v1_v2_side_by_side.png",
                 "visual_qa/final_score_heatmap.png",
             ):
@@ -224,6 +225,9 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
             self.assertTrue(validation["passed"])
             manifest = load_metadata(tmp / "visual_qa" / "visual_qa_manifest.json")
             self.assertIn("selected_raw_template_iou", manifest)
+            self.assertIn("target_selected_ratio", manifest)
+            self.assertIn("component_count", manifest)
+            self.assertIn("validation_failed_checks", manifest)
             self.assertEqual(manifest["raw_template_pixels"], rasterized_pixels)
             self.assertEqual(manifest["selected_pixels"], projected_pixels)
             self.assertEqual(
@@ -307,6 +311,14 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
             )
             self.assertTrue(
                 (output_dir / "organic_v2" / "visual_qa" / "v1_v2_side_by_side.png").exists()
+            )
+            self.assertTrue(
+                (
+                    output_dir
+                    / "organic_v2"
+                    / "visual_qa"
+                    / "organic_projection_panel.png"
+                ).exists()
             )
             comparison = load_metadata(output_dir / "projection_comparison_summary.json")
             self.assertEqual(comparison["primary_projection_mode"], "organic_v2")
