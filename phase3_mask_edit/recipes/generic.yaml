@@ -389,7 +389,7 @@ primitives:
     spatial_pattern:
       region: inside_tumor
       spot_policy:
-        max_total_area_fraction_of_tumor: 0.35
+        max_total_area_fraction_of_tumor: 0.30
         min_spot_area_px: 12      # ≈3 µm² at 40x; ~1-2 lymphocytes
         max_spot_area_px: 256     # ≈64 µm² at 40x; small cluster
         max_spots_per_patch: 32
@@ -400,6 +400,24 @@ primitives:
         moderate: [0.10, 0.16]
         significant: [0.16, 0.24]
       max_changed_area_fraction: 0.30
+      organic_min_component_fraction: 0.00
+      organic_fill_holes_max_area_px: 0
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.45
+        spatial: 0.45
+        noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_min_selected_template_iou: 0.0
+      organic_template_neighborhood_radius_px: 32
+      organic_template_spillover_fraction: 0.15
+      peritumoral_falloff_radius_px: 32
+      tumor_boundary_margin_radius_px: 32
+      immune_neighbor_radius_px: 36
+    overlap_guard:
+      note_use_stromal_immune_infiltration_for_outside_tumor_changes
     probnet_bias:
       Inflammatory: up
       Neoplastic: down_mild

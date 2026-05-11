@@ -822,6 +822,124 @@ class LLMContourProposalTests(unittest.TestCase):
         )
         self.assertTrue(np.all(old_mask[result.change_region] == 2))
 
+    def test_intratumoral_immune_policy_uses_spot_policy_cleanup_floor(self):
+        old_mask = np.zeros((48, 48), dtype=np.int64)
+        old_mask[6:42, 6:42] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[20:24, 20:24] = True
+
+        primitive_config = {
+            "name": "intratumoral_immune_infiltration",
+            "required_tissue_labels": ["Tumor", "Immune infiltrate"],
+            "spatial_pattern": {
+                "region": "inside_tumor",
+                "spot_policy": {
+                    "max_total_area_fraction_of_tumor": 0.30,
+                    "min_spot_area_px": 12,
+                    "max_spot_area_px": 256,
+                    "max_spots_per_patch": 32,
+                },
+            },
+            "parameter_ranges": {
+                "target_changed_area_fraction": {"mild": [0.05, 0.10]},
+                "max_changed_area_fraction": 0.30,
+                "organic_min_component_fraction": 0.50,
+                "organic_fill_holes_max_area_px": 0,
+                "organic_template_neighborhood_radius_px": 16,
+                "organic_template_spillover_fraction": 0.15,
+                "organic_min_template_legal_overlap_fraction": 0.0,
+                "organic_min_selected_template_iou": 0.0,
+            },
+            "validation_rules": [
+                "new_immune_must_be_inside_original_tumor",
+                "tumor_body_must_remain",
+            ],
+        }
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Immune infiltrate",
+            primitive_config=primitive_config,
+            seed=11,
+            target_pixels=12,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "intratumoral_immune_til_spots",
+        )
+        self.assertEqual(result.ops_log["cleanup_min_component_policy"], "spot_policy.min_spot_area_px")
+        self.assertEqual(result.ops_log["cleanup_min_component_pixels"], 12)
+        self.assertEqual(result.selected_pixels, 12)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 4))
+
+    def test_intratumoral_immune_policy_area_and_label_safety_contract(self):
+        old_mask = np.zeros((72, 72), dtype=np.int64)
+        old_mask[8:64, 8:64] = 1
+        old_mask[24:40, 24:40] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[18:28, 18:28] = True
+        raw_candidate[26:50, 26:50] = True
+
+        primitive_config = {
+            "name": "intratumoral_immune_infiltration",
+            "required_tissue_labels": ["Tumor", "Immune infiltrate"],
+            "spatial_pattern": {
+                "region": "inside_tumor",
+                "spot_policy": {
+                    "max_total_area_fraction_of_tumor": 0.30,
+                    "min_spot_area_px": 12,
+                    "max_spot_area_px": 256,
+                    "max_spots_per_patch": 32,
+                },
+            },
+            "parameter_ranges": {
+                "target_changed_area_fraction": {"mild": [0.05, 0.10]},
+                "max_changed_area_fraction": 0.30,
+                "organic_min_component_fraction": 0.0,
+                "organic_fill_holes_max_area_px": 0,
+                "organic_template_neighborhood_radius_px": 20,
+                "organic_template_spillover_fraction": 0.15,
+                "organic_min_template_legal_overlap_fraction": 0.0,
+                "organic_min_selected_template_iou": 0.0,
+                "organic_score_weights": {
+                    "template": 0.35,
+                    "spatial": 0.55,
+                    "noise": 0.10,
+                },
+            },
+            "validation_rules": [
+                "new_immune_must_be_inside_original_tumor",
+                "tumor_body_must_remain",
+                "no_bias_only_edit_without_immune_tissue_label",
+            ],
+        }
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Immune infiltrate",
+            primitive_config=primitive_config,
+            seed=3,
+            target_pixels=180,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "intratumoral_immune_til_spots",
+        )
+        self.assertEqual(result.ops_log["projection_backend"], ORGANIC_PROJECTION_BACKEND)
+        self.assertEqual(result.selected_pixels, 180)
+        self.assertEqual(result.ops_log["target_pixels"], 180)
+        self.assertEqual(result.ops_log["legal_domain_pixels"], int(np.count_nonzero(old_mask == 1)))
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 4))
+        self.assertNotIn("organic_projection_area_shortfall", result.warnings)
+
     def test_organic_projection_generic_policy_is_label_safe_and_logged(self):
         old_mask = np.zeros((24, 24), dtype=np.int64)
         old_mask[2:22, 2:12] = 2

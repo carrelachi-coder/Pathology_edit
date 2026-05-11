@@ -123,6 +123,13 @@ def apply_organic_projected_label_write(
             policy.policy_params.get("remaining_allowed_necrosis_pixels", target_pixels)
         )
         target_pixels = min(target_pixels, max(remaining_allowed, 0))
+    if primitive_name == "intratumoral_immune_infiltration":
+        remaining_allowed = int(
+            policy.policy_params.get(
+                "remaining_allowed_intratumoral_immune_pixels", target_pixels
+            )
+        )
+        target_pixels = min(target_pixels, max(remaining_allowed, 0))
     selected_target_pixels = min(target_pixels, legal_pixels)
 
     if legal_pixels == 0 or selected_target_pixels == 0:
@@ -210,6 +217,11 @@ def apply_organic_projected_label_write(
         target_pixels=selected_target_pixels,
         min_component_fraction=params.min_component_fraction,
         fill_holes_max_area_px=params.fill_holes_max_area_px,
+        min_component_pixels=_min_component_pixels_for_cleanup(
+            primitive_config or {},
+            target_pixels=selected_target_pixels,
+            min_component_fraction=params.min_component_fraction,
+        ),
     )
     target_ids = schema.resolve_fine_ids(target_label)
     target_mask = np.array(mask, copy=True)
@@ -298,6 +310,8 @@ def apply_organic_projected_label_write(
         },
         "cleanup_removed_pixels": cleanup_log["cleanup_removed_pixels"],
         "cleanup_refill_pixels": cleanup_log["cleanup_refill_pixels"],
+        "cleanup_min_component_pixels": cleanup_log["cleanup_min_component_pixels"],
+        "cleanup_min_component_policy": cleanup_log["cleanup_min_component_policy"],
         "pre_cleanup_pixels": cleanup_log["pre_cleanup_pixels"],
         "post_cleanup_pixels": cleanup_log["post_cleanup_pixels"],
         "cleanup_single_pass": True,
@@ -428,6 +442,13 @@ def _policy_for_primitive(
         )
     if primitive_name == "necrosis_appearance":
         return _necrosis_policy(
+            mask,
+            schema=schema,
+            primitive_config=primitive_config,
+            legal_domain=legal_domain,
+        )
+    if primitive_name == "intratumoral_immune_infiltration":
+        return _intratumoral_immune_policy(
             mask,
             schema=schema,
             primitive_config=primitive_config,
@@ -566,6 +587,76 @@ def _necrosis_policy(
             "vessel_avoidance_radius_px": vessel_radius,
             "vessel_avoidance_weight": vessel_weight,
             "used_vessel_avoidance": used_vessel_avoidance,
+        },
+        legal_domain=legal,
+    )
+
+
+def _intratumoral_immune_policy(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    legal_domain: np.ndarray,
+) -> OrganicProjectionPolicy:
+    ranges = primitive_config.get("parameter_ranges", {})
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    spot_policy = (
+        spatial_pattern.get("spot_policy", {})
+        if isinstance(spatial_pattern, Mapping)
+        else {}
+    )
+    if not isinstance(spot_policy, Mapping):
+        spot_policy = {}
+
+    tumor = np.isin(mask, schema.tumor_fine_ids)
+    immune = _safe_label_mask(mask, schema, "Immune infiltrate")
+    legal = legal_domain & tumor & ~immune
+    score = np.zeros(mask.shape, dtype=float)
+
+    boundary_radius = _positive_float(
+        None, ranges.get("tumor_boundary_margin_radius_px", 32.0)
+    )
+    interior_dist = _edge_aware_tumor_interior_distance(
+        tumor,
+        pad_width=int(round(boundary_radius)),
+    )
+    score += np.clip(interior_dist / boundary_radius, 0.0, 1.0)
+
+    immune_radius = _positive_float(None, ranges.get("immune_neighbor_radius_px", 36.0))
+    used_existing_immune = bool(np.any(immune))
+    if used_existing_immune:
+        dist_to_immune = ndimage.distance_transform_edt(~immune)
+        score += 0.35 * np.exp(-dist_to_immune / immune_radius)
+
+    score[~legal] = 0.0
+    tumor_pixels = int(np.count_nonzero(tumor))
+    existing_immune_pixels = int(np.count_nonzero(immune))
+    max_fraction = _max_intratumoral_immune_fraction_of_tumor(primitive_config)
+    max_immune_pixels = int(round(max_fraction * tumor_pixels))
+    min_spot_area_px = _spot_policy_min_area_px(primitive_config)
+    return OrganicProjectionPolicy(
+        spatial_score=score,
+        policy_name="intratumoral_immune_til_spots",
+        policy_params={
+            "legal_domain_policy": "current_tumor_only_excluding_existing_immune",
+            "tumor_pixels": tumor_pixels,
+            "existing_immune_pixels": existing_immune_pixels,
+            "max_intratumoral_immune_fraction_of_tumor": max_fraction,
+            "max_intratumoral_immune_pixels": max_immune_pixels,
+            "remaining_allowed_intratumoral_immune_pixels": int(
+                max(max_immune_pixels - existing_immune_pixels, 0)
+            ),
+            "tumor_boundary_margin_radius_px": boundary_radius,
+            "immune_neighbor_radius_px": immune_radius,
+            "used_existing_immune_neighborhood": used_existing_immune,
+            "spot_policy_min_spot_area_px": min_spot_area_px,
+            "spot_policy_max_spot_area_px": _spot_policy_int(
+                spot_policy.get("max_spot_area_px"), default=0
+            ),
+            "spot_policy_max_spots_per_patch": _spot_policy_int(
+                spot_policy.get("max_spots_per_patch"), default=0
+            ),
         },
         legal_domain=legal,
     )
@@ -741,12 +832,19 @@ def _cleanup_and_refill_once(
     target_pixels: int,
     min_component_fraction: float,
     fill_holes_max_area_px: int,
+    min_component_pixels: tuple[int, str] | None = None,
 ) -> tuple[np.ndarray, dict[str, int]]:
     """Apply one cleanup pass and at most one score-ordered refill pass."""
 
     pre_cleanup_pixels = int(np.count_nonzero(selected))
-    min_component_pixels = max(1, int(round(float(target_pixels) * min_component_fraction)))
-    cleaned, removed_pixels = _remove_small_components(selected, min_component_pixels)
+    if min_component_pixels is None:
+        min_component_px = max(
+            1, int(round(float(target_pixels) * min_component_fraction))
+        )
+        min_component_policy = "fraction_of_target_pixels"
+    else:
+        min_component_px, min_component_policy = min_component_pixels
+    cleaned, removed_pixels = _remove_small_components(selected, min_component_px)
     cleaned, hole_fill_pixels = _fill_small_holes_once(
         cleaned,
         legal_domain=legal_domain,
@@ -769,6 +867,8 @@ def _cleanup_and_refill_once(
 
     return cleaned, {
         "pre_cleanup_pixels": pre_cleanup_pixels,
+        "cleanup_min_component_pixels": int(min_component_px),
+        "cleanup_min_component_policy": min_component_policy,
         "cleanup_removed_pixels": int(removed_pixels),
         "cleanup_filled_hole_pixels": int(hole_fill_pixels),
         "post_cleanup_pixels_before_refill": post_cleanup_pixels_before_refill,
@@ -845,6 +945,9 @@ def _target_pixels_from_config(
     elif name == "necrosis_appearance":
         bucket = _first_interval(ranges.get("target_changed_area_fraction"))
         reference_pixels = int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
+    elif name == "intratumoral_immune_infiltration":
+        bucket = _first_interval(ranges.get("target_changed_area_fraction"))
+        reference_pixels = int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     else:
         bucket = None
         reference_pixels = legal_pixels
@@ -862,6 +965,63 @@ def _max_necrosis_fraction_of_tumor(primitive_config: Mapping[str, Any]) -> floa
     if not isinstance(value, (int, float)) or not 0 < float(value) <= 1:
         raise ValueError("invalid max_necrosis_fraction_of_tumor.")
     return float(value)
+
+
+def _max_intratumoral_immune_fraction_of_tumor(
+    primitive_config: Mapping[str, Any]
+) -> float:
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    spot_policy = (
+        spatial_pattern.get("spot_policy", {})
+        if isinstance(spatial_pattern, Mapping)
+        else {}
+    )
+    if not isinstance(spot_policy, Mapping):
+        spot_policy = {}
+    ranges = primitive_config.get("parameter_ranges", {})
+    value = spot_policy.get(
+        "max_total_area_fraction_of_tumor",
+        ranges.get("max_changed_area_fraction", 0.30),
+    )
+    if not isinstance(value, (int, float)) or not 0 < float(value) <= 1:
+        raise ValueError("invalid max intratumoral immune fraction of tumor.")
+    return float(value)
+
+
+def _min_component_pixels_for_cleanup(
+    primitive_config: Mapping[str, Any],
+    *,
+    target_pixels: int,
+    min_component_fraction: float,
+) -> tuple[int, str]:
+    spot_min = _spot_policy_min_area_px(primitive_config)
+    if spot_min is not None:
+        return max(1, spot_min), "spot_policy.min_spot_area_px"
+    return (
+        max(1, int(round(float(target_pixels) * min_component_fraction))),
+        "organic_min_component_fraction",
+    )
+
+
+def _spot_policy_min_area_px(primitive_config: Mapping[str, Any]) -> int | None:
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    if not isinstance(spatial_pattern, Mapping):
+        return None
+    spot_policy = spatial_pattern.get("spot_policy", {})
+    if not isinstance(spot_policy, Mapping):
+        return None
+    value = spot_policy.get("min_spot_area_px")
+    if value is None:
+        return None
+    return _spot_policy_int(value, default=1)
+
+
+def _spot_policy_int(value: Any, *, default: int) -> int:
+    if value is None:
+        return int(default)
+    if not isinstance(value, (int, float)) or int(value) < 0:
+        raise ValueError("spot_policy pixel values must be non-negative.")
+    return int(value)
 
 
 def _edge_aware_tumor_interior_distance(
