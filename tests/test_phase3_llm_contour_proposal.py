@@ -1493,7 +1493,7 @@ class LLMContourProposalTests(unittest.TestCase):
                 "name": "stromal_desmoplasia",
                 "parameter_ranges": {
                     "stroma_area_delta_fraction": {"mild": [0.08, 0.14]},
-                    "min_stroma_area_delta_pixels": {"mild": 5000},
+                    "min_stroma_area_delta_pixels": {"mild": 10000},
                     "max_distance_from_tumor_px": 80,
                     "organic_min_template_legal_overlap_fraction": 0.0,
                     "organic_min_component_fraction": 0.0,
@@ -1511,8 +1511,82 @@ class LLMContourProposalTests(unittest.TestCase):
             target_pixels=None,
         )
 
-        self.assertEqual(result.ops_log["target_pixels"], 5000)
-        self.assertEqual(result.selected_pixels, 5000)
+        self.assertEqual(result.ops_log["target_pixels"], 10000)
+        self.assertEqual(result.selected_pixels, 10000)
+
+    def test_stromal_desmoplasia_target_pixels_use_strength_floor(self):
+        old_mask = np.zeros((160, 160), dtype=np.int64)
+        old_mask[4:156, 4:156] = 7
+        old_mask[56:104, 56:104] = 1
+        old_mask[48:112, 48:112][old_mask[48:112, 48:112] != 1] = 2
+        raw_candidate = np.ones_like(old_mask, dtype=bool)
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Other tissue",),
+            target_label="Stroma",
+            primitive_config={
+                "name": "stromal_desmoplasia",
+                "parameter_ranges": {
+                    "stroma_area_delta_fraction": {
+                        "mild": [0.08, 0.14],
+                        "moderate": [0.14, 0.24],
+                    },
+                    "min_stroma_area_delta_pixels": {
+                        "mild": 10000,
+                        "moderate": 15000,
+                    },
+                    "max_distance_from_tumor_px": 128,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 256,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+                "spatial_pattern": {
+                    "immune_to_stroma_constraints": {
+                        "max_fraction_of_total_desmoplasia_delta": 0.30,
+                        "require_direct_stroma_adjacency": True,
+                    },
+                },
+            },
+            seed=1,
+            strength="moderate",
+            target_pixels=None,
+        )
+
+        self.assertEqual(result.ops_log["strength"], "moderate")
+        self.assertEqual(result.ops_log["target_pixels"], 15000)
+        self.assertEqual(result.selected_pixels, 15000)
+
+        validation = validate_edit_result(
+            old_mask,
+            result.target_mask,
+            result.change_region,
+            self.schema,
+            {
+                "name": "stromal_desmoplasia",
+                "required_tissue_labels": ["Tumor", "Stroma"],
+                "parameter_ranges": {
+                    "stroma_area_delta_fraction": {
+                        "mild": [0.08, 0.14],
+                        "moderate": [0.14, 0.24],
+                    },
+                    "min_stroma_area_delta_pixels": {
+                        "mild": 10000,
+                        "moderate": 15000,
+                    },
+                },
+                "validation_rules": [],
+            },
+            result.changed_area_fraction,
+            strength="moderate",
+        )
+        area_check = next(
+            check for check in validation.checks if check.name == "change_area_within_range"
+        )
+        self.assertTrue(area_check.passed, area_check.detail)
 
     def test_organic_projection_same_seed_is_bit_identical(self):
         old_mask = np.zeros((64, 64), dtype=np.int64)

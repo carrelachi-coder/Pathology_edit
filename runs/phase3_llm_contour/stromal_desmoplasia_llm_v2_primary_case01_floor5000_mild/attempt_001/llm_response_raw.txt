@@ -1,0 +1,207 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "outside_tumor_adjacent_to_existing_stroma",
+  "shape_hints": [
+    "irregular_boundary",
+    "peritumoral_expansion"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Stroma",
+      "placement_relation": "expand_existing_stroma_boundary",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "elongated_irregular_boundary",
+        "peritumoral_stroma_extension"
+      ],
+      "points": [
+        [
+          286,
+          112
+        ],
+        [
+          304,
+          120
+        ],
+        [
+          323,
+          132
+        ],
+        [
+          341,
+          149
+        ],
+        [
+          355,
+          168
+        ],
+        [
+          364,
+          190
+        ],
+        [
+          369,
+          213
+        ],
+        [
+          365,
+          236
+        ],
+        [
+          351,
+          254
+        ],
+        [
+          331,
+          267
+        ],
+        [
+          309,
+          273
+        ],
+        [
+          286,
+          271
+        ],
+        [
+          267,
+          259
+        ],
+        [
+          253,
+          241
+        ],
+        [
+          246,
+          219
+        ],
+        [
+          245,
+          195
+        ],
+        [
+          251,
+          171
+        ],
+        [
+          263,
+          149
+        ],
+        [
+          274,
+          129
+        ]
+      ],
+      "confidence": 0.82
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Stroma",
+      "placement_relation": "outside_tumor_adjacent_to_existing_stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "broad_irregular_patch",
+        "asymmetric_boundary"
+      ],
+      "points": [
+        [
+          360,
+          178
+        ],
+        [
+          384,
+          170
+        ],
+        [
+          411,
+          171
+        ],
+        [
+          438,
+          178
+        ],
+        [
+          461,
+          192
+        ],
+        [
+          477,
+          211
+        ],
+        [
+          486,
+          235
+        ],
+        [
+          484,
+          258
+        ],
+        [
+          473,
+          280
+        ],
+        [
+          453,
+          297
+        ],
+        [
+          428,
+          306
+        ],
+        [
+          401,
+          307
+        ],
+        [
+          378,
+          299
+        ],
+        [
+          359,
+          283
+        ],
+        [
+          347,
+          262
+        ],
+        [
+          344,
+          239
+        ],
+        [
+          347,
+          216
+        ]
+      ],
+      "confidence": 0.79
+    }
+  ]
+}

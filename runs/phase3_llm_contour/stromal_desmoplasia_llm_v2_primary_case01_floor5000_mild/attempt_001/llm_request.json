@@ -1,0 +1,16 @@
+{
+  "attempt_index": 1,
+  "image_paths": [
+    "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_primary_case01_floor5000_mild\\source_mask_llm_rgb_grid.png",
+    "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_primary_case01_floor5000_mild\\source_mask_llm_rgb.png"
+  ],
+  "provider_metadata": {
+    "provider_name": "openai_compatible_text",
+    "provider_class": "OpenAICompatibleTextContourProvider",
+    "request_mode": "text",
+    "image_paths_available": 2,
+    "image_parts_expected": 0,
+    "image_policy": "do not send images"
+  },
+  "repair_feedback": null
+}

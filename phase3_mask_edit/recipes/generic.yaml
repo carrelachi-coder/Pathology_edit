@@ -525,9 +525,9 @@ primitives:
         significant: [0.24, 0.35]
         xlarge_deid: [0.35, 0.55]
       min_stroma_area_delta_pixels:
-        mild: 5000
-        moderate: 10000
-        significant: 15000
+        mild: 10000
+        moderate: 15000
+        significant: 20000
       max_distance_from_tumor_px: 64    # ≈16 µm at 40x
     probnet_bias:
       Connective: up
