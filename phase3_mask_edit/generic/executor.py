@@ -41,6 +41,9 @@ from phase3_mask_edit.generic.necrosis import (
 from phase3_mask_edit.generic.immune import (
     apply_stromal_immune_infiltration,
 )
+from phase3_mask_edit.generic.desmoplasia import (
+    apply_stromal_desmoplasia,
+)
 
 
 # ── EditExecutionResult ────────────────────────────────────────────
@@ -77,6 +80,7 @@ def _auto_register() -> None:
         "stromal_immune_infiltration",
         apply_stromal_immune_infiltration,
     )
+    register_primitive("stromal_desmoplasia", apply_stromal_desmoplasia)
 
 
 # ── main executor ──────────────────────────────────────────────────

@@ -454,6 +454,13 @@ def _policy_for_primitive(
             primitive_config=primitive_config,
             legal_domain=legal_domain,
         )
+    if primitive_name == "stromal_desmoplasia":
+        return _stromal_desmoplasia_policy(
+            mask,
+            schema=schema,
+            primitive_config=primitive_config,
+            legal_domain=legal_domain,
+        )
     return _generic_policy(
         mask,
         schema=schema,
@@ -658,6 +665,77 @@ def _intratumoral_immune_policy(
             ),
             "spot_policy_max_spots_per_patch": _spot_policy_int(
                 spot_policy.get("max_spots_per_patch"), default=0
+            ),
+        },
+        legal_domain=legal,
+    )
+
+
+def _stromal_desmoplasia_policy(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    legal_domain: np.ndarray,
+) -> OrganicProjectionPolicy:
+    ranges = primitive_config.get("parameter_ranges", {})
+    tumor = np.isin(mask, schema.tumor_fine_ids)
+    stroma = _safe_label_mask(mask, schema, "Stroma")
+    immune = _safe_label_mask(mask, schema, "Immune infiltrate")
+
+    max_distance = _positive_float(
+        None, ranges.get("max_distance_from_tumor_px", 64.0)
+    )
+    dist_to_tumor = ndimage.distance_transform_edt(~tumor)
+    peritumoral = (dist_to_tumor <= max_distance) & ~tumor
+
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    constraints = (
+        spatial_pattern.get("immune_to_stroma_constraints", {})
+        if isinstance(spatial_pattern, Mapping)
+        else {}
+    )
+    if not isinstance(constraints, Mapping):
+        constraints = {}
+    require_immune_stroma_adjacency = bool(
+        constraints.get("require_direct_stroma_adjacency", True)
+    )
+
+    legal = legal_domain & peritumoral
+    if require_immune_stroma_adjacency and np.any(immune):
+        stroma_neighbors = ndimage.binary_dilation(
+            stroma, structure=np.ones((3, 3), dtype=bool)
+        )
+        legal &= (~immune) | stroma_neighbors
+
+    tumor_falloff = _positive_float(
+        None, ranges.get("desmoplasia_tumor_falloff_radius_px", 48.0)
+    )
+    stroma_radius = _positive_float(
+        None, ranges.get("desmoplasia_stroma_neighbor_radius_px", 24.0)
+    )
+    score = np.zeros(mask.shape, dtype=float)
+    if np.any(tumor):
+        score += 0.50 * np.exp(-dist_to_tumor / tumor_falloff)
+    if np.any(stroma):
+        dist_to_stroma = ndimage.distance_transform_edt(~stroma)
+        score += 0.50 * np.exp(-dist_to_stroma / stroma_radius)
+    score[~legal] = 0.0
+    return OrganicProjectionPolicy(
+        spatial_score=score,
+        policy_name="stromal_desmoplasia_peritumoral_stroma_expansion",
+        policy_params={
+            "legal_domain_policy": (
+                "primary_or_secondary_sources_outside_tumor_with_peritumoral_limit"
+            ),
+            "max_distance_from_tumor_px": max_distance,
+            "desmoplasia_tumor_falloff_radius_px": tumor_falloff,
+            "desmoplasia_stroma_neighbor_radius_px": stroma_radius,
+            "require_direct_stroma_adjacency_for_immune": (
+                require_immune_stroma_adjacency
+            ),
+            "max_immune_fraction_of_delta": float(
+                constraints.get("max_fraction_of_total_desmoplasia_delta", 0.30)
             ),
         },
         legal_domain=legal,

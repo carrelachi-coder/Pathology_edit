@@ -158,6 +158,15 @@ def _check_change_area_range(
         return _check_intratumoral_immune_tumor_relative_change_area(
             src_mask, change_region, schema, ranges
         )
+    if (
+        primitive_config.get("name") == "stromal_desmoplasia"
+        and src_mask is not None
+        and change_region is not None
+        and schema is not None
+    ):
+        return _check_stromal_desmoplasia_stroma_relative_change_area(
+            src_mask, change_region, schema, ranges
+        )
 
     min_fraction = _resolve_min_changed_area(ranges, defaults)
     max_fraction = _resolve_max_changed_area(ranges, defaults)
@@ -304,6 +313,55 @@ def _check_intratumoral_immune_tumor_relative_change_area(
         "change_area_within_range",
         False,
         f"changed_tumor_fraction={changed_tumor_fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _check_stromal_desmoplasia_stroma_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    ranges: Mapping[str, Any],
+) -> ValidationCheck:
+    if "Stroma" not in schema.readable_labels:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "Stroma label not in schema for desmoplasia change area.",
+        )
+    stroma_pixels = int(
+        np.count_nonzero(np.isin(src_mask, schema.resolve_fine_ids("Stroma")))
+    )
+    if stroma_pixels == 0:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "no stroma pixels for stroma-relative desmoplasia change area.",
+        )
+
+    changed_stroma_fraction = int(np.count_nonzero(change_region)) / stroma_pixels
+    min_fraction = _min_interval_lower_bound(
+        ranges.get("stroma_area_delta_fraction", {})
+    )
+    max_fraction = _max_interval_upper_bound(
+        ranges.get("stroma_area_delta_fraction", {})
+    )
+    if min_fraction is None:
+        min_fraction = 0.0
+    if max_fraction is None:
+        max_fraction = 0.70
+
+    if min_fraction <= changed_stroma_fraction <= max_fraction:
+        return ValidationCheck(
+            "change_area_within_range",
+            True,
+            f"changed_stroma_fraction={changed_stroma_fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "change_area_within_range",
+        False,
+        f"changed_stroma_fraction={changed_stroma_fraction:.4f} outside "
         f"[{min_fraction:.2f}, {max_fraction:.2f}]",
     )
 
@@ -939,6 +997,111 @@ _PRIMITIVE_GUARDS["change_region_must_be_outside_tumor"] = (
 
 # ── helpers ────────────────────────────────────────────────────────
 
+def _guard_immune_to_stroma_fraction_within_limit(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    if "Immune infiltrate" not in schema.readable_labels:
+        return ValidationCheck(
+            "immune_to_stroma_fraction_within_limit",
+            True,
+            "Immune label not in schema; skipped.",
+        )
+    total_changed = int(np.count_nonzero(change_region))
+    if total_changed == 0:
+        return ValidationCheck(
+            "immune_to_stroma_fraction_within_limit",
+            True,
+            "no changed pixels.",
+        )
+
+    immune_ids = schema.resolve_fine_ids("Immune infiltrate")
+    stroma_ids = schema.resolve_fine_ids("Stroma")
+    consumed_immune = (
+        np.isin(src_mask, immune_ids)
+        & np.isin(target_mask, stroma_ids)
+        & change_region
+    )
+    consumed_count = int(np.count_nonzero(consumed_immune))
+    max_fraction = _desmoplasia_max_immune_fraction(primitive_config)
+    fraction = consumed_count / total_changed
+    if fraction <= max_fraction:
+        return ValidationCheck(
+            "immune_to_stroma_fraction_within_limit",
+            True,
+            f"immune_to_stroma_fraction={fraction:.4f} <= {max_fraction:.2f}.",
+        )
+    return ValidationCheck(
+        "immune_to_stroma_fraction_within_limit",
+        False,
+        f"immune_to_stroma_fraction={fraction:.4f} > {max_fraction:.2f}.",
+    )
+
+
+_PRIMITIVE_GUARDS["immune_to_stroma_fraction_within_limit"] = (
+    _guard_immune_to_stroma_fraction_within_limit
+)
+
+
+def _guard_consumed_immune_must_touch_stroma(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    if "Immune infiltrate" not in schema.readable_labels:
+        return ValidationCheck(
+            "consumed_immune_must_touch_stroma",
+            True,
+            "Immune label not in schema; skipped.",
+        )
+    immune_ids = schema.resolve_fine_ids("Immune infiltrate")
+    stroma_ids = schema.resolve_fine_ids("Stroma")
+    consumed_immune = (
+        np.isin(src_mask, immune_ids)
+        & np.isin(target_mask, stroma_ids)
+        & change_region
+    )
+    consumed_count = int(np.count_nonzero(consumed_immune))
+    if consumed_count == 0:
+        return ValidationCheck(
+            "consumed_immune_must_touch_stroma",
+            True,
+            "no immune pixels consumed.",
+        )
+
+    original_stroma = np.isin(src_mask, stroma_ids)
+    stroma_neighbors = ndimage.binary_dilation(
+        original_stroma,
+        structure=np.ones((3, 3), dtype=bool),
+    )
+    non_touching = int(np.count_nonzero(consumed_immune & ~stroma_neighbors))
+    if non_touching == 0:
+        return ValidationCheck(
+            "consumed_immune_must_touch_stroma",
+            True,
+            f"{consumed_count} consumed immune pixels touch original stroma.",
+        )
+    return ValidationCheck(
+        "consumed_immune_must_touch_stroma",
+        False,
+        f"{non_touching} consumed immune pixels do not touch original stroma.",
+    )
+
+
+_PRIMITIVE_GUARDS["consumed_immune_must_touch_stroma"] = (
+    _guard_consumed_immune_must_touch_stroma
+)
+
+
 def _resolve_min_changed_area(
     ranges: Mapping[str, Any], defaults: Mapping[str, Any]
 ) -> float | None:
@@ -946,6 +1109,21 @@ def _resolve_min_changed_area(
     if isinstance(value, (int, float)):
         return float(value)
     return 0.08
+
+
+def _desmoplasia_max_immune_fraction(primitive_config: Mapping[str, Any]) -> float:
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    constraints = (
+        spatial_pattern.get("immune_to_stroma_constraints", {})
+        if isinstance(spatial_pattern, Mapping)
+        else {}
+    )
+    if not isinstance(constraints, Mapping):
+        return 0.30
+    value = constraints.get("max_fraction_of_total_desmoplasia_delta", 0.30)
+    if not isinstance(value, (int, float)):
+        return 0.30
+    return float(value)
 
 
 def _min_interval_lower_bound(value: Any) -> float | None:
@@ -963,6 +1141,23 @@ def _min_interval_lower_bound(value: Any) -> float | None:
         lower_bounds.append(float(value[0]))
 
     return min(lower_bounds) if lower_bounds else None
+
+
+def _max_interval_upper_bound(value: Any) -> float | None:
+    upper_bounds: list[float] = []
+    if isinstance(value, Mapping):
+        for nested in value.values():
+            upper = _max_interval_upper_bound(nested)
+            if upper is not None:
+                upper_bounds.append(upper)
+    elif (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(isinstance(item, (int, float)) for item in value)
+    ):
+        upper_bounds.append(float(value[1]))
+
+    return max(upper_bounds) if upper_bounds else None
 
 
 def _resolve_max_changed_area(

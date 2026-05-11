@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from scipy import ndimage
 
 from dataset_config.unified_labels import UNIFIED_COLOR_MAP
 from phase3_mask_edit.tools.generate_llm_contour_preview import _load_mask_auto
@@ -1059,7 +1060,7 @@ class LLMContourProposalTests(unittest.TestCase):
         old_mask = np.zeros((72, 72), dtype=np.int64)
         old_mask[8:64, 8:64] = 2
         old_mask[12:60, 12:60] = 1
-        old_mask[28:44, 14:22] = 5
+        old_mask[28:44, 14:22] = 6
         raw_candidate = old_mask == 1
 
         result = apply_organic_projected_label_write(
@@ -1381,6 +1382,61 @@ class LLMContourProposalTests(unittest.TestCase):
         )
         self.assertIn("organic_projection_generic_policy_used", result.warnings)
         self.assertTrue(np.all(old_mask[result.change_region] == 2))
+
+    def test_stromal_desmoplasia_policy_contract(self):
+        old_mask = np.zeros((72, 72), dtype=np.int64)
+        old_mask[6:66, 6:66] = 7
+        old_mask[24:48, 24:48] = 1
+        ring = np.zeros_like(old_mask, dtype=bool)
+        ring[18:54, 18:54] = True
+        old_mask[ring & (old_mask != 1)] = 2
+        old_mask[14:20, 40:48] = 4
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[10:60, 10:60] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Other tissue", "Normal epithelium", "Immune infiltrate"),
+            target_label="Stroma",
+            primitive_config={
+                "name": "stromal_desmoplasia",
+                "mask_operation": {
+                    "primary_sources": ["Other tissue", "Normal epithelium"],
+                    "secondary_sources": ["Immune infiltrate"],
+                    "target": "Stroma",
+                    "forbid_sources": ["Tumor"],
+                },
+                "spatial_pattern": {
+                    "immune_to_stroma_constraints": {
+                        "max_fraction_of_total_desmoplasia_delta": 0.30,
+                        "require_direct_stroma_adjacency": True,
+                    },
+                },
+                "parameter_ranges": {
+                    "stroma_area_delta_fraction": {"mild": [0.08, 0.14]},
+                    "max_distance_from_tumor_px": 20,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 64,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+            },
+            seed=5,
+            target_pixels=120,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "stromal_desmoplasia_peritumoral_stroma_expansion",
+        )
+        self.assertEqual(result.selected_pixels, 120)
+        self.assertTrue(np.all(old_mask[result.change_region] != 1))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
+        self.assertTrue(np.all(np.isin(old_mask[result.change_region], (4, 7))))
+        dist_to_tumor = ndimage.distance_transform_edt(old_mask != 1)
+        self.assertLessEqual(float(dist_to_tumor[result.change_region].max()), 20.0)
 
     def test_organic_projection_same_seed_is_bit_identical(self):
         old_mask = np.zeros((64, 64), dtype=np.int64)
