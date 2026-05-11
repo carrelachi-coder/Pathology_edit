@@ -21,7 +21,7 @@ from phase3_mask_edit.generic.tumor_burden import (
 
 _DEFAULT_FALLOFF_RADIUS_PX = 96.0
 _DEFAULT_IMMUNE_NEIGHBOR_RADIUS_PX = 48.0
-_DEFAULT_MIN_TUMOR_FRACTION_FOR_NORMAL_PRIORITY = 0.05
+_DEFAULT_MIN_TUMOR_FRACTION_FOR_NORMAL_PRIORITY = 0.08
 _DEFAULT_MIN_COMPONENT_AREA_PX = 400
 _DEFAULT_MAX_COMPONENTS = 6
 _DEFAULT_SMOOTHING_RADIUS_PX = 4
@@ -344,7 +344,7 @@ def _tumor_mode_for_intent(
             tumor_fraction=tumor_fraction,
             min_tumor_fraction_for_normal_priority=min_fraction,
             proximity_weight=0.0,
-            immune_neighbor_weight=0.20,
+            immune_neighbor_weight=0.25,
             noise_weight=1.0,
         )
     if tumor_fraction < min_fraction:
@@ -352,9 +352,9 @@ def _tumor_mode_for_intent(
             tumor_mode="small",
             tumor_fraction=tumor_fraction,
             min_tumor_fraction_for_normal_priority=min_fraction,
-            proximity_weight=0.40,
-            immune_neighbor_weight=0.15,
-            noise_weight=0.60,
+            proximity_weight=0.18,
+            immune_neighbor_weight=0.20,
+            noise_weight=0.82,
         )
     return _TumorModeInfo(
         tumor_mode="normal",

@@ -114,7 +114,7 @@ class Phase3StromalImmunePrimitiveTests(unittest.TestCase):
         self.assertIsNone(result.ops_log["spatial"]["hard_distance_limit_px"])
         self.assertTrue(np.any(dist_to_tumor[result.change_region] > 64))
         self.assertTrue(result.ops_log["spatial"]["used_soft_peritumoral_priority"])
-        self.assertEqual(result.ops_log["spatial"]["tumor_mode"], "normal")
+        self.assertEqual(result.ops_log["spatial"]["tumor_mode"], "small")
 
     def test_stromal_immune_does_not_enter_tumor(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
@@ -298,6 +298,10 @@ class Phase3StromalImmunePrimitiveTests(unittest.TestCase):
         self.assertTrue(np.any(dist_to_tumor[result.change_region] <= 64))
         self.assertTrue(np.any(dist_to_tumor[result.change_region] > 96))
         self.assertIn("smooth_noise", result.ops_log["spatial"]["active_weights"])
+        self.assertGreater(
+            result.ops_log["spatial"]["active_weights"]["smooth_noise"],
+            result.ops_log["spatial"]["active_weights"]["peritumoral_proximity"],
+        )
 
 
 if __name__ == "__main__":

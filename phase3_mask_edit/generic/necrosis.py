@@ -22,11 +22,12 @@ from phase3_mask_edit.generic.tumor_burden import (
 _DEFAULT_NECROSIS_NEIGHBOR_RADIUS_PX = 48.0
 _DEFAULT_TUMOR_INTERIOR_RADIUS_PX = 64.0
 _DEFAULT_VESSEL_AVOIDANCE_RADIUS_PX = 96.0
-_DEFAULT_NOISE_WEIGHT = 0.05
-_DEFAULT_MIN_COMPONENT_AREA_PX = 12
-_DEFAULT_MAX_COMPONENTS_NO_EXISTING_NECROSIS = 1
+_DEFAULT_NOISE_WEIGHT = 0.25
+_DEFAULT_MIN_COMPONENT_AREA_PX = 256
+_DEFAULT_MAX_COMPONENTS_NO_EXISTING_NECROSIS = 3
 _DEFAULT_MAX_COMPONENTS_WITH_EXISTING_NECROSIS = 3
 _DEFAULT_CLOSING_RADIUS_PX = 3
+_DEFAULT_INTERIOR_SCORE_WEIGHT_CAP = 0.35
 _MIN_SELECTED_TARGET_FRACTION = 0.75
 
 
@@ -52,6 +53,7 @@ class _SelectionInfo:
     retry_applied: bool
     pre_cleanup_pixels: int
     removed_small_component_pixels: int
+    removed_extra_focus_pixels: int
     hole_fill_pixels: int
     closing_added_pixels: int
     morphology_cleanup_applied: bool
@@ -106,7 +108,10 @@ def apply_necrosis_appearance(
         primitive_config,
         intent,
     )
-    min_component_area = _min_component_area_for_intent(intent)
+    min_component_area = _min_component_area_for_intent(
+        intent,
+        target_pixels=capped_target_count,
+    )
     max_components = _max_components_for_intent(
         intent,
         has_existing_necrosis=bool(np.any(existing_necrosis)),
@@ -159,6 +164,7 @@ def apply_necrosis_appearance(
             "retry_applied": selection.retry_applied,
             "pre_cleanup_pixels": selection.pre_cleanup_pixels,
             "removed_small_component_pixels": selection.removed_small_component_pixels,
+            "removed_extra_focus_pixels": selection.removed_extra_focus_pixels,
             "hole_fill_pixels": selection.hole_fill_pixels,
             "closing_added_pixels": selection.closing_added_pixels,
             "morphology_cleanup_applied": selection.morphology_cleanup_applied,
@@ -285,8 +291,19 @@ def _necrosis_probability_score(
             source_tumor,
             pad_width=int(round(interior_radius)),
         )
-        interior_score = np.clip(dist_inside_tumor / interior_radius, 0.0, 1.0)
-        score += weights["tumor_interior_far_from_outer_boundary"] * interior_score
+        # Interior distance is a plausibility gate, not the shape generator.
+        # Saturating it quickly avoids the repeated "mini tumor in the center"
+        # failure mode on large tumor components.
+        interior_score = 1.0 - np.exp(-dist_inside_tumor / max(interior_radius, 1.0))
+        interior_weight = min(
+            weights["tumor_interior_far_from_outer_boundary"],
+            _nonnegative_float_parameter(
+                intent,
+                "necrosis_interior_score_weight_cap",
+                _DEFAULT_INTERIOR_SCORE_WEIGHT_CAP,
+            ),
+        )
+        score += interior_weight * interior_score
 
     if "tumor_region_far_from_blood_vessel" in weights:
         dist_to_vessel = ndimage.distance_transform_edt(~vessel_mask)
@@ -422,6 +439,10 @@ def _select_connected_high_score_region(
             score,
             target_pixels,
         )
+        cleaned, extra_removed_pixels = _keep_largest_components(
+            cleaned,
+            max_components=max_components,
+        )
         if attempt_index == 0:
             first_pre_cleanup_pixels = pre_cleanup_pixels
             first_removed_pixels = removed_pixels
@@ -438,6 +459,7 @@ def _select_connected_high_score_region(
                 retry_applied=bool(attempt_index > 0),
                 pre_cleanup_pixels=pre_cleanup_pixels,
                 removed_small_component_pixels=removed_pixels,
+                removed_extra_focus_pixels=extra_removed_pixels,
                 hole_fill_pixels=morph_info["hole_fill_pixels"],
                 closing_added_pixels=morph_info["closing_added_pixels"],
                 morphology_cleanup_applied=morph_info["morphology_cleanup_applied"],
@@ -461,6 +483,7 @@ def _select_connected_high_score_region(
         retry_applied=True,
         pre_cleanup_pixels=first_pre_cleanup_pixels,
         removed_small_component_pixels=first_removed_pixels,
+        removed_extra_focus_pixels=0,
         hole_fill_pixels=0,
         closing_added_pixels=0,
         morphology_cleanup_applied=False,
@@ -474,41 +497,49 @@ def _select_components_by_score(
     *,
     max_components: int,
 ) -> np.ndarray:
-    labeled, count = ndimage.label(high_score, structure=_four_neighbor_structure())
-    if count == 0:
+    candidate = high_score & np.isfinite(score)
+    labeled_candidates, candidate_count = ndimage.label(
+        candidate,
+        structure=_four_neighbor_structure(),
+    )
+    if candidate_count == 0:
         return np.zeros_like(high_score, dtype=bool)
 
     components: list[tuple[float, int, int]] = []
-    for component_id in range(1, count + 1):
-        component = labeled == component_id
+    for component_id in range(1, candidate_count + 1):
+        component = labeled_candidates == component_id
         area = int(np.count_nonzero(component))
-        mean_score = float(score[component].mean())
-        components.append((mean_score, area, component_id))
+        if area <= 0:
+            continue
+        component_scores = score[component]
+        # Rank by high percentile instead of mean so a large component with a
+        # broad mediocre center does not monopolize every edit.
+        rank_score = float(np.percentile(component_scores, 90.0))
+        components.append((rank_score, area, component_id))
 
     components.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    if not components:
+        return np.zeros_like(high_score, dtype=bool)
+
+    chosen_components = components[:max_components]
+    total_area = sum(area for _, area, _ in chosen_components)
     selected = np.zeros_like(high_score, dtype=bool)
     selected_count = 0
-    selected_components = 0
-    for _, area, component_id in components:
-        if selected_components >= max_components:
-            break
-        component = labeled == component_id
-        remaining = target_pixels - selected_count
-        if remaining <= 0:
-            break
-        if area <= remaining:
-            selected |= component
-            selected_count += area
-            selected_components += 1
+    for index, (_, area, component_id) in enumerate(chosen_components):
+        component = labeled_candidates == component_id
+        if index == len(chosen_components) - 1:
+            quota = target_pixels - selected_count
+        else:
+            quota = int(round(target_pixels * area / max(total_area, 1)))
+        quota = max(1, min(quota, area, target_pixels - selected_count))
+        if quota <= 0:
             continue
-
-        # Keep the component intact.  Area limiting happens later by peeling
-        # low-score boundary pixels, which preserves a solid necrotic focus
-        # better than selecting arbitrary high-score interior pixels.
-        selected |= component
-        selected_count += area
-        selected_components += 1
-        break
+        coords = np.argwhere(component)
+        values = score[coords[:, 0], coords[:, 1]]
+        order = np.argsort(values, kind="stable")[::-1]
+        chosen = coords[order[:quota]]
+        selected[chosen[:, 0], chosen[:, 1]] = True
+        selected_count += int(chosen.shape[0])
     return selected
 
 
@@ -529,6 +560,29 @@ def _remove_small_components(
         else:
             removed_pixels += area
     return cleaned, removed_pixels
+
+
+def _keep_largest_components(
+    selected: np.ndarray,
+    *,
+    max_components: int,
+) -> tuple[np.ndarray, int]:
+    if max_components < 1:
+        return np.zeros_like(selected, dtype=bool), int(np.count_nonzero(selected))
+
+    labeled, count = ndimage.label(selected, structure=_four_neighbor_structure())
+    if count <= max_components:
+        return selected, 0
+
+    components: list[tuple[int, int]] = []
+    for component_id in range(1, count + 1):
+        area = int(np.count_nonzero(labeled == component_id))
+        components.append((area, component_id))
+    components.sort(reverse=True)
+    keep_ids = {component_id for _, component_id in components[:max_components]}
+    kept = np.isin(labeled, list(keep_ids))
+    removed = int(np.count_nonzero(selected & ~kept))
+    return kept, removed
 
 
 def _solidify_necrosis_region(
@@ -626,10 +680,17 @@ def _nonnegative_float_parameter(
     return float(value)
 
 
-def _min_component_area_for_intent(intent: EditIntent) -> int:
+def _min_component_area_for_intent(
+    intent: EditIntent,
+    *,
+    target_pixels: int,
+) -> int:
     value = intent.parameters.get(
         "min_necrosis_component_area_px",
-        _DEFAULT_MIN_COMPONENT_AREA_PX,
+        max(
+            _DEFAULT_MIN_COMPONENT_AREA_PX,
+            int(round(0.08 * max(1, target_pixels))),
+        ),
     )
     if not isinstance(value, int) or value < 1:
         raise PrimitiveExecutionError(
@@ -644,7 +705,7 @@ def _max_components_for_intent(
     default = (
         _DEFAULT_MAX_COMPONENTS_WITH_EXISTING_NECROSIS
         if has_existing_necrosis
-        else _DEFAULT_MAX_COMPONENTS_NO_EXISTING_NECROSIS
+        else _default_max_components_for_strength(intent.strength)
     )
     value = intent.parameters.get("max_necrosis_components", default)
     if not isinstance(value, int) or value < 1:
@@ -652,6 +713,16 @@ def _max_components_for_intent(
             "parameters.max_necrosis_components must be a positive integer."
         )
     return value
+
+
+def _default_max_components_for_strength(strength: str) -> int:
+    if strength == "mild":
+        return 1
+    if strength == "moderate":
+        return 2
+    if strength == "significant":
+        return 3
+    return _DEFAULT_MAX_COMPONENTS_NO_EXISTING_NECROSIS
 
 
 def _smooth_noise(shape: tuple[int, int], *, seed: int | None) -> np.ndarray:

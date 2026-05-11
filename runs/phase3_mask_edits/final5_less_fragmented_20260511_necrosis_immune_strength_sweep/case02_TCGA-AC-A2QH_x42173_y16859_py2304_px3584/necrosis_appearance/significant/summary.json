@@ -1,0 +1,96 @@
+{
+  "case": "case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584",
+  "source_mask": "edit_datasets\\BCSS\\tissue_masks\\TCGA-AC-A2QH_x42173_y16859_py2304_px3584.png",
+  "primitive": "necrosis_appearance",
+  "display": "Necrosis appearance",
+  "strength": "significant",
+  "status": "degraded_executed",
+  "intent": {
+    "primitive": "necrosis_appearance",
+    "strength": "significant",
+    "reference_profile": "BCSS",
+    "organ": null,
+    "cancer_type": null,
+    "site": null,
+    "diagnosis": null,
+    "target_change_fraction": null,
+    "source_labels": [
+      "Tumor"
+    ],
+    "target_label": "Necrosis",
+    "region_hint": {},
+    "parameters": {},
+    "preserve_labels": [],
+    "forbidden_labels": [],
+    "old_prompt": null,
+    "new_prompt": null,
+    "prompt_diff": {},
+    "seed": 2002
+  },
+  "source_label_fractions": {
+    "Tumor": 0.5233230590820312,
+    "Stroma": 0.35155487060546875,
+    "Necrosis": 0.0,
+    "Immune infiltrate": 0.0,
+    "Blood vessel": 0.1251220703125
+  },
+  "selected_pixels": 43331,
+  "changed_area_fraction": 0.16529464721679688,
+  "component_count": 3,
+  "warnings": [
+    "optional_label_absent_in_mask:Necrosis",
+    "optional_label_absent_in_mask:Immune infiltrate"
+  ],
+  "ops_log": {
+    "primitive": "necrosis_appearance",
+    "reference_profile": "BCSS",
+    "target_change_fraction": 0.32,
+    "changed_area_fraction": 0.16529464721679688,
+    "changed_tumor_fraction": 0.31585584534865074,
+    "selected_pixels": 43331,
+    "necrosis_label": 3,
+    "spatial": {
+      "method": "necrosis_probability_intratumoral_replacement",
+      "target_area_reference": "tumor",
+      "target_pixels": 43900,
+      "capped_target_pixels": 43900,
+      "tumor_pixels": 137186,
+      "existing_necrosis_pixels": 0,
+      "max_necrosis_fraction_of_tumor": 0.6,
+      "necrosis_denominator_policy": "tumor_only",
+      "remaining_allowed_necrosis_pixels": 82312,
+      "candidate_pixels": 137186,
+      "used_existing_necrosis_neighborhood": false,
+      "used_blood_vessel_distance": true,
+      "active_weights": {
+        "tumor_interior_far_from_outer_boundary": 0.6,
+        "tumor_region_far_from_blood_vessel": 0.4
+      },
+      "radii_px": {
+        "necrosis_neighbor_radius_px": 48.0,
+        "tumor_interior_radius_px": 64.0,
+        "vessel_avoidance_radius_px": 96.0,
+        "radius_cap_px": 128.0
+      },
+      "score_threshold": 0.48441087750005585,
+      "threshold_percentile": 50.0,
+      "selected_components": 3,
+      "retry_applied": true,
+      "pre_cleanup_pixels": 43900,
+      "removed_small_component_pixels": 414,
+      "removed_extra_focus_pixels": 0,
+      "hole_fill_pixels": 366,
+      "closing_added_pixels": 58,
+      "morphology_cleanup_applied": true,
+      "min_component_area_px": 3512,
+      "max_components": 3
+    }
+  },
+  "target_label_fractions": {
+    "Tumor": 0.3580284118652344,
+    "Stroma": 0.35155487060546875,
+    "Necrosis": 0.16529464721679688,
+    "Immune infiltrate": 0.0,
+    "Blood vessel": 0.1251220703125
+  }
+}

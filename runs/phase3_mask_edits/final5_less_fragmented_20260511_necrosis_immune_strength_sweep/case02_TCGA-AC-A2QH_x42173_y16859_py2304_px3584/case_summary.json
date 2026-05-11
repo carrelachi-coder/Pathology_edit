@@ -1,0 +1,67 @@
+{
+  "case": "case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584",
+  "source_mask": "edit_datasets\\BCSS\\tissue_masks\\TCGA-AC-A2QH_x42173_y16859_py2304_px3584.png",
+  "source_label_fractions": {
+    "Tumor": 0.5233230590820312,
+    "Stroma": 0.35155487060546875,
+    "Necrosis": 0.0,
+    "Immune infiltrate": 0.0,
+    "Blood vessel": 0.1251220703125
+  },
+  "edits": [
+    {
+      "primitive": "necrosis_appearance",
+      "strength": "mild",
+      "status": "degraded_executed",
+      "selected_pixels": 14146,
+      "changed_area_fraction": 0.05396270751953125,
+      "component_count": 1,
+      "dir": "runs\\phase3_mask_edits\\final5_less_fragmented_20260511_necrosis_immune_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\necrosis_appearance\\mild"
+    },
+    {
+      "primitive": "necrosis_appearance",
+      "strength": "moderate",
+      "status": "degraded_executed",
+      "selected_pixels": 23737,
+      "changed_area_fraction": 0.09054946899414062,
+      "component_count": 2,
+      "dir": "runs\\phase3_mask_edits\\final5_less_fragmented_20260511_necrosis_immune_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\necrosis_appearance\\moderate"
+    },
+    {
+      "primitive": "necrosis_appearance",
+      "strength": "significant",
+      "status": "degraded_executed",
+      "selected_pixels": 43331,
+      "changed_area_fraction": 0.16529464721679688,
+      "component_count": 3,
+      "dir": "runs\\phase3_mask_edits\\final5_less_fragmented_20260511_necrosis_immune_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\necrosis_appearance\\significant"
+    },
+    {
+      "primitive": "stromal_immune_infiltration",
+      "strength": "mild",
+      "status": "degraded_executed_with_validation_warnings",
+      "selected_pixels": 2674,
+      "changed_area_fraction": 0.01020050048828125,
+      "component_count": 2,
+      "dir": "runs\\phase3_mask_edits\\final5_less_fragmented_20260511_necrosis_immune_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\stromal_immune_infiltration\\mild"
+    },
+    {
+      "primitive": "stromal_immune_infiltration",
+      "strength": "moderate",
+      "status": "degraded_executed_with_validation_warnings",
+      "selected_pixels": 7127,
+      "changed_area_fraction": 0.027187347412109375,
+      "component_count": 4,
+      "dir": "runs\\phase3_mask_edits\\final5_less_fragmented_20260511_necrosis_immune_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\stromal_immune_infiltration\\moderate"
+    },
+    {
+      "primitive": "stromal_immune_infiltration",
+      "strength": "significant",
+      "status": "degraded_executed",
+      "selected_pixels": 14540,
+      "changed_area_fraction": 0.0554656982421875,
+      "component_count": 4,
+      "dir": "runs\\phase3_mask_edits\\final5_less_fragmented_20260511_necrosis_immune_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\stromal_immune_infiltration\\significant"
+    }
+  ]
+}

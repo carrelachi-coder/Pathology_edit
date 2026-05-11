@@ -71,8 +71,8 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
         self.assertTrue(np.all(result.target_mask[result.change_region] == 3))
         self.assertTrue(np.all(result.target_mask[old_mask == 0] == 0))
         self.assertTrue(np.all(result.target_mask[old_mask == 2] == 2))
-        self.assertEqual(result.ops_log["spatial"]["selected_components"], 1)
-        self.assertEqual(result.ops_log["spatial"]["max_components"], 1)
+        self.assertGreaterEqual(result.ops_log["spatial"]["selected_components"], 1)
+        self.assertEqual(result.ops_log["spatial"]["max_components"], 2)
         filled = ndimage.binary_fill_holes(result.change_region) & (old_mask == 1)
         self.assertEqual(
             int(np.count_nonzero(filled & ~result.change_region)),
@@ -141,6 +141,7 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
             "tumor_interior_far_from_outer_boundary",
             result.ops_log["spatial"]["active_weights"],
         )
+        self.assertEqual(result.ops_log["spatial"]["max_components"], 2)
 
     def test_necrosis_appearance_avoids_boundary_when_interior_available(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
@@ -181,6 +182,68 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
         self.assertLess(false_padded[0, 48], 2.0)
         self.assertGreater(edge_aware[0, 48], 60.0)
         self.assertGreater(edge_aware[12, 48], false_padded[12, 48])
+
+    def test_necrosis_appearance_can_span_multiple_tumor_components(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = np.zeros((256, 256), dtype=np.int64)
+        old_mask[16:240, 16:240] = 2
+        yy, xx = np.mgrid[:256, :256]
+        left = (yy - 128) ** 2 + (xx - 78) ** 2 <= 46**2
+        right = (yy - 128) ** 2 + (xx - 178) ** 2 <= 46**2
+        old_mask[left | right] = 1
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "necrosis_appearance",
+                "reference_profile": "BCSS",
+                "target_change_fraction": 0.08,
+                "parameters": {
+                    "necrosis_score_noise_weight": 0.25,
+                    "min_necrosis_component_area_px": 4,
+                    "max_necrosis_components": 2,
+                },
+                "seed": 23,
+            }
+        )
+
+        result = apply_necrosis_appearance(
+            old_mask,
+            schema,
+            context,
+            self.primitive,
+            intent,
+        )
+
+        self.assertTrue(np.any(result.change_region & left))
+        self.assertTrue(np.any(result.change_region & right))
+        self.assertGreaterEqual(result.ops_log["spatial"]["selected_components"], 2)
+
+    def test_necrosis_appearance_extends_existing_necrosis_without_overwriting_it(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = _large_tumor_mask(with_necrosis=True)
+        existing = old_mask == 3
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "necrosis_appearance",
+                "reference_profile": "BCSS",
+                "target_change_fraction": 0.04,
+                "parameters": {"min_necrosis_component_area_px": 4},
+                "seed": 29,
+            }
+        )
+
+        result = apply_necrosis_appearance(
+            old_mask,
+            schema,
+            context,
+            self.primitive,
+            intent,
+        )
+
+        self.assertFalse(np.any(result.change_region & existing))
+        self.assertTrue(np.all(result.target_mask[existing] == 3))
+        self.assertGreater(np.count_nonzero(result.target_mask == 3), np.count_nonzero(existing))
 
     def test_necrosis_appearance_respects_max_necrosis_fraction_of_tumor(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
