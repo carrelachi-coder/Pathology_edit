@@ -1438,6 +1438,44 @@ class LLMContourProposalTests(unittest.TestCase):
         dist_to_tumor = ndimage.distance_transform_edt(old_mask != 1)
         self.assertLessEqual(float(dist_to_tumor[result.change_region].max()), 20.0)
 
+    def test_stromal_desmoplasia_target_pixels_are_stroma_relative(self):
+        old_mask = np.zeros((80, 80), dtype=np.int64)
+        old_mask[4:76, 4:76] = 7
+        old_mask[28:52, 28:52] = 1
+        old_mask[20:60, 20:60][old_mask[20:60, 20:60] != 1] = 2
+        raw_candidate = np.ones_like(old_mask, dtype=bool)
+        stroma_pixels = int(np.count_nonzero(old_mask == 2))
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Other tissue",),
+            target_label="Stroma",
+            primitive_config={
+                "name": "stromal_desmoplasia",
+                "parameter_ranges": {
+                    "stroma_area_delta_fraction": {"mild": [0.10, 0.20]},
+                    "max_distance_from_tumor_px": 40,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 128,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+                "spatial_pattern": {
+                    "immune_to_stroma_constraints": {
+                        "max_fraction_of_total_desmoplasia_delta": 0.30,
+                        "require_direct_stroma_adjacency": True,
+                    },
+                },
+            },
+            seed=1,
+            target_pixels=None,
+        )
+
+        self.assertEqual(result.ops_log["target_pixels"], int(np.ceil(stroma_pixels * 0.15)))
+        self.assertEqual(result.selected_pixels, result.ops_log["target_pixels"])
+
     def test_organic_projection_same_seed_is_bit_identical(self):
         old_mask = np.zeros((64, 64), dtype=np.int64)
         old_mask[6:58, 6:58] = 2

@@ -1,0 +1,154 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          195,
+          120
+        ],
+        [
+          210,
+          132
+        ],
+        [
+          230,
+          140
+        ],
+        [
+          250,
+          158
+        ],
+        [
+          268,
+          180
+        ],
+        [
+          280,
+          205
+        ],
+        [
+          270,
+          225
+        ],
+        [
+          248,
+          240
+        ],
+        [
+          225,
+          230
+        ],
+        [
+          205,
+          210
+        ],
+        [
+          192,
+          185
+        ],
+        [
+          190,
+          160
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          280,
+          78
+        ],
+        [
+          290,
+          95
+        ],
+        [
+          305,
+          112
+        ],
+        [
+          318,
+          130
+        ],
+        [
+          330,
+          155
+        ],
+        [
+          325,
+          178
+        ],
+        [
+          310,
+          190
+        ],
+        [
+          295,
+          180
+        ],
+        [
+          285,
+          160
+        ],
+        [
+          278,
+          140
+        ],
+        [
+          275,
+          120
+        ],
+        [
+          278,
+          100
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

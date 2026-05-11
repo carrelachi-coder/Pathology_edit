@@ -343,6 +343,13 @@ def _build_target_area_hint(
         )
         reference_pixels = int(label_areas.get("Tumor", 0))
         reference = "Tumor"
+    elif primitive_name == "stromal_desmoplasia":
+        bucket = _interval_for_strength(
+            ranges.get("stroma_area_delta_fraction"),
+            intent.strength,
+        )
+        reference_pixels = int(label_areas.get("Stroma", 0))
+        reference = "Stroma"
     else:
         bucket = None
         reference_pixels = 0
@@ -354,6 +361,13 @@ def _build_target_area_hint(
     lower, upper = bucket
     projected_min = int(np.ceil(reference_pixels * lower))
     projected_max = int(np.floor(reference_pixels * upper))
+    pixel_floor = _pixel_floor_for_strength(
+        ranges.get("min_stroma_area_delta_pixels"),
+        intent.strength,
+    )
+    if primitive_name == "stromal_desmoplasia" and pixel_floor is not None:
+        projected_min = max(projected_min, pixel_floor)
+        projected_max = max(projected_max, projected_min)
     return {
         "area_semantics": "projection_after_legal_source_label_filtering",
         "reference_area_label": reference,
@@ -381,6 +395,16 @@ def _interval_for_strength(value: Any, strength: str) -> tuple[float, float] | N
         and all(isinstance(item, (int, float)) for item in interval)
     ):
         return float(interval[0]), float(interval[1])
+    return None
+
+
+def _pixel_floor_for_strength(value: Any, strength: str) -> int | None:
+    if isinstance(value, Mapping):
+        raw = value.get(strength)
+    else:
+        raw = value
+    if isinstance(raw, (int, float)) and int(raw) > 0:
+        return int(raw)
     return None
 
 
@@ -588,8 +612,8 @@ def _build_source_contour_context(
     *,
     schema: MaskProfileSchema,
     source_labels: Sequence[str],
-    max_components_per_label: int = 6,
-    max_contour_points: int = 96,
+    max_components_per_label: int = 3,
+    max_contour_points: int = 32,
 ) -> dict[str, Any]:
     context: dict[str, Any] = {}
     for label in source_labels:
@@ -715,7 +739,8 @@ def _contour_adjacency_segments(
     component: np.ndarray,
     *,
     schema: MaskProfileSchema,
-    max_segments_per_label: int = 8,
+    max_segments_per_label: int = 2,
+    max_points_per_segment: int = 8,
 ) -> dict[str, Any]:
     if not contour_xy:
         return {}
@@ -752,7 +777,26 @@ def _contour_adjacency_segments(
 
     compact: dict[str, Any] = {}
     for label, segments in segments_by_label.items():
-        compact[label] = segments[:max_segments_per_label]
+        compact[label] = [
+            _compact_segment_points(segment, max_points=max_points_per_segment)
+            for segment in segments[:max_segments_per_label]
+        ]
+    return compact
+
+
+def _compact_segment_points(
+    segment: Mapping[str, Any],
+    *,
+    max_points: int,
+) -> dict[str, Any]:
+    points = segment.get("points", [])
+    if isinstance(points, list) and len(points) > max_points:
+        indices = np.linspace(0, len(points) - 1, num=max_points, dtype=int)
+        points = [points[int(index)] for index in indices]
+    compact = dict(segment)
+    compact["points"] = points
+    compact["point_count"] = int(segment.get("point_count", len(points)))
+    compact["points_shown"] = len(points) if isinstance(points, list) else 0
     return compact
 
 
@@ -877,6 +921,7 @@ def _source_grid_tiles(
     source_mask: np.ndarray,
     *,
     grid_spacing_px: int,
+    max_tiles: int = 6,
 ) -> list[dict[str, Any]]:
     height, width = source_mask.shape
     tiles: list[dict[str, Any]] = []
@@ -904,7 +949,7 @@ def _source_grid_tiles(
         key=lambda item: (float(item["source_fraction"]), int(item["source_pixels"])),
         reverse=True,
     )
-    return tiles[:16]
+    return tiles[:max_tiles]
 
 
 def _visual_label_legend() -> dict[str, str]:

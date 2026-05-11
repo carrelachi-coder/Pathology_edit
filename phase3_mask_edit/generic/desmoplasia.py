@@ -77,6 +77,7 @@ def apply_stromal_desmoplasia(
         primitive_config=primitive_config,
         intent=intent,
     )
+    max_immune_fraction = _max_immune_fraction_of_delta(primitive_config)
     target_count = _target_pixels(target_fraction, int(np.count_nonzero(stroma)))
     capped_target_count = min(target_count, score_info.candidate_pixels)
     if capped_target_count < 1:
@@ -87,6 +88,8 @@ def apply_stromal_desmoplasia(
         candidate_base,
         target_pixels=capped_target_count,
         min_component_area=_min_component_area_for_intent(intent),
+        immune_mask=_safe_label_mask(normalized, schema, "Immune infiltrate"),
+        max_immune_fraction=max_immune_fraction,
     )
     selected_pixels = int(np.count_nonzero(selected))
     if selected_pixels == 0:
@@ -123,6 +126,7 @@ def apply_stromal_desmoplasia(
             "max_immune_fraction_of_delta": candidate_log[
                 "max_immune_fraction_of_delta"
             ],
+            "immune_cap_enforced_in_selection": True,
             "require_direct_stroma_adjacency_for_immune": candidate_log[
                 "require_direct_stroma_adjacency_for_immune"
             ],
@@ -319,17 +323,57 @@ def _select_high_score_desmoplasia_region(
     *,
     target_pixels: int,
     min_component_area: int,
+    immune_mask: np.ndarray,
+    max_immune_fraction: float,
 ) -> np.ndarray:
     if target_pixels < 1:
         return np.zeros(candidate_base.shape, dtype=bool)
-    selected = _top_k_mask(score, min(target_pixels, int(np.count_nonzero(candidate_base))))
+    primary_domain = candidate_base & ~immune_mask
+    immune_domain = candidate_base & immune_mask
+    max_immune_pixels = int(np.floor(target_pixels * max_immune_fraction))
+    primary_target = max(0, target_pixels - max_immune_pixels)
+
+    primary_score = score.copy()
+    primary_score[~primary_domain] = -np.inf
+    selected = _top_k_mask(
+        primary_score,
+        min(primary_target, int(np.count_nonzero(primary_domain))),
+    )
+
+    shortfall = int(target_pixels) - int(np.count_nonzero(selected))
+    if shortfall > 0 and max_immune_pixels > 0:
+        immune_score = score.copy()
+        immune_score[~immune_domain] = -np.inf
+        selected |= _top_k_mask(
+            immune_score,
+            min(shortfall, max_immune_pixels, int(np.count_nonzero(immune_domain))),
+        )
+
+    shortfall = int(target_pixels) - int(np.count_nonzero(selected))
+    if shortfall > 0:
+        remaining_primary_score = score.copy()
+        remaining_primary_score[~(primary_domain & ~selected)] = -np.inf
+        selected |= _top_k_mask(remaining_primary_score, shortfall)
+
     selected = _remove_small_components(selected, min_component_area)
     shortfall = int(target_pixels) - int(np.count_nonzero(selected))
     if shortfall > 0:
-        refill_domain = candidate_base & ~selected
+        selected_immune = int(np.count_nonzero(selected & immune_mask))
+        remaining_immune_budget = max(max_immune_pixels - selected_immune, 0)
+        refill_domain = candidate_base & ~selected & ~immune_mask
+        if remaining_immune_budget > 0:
+            refill_domain |= candidate_base & ~selected & immune_mask
         refill_score = score.copy()
         refill_score[~refill_domain] = -np.inf
-        selected |= _top_k_mask(refill_score, shortfall)
+        refill = _top_k_mask(refill_score, shortfall)
+        if remaining_immune_budget <= 0:
+            refill &= ~immune_mask
+        elif int(np.count_nonzero(refill & immune_mask)) > remaining_immune_budget:
+            immune_refill_score = score.copy()
+            immune_refill_score[~(refill & immune_mask)] = -np.inf
+            kept_immune = _top_k_mask(immune_refill_score, remaining_immune_budget)
+            refill = (refill & ~immune_mask) | kept_immune
+        selected |= refill
     return selected & candidate_base
 
 
@@ -399,6 +443,23 @@ def _label_mask(
 def _positive_float(value: Any, name: str) -> float:
     if not isinstance(value, (int, float)) or float(value) <= 0:
         raise PrimitiveExecutionError(f"{name} must be positive.")
+    return float(value)
+
+
+def _max_immune_fraction_of_delta(primitive_config: Mapping[str, Any]) -> float:
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    constraints = (
+        spatial_pattern.get("immune_to_stroma_constraints", {})
+        if isinstance(spatial_pattern, Mapping)
+        else {}
+    )
+    if not isinstance(constraints, Mapping):
+        return 0.30
+    value = constraints.get("max_fraction_of_total_desmoplasia_delta", 0.30)
+    if not isinstance(value, (int, float)) or not 0 <= float(value) <= 1:
+        raise PrimitiveExecutionError(
+            "max_fraction_of_total_desmoplasia_delta must be in [0, 1]."
+        )
     return float(value)
 
 

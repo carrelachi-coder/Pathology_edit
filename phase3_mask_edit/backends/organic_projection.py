@@ -1028,14 +1028,39 @@ def _target_pixels_from_config(
     elif name == "intratumoral_immune_infiltration":
         bucket = _first_interval(ranges.get("target_changed_area_fraction"))
         reference_pixels = int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
+    elif name == "stromal_desmoplasia":
+        bucket = _first_interval(ranges.get("stroma_area_delta_fraction"))
+        reference_pixels = int(
+            np.count_nonzero(np.isin(mask, schema.resolve_fine_ids("Stroma")))
+        )
     else:
         bucket = None
         reference_pixels = legal_pixels
 
     if bucket is None:
         return legal_pixels
-    lower, _upper = bucket
-    return min(int(np.ceil(reference_pixels * lower)), legal_pixels)
+    lower, upper = bucket
+    midpoint = (lower + upper) / 2.0
+    target = int(np.ceil(reference_pixels * midpoint))
+    if name == "stromal_desmoplasia":
+        target = max(
+            target,
+            _pixel_floor_from_config(
+                ranges.get("min_stroma_area_delta_pixels"),
+                strength="mild",
+            ),
+        )
+    return min(target, legal_pixels)
+
+
+def _pixel_floor_from_config(value: Any, *, strength: str) -> int:
+    if isinstance(value, Mapping):
+        raw = value.get(strength)
+    else:
+        raw = value
+    if isinstance(raw, (int, float)) and int(raw) > 0:
+        return int(raw)
+    return 0
 
 
 def _max_necrosis_fraction_of_tumor(primitive_config: Mapping[str, Any]) -> float:

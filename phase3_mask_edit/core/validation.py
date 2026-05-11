@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 import numpy as np
+from scipy import ndimage
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
 
@@ -340,6 +341,7 @@ def _check_stromal_desmoplasia_stroma_relative_change_area(
         )
 
     changed_stroma_fraction = int(np.count_nonzero(change_region)) / stroma_pixels
+    changed_pixels = int(np.count_nonzero(change_region))
     min_fraction = _min_interval_lower_bound(
         ranges.get("stroma_area_delta_fraction", {})
     )
@@ -350,19 +352,25 @@ def _check_stromal_desmoplasia_stroma_relative_change_area(
         min_fraction = 0.0
     if max_fraction is None:
         max_fraction = 0.70
+    min_pixels = _min_pixel_floor(ranges.get("min_stroma_area_delta_pixels", {}))
+    effective_min_pixels = max(int(np.ceil(stroma_pixels * min_fraction)), min_pixels)
+    effective_min_fraction = effective_min_pixels / stroma_pixels
+    effective_max_fraction = max(max_fraction, effective_min_fraction)
 
-    if min_fraction <= changed_stroma_fraction <= max_fraction:
+    if effective_min_fraction <= changed_stroma_fraction <= effective_max_fraction:
         return ValidationCheck(
             "change_area_within_range",
             True,
             f"changed_stroma_fraction={changed_stroma_fraction:.4f} in "
-            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+            f"[{effective_min_fraction:.2f}, {effective_max_fraction:.2f}] "
+            f"and changed_pixels={changed_pixels} >= {effective_min_pixels}",
         )
     return ValidationCheck(
         "change_area_within_range",
         False,
         f"changed_stroma_fraction={changed_stroma_fraction:.4f} outside "
-        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        f"[{effective_min_fraction:.2f}, {effective_max_fraction:.2f}] "
+        f"or changed_pixels={changed_pixels} < {effective_min_pixels}",
     )
 
 
