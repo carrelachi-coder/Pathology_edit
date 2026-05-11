@@ -22,11 +22,12 @@ from phase3_mask_edit.generic.tumor_burden import (
 _DEFAULT_NECROSIS_NEIGHBOR_RADIUS_PX = 48.0
 _DEFAULT_TUMOR_INTERIOR_RADIUS_PX = 64.0
 _DEFAULT_VESSEL_AVOIDANCE_RADIUS_PX = 96.0
-_DEFAULT_NOISE_WEIGHT = 0.25
+_DEFAULT_NOISE_WEIGHT = 0.08
 _DEFAULT_MIN_COMPONENT_AREA_PX = 256
 _DEFAULT_MAX_COMPONENTS_NO_EXISTING_NECROSIS = 3
 _DEFAULT_MAX_COMPONENTS_WITH_EXISTING_NECROSIS = 3
-_DEFAULT_CLOSING_RADIUS_PX = 3
+_DEFAULT_CLOSING_RADIUS_PX = 10
+_DEFAULT_FINAL_SMOOTH_RADIUS_PX = 8
 _DEFAULT_INTERIOR_SCORE_WEIGHT_CAP = 0.35
 _MIN_SELECTED_TARGET_FRACTION = 0.75
 
@@ -603,11 +604,12 @@ def _solidify_necrosis_region(
     hole_fill_pixels = int(np.count_nonzero(filled & ~selected))
 
     structure = _disk_structure(_DEFAULT_CLOSING_RADIUS_PX)
-    closed = ndimage.binary_closing(filled, structure=structure) & candidate_base
+    closed = _edge_aware_binary_closing(filled, structure=structure) & candidate_base
     closing_added_pixels = int(np.count_nonzero(closed & ~filled))
+    smoothed = _smooth_necrosis_boundary(closed, candidate_base)
 
     limited = _limit_region_by_boundary_distance(
-        closed,
+        smoothed,
         score,
         max_pixels=target_pixels,
     )
@@ -617,9 +619,32 @@ def _solidify_necrosis_region(
         "hole_fill_pixels": hole_fill_pixels,
         "closing_added_pixels": closing_added_pixels,
         "morphology_cleanup_applied": bool(
-            hole_fill_pixels > 0 or closing_added_pixels > 0
+            hole_fill_pixels > 0
+            or closing_added_pixels > 0
+            or not np.array_equal(smoothed, closed)
         ),
     }
+
+
+def _smooth_necrosis_boundary(
+    region: np.ndarray,
+    candidate_base: np.ndarray,
+) -> np.ndarray:
+    if not np.any(region):
+        return region
+    structure = _disk_structure(_DEFAULT_FINAL_SMOOTH_RADIUS_PX)
+    smoothed = np.zeros_like(region, dtype=bool)
+    labeled, count = ndimage.label(region, structure=_four_neighbor_structure())
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        opened = _edge_aware_binary_opening(component, structure=structure) & candidate_base
+        if not np.any(opened):
+            opened = component
+        closed = _edge_aware_binary_closing(opened, structure=structure) & candidate_base
+        if not np.any(closed):
+            closed = component
+        smoothed |= closed
+    return ndimage.binary_fill_holes(smoothed) & candidate_base
 
 
 def _limit_region_by_boundary_distance(
@@ -636,7 +661,10 @@ def _limit_region_by_boundary_distance(
 
     limited = region.copy()
     while int(np.count_nonzero(limited)) > max_pixels:
-        eroded = ndimage.binary_erosion(limited, structure=_four_neighbor_structure())
+        eroded = _edge_aware_binary_erosion(
+            limited,
+            structure=_four_neighbor_structure(),
+        )
         boundary = limited & ~eroded
         boundary_count = int(np.count_nonzero(boundary))
         if boundary_count == 0:
@@ -660,6 +688,32 @@ def _disk_structure(radius: int) -> np.ndarray:
         return np.ones((1, 1), dtype=bool)
     yy, xx = np.mgrid[-radius : radius + 1, -radius : radius + 1]
     return (yy * yy + xx * xx) <= radius * radius
+
+
+def _edge_aware_binary_erosion(
+    mask: np.ndarray,
+    *,
+    structure: np.ndarray,
+) -> np.ndarray:
+    return ndimage.binary_erosion(mask, structure=structure, border_value=1)
+
+
+def _edge_aware_binary_closing(
+    mask: np.ndarray,
+    *,
+    structure: np.ndarray,
+) -> np.ndarray:
+    dilated = ndimage.binary_dilation(mask, structure=structure, border_value=0)
+    return ndimage.binary_erosion(dilated, structure=structure, border_value=1)
+
+
+def _edge_aware_binary_opening(
+    mask: np.ndarray,
+    *,
+    structure: np.ndarray,
+) -> np.ndarray:
+    eroded = ndimage.binary_erosion(mask, structure=structure, border_value=1)
+    return ndimage.binary_dilation(eroded, structure=structure, border_value=0)
 
 
 def _clamped_positive_float_parameter(

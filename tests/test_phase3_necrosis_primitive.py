@@ -245,6 +245,40 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
         self.assertTrue(np.all(result.target_mask[existing] == 3))
         self.assertGreater(np.count_nonzero(result.target_mask == 3), np.count_nonzero(existing))
 
+    def test_necrosis_appearance_can_touch_patch_edge(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = np.full((160, 160), 2, dtype=np.int64)
+        old_mask[:120, 20:140] = 1
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "necrosis_appearance",
+                "reference_profile": "BCSS",
+                "target_change_fraction": 0.10,
+                "parameters": {
+                    "necrosis_score_noise_weight": 0.0,
+                    "min_necrosis_component_area_px": 16,
+                    "max_necrosis_components": 1,
+                },
+                "seed": 31,
+            }
+        )
+
+        result = apply_necrosis_appearance(
+            old_mask,
+            schema,
+            context,
+            self.primitive,
+            intent,
+        )
+
+        edge_pixels = np.zeros_like(result.change_region, dtype=bool)
+        edge_pixels[0, :] = True
+        edge_pixels[-1, :] = True
+        edge_pixels[:, 0] = True
+        edge_pixels[:, -1] = True
+        self.assertTrue(np.any(result.change_region & edge_pixels))
+
     def test_necrosis_appearance_respects_max_necrosis_fraction_of_tumor(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = _large_tumor_mask(with_necrosis=False)
