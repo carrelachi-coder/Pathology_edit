@@ -149,6 +149,15 @@ def _check_change_area_range(
         return _check_stromal_immune_compartment_relative_change_area(
             src_mask, change_region, schema, ranges
         )
+    if (
+        primitive_config.get("name") == "intratumoral_immune_infiltration"
+        and src_mask is not None
+        and change_region is not None
+        and schema is not None
+    ):
+        return _check_intratumoral_immune_tumor_relative_change_area(
+            src_mask, change_region, schema, ranges
+        )
 
     min_fraction = _resolve_min_changed_area(ranges, defaults)
     max_fraction = _resolve_max_changed_area(ranges, defaults)
@@ -258,6 +267,43 @@ def _check_stromal_immune_compartment_relative_change_area(
         "change_area_within_range",
         False,
         f"changed_stroma_immune_fraction={changed_fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _check_intratumoral_immune_tumor_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    ranges: Mapping[str, Any],
+) -> ValidationCheck:
+    tumor_pixels = int(np.count_nonzero(np.isin(src_mask, schema.tumor_fine_ids)))
+    if tumor_pixels == 0:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "no tumor pixels for tumor-relative intratumoral immune change area.",
+        )
+
+    changed_tumor_fraction = int(np.count_nonzero(change_region)) / tumor_pixels
+    min_fraction = _min_interval_lower_bound(
+        ranges.get("target_changed_area_fraction", {})
+    )
+    max_fraction = float(ranges.get("max_changed_area_fraction", 0.30))
+    if min_fraction is None:
+        min_fraction = 0.0
+
+    if min_fraction <= changed_tumor_fraction <= max_fraction:
+        return ValidationCheck(
+            "change_area_within_range",
+            True,
+            f"changed_tumor_fraction={changed_tumor_fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "change_area_within_range",
+        False,
+        f"changed_tumor_fraction={changed_tumor_fraction:.4f} outside "
         f"[{min_fraction:.2f}, {max_fraction:.2f}]",
     )
 

@@ -1,0 +1,57 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "intratumoral_immune_infiltration",
+  "reference_profile": "BCSS",
+  "target_label": "Immune infiltrate",
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "cap_policy_check",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "points": [
+        [
+          511,
+          0
+        ],
+        [
+          507,
+          37
+        ],
+        [
+          448,
+          37
+        ],
+        [
+          389,
+          22
+        ],
+        [
+          410,
+          0
+        ],
+        [
+          444,
+          0
+        ],
+        [
+          500,
+          0
+        ]
+      ],
+      "confidence": 0.88,
+      "template_role": "coarse_template",
+      "placement_relation": "tumor_interior"
+    }
+  ]
+}

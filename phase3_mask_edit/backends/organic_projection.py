@@ -631,7 +631,8 @@ def _intratumoral_immune_policy(
 
     score[~legal] = 0.0
     tumor_pixels = int(np.count_nonzero(tumor))
-    existing_immune_pixels = int(np.count_nonzero(immune))
+    existing_immune_pixels_total = int(np.count_nonzero(immune))
+    existing_intratumoral_immune_pixels = int(np.count_nonzero(immune & tumor))
     max_fraction = _max_intratumoral_immune_fraction_of_tumor(primitive_config)
     max_immune_pixels = int(round(max_fraction * tumor_pixels))
     min_spot_area_px = _spot_policy_min_area_px(primitive_config)
@@ -641,12 +642,13 @@ def _intratumoral_immune_policy(
         policy_params={
             "legal_domain_policy": "current_tumor_only_excluding_existing_immune",
             "tumor_pixels": tumor_pixels,
-            "existing_immune_pixels": existing_immune_pixels,
+            "existing_immune_pixels_total": existing_immune_pixels_total,
+            "existing_intratumoral_immune_pixels": existing_intratumoral_immune_pixels,
+            "intratumoral_immune_cap_policy": "per_edit_new_pixels_only",
+            "existing_immune_pixels_not_subtracted_from_cap": True,
             "max_intratumoral_immune_fraction_of_tumor": max_fraction,
             "max_intratumoral_immune_pixels": max_immune_pixels,
-            "remaining_allowed_intratumoral_immune_pixels": int(
-                max(max_immune_pixels - existing_immune_pixels, 0)
-            ),
+            "remaining_allowed_intratumoral_immune_pixels": max_immune_pixels,
             "tumor_boundary_margin_radius_px": boundary_radius,
             "immune_neighbor_radius_px": immune_radius,
             "used_existing_immune_neighborhood": used_existing_immune,

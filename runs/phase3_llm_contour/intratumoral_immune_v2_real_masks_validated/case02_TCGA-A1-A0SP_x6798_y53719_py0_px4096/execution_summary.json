@@ -1,0 +1,259 @@
+{
+  "status": "validated",
+  "backend": "llm_contour_proposal",
+  "error": null,
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "intratumoral_immune_infiltration",
+    "reference_profile": "BCSS",
+    "target_label": "Immune infiltrate",
+    "width": 512,
+    "height": 512,
+    "regions": [
+      {
+        "region_id": "case02_TCGA-A1-A0SP_x6798_y53719_py0_px4096",
+        "source_labels": [
+          "Tumor"
+        ],
+        "points": [
+          [
+            511.0,
+            338.0
+          ],
+          [
+            502.0,
+            355.0
+          ],
+          [
+            447.0,
+            347.0
+          ],
+          [
+            410.0,
+            305.0
+          ],
+          [
+            436.0,
+            272.0
+          ],
+          [
+            483.0,
+            252.0
+          ],
+          [
+            511.0,
+            293.0
+          ]
+        ],
+        "confidence": 0.88
+      }
+    ]
+  },
+  "edit_result": {
+    "selected_pixels": 7720,
+    "changed_area_fraction": 0.029449462890625,
+    "warnings": [],
+    "ops_log": {
+      "backend": "organic_score_projection_v2",
+      "method": "organic_score_projection_and_deterministic_write",
+      "primitive": "intratumoral_immune_infiltration",
+      "reference_profile": "BCSS",
+      "source_labels": [
+        "Tumor"
+      ],
+      "target_label": "Immune infiltrate",
+      "target_fine_id": 4,
+      "preserve_labels": [],
+      "forbidden_labels": [],
+      "raw_candidate_pixels": 7143,
+      "candidate_pixels": 7143,
+      "raw_candidate_legal_overlap_pixels": 7143,
+      "template_overlap_with_legal_domain": 1.0,
+      "legal_domain_pixels": 154393,
+      "target_pixels": 7720,
+      "projected_pixels": 7720,
+      "selected_pixels": 7720,
+      "selected_raw_template_intersection_pixels": 6898,
+      "selected_raw_template_union_pixels": 7965,
+      "selected_raw_template_iou": 0.8660389202762084,
+      "selection_policy": {
+        "name": "template_neighborhood_constrained_top_k",
+        "template_neighborhood_radius_px": 32.0,
+        "template_spillover_fraction": 0.15,
+        "primary_zone_pixels": 16981,
+        "primary_budget_pixels": 6562,
+        "primary_selected_pixels": 6562,
+        "secondary_selected_pixels": 1158,
+        "selected_inside_primary_zone_pixels": 7720,
+        "selected_outside_primary_zone_pixels": 0
+      },
+      "area_shortfall": 0,
+      "projection_retained_fraction": 1.0807783844323113,
+      "changed_area_fraction": 0.029449462890625,
+      "projection_backend": "organic_score_projection_v2",
+      "noise_seed": 107,
+      "score_terms": {
+        "w_template": 0.45,
+        "w_spatial": 0.45,
+        "w_noise": 0.1,
+        "template_sigma": 3.0,
+        "noise_sigma": 18.0,
+        "noise_amplitude": 0.18,
+        "decay_px": 32.0,
+        "min_template_legal_overlap_fraction": 0.05,
+        "min_selected_template_iou": 0.0,
+        "template_neighborhood_radius_px": 32.0,
+        "template_spillover_fraction": 0.15
+      },
+      "component_policy": {
+        "policy_name": "intratumoral_immune_til_spots",
+        "params": {
+          "legal_domain_policy": "current_tumor_only_excluding_existing_immune",
+          "tumor_pixels": 154393,
+          "existing_immune_pixels": 20021,
+          "max_intratumoral_immune_fraction_of_tumor": 0.3,
+          "max_intratumoral_immune_pixels": 46318,
+          "remaining_allowed_intratumoral_immune_pixels": 26297,
+          "tumor_boundary_margin_radius_px": 32.0,
+          "immune_neighbor_radius_px": 36.0,
+          "used_existing_immune_neighborhood": true,
+          "spot_policy_min_spot_area_px": 12,
+          "spot_policy_max_spot_area_px": 256,
+          "spot_policy_max_spots_per_patch": 32
+        },
+        "spatial_score_stats": {
+          "pixels": 154393,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.8832233217443979
+        },
+        "template_score_stats": {
+          "pixels": 154393,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.5512536833329802
+        }
+      },
+      "cleanup_removed_pixels": 0,
+      "cleanup_refill_pixels": 0,
+      "cleanup_min_component_pixels": 12,
+      "cleanup_min_component_policy": "spot_policy.min_spot_area_px",
+      "pre_cleanup_pixels": 7720,
+      "post_cleanup_pixels": 7720,
+      "cleanup_single_pass": true,
+      "cleanup_iteration_limit": 1,
+      "raw_payload": {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "intratumoral_immune_infiltration",
+        "reference_profile": "BCSS",
+        "target_label": "Immune infiltrate",
+        "coordinate_system": {
+          "origin": "top_left",
+          "point_format": "[x, y]",
+          "x_axis": "horizontal_column_right",
+          "y_axis": "vertical_row_down",
+          "width": 512,
+          "height": 512
+        },
+        "regions": [
+          {
+            "region_id": "case02_TCGA-A1-A0SP_x6798_y53719_py0_px4096",
+            "type": "polygon",
+            "source_labels": [
+              "Tumor"
+            ],
+            "points": [
+              [
+                511,
+                338
+              ],
+              [
+                502,
+                355
+              ],
+              [
+                447,
+                347
+              ],
+              [
+                410,
+                305
+              ],
+              [
+                436,
+                272
+              ],
+              [
+                483,
+                252
+              ],
+              [
+                511,
+                293
+              ]
+            ],
+            "confidence": 0.88,
+            "template_role": "coarse_template",
+            "placement_relation": "tumor_interior",
+            "shape_hints": [
+              "patchy",
+              "multifocal",
+              "irregular_boundary"
+            ]
+          }
+        ]
+      },
+      "projection_mode": "organic_v2",
+      "requested_projection_mode": "organic_v2",
+      "primary_projection_mode": "organic_v2"
+    }
+  },
+  "validation": {
+    "passed": true,
+    "primitive": "intratumoral_immune_infiltration",
+    "checks": [
+      {
+        "name": "change_area_nonempty",
+        "passed": true,
+        "detail": "7720 pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "passed": true,
+        "detail": "changed_tumor_fraction=0.0500 in [0.05, 0.30]"
+      },
+      {
+        "name": "label_legality",
+        "passed": true,
+        "detail": "all labels in schema."
+      },
+      {
+        "name": "no_background_leakage",
+        "passed": true,
+        "detail": "no background leakage."
+      },
+      {
+        "name": "required_labels_present",
+        "passed": true,
+        "detail": "all required labels present in src mask."
+      },
+      {
+        "name": "new_immune_must_be_inside_original_tumor",
+        "passed": true,
+        "detail": "new immune inside original tumor."
+      },
+      {
+        "name": "tumor_body_must_remain",
+        "passed": true,
+        "detail": "no guard implemented; skipped."
+      },
+      {
+        "name": "no_bias_only_edit_without_immune_tissue_label",
+        "passed": true,
+        "detail": "no guard implemented; skipped."
+      }
+    ],
+    "warnings": []
+  }
+}

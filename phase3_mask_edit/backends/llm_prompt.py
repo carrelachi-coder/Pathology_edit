@@ -336,6 +336,13 @@ def _build_target_area_hint(
         )
         reference_pixels = int(label_areas.get("Tumor", 0))
         reference = "Tumor"
+    elif primitive_name == "intratumoral_immune_infiltration":
+        bucket = _interval_for_strength(
+            ranges.get("target_changed_area_fraction"),
+            intent.strength,
+        )
+        reference_pixels = int(label_areas.get("Tumor", 0))
+        reference = "Tumor"
     else:
         bucket = None
         reference_pixels = 0
