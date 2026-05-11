@@ -444,6 +444,17 @@ def _select_connected_high_score_region(
             cleaned,
             max_components=max_components,
         )
+        cleaned, refill_pixels = _refill_to_minimum_target(
+            cleaned,
+            score,
+            candidate_base,
+            min_pixels=target_pixels,
+        )
+        if refill_pixels:
+            cleaned, _ = _keep_largest_components(
+                cleaned,
+                max_components=max_components,
+            )
         if attempt_index == 0:
             first_pre_cleanup_pixels = pre_cleanup_pixels
             first_removed_pixels = removed_pixels
@@ -586,6 +597,29 @@ def _keep_largest_components(
     return kept, removed
 
 
+def _refill_to_minimum_target(
+    selected: np.ndarray,
+    score: np.ndarray,
+    candidate_base: np.ndarray,
+    *,
+    min_pixels: int,
+) -> tuple[np.ndarray, int]:
+    current_pixels = int(np.count_nonzero(selected))
+    if current_pixels >= min_pixels:
+        return selected, 0
+    needed = min_pixels - current_pixels
+    refill_domain = candidate_base & np.isfinite(score) & ~selected
+    if not np.any(refill_domain):
+        return selected, 0
+    coords = np.argwhere(refill_domain)
+    values = score[coords[:, 0], coords[:, 1]]
+    order = np.argsort(values, kind="stable")[::-1]
+    chosen = coords[order[:needed]]
+    refilled = selected.copy()
+    refilled[chosen[:, 0], chosen[:, 1]] = True
+    return refilled, int(chosen.shape[0])
+
+
 def _solidify_necrosis_region(
     selected: np.ndarray,
     candidate_base: np.ndarray,
@@ -632,19 +666,33 @@ def _smooth_necrosis_boundary(
 ) -> np.ndarray:
     if not np.any(region):
         return region
-    structure = _disk_structure(_DEFAULT_FINAL_SMOOTH_RADIUS_PX)
+    sigma = float(_DEFAULT_FINAL_SMOOTH_RADIUS_PX)
     smoothed = np.zeros_like(region, dtype=bool)
     labeled, count = ndimage.label(region, structure=_four_neighbor_structure())
     for component_id in range(1, count + 1):
         component = labeled == component_id
-        opened = _edge_aware_binary_opening(component, structure=structure) & candidate_base
-        if not np.any(opened):
-            opened = component
-        closed = _edge_aware_binary_closing(opened, structure=structure) & candidate_base
-        if not np.any(closed):
-            closed = component
-        smoothed |= closed
+        smoothed_component = _edge_aware_sdf_smooth(component, sigma=sigma)
+        smoothed_component &= candidate_base
+        if not np.any(smoothed_component):
+            smoothed_component = component
+        smoothed |= smoothed_component
     return ndimage.binary_fill_holes(smoothed) & candidate_base
+
+
+def _edge_aware_sdf_smooth(mask: np.ndarray, *, sigma: float) -> np.ndarray:
+    if sigma <= 0:
+        return mask.copy()
+    pad_width = max(1, int(round(sigma * 3)))
+    padded = np.pad(mask, pad_width, mode="edge")
+    signed = (
+        ndimage.distance_transform_edt(padded)
+        - ndimage.distance_transform_edt(~padded)
+    )
+    smooth_signed = ndimage.gaussian_filter(signed, sigma=sigma)
+    smoothed = smooth_signed >= 0
+    rows = slice(pad_width, pad_width + mask.shape[0])
+    cols = slice(pad_width, pad_width + mask.shape[1])
+    return smoothed[rows, cols]
 
 
 def _limit_region_by_boundary_distance(

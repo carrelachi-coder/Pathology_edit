@@ -1,0 +1,207 @@
+{
+  "output_root": "d:\\WQX\\Pathology_edit\\runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep",
+  "profile": "BCSS",
+  "note": "Regenerated. Edge-aware morphology, closing radius 10, SDF final smooth sigma 8, score-order refill.",
+  "cases": [
+    {
+      "case": "case01_TCGA-E2-A150_x42083_y62113_py0_px1024",
+      "source_mask": "edit_datasets\\BCSS\\tissue_masks\\TCGA-E2-A150_x42083_y62113_py0_px1024.png",
+      "source_label_fractions": {
+        "Tumor": 0.5090141296386719,
+        "Stroma": 0.36063385009765625,
+        "Necrosis": 0.0,
+        "Immune infiltrate": 0.0,
+        "Blood vessel": 0.13035202026367188
+      },
+      "edits": [
+        {
+          "strength": "mild",
+          "status": "degraded_executed",
+          "selected_pixels": 14678,
+          "changed_area_fraction": 0.05599212646484375,
+          "component_count": 1,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case01_TCGA-E2-A150_x42083_y62113_py0_px1024\\necrosis_appearance\\mild"
+        },
+        {
+          "strength": "moderate",
+          "status": "degraded_executed",
+          "selected_pixels": 21275,
+          "changed_area_fraction": 0.08115768432617188,
+          "component_count": 2,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case01_TCGA-E2-A150_x42083_y62113_py0_px1024\\necrosis_appearance\\moderate"
+        },
+        {
+          "strength": "significant",
+          "status": "degraded_executed",
+          "selected_pixels": 42642,
+          "changed_area_fraction": 0.16266632080078125,
+          "component_count": 3,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case01_TCGA-E2-A150_x42083_y62113_py0_px1024\\necrosis_appearance\\significant"
+        }
+      ]
+    },
+    {
+      "case": "case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584",
+      "source_mask": "edit_datasets\\BCSS\\tissue_masks\\TCGA-AC-A2QH_x42173_y16859_py2304_px3584.png",
+      "source_label_fractions": {
+        "Tumor": 0.5233230590820312,
+        "Stroma": 0.35155487060546875,
+        "Necrosis": 0.0,
+        "Immune infiltrate": 0.0,
+        "Blood vessel": 0.1251220703125
+      },
+      "edits": [
+        {
+          "strength": "mild",
+          "status": "degraded_executed",
+          "selected_pixels": 15061,
+          "changed_area_fraction": 0.057453155517578125,
+          "component_count": 1,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\necrosis_appearance\\mild"
+        },
+        {
+          "strength": "moderate",
+          "status": "degraded_executed",
+          "selected_pixels": 25063,
+          "changed_area_fraction": 0.09560775756835938,
+          "component_count": 2,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\necrosis_appearance\\moderate"
+        },
+        {
+          "strength": "significant",
+          "status": "degraded_executed",
+          "selected_pixels": 37061,
+          "changed_area_fraction": 0.14137649536132812,
+          "component_count": 3,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case02_TCGA-AC-A2QH_x42173_y16859_py2304_px3584\\necrosis_appearance\\significant"
+        }
+      ]
+    },
+    {
+      "case": "case03_TCGA-D8-A142_x62151_y41337_py5376_px5632",
+      "source_mask": "edit_datasets\\BCSS\\tissue_masks\\TCGA-D8-A142_x62151_y41337_py5376_px5632.png",
+      "source_label_fractions": {
+        "Tumor": 0.5273323059082031,
+        "Stroma": 0.3533439636230469,
+        "Necrosis": 0.0,
+        "Immune infiltrate": 0.0,
+        "Blood vessel": 0.0
+      },
+      "edits": [
+        {
+          "strength": "mild",
+          "status": "degraded_executed",
+          "selected_pixels": 14845,
+          "changed_area_fraction": 0.056629180908203125,
+          "component_count": 1,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case03_TCGA-D8-A142_x62151_y41337_py5376_px5632\\necrosis_appearance\\mild"
+        },
+        {
+          "strength": "moderate",
+          "status": "degraded_executed",
+          "selected_pixels": 25598,
+          "changed_area_fraction": 0.09764862060546875,
+          "component_count": 2,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case03_TCGA-D8-A142_x62151_y41337_py5376_px5632\\necrosis_appearance\\moderate"
+        },
+        {
+          "strength": "significant",
+          "status": "degraded_executed",
+          "selected_pixels": 44236,
+          "changed_area_fraction": 0.1687469482421875,
+          "component_count": 2,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case03_TCGA-D8-A142_x62151_y41337_py5376_px5632\\necrosis_appearance\\significant"
+        }
+      ]
+    },
+    {
+      "case": "case04_TCGA-EW-A1P8_x15520_y26381_py2560_px1280",
+      "source_mask": "edit_datasets\\BCSS\\tissue_masks\\TCGA-EW-A1P8_x15520_y26381_py2560_px1280.png",
+      "source_label_fractions": {
+        "Tumor": 0.5294723510742188,
+        "Stroma": 0.367889404296875,
+        "Necrosis": 0.0,
+        "Immune infiltrate": 0.0,
+        "Blood vessel": 0.0
+      },
+      "edits": [
+        {
+          "strength": "mild",
+          "status": "degraded_executed_with_validation_warnings",
+          "selected_pixels": 7860,
+          "changed_area_fraction": 0.0299835205078125,
+          "component_count": 1,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case04_TCGA-EW-A1P8_x15520_y26381_py2560_px1280\\necrosis_appearance\\mild"
+        },
+        {
+          "strength": "moderate",
+          "status": "degraded_executed",
+          "selected_pixels": 25663,
+          "changed_area_fraction": 0.09789657592773438,
+          "component_count": 2,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case04_TCGA-EW-A1P8_x15520_y26381_py2560_px1280\\necrosis_appearance\\moderate"
+        },
+        {
+          "strength": "significant",
+          "status": "degraded_executed",
+          "selected_pixels": 44415,
+          "changed_area_fraction": 0.16942977905273438,
+          "component_count": 2,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case04_TCGA-EW-A1P8_x15520_y26381_py2560_px1280\\necrosis_appearance\\significant"
+        }
+      ]
+    },
+    {
+      "case": "case05_TCGA-AN-A0XU_x26118_y18441_py2816_px4608",
+      "source_mask": "edit_datasets\\BCSS\\tissue_masks\\TCGA-AN-A0XU_x26118_y18441_py2816_px4608.png",
+      "source_label_fractions": {
+        "Tumor": 0.51910400390625,
+        "Stroma": 0.3694877624511719,
+        "Necrosis": 0.0,
+        "Immune infiltrate": 0.08398056030273438,
+        "Blood vessel": 0.0
+      },
+      "edits": [
+        {
+          "strength": "mild",
+          "status": "degraded_executed",
+          "selected_pixels": 14969,
+          "changed_area_fraction": 0.057102203369140625,
+          "component_count": 1,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case05_TCGA-AN-A0XU_x26118_y18441_py2816_px4608\\necrosis_appearance\\mild"
+        },
+        {
+          "strength": "moderate",
+          "status": "degraded_executed",
+          "selected_pixels": 25838,
+          "changed_area_fraction": 0.09856414794921875,
+          "component_count": 2,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case05_TCGA-AN-A0XU_x26118_y18441_py2816_px4608\\necrosis_appearance\\moderate"
+        },
+        {
+          "strength": "significant",
+          "status": "degraded_executed",
+          "selected_pixels": 41806,
+          "changed_area_fraction": 0.15947723388671875,
+          "component_count": 3,
+          "touches_patch_edge": true,
+          "dir": "runs\\phase3_mask_edits\\final5_edge_aware_closing10_sdfsmooth8_necrosis_20260511_strength_sweep\\case05_TCGA-AN-A0XU_x26118_y18441_py2816_px4608\\necrosis_appearance\\significant"
+        }
+      ]
+    }
+  ]
+}
