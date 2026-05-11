@@ -1476,6 +1476,44 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.ops_log["target_pixels"], int(np.ceil(stroma_pixels * 0.15)))
         self.assertEqual(result.selected_pixels, result.ops_log["target_pixels"])
 
+    def test_stromal_desmoplasia_target_pixels_respect_absolute_floor(self):
+        old_mask = np.zeros((128, 128), dtype=np.int64)
+        old_mask[4:124, 4:124] = 7
+        old_mask[48:80, 48:80] = 1
+        old_mask[40:88, 40:88][old_mask[40:88, 40:88] != 1] = 2
+        raw_candidate = np.ones_like(old_mask, dtype=bool)
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Other tissue",),
+            target_label="Stroma",
+            primitive_config={
+                "name": "stromal_desmoplasia",
+                "parameter_ranges": {
+                    "stroma_area_delta_fraction": {"mild": [0.08, 0.14]},
+                    "min_stroma_area_delta_pixels": {"mild": 5000},
+                    "max_distance_from_tumor_px": 80,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 128,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+                "spatial_pattern": {
+                    "immune_to_stroma_constraints": {
+                        "max_fraction_of_total_desmoplasia_delta": 0.30,
+                        "require_direct_stroma_adjacency": True,
+                    },
+                },
+            },
+            seed=1,
+            target_pixels=None,
+        )
+
+        self.assertEqual(result.ops_log["target_pixels"], 5000)
+        self.assertEqual(result.selected_pixels, 5000)
+
     def test_organic_projection_same_seed_is_bit_identical(self):
         old_mask = np.zeros((64, 64), dtype=np.int64)
         old_mask[6:58, 6:58] = 2

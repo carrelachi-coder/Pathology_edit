@@ -492,6 +492,7 @@ def _execute_one_attempt(
             forbidden_labels=intent.forbidden_labels,
             projection_mode=projection_mode,
             organic_seed=organic_seed,
+            strength=intent.strength,
         )
         validation = validate_edit_result(
             src_mask=source_mask,
@@ -500,6 +501,7 @@ def _execute_one_attempt(
             schema=schema,
             primitive_config=primitive_config,
             changed_area_fraction=edit_result.changed_area_fraction,
+            strength=intent.strength,
         )
         status = STATUS_VALIDATED if validation.passed else STATUS_VALIDATION_FAILED
         feedback = None

@@ -248,6 +248,7 @@ def execute_contour_proposal_write(
     forbidden_labels: Sequence[str] = (),
     projection_mode: str = DEFAULT_PROJECTION_MODE,
     organic_seed: int = 0,
+    strength: str = "mild",
 ) -> PrimitiveEditResult:
     """Project an LLM contour proposal and deterministically write its target.
 
@@ -293,6 +294,7 @@ def execute_contour_proposal_write(
             preserve_labels=preserve_labels,
             forbidden_labels=forbidden_labels,
             seed=organic_seed,
+            strength=strength,
         )
         result.ops_log["raw_payload"] = dict(proposal.raw_payload)
         result.ops_log["projection_mode"] = projection_mode

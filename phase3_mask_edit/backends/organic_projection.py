@@ -56,6 +56,7 @@ def apply_organic_projected_label_write(
     preserve_labels: Sequence[str] = (),
     forbidden_labels: Sequence[str] = (),
     seed: int = 0,
+    strength: str = "mild",
     target_pixels: int | None = None,
     template_sigma: float | None = None,
     noise_sigma: float | None = None,
@@ -116,6 +117,7 @@ def apply_organic_projected_label_write(
             schema=schema,
             primitive_config=primitive_config or {},
             legal_pixels=legal_pixels,
+            strength=strength,
         )
     target_pixels = max(int(target_pixels or 0), 0)
     if primitive_name == "necrosis_appearance":
@@ -285,6 +287,7 @@ def apply_organic_projected_label_write(
         "changed_area_fraction": changed_area_fraction,
         "projection_backend": ORGANIC_PROJECTION_BACKEND,
         "noise_seed": int(seed),
+        "strength": str(strength),
         "score_terms": {
             "w_template": float(params.w_template),
             "w_spatial": float(params.w_spatial),
@@ -1014,6 +1017,7 @@ def _target_pixels_from_config(
     schema: MaskProfileSchema,
     primitive_config: Mapping[str, Any],
     legal_pixels: int,
+    strength: str = "mild",
 ) -> int:
     name = primitive_config.get("name")
     ranges = primitive_config.get("parameter_ranges", {})
@@ -1047,7 +1051,7 @@ def _target_pixels_from_config(
             target,
             _pixel_floor_from_config(
                 ranges.get("min_stroma_area_delta_pixels"),
-                strength="mild",
+                strength=strength,
             ),
         )
     return min(target, legal_pixels)

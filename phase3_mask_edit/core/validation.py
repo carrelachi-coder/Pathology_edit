@@ -52,6 +52,7 @@ def validate_edit_result(
     schema: MaskProfileSchema,
     primitive_config: Mapping[str, Any],
     changed_area_fraction: float,
+    strength: str = "mild",
 ) -> ValidationResult:
     """Run all applicable validation checks on a primitive edit output.
 
@@ -73,6 +74,7 @@ def validate_edit_result(
             src_mask=src_mask,
             change_region=change_region,
             schema=schema,
+            strength=strength,
         )
     )
     checks.append(_check_label_legality(target_mask, schema))
@@ -128,6 +130,7 @@ def _check_change_area_range(
     src_mask: np.ndarray | None = None,
     change_region: np.ndarray | None = None,
     schema: MaskProfileSchema | None = None,
+    strength: str = "mild",
 ) -> ValidationCheck:
     ranges = primitive_config.get("parameter_ranges", {})
     defaults = primitive_config.get("_defaults", {})
@@ -166,7 +169,7 @@ def _check_change_area_range(
         and schema is not None
     ):
         return _check_stromal_desmoplasia_stroma_relative_change_area(
-            src_mask, change_region, schema, ranges
+            src_mask, change_region, schema, ranges, strength=strength
         )
 
     min_fraction = _resolve_min_changed_area(ranges, defaults)
@@ -323,6 +326,8 @@ def _check_stromal_desmoplasia_stroma_relative_change_area(
     change_region: np.ndarray,
     schema: MaskProfileSchema,
     ranges: Mapping[str, Any],
+    *,
+    strength: str = "mild",
 ) -> ValidationCheck:
     if "Stroma" not in schema.readable_labels:
         return ValidationCheck(
@@ -352,7 +357,10 @@ def _check_stromal_desmoplasia_stroma_relative_change_area(
         min_fraction = 0.0
     if max_fraction is None:
         max_fraction = 0.70
-    min_pixels = _min_pixel_floor(ranges.get("min_stroma_area_delta_pixels", {}))
+    min_pixels = _pixel_floor_for_strength(
+        ranges.get("min_stroma_area_delta_pixels", {}),
+        strength=strength,
+    )
     effective_min_pixels = max(int(np.ceil(stroma_pixels * min_fraction)), min_pixels)
     effective_min_fraction = effective_min_pixels / stroma_pixels
     effective_max_fraction = max(max_fraction, effective_min_fraction)
@@ -1166,6 +1174,28 @@ def _max_interval_upper_bound(value: Any) -> float | None:
         upper_bounds.append(float(value[1]))
 
     return max(upper_bounds) if upper_bounds else None
+
+
+def _min_pixel_floor(value: Any) -> int:
+    floors: list[int] = []
+    if isinstance(value, Mapping):
+        for nested in value.values():
+            floor = _min_pixel_floor(nested)
+            if floor > 0:
+                floors.append(floor)
+    elif isinstance(value, (int, float)) and int(value) > 0:
+        floors.append(int(value))
+    return min(floors) if floors else 0
+
+
+def _pixel_floor_for_strength(value: Any, *, strength: str) -> int:
+    if isinstance(value, Mapping):
+        raw = value.get(strength)
+    else:
+        raw = value
+    if isinstance(raw, (int, float)) and int(raw) > 0:
+        return int(raw)
+    return 0
 
 
 def _resolve_max_changed_area(

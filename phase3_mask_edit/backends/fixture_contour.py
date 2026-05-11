@@ -172,6 +172,7 @@ def execute_fixture_contour_backend(
             forbidden_labels=intent.forbidden_labels,
             projection_mode=primary_projection_mode,
             organic_seed=organic_seed,
+            strength=intent.strength,
         )
         edit_result.ops_log["requested_projection_mode"] = projection_mode
         edit_result.ops_log["primary_projection_mode"] = primary_projection_mode
@@ -182,6 +183,7 @@ def execute_fixture_contour_backend(
             schema=schema,
             primitive_config=primitive_config,
             changed_area_fraction=edit_result.changed_area_fraction,
+            strength=intent.strength,
         )
         status = STATUS_VALIDATED if validation.passed else STATUS_VALIDATION_FAILED
     except Exception as exc:  # pragma: no cover - defensive boundary for CLI use.
