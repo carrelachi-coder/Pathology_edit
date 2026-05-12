@@ -113,6 +113,8 @@ def _build_intent(
         resolved_target = "Tumor"
     if not resolved_target and primitive_config.get("name") in {
         "immune_infiltration_decrease",
+        "stroma_decrease",
+        "stromal_reduction",
         "tumor_burden_decrease",
     }:
         resolved_target = _first_backfill_label(operation)

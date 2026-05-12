@@ -206,6 +206,7 @@ def build_contour_prompt(
         "For tumor burden increase, draw coarse growth templates on editable non-tumor tissue adjacent to Tumor; final write uses nearest original Tumor subtype.",
         "For tumor burden decrease, draw coarse regression templates on existing Tumor near legal backfill tissue; final pixels will be backfilled deterministically.",
         "For immune infiltration decrease, draw coarse templates over existing Immune infiltrate that should be removed; final pixels will be backfilled from nearby legal tissue by deterministic code.",
+        "For stroma decrease or stromal reduction, draw coarse templates over existing Stroma to be loosened or reduced; final pixels will be backfilled from nearby Tumor, Other tissue, or Normal epithelium.",
         "Generate a rough organic template around the intended pathology location; do not optimize vertices to be pixel-perfect source-label coordinates.",
         "The downstream executor will rasterize, project to legal source labels, control final changed area, write the target label, and validate.",
         "If target_area_hint is present, its target_changed_pixels_min/max refer to the desired area after deterministic projection, not raw polygon area.",
