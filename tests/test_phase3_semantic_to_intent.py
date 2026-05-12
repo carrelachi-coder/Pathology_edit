@@ -46,6 +46,27 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(intents[0].primitive, "necrosis_appearance")
         self.assertEqual(intents[0].strength, "significant")
 
+    def test_necrosis_decrease_maps_to_necrosis_resolution(self):
+        diff = semantic_diff_with(
+            necrosis_change={"action": "decrease", "extent": "moderate"}
+        )
+
+        intents = semantic_diff_to_intents(diff, reference_profile="BCSS")
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(intents[0].primitive, "necrosis_resolution")
+        self.assertEqual(intents[0].strength, "moderate")
+
+    def test_necrosis_remove_maps_to_significant_resolution(self):
+        diff = semantic_diff_with(
+            necrosis_change={"action": "remove", "extent": "focal"}
+        )
+
+        intents = semantic_diff_to_intents(diff, reference_profile="BCSS")
+
+        self.assertEqual(intents[0].primitive, "necrosis_resolution")
+        self.assertEqual(intents[0].strength, "significant")
+
     def test_immune_increase_maps_to_stromal_immune(self):
         diff = semantic_diff_with(
             lymphocyte_change={
@@ -105,16 +126,17 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             ],
         )
 
-    def test_unsupported_stroma_change_emits_warning_only(self):
+    def test_stroma_density_increase_maps_to_desmoplasia(self):
         diff = semantic_diff_with(
             stroma_change={"density": "increase", "degree": "moderate"}
         )
 
         plan = plan_edit_intents(diff, reference_profile="BCSS")
 
-        self.assertEqual(plan.intents, ())
-        self.assertEqual(len(plan.unsupported_changes), 1)
-        self.assertEqual(plan.unsupported_changes[0].field, "stroma_change.density")
+        self.assertEqual(len(plan.intents), 1)
+        self.assertEqual(plan.intents[0].primitive, "stromal_desmoplasia")
+        self.assertEqual(plan.intents[0].strength, "moderate")
+        self.assertEqual(plan.unsupported_changes, ())
 
     def test_grade_only_change_emits_warning_only(self):
         diff = semantic_diff_with(

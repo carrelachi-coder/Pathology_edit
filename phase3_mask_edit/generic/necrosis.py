@@ -1,4 +1,4 @@
-"""Generic necrosis appearance mask primitive."""
+"""Generic necrosis mask primitives."""
 
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ _DEFAULT_MAX_COMPONENTS_WITH_EXISTING_NECROSIS = 3
 _DEFAULT_CLOSING_RADIUS_PX = 10
 _DEFAULT_FINAL_SMOOTH_RADIUS_PX = 8
 _DEFAULT_INTERIOR_SCORE_WEIGHT_CAP = 0.35
+_DEFAULT_MIN_RESOLUTION_COMPONENT_AREA_PX = 64
 _MIN_SELECTED_TARGET_FRACTION = 0.75
 
 
@@ -184,6 +185,93 @@ def apply_necrosis_appearance(
     )
 
 
+def apply_necrosis_resolution(
+    old_mask: np.ndarray,
+    schema: MaskProfileSchema,
+    context: MaskEditContext,
+    primitive_config: Mapping[str, Any],
+    intent: EditIntent,
+) -> PrimitiveEditResult:
+    """Replace existing Necrosis with nearest Tumor or Stroma backfill."""
+
+    _validate_necrosis_resolution_request(
+        old_mask, schema, context, primitive_config, intent
+    )
+    normalized = context.normalized_mask
+    target_fraction = _target_necrosis_resolution_fraction_for_intent(
+        primitive_config, intent
+    )
+
+    necrosis_ids = schema.resolve_fine_ids("Necrosis")
+    necrosis = np.isin(normalized, necrosis_ids)
+    necrosis_pixels = int(np.count_nonzero(necrosis))
+    if necrosis_pixels == 0:
+        raise PrimitiveExecutionError("no_necrosis")
+
+    target_count = _target_pixels(target_fraction, necrosis_pixels)
+    capped_target_count = min(target_count, necrosis_pixels)
+    if capped_target_count < 1:
+        raise PrimitiveExecutionError("necrosis_area_too_small")
+
+    backfill_labels = _available_resolution_backfill_labels(schema, primitive_config)
+    backfill = np.zeros_like(necrosis, dtype=bool)
+    for label in backfill_labels:
+        backfill |= np.isin(normalized, schema.resolve_fine_ids(label))
+    if not np.any(backfill):
+        raise PrimitiveExecutionError("no_valid_backfill_tissue")
+
+    score = _necrosis_resolution_score(necrosis, backfill, intent)
+    min_component_area = _min_resolution_component_area_for_intent(intent)
+    selection = _select_necrosis_resolution_region(
+        score,
+        necrosis,
+        target_pixels=capped_target_count,
+        min_component_area=min_component_area,
+    )
+    change_region = selection.change_region
+    selected_pixels = int(np.count_nonzero(change_region))
+    if selected_pixels == 0:
+        raise PrimitiveExecutionError("necrosis_area_too_small")
+
+    fill_labels = _nearest_backfill_labels(normalized, backfill)
+    target_mask = np.array(normalized, copy=True)
+    target_mask[change_region] = fill_labels[change_region]
+
+    changed_area_fraction = selected_pixels / target_mask.size
+    ops_log = {
+        "primitive": "necrosis_resolution",
+        "reference_profile": schema.reference_profile,
+        "target_change_fraction": target_fraction,
+        "changed_area_fraction": changed_area_fraction,
+        "changed_necrosis_fraction": selected_pixels / necrosis_pixels,
+        "selected_pixels": selected_pixels,
+        "spatial": {
+            "method": "nearest_tumor_or_stroma_backfill",
+            "target_area_reference": "necrosis",
+            "target_pixels": int(target_count),
+            "capped_target_pixels": int(capped_target_count),
+            "necrosis_pixels": necrosis_pixels,
+            "backfill_labels": list(backfill_labels),
+            "backfill_pixels": int(np.count_nonzero(backfill)),
+            "score_threshold": selection.score_threshold,
+            "threshold_percentile": selection.threshold_percentile,
+            "selected_components": selection.selected_components,
+            "pre_cleanup_pixels": selection.pre_cleanup_pixels,
+            "removed_small_component_pixels": selection.removed_small_component_pixels,
+            "min_component_area_px": min_component_area,
+        },
+    }
+
+    return PrimitiveEditResult(
+        target_mask=target_mask,
+        change_region=change_region,
+        changed_area_fraction=changed_area_fraction,
+        selected_pixels=selected_pixels,
+        warnings=(),
+        ops_log=ops_log,
+    )
+
+
 def _validate_necrosis_appearance_request(
     old_mask: np.ndarray,
     schema: MaskProfileSchema,
@@ -212,6 +300,34 @@ def _validate_necrosis_appearance_request(
         raise PrimitiveExecutionError("no_necrosis_label")
 
 
+def _validate_necrosis_resolution_request(
+    old_mask: np.ndarray,
+    schema: MaskProfileSchema,
+    context: MaskEditContext,
+    primitive_config: Mapping[str, Any],
+    intent: EditIntent,
+) -> None:
+    mask = np.asarray(old_mask)
+    if mask.ndim != 2:
+        raise PrimitiveExecutionError("necrosis_resolution requires a 2D mask.")
+    if tuple(mask.shape) != context.mask_shape:
+        raise PrimitiveExecutionError("old_mask shape must match MaskEditContext.")
+    if schema.reference_profile != context.reference_profile:
+        raise PrimitiveExecutionError(
+            "schema.reference_profile must match context.reference_profile."
+        )
+    if intent.primitive != "necrosis_resolution":
+        raise PrimitiveExecutionError(
+            "apply_necrosis_resolution requires a necrosis_resolution intent."
+        )
+    if primitive_config.get("name") != "necrosis_resolution":
+        raise PrimitiveExecutionError(
+            "primitive_config must describe necrosis_resolution."
+        )
+    if "Necrosis" not in schema.readable_labels:
+        raise PrimitiveExecutionError("no_necrosis_label")
+
+
 def _target_changed_fraction_for_intent(
     primitive_config: Mapping[str, Any], intent: EditIntent
 ) -> float:
@@ -230,6 +346,119 @@ def _target_changed_fraction_for_intent(
 
     lower, upper = float(interval[0]), float(interval[1])
     return (lower + upper) / 2
+
+
+def _target_necrosis_resolution_fraction_for_intent(
+    primitive_config: Mapping[str, Any], intent: EditIntent
+) -> float:
+    if intent.target_change_fraction is not None:
+        return intent.target_change_fraction
+
+    intervals = primitive_config.get("parameter_ranges", {}).get(
+        "necrosis_area_decrease_fraction", {}
+    )
+    interval = intervals.get(intent.strength)
+    if not isinstance(interval, list) or len(interval) != 2:
+        raise PrimitiveExecutionError(
+            f"necrosis_resolution does not define strength {intent.strength}."
+        )
+
+    lower, upper = float(interval[0]), float(interval[1])
+    return (lower + upper) / 2
+
+
+def _available_resolution_backfill_labels(
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+) -> tuple[str, ...]:
+    mask_operation = primitive_config.get("mask_operation", {})
+    priority = (
+        mask_operation.get("backfill_priority", ())
+        if isinstance(mask_operation, Mapping)
+        else ()
+    )
+    if not isinstance(priority, list):
+        priority = ["Tumor", "Stroma"]
+    labels = tuple(
+        label
+        for label in priority
+        if isinstance(label, str) and label in schema.readable_labels
+    )
+    if labels:
+        return labels
+    raise PrimitiveExecutionError("no_valid_backfill_tissue")
+
+
+def _necrosis_resolution_score(
+    necrosis: np.ndarray,
+    backfill: np.ndarray,
+    intent: EditIntent,
+) -> np.ndarray:
+    dist_to_backfill = ndimage.distance_transform_edt(~backfill)
+    max_dist = float(dist_to_backfill[necrosis].max()) if np.any(necrosis) else 0.0
+    score = -dist_to_backfill.astype(float)
+    noise_weight = _nonnegative_float_parameter(
+        intent, "necrosis_resolution_noise_weight", 0.02
+    )
+    if noise_weight > 0 and max_dist > 0:
+        score += noise_weight * _smooth_noise(necrosis.shape, seed=intent.seed)
+    score[~necrosis] = -np.inf
+    return score
+
+
+def _select_necrosis_resolution_region(
+    score: np.ndarray,
+    necrosis: np.ndarray,
+    *,
+    target_pixels: int,
+    min_component_area: int,
+) -> _SelectionInfo:
+    finite_scores = score[necrosis & np.isfinite(score)]
+    if finite_scores.size == 0:
+        raise PrimitiveExecutionError("necrosis_area_too_small")
+
+    percentile = max(
+        0.0,
+        100.0 * (1.0 - min(float(target_pixels) / float(finite_scores.size), 1.0)),
+    )
+    threshold = float(np.percentile(finite_scores, percentile))
+    selected = necrosis & np.isfinite(score) & (score >= threshold)
+    pre_cleanup_pixels = int(np.count_nonzero(selected))
+    selected = _limit_region_by_score(selected, score, target_pixels)
+    selected, removed_pixels = _remove_small_components(selected, min_component_area)
+    if not np.any(selected):
+        selected = necrosis & np.isfinite(score) & (
+            score >= float(np.percentile(finite_scores, 50.0))
+        )
+        percentile = 50.0
+        threshold = float(np.percentile(finite_scores, percentile))
+        pre_cleanup_pixels = int(np.count_nonzero(selected))
+        selected = _limit_region_by_score(selected, score, target_pixels)
+        selected, removed_pixels = _remove_small_components(selected, 1)
+
+    selected_components = int(
+        ndimage.label(selected, structure=_four_neighbor_structure())[1]
+    )
+    return _SelectionInfo(
+        change_region=selected,
+        score_threshold=threshold,
+        threshold_percentile=float(percentile),
+        selected_components=selected_components,
+        retry_applied=False,
+        pre_cleanup_pixels=pre_cleanup_pixels,
+        removed_small_component_pixels=removed_pixels,
+        removed_extra_focus_pixels=0,
+        hole_fill_pixels=0,
+        closing_added_pixels=0,
+        morphology_cleanup_applied=False,
+    )
+
+
+def _nearest_backfill_labels(mask: np.ndarray, backfill: np.ndarray) -> np.ndarray:
+    if not np.any(backfill):
+        raise PrimitiveExecutionError("no_valid_backfill_tissue")
+    _, indices = ndimage.distance_transform_edt(~backfill, return_indices=True)
+    return mask[indices[0], indices[1]]
 
 
 def _max_necrosis_fraction_of_tumor(primitive_config: Mapping[str, Any]) -> float:
@@ -620,6 +849,26 @@ def _refill_to_minimum_target(
     return refilled, int(chosen.shape[0])
 
 
+def _limit_region_by_score(
+    selected: np.ndarray,
+    score: np.ndarray,
+    max_pixels: int,
+) -> np.ndarray:
+    current_pixels = int(np.count_nonzero(selected))
+    if current_pixels <= max_pixels:
+        return selected
+    if max_pixels < 1:
+        return np.zeros_like(selected, dtype=bool)
+
+    coords = np.argwhere(selected)
+    values = score[coords[:, 0], coords[:, 1]]
+    order = np.argsort(values, kind="stable")[::-1]
+    chosen = coords[order[:max_pixels]]
+    limited = np.zeros_like(selected, dtype=bool)
+    limited[chosen[:, 0], chosen[:, 1]] = True
+    return limited
+
+
 def _solidify_necrosis_region(
     selected: np.ndarray,
     candidate_base: np.ndarray,
@@ -813,6 +1062,18 @@ def _max_components_for_intent(
     if not isinstance(value, int) or value < 1:
         raise PrimitiveExecutionError(
             "parameters.max_necrosis_components must be a positive integer."
+        )
+    return value
+
+
+def _min_resolution_component_area_for_intent(intent: EditIntent) -> int:
+    value = intent.parameters.get(
+        "min_necrosis_resolution_component_area_px",
+        _DEFAULT_MIN_RESOLUTION_COMPONENT_AREA_PX,
+    )
+    if not isinstance(value, int) or value < 1:
+        raise PrimitiveExecutionError(
+            "parameters.min_necrosis_resolution_component_area_px must be a positive integer."
         )
     return value
 

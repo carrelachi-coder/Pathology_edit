@@ -335,6 +335,54 @@ primitives:
     overlap_guard:
       use_necrosis_expansion_when_existing_necrosis_is_required
 
+  - name: necrosis_resolution
+    version: v1
+    pathology_meaning: necrosis resolution or replacement by viable tumor/stroma context
+    required_tissue_labels:
+      - Necrosis
+    required_context:
+      - valid_backfill_tissue
+    optional_tissue_labels:
+      - Tumor
+      - Stroma
+    mask_operation:
+      type: necrosis_region_reduction
+      source: Necrosis
+      backfill_priority:
+        - Tumor
+        - Stroma
+    spatial_pattern:
+      reduce_priority:
+        - necrosis_touching_viable_tissue
+        - necrosis_periphery_before_core
+      backfill_policy: nearest_tumor_or_stroma
+      forbid_targets:
+        - Background
+    parameter_ranges:
+      necrosis_area_decrease_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.70]
+        xlarge_deid: [0.40, 0.70]
+      min_necrosis_resolution_component_area_px: 64
+    probnet_bias:
+      Dead: down
+      Neoplastic: up_if_backfilled_to_tumor
+      Connective: up_if_backfilled_to_stroma
+    validation_rules:
+      - necrosis_area_must_decrease
+      - resolved_necrosis_must_be_original_necrosis
+      - backfill_must_be_legal_tissue
+      - no_background_holes
+    expected_failure_cases:
+      - no_necrosis_label
+      - no_necrosis
+      - necrosis_area_too_small
+      - no_valid_backfill_tissue
+    overlap_guard:
+      use_necrosis_appearance_for_necrosis_expansion
+      use_tumor_burden_decrease_for_tumor_regression
+
   # ════════════════════════════════════════════════════════════════════════
   # 5. STROMAL IMMUNE INFILTRATION
   # ════════════════════════════════════════════════════════════════════════

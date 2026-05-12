@@ -145,6 +145,15 @@ def _check_change_area_range(
             src_mask, change_region, schema, ranges
         )
     if (
+        primitive_config.get("name") == "necrosis_resolution"
+        and src_mask is not None
+        and change_region is not None
+        and schema is not None
+    ):
+        return _check_necrosis_resolution_relative_change_area(
+            src_mask, change_region, schema, ranges
+        )
+    if (
         primitive_config.get("name") == "stromal_immune_infiltration"
         and src_mask is not None
         and change_region is not None
@@ -317,6 +326,55 @@ def _check_intratumoral_immune_tumor_relative_change_area(
         "change_area_within_range",
         False,
         f"changed_tumor_fraction={changed_tumor_fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _check_necrosis_resolution_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    ranges: Mapping[str, Any],
+) -> ValidationCheck:
+    if "Necrosis" not in schema.readable_labels:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "Necrosis label not in schema for necrosis-relative resolution change area.",
+        )
+    necrosis_pixels = int(
+        np.count_nonzero(np.isin(src_mask, schema.resolve_fine_ids("Necrosis")))
+    )
+    if necrosis_pixels == 0:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "no necrosis pixels for necrosis-relative resolution change area.",
+        )
+
+    changed_necrosis_fraction = int(np.count_nonzero(change_region)) / necrosis_pixels
+    min_fraction = _min_interval_lower_bound(
+        ranges.get("necrosis_area_decrease_fraction", {})
+    )
+    max_fraction = _max_interval_upper_bound(
+        ranges.get("necrosis_area_decrease_fraction", {})
+    )
+    if min_fraction is None:
+        min_fraction = 0.0
+    if max_fraction is None:
+        max_fraction = 1.0
+
+    if min_fraction <= changed_necrosis_fraction <= max_fraction:
+        return ValidationCheck(
+            "change_area_within_range",
+            True,
+            f"changed_necrosis_fraction={changed_necrosis_fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "change_area_within_range",
+        False,
+        f"changed_necrosis_fraction={changed_necrosis_fraction:.4f} outside "
         f"[{min_fraction:.2f}, {max_fraction:.2f}]",
     )
 
@@ -697,6 +755,72 @@ def _guard_necrosis_area_must_increase(
 
 
 _PRIMITIVE_GUARDS["necrosis_area_must_increase"] = _guard_necrosis_area_must_increase
+
+
+def _guard_necrosis_area_must_decrease(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    if "Necrosis" not in schema.readable_labels:
+        return ValidationCheck(
+            "necrosis_area_must_decrease", True,
+            "Necrosis label not in schema; skipped.",
+        )
+    nec_ids = schema.resolve_fine_ids("Necrosis")
+    src_nec = int(np.count_nonzero(np.isin(src_mask, nec_ids)))
+    tgt_nec = int(np.count_nonzero(np.isin(target_mask, nec_ids)))
+    if tgt_nec < src_nec:
+        return ValidationCheck(
+            "necrosis_area_must_decrease", True,
+            f"necrosis {src_nec} -> {tgt_nec} pixels.",
+        )
+    return ValidationCheck(
+        "necrosis_area_must_decrease", False,
+        f"necrosis did not decrease: {src_nec} -> {tgt_nec} pixels.",
+    )
+
+
+_PRIMITIVE_GUARDS["necrosis_area_must_decrease"] = _guard_necrosis_area_must_decrease
+
+
+def _guard_resolved_necrosis_must_be_original_necrosis(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    if "Necrosis" not in schema.readable_labels:
+        return ValidationCheck(
+            "resolved_necrosis_must_be_original_necrosis", True,
+            "Necrosis label not in schema; skipped.",
+        )
+    nec_ids = schema.resolve_fine_ids("Necrosis")
+    source_necrosis = np.isin(src_mask, nec_ids)
+    outside = int(np.count_nonzero(change_region & ~source_necrosis))
+    if outside == 0:
+        return ValidationCheck(
+            "resolved_necrosis_must_be_original_necrosis",
+            True,
+            "all changed pixels came from original Necrosis.",
+        )
+    return ValidationCheck(
+        "resolved_necrosis_must_be_original_necrosis",
+        False,
+        f"{outside} changed pixels were not original Necrosis.",
+    )
+
+
+_PRIMITIVE_GUARDS["resolved_necrosis_must_be_original_necrosis"] = (
+    _guard_resolved_necrosis_must_be_original_necrosis
+)
 
 
 def _guard_new_necrosis_must_be_inside_original_tumor(

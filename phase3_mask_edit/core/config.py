@@ -31,6 +31,7 @@ XLARGE_DEID_ALLOWED_PRIMITIVES = frozenset(
         "tumor_burden_increase",
         "tumor_burden_decrease",
         "necrosis_appearance",
+        "necrosis_resolution",
         "immune_infiltration_decrease",
         "stromal_desmoplasia",
     }
@@ -39,7 +40,6 @@ XLARGE_DEID_ALLOWED_PRIMITIVES = frozenset(
 FUTURE_OVERLAP_GUARD_REFERENCES = frozenset(
     {
         "necrosis_expansion",
-        "necrosis_resolution",
         "peritumoral_inflammation",
     }
 )

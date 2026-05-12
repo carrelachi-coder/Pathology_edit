@@ -26,8 +26,10 @@ INTENT_ORDER = {
     "tumor_burden_increase": 10,
     "tumor_burden_decrease": 20,
     "necrosis_appearance": 30,
+    "necrosis_resolution": 35,
     "stromal_immune_infiltration": 40,
     "immune_infiltration_decrease": 45,
+    "stromal_desmoplasia": 50,
 }
 
 
@@ -265,11 +267,17 @@ def _raw_intent_specs(
             )
         )
     elif necrosis_action in {"decrease", "remove"}:
-        unsupported.append(
-            PlanningWarning(
-                field="necrosis_change.action",
-                value=necrosis_action,
-                reason="Phase3 necrosis decrease/resolution primitive is not implemented yet.",
+        raw_items.append(
+            _intent_payload(
+                "necrosis_resolution",
+                _strength_from_necrosis_resolution(
+                    necrosis_action,
+                    necrosis_change["extent"],
+                ),
+                reference_profile,
+                old_prompt,
+                new_prompt,
+                prompt_diff,
             )
         )
 
@@ -299,12 +307,23 @@ def _raw_intent_specs(
         )
 
     stroma_change = semantic_diff["stroma_change"]
-    if stroma_change["density"] != "none":
+    if stroma_change["density"] == "increase":
+        raw_items.append(
+            _intent_payload(
+                "stromal_desmoplasia",
+                _strength_from_degree(stroma_change["degree"]),
+                reference_profile,
+                old_prompt,
+                new_prompt,
+                prompt_diff,
+            )
+        )
+    elif stroma_change["density"] != "none":
         unsupported.append(
             PlanningWarning(
                 field="stroma_change.density",
                 value=stroma_change["density"],
-                reason="Phase3 stromal fibrosis/desmoplasia primitive is not implemented yet.",
+                reason="Phase3 stromal density decrease primitive is not implemented yet.",
             )
         )
 
@@ -341,6 +360,12 @@ def _strength_from_necrosis_extent(value: str) -> str:
     if value == "extensive":
         return "significant"
     return "moderate"
+
+
+def _strength_from_necrosis_resolution(action: str, extent: str) -> str:
+    if action == "remove":
+        return "significant"
+    return _strength_from_necrosis_extent(extent)
 
 
 def _intent_order_names(items: tuple[IntentPlanItem, ...]) -> list[str]:

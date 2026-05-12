@@ -14,6 +14,7 @@ from phase3_mask_edit.generic.executor import execute_edit
 from phase3_mask_edit.generic.necrosis import (
     _edge_aware_tumor_interior_distance,
     apply_necrosis_appearance,
+    apply_necrosis_resolution,
 )
 from phase3_mask_edit.generic.tumor_burden import PrimitiveExecutionError
 
@@ -43,6 +44,7 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
     def setUp(self):
         self.recipe = load_recipe(GENERIC_RECIPE)
         self.primitive = _primitive(self.recipe, "necrosis_appearance")
+        self.resolution_primitive = _primitive(self.recipe, "necrosis_resolution")
 
     def test_necrosis_appearance_replaces_only_original_tumor(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
@@ -339,6 +341,66 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
                 "reference_profile": "BCSS",
                 "target_change_fraction": 0.08,
                 "parameters": {"necrosis_score_noise_weight": 0.0},
+            }
+        )
+
+        result = execute_edit(old_mask, intent, self.recipe, schema, context)
+
+        self.assertIn(result.status, ("executed_validated", "degraded_executed"))
+        self.assertIsNotNone(result.edit_result)
+        self.assertIsNotNone(result.validation)
+        self.assertTrue(result.validation.passed)
+        self.assertGreater(result.edit_result.selected_pixels, 0)
+
+    def test_necrosis_resolution_backfills_nearest_tumor_or_stroma(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = np.full((96, 96), 2, dtype=np.int64)
+        old_mask[12:84, 12:48] = 1
+        old_mask[36:60, 36:60] = 3
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "necrosis_resolution",
+                "reference_profile": "BCSS",
+                "target_change_fraction": 0.50,
+                "parameters": {
+                    "min_necrosis_resolution_component_area_px": 1,
+                    "necrosis_resolution_noise_weight": 0.0,
+                },
+            }
+        )
+
+        result = apply_necrosis_resolution(
+            old_mask,
+            schema,
+            context,
+            self.resolution_primitive,
+            intent,
+        )
+
+        self.assertGreater(result.selected_pixels, 0)
+        self.assertTrue(np.all(result.change_region <= (old_mask == 3)))
+        self.assertFalse(np.any(result.target_mask[result.change_region] == 3))
+        self.assertTrue(np.all(np.isin(result.target_mask[result.change_region], (1, 2))))
+        self.assertLess(
+            np.count_nonzero(result.target_mask == 3),
+            np.count_nonzero(old_mask == 3),
+        )
+        self.assertEqual(result.ops_log["spatial"]["backfill_labels"], ["Tumor", "Stroma"])
+
+    def test_executor_runs_necrosis_resolution_and_validates(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = _large_tumor_mask(with_necrosis=True)
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "necrosis_resolution",
+                "reference_profile": "BCSS",
+                "target_change_fraction": 0.10,
+                "parameters": {
+                    "min_necrosis_resolution_component_area_px": 1,
+                    "necrosis_resolution_noise_weight": 0.0,
+                },
             }
         )
 
