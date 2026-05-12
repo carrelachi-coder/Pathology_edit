@@ -1,0 +1,20 @@
+{
+  "attempt_index": 2,
+  "image_paths": [
+    "runs\\phase3_llm_contour\\stroma_decrease_llm_v2_cursorai_gpt4o_all_real_masks_5case_text\\case06_TCGA-A8-A07O_x11777_y16227_py0_px0\\source_mask_llm_rgb_grid.png",
+    "runs\\phase3_llm_contour\\stroma_decrease_llm_v2_cursorai_gpt4o_all_real_masks_5case_text\\case06_TCGA-A8-A07O_x11777_y16227_py0_px0\\source_mask_llm_rgb.png"
+  ],
+  "provider_metadata": {
+    "provider_name": "openai_compatible_text",
+    "provider_class": "OpenAICompatibleTextContourProvider",
+    "request_mode": "text",
+    "image_paths_available": 2,
+    "image_parts_expected": 0,
+    "image_policy": "do not send images"
+  },
+  "repair_feedback": {
+    "status": "provider_error",
+    "attempt": 1,
+    "error": "API request failed with HTTP 429: {\"error\":{\"message\":\"{\\\"detail\\\":{\\\"code\\\":\\\"message_length_exceeds_limit\\\",\\\"message\\\":\\\"The message you submitted was too long, please edit it and resubmit.\\\"}} (request id: 20260512105013642665571pbG7PUfj)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":null}}"
+  }
+}

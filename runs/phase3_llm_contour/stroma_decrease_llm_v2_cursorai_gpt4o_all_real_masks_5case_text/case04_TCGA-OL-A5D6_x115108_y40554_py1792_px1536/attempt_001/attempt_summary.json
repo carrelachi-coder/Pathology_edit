@@ -1,0 +1,465 @@
+{
+  "attempt_index": 1,
+  "status": "validated",
+  "error": null,
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "stroma_decrease",
+    "reference_profile": "BCSS",
+    "target_label": "Tumor",
+    "regions": [
+      {
+        "region_id": "r1",
+        "source_labels": [
+          "Stroma"
+        ],
+        "points": [
+          [
+            170.0,
+            50.0
+          ],
+          [
+            160.0,
+            55.0
+          ],
+          [
+            150.0,
+            60.0
+          ],
+          [
+            142.0,
+            66.0
+          ],
+          [
+            136.0,
+            72.0
+          ],
+          [
+            130.0,
+            80.0
+          ],
+          [
+            125.0,
+            88.0
+          ],
+          [
+            120.0,
+            96.0
+          ],
+          [
+            115.0,
+            104.0
+          ],
+          [
+            110.0,
+            112.0
+          ],
+          [
+            105.0,
+            120.0
+          ],
+          [
+            100.0,
+            128.0
+          ],
+          [
+            95.0,
+            134.0
+          ],
+          [
+            88.0,
+            138.0
+          ],
+          [
+            80.0,
+            140.0
+          ],
+          [
+            72.0,
+            138.0
+          ],
+          [
+            65.0,
+            134.0
+          ],
+          [
+            58.0,
+            128.0
+          ],
+          [
+            52.0,
+            120.0
+          ],
+          [
+            48.0,
+            112.0
+          ],
+          [
+            45.0,
+            104.0
+          ],
+          [
+            42.0,
+            96.0
+          ],
+          [
+            40.0,
+            88.0
+          ],
+          [
+            38.0,
+            80.0
+          ],
+          [
+            36.0,
+            72.0
+          ],
+          [
+            34.0,
+            66.0
+          ],
+          [
+            32.0,
+            60.0
+          ],
+          [
+            30.0,
+            55.0
+          ],
+          [
+            28.0,
+            50.0
+          ],
+          [
+            30.0,
+            46.0
+          ],
+          [
+            35.0,
+            42.0
+          ],
+          [
+            42.0,
+            40.0
+          ]
+        ],
+        "confidence": 0.8
+      }
+    ]
+  },
+  "edit_result": {
+    "selected_pixels": 3655,
+    "changed_area_fraction": 0.013942718505859375,
+    "warnings": [],
+    "ops_log": {
+      "backend": "organic_score_projection_v2",
+      "method": "organic_score_projection_and_deterministic_backfill",
+      "primitive": "stroma_decrease",
+      "reference_profile": "BCSS",
+      "source_labels": [
+        "Stroma"
+      ],
+      "target_label": "nearest_backfill_tissue",
+      "backfill_labels": [
+        "Tumor",
+        "Other tissue"
+      ],
+      "preserve_labels": [],
+      "forbidden_labels": [],
+      "raw_candidate_pixels": 7837,
+      "candidate_pixels": 7837,
+      "raw_candidate_legal_overlap_pixels": 6716,
+      "template_overlap_with_legal_domain": 0.856960571647314,
+      "legal_domain_pixels": 19235,
+      "target_pixels": 3655,
+      "projected_pixels": 3655,
+      "selected_pixels": 3655,
+      "selected_raw_template_intersection_pixels": 3007,
+      "selected_raw_template_union_pixels": 8485,
+      "selected_raw_template_iou": 0.3543901001767826,
+      "selection_policy": {
+        "name": "template_neighborhood_constrained_top_k",
+        "template_neighborhood_radius_px": 48.0,
+        "template_spillover_fraction": 0.15,
+        "primary_zone_pixels": 19014,
+        "primary_budget_pixels": 3107,
+        "primary_selected_pixels": 3107,
+        "secondary_selected_pixels": 548,
+        "selected_inside_primary_zone_pixels": 3655,
+        "selected_outside_primary_zone_pixels": 0
+      },
+      "area_shortfall": 0,
+      "changed_area_fraction": 0.013942718505859375,
+      "projection_backend": "organic_score_projection_v2",
+      "noise_seed": 17,
+      "strength": "moderate",
+      "score_terms": {
+        "w_template": 0.45,
+        "w_spatial": 0.45,
+        "w_noise": 0.1,
+        "template_sigma": 3.0,
+        "noise_sigma": 18.0,
+        "noise_amplitude": 0.18,
+        "min_template_legal_overlap_fraction": 0.05,
+        "template_neighborhood_radius_px": 48.0,
+        "template_spillover_fraction": 0.15
+      },
+      "component_policy": {
+        "policy_name": "stroma_decrease_microenvironment_loosen",
+        "params": {
+          "legal_domain_policy": "current_stroma_excluding_background",
+          "backfill_policy": "nearest_legal_tissue",
+          "stroma_decrease_backfill_neighbor_radius_px": 48.0,
+          "stroma_decrease_tumor_falloff_radius_px": 96.0,
+          "source_stroma_pixels": 19235,
+          "selected_backfill_labels": [
+            "Tumor",
+            "Other tissue"
+          ],
+          "score_prefers": [
+            "stroma_near_tumor_microenvironment",
+            "stroma_touching_legal_backfill_tissue",
+            "stroma_near_other_nonstromal_tissue"
+          ]
+        },
+        "spatial_score_stats": {
+          "pixels": 19235,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.44291906147244087
+        },
+        "template_score_stats": {
+          "pixels": 19235,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.46706169660680574
+        }
+      },
+      "cleanup_removed_pixels": 0,
+      "cleanup_refill_pixels": 0,
+      "cleanup_min_component_pixels": 37,
+      "cleanup_min_component_policy": "fraction_of_target_pixels",
+      "pre_cleanup_pixels": 3655,
+      "post_cleanup_pixels": 3655,
+      "cleanup_single_pass": true,
+      "cleanup_iteration_limit": 1,
+      "decrease_semantics": "select_stroma_pixels_then_backfill_from_nearest_legal_tissue",
+      "raw_payload": {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "stroma_decrease",
+        "reference_profile": "BCSS",
+        "target_label": "Tumor",
+        "template_role": "coarse_template",
+        "placement_relation": "generic_label_safe",
+        "shape_hints": [
+          "irregular_boundary"
+        ],
+        "coordinate_system": {
+          "origin": "top_left",
+          "point_format": "[x, y]",
+          "x_axis": "horizontal_column_right",
+          "y_axis": "vertical_row_down",
+          "width": 512,
+          "height": 512
+        },
+        "regions": [
+          {
+            "region_id": "r1",
+            "type": "polygon",
+            "source_labels": [
+              "Stroma"
+            ],
+            "source_component_ids": [
+              "source_1"
+            ],
+            "adjacency_side": "Tumor",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "irregular_boundary"
+            ],
+            "points": [
+              [
+                170,
+                50
+              ],
+              [
+                160,
+                55
+              ],
+              [
+                150,
+                60
+              ],
+              [
+                142,
+                66
+              ],
+              [
+                136,
+                72
+              ],
+              [
+                130,
+                80
+              ],
+              [
+                125,
+                88
+              ],
+              [
+                120,
+                96
+              ],
+              [
+                115,
+                104
+              ],
+              [
+                110,
+                112
+              ],
+              [
+                105,
+                120
+              ],
+              [
+                100,
+                128
+              ],
+              [
+                95,
+                134
+              ],
+              [
+                88,
+                138
+              ],
+              [
+                80,
+                140
+              ],
+              [
+                72,
+                138
+              ],
+              [
+                65,
+                134
+              ],
+              [
+                58,
+                128
+              ],
+              [
+                52,
+                120
+              ],
+              [
+                48,
+                112
+              ],
+              [
+                45,
+                104
+              ],
+              [
+                42,
+                96
+              ],
+              [
+                40,
+                88
+              ],
+              [
+                38,
+                80
+              ],
+              [
+                36,
+                72
+              ],
+              [
+                34,
+                66
+              ],
+              [
+                32,
+                60
+              ],
+              [
+                30,
+                55
+              ],
+              [
+                28,
+                50
+              ],
+              [
+                30,
+                46
+              ],
+              [
+                35,
+                42
+              ],
+              [
+                42,
+                40
+              ]
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "projection_mode": "organic_v2"
+    }
+  },
+  "validation": {
+    "passed": true,
+    "primitive": "stroma_decrease",
+    "checks": [
+      {
+        "name": "change_area_nonempty",
+        "passed": true,
+        "detail": "3655 pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "passed": true,
+        "detail": "changed_stroma_fraction=0.1900 in [0.08, 0.55]"
+      },
+      {
+        "name": "label_legality",
+        "passed": true,
+        "detail": "all labels in schema."
+      },
+      {
+        "name": "no_background_leakage",
+        "passed": true,
+        "detail": "no background leakage."
+      },
+      {
+        "name": "required_labels_present",
+        "passed": true,
+        "detail": "all required labels present in src mask."
+      },
+      {
+        "name": "stroma_area_must_decrease",
+        "passed": true,
+        "detail": "stroma 19235 -> 15580 pixels."
+      },
+      {
+        "name": "backfill_must_be_legal_tissue",
+        "passed": true,
+        "detail": "no Background used as backfill."
+      },
+      {
+        "name": "no_background_holes",
+        "passed": true,
+        "detail": "no background holes created."
+      }
+    ],
+    "warnings": []
+  }
+}

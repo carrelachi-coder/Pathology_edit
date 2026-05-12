@@ -1,0 +1,11 @@
+{
+  "attempt_index": 4,
+  "status": "provider_error",
+  "error": "API request failed with HTTP 429: {\"error\":{\"message\":\"{\\\"detail\\\":{\\\"code\\\":\\\"message_length_exceeds_limit\\\",\\\"message\\\":\\\"The message you submitted was too long, please edit it and resubmit.\\\"}} (request id: 20260512104730355111082g5wU6AHE)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":null}}",
+  "artifact_paths": {},
+  "repair_feedback": {
+    "status": "provider_error",
+    "attempt": 4,
+    "error": "API request failed with HTTP 429: {\"error\":{\"message\":\"{\\\"detail\\\":{\\\"code\\\":\\\"message_length_exceeds_limit\\\",\\\"message\\\":\\\"The message you submitted was too long, please edit it and resubmit.\\\"}} (request id: 20260512104730355111082g5wU6AHE)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":null}}"
+  }
+}

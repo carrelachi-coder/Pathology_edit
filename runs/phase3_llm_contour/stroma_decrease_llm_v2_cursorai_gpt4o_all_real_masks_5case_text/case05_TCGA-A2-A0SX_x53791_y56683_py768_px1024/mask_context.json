@@ -1,0 +1,1277 @@
+{
+  "mask_shape": [
+    512,
+    512
+  ],
+  "reference_profile": "BCSS",
+  "primitive": "stroma_decrease",
+  "strength": "moderate",
+  "target_label": "Tumor",
+  "allowed_source_labels": [
+    "Stroma"
+  ],
+  "label_areas": {
+    "Blood vessel": 0,
+    "Immune infiltrate": 0,
+    "Necrosis": 0,
+    "Normal epithelium": 0,
+    "Other tissue": 122689,
+    "Stroma": 44015,
+    "Tumor": 95440
+  },
+  "label_palette_rgb": {
+    "Background": [
+      30,
+      30,
+      30
+    ],
+    "Tumor": [
+      180,
+      60,
+      60
+    ],
+    "Stroma": [
+      60,
+      150,
+      60
+    ],
+    "Necrosis": [
+      60,
+      60,
+      180
+    ],
+    "Immune infiltrate": [
+      140,
+      60,
+      180
+    ],
+    "Normal epithelium": [
+      180,
+      180,
+      80
+    ],
+    "Blood vessel": [
+      60,
+      140,
+      100
+    ],
+    "Other tissue": [
+      170,
+      170,
+      170
+    ]
+  },
+  "visual_label_legend": {
+    "Background": "dark gray / nearly black",
+    "Tumor": "red",
+    "Stroma": "green",
+    "Necrosis": "blue",
+    "Immune infiltrate": "purple",
+    "Normal epithelium": "yellow",
+    "Blood vessel": "teal",
+    "Other tissue": "gray"
+  },
+  "proposal_policy": {
+    "backend": "llm_contour_proposal",
+    "schema_version": "0.1",
+    "max_regions": 8,
+    "max_points_per_region": 64,
+    "template_role": "coarse_template",
+    "known_optional_v2_fields": [
+      "source_component_ids",
+      "adjacency_side",
+      "placement_relation",
+      "template_role",
+      "shape_hints"
+    ],
+    "executor_contract": "LLM polygons are approximate organic intent templates. Deterministic code projects them to legal source labels, controls final area, and writes final pixels."
+  },
+  "target_area_hint": null,
+  "llm_task_requirements": {
+    "pathology_goal": "reduced fibrosis/desmoplasia or loosened tumor microenvironment",
+    "mask_operation": {
+      "type": "stromal_region_reduction",
+      "source": "Stroma",
+      "backfill_priority": [
+        "Tumor",
+        "Other tissue",
+        "Normal epithelium"
+      ]
+    },
+    "area_requirement": "Follow the strength bucket from the recipe if present.",
+    "recipe_constraints": {
+      "spatial_pattern": {
+        "reduce_priority": [
+          "stroma_near_tumor_microenvironment",
+          "stroma_touching_nonstromal_backfill",
+          "patchy_desmoplasia_relaxation"
+        ],
+        "backfill_policy": "nearest_tumor_other_or_normal_epithelium",
+        "forbid_targets": [
+          "Background"
+        ]
+      },
+      "parameter_ranges": {
+        "stroma_area_decrease_fraction": {
+          "mild": [
+            0.08,
+            0.14
+          ],
+          "moderate": [
+            0.14,
+            0.24
+          ],
+          "significant": [
+            0.24,
+            0.35
+          ],
+          "xlarge_deid": [
+            0.35,
+            0.55
+          ]
+        },
+        "min_remaining_stroma_fraction": 0.02,
+        "stroma_decrease_tumor_falloff_radius_px": 96,
+        "stroma_decrease_backfill_neighbor_radius_px": 48,
+        "organic_template_sigma_px": 3.0,
+        "organic_noise_sigma_px": 18.0,
+        "organic_noise_amplitude": 0.18,
+        "organic_score_weights": {
+          "template": 0.45,
+          "spatial": 0.45,
+          "noise": 0.1
+        },
+        "organic_min_template_legal_overlap_fraction": 0.05,
+        "organic_template_neighborhood_radius_px": 48,
+        "organic_template_spillover_fraction": 0.15,
+        "organic_min_component_fraction": 0.01,
+        "organic_fill_holes_max_area_px": 0
+      },
+      "validation_rules": [
+        "stroma_area_must_decrease",
+        "backfill_must_be_legal_tissue",
+        "no_background_holes"
+      ]
+    }
+  },
+  "contour_style_hint": {
+    "recommended_region_count_range": [
+      1,
+      3
+    ],
+    "points_per_region_range": [
+      16,
+      32
+    ],
+    "boundary_style": "irregular organic boundary",
+    "region_variation_requirement": "Do not duplicate shapes across regions."
+  },
+  "source_spatial_hints": {
+    "Stroma": {
+      "total_pixels": 44015,
+      "components": [
+        {
+          "component_id": "c2",
+          "area_px": 36768,
+          "bbox": [
+            23,
+            0,
+            511,
+            334
+          ],
+          "centroid": [
+            328.9,
+            122.2
+          ]
+        },
+        {
+          "component_id": "c7",
+          "area_px": 3683,
+          "bbox": [
+            250,
+            173,
+            310,
+            320
+          ],
+          "centroid": [
+            280.6,
+            234.7
+          ]
+        },
+        {
+          "component_id": "c11",
+          "area_px": 2020,
+          "bbox": [
+            256,
+            419,
+            433,
+            438
+          ],
+          "centroid": [
+            353.1,
+            426.4
+          ]
+        },
+        {
+          "component_id": "c14",
+          "area_px": 640,
+          "bbox": [
+            457,
+            441,
+            511,
+            458
+          ],
+          "centroid": [
+            491.5,
+            447.7
+          ]
+        },
+        {
+          "component_id": "c9",
+          "area_px": 355,
+          "bbox": [
+            210,
+            369,
+            230,
+            406
+          ],
+          "centroid": [
+            220.0,
+            388.5
+          ]
+        },
+        {
+          "component_id": "c8",
+          "area_px": 337,
+          "bbox": [
+            237,
+            322,
+            279,
+            363
+          ],
+          "centroid": [
+            258.1,
+            344.9
+          ]
+        },
+        {
+          "component_id": "c1",
+          "area_px": 196,
+          "bbox": [
+            0,
+            0,
+            12,
+            63
+          ],
+          "centroid": [
+            2.9,
+            38.1
+          ]
+        },
+        {
+          "component_id": "c6",
+          "area_px": 7,
+          "bbox": [
+            20,
+            74,
+            22,
+            78
+          ],
+          "centroid": [
+            21.3,
+            75.7
+          ]
+        }
+      ],
+      "high_purity_grid_tiles": [
+        {
+          "bbox": [
+            448,
+            64,
+            511,
+            127
+          ],
+          "source_pixels": 4096,
+          "source_fraction": 1.0
+        },
+        {
+          "bbox": [
+            448,
+            128,
+            511,
+            191
+          ],
+          "source_pixels": 4096,
+          "source_fraction": 1.0
+        },
+        {
+          "bbox": [
+            256,
+            64,
+            319,
+            127
+          ],
+          "source_pixels": 3404,
+          "source_fraction": 0.831
+        },
+        {
+          "bbox": [
+            384,
+            64,
+            447,
+            127
+          ],
+          "source_pixels": 2841,
+          "source_fraction": 0.694
+        },
+        {
+          "bbox": [
+            192,
+            128,
+            255,
+            191
+          ],
+          "source_pixels": 2772,
+          "source_fraction": 0.677
+        },
+        {
+          "bbox": [
+            448,
+            0,
+            511,
+            63
+          ],
+          "source_pixels": 2526,
+          "source_fraction": 0.617
+        }
+      ],
+      "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+    }
+  },
+  "source_contour_context": {
+    "Stroma": {
+      "coordinate_system": "original_mask_xy",
+      "contour_point_format": "[x, y]",
+      "components": [
+        {
+          "component_id": "source_2",
+          "area_px": 36768,
+          "bbox": [
+            23,
+            0,
+            511,
+            334
+          ],
+          "centroid": [
+            328.9,
+            122.2
+          ],
+          "contour_simplified": [
+            [
+              511,
+              334
+            ],
+            [
+              498,
+              293
+            ],
+            [
+              484,
+              251
+            ],
+            [
+              471,
+              216
+            ],
+            [
+              427,
+              204
+            ],
+            [
+              371,
+              204
+            ],
+            [
+              380,
+              196
+            ],
+            [
+              426,
+              186
+            ],
+            [
+              440,
+              144
+            ],
+            [
+              417,
+              112
+            ],
+            [
+              374,
+              98
+            ],
+            [
+              332,
+              113
+            ],
+            [
+              290,
+              126
+            ],
+            [
+              259,
+              152
+            ],
+            [
+              236,
+              184
+            ],
+            [
+              196,
+              168
+            ],
+            [
+              148,
+              162
+            ],
+            [
+              104,
+              174
+            ],
+            [
+              68,
+              194
+            ],
+            [
+              40,
+              219
+            ],
+            [
+              28,
+              176
+            ],
+            [
+              28,
+              120
+            ],
+            [
+              26,
+              84
+            ],
+            [
+              44,
+              123
+            ],
+            [
+              83,
+              140
+            ],
+            [
+              139,
+              140
+            ],
+            [
+              189,
+              134
+            ],
+            [
+              244,
+              132
+            ],
+            [
+              266,
+              102
+            ],
+            [
+              250,
+              61
+            ],
+            [
+              225,
+              30
+            ],
+            [
+              200,
+              0
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Tumor",
+              "fine_id": 1,
+              "boundary_neighbor_pixels": 1224
+            },
+            {
+              "label": "Other tissue",
+              "fine_id": 7,
+              "boundary_neighbor_pixels": 1064
+            },
+            {
+              "label": "Stroma",
+              "fine_id": 2,
+              "boundary_neighbor_pixels": 1
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Tumor": [
+              {
+                "point_index_range": [
+                  0,
+                  36
+                ],
+                "points": [
+                  [
+                    488,
+                    3
+                  ],
+                  [
+                    215,
+                    15
+                  ],
+                  [
+                    277,
+                    27
+                  ],
+                  [
+                    232,
+                    37
+                  ],
+                  [
+                    459,
+                    45
+                  ],
+                  [
+                    247,
+                    55
+                  ],
+                  [
+                    252,
+                    64
+                  ],
+                  [
+                    330,
+                    78
+                  ]
+                ],
+                "bbox": [
+                  205,
+                  3,
+                  488,
+                  78
+                ],
+                "point_count": 37,
+                "points_shown": 8
+              },
+              {
+                "point_index_range": [
+                  38,
+                  41
+                ],
+                "points": [
+                  [
+                    392,
+                    81
+                  ],
+                  [
+                    259,
+                    83
+                  ],
+                  [
+                    260,
+                    84
+                  ],
+                  [
+                    387,
+                    85
+                  ]
+                ],
+                "bbox": [
+                  259,
+                  81,
+                  392,
+                  85
+                ],
+                "point_count": 4,
+                "points_shown": 4
+              }
+            ],
+            "Other tissue": [
+              {
+                "point_index_range": [
+                  37,
+                  37
+                ],
+                "points": [
+                  [
+                    23,
+                    80
+                  ]
+                ],
+                "bbox": [
+                  23,
+                  80,
+                  23,
+                  80
+                ],
+                "point_count": 1,
+                "points_shown": 1
+              },
+              {
+                "point_index_range": [
+                  42,
+                  42
+                ],
+                "points": [
+                  [
+                    25,
+                    87
+                  ]
+                ],
+                "bbox": [
+                  25,
+                  87,
+                  25,
+                  87
+                ],
+                "point_count": 1,
+                "points_shown": 1
+              }
+            ]
+          }
+        },
+        {
+          "component_id": "source_7",
+          "area_px": 3683,
+          "bbox": [
+            250,
+            173,
+            310,
+            320
+          ],
+          "centroid": [
+            280.6,
+            234.7
+          ],
+          "contour_simplified": [
+            [
+              280,
+              320
+            ],
+            [
+              284,
+              310
+            ],
+            [
+              286,
+              297
+            ],
+            [
+              286,
+              282
+            ],
+            [
+              286,
+              267
+            ],
+            [
+              281,
+              256
+            ],
+            [
+              275,
+              248
+            ],
+            [
+              268,
+              240
+            ],
+            [
+              260,
+              232
+            ],
+            [
+              252,
+              225
+            ],
+            [
+              250,
+              213
+            ],
+            [
+              250,
+              198
+            ],
+            [
+              252,
+              185
+            ],
+            [
+              259,
+              176
+            ],
+            [
+              269,
+              174
+            ],
+            [
+              281,
+              176
+            ],
+            [
+              288,
+              181
+            ],
+            [
+              279,
+              188
+            ],
+            [
+              270,
+              194
+            ],
+            [
+              276,
+              203
+            ],
+            [
+              282,
+              212
+            ],
+            [
+              290,
+              220
+            ],
+            [
+              298,
+              228
+            ],
+            [
+              305,
+              236
+            ],
+            [
+              308,
+              247
+            ],
+            [
+              310,
+              260
+            ],
+            [
+              308,
+              272
+            ],
+            [
+              304,
+              284
+            ],
+            [
+              300,
+              294
+            ],
+            [
+              294,
+              303
+            ],
+            [
+              287,
+              312
+            ],
+            [
+              280,
+              320
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Other tissue",
+              "fine_id": 7,
+              "boundary_neighbor_pixels": 241
+            },
+            {
+              "label": "Tumor",
+              "fine_id": 1,
+              "boundary_neighbor_pixels": 230
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Other tissue": [
+              {
+                "point_index_range": [
+                  0,
+                  20
+                ],
+                "points": [
+                  [
+                    262,
+                    173
+                  ],
+                  [
+                    262,
+                    174
+                  ],
+                  [
+                    271,
+                    174
+                  ],
+                  [
+                    276,
+                    175
+                  ],
+                  [
+                    259,
+                    177
+                  ],
+                  [
+                    281,
+                    178
+                  ],
+                  [
+                    285,
+                    179
+                  ],
+                  [
+                    289,
+                    180
+                  ]
+                ],
+                "bbox": [
+                  257,
+                  173,
+                  289,
+                  180
+                ],
+                "point_count": 21,
+                "points_shown": 8
+              },
+              {
+                "point_index_range": [
+                  22,
+                  22
+                ],
+                "points": [
+                  [
+                    256,
+                    182
+                  ]
+                ],
+                "bbox": [
+                  256,
+                  182,
+                  256,
+                  182
+                ],
+                "point_count": 1,
+                "points_shown": 1
+              }
+            ],
+            "Tumor": [
+              {
+                "point_index_range": [
+                  21,
+                  21
+                ],
+                "points": [
+                  [
+                    286,
+                    181
+                  ]
+                ],
+                "bbox": [
+                  286,
+                  181,
+                  286,
+                  181
+                ],
+                "point_count": 1,
+                "points_shown": 1
+              },
+              {
+                "point_index_range": [
+                  23,
+                  23
+                ],
+                "points": [
+                  [
+                    286,
+                    182
+                  ]
+                ],
+                "bbox": [
+                  286,
+                  182,
+                  286,
+                  182
+                ],
+                "point_count": 1,
+                "points_shown": 1
+              }
+            ]
+          }
+        },
+        {
+          "component_id": "source_11",
+          "area_px": 2020,
+          "bbox": [
+            256,
+            419,
+            433,
+            438
+          ],
+          "centroid": [
+            353.1,
+            426.4
+          ],
+          "contour_simplified": [
+            [
+              374,
+              438
+            ],
+            [
+              362,
+              438
+            ],
+            [
+              350,
+              438
+            ],
+            [
+              340,
+              434
+            ],
+            [
+              330,
+              432
+            ],
+            [
+              317,
+              432
+            ],
+            [
+              305,
+              430
+            ],
+            [
+              295,
+              428
+            ],
+            [
+              284,
+              426
+            ],
+            [
+              271,
+              426
+            ],
+            [
+              260,
+              423
+            ],
+            [
+              259,
+              418
+            ],
+            [
+              272,
+              418
+            ],
+            [
+              285,
+              418
+            ],
+            [
+              298,
+              418
+            ],
+            [
+              308,
+              421
+            ],
+            [
+              321,
+              422
+            ],
+            [
+              334,
+              422
+            ],
+            [
+              347,
+              422
+            ],
+            [
+              360,
+              422
+            ],
+            [
+              370,
+              418
+            ],
+            [
+              383,
+              418
+            ],
+            [
+              396,
+              418
+            ],
+            [
+              409,
+              418
+            ],
+            [
+              419,
+              422
+            ],
+            [
+              428,
+              425
+            ],
+            [
+              430,
+              430
+            ],
+            [
+              418,
+              430
+            ],
+            [
+              406,
+              432
+            ],
+            [
+              393,
+              432
+            ],
+            [
+              384,
+              436
+            ],
+            [
+              374,
+              438
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Other tissue",
+              "fine_id": 7,
+              "boundary_neighbor_pixels": 209
+            },
+            {
+              "label": "Tumor",
+              "fine_id": 1,
+              "boundary_neighbor_pixels": 195
+            },
+            {
+              "label": "Stroma",
+              "fine_id": 2,
+              "boundary_neighbor_pixels": 2
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Other tissue": [
+              {
+                "point_index_range": [
+                  0,
+                  0
+                ],
+                "points": [
+                  [
+                    256,
+                    419
+                  ]
+                ],
+                "bbox": [
+                  256,
+                  419,
+                  256,
+                  419
+                ],
+                "point_count": 1,
+                "points_shown": 1
+              },
+              {
+                "point_index_range": [
+                  44,
+                  44
+                ],
+                "points": [
+                  [
+                    257,
+                    420
+                  ]
+                ],
+                "bbox": [
+                  257,
+                  420,
+                  257,
+                  420
+                ],
+                "point_count": 1,
+                "points_shown": 1
+              }
+            ],
+            "Tumor": [
+              {
+                "point_index_range": [
+                  1,
+                  43
+                ],
+                "points": [
+                  [
+                    258,
+                    419
+                  ],
+                  [
+                    270,
+                    419
+                  ],
+                  [
+                    282,
+                    419
+                  ],
+                  [
+                    295,
+                    419
+                  ],
+                  [
+                    376,
+                    419
+                  ],
+                  [
+                    389,
+                    419
+                  ],
+                  [
+                    401,
+                    419
+                  ],
+                  [
+                    413,
+                    419
+                  ]
+                ],
+                "bbox": [
+                  258,
+                  419,
+                  413,
+                  419
+                ],
+                "point_count": 43,
+                "points_shown": 8
+              },
+              {
+                "point_index_range": [
+                  45,
+                  50
+                ],
+                "points": [
+                  [
+                    300,
+                    420
+                  ],
+                  [
+                    302,
+                    420
+                  ],
+                  [
+                    365,
+                    420
+                  ],
+                  [
+                    367,
+                    420
+                  ],
+                  [
+                    369,
+                    420
+                  ],
+                  [
+                    415,
+                    420
+                  ]
+                ],
+                "bbox": [
+                  300,
+                  420,
+                  415,
+                  420
+                ],
+                "point_count": 6,
+                "points_shown": 6
+              }
+            ]
+          }
+        }
+      ],
+      "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+    }
+  },
+  "primitive_policy": {
+    "name": "stroma_decrease",
+    "pathology_meaning": "reduced fibrosis/desmoplasia or loosened tumor microenvironment",
+    "mask_operation": {
+      "type": "stromal_region_reduction",
+      "source": "Stroma",
+      "backfill_priority": [
+        "Tumor",
+        "Other tissue",
+        "Normal epithelium"
+      ]
+    },
+    "spatial_policy": {},
+    "parameter_ranges": {
+      "stroma_area_decrease_fraction": {
+        "mild": [
+          0.08,
+          0.14
+        ],
+        "moderate": [
+          0.14,
+          0.24
+        ],
+        "significant": [
+          0.24,
+          0.35
+        ],
+        "xlarge_deid": [
+          0.35,
+          0.55
+        ]
+      },
+      "min_remaining_stroma_fraction": 0.02,
+      "stroma_decrease_tumor_falloff_radius_px": 96,
+      "stroma_decrease_backfill_neighbor_radius_px": 48,
+      "organic_template_sigma_px": 3.0,
+      "organic_noise_sigma_px": 18.0,
+      "organic_noise_amplitude": 0.18,
+      "organic_score_weights": {
+        "template": 0.45,
+        "spatial": 0.45,
+        "noise": 0.1
+      },
+      "organic_min_template_legal_overlap_fraction": 0.05,
+      "organic_template_neighborhood_radius_px": 48,
+      "organic_template_spillover_fraction": 0.15,
+      "organic_min_component_fraction": 0.01,
+      "organic_fill_holes_max_area_px": 0
+    },
+    "validation_rules": [
+      "stroma_area_must_decrease",
+      "backfill_must_be_legal_tissue",
+      "no_background_holes"
+    ]
+  },
+  "preview": {
+    "coordinate_system": "original_mask_xy",
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512,
+    "grid_spacing_px": 64
+  }
+}

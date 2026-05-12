@@ -1,0 +1,545 @@
+{
+  "attempt_index": 3,
+  "status": "validated",
+  "error": null,
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "stroma_decrease",
+    "reference_profile": "BCSS",
+    "target_label": "Tumor",
+    "regions": [
+      {
+        "region_id": "r1",
+        "source_labels": [
+          "Stroma"
+        ],
+        "points": [
+          [
+            301.0,
+            119.0
+          ],
+          [
+            324.0,
+            113.0
+          ],
+          [
+            347.0,
+            120.0
+          ],
+          [
+            362.0,
+            136.0
+          ],
+          [
+            368.0,
+            158.0
+          ],
+          [
+            365.0,
+            181.0
+          ],
+          [
+            351.0,
+            199.0
+          ],
+          [
+            328.0,
+            209.0
+          ],
+          [
+            304.0,
+            206.0
+          ],
+          [
+            286.0,
+            191.0
+          ],
+          [
+            279.0,
+            171.0
+          ],
+          [
+            282.0,
+            148.0
+          ]
+        ],
+        "confidence": 0.8
+      },
+      {
+        "region_id": "r2",
+        "source_labels": [
+          "Stroma"
+        ],
+        "points": [
+          [
+            247.0,
+            250.0
+          ],
+          [
+            267.0,
+            241.0
+          ],
+          [
+            292.0,
+            245.0
+          ],
+          [
+            311.0,
+            260.0
+          ],
+          [
+            319.0,
+            282.0
+          ],
+          [
+            313.0,
+            305.0
+          ],
+          [
+            297.0,
+            323.0
+          ],
+          [
+            273.0,
+            331.0
+          ],
+          [
+            249.0,
+            324.0
+          ],
+          [
+            232.0,
+            308.0
+          ],
+          [
+            224.0,
+            286.0
+          ],
+          [
+            229.0,
+            266.0
+          ]
+        ],
+        "confidence": 0.82
+      },
+      {
+        "region_id": "r3",
+        "source_labels": [
+          "Stroma"
+        ],
+        "points": [
+          [
+            332.0,
+            344.0
+          ],
+          [
+            354.0,
+            337.0
+          ],
+          [
+            381.0,
+            344.0
+          ],
+          [
+            402.0,
+            360.0
+          ],
+          [
+            410.0,
+            384.0
+          ],
+          [
+            401.0,
+            408.0
+          ],
+          [
+            380.0,
+            425.0
+          ],
+          [
+            352.0,
+            430.0
+          ],
+          [
+            329.0,
+            420.0
+          ],
+          [
+            316.0,
+            398.0
+          ],
+          [
+            318.0,
+            371.0
+          ]
+        ],
+        "confidence": 0.78
+      }
+    ]
+  },
+  "edit_result": {
+    "selected_pixels": 22569,
+    "changed_area_fraction": 0.08609390258789062,
+    "warnings": [],
+    "ops_log": {
+      "backend": "organic_score_projection_v2",
+      "method": "organic_score_projection_and_deterministic_backfill",
+      "primitive": "stroma_decrease",
+      "reference_profile": "BCSS",
+      "source_labels": [
+        "Stroma"
+      ],
+      "target_label": "nearest_backfill_tissue",
+      "backfill_labels": [
+        "Tumor"
+      ],
+      "preserve_labels": [],
+      "forbidden_labels": [],
+      "raw_candidate_pixels": 19601,
+      "candidate_pixels": 19601,
+      "raw_candidate_legal_overlap_pixels": 11748,
+      "template_overlap_with_legal_domain": 0.5993571756543034,
+      "legal_domain_pixels": 118782,
+      "target_pixels": 22569,
+      "projected_pixels": 22569,
+      "selected_pixels": 22569,
+      "selected_raw_template_intersection_pixels": 7276,
+      "selected_raw_template_union_pixels": 34894,
+      "selected_raw_template_iou": 0.2085172235914484,
+      "selection_policy": {
+        "name": "template_neighborhood_constrained_top_k",
+        "template_neighborhood_radius_px": 48.0,
+        "template_spillover_fraction": 0.15,
+        "primary_zone_pixels": 40131,
+        "primary_budget_pixels": 19184,
+        "primary_selected_pixels": 19184,
+        "secondary_selected_pixels": 3385,
+        "selected_inside_primary_zone_pixels": 19184,
+        "selected_outside_primary_zone_pixels": 3385
+      },
+      "area_shortfall": 0,
+      "changed_area_fraction": 0.08609390258789062,
+      "projection_backend": "organic_score_projection_v2",
+      "noise_seed": 23,
+      "strength": "moderate",
+      "score_terms": {
+        "w_template": 0.45,
+        "w_spatial": 0.45,
+        "w_noise": 0.1,
+        "template_sigma": 3.0,
+        "noise_sigma": 18.0,
+        "noise_amplitude": 0.18,
+        "min_template_legal_overlap_fraction": 0.05,
+        "template_neighborhood_radius_px": 48.0,
+        "template_spillover_fraction": 0.15
+      },
+      "component_policy": {
+        "policy_name": "stroma_decrease_microenvironment_loosen",
+        "params": {
+          "legal_domain_policy": "current_stroma_excluding_background",
+          "backfill_policy": "nearest_legal_tissue",
+          "stroma_decrease_backfill_neighbor_radius_px": 48.0,
+          "stroma_decrease_tumor_falloff_radius_px": 96.0,
+          "source_stroma_pixels": 118782,
+          "selected_backfill_labels": [
+            "Tumor"
+          ],
+          "score_prefers": [
+            "stroma_near_tumor_microenvironment",
+            "stroma_touching_legal_backfill_tissue",
+            "stroma_near_other_nonstromal_tissue"
+          ]
+        },
+        "spatial_score_stats": {
+          "pixels": 118782,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.49157053895201414
+        },
+        "template_score_stats": {
+          "pixels": 118782,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.5950609031824314
+        }
+      },
+      "cleanup_removed_pixels": 1176,
+      "cleanup_refill_pixels": 1176,
+      "cleanup_min_component_pixels": 226,
+      "cleanup_min_component_policy": "fraction_of_target_pixels",
+      "pre_cleanup_pixels": 22569,
+      "post_cleanup_pixels": 22569,
+      "cleanup_single_pass": true,
+      "cleanup_iteration_limit": 1,
+      "decrease_semantics": "select_stroma_pixels_then_backfill_from_nearest_legal_tissue",
+      "raw_payload": {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "stroma_decrease",
+        "reference_profile": "BCSS",
+        "target_label": "Tumor",
+        "template_role": "coarse_template",
+        "placement_relation": "stroma_near_tumor_microenvironment",
+        "shape_hints": [
+          "irregular_boundary",
+          "patchy_desmoplasia_relaxation"
+        ],
+        "coordinate_system": {
+          "origin": "top_left",
+          "point_format": "[x, y]",
+          "x_axis": "horizontal_column_right",
+          "y_axis": "vertical_row_down",
+          "width": 512,
+          "height": 512
+        },
+        "regions": [
+          {
+            "region_id": "r1",
+            "type": "polygon",
+            "source_labels": [
+              "Stroma"
+            ],
+            "source_component_ids": [
+              "source_1"
+            ],
+            "adjacency_side": "Tumor",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "elongated_irregular_band",
+              "tumor_adjacent_stroma"
+            ],
+            "points": [
+              [
+                301,
+                119
+              ],
+              [
+                324,
+                113
+              ],
+              [
+                347,
+                120
+              ],
+              [
+                362,
+                136
+              ],
+              [
+                368,
+                158
+              ],
+              [
+                365,
+                181
+              ],
+              [
+                351,
+                199
+              ],
+              [
+                328,
+                209
+              ],
+              [
+                304,
+                206
+              ],
+              [
+                286,
+                191
+              ],
+              [
+                279,
+                171
+              ],
+              [
+                282,
+                148
+              ]
+            ],
+            "confidence": 0.8
+          },
+          {
+            "region_id": "r2",
+            "type": "polygon",
+            "source_labels": [
+              "Stroma"
+            ],
+            "source_component_ids": [
+              "source_1"
+            ],
+            "adjacency_side": "Tumor",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "lobulated_patch",
+              "microenvironment_relaxation"
+            ],
+            "points": [
+              [
+                247,
+                250
+              ],
+              [
+                267,
+                241
+              ],
+              [
+                292,
+                245
+              ],
+              [
+                311,
+                260
+              ],
+              [
+                319,
+                282
+              ],
+              [
+                313,
+                305
+              ],
+              [
+                297,
+                323
+              ],
+              [
+                273,
+                331
+              ],
+              [
+                249,
+                324
+              ],
+              [
+                232,
+                308
+              ],
+              [
+                224,
+                286
+              ],
+              [
+                229,
+                266
+              ]
+            ],
+            "confidence": 0.82
+          },
+          {
+            "region_id": "r3",
+            "type": "polygon",
+            "source_labels": [
+              "Stroma"
+            ],
+            "source_component_ids": [
+              "source_1"
+            ],
+            "adjacency_side": "Tumor",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "asymmetric_irregular_cluster",
+              "patchy_stromal_reduction"
+            ],
+            "points": [
+              [
+                332,
+                344
+              ],
+              [
+                354,
+                337
+              ],
+              [
+                381,
+                344
+              ],
+              [
+                402,
+                360
+              ],
+              [
+                410,
+                384
+              ],
+              [
+                401,
+                408
+              ],
+              [
+                380,
+                425
+              ],
+              [
+                352,
+                430
+              ],
+              [
+                329,
+                420
+              ],
+              [
+                316,
+                398
+              ],
+              [
+                318,
+                371
+              ]
+            ],
+            "confidence": 0.78
+          }
+        ]
+      },
+      "projection_mode": "organic_v2"
+    }
+  },
+  "validation": {
+    "passed": true,
+    "primitive": "stroma_decrease",
+    "checks": [
+      {
+        "name": "change_area_nonempty",
+        "passed": true,
+        "detail": "22569 pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "passed": true,
+        "detail": "changed_stroma_fraction=0.1900 in [0.08, 0.55]"
+      },
+      {
+        "name": "label_legality",
+        "passed": true,
+        "detail": "all labels in schema."
+      },
+      {
+        "name": "no_background_leakage",
+        "passed": true,
+        "detail": "no background leakage."
+      },
+      {
+        "name": "required_labels_present",
+        "passed": true,
+        "detail": "all required labels present in src mask."
+      },
+      {
+        "name": "stroma_area_must_decrease",
+        "passed": true,
+        "detail": "stroma 118782 -> 96213 pixels."
+      },
+      {
+        "name": "backfill_must_be_legal_tissue",
+        "passed": true,
+        "detail": "no Background used as backfill."
+      },
+      {
+        "name": "no_background_holes",
+        "passed": true,
+        "detail": "no background holes created."
+      }
+    ],
+    "warnings": []
+  }
+}

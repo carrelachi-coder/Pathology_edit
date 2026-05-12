@@ -1,0 +1,220 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stroma_decrease",
+  "reference_profile": "BCSS",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "stroma_near_tumor_microenvironment",
+  "shape_hints": [
+    "irregular_boundary",
+    "patchy_desmoplasia_relaxation"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "elongated_irregular_band",
+        "tumor_adjacent_stroma"
+      ],
+      "points": [
+        [
+          301,
+          119
+        ],
+        [
+          324,
+          113
+        ],
+        [
+          347,
+          120
+        ],
+        [
+          362,
+          136
+        ],
+        [
+          368,
+          158
+        ],
+        [
+          365,
+          181
+        ],
+        [
+          351,
+          199
+        ],
+        [
+          328,
+          209
+        ],
+        [
+          304,
+          206
+        ],
+        [
+          286,
+          191
+        ],
+        [
+          279,
+          171
+        ],
+        [
+          282,
+          148
+        ]
+      ],
+      "confidence": 0.8
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "lobulated_patch",
+        "microenvironment_relaxation"
+      ],
+      "points": [
+        [
+          247,
+          250
+        ],
+        [
+          267,
+          241
+        ],
+        [
+          292,
+          245
+        ],
+        [
+          311,
+          260
+        ],
+        [
+          319,
+          282
+        ],
+        [
+          313,
+          305
+        ],
+        [
+          297,
+          323
+        ],
+        [
+          273,
+          331
+        ],
+        [
+          249,
+          324
+        ],
+        [
+          232,
+          308
+        ],
+        [
+          224,
+          286
+        ],
+        [
+          229,
+          266
+        ]
+      ],
+      "confidence": 0.82
+    },
+    {
+      "region_id": "r3",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "asymmetric_irregular_cluster",
+        "patchy_stromal_reduction"
+      ],
+      "points": [
+        [
+          332,
+          344
+        ],
+        [
+          354,
+          337
+        ],
+        [
+          381,
+          344
+        ],
+        [
+          402,
+          360
+        ],
+        [
+          410,
+          384
+        ],
+        [
+          401,
+          408
+        ],
+        [
+          380,
+          425
+        ],
+        [
+          352,
+          430
+        ],
+        [
+          329,
+          420
+        ],
+        [
+          316,
+          398
+        ],
+        [
+          318,
+          371
+        ]
+      ],
+      "confidence": 0.78
+    }
+  ]
+}

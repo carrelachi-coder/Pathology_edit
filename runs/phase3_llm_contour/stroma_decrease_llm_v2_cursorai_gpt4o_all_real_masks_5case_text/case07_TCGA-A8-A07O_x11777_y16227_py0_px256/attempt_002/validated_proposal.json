@@ -1,0 +1,173 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stroma_decrease",
+  "reference_profile": "BCSS",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "stroma_near_tumor_microenvironment",
+  "shape_hints": [
+    "irregular_boundary",
+    "patchy_desmoplasia_relaxation"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary",
+        "elongated_peritumoral_patch"
+      ],
+      "points": [
+        [
+          186,
+          116
+        ],
+        [
+          207,
+          108
+        ],
+        [
+          231,
+          116
+        ],
+        [
+          252,
+          131
+        ],
+        [
+          270,
+          154
+        ],
+        [
+          282,
+          179
+        ],
+        [
+          289,
+          208
+        ],
+        [
+          282,
+          232
+        ],
+        [
+          264,
+          248
+        ],
+        [
+          240,
+          254
+        ],
+        [
+          214,
+          248
+        ],
+        [
+          194,
+          232
+        ],
+        [
+          181,
+          207
+        ],
+        [
+          175,
+          180
+        ],
+        [
+          176,
+          152
+        ]
+      ],
+      "confidence": 0.81
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary",
+        "curved_interface_relaxation"
+      ],
+      "points": [
+        [
+          292,
+          330
+        ],
+        [
+          317,
+          322
+        ],
+        [
+          344,
+          330
+        ],
+        [
+          366,
+          348
+        ],
+        [
+          381,
+          372
+        ],
+        [
+          386,
+          398
+        ],
+        [
+          377,
+          422
+        ],
+        [
+          355,
+          440
+        ],
+        [
+          327,
+          447
+        ],
+        [
+          301,
+          439
+        ],
+        [
+          281,
+          419
+        ],
+        [
+          271,
+          392
+        ],
+        [
+          273,
+          365
+        ]
+      ],
+      "confidence": 0.78
+    }
+  ]
+}

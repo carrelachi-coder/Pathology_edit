@@ -1,0 +1,16 @@
+{
+  "attempt_index": 1,
+  "image_paths": [
+    "runs\\phase3_llm_contour\\stroma_decrease_llm_v2_cursorai_gpt4o_all_real_masks_5case_text\\case02_TCGA-D8-A13Z_x30985_y49337_py512_px2560\\source_mask_llm_rgb_grid.png",
+    "runs\\phase3_llm_contour\\stroma_decrease_llm_v2_cursorai_gpt4o_all_real_masks_5case_text\\case02_TCGA-D8-A13Z_x30985_y49337_py512_px2560\\source_mask_llm_rgb.png"
+  ],
+  "provider_metadata": {
+    "provider_name": "openai_compatible_text",
+    "provider_class": "OpenAICompatibleTextContourProvider",
+    "request_mode": "text",
+    "image_paths_available": 2,
+    "image_parts_expected": 0,
+    "image_policy": "do not send images"
+  },
+  "repair_feedback": null
+}

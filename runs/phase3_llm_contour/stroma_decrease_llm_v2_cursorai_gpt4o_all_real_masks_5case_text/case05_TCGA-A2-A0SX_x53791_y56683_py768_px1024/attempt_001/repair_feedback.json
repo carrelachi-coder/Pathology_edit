@@ -1,0 +1,5 @@
+{
+  "status": "provider_error",
+  "attempt": 1,
+  "error": "API request failed with HTTP 429: {\"error\":{\"message\":\"{\\\"detail\\\":{\\\"code\\\":\\\"message_length_exceeds_limit\\\",\\\"message\\\":\\\"The message you submitted was too long, please edit it and resubmit.\\\"}} (request id: 20260512104826208589419VMB5K9ac)\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":null}}"
+}

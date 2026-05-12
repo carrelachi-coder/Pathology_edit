@@ -11,6 +11,7 @@ from phase3_mask_edit.backends.fixture_contour import (
     STATUS_VALIDATION_FAILED,
 )
 from phase3_mask_edit.backends.llm_agent import (
+    STATUS_PROVIDER_ERROR,
     STATUS_PROPOSAL_FAILED,
     FakeSequenceContourProvider,
     FixtureContourProvider,
@@ -225,6 +226,67 @@ class LLMContourAgentTests(unittest.TestCase):
             summary = load_metadata(tmp / "execution_summary.json")
             self.assertEqual(summary["status"], STATUS_PROPOSAL_FAILED)
             self.assertEqual(len(summary["attempts"]), 2)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_message_length_error_retries_with_compact_context(self):
+        class TooLongThenGoodProvider:
+            name = "too_long_then_good"
+
+            def __init__(self):
+                self.context_modes = []
+
+            def propose(self, request):
+                self.context_modes.append(
+                    request.provider_metadata.get("context_mode")
+                )
+                if request.attempt_index == 1:
+                    raise RuntimeError(
+                        "API request failed with HTTP 429: "
+                        "message_length_exceeds_limit"
+                    )
+                return _proposal(points=[[2, 2], [17, 2], [17, 25], [2, 25]])
+
+        provider = TooLongThenGoodProvider()
+        WORKSPACE_TMP.mkdir(exist_ok=True)
+        tmp = WORKSPACE_TMP / f"agent_compact_{uuid.uuid4().hex}"
+        tmp.mkdir(parents=True)
+        try:
+            result = execute_llm_contour_agent(
+                old_mask=self.mask,
+                schema=self.schema,
+                intent=self.intent,
+                primitive_config=self.primitive_config,
+                provider=provider,
+                output_dir=tmp,
+                max_attempts=3,
+                projection_mode=PROJECTION_MODE_HARD_V1,
+            )
+
+            self.assertEqual(result.status, STATUS_VALIDATED)
+            self.assertEqual(
+                [attempt.status for attempt in result.attempts],
+                [STATUS_PROVIDER_ERROR, STATUS_VALIDATED],
+            )
+            self.assertEqual(provider.context_modes, ["full", "compact"])
+            self.assertTrue((tmp / "mask_context_compact.json").exists())
+            first_request = load_metadata(tmp / "attempt_001" / "llm_request.json")
+            second_request = load_metadata(tmp / "attempt_002" / "llm_request.json")
+            self.assertEqual(
+                first_request["provider_metadata"]["context_mode"], "full"
+            )
+            self.assertEqual(
+                second_request["provider_metadata"]["context_mode"], "compact"
+            )
+            self.assertTrue(
+                second_request["provider_metadata"]["compact_context_enabled"]
+            )
+            compact = load_metadata(tmp / "mask_context_compact.json")
+            self.assertTrue(compact["context_compression"]["enabled"])
+            self.assertEqual(
+                result.attempts[0].repair_feedback["context_mode_next_attempt"],
+                "compact",
+            )
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import os
 import urllib.error
@@ -293,6 +294,8 @@ def execute_llm_contour_agent(
         target_label = "Tumor"
     if not target_label and primitive_config.get("name") in {
         "immune_infiltration_decrease",
+        "stroma_decrease",
+        "stromal_reduction",
         "tumor_burden_decrease",
     }:
         target_label = _immune_decrease_prompt_target_label(primitive_config, schema)
@@ -328,6 +331,8 @@ def execute_llm_contour_agent(
     attempts: list[LLMContourAttempt] = []
     repair_feedback: dict[str, Any] | None = None
     final_attempt: LLMContourAttempt | None = None
+    context_mode = "full"
+    compact_context_enabled = False
 
     for attempt_index in range(1, max_attempts + 1):
         prompt = build_contour_prompt(
@@ -340,7 +345,11 @@ def execute_llm_contour_agent(
             attempt_index=attempt_index,
             image_paths=preview_paths,
             repair_feedback=repair_feedback,
-            provider_metadata=_provider_request_metadata(provider, preview_paths),
+            provider_metadata={
+                **_provider_request_metadata(provider, preview_paths),
+                "context_mode": context_mode,
+                "compact_context_enabled": compact_context_enabled,
+            },
         )
         attempt = _execute_one_attempt(
             request=request,
@@ -374,6 +383,32 @@ def execute_llm_contour_agent(
             final_attempt = attempt
             break
         repair_feedback = attempt.repair_feedback
+        if (
+            attempt.status == STATUS_PROVIDER_ERROR
+            and _is_message_length_exceeded(attempt.error)
+            and not compact_context_enabled
+        ):
+            context = _compact_mask_context_for_retry(context)
+            context_mode = "compact"
+            compact_context_enabled = True
+            repair_feedback = _with_compact_context_feedback(repair_feedback)
+            if repair_feedback is not None:
+                attempt = LLMContourAttempt(
+                    attempt_index=attempt.attempt_index,
+                    status=attempt.status,
+                    raw_response=attempt.raw_response,
+                    proposal=attempt.proposal,
+                    edit_result=attempt.edit_result,
+                    validation=attempt.validation,
+                    repair_feedback=repair_feedback,
+                    artifact_paths=attempt.artifact_paths,
+                    error=attempt.error,
+                )
+                attempts[-1] = attempt
+            if out is not None:
+                artifact_paths["mask_context_compact"] = str(
+                    save_metadata(context, out / "mask_context_compact.json")
+                )
 
     if final_attempt is None:
         final_attempt = attempts[-1] if attempts else None
@@ -746,6 +781,157 @@ def _immune_decrease_prompt_target_label(
             if isinstance(label, str) and label in schema.writable_labels:
                 return label
     return schema.choose_default_backfill_label(exclude_labels=("Immune infiltrate",))
+
+
+def _is_message_length_exceeded(error: str | None) -> bool:
+    if not error:
+        return False
+    lowered = error.lower()
+    return (
+        "message_length_exceeds_limit" in lowered
+        or "message you submitted was too long" in lowered
+    )
+
+
+def _with_compact_context_feedback(
+    repair_feedback: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if repair_feedback is None:
+        return None
+    updated = dict(repair_feedback)
+    updated["repair_instruction"] = (
+        "Previous request exceeded the provider message length limit. "
+        "The next attempt uses compact mask context with fewer source components, "
+        "tiles, contour points, and adjacency segments."
+    )
+    updated["context_mode_next_attempt"] = "compact"
+    return updated
+
+
+def _compact_mask_context_for_retry(context: Mapping[str, Any]) -> dict[str, Any]:
+    compact = copy.deepcopy(dict(context))
+    compression = {
+        "enabled": True,
+        "reason": "provider_message_length_exceeds_limit",
+        "source_spatial_components_per_label": 3,
+        "source_spatial_tiles_per_label": 3,
+        "source_contour_components_per_label": 2,
+        "contour_points_per_component": 16,
+        "adjacency_segments_per_label": 1,
+        "adjacency_points_per_segment": 4,
+    }
+    compact["context_compression"] = compression
+    _compact_source_spatial_hints(
+        compact.get("source_spatial_hints"),
+        max_components=int(compression["source_spatial_components_per_label"]),
+        max_tiles=int(compression["source_spatial_tiles_per_label"]),
+    )
+    _compact_source_contour_context(
+        compact.get("source_contour_context"),
+        max_components=int(compression["source_contour_components_per_label"]),
+        max_contour_points=int(compression["contour_points_per_component"]),
+        max_segments_per_label=int(compression["adjacency_segments_per_label"]),
+        max_points_per_segment=int(compression["adjacency_points_per_segment"]),
+    )
+    return compact
+
+
+def _compact_source_spatial_hints(
+    source_spatial_hints: Any,
+    *,
+    max_components: int,
+    max_tiles: int,
+) -> None:
+    if not isinstance(source_spatial_hints, dict):
+        return
+    for hint in source_spatial_hints.values():
+        if not isinstance(hint, dict):
+            continue
+        components = hint.get("components")
+        if isinstance(components, list):
+            hint["components"] = components[:max_components]
+            hint["components_truncated_to"] = int(max_components)
+        tiles = hint.get("high_purity_grid_tiles")
+        if isinstance(tiles, list):
+            hint["high_purity_grid_tiles"] = tiles[:max_tiles]
+            hint["high_purity_grid_tiles_truncated_to"] = int(max_tiles)
+
+
+def _compact_source_contour_context(
+    source_contour_context: Any,
+    *,
+    max_components: int,
+    max_contour_points: int,
+    max_segments_per_label: int,
+    max_points_per_segment: int,
+) -> None:
+    if not isinstance(source_contour_context, dict):
+        return
+    for label_context in source_contour_context.values():
+        if not isinstance(label_context, dict):
+            continue
+        components = label_context.get("components")
+        if not isinstance(components, list):
+            continue
+        label_context["components"] = components[:max_components]
+        label_context["components_truncated_to"] = int(max_components)
+        for component in label_context["components"]:
+            if not isinstance(component, dict):
+                continue
+            contour = component.get("contour_simplified")
+            if isinstance(contour, list) and len(contour) > max_contour_points:
+                component["contour_simplified"] = _evenly_spaced_items(
+                    contour, max_contour_points
+                )
+                component["contour_points_truncated_to"] = int(max_contour_points)
+            segments = component.get("contour_adjacency_segments")
+            if isinstance(segments, dict):
+                component["contour_adjacency_segments"] = (
+                    _compact_adjacency_segments(
+                        segments,
+                        max_segments_per_label=max_segments_per_label,
+                        max_points_per_segment=max_points_per_segment,
+                    )
+                )
+
+
+def _compact_adjacency_segments(
+    segments: Mapping[str, Any],
+    *,
+    max_segments_per_label: int,
+    max_points_per_segment: int,
+) -> dict[str, Any]:
+    compact: dict[str, Any] = {}
+    for label, label_segments in segments.items():
+        if label == "_meta":
+            compact[label] = label_segments
+            continue
+        if not isinstance(label_segments, list):
+            continue
+        compact_segments: list[dict[str, Any]] = []
+        for segment in label_segments[:max_segments_per_label]:
+            if not isinstance(segment, dict):
+                continue
+            compact_segment = dict(segment)
+            points = compact_segment.get("points")
+            if isinstance(points, list) and len(points) > max_points_per_segment:
+                compact_segment["points"] = _evenly_spaced_items(
+                    points, max_points_per_segment
+                )
+                compact_segment["points_truncated_to"] = int(max_points_per_segment)
+            compact_segments.append(compact_segment)
+        if compact_segments:
+            compact[label] = compact_segments
+    return compact
+
+
+def _evenly_spaced_items(items: list[Any], max_items: int) -> list[Any]:
+    if len(items) <= max_items:
+        return list(items)
+    if max_items <= 0:
+        return []
+    indices = np.linspace(0, len(items) - 1, num=max_items, dtype=int)
+    return [items[int(index)] for index in indices]
 
 
 def _provider_request_metadata(
