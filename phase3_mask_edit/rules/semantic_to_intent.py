@@ -30,6 +30,7 @@ INTENT_ORDER = {
     "stromal_immune_infiltration": 40,
     "immune_infiltration_decrease": 45,
     "stromal_desmoplasia": 50,
+    "stroma_decrease": 55,
 }
 
 
@@ -319,11 +320,14 @@ def _raw_intent_specs(
             )
         )
     elif stroma_change["density"] != "none":
-        unsupported.append(
-            PlanningWarning(
-                field="stroma_change.density",
-                value=stroma_change["density"],
-                reason="Phase3 stromal density decrease primitive is not implemented yet.",
+        raw_items.append(
+            _intent_payload(
+                "stroma_decrease",
+                _strength_from_degree(stroma_change["degree"]),
+                reference_profile,
+                old_prompt,
+                new_prompt,
+                prompt_diff,
             )
         )
 

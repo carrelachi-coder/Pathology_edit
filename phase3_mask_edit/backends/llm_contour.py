@@ -19,6 +19,7 @@ from scipy import ndimage
 from phase3_mask_edit.backends.organic_projection import (
     apply_organic_immune_infiltration_decrease,
     apply_organic_projected_label_write,
+    apply_organic_stroma_decrease,
     apply_organic_tumor_burden_decrease,
 )
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
@@ -291,6 +292,17 @@ def execute_contour_proposal_write(
         )
         if primitive_name == "immune_infiltration_decrease":
             result = apply_organic_immune_infiltration_decrease(
+                old_mask,
+                raw_candidate,
+                schema=schema,
+                primitive_config=primitive_config,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                seed=organic_seed,
+                strength=strength,
+            )
+        elif primitive_name in {"stroma_decrease", "stromal_reduction"}:
+            result = apply_organic_stroma_decrease(
                 old_mask,
                 raw_candidate,
                 schema=schema,

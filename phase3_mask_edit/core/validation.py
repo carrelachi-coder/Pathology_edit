@@ -180,6 +180,15 @@ def _check_change_area_range(
         return _check_stromal_desmoplasia_stroma_relative_change_area(
             src_mask, change_region, schema, ranges, strength=strength
         )
+    if (
+        primitive_config.get("name") in {"stroma_decrease", "stromal_reduction"}
+        and src_mask is not None
+        and change_region is not None
+        and schema is not None
+    ):
+        return _check_stroma_decrease_stroma_relative_change_area(
+            src_mask, change_region, schema, ranges
+        )
 
     min_fraction = _resolve_min_changed_area(ranges, defaults)
     max_fraction = _resolve_max_changed_area(ranges, defaults)
@@ -437,6 +446,55 @@ def _check_stromal_desmoplasia_stroma_relative_change_area(
         f"changed_stroma_fraction={changed_stroma_fraction:.4f} outside "
         f"[{effective_min_fraction:.2f}, {effective_max_fraction:.2f}] "
         f"or changed_pixels={changed_pixels} < {effective_min_pixels}",
+    )
+
+
+def _check_stroma_decrease_stroma_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    ranges: Mapping[str, Any],
+) -> ValidationCheck:
+    if "Stroma" not in schema.readable_labels:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "Stroma label not in schema for stroma decrease change area.",
+        )
+    stroma_pixels = int(
+        np.count_nonzero(np.isin(src_mask, schema.resolve_fine_ids("Stroma")))
+    )
+    if stroma_pixels == 0:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "no stroma pixels for stroma-relative decrease change area.",
+        )
+
+    changed_stroma_fraction = int(np.count_nonzero(change_region)) / stroma_pixels
+    min_fraction = _min_interval_lower_bound(
+        ranges.get("stroma_area_decrease_fraction", {})
+    )
+    max_fraction = _max_interval_upper_bound(
+        ranges.get("stroma_area_decrease_fraction", {})
+    )
+    if min_fraction is None:
+        min_fraction = 0.0
+    if max_fraction is None:
+        max_fraction = 0.70
+
+    if min_fraction <= changed_stroma_fraction <= max_fraction:
+        return ValidationCheck(
+            "change_area_within_range",
+            True,
+            f"changed_stroma_fraction={changed_stroma_fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "change_area_within_range",
+        False,
+        f"changed_stroma_fraction={changed_stroma_fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
     )
 
 
@@ -1106,6 +1164,38 @@ def _guard_stroma_area_or_generation_region_must_increase(
 _PRIMITIVE_GUARDS["stroma_area_or_generation_region_must_increase"] = (
     _guard_stroma_area_or_generation_region_must_increase
 )
+
+
+def _guard_stroma_area_must_decrease(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    if "Stroma" not in schema.readable_labels:
+        return ValidationCheck(
+            "stroma_area_must_decrease",
+            True,
+            "Stroma label not in schema; skipped.",
+        )
+    str_ids = schema.resolve_fine_ids("Stroma")
+    src_str = int(np.count_nonzero(np.isin(src_mask, str_ids)))
+    tgt_str = int(np.count_nonzero(np.isin(target_mask, str_ids)))
+    if tgt_str < src_str:
+        return ValidationCheck(
+            "stroma_area_must_decrease", True, f"stroma {src_str} -> {tgt_str} pixels."
+        )
+    return ValidationCheck(
+        "stroma_area_must_decrease",
+        False,
+        f"stroma did not decrease: {src_str} -> {tgt_str} pixels.",
+    )
+
+
+_PRIMITIVE_GUARDS["stroma_area_must_decrease"] = _guard_stroma_area_must_decrease
 
 
 def _guard_change_region_must_be_outside_tumor(
