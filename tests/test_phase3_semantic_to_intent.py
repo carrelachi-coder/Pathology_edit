@@ -59,6 +59,20 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(intents[0].primitive, "stromal_immune_infiltration")
         self.assertEqual(intents[0].strength, "significant")
 
+    def test_immune_decrease_maps_to_immune_decrease_primitive(self):
+        diff = semantic_diff_with(
+            lymphocyte_change={
+                "infiltration": "decrease",
+                "degree": "moderate",
+            }
+        )
+
+        intents = semantic_diff_to_intents(diff, reference_profile="BCSS")
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(intents[0].primitive, "immune_infiltration_decrease")
+        self.assertEqual(intents[0].strength, "moderate")
+
     def test_tumor_increase_and_decrease_map_to_tumor_primitives(self):
         increase = semantic_diff_with(
             tumor_change={"growth": "increase", "degree": "moderate"}
