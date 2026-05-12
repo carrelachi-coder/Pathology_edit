@@ -8,7 +8,7 @@ from typing import Any, Literal, Mapping
 import numpy as np
 
 from phase3_mask_edit.core.applicability import assess_edit_applicability
-from phase3_mask_edit.core.config import load_recipe
+from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
 from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
@@ -25,6 +25,17 @@ PlanItemStatus = Literal[
 INTENT_ORDER = {
     "tumor_burden_increase": 10,
     "tumor_burden_decrease": 20,
+    "dcis_invasion": 25,
+    "angioinvasion_emphasis": 26,
+    "benign_to_gleason3": 27,
+    "normal_to_adenomatous": 27,
+    "gleason_upgrade_3to4": 28,
+    "adenoma_to_carcinoma": 28,
+    "gleason_upgrade_4to5": 29,
+    "grade_upgrade": 29,
+    "gleason_downgrade_4to3": 30,
+    "treatment_dedifferentiation": 30,
+    "benign_atrophy": 31,
     "necrosis_appearance": 30,
     "necrosis_resolution": 35,
     "stromal_immune_infiltration": 40,
@@ -164,7 +175,7 @@ def plan_edit_intents(
         )
 
     if recipe is None:
-        recipe = load_recipe("phase3_mask_edit/recipes/generic.yaml")
+        recipe = load_recipe(default_recipe_path_for_profile(reference_profile))
 
     schema = MaskProfileSchema.from_reference_profile(reference_profile)
     context = MaskEditContext.from_mask(old_mask, schema)
@@ -246,13 +257,26 @@ def _raw_intent_specs(
         )
 
     if tumor_change["grade_change"] != "none" and tumor_growth == "none":
-        unsupported.append(
-            PlanningWarning(
-                field="tumor_change.grade_change",
-                value=tumor_change["grade_change"],
-                reason="Phase3 grade-only/cell-only primitive is not implemented yet.",
-            )
+        special_payload = _specialized_grade_payload(
+            tumor_change["grade_change"],
+            reference_profile=reference_profile,
+            old_prompt=old_prompt,
+            new_prompt=new_prompt,
+            prompt_diff=prompt_diff,
         )
+        if special_payload is None:
+            unsupported.append(
+                PlanningWarning(
+                    field="tumor_change.grade_change",
+                    value=tumor_change["grade_change"],
+                    reason=(
+                        "No dataset-specialized fine-ID transition could be inferred "
+                        "from the reference profile and prompt wording."
+                    ),
+                )
+            )
+        else:
+            raw_items.append(special_payload)
 
     necrosis_change = semantic_diff["necrosis_change"]
     necrosis_action = necrosis_change["action"]
@@ -350,6 +374,138 @@ def _intent_payload(
         "new_prompt": new_prompt,
         "prompt_diff": dict(prompt_diff),
     }
+
+
+def _specialized_grade_payload(
+    grade_change: str,
+    *,
+    reference_profile: str,
+    old_prompt: str | None,
+    new_prompt: str | None,
+    prompt_diff: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    primitive = _specialized_grade_primitive(
+        grade_change,
+        reference_profile=reference_profile,
+        old_prompt=old_prompt,
+        new_prompt=new_prompt,
+    )
+    if primitive is None:
+        return None
+    return _intent_payload(
+        primitive,
+        _strength_from_grade_prompt(old_prompt, new_prompt),
+        reference_profile,
+        old_prompt,
+        new_prompt,
+        prompt_diff,
+    )
+
+
+def _specialized_grade_primitive(
+    grade_change: str,
+    *,
+    reference_profile: str,
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> str | None:
+    profile = reference_profile.upper()
+    old_text = _normalize_text(old_prompt)
+    new_text = _normalize_text(new_prompt)
+    combined = f"{old_text} {new_text}".strip()
+
+    if profile == "PANDA":
+        if grade_change == "downgrade":
+            return "gleason_downgrade_4to3"
+        if _mentions_benign_to_gleason3(old_text, new_text):
+            return "benign_to_gleason3"
+        if _mentions_gleason5(new_text) or _mentions_transition(
+            old_text, new_text, "4", "5"
+        ):
+            return "gleason_upgrade_4to5"
+        if (
+            _mentions_gleason4(new_text)
+            or _mentions_transition(old_text, new_text, "3", "4")
+            or "gleason" in combined
+        ):
+            return "gleason_upgrade_3to4"
+        return "gleason_upgrade_3to4"
+
+    if profile == "GLAS":
+        if grade_change == "downgrade":
+            return "treatment_dedifferentiation"
+        if "normal" in old_text and _contains_any(
+            new_text, ("adenoma", "adenomatous")
+        ):
+            return "normal_to_adenomatous"
+        if _contains_any(old_text, ("adenoma", "adenomatous")) and _contains_any(
+            new_text,
+            ("carcinoma", "moderately differentiated", "moderate differentiation"),
+        ):
+            return "adenoma_to_carcinoma"
+        if _contains_any(
+            new_text,
+            ("poorly differentiated", "poor differentiation", "high grade"),
+        ):
+            return "grade_upgrade"
+        if _contains_any(combined, ("adenoma", "adenomatous")):
+            return "adenoma_to_carcinoma"
+        return "grade_upgrade"
+
+    if profile == "BCSS":
+        if _contains_any(
+            new_text, ("angioinvasion", "vascular invasion", "lymphovascular")
+        ):
+            return "angioinvasion_emphasis"
+        if "dcis" in old_text and _contains_any(new_text, ("invasive", "invasion")):
+            return "dcis_invasion"
+        if "dcis" in combined and _contains_any(new_text, ("invasive", "invasion")):
+            return "dcis_invasion"
+
+    return None
+
+
+def _strength_from_grade_prompt(old_prompt: str | None, new_prompt: str | None) -> str:
+    text = _normalize_text(f"{old_prompt or ''} {new_prompt or ''}")
+    if _contains_any(
+        text, ("extensive", "marked", "significant", "predominant", "widespread")
+    ):
+        return "significant"
+    if _contains_any(text, ("focal", "small", "limited", "mild")):
+        return "mild"
+    return "moderate"
+
+
+def _normalize_text(value: str | None) -> str:
+    return (value or "").strip().lower().replace("-", " ").replace("_", " ")
+
+
+def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
+    return any(needle in text for needle in needles)
+
+
+def _mentions_gleason4(text: str) -> bool:
+    return _contains_any(text, ("gleason 4", "pattern 4", "grade group 4"))
+
+
+def _mentions_gleason5(text: str) -> bool:
+    return _contains_any(text, ("gleason 5", "pattern 5", "grade group 5"))
+
+
+def _mentions_transition(old_text: str, new_text: str, source: str, target: str) -> bool:
+    return (
+        _contains_any(old_text, (f"gleason {source}", f"pattern {source}"))
+        and _contains_any(new_text, (f"gleason {target}", f"pattern {target}"))
+    )
+
+
+def _mentions_benign_to_gleason3(old_text: str, new_text: str) -> bool:
+    return _contains_any(old_text, ("benign", "normal epithelium")) and _contains_any(
+        new_text,
+        ("gleason 3", "pattern 3", "low grade malignant"),
+    )
+
+
 
 
 def _strength_from_degree(value: str) -> str:

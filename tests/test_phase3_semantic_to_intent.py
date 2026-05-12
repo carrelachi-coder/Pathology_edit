@@ -138,15 +138,73 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(plan.intents[0].strength, "moderate")
         self.assertEqual(plan.unsupported_changes, ())
 
-    def test_grade_only_change_emits_warning_only(self):
+    def test_grade_only_change_without_supported_special_emits_warning_only(self):
         diff = semantic_diff_with(
             tumor_change={"growth": "none", "grade_change": "upgrade"}
         )
 
-        plan = plan_edit_intents(diff, reference_profile="BCSS")
+        plan = plan_edit_intents(diff, reference_profile="IGNITE")
 
         self.assertEqual(plan.intents, ())
         self.assertEqual(plan.unsupported_changes[0].field, "tumor_change.grade_change")
+
+    def test_panda_grade_upgrade_maps_to_gleason_special(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "none", "grade_change": "upgrade"}
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="PANDA",
+            old_prompt="Prostate adenocarcinoma with Gleason pattern 3.",
+            new_prompt="Prostate adenocarcinoma upgraded to Gleason pattern 4.",
+        )
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(intents[0].primitive, "gleason_upgrade_3to4")
+        self.assertEqual(intents[0].reference_profile, "PANDA")
+
+    def test_panda_pattern_5_maps_to_gleason_4to5_special(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "none", "grade_change": "upgrade"}
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="PANDA",
+            old_prompt="Prostate adenocarcinoma with Gleason pattern 4.",
+            new_prompt="Prostate adenocarcinoma with new Gleason pattern 5.",
+        )
+
+        self.assertEqual(intents[0].primitive, "gleason_upgrade_4to5")
+
+    def test_glas_grade_upgrade_maps_to_grade_special(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "none", "grade_change": "upgrade"}
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="GlaS",
+            old_prompt="Moderately differentiated colorectal carcinoma.",
+            new_prompt="Poorly differentiated high grade colorectal carcinoma.",
+        )
+
+        self.assertEqual(intents[0].primitive, "grade_upgrade")
+
+    def test_bcss_dcis_invasion_maps_to_special(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "none", "grade_change": "upgrade"}
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="BCSS",
+            old_prompt="Breast lesion with DCIS.",
+            new_prompt="DCIS becomes invasive carcinoma.",
+        )
+
+        self.assertEqual(intents[0].primitive, "dcis_invasion")
 
     def test_applicability_rejection_removes_intent_from_executable_list(self):
         diff = semantic_diff_with(

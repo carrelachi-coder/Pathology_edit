@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from phase3_mask_edit.core.config import load_recipe
+from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
 from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
@@ -60,7 +60,7 @@ def execute_intents_on_mask(
     """Apply intents sequentially, updating context after each successful edit."""
 
     if recipe is None:
-        recipe = load_recipe("phase3_mask_edit/recipes/generic.yaml")
+        recipe = load_recipe(default_recipe_path_for_profile(reference_profile))
 
     schema = MaskProfileSchema.from_reference_profile(reference_profile)
     source_mask = np.asarray(mask)

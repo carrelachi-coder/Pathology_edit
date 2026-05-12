@@ -82,6 +82,15 @@ def load_recipe(path: str | Path) -> dict[str, Any]:
     return recipe
 
 
+def default_recipe_path_for_profile(reference_profile: str) -> Path:
+    """Return the dataset wrapper recipe when present, else the generic recipe."""
+
+    candidate = Path("phase3_mask_edit/recipes") / f"{reference_profile.lower()}.yaml"
+    if candidate.exists():
+        return candidate
+    return Path("phase3_mask_edit/recipes/generic.yaml")
+
+
 def normalize_recipe_execution_strategy(recipe: dict[str, Any]) -> dict[str, Any]:
     """Fill default execution strategies for older generic recipe entries."""
 

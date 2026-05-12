@@ -7,7 +7,10 @@ from phase3_mask_edit.core.config import load_recipe
 from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
+from phase3_mask_edit.parser.semantic_diff import DEFAULT_SEMANTIC_DIFF
+from phase3_mask_edit.cli.edit_from_intents import execute_intents_on_mask
 from phase3_mask_edit.generic.executor import execute_edit
+from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 
 
 class SpecializedFinePrimitiveRecipeTests(unittest.TestCase):
@@ -58,6 +61,46 @@ class SpecializedFinePrimitiveRecipeTests(unittest.TestCase):
 
 
 class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
+    def test_planned_panda_grade_special_executes_with_default_dataset_recipe(self):
+        old_mask = np.array(
+            [
+                [8, 8, 8, 2, 0],
+                [8, 8, 8, 2, 0],
+                [8, 8, 9, 2, 0],
+                [5, 5, 2, 2, 0],
+                [0, 0, 0, 0, 0],
+            ],
+            dtype=np.int64,
+        )
+        diff = {
+            **DEFAULT_SEMANTIC_DIFF,
+            "tumor_change": {
+                **DEFAULT_SEMANTIC_DIFF["tumor_change"],
+                "growth": "none",
+                "grade_change": "upgrade",
+            },
+        }
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="PANDA",
+            old_mask=old_mask,
+            old_prompt="Gleason pattern 3 adenocarcinoma.",
+            new_prompt="Gleason pattern 4 adenocarcinoma.",
+        )
+
+        self.assertEqual(len(plan.intents), 1)
+        self.assertEqual(plan.intents[0].primitive, "gleason_upgrade_3to4")
+        self.assertEqual(plan.items[0].status, "planned")
+        result = execute_intents_on_mask(
+            old_mask,
+            plan.intents,
+            reference_profile="PANDA",
+        )
+        self.assertEqual(result.status, "executed")
+        self.assertLess(np.count_nonzero(result.target_mask == 8), np.count_nonzero(old_mask == 8))
+        self.assertGreater(np.count_nonzero(result.target_mask == 9), np.count_nonzero(old_mask == 9))
+
     def test_panda_gleason_upgrade_3to4_runs_in_place(self):
         recipe = load_recipe("phase3_mask_edit/recipes/panda.yaml")
         schema = MaskProfileSchema.from_reference_profile("PANDA")
