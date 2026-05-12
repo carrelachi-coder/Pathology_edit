@@ -45,6 +45,9 @@ from phase3_mask_edit.generic.immune import (
 from phase3_mask_edit.generic.desmoplasia import (
     apply_stromal_desmoplasia,
 )
+from phase3_mask_edit.specialized.fine_transition import (
+    apply_fine_label_transition,
+)
 
 
 # ── EditExecutionResult ────────────────────────────────────────────
@@ -78,6 +81,7 @@ def _auto_register() -> None:
     register_primitive("boundary_pushing_remodel", apply_boundary_pushing_remodel)
     register_primitive("necrosis_appearance", apply_necrosis_appearance)
     register_primitive("necrosis_resolution", apply_necrosis_resolution)
+    register_primitive("fine_label_transition", apply_fine_label_transition)
     register_primitive(
         "stromal_immune_infiltration",
         apply_stromal_immune_infiltration,
@@ -126,7 +130,10 @@ def execute_edit(
         )
 
     # ── step 3: mask transform ───────────────────────────────────
+    operation_type = primitive_config.get("mask_operation", {}).get("type")
     fn = _PRIMITIVE_REGISTRY.get(intent.primitive)
+    if fn is None and isinstance(operation_type, str):
+        fn = _PRIMITIVE_REGISTRY.get(operation_type)
     if fn is None:
         raise PrimitiveExecutionError(
             f"No registered primitive function for {intent.primitive}."

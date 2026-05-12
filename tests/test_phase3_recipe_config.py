@@ -17,7 +17,7 @@ class Phase3RecipeConfigTests(unittest.TestCase):
         recipe = load_recipe(GENERIC_RECIPE)
 
         self.assertEqual(recipe["schema_version"], 1)
-        self.assertEqual(len(recipe["primitives"]), 9)
+        self.assertEqual(len(recipe["primitives"]), 10)
         self.assertEqual(len(recipe["composite_recipes"]), 5)
 
         primitive_names = {primitive["name"] for primitive in recipe["primitives"]}
@@ -33,6 +33,7 @@ class Phase3RecipeConfigTests(unittest.TestCase):
                 "intratumoral_immune_infiltration",
                 "immune_infiltration_decrease",
                 "stromal_desmoplasia",
+                "stroma_decrease",
             },
         )
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
+import numpy as np
+
 from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import (
     EditIntent,
@@ -71,6 +73,10 @@ def assess_edit_applicability(
 
     if intent.target_label and intent.target_label not in schema.writable_labels:
         reasons.append(f"target_label_not_writable:{intent.target_label}")
+
+    fine_id_reason = _fine_transition_reason(primitive, schema, context)
+    if fine_id_reason:
+        reasons.append(fine_id_reason)
 
     labels_that_must_exist = _labels_required_in_current_mask(
         required_labels=required_labels,
@@ -151,3 +157,41 @@ def _optional_label_has_fallback(primitive: Mapping[str, Any], label: str) -> bo
     if label == "Necrosis" and "candidate_weights_no_existing_necrosis" in spatial_pattern:
         return True
     return False
+
+
+def _fine_transition_reason(
+    primitive: Mapping[str, Any],
+    schema: MaskProfileSchema,
+    context: MaskEditContext,
+) -> str | None:
+    mask_operation = primitive.get("mask_operation", {})
+    if not isinstance(mask_operation, Mapping):
+        return None
+    if mask_operation.get("type") != "fine_label_transition":
+        return None
+
+    source_ids = _int_tuple(mask_operation.get("source_fine_ids"))
+    target_id = mask_operation.get("target_fine_id")
+    legal_ids = _legal_schema_ids(schema)
+    illegal = (set(source_ids) | ({target_id} if isinstance(target_id, int) else set())) - legal_ids
+    if illegal:
+        return f"fine_transition_ids_not_in_schema:{sorted(illegal)}"
+
+    if not source_ids or not np.any(np.isin(context.normalized_mask, source_ids)):
+        return f"source_fine_id_absent:{list(source_ids)}"
+    return None
+
+
+def _int_tuple(value: Any) -> tuple[int, ...]:
+    if isinstance(value, int):
+        return (value,)
+    if isinstance(value, (list, tuple)) and all(isinstance(item, int) for item in value):
+        return tuple(value)
+    return ()
+
+
+def _legal_schema_ids(schema: MaskProfileSchema) -> set[int]:
+    ids: set[int] = set(schema.skip_fine_ids)
+    for fine_ids in schema.label_to_fine_ids.values():
+        ids.update(int(fine_id) for fine_id in fine_ids)
+    return ids

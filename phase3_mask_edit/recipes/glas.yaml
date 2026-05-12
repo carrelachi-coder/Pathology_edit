@@ -1,4 +1,7 @@
 dataset: GlaS
 include_generic: true
-strategies: []
-
+strategies:
+  - normal_to_adenomatous
+  - adenoma_to_carcinoma
+  - grade_upgrade
+  - treatment_dedifferentiation

@@ -1,4 +1,5 @@
 dataset: BCSS
 include_generic: true
-strategies: []
-
+strategies:
+  - dcis_invasion
+  - angioinvasion_emphasis

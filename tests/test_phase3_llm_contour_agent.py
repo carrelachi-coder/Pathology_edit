@@ -208,10 +208,9 @@ class LLMContourAgentTests(unittest.TestCase):
             result.context["llm_task_requirements"]["pathology_goal"],
             "Increase peritumoral desmoplastic stromal reaction.",
         )
-        self.assertEqual(
-            result.context["contour_style_hint"]["shape_intent"],
-            "peritumoral_desmoplastic_stroma_expansion",
-        )
+        prompt = build_contour_prompt(context=result.context)
+        self.assertIn('"placement_relation": "peritumoral_desmoplastic_stroma_expansion"', prompt)
+        self.assertIn('"stromal_reinforcement"', prompt)
         self.assertEqual(
             result.context["primitive_policy"]["mask_operation"]["primary_sources"],
             ["Other tissue", "Normal epithelium"],

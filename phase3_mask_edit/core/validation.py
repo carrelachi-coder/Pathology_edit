@@ -624,6 +624,98 @@ def _guard_tumor_area_must_increase(
 _PRIMITIVE_GUARDS["tumor_area_must_increase"] = _guard_tumor_area_must_increase
 
 
+def _guard_fine_transition_source_must_decrease(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    del change_region, schema, primitive_name
+    source_ids = _fine_transition_source_ids(primitive_config)
+    src_count = int(np.count_nonzero(np.isin(src_mask, source_ids)))
+    tgt_count = int(np.count_nonzero(np.isin(target_mask, source_ids)))
+    if tgt_count < src_count:
+        return ValidationCheck(
+            "fine_transition_source_must_decrease",
+            True,
+            f"source fine IDs {list(source_ids)} {src_count} -> {tgt_count} pixels.",
+        )
+    return ValidationCheck(
+        "fine_transition_source_must_decrease",
+        False,
+        f"source fine IDs {list(source_ids)} did not decrease: {src_count} -> {tgt_count}.",
+    )
+
+
+_PRIMITIVE_GUARDS["fine_transition_source_must_decrease"] = (
+    _guard_fine_transition_source_must_decrease
+)
+
+
+def _guard_fine_transition_target_must_increase(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    del change_region, schema, primitive_name
+    target_id = _fine_transition_target_id(primitive_config)
+    src_count = int(np.count_nonzero(src_mask == target_id))
+    tgt_count = int(np.count_nonzero(target_mask == target_id))
+    if tgt_count > src_count:
+        return ValidationCheck(
+            "fine_transition_target_must_increase",
+            True,
+            f"target fine ID {target_id} {src_count} -> {tgt_count} pixels.",
+        )
+    return ValidationCheck(
+        "fine_transition_target_must_increase",
+        False,
+        f"target fine ID {target_id} did not increase: {src_count} -> {tgt_count}.",
+    )
+
+
+_PRIMITIVE_GUARDS["fine_transition_target_must_increase"] = (
+    _guard_fine_transition_target_must_increase
+)
+
+
+def _guard_change_region_must_match_source_fine_ids(
+    *,
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    primitive_name: str,
+) -> ValidationCheck:
+    del target_mask, schema, primitive_name
+    source_ids = _fine_transition_source_ids(primitive_config)
+    outside = int(np.count_nonzero(change_region & ~np.isin(src_mask, source_ids)))
+    if outside == 0:
+        return ValidationCheck(
+            "change_region_must_match_source_fine_ids",
+            True,
+            f"all changed pixels came from source fine IDs {list(source_ids)}.",
+        )
+    return ValidationCheck(
+        "change_region_must_match_source_fine_ids",
+        False,
+        f"{outside} changed pixels were outside source fine IDs {list(source_ids)}.",
+    )
+
+
+_PRIMITIVE_GUARDS["change_region_must_match_source_fine_ids"] = (
+    _guard_change_region_must_match_source_fine_ids
+)
+
+
 def _guard_tumor_area_must_decrease(
     *,
     src_mask: np.ndarray,
@@ -1354,6 +1446,26 @@ def _desmoplasia_max_immune_fraction(primitive_config: Mapping[str, Any]) -> flo
     if not isinstance(value, (int, float)):
         return 0.30
     return float(value)
+
+
+def _fine_transition_source_ids(primitive_config: Mapping[str, Any]) -> tuple[int, ...]:
+    mask_operation = primitive_config.get("mask_operation", {})
+    if not isinstance(mask_operation, Mapping):
+        return ()
+    value = mask_operation.get("source_fine_ids")
+    if isinstance(value, int):
+        return (value,)
+    if isinstance(value, (list, tuple)) and all(isinstance(item, int) for item in value):
+        return tuple(value)
+    return ()
+
+
+def _fine_transition_target_id(primitive_config: Mapping[str, Any]) -> int:
+    mask_operation = primitive_config.get("mask_operation", {})
+    if not isinstance(mask_operation, Mapping):
+        return -1
+    value = mask_operation.get("target_fine_id")
+    return int(value) if isinstance(value, int) else -1
 
 
 def _min_interval_lower_bound(value: Any) -> float | None:

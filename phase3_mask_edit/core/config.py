@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from phase3_mask_edit.specialized.catalog import specialized_primitives_for
 
 
 FROZEN_PRIMITIVE_FIELDS = frozenset(
@@ -72,8 +75,63 @@ def load_recipe(path: str | Path) -> dict[str, Any]:
     with recipe_path.open("r", encoding="utf-8") as stream:
         recipe = yaml.safe_load(stream)
 
+    recipe = expand_recipe(recipe, base_path=recipe_path)
     validate_recipe_schema(recipe)
     return recipe
+
+
+def expand_recipe(recipe: dict[str, Any], *, base_path: Path | None = None) -> dict[str, Any]:
+    """Expand dataset wrapper recipes into executable recipes."""
+
+    if not isinstance(recipe, dict) or "primitives" in recipe:
+        return recipe
+    if not recipe.get("include_generic"):
+        return recipe
+
+    dataset = recipe.get("dataset")
+    if not isinstance(dataset, str) or not dataset:
+        return recipe
+
+    generic_path = (
+        base_path.parent / "generic.yaml"
+        if base_path is not None
+        else Path("phase3_mask_edit/recipes/generic.yaml")
+    )
+    with generic_path.open("r", encoding="utf-8") as stream:
+        expanded = yaml.safe_load(stream)
+
+    expanded = deepcopy(expanded)
+    expanded["dataset"] = dataset
+    expanded["primitive_set"] = (
+        f"{expanded.get('primitive_set', 'phase3')}_{dataset.lower()}_specialized"
+    )
+    expanded.setdefault("metadata", {})
+    expanded["metadata"]["dataset_recipe"] = dataset
+
+    strategy_names = recipe.get("strategies", [])
+    if strategy_names is None:
+        strategy_names = []
+    if not isinstance(strategy_names, list):
+        raise RecipeValidationError("dataset recipe strategies must be a list.")
+
+    specialized = specialized_primitives_for(dataset)
+    if strategy_names:
+        wanted = set(strategy_names)
+        specialized = [
+            primitive for primitive in specialized if primitive["name"] in wanted
+        ]
+        missing = wanted - {primitive["name"] for primitive in specialized}
+        if missing:
+            raise RecipeValidationError(
+                f"Unknown specialized strategies for {dataset}: "
+                f"{', '.join(sorted(missing))}"
+            )
+
+    expanded["primitives"].extend(specialized)
+    expanded["specialized_strategies"] = [
+        primitive["name"] for primitive in specialized
+    ]
+    return expanded
 
 
 def validate_recipe_schema(recipe: dict[str, Any]) -> None:

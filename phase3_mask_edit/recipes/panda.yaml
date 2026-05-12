@@ -1,4 +1,8 @@
 dataset: PANDA
 include_generic: true
-strategies: []
-
+strategies:
+  - gleason_upgrade_3to4
+  - gleason_upgrade_4to5
+  - gleason_downgrade_4to3
+  - benign_to_gleason3
+  - benign_atrophy
