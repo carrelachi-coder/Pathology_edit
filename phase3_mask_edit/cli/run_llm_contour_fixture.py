@@ -74,9 +74,16 @@ def _build_intent(
     if not isinstance(operation, Mapping):
         operation = {}
 
-    resolved_source = tuple(source_labels or _labels_from_operation(operation.get("source")))
+    resolved_source = tuple(
+        source_labels or _default_source_labels(primitive_config, operation)
+    )
     resolved_target = target_label or _string_or_none(operation.get("target"))
-    if not resolved_target and primitive_config.get("name") == "immune_infiltration_decrease":
+    if not resolved_target and primitive_config.get("name") == "tumor_burden_increase":
+        resolved_target = "Tumor"
+    if not resolved_target and primitive_config.get("name") in {
+        "immune_infiltration_decrease",
+        "tumor_burden_decrease",
+    }:
         resolved_target = _first_backfill_label(operation)
     if not resolved_source:
         raise ValueError(
@@ -113,6 +120,16 @@ def _labels_from_operation(value: Any) -> list[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return list(value)
     return []
+
+
+def _default_source_labels(
+    primitive_config: Mapping[str, Any],
+    operation: Mapping[str, Any],
+) -> list[str]:
+    primitive_name = primitive_config.get("name")
+    if primitive_name == "tumor_burden_increase":
+        return _labels_from_operation(operation.get("target_priority"))
+    return _labels_from_operation(operation.get("source"))
 
 
 def _string_or_none(value: Any) -> str | None:

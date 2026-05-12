@@ -24,6 +24,7 @@ from phase3_mask_edit.backends.organic_projection import (
     ORGANIC_PROJECTION_BACKEND,
     apply_organic_immune_infiltration_decrease,
     apply_organic_projected_label_write,
+    apply_organic_tumor_burden_decrease,
 )
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.backends.llm_prompt import build_repair_feedback
@@ -501,6 +502,69 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.ops_log["projection_mode"], PROJECTION_MODE_ORGANIC_V2)
         self.assertEqual(result.ops_log["projection_backend"], ORGANIC_PROJECTION_BACKEND)
         self.assertTrue(np.all(old_mask[result.change_region] == 2))
+
+    def test_tumor_burden_increase_allows_mixed_source_regions_in_organic_v2(self):
+        old_mask = np.zeros(self.mask_shape, dtype=np.int64)
+        old_mask[4:60, 4:60] = 2
+        old_mask[4:20, 44:60] = 7
+        old_mask[20:44, 20:44] = 1
+        payload = self._proposal(target_label="Tumor")
+        payload["primitive"] = "tumor_burden_increase"
+        payload["regions"] = [
+            {
+                "region_id": "stroma_region",
+                "type": "polygon",
+                "source_labels": ["Stroma"],
+                "points": [[8, 8], [34, 8], [34, 34], [8, 34]],
+                "confidence": 0.8,
+            },
+            {
+                "region_id": "other_region",
+                "type": "polygon",
+                "source_labels": ["Other tissue"],
+                "points": [[42, 6], [59, 6], [59, 22], [42, 22]],
+                "confidence": 0.8,
+            },
+        ]
+        proposal = validate_contour_proposal(
+            payload,
+            schema=self.schema,
+            mask_shape=self.mask_shape,
+            primitive="tumor_burden_increase",
+            allowed_source_labels=("Stroma", "Other tissue"),
+            target_label="Tumor",
+        )
+
+        result = execute_contour_proposal_write(
+            old_mask,
+            proposal,
+            schema=self.schema,
+            primitive_config={
+                "name": "tumor_burden_increase",
+                "parameter_ranges": {
+                    "target_area_delta_fraction": {"mild": [0.05, 0.07]},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 64,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+            },
+        )
+
+        self.assertEqual(result.ops_log["projection_mode"], PROJECTION_MODE_ORGANIC_V2)
+        self.assertEqual(result.ops_log["projection_backend"], ORGANIC_PROJECTION_BACKEND)
+        self.assertNotIn("projection_fallback_reason", result.ops_log)
+        self.assertEqual(result.selected_pixels, 246)
+        changed_old_labels = set(
+            np.unique(old_mask[result.change_region]).astype(int).tolist()
+        )
+        self.assertLessEqual(changed_old_labels, {2, 7})
+        self.assertGreater(
+            result.ops_log["source_label_contributions"]["Stroma"], 0
+        )
+        self.assertGreater(
+            result.ops_log["source_label_contributions"]["Other tissue"], 0
+        )
 
     def test_compare_mode_is_rejected_by_single_write_executor(self):
         proposal = validate_contour_proposal(
@@ -1438,6 +1502,164 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertTrue(np.all(np.isin(old_mask[result.change_region], (4, 7))))
         dist_to_tumor = ndimage.distance_transform_edt(old_mask != 1)
         self.assertLessEqual(float(dist_to_tumor[result.change_region].max()), 20.0)
+
+    def test_tumor_burden_increase_policy_writes_nearest_tumor_subtype(self):
+        old_mask = np.zeros((72, 72), dtype=np.int64)
+        old_mask[4:68, 4:68] = 2
+        old_mask[20:52, 18:36] = 1
+        old_mask[20:52, 36:54] = 14
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[14:58, 12:60] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Tumor",
+            primitive_config={
+                "name": "tumor_burden_increase",
+                "parameter_ranges": {
+                    "target_area_delta_fraction": {"mild": [0.08, 0.14]},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 64,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.4,
+                        "spatial": 0.6,
+                        "noise": 0.0,
+                    },
+                },
+            },
+            seed=4,
+            target_pixels=140,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "tumor_burden_increase_boundary_growth",
+        )
+        self.assertEqual(result.selected_pixels, 140)
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
+        self.assertLessEqual(set(np.unique(result.target_mask[result.change_region])), {1, 14})
+        self.assertGreater(
+            int(np.count_nonzero(result.target_mask == 1) + np.count_nonzero(result.target_mask == 14)),
+            int(np.count_nonzero((old_mask == 1) | (old_mask == 14))),
+        )
+
+    def test_tumor_burden_decrease_selects_tumor_and_backfills_nearest_tissue(self):
+        old_mask = np.zeros((72, 72), dtype=np.int64)
+        old_mask[4:68, 4:68] = 2
+        old_mask[18:54, 18:54] = 1
+        old_mask[30:42, 30:42] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[14:58, 14:58] = True
+
+        result = apply_organic_tumor_burden_decrease(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "tumor_burden_decrease",
+                "mask_operation": {
+                    "source": "Tumor",
+                    "backfill_priority": ["Stroma", "Other tissue"],
+                },
+                "parameter_ranges": {
+                    "target_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "min_remaining_tumor_fraction": {"default": 0.02},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 64,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.3,
+                        "spatial": 0.7,
+                        "noise": 0.0,
+                    },
+                },
+            },
+            seed=6,
+            target_pixels=120,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "tumor_burden_decrease_boundary_regression",
+        )
+        self.assertEqual(result.selected_pixels, 120)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
+        self.assertEqual(
+            result.ops_log["decrease_semantics"],
+            "select_tumor_pixels_then_backfill_from_nearest_legal_tissue",
+        )
+
+    def test_contour_executor_routes_tumor_decrease_to_backfill_backend(self):
+        old_mask = np.zeros((40, 40), dtype=np.int64)
+        old_mask[2:38, 2:38] = 2
+        old_mask[10:30, 10:30] = 1
+        proposal = validate_contour_proposal(
+            {
+                "schema_version": CONTOUR_PROPOSAL_SCHEMA_VERSION,
+                "backend": CONTOUR_PROPOSAL_BACKEND,
+                "primitive": "tumor_burden_decrease",
+                "reference_profile": "BCSS",
+                "target_label": "Stroma",
+                "coordinate_system": {
+                    "origin": "top_left",
+                    "point_format": "[x, y]",
+                    "x_axis": "horizontal_column_right",
+                    "y_axis": "vertical_row_down",
+                    "width": 40,
+                    "height": 40,
+                },
+                "regions": [
+                    {
+                        "region_id": "r1",
+                        "type": "polygon",
+                        "source_labels": ["Tumor"],
+                        "points": [[8, 8], [32, 8], [32, 32], [8, 32]],
+                        "confidence": 0.8,
+                    }
+                ],
+            },
+            schema=self.schema,
+            mask_shape=old_mask.shape,
+            target_label="Stroma",
+            allowed_source_labels=("Tumor",),
+        )
+
+        result = execute_contour_proposal_write(
+            old_mask,
+            proposal,
+            schema=self.schema,
+            primitive_config={
+                "name": "tumor_burden_decrease",
+                "mask_operation": {
+                    "source": "Tumor",
+                    "backfill_priority": ["Stroma"],
+                },
+                "parameter_ranges": {
+                    "target_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "min_remaining_tumor_fraction": {"default": 0.02},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 64,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+            },
+            projection_mode="organic_v2",
+            organic_seed=7,
+        )
+
+        self.assertEqual(
+            result.ops_log["method"],
+            "organic_score_projection_and_deterministic_backfill",
+        )
+        self.assertEqual(result.ops_log["projection_mode"], "organic_v2")
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
 
     def test_immune_decrease_selects_immune_and_backfills_nearest_tissue(self):
         old_mask = np.zeros((72, 72), dtype=np.int64)

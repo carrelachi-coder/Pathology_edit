@@ -19,6 +19,7 @@ from scipy import ndimage
 from phase3_mask_edit.backends.organic_projection import (
     apply_organic_immune_infiltration_decrease,
     apply_organic_projected_label_write,
+    apply_organic_tumor_burden_decrease,
 )
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.core.labels import MaskProfileSchema, MaskProfileSchemaError
@@ -266,8 +267,9 @@ def execute_contour_proposal_write(
         )
 
     if projection_mode == PROJECTION_MODE_ORGANIC_V2:
+        primitive_name = str((primitive_config or {}).get("name", ""))
         source_label_sets = {region.source_labels for region in proposal.regions}
-        if len(source_label_sets) > 1:
+        if len(source_label_sets) > 1 and primitive_name != "tumor_burden_increase":
             result = _execute_hard_projection(
                 old_mask,
                 proposal,
@@ -287,9 +289,19 @@ def execute_contour_proposal_write(
                 label for region in proposal.regions for label in region.source_labels
             )
         )
-        primitive_name = str((primitive_config or {}).get("name", ""))
         if primitive_name == "immune_infiltration_decrease":
             result = apply_organic_immune_infiltration_decrease(
+                old_mask,
+                raw_candidate,
+                schema=schema,
+                primitive_config=primitive_config,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                seed=organic_seed,
+                strength=strength,
+            )
+        elif primitive_name == "tumor_burden_decrease":
+            result = apply_organic_tumor_burden_decrease(
                 old_mask,
                 raw_candidate,
                 schema=schema,

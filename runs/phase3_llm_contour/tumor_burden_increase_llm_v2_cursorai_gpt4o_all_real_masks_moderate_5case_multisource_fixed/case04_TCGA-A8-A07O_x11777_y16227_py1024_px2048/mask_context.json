@@ -1,0 +1,1090 @@
+{
+  "mask_shape": [
+    512,
+    512
+  ],
+  "reference_profile": "BCSS",
+  "primitive": "tumor_burden_increase",
+  "strength": "moderate",
+  "target_label": "Tumor",
+  "allowed_source_labels": [
+    "Stroma",
+    "Normal epithelium",
+    "Other tissue",
+    "Immune infiltrate"
+  ],
+  "label_areas": {
+    "Blood vessel": 0,
+    "Immune infiltrate": 0,
+    "Necrosis": 0,
+    "Normal epithelium": 0,
+    "Other tissue": 0,
+    "Stroma": 103855,
+    "Tumor": 158289
+  },
+  "label_palette_rgb": {
+    "Background": [
+      30,
+      30,
+      30
+    ],
+    "Tumor": [
+      180,
+      60,
+      60
+    ],
+    "Stroma": [
+      60,
+      150,
+      60
+    ],
+    "Necrosis": [
+      60,
+      60,
+      180
+    ],
+    "Immune infiltrate": [
+      140,
+      60,
+      180
+    ],
+    "Normal epithelium": [
+      180,
+      180,
+      80
+    ],
+    "Blood vessel": [
+      60,
+      140,
+      100
+    ],
+    "Other tissue": [
+      170,
+      170,
+      170
+    ]
+  },
+  "visual_label_legend": {
+    "Background": "dark gray / nearly black",
+    "Tumor": "red",
+    "Stroma": "green",
+    "Necrosis": "blue",
+    "Immune infiltrate": "purple",
+    "Normal epithelium": "yellow",
+    "Blood vessel": "teal",
+    "Other tissue": "gray"
+  },
+  "proposal_policy": {
+    "backend": "llm_contour_proposal",
+    "schema_version": "0.1",
+    "max_regions": 8,
+    "max_points_per_region": 64,
+    "template_role": "coarse_template",
+    "known_optional_v2_fields": [
+      "source_component_ids",
+      "adjacency_side",
+      "placement_relation",
+      "template_role",
+      "shape_hints"
+    ],
+    "executor_contract": "LLM polygons are approximate organic intent templates. Deterministic code projects them to legal source labels, controls final area, and writes final pixels."
+  },
+  "target_area_hint": {
+    "area_semantics": "projection_after_legal_source_label_filtering",
+    "reference_area_label": "whole mask",
+    "reference_pixels": 262144,
+    "strength": "moderate",
+    "target_fraction_min": 0.14,
+    "target_fraction_max": 0.24,
+    "target_changed_pixels_min": 36701,
+    "target_changed_pixels_max": 62914,
+    "raw_polygon_margin_guidance": "Raw polygons are coarse organic templates. They may be broader than the projected target range because Phase 3 will select final legal source-label pixels deterministically."
+  },
+  "llm_task_requirements": {
+    "pathology_goal": "Increase tumor burden by expanding invasive tumor into adjacent editable non-tumor tissue.",
+    "mask_edit": "Convert legal non-tumor source pixels to Tumor pixels using nearest original Tumor subtype.",
+    "source_label": [
+      "Stroma",
+      "Normal epithelium",
+      "Other tissue",
+      "Immune infiltrate"
+    ],
+    "target_label": "Tumor",
+    "where_to_draw": [
+      "Draw just outside existing red Tumor, on editable non-tumor tissue.",
+      "Prefer Stroma or other tissue along the invasive tumor margin.",
+      "Do not draw mainly inside existing Tumor, Necrosis, or Background."
+    ],
+    "shape_style": [
+      "Irregular invasive tongues, lobulated boundary expansion, or budding islands that remain near tumor.",
+      "Avoid a uniform circular ring or boxy expansion.",
+      "Use local margin geometry to make growth look organic."
+    ],
+    "area_requirement": "After Phase 3 deterministically projects the coarse template to legal source-label pixels, the changed area should be about 36701 to 62914 pixels (0.14-0.24 of whole mask). The raw polygon is only a coarse template; deterministic projection controls final area.",
+    "recipe_constraints": {
+      "spatial_pattern": {
+        "expansion_mode": "broad_boundary_growth",
+        "noise": "multi_scale_smooth",
+        "forbid_targets": [
+          "Background"
+        ]
+      },
+      "parameter_ranges": {
+        "target_area_delta_fraction": {
+          "mild": [
+            0.08,
+            0.14
+          ],
+          "moderate": [
+            0.14,
+            0.24
+          ],
+          "significant": [
+            0.24,
+            0.4
+          ],
+          "xlarge_deid": [
+            0.4,
+            0.6
+          ]
+        },
+        "organic_template_sigma_px": 3.0,
+        "organic_noise_sigma_px": 18.0,
+        "organic_noise_amplitude": 0.18,
+        "organic_score_weights": {
+          "template": 0.5,
+          "spatial": 0.4,
+          "noise": 0.1
+        },
+        "organic_min_template_legal_overlap_fraction": 0.05,
+        "organic_min_selected_template_iou": 0.05,
+        "organic_template_neighborhood_radius_px": 64,
+        "organic_template_spillover_fraction": 0.2,
+        "organic_min_component_fraction": 0.01,
+        "organic_fill_holes_max_area_px": 0,
+        "tumor_growth_falloff_radius_px": 64,
+        "tumor_growth_stroma_neighbor_radius_px": 48
+      },
+      "validation_rules": [
+        "tumor_area_must_increase",
+        "new_tumor_must_touch_or_neighbor_original_tumor",
+        "changed_area_within_parameter_range"
+      ]
+    }
+  },
+  "contour_style_hint": {
+    "recommended_region_count_range": [
+      1,
+      3
+    ],
+    "points_per_region_range": [
+      16,
+      32
+    ],
+    "boundary_style": "irregular organic boundary",
+    "region_variation_requirement": "Do not duplicate shapes across regions."
+  },
+  "source_spatial_hints": {
+    "Stroma": {
+      "total_pixels": 103855,
+      "components": [
+        {
+          "component_id": "c1",
+          "area_px": 58812,
+          "bbox": [
+            0,
+            0,
+            410,
+            511
+          ],
+          "centroid": [
+            158.8,
+            314.9
+          ]
+        },
+        {
+          "component_id": "c3",
+          "area_px": 33831,
+          "bbox": [
+            332,
+            0,
+            511,
+            509
+          ],
+          "centroid": [
+            451.4,
+            273.6
+          ]
+        },
+        {
+          "component_id": "c2",
+          "area_px": 7845,
+          "bbox": [
+            224,
+            0,
+            363,
+            104
+          ],
+          "centroid": [
+            297.4,
+            55.2
+          ]
+        },
+        {
+          "component_id": "c5",
+          "area_px": 2455,
+          "bbox": [
+            0,
+            454,
+            61,
+            511
+          ],
+          "centroid": [
+            29.3,
+            486.4
+          ]
+        },
+        {
+          "component_id": "c4",
+          "area_px": 853,
+          "bbox": [
+            463,
+            0,
+            501,
+            36
+          ],
+          "centroid": [
+            482.6,
+            13.2
+          ]
+        },
+        {
+          "component_id": "c6",
+          "area_px": 48,
+          "bbox": [
+            421,
+            480,
+            431,
+            490
+          ],
+          "centroid": [
+            425.7,
+            484.1
+          ]
+        },
+        {
+          "component_id": "c8",
+          "area_px": 6,
+          "bbox": [
+            418,
+            491,
+            420,
+            494
+          ],
+          "centroid": [
+            419.0,
+            492.5
+          ]
+        },
+        {
+          "component_id": "c7",
+          "area_px": 3,
+          "bbox": [
+            460,
+            481,
+            462,
+            481
+          ],
+          "centroid": [
+            461.0,
+            481.0
+          ]
+        }
+      ],
+      "high_purity_grid_tiles": [
+        {
+          "bbox": [
+            448,
+            192,
+            511,
+            255
+          ],
+          "source_pixels": 4096,
+          "source_fraction": 1.0
+        },
+        {
+          "bbox": [
+            128,
+            448,
+            191,
+            511
+          ],
+          "source_pixels": 3903,
+          "source_fraction": 0.953
+        },
+        {
+          "bbox": [
+            448,
+            256,
+            511,
+            319
+          ],
+          "source_pixels": 3724,
+          "source_fraction": 0.909
+        },
+        {
+          "bbox": [
+            0,
+            256,
+            63,
+            319
+          ],
+          "source_pixels": 3526,
+          "source_fraction": 0.861
+        },
+        {
+          "bbox": [
+            448,
+            384,
+            511,
+            447
+          ],
+          "source_pixels": 3321,
+          "source_fraction": 0.811
+        },
+        {
+          "bbox": [
+            192,
+            256,
+            255,
+            319
+          ],
+          "source_pixels": 3274,
+          "source_fraction": 0.799
+        }
+      ],
+      "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+    },
+    "Normal epithelium": {
+      "total_pixels": 0,
+      "components": [],
+      "high_purity_grid_tiles": [],
+      "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+    },
+    "Other tissue": {
+      "total_pixels": 0,
+      "components": [],
+      "high_purity_grid_tiles": [],
+      "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+    },
+    "Immune infiltrate": {
+      "total_pixels": 0,
+      "components": [],
+      "high_purity_grid_tiles": [],
+      "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+    }
+  },
+  "source_contour_context": {
+    "Stroma": {
+      "coordinate_system": "original_mask_xy",
+      "contour_point_format": "[x, y]",
+      "components": [
+        {
+          "component_id": "source_1",
+          "area_px": 58812,
+          "bbox": [
+            0,
+            0,
+            410,
+            511
+          ],
+          "centroid": [
+            158.8,
+            314.9
+          ],
+          "contour_simplified": [
+            [
+              128,
+              0
+            ],
+            [
+              138,
+              37
+            ],
+            [
+              136,
+              82
+            ],
+            [
+              163,
+              108
+            ],
+            [
+              186,
+              136
+            ],
+            [
+              221,
+              138
+            ],
+            [
+              261,
+              136
+            ],
+            [
+              216,
+              148
+            ],
+            [
+              222,
+              194
+            ],
+            [
+              218,
+              248
+            ],
+            [
+              253,
+              254
+            ],
+            [
+              284,
+              230
+            ],
+            [
+              314,
+              252
+            ],
+            [
+              277,
+              278
+            ],
+            [
+              238,
+              302
+            ],
+            [
+              211,
+              336
+            ],
+            [
+              174,
+              346
+            ],
+            [
+              129,
+              358
+            ],
+            [
+              101,
+              364
+            ],
+            [
+              70,
+              390
+            ],
+            [
+              96,
+              426
+            ],
+            [
+              128,
+              394
+            ],
+            [
+              172,
+              395
+            ],
+            [
+              194,
+              435
+            ],
+            [
+              232,
+              416
+            ],
+            [
+              238,
+              447
+            ],
+            [
+              252,
+              489
+            ],
+            [
+              282,
+              462
+            ],
+            [
+              308,
+              434
+            ],
+            [
+              336,
+              466
+            ],
+            [
+              378,
+              486
+            ],
+            [
+              406,
+              511
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Tumor",
+              "fine_id": 1,
+              "boundary_neighbor_pixels": 4452
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Tumor": [
+              {
+                "point_index_range": [
+                  0,
+                  179
+                ],
+                "points": [
+                  [
+                    108,
+                    2
+                  ],
+                  [
+                    180,
+                    130
+                  ],
+                  [
+                    51,
+                    181
+                  ],
+                  [
+                    60,
+                    247
+                  ],
+                  [
+                    148,
+                    306
+                  ],
+                  [
+                    111,
+                    371
+                  ],
+                  [
+                    315,
+                    438
+                  ],
+                  [
+                    363,
+                    509
+                  ]
+                ],
+                "bbox": [
+                  2,
+                  2,
+                  402,
+                  509
+                ],
+                "point_count": 180,
+                "points_shown": 8
+              }
+            ]
+          }
+        },
+        {
+          "component_id": "source_3",
+          "area_px": 33831,
+          "bbox": [
+            332,
+            0,
+            511,
+            509
+          ],
+          "centroid": [
+            451.4,
+            273.6
+          ],
+          "contour_simplified": [
+            [
+              511,
+              504
+            ],
+            [
+              478,
+              478
+            ],
+            [
+              479,
+              432
+            ],
+            [
+              433,
+              452
+            ],
+            [
+              388,
+              427
+            ],
+            [
+              342,
+              406
+            ],
+            [
+              348,
+              364
+            ],
+            [
+              372,
+              391
+            ],
+            [
+              417,
+              410
+            ],
+            [
+              436,
+              373
+            ],
+            [
+              390,
+              351
+            ],
+            [
+              382,
+              331
+            ],
+            [
+              442,
+              338
+            ],
+            [
+              484,
+              352
+            ],
+            [
+              458,
+              308
+            ],
+            [
+              434,
+              263
+            ],
+            [
+              393,
+              234
+            ],
+            [
+              338,
+              225
+            ],
+            [
+              370,
+              192
+            ],
+            [
+              399,
+              232
+            ],
+            [
+              418,
+              206
+            ],
+            [
+              423,
+              170
+            ],
+            [
+              480,
+              178
+            ],
+            [
+              482,
+              140
+            ],
+            [
+              432,
+              149
+            ],
+            [
+              374,
+              149
+            ],
+            [
+              380,
+              132
+            ],
+            [
+              438,
+              130
+            ],
+            [
+              472,
+              102
+            ],
+            [
+              422,
+              83
+            ],
+            [
+              428,
+              35
+            ],
+            [
+              392,
+              0
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Tumor",
+              "fine_id": 1,
+              "boundary_neighbor_pixels": 2471
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Tumor": [
+              {
+                "point_index_range": [
+                  0,
+                  161
+                ],
+                "points": [
+                  [
+                    410,
+                    4
+                  ],
+                  [
+                    492,
+                    92
+                  ],
+                  [
+                    385,
+                    145
+                  ],
+                  [
+                    366,
+                    198
+                  ],
+                  [
+                    448,
+                    278
+                  ],
+                  [
+                    473,
+                    359
+                  ],
+                  [
+                    421,
+                    411
+                  ],
+                  [
+                    504,
+                    509
+                  ]
+                ],
+                "bbox": [
+                  333,
+                  4,
+                  509,
+                  509
+                ],
+                "point_count": 162,
+                "points_shown": 8
+              }
+            ]
+          }
+        },
+        {
+          "component_id": "source_2",
+          "area_px": 7845,
+          "bbox": [
+            224,
+            0,
+            363,
+            104
+          ],
+          "centroid": [
+            297.4,
+            55.2
+          ],
+          "contour_simplified": [
+            [
+              338,
+              0
+            ],
+            [
+              344,
+              16
+            ],
+            [
+              355,
+              26
+            ],
+            [
+              350,
+              40
+            ],
+            [
+              338,
+              49
+            ],
+            [
+              338,
+              64
+            ],
+            [
+              354,
+              67
+            ],
+            [
+              364,
+              74
+            ],
+            [
+              353,
+              84
+            ],
+            [
+              339,
+              92
+            ],
+            [
+              323,
+              94
+            ],
+            [
+              310,
+              91
+            ],
+            [
+              297,
+              98
+            ],
+            [
+              282,
+              104
+            ],
+            [
+              267,
+              98
+            ],
+            [
+              248,
+              100
+            ],
+            [
+              246,
+              88
+            ],
+            [
+              254,
+              76
+            ],
+            [
+              258,
+              58
+            ],
+            [
+              243,
+              52
+            ],
+            [
+              230,
+              44
+            ],
+            [
+              224,
+              29
+            ],
+            [
+              236,
+              21
+            ],
+            [
+              250,
+              14
+            ],
+            [
+              260,
+              24
+            ],
+            [
+              268,
+              38
+            ],
+            [
+              278,
+              48
+            ],
+            [
+              295,
+              46
+            ],
+            [
+              308,
+              38
+            ],
+            [
+              314,
+              23
+            ],
+            [
+              304,
+              12
+            ],
+            [
+              294,
+              0
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Tumor",
+              "fine_id": 1,
+              "boundary_neighbor_pixels": 654
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Tumor": [
+              {
+                "point_index_range": [
+                  0,
+                  177
+                ],
+                "points": [
+                  [
+                    338,
+                    2
+                  ],
+                  [
+                    312,
+                    20
+                  ],
+                  [
+                    225,
+                    34
+                  ],
+                  [
+                    232,
+                    46
+                  ],
+                  [
+                    258,
+                    60
+                  ],
+                  [
+                    253,
+                    82
+                  ],
+                  [
+                    303,
+                    94
+                  ],
+                  [
+                    286,
+                    104
+                  ]
+                ],
+                "bbox": [
+                  224,
+                  2,
+                  363,
+                  104
+                ],
+                "point_count": 178,
+                "points_shown": 8
+              }
+            ]
+          }
+        }
+      ],
+      "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+    },
+    "Normal epithelium": {
+      "coordinate_system": "original_mask_xy",
+      "contour_point_format": "[x, y]",
+      "components": [],
+      "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+    },
+    "Other tissue": {
+      "coordinate_system": "original_mask_xy",
+      "contour_point_format": "[x, y]",
+      "components": [],
+      "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+    },
+    "Immune infiltrate": {
+      "coordinate_system": "original_mask_xy",
+      "contour_point_format": "[x, y]",
+      "components": [],
+      "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+    }
+  },
+  "primitive_policy": {
+    "name": "tumor_burden_increase",
+    "pathology_meaning": "tumor growth and local invasion",
+    "mask_operation": {
+      "type": "sdf_boundary_expansion",
+      "source": "Tumor",
+      "target_priority": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "preserve_source_subtype": "nearest_boundary_tumor_label"
+    },
+    "spatial_policy": {},
+    "parameter_ranges": {
+      "target_area_delta_fraction": {
+        "mild": [
+          0.08,
+          0.14
+        ],
+        "moderate": [
+          0.14,
+          0.24
+        ],
+        "significant": [
+          0.24,
+          0.4
+        ],
+        "xlarge_deid": [
+          0.4,
+          0.6
+        ]
+      },
+      "organic_template_sigma_px": 3.0,
+      "organic_noise_sigma_px": 18.0,
+      "organic_noise_amplitude": 0.18,
+      "organic_score_weights": {
+        "template": 0.5,
+        "spatial": 0.4,
+        "noise": 0.1
+      },
+      "organic_min_template_legal_overlap_fraction": 0.05,
+      "organic_min_selected_template_iou": 0.05,
+      "organic_template_neighborhood_radius_px": 64,
+      "organic_template_spillover_fraction": 0.2,
+      "organic_min_component_fraction": 0.01,
+      "organic_fill_holes_max_area_px": 0,
+      "tumor_growth_falloff_radius_px": 64,
+      "tumor_growth_stroma_neighbor_radius_px": 48
+    },
+    "validation_rules": [
+      "tumor_area_must_increase",
+      "new_tumor_must_touch_or_neighbor_original_tumor",
+      "changed_area_within_parameter_range"
+    ]
+  },
+  "preview": {
+    "coordinate_system": "original_mask_xy",
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512,
+    "grid_spacing_px": 64
+  }
+}

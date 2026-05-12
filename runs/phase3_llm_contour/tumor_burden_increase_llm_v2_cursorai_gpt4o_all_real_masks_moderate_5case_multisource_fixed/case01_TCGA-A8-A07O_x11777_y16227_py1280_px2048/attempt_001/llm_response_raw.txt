@@ -1,0 +1,150 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "tumor_burden_increase",
+  "reference_profile": "BCSS",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "tumor_adjacent_editable_non_tumor",
+  "shape_hints": [
+    "invasive_tongues",
+    "lobulated_boundary",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "tumor_adjacent_editable_non_tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "invasive_tongues",
+        "lobulated_boundary",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          180,
+          50
+        ],
+        [
+          200,
+          75
+        ],
+        [
+          230,
+          100
+        ],
+        [
+          260,
+          130
+        ],
+        [
+          275,
+          160
+        ],
+        [
+          260,
+          190
+        ],
+        [
+          240,
+          210
+        ],
+        [
+          215,
+          195
+        ],
+        [
+          190,
+          160
+        ],
+        [
+          180,
+          120
+        ]
+      ],
+      "confidence": 0.8
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "tumor_adjacent_editable_non_tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "invasive_tongues",
+        "lobulated_boundary",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          360,
+          80
+        ],
+        [
+          375,
+          100
+        ],
+        [
+          395,
+          125
+        ],
+        [
+          420,
+          140
+        ],
+        [
+          430,
+          160
+        ],
+        [
+          415,
+          185
+        ],
+        [
+          395,
+          170
+        ],
+        [
+          375,
+          150
+        ],
+        [
+          360,
+          130
+        ],
+        [
+          350,
+          110
+        ]
+      ],
+      "confidence": 0.75
+    }
+  ]
+}

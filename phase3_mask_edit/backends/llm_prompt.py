@@ -203,6 +203,8 @@ def build_contour_prompt(
         "Within each source component, contour_adjacency_segments groups contour coordinates by the tissue just across the boundary. Prefer choosing component ids and adjacency sides before drawing points.",
         "For stromal immune infiltration, prefer Stroma contour segments adjacent to Tumor and avoid segments adjacent to Necrosis unless the recipe explicitly asks for necrosis-adjacent change.",
         "For necrosis appearance, prefer Tumor interior components and avoid hugging the outer Tumor boundary unless the intent requires it.",
+        "For tumor burden increase, draw coarse growth templates on editable non-tumor tissue adjacent to Tumor; final write uses nearest original Tumor subtype.",
+        "For tumor burden decrease, draw coarse regression templates on existing Tumor near legal backfill tissue; final pixels will be backfilled deterministically.",
         "For immune infiltration decrease, draw coarse templates over existing Immune infiltrate that should be removed; final pixels will be backfilled from nearby legal tissue by deterministic code.",
         "Generate a rough organic template around the intended pathology location; do not optimize vertices to be pixel-perfect source-label coordinates.",
         "The downstream executor will rasterize, project to legal source labels, control final changed area, write the target label, and validate.",
@@ -358,6 +360,20 @@ def _build_target_area_hint(
         )
         reference_pixels = int(label_areas.get("Immune infiltrate", 0))
         reference = "Immune infiltrate"
+    elif primitive_name == "tumor_burden_increase":
+        bucket = _interval_for_strength(
+            ranges.get("target_area_delta_fraction"),
+            intent.strength,
+        )
+        reference_pixels = int(sum(label_areas.values()))
+        reference = "whole mask"
+    elif primitive_name == "tumor_burden_decrease":
+        bucket = _interval_for_strength(
+            ranges.get("target_area_decrease_fraction"),
+            intent.strength,
+        )
+        reference_pixels = int(sum(label_areas.values()))
+        reference = "whole mask"
     else:
         bucket = None
         reference_pixels = 0
@@ -472,6 +488,56 @@ def _build_llm_task_requirements(
             ],
             "area_requirement": _area_requirement_text(target_area_hint),
             "recipe_constraints": {
+                "spatial_pattern": spatial,
+                "parameter_ranges": ranges,
+                "validation_rules": validation_rules,
+            },
+        }
+    if name == "tumor_burden_increase":
+        return {
+            "pathology_goal": "Increase tumor burden by expanding invasive tumor into adjacent editable non-tumor tissue.",
+            "mask_edit": "Convert legal non-tumor source pixels to Tumor pixels using nearest original Tumor subtype.",
+            "source_label": operation.get(
+                "target_priority",
+                ["Stroma", "Normal epithelium", "Other tissue", "Immune infiltrate"],
+            ),
+            "target_label": "Tumor",
+            "where_to_draw": [
+                "Draw just outside existing red Tumor, on editable non-tumor tissue.",
+                "Prefer Stroma or other tissue along the invasive tumor margin.",
+                "Do not draw mainly inside existing Tumor, Necrosis, or Background.",
+            ],
+            "shape_style": [
+                "Irregular invasive tongues, lobulated boundary expansion, or budding islands that remain near tumor.",
+                "Avoid a uniform circular ring or boxy expansion.",
+                "Use local margin geometry to make growth look organic.",
+            ],
+            "area_requirement": _area_requirement_text(target_area_hint),
+            "recipe_constraints": {
+                "spatial_pattern": spatial,
+                "parameter_ranges": ranges,
+                "validation_rules": validation_rules,
+            },
+        }
+    if name == "tumor_burden_decrease":
+        return {
+            "pathology_goal": "Decrease tumor burden by regressing existing tumor boundary.",
+            "mask_edit": "Select Tumor pixels for removal; deterministic code backfills selected pixels from nearby legal tissue.",
+            "source_label": operation.get("source", "Tumor"),
+            "target_label": "nearest legal backfill tissue",
+            "where_to_draw": [
+                "Draw on existing red Tumor at regression fronts or removable tumor margins.",
+                "Prefer tumor boundary facing Stroma or other valid backfill tissue.",
+                "Avoid tumor boundary facing Background or Necrosis unless explicitly requested.",
+            ],
+            "shape_style": [
+                "Irregular boundary recession or partial tumor shrinkage.",
+                "Avoid deleting the whole tumor unless the strength is xlarge deidentification.",
+                "Avoid simple rectangles or a perfectly concentric shrink pattern.",
+            ],
+            "area_requirement": _area_requirement_text(target_area_hint),
+            "recipe_constraints": {
+                "mask_operation": operation,
                 "spatial_pattern": spatial,
                 "parameter_ranges": ranges,
                 "validation_rules": validation_rules,
@@ -1051,6 +1117,18 @@ def _organic_shape_instruction(context: Mapping[str, Any]) -> str:
             "Use many boundary points, following contour_style_hint, for each substantial region. "
             "Avoid rectangles, diamonds, circles, symmetric shapes, repeated duplicate parts, and tiny decorative polygons."
         )
+    if primitive == "tumor_burden_increase":
+        return (
+            "Shape style: propose irregular invasive tumor growth templates on adjacent editable non-tumor tissue. "
+            "Use lobulated edges, tongues, or small budding regions near existing Tumor, but keep the raw template broad enough for deterministic area control. "
+            "Avoid circular rings, rectangles, symmetric halos, and large distant islands disconnected from Tumor intent."
+        )
+    if primitive == "tumor_burden_decrease":
+        return (
+            "Shape style: propose irregular tumor regression templates on existing Tumor, especially boundary areas facing valid backfill tissue. "
+            "Use asymmetric recession contours rather than a perfectly concentric shrink. "
+            "Avoid drawing mainly on Background, Necrosis, or non-tumor tissue."
+        )
     if primitive == "immune_infiltration_decrease":
         return (
             "Shape style: propose irregular removal templates over existing immune infiltrate. "
@@ -1069,6 +1147,10 @@ def _default_placement_relation(context: Mapping[str, Any]) -> str:
         return "tumor_adjacent_stroma"
     if primitive == "necrosis_appearance":
         return "tumor_interior"
+    if primitive == "tumor_burden_increase":
+        return "tumor_adjacent_editable_non_tumor"
+    if primitive == "tumor_burden_decrease":
+        return "tumor_boundary_regression"
     if primitive == "immune_infiltration_decrease":
         return "immune_decrease_distal_or_isolated"
     return "generic_label_safe"
@@ -1080,6 +1162,10 @@ def _default_shape_hints(context: Mapping[str, Any]) -> list[str]:
         return ["patchy", "band_like", "irregular_boundary"]
     if primitive == "necrosis_appearance":
         return ["patchy", "irregular_boundary"]
+    if primitive == "tumor_burden_increase":
+        return ["invasive_tongues", "lobulated_boundary", "irregular_boundary"]
+    if primitive == "tumor_burden_decrease":
+        return ["boundary_recession", "asymmetric_shrink", "irregular_boundary"]
     if primitive == "immune_infiltration_decrease":
         return ["patchy", "multifocal", "irregular_boundary"]
     return ["irregular_boundary"]

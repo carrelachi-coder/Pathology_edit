@@ -1,0 +1,166 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "tumor_burden_increase",
+  "reference_profile": "BCSS",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "tumor_adjacent_editable_non_tumor",
+  "shape_hints": [
+    "invasive_tongues",
+    "lobulated_boundary",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "tumor_adjacent_editable_non_tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "invasive_tongues",
+        "lobulated_boundary",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          310,
+          380
+        ],
+        [
+          330,
+          355
+        ],
+        [
+          340,
+          320
+        ],
+        [
+          360,
+          305
+        ],
+        [
+          380,
+          310
+        ],
+        [
+          395,
+          340
+        ],
+        [
+          410,
+          365
+        ],
+        [
+          400,
+          385
+        ],
+        [
+          375,
+          400
+        ],
+        [
+          350,
+          390
+        ],
+        [
+          330,
+          375
+        ],
+        [
+          320,
+          360
+        ]
+      ],
+      "confidence": 0.75
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_6"
+      ],
+      "adjacency_side": "tumor_adjacent_editable_non_tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "invasive_tongues",
+        "lobulated_boundary",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          258,
+          492
+        ],
+        [
+          263,
+          496
+        ],
+        [
+          270,
+          499
+        ],
+        [
+          278,
+          501
+        ],
+        [
+          286,
+          503
+        ],
+        [
+          295,
+          504
+        ],
+        [
+          305,
+          506
+        ],
+        [
+          312,
+          511
+        ],
+        [
+          306,
+          510
+        ],
+        [
+          300,
+          507
+        ],
+        [
+          290,
+          504
+        ],
+        [
+          280,
+          500
+        ]
+      ],
+      "confidence": 0.75
+    }
+  ]
+}

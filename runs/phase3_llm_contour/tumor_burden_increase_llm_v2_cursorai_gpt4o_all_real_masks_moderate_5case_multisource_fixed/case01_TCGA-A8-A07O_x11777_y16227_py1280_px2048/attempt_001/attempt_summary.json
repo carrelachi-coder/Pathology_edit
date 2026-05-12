@@ -1,0 +1,419 @@
+{
+  "attempt_index": 1,
+  "status": "validated",
+  "error": null,
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "tumor_burden_increase",
+    "reference_profile": "BCSS",
+    "target_label": "Tumor",
+    "regions": [
+      {
+        "region_id": "r1",
+        "source_labels": [
+          "Stroma",
+          "Normal epithelium",
+          "Other tissue",
+          "Immune infiltrate"
+        ],
+        "points": [
+          [
+            180.0,
+            50.0
+          ],
+          [
+            200.0,
+            75.0
+          ],
+          [
+            230.0,
+            100.0
+          ],
+          [
+            260.0,
+            130.0
+          ],
+          [
+            275.0,
+            160.0
+          ],
+          [
+            260.0,
+            190.0
+          ],
+          [
+            240.0,
+            210.0
+          ],
+          [
+            215.0,
+            195.0
+          ],
+          [
+            190.0,
+            160.0
+          ],
+          [
+            180.0,
+            120.0
+          ]
+        ],
+        "confidence": 0.8
+      },
+      {
+        "region_id": "r2",
+        "source_labels": [
+          "Stroma",
+          "Normal epithelium",
+          "Other tissue",
+          "Immune infiltrate"
+        ],
+        "points": [
+          [
+            360.0,
+            80.0
+          ],
+          [
+            375.0,
+            100.0
+          ],
+          [
+            395.0,
+            125.0
+          ],
+          [
+            420.0,
+            140.0
+          ],
+          [
+            430.0,
+            160.0
+          ],
+          [
+            415.0,
+            185.0
+          ],
+          [
+            395.0,
+            170.0
+          ],
+          [
+            375.0,
+            150.0
+          ],
+          [
+            360.0,
+            130.0
+          ],
+          [
+            350.0,
+            110.0
+          ]
+        ],
+        "confidence": 0.75
+      }
+    ]
+  },
+  "edit_result": {
+    "selected_pixels": 49808,
+    "changed_area_fraction": 0.19000244140625,
+    "warnings": [],
+    "ops_log": {
+      "backend": "organic_score_projection_v2",
+      "method": "organic_score_projection_and_deterministic_write",
+      "primitive": "tumor_burden_increase",
+      "reference_profile": "BCSS",
+      "source_labels": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "target_label": "Tumor",
+      "target_fine_id": 1,
+      "preserve_labels": [],
+      "forbidden_labels": [],
+      "raw_candidate_pixels": 11532,
+      "candidate_pixels": 11532,
+      "raw_candidate_legal_overlap_pixels": 3384,
+      "template_overlap_with_legal_domain": 0.2934443288241415,
+      "legal_domain_pixels": 117662,
+      "target_pixels": 49808,
+      "projected_pixels": 49808,
+      "selected_pixels": 49808,
+      "selected_raw_template_intersection_pixels": 3384,
+      "selected_raw_template_union_pixels": 57956,
+      "selected_raw_template_iou": 0.05838912278280074,
+      "selection_policy": {
+        "name": "template_neighborhood_constrained_top_k",
+        "template_neighborhood_radius_px": 64.0,
+        "template_spillover_fraction": 0.2,
+        "primary_zone_pixels": 31726,
+        "primary_budget_pixels": 39846,
+        "primary_selected_pixels": 31726,
+        "secondary_selected_pixels": 18082,
+        "selected_inside_primary_zone_pixels": 31726,
+        "selected_outside_primary_zone_pixels": 18082
+      },
+      "area_shortfall": 0,
+      "projection_retained_fraction": 4.319112036073535,
+      "changed_area_fraction": 0.19000244140625,
+      "projection_backend": "organic_score_projection_v2",
+      "noise_seed": 81,
+      "strength": "moderate",
+      "score_terms": {
+        "w_template": 0.5,
+        "w_spatial": 0.4,
+        "w_noise": 0.1,
+        "template_sigma": 3.0,
+        "noise_sigma": 18.0,
+        "noise_amplitude": 0.18,
+        "decay_px": 48.0,
+        "min_template_legal_overlap_fraction": 0.05,
+        "min_selected_template_iou": 0.05,
+        "template_neighborhood_radius_px": 64.0,
+        "template_spillover_fraction": 0.2
+      },
+      "component_policy": {
+        "policy_name": "tumor_burden_increase_boundary_growth",
+        "params": {
+          "legal_domain_policy": "editable_non_tumor_tissue_excluding_necrosis_and_background",
+          "write_policy": "nearest_original_tumor_fine_id",
+          "tumor_growth_falloff_radius_px": 64.0,
+          "tumor_growth_stroma_neighbor_radius_px": 48.0,
+          "source_tumor_pixels": 144482,
+          "excluded_existing_necrosis_pixels": 0,
+          "score_prefers": [
+            "non_tumor_tissue_near_original_tumor",
+            "pixels_touching_original_tumor_boundary",
+            "stromal_context_when_present"
+          ]
+        },
+        "spatial_score_stats": {
+          "pixels": 117662,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.41053616788810277
+        },
+        "template_score_stats": {
+          "pixels": 117662,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.5589611394967626
+        }
+      },
+      "cleanup_removed_pixels": 570,
+      "cleanup_refill_pixels": 570,
+      "cleanup_min_component_pixels": 498,
+      "cleanup_min_component_policy": "organic_min_component_fraction",
+      "pre_cleanup_pixels": 49808,
+      "post_cleanup_pixels": 49808,
+      "cleanup_single_pass": true,
+      "cleanup_iteration_limit": 1,
+      "source_label_contributions": {
+        "Stroma": 49808,
+        "Normal epithelium": 0,
+        "Other tissue": 0,
+        "Immune infiltrate": 0
+      },
+      "raw_payload": {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "tumor_burden_increase",
+        "reference_profile": "BCSS",
+        "target_label": "Tumor",
+        "template_role": "coarse_template",
+        "placement_relation": "tumor_adjacent_editable_non_tumor",
+        "shape_hints": [
+          "invasive_tongues",
+          "lobulated_boundary",
+          "irregular_boundary"
+        ],
+        "coordinate_system": {
+          "origin": "top_left",
+          "point_format": "[x, y]",
+          "x_axis": "horizontal_column_right",
+          "y_axis": "vertical_row_down",
+          "width": 512,
+          "height": 512
+        },
+        "regions": [
+          {
+            "region_id": "r1",
+            "type": "polygon",
+            "source_labels": [
+              "Stroma",
+              "Normal epithelium",
+              "Other tissue",
+              "Immune infiltrate"
+            ],
+            "source_component_ids": [
+              "source_1"
+            ],
+            "adjacency_side": "tumor_adjacent_editable_non_tumor",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "invasive_tongues",
+              "lobulated_boundary",
+              "irregular_boundary"
+            ],
+            "points": [
+              [
+                180,
+                50
+              ],
+              [
+                200,
+                75
+              ],
+              [
+                230,
+                100
+              ],
+              [
+                260,
+                130
+              ],
+              [
+                275,
+                160
+              ],
+              [
+                260,
+                190
+              ],
+              [
+                240,
+                210
+              ],
+              [
+                215,
+                195
+              ],
+              [
+                190,
+                160
+              ],
+              [
+                180,
+                120
+              ]
+            ],
+            "confidence": 0.8
+          },
+          {
+            "region_id": "r2",
+            "type": "polygon",
+            "source_labels": [
+              "Stroma",
+              "Normal epithelium",
+              "Other tissue",
+              "Immune infiltrate"
+            ],
+            "source_component_ids": [
+              "source_2"
+            ],
+            "adjacency_side": "tumor_adjacent_editable_non_tumor",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "invasive_tongues",
+              "lobulated_boundary",
+              "irregular_boundary"
+            ],
+            "points": [
+              [
+                360,
+                80
+              ],
+              [
+                375,
+                100
+              ],
+              [
+                395,
+                125
+              ],
+              [
+                420,
+                140
+              ],
+              [
+                430,
+                160
+              ],
+              [
+                415,
+                185
+              ],
+              [
+                395,
+                170
+              ],
+              [
+                375,
+                150
+              ],
+              [
+                360,
+                130
+              ],
+              [
+                350,
+                110
+              ]
+            ],
+            "confidence": 0.75
+          }
+        ]
+      },
+      "projection_mode": "organic_v2"
+    }
+  },
+  "validation": {
+    "passed": true,
+    "primitive": "tumor_burden_increase",
+    "checks": [
+      {
+        "name": "change_area_nonempty",
+        "passed": true,
+        "detail": "49808 pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "passed": true,
+        "detail": "changed_area_fraction=0.1900 in [0.08, 0.70]"
+      },
+      {
+        "name": "label_legality",
+        "passed": true,
+        "detail": "all labels in schema."
+      },
+      {
+        "name": "no_background_leakage",
+        "passed": true,
+        "detail": "no background leakage."
+      },
+      {
+        "name": "required_labels_present",
+        "passed": true,
+        "detail": "all required labels present in src mask."
+      },
+      {
+        "name": "tumor_area_must_increase",
+        "passed": true,
+        "detail": "tumor 144482 -> 194290 pixels."
+      },
+      {
+        "name": "new_tumor_must_touch_or_neighbor_original_tumor",
+        "passed": true,
+        "detail": "new tumor touches or neighbors original tumor."
+      },
+      {
+        "name": "changed_area_within_parameter_range",
+        "passed": true,
+        "detail": "no guard implemented; skipped."
+      }
+    ],
+    "warnings": []
+  }
+}

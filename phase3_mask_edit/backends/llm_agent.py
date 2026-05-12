@@ -284,11 +284,17 @@ def execute_llm_contour_agent(
         else tuple(intent.source_labels)
     )
     if not resolved_sources:
-        resolved_sources = tuple(_labels_from_operation(primitive_config.get("mask_operation", {}).get("source")))
+        operation = primitive_config.get("mask_operation", {})
+        resolved_sources = tuple(_default_source_labels(primitive_config, operation))
     target_label = intent.target_label or _string_or_none(
         primitive_config.get("mask_operation", {}).get("target")
     )
-    if not target_label and primitive_config.get("name") == "immune_infiltration_decrease":
+    if not target_label and primitive_config.get("name") == "tumor_burden_increase":
+        target_label = "Tumor"
+    if not target_label and primitive_config.get("name") in {
+        "immune_infiltration_decrease",
+        "tumor_burden_decrease",
+    }:
         target_label = _immune_decrease_prompt_target_label(primitive_config, schema)
     if not target_label:
         raise ValueError("LLM contour agent requires a target label.")
@@ -712,6 +718,17 @@ def _labels_from_operation(value: Any) -> list[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return list(value)
     return []
+
+
+def _default_source_labels(
+    primitive_config: Mapping[str, Any],
+    operation: Any,
+) -> list[str]:
+    if not isinstance(operation, Mapping):
+        operation = {}
+    if primitive_config.get("name") == "tumor_burden_increase":
+        return _labels_from_operation(operation.get("target_priority"))
+    return _labels_from_operation(operation.get("source"))
 
 
 def _string_or_none(value: Any) -> str | None:

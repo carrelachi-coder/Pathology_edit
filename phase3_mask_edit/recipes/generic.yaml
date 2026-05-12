@@ -86,6 +86,21 @@ primitives:
         moderate: [0.14, 0.24]
         significant: [0.24, 0.40]
         xlarge_deid: [0.40, 0.60]
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.50
+        spatial: 0.40
+        noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_min_selected_template_iou: 0.05
+      organic_template_neighborhood_radius_px: 64
+      organic_template_spillover_fraction: 0.20
+      organic_min_component_fraction: 0.01
+      organic_fill_holes_max_area_px: 0
+      tumor_growth_falloff_radius_px: 64
+      tumor_growth_stroma_neighbor_radius_px: 48
     probnet_bias:
       Neoplastic: up_slight
       Connective: down_if_source_stroma
@@ -143,6 +158,21 @@ primitives:
       min_remaining_tumor_fraction:
         default: 0.02
         xlarge_deid: 0.0
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.50
+        spatial: 0.40
+        noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_min_selected_template_iou: 0.05
+      organic_template_neighborhood_radius_px: 64
+      organic_template_spillover_fraction: 0.20
+      organic_min_component_fraction: 0.01
+      organic_fill_holes_max_area_px: 0
+      tumor_decrease_boundary_band_radius_px: 80
+      tumor_decrease_backfill_neighbor_radius_px: 48
     probnet_bias:
       default: none
       treatment_response_recipe:

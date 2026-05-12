@@ -1,0 +1,186 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "tumor_burden_increase",
+  "reference_profile": "BCSS",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "tumor_adjacent_editable_non_tumor",
+  "shape_hints": [
+    "invasive_tongues",
+    "lobulated_boundary",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_3"
+      ],
+      "adjacency_side": "tumor_adjacent_editable_non_tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "invasive_tongues",
+        "lobulated_boundary",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          320,
+          150
+        ],
+        [
+          340,
+          180
+        ],
+        [
+          355,
+          210
+        ],
+        [
+          360,
+          245
+        ],
+        [
+          350,
+          280
+        ],
+        [
+          330,
+          305
+        ],
+        [
+          310,
+          330
+        ],
+        [
+          290,
+          350
+        ],
+        [
+          270,
+          360
+        ],
+        [
+          250,
+          345
+        ],
+        [
+          235,
+          320
+        ],
+        [
+          230,
+          290
+        ],
+        [
+          240,
+          260
+        ],
+        [
+          255,
+          230
+        ],
+        [
+          270,
+          210
+        ],
+        [
+          290,
+          190
+        ],
+        [
+          310,
+          170
+        ],
+        [
+          325,
+          150
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Stroma",
+        "Normal epithelium",
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_7"
+      ],
+      "adjacency_side": "tumor_adjacent_editable_non_tumor",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "invasive_tongues",
+        "lobulated_boundary",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          340,
+          400
+        ],
+        [
+          350,
+          425
+        ],
+        [
+          360,
+          450
+        ],
+        [
+          370,
+          475
+        ],
+        [
+          360,
+          500
+        ],
+        [
+          340,
+          505
+        ],
+        [
+          320,
+          495
+        ],
+        [
+          310,
+          470
+        ],
+        [
+          315,
+          445
+        ],
+        [
+          325,
+          420
+        ],
+        [
+          335,
+          400
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}
