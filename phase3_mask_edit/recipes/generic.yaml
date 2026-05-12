@@ -468,6 +468,17 @@ primitives:
         significant: [0.24, 0.35]
         xlarge_deid: [0.35, 0.60]
       min_remaining_immune_fraction: 0.005
+      immune_decrease_tumor_preserve_radius_px: 48
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.45
+        spatial: 0.45
+        noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_template_neighborhood_radius_px: 48
+      organic_template_spillover_fraction: 0.15
     probnet_bias:
       Inflammatory: down
       Connective: up_slight_if_backfilled_to_stroma

@@ -1542,6 +1542,14 @@ class LLMContourProposalTests(unittest.TestCase):
                 "primitive": "immune_infiltration_decrease",
                 "reference_profile": "BCSS",
                 "target_label": "Stroma",
+                "coordinate_system": {
+                    "origin": "top_left",
+                    "point_format": "[x, y]",
+                    "x_axis": "horizontal_column_right",
+                    "y_axis": "vertical_row_down",
+                    "width": 40,
+                    "height": 40,
+                },
                 "regions": [
                     {
                         "region_id": "r1",
