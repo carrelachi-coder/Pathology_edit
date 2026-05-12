@@ -644,6 +644,71 @@ primitives:
 # ═══════════════════════════════════════════════════════════════════════════
 # COMPOSITE RECIPES
 # ═══════════════════════════════════════════════════════════════════════════
+  # 9. STROMA DECREASE / STROMAL REDUCTION
+  - name: stroma_decrease
+    version: v1
+    pathology_meaning: reduced fibrosis/desmoplasia or loosened tumor microenvironment
+    required_tissue_labels:
+      - Stroma
+    required_context:
+      - valid_backfill_tissue
+    optional_tissue_labels:
+      - Tumor
+      - Other tissue
+      - Normal epithelium
+    mask_operation:
+      type: stromal_region_reduction
+      source: Stroma
+      backfill_priority:
+        - Tumor
+        - Other tissue
+        - Normal epithelium
+    spatial_pattern:
+      reduce_priority:
+        - stroma_near_tumor_microenvironment
+        - stroma_touching_nonstromal_backfill
+        - patchy_desmoplasia_relaxation
+      backfill_policy: nearest_tumor_other_or_normal_epithelium
+      forbid_targets:
+        - Background
+    parameter_ranges:
+      stroma_area_decrease_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.35]
+        xlarge_deid: [0.35, 0.55]
+      min_remaining_stroma_fraction: 0.02
+      stroma_decrease_tumor_falloff_radius_px: 96
+      stroma_decrease_backfill_neighbor_radius_px: 48
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.45
+        spatial: 0.45
+        noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_template_neighborhood_radius_px: 48
+      organic_template_spillover_fraction: 0.15
+      organic_min_component_fraction: 0.01
+      organic_fill_holes_max_area_px: 0
+    probnet_bias:
+      Connective: down
+      Neoplastic: up_if_backfilled_to_tumor
+      Epithelial: up_if_backfilled_to_normal_epithelium
+    validation_rules:
+      - stroma_area_must_decrease
+      - backfill_must_be_legal_tissue
+      - no_background_holes
+    expected_failure_cases:
+      - no_stroma
+      - stroma_area_too_small
+      - no_valid_backfill_tissue
+      - reduction_would_create_background_holes
+    overlap_guard:
+      use_tumor_burden_increase_for_tumor_growth_consuming_stroma
+      use_immune_infiltration_decrease_for_primary_immune_decrease
+
 composite_recipes:
 
   - name: treatment_response

@@ -24,6 +24,7 @@ from phase3_mask_edit.backends.organic_projection import (
     ORGANIC_PROJECTION_BACKEND,
     apply_organic_immune_infiltration_decrease,
     apply_organic_projected_label_write,
+    apply_organic_stroma_decrease,
     apply_organic_tumor_burden_decrease,
 )
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
@@ -1859,6 +1860,124 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.ops_log["projection_mode"], "organic_v2")
         self.assertTrue(np.all(old_mask[result.change_region] == 4))
         self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
+
+    def test_stroma_decrease_selects_stroma_and_backfills_nearest_tissue(self):
+        old_mask = np.zeros((72, 72), dtype=np.int64)
+        old_mask[4:68, 4:68] = 7
+        old_mask[16:56, 16:56] = 2
+        old_mask[28:44, 28:44] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[12:60, 12:60] = True
+
+        result = apply_organic_stroma_decrease(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "stroma_decrease",
+                "mask_operation": {
+                    "source": "Stroma",
+                    "backfill_priority": ["Tumor", "Other tissue", "Normal epithelium"],
+                },
+                "parameter_ranges": {
+                    "stroma_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "min_remaining_stroma_fraction": 0.02,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 64,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.45,
+                        "spatial": 0.55,
+                        "noise": 0.0,
+                    },
+                },
+            },
+            seed=2,
+            target_pixels=90,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "stroma_decrease_microenvironment_loosen",
+        )
+        self.assertEqual(result.selected_pixels, 90)
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
+        self.assertTrue(np.all(np.isin(result.target_mask[result.change_region], (1, 7))))
+        self.assertEqual(
+            int(np.count_nonzero(result.target_mask == 2)),
+            int(np.count_nonzero(old_mask == 2)) - 90,
+        )
+        self.assertEqual(
+            result.ops_log["decrease_semantics"],
+            "select_stroma_pixels_then_backfill_from_nearest_legal_tissue",
+        )
+
+    def test_contour_executor_routes_stroma_decrease_to_backfill_backend(self):
+        old_mask = np.zeros((40, 40), dtype=np.int64)
+        old_mask[2:38, 2:38] = 7
+        old_mask[8:32, 8:32] = 2
+        old_mask[16:24, 16:24] = 1
+        proposal = validate_contour_proposal(
+            {
+                "schema_version": CONTOUR_PROPOSAL_SCHEMA_VERSION,
+                "backend": CONTOUR_PROPOSAL_BACKEND,
+                "primitive": "stroma_decrease",
+                "reference_profile": "BCSS",
+                "target_label": "Tumor",
+                "coordinate_system": {
+                    "origin": "top_left",
+                    "point_format": "[x, y]",
+                    "x_axis": "horizontal_column_right",
+                    "y_axis": "vertical_row_down",
+                    "width": 40,
+                    "height": 40,
+                },
+                "regions": [
+                    {
+                        "region_id": "r1",
+                        "type": "polygon",
+                        "source_labels": ["Stroma"],
+                        "points": [[6, 6], [34, 6], [34, 34], [6, 34]],
+                        "confidence": 0.8,
+                    }
+                ],
+            },
+            schema=self.schema,
+            mask_shape=old_mask.shape,
+            target_label="Tumor",
+            allowed_source_labels=("Stroma",),
+        )
+
+        result = execute_contour_proposal_write(
+            old_mask,
+            proposal,
+            schema=self.schema,
+            primitive_config={
+                "name": "stroma_decrease",
+                "mask_operation": {
+                    "source": "Stroma",
+                    "backfill_priority": ["Tumor", "Other tissue"],
+                },
+                "parameter_ranges": {
+                    "stroma_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "min_remaining_stroma_fraction": 0.02,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 128,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+            },
+            projection_mode="organic_v2",
+            organic_seed=4,
+        )
+
+        self.assertEqual(
+            result.ops_log["method"],
+            "organic_score_projection_and_deterministic_backfill",
+        )
+        self.assertEqual(result.ops_log["projection_mode"], "organic_v2")
+        self.assertTrue(np.all(old_mask[result.change_region] == 2))
+        self.assertTrue(np.all(np.isin(result.target_mask[result.change_region], (1, 7))))
 
     def test_stromal_desmoplasia_target_pixels_are_stroma_relative(self):
         old_mask = np.zeros((80, 80), dtype=np.int64)
