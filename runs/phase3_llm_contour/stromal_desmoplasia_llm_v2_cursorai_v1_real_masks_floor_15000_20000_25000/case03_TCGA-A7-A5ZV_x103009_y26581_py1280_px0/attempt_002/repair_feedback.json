@@ -1,0 +1,28 @@
+{
+  "status": "validation_failed",
+  "attempt": 2,
+  "failed_checks": [
+    {
+      "name": "change_area_within_range",
+      "detail": "changed_stroma_fraction=0.0167 outside [0.47, 0.55] or changed_pixels=881 < 25000"
+    },
+    {
+      "name": "consumed_immune_must_touch_stroma",
+      "detail": "52 consumed immune pixels do not touch original stroma."
+    }
+  ],
+  "projection": {
+    "candidate_pixels": 8709,
+    "projected_pixels": 881,
+    "selected_pixels": 881,
+    "projection_retained_fraction": 0.10115971983006086,
+    "projection_mode": "v1_hard_projection",
+    "projection_backend": "v1_hard_projection",
+    "legal_domain_pixels": null,
+    "target_pixels": null,
+    "area_shortfall": null,
+    "template_overlap_with_legal_domain": null,
+    "top_failed_reason": "change_area_within_range"
+  },
+  "warnings": []
+}

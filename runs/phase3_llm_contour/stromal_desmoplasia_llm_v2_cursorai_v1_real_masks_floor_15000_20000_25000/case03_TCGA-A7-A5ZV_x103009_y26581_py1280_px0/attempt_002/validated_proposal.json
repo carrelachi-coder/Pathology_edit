@@ -1,0 +1,157 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue",
+        "Normal epithelium"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          50,
+          130
+        ],
+        [
+          75,
+          150
+        ],
+        [
+          110,
+          165
+        ],
+        [
+          140,
+          190
+        ],
+        [
+          170,
+          220
+        ],
+        [
+          160,
+          250
+        ],
+        [
+          130,
+          265
+        ],
+        [
+          95,
+          245
+        ],
+        [
+          65,
+          220
+        ],
+        [
+          55,
+          190
+        ],
+        [
+          48,
+          160
+        ]
+      ],
+      "confidence": 0.8
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_4",
+        "source_3"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          435,
+          504
+        ],
+        [
+          440,
+          503
+        ],
+        [
+          448,
+          502
+        ],
+        [
+          454,
+          504
+        ],
+        [
+          460,
+          506
+        ],
+        [
+          466,
+          508
+        ],
+        [
+          470,
+          510
+        ],
+        [
+          474,
+          511
+        ],
+        [
+          472,
+          507
+        ],
+        [
+          464,
+          505
+        ],
+        [
+          450,
+          505
+        ],
+        [
+          440,
+          506
+        ],
+        [
+          436,
+          507
+        ]
+      ],
+      "confidence": 0.75
+    }
+  ]
+}

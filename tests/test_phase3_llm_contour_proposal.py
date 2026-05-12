@@ -1477,10 +1477,10 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.selected_pixels, result.ops_log["target_pixels"])
 
     def test_stromal_desmoplasia_target_pixels_respect_absolute_floor(self):
-        old_mask = np.zeros((128, 128), dtype=np.int64)
-        old_mask[4:124, 4:124] = 7
-        old_mask[48:80, 48:80] = 1
-        old_mask[40:88, 40:88][old_mask[40:88, 40:88] != 1] = 2
+        old_mask = np.zeros((144, 144), dtype=np.int64)
+        old_mask[4:140, 4:140] = 7
+        old_mask[56:88, 56:88] = 1
+        old_mask[48:96, 48:96][old_mask[48:96, 48:96] != 1] = 2
         raw_candidate = np.ones_like(old_mask, dtype=bool)
 
         result = apply_organic_projected_label_write(
@@ -1493,7 +1493,7 @@ class LLMContourProposalTests(unittest.TestCase):
                 "name": "stromal_desmoplasia",
                 "parameter_ranges": {
                     "stroma_area_delta_fraction": {"mild": [0.08, 0.14]},
-                    "min_stroma_area_delta_pixels": {"mild": 10000},
+                    "min_stroma_area_delta_pixels": {"mild": 15000},
                     "max_distance_from_tumor_px": 80,
                     "organic_min_template_legal_overlap_fraction": 0.0,
                     "organic_min_component_fraction": 0.0,
@@ -1511,14 +1511,14 @@ class LLMContourProposalTests(unittest.TestCase):
             target_pixels=None,
         )
 
-        self.assertEqual(result.ops_log["target_pixels"], 10000)
-        self.assertEqual(result.selected_pixels, 10000)
+        self.assertEqual(result.ops_log["target_pixels"], 15000)
+        self.assertEqual(result.selected_pixels, 15000)
 
     def test_stromal_desmoplasia_target_pixels_use_strength_floor(self):
-        old_mask = np.zeros((160, 160), dtype=np.int64)
-        old_mask[4:156, 4:156] = 7
-        old_mask[56:104, 56:104] = 1
-        old_mask[48:112, 48:112][old_mask[48:112, 48:112] != 1] = 2
+        old_mask = np.zeros((168, 168), dtype=np.int64)
+        old_mask[4:164, 4:164] = 7
+        old_mask[60:108, 60:108] = 1
+        old_mask[52:116, 52:116][old_mask[52:116, 52:116] != 1] = 2
         raw_candidate = np.ones_like(old_mask, dtype=bool)
 
         result = apply_organic_projected_label_write(
@@ -1535,8 +1535,8 @@ class LLMContourProposalTests(unittest.TestCase):
                         "moderate": [0.14, 0.24],
                     },
                     "min_stroma_area_delta_pixels": {
-                        "mild": 10000,
-                        "moderate": 15000,
+                        "mild": 15000,
+                        "moderate": 20000,
                     },
                     "max_distance_from_tumor_px": 128,
                     "organic_min_template_legal_overlap_fraction": 0.0,
@@ -1557,8 +1557,8 @@ class LLMContourProposalTests(unittest.TestCase):
         )
 
         self.assertEqual(result.ops_log["strength"], "moderate")
-        self.assertEqual(result.ops_log["target_pixels"], 15000)
-        self.assertEqual(result.selected_pixels, 15000)
+        self.assertEqual(result.ops_log["target_pixels"], 20000)
+        self.assertEqual(result.selected_pixels, 20000)
 
         validation = validate_edit_result(
             old_mask,
@@ -1574,8 +1574,8 @@ class LLMContourProposalTests(unittest.TestCase):
                         "moderate": [0.14, 0.24],
                     },
                     "min_stroma_area_delta_pixels": {
-                        "mild": 10000,
-                        "moderate": 15000,
+                        "mild": 15000,
+                        "moderate": 20000,
                     },
                 },
                 "validation_rules": [],

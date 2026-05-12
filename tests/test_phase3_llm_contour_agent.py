@@ -319,6 +319,53 @@ class LLMContourAgentTests(unittest.TestCase):
             llm_agent._post_chat_completion = old_post
             os.environ.pop("TEST_CONTOUR_API_KEY", None)
 
+    def test_openai_compatible_text_provider_accepts_fenced_json_content(self):
+        provider = OpenAICompatibleTextContourProvider(
+            model="gpt-4o",
+            api_base_url="https://relay.example/v1",
+            api_key_env="TEST_CONTOUR_API_KEY",
+        )
+        proposal = json_dumps(_proposal(points=[[2, 2], [17, 2], [17, 25], [2, 25]]))
+
+        def fake_post(payload, *, api_base_url, api_key, timeout_sec):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": f"```json\n{proposal}\n```"
+                        }
+                    }
+                ]
+            }
+
+        import phase3_mask_edit.backends.llm_agent as llm_agent
+        old_post = llm_agent._post_chat_completion
+        import os
+        os.environ["TEST_CONTOUR_API_KEY"] = "secret"
+        try:
+            llm_agent._post_chat_completion = fake_post
+            context = build_mask_context(
+                self.mask,
+                schema=self.schema,
+                intent=self.intent,
+                primitive_config=self.primitive_config,
+                allowed_source_labels=("Stroma",),
+                target_label="Immune infiltrate",
+            )
+            request = llm_agent.ContourProposalRequest(
+                prompt=build_contour_prompt(context=context),
+                context=context,
+                attempt_index=1,
+            )
+
+            payload = provider.propose(request)
+
+            self.assertEqual(payload["backend"], "llm_contour_proposal")
+            self.assertEqual(payload["regions"][0]["region_id"], "r1")
+        finally:
+            llm_agent._post_chat_completion = old_post
+            os.environ.pop("TEST_CONTOUR_API_KEY", None)
+
     def test_openai_compatible_multimodal_provider_sends_one_grid_image(self):
         provider = OpenAICompatibleMultimodalContourProvider(
             model="gpt-4o",

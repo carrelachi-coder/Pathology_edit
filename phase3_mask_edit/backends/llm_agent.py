@@ -122,13 +122,7 @@ class OpenAICompatibleTextContourProvider:
             timeout_sec=self.timeout_sec,
         )
         content = _response_content(response_payload)
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise ContourProviderError("API response content was not valid JSON.") from exc
-        if not isinstance(parsed, Mapping):
-            raise ContourProviderError("API response content root must be a JSON object.")
-        return parsed
+        return _parse_json_object_content(content)
 
 
 @dataclass(frozen=True)
@@ -196,13 +190,7 @@ class OpenAICompatibleMultimodalContourProvider:
             timeout_sec=self.timeout_sec,
         )
         content = _response_content(response_payload)
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise ContourProviderError("API response content was not valid JSON.") from exc
-        if not isinstance(parsed, Mapping):
-            raise ContourProviderError("API response content root must be a JSON object.")
-        return parsed
+        return _parse_json_object_content(content)
 
 
 @dataclass(frozen=True)
@@ -801,6 +789,47 @@ def _response_content(response_payload: Mapping[str, Any]) -> str:
     if not isinstance(content, str):
         raise ContourProviderError("API response message content must be a string.")
     return content
+
+
+def _parse_json_object_content(content: str) -> Mapping[str, Any]:
+    """Parse provider content, tolerating common JSON markdown fences."""
+
+    candidates = [content, _strip_markdown_json_fence(content)]
+    extracted = _extract_json_object(content)
+    if extracted is not None:
+        candidates.append(extracted)
+
+    last_error: json.JSONDecodeError | None = None
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            continue
+        if not isinstance(parsed, Mapping):
+            raise ContourProviderError(
+                "API response content root must be a JSON object."
+            )
+        return parsed
+    raise ContourProviderError("API response content was not valid JSON.") from last_error
+
+
+def _strip_markdown_json_fence(content: str) -> str:
+    stripped = content.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = stripped.splitlines()
+    if len(lines) >= 2 and lines[0].strip().startswith("```") and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return stripped
+
+
+def _extract_json_object(content: str) -> str | None:
+    start = content.find("{")
+    end = content.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    return content[start : end + 1].strip()
 
 
 def _image_path_to_data_url(path: str | Path) -> str:

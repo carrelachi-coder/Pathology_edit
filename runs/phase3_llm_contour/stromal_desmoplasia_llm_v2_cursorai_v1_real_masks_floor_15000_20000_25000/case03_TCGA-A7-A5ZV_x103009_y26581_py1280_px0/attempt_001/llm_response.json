@@ -1,0 +1,211 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          60,
+          260
+        ],
+        [
+          92,
+          258
+        ],
+        [
+          130,
+          270
+        ],
+        [
+          160,
+          285
+        ],
+        [
+          192,
+          308
+        ],
+        [
+          220,
+          330
+        ],
+        [
+          250,
+          355
+        ],
+        [
+          280,
+          380
+        ],
+        [
+          310,
+          400
+        ],
+        [
+          330,
+          420
+        ],
+        [
+          350,
+          450
+        ],
+        [
+          330,
+          470
+        ],
+        [
+          300,
+          490
+        ],
+        [
+          260,
+          480
+        ],
+        [
+          220,
+          460
+        ],
+        [
+          180,
+          440
+        ],
+        [
+          140,
+          410
+        ],
+        [
+          100,
+          380
+        ],
+        [
+          70,
+          350
+        ],
+        [
+          55,
+          320
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_4",
+        "source_3"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          435,
+          504
+        ],
+        [
+          438,
+          505
+        ],
+        [
+          442,
+          506
+        ],
+        [
+          446,
+          506
+        ],
+        [
+          450,
+          507
+        ],
+        [
+          454,
+          507
+        ],
+        [
+          458,
+          506
+        ],
+        [
+          462,
+          505
+        ],
+        [
+          466,
+          504
+        ],
+        [
+          470,
+          503
+        ],
+        [
+          474,
+          503
+        ],
+        [
+          471,
+          505
+        ],
+        [
+          467,
+          506
+        ],
+        [
+          462,
+          507
+        ],
+        [
+          458,
+          508
+        ],
+        [
+          453,
+          507
+        ],
+        [
+          448,
+          506
+        ],
+        [
+          443,
+          505
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

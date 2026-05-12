@@ -1,0 +1,174 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue",
+        "Normal epithelium",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "generic_label_safe",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          50,
+          200
+        ],
+        [
+          75,
+          210
+        ],
+        [
+          110,
+          220
+        ],
+        [
+          150,
+          215
+        ],
+        [
+          190,
+          210
+        ],
+        [
+          230,
+          200
+        ],
+        [
+          260,
+          190
+        ],
+        [
+          245,
+          160
+        ],
+        [
+          215,
+          150
+        ],
+        [
+          180,
+          155
+        ],
+        [
+          145,
+          165
+        ],
+        [
+          110,
+          175
+        ],
+        [
+          75,
+          180
+        ],
+        [
+          55,
+          190
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue",
+        "Normal epithelium",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "generic_label_safe",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          490,
+          230
+        ],
+        [
+          495,
+          240
+        ],
+        [
+          500,
+          250
+        ],
+        [
+          505,
+          260
+        ],
+        [
+          508,
+          270
+        ],
+        [
+          509,
+          280
+        ],
+        [
+          508,
+          290
+        ],
+        [
+          505,
+          300
+        ],
+        [
+          502,
+          305
+        ],
+        [
+          498,
+          302
+        ],
+        [
+          496,
+          295
+        ],
+        [
+          492,
+          285
+        ],
+        [
+          490,
+          275
+        ],
+        [
+          488,
+          265
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

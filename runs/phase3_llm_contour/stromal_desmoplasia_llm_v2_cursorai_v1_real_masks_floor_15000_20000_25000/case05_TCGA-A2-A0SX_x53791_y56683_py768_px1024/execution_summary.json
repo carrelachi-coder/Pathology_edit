@@ -1,0 +1,1800 @@
+{
+  "status": "validated",
+  "backend": "llm_contour_proposal",
+  "projection_mode": "organic_v2",
+  "error": null,
+  "context": {
+    "mask_shape": [
+      512,
+      512
+    ],
+    "reference_profile": "BCSS",
+    "primitive": "stromal_desmoplasia",
+    "strength": "significant",
+    "target_label": "Stroma",
+    "allowed_source_labels": [
+      "Other tissue",
+      "Normal epithelium",
+      "Immune infiltrate"
+    ],
+    "label_areas": {
+      "Blood vessel": 0,
+      "Immune infiltrate": 0,
+      "Necrosis": 0,
+      "Normal epithelium": 0,
+      "Other tissue": 122689,
+      "Stroma": 44015,
+      "Tumor": 95440
+    },
+    "label_palette_rgb": {
+      "Background": [
+        30,
+        30,
+        30
+      ],
+      "Tumor": [
+        180,
+        60,
+        60
+      ],
+      "Stroma": [
+        60,
+        150,
+        60
+      ],
+      "Necrosis": [
+        60,
+        60,
+        180
+      ],
+      "Immune infiltrate": [
+        140,
+        60,
+        180
+      ],
+      "Normal epithelium": [
+        180,
+        180,
+        80
+      ],
+      "Blood vessel": [
+        60,
+        140,
+        100
+      ],
+      "Other tissue": [
+        170,
+        170,
+        170
+      ]
+    },
+    "visual_label_legend": {
+      "Background": "dark gray / nearly black",
+      "Tumor": "red",
+      "Stroma": "green",
+      "Necrosis": "blue",
+      "Immune infiltrate": "purple",
+      "Normal epithelium": "yellow",
+      "Blood vessel": "teal",
+      "Other tissue": "gray"
+    },
+    "proposal_policy": {
+      "backend": "llm_contour_proposal",
+      "schema_version": "0.1",
+      "max_regions": 8,
+      "max_points_per_region": 64,
+      "template_role": "coarse_template",
+      "known_optional_v2_fields": [
+        "source_component_ids",
+        "adjacency_side",
+        "placement_relation",
+        "template_role",
+        "shape_hints"
+      ],
+      "executor_contract": "LLM polygons are approximate organic intent templates. Deterministic code projects them to legal source labels, controls final area, and writes final pixels."
+    },
+    "target_area_hint": {
+      "area_semantics": "projection_after_legal_source_label_filtering",
+      "reference_area_label": "Stroma",
+      "reference_pixels": 44015,
+      "strength": "significant",
+      "target_fraction_min": 0.24,
+      "target_fraction_max": 0.35,
+      "target_changed_pixels_min": 25000,
+      "target_changed_pixels_max": 25000,
+      "raw_polygon_margin_guidance": "Raw polygons are coarse organic templates. They may be broader than the projected target range because Phase 3 will select final legal source-label pixels deterministically."
+    },
+    "llm_task_requirements": {
+      "pathology_goal": "peritumoral desmoplastic stromal reaction",
+      "mask_operation": {
+        "type": "peritumoral_stroma_expansion_or_reinforcement",
+        "primary_sources": [
+          "Other tissue",
+          "Normal epithelium"
+        ],
+        "secondary_sources": [
+          "Immune infiltrate"
+        ],
+        "target": "Stroma",
+        "forbid_sources": [
+          "Tumor"
+        ]
+      },
+      "area_requirement": "After Phase 3 deterministically projects the coarse template to legal source-label pixels, the changed area should be about 25000 to 25000 pixels (0.24-0.35 of Stroma). The raw polygon is only a coarse template; deterministic projection controls final area.",
+      "recipe_constraints": {
+        "spatial_pattern": {
+          "region": "outside_tumor_adjacent_to_existing_stroma",
+          "expansion_order": [
+            "expand_existing_stroma_boundary",
+            "consume_other_or_normal_epithelium",
+            "consume_small_stroma_adjacent_immune_components"
+          ],
+          "immune_to_stroma_constraints": {
+            "max_fraction_of_total_desmoplasia_delta": 0.3,
+            "require_direct_stroma_adjacency": true
+          },
+          "avoid_entering_tumor": true
+        },
+        "parameter_ranges": {
+          "stroma_area_delta_fraction": {
+            "mild": [
+              0.08,
+              0.14
+            ],
+            "moderate": [
+              0.14,
+              0.24
+            ],
+            "significant": [
+              0.24,
+              0.35
+            ],
+            "xlarge_deid": [
+              0.35,
+              0.55
+            ]
+          },
+          "min_stroma_area_delta_pixels": {
+            "mild": 15000,
+            "moderate": 20000,
+            "significant": 25000
+          },
+          "max_distance_from_tumor_px": 64
+        },
+        "validation_rules": [
+          "stroma_area_or_generation_region_must_increase",
+          "tumor_area_must_remain_stable",
+          "change_region_must_be_outside_tumor",
+          "immune_to_stroma_fraction_within_limit",
+          "consumed_immune_must_touch_stroma"
+        ]
+      }
+    },
+    "contour_style_hint": {
+      "recommended_region_count_range": [
+        1,
+        3
+      ],
+      "points_per_region_range": [
+        16,
+        32
+      ],
+      "boundary_style": "irregular organic boundary",
+      "region_variation_requirement": "Do not duplicate shapes across regions."
+    },
+    "source_spatial_hints": {
+      "Other tissue": {
+        "total_pixels": 122689,
+        "components": [
+          {
+            "component_id": "c1",
+            "area_px": 121246,
+            "bbox": [
+              0,
+              52,
+              511,
+              511
+            ],
+            "centroid": [
+              191.4,
+              336.3
+            ]
+          },
+          {
+            "component_id": "c2",
+            "area_px": 1443,
+            "bbox": [
+              486,
+              212,
+              511,
+              306
+            ],
+            "centroid": [
+              501.8,
+              256.7
+            ]
+          }
+        ],
+        "high_purity_grid_tiles": [
+          {
+            "bbox": [
+              128,
+              192,
+              191,
+              255
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              0,
+              256,
+              63,
+              319
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              64,
+              256,
+              127,
+              319
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              128,
+              256,
+              191,
+              319
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              192,
+              256,
+              255,
+              319
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              0,
+              320,
+              63,
+              383
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          }
+        ],
+        "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+      },
+      "Normal epithelium": {
+        "total_pixels": 0,
+        "components": [],
+        "high_purity_grid_tiles": [],
+        "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+      },
+      "Immune infiltrate": {
+        "total_pixels": 0,
+        "components": [],
+        "high_purity_grid_tiles": [],
+        "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+      }
+    },
+    "source_contour_context": {
+      "Other tissue": {
+        "coordinate_system": "original_mask_xy",
+        "contour_point_format": "[x, y]",
+        "components": [
+          {
+            "component_id": "source_1",
+            "area_px": 121246,
+            "bbox": [
+              0,
+              52,
+              511,
+              511
+            ],
+            "centroid": [
+              191.4,
+              336.3
+            ],
+            "contour_simplified": [
+              [
+                0,
+                52
+              ],
+              [
+                24,
+                85
+              ],
+              [
+                28,
+                141
+              ],
+              [
+                28,
+                199
+              ],
+              [
+                55,
+                210
+              ],
+              [
+                82,
+                179
+              ],
+              [
+                126,
+                164
+              ],
+              [
+                180,
+                164
+              ],
+              [
+                222,
+                180
+              ],
+              [
+                252,
+                161
+              ],
+              [
+                282,
+                132
+              ],
+              [
+                325,
+                116
+              ],
+              [
+                366,
+                98
+              ],
+              [
+                414,
+                110
+              ],
+              [
+                440,
+                142
+              ],
+              [
+                426,
+                186
+              ],
+              [
+                377,
+                196
+              ],
+              [
+                332,
+                192
+              ],
+              [
+                287,
+                178
+              ],
+              [
+                252,
+                190
+              ],
+              [
+                262,
+                234
+              ],
+              [
+                286,
+                269
+              ],
+              [
+                279,
+                322
+              ],
+              [
+                248,
+                348
+              ],
+              [
+                218,
+                378
+              ],
+              [
+                229,
+                408
+              ],
+              [
+                270,
+                426
+              ],
+              [
+                323,
+                432
+              ],
+              [
+                374,
+                438
+              ],
+              [
+                425,
+                430
+              ],
+              [
+                466,
+                445
+              ],
+              [
+                511,
+                458
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 1630
+              },
+              {
+                "label": "Tumor",
+                "fine_id": 1,
+                "boundary_neighbor_pixels": 188
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    1
+                  ],
+                  "points": [
+                    [
+                      5,
+                      57
+                    ],
+                    [
+                      10,
+                      62
+                    ]
+                  ],
+                  "bbox": [
+                    5,
+                    57,
+                    10,
+                    62
+                  ],
+                  "point_count": 2,
+                  "points_shown": 2
+                },
+                {
+                  "point_index_range": [
+                    4,
+                    49
+                  ],
+                  "points": [
+                    [
+                      21,
+                      79
+                    ],
+                    [
+                      397,
+                      102
+                    ],
+                    [
+                      333,
+                      114
+                    ],
+                    [
+                      291,
+                      126
+                    ],
+                    [
+                      133,
+                      162
+                    ],
+                    [
+                      197,
+                      169
+                    ],
+                    [
+                      277,
+                      174
+                    ],
+                    [
+                      243,
+                      180
+                    ]
+                  ],
+                  "bbox": [
+                    21,
+                    79,
+                    436,
+                    180
+                  ],
+                  "point_count": 46,
+                  "points_shown": 8
+                }
+              ],
+              "Tumor": [
+                {
+                  "point_index_range": [
+                    2,
+                    3
+                  ],
+                  "points": [
+                    [
+                      15,
+                      67
+                    ],
+                    [
+                      18,
+                      73
+                    ]
+                  ],
+                  "bbox": [
+                    15,
+                    67,
+                    18,
+                    73
+                  ],
+                  "point_count": 2,
+                  "points_shown": 2
+                },
+                {
+                  "point_index_range": [
+                    50,
+                    50
+                  ],
+                  "points": [
+                    [
+                      303,
+                      180
+                    ]
+                  ],
+                  "bbox": [
+                    303,
+                    180,
+                    303,
+                    180
+                  ],
+                  "point_count": 1,
+                  "points_shown": 1
+                }
+              ]
+            }
+          },
+          {
+            "component_id": "source_2",
+            "area_px": 1443,
+            "bbox": [
+              486,
+              212,
+              511,
+              306
+            ],
+            "centroid": [
+              501.8,
+              256.7
+            ],
+            "contour_simplified": [
+              [
+                511,
+                306
+              ],
+              [
+                510,
+                304
+              ],
+              [
+                508,
+                301
+              ],
+              [
+                506,
+                298
+              ],
+              [
+                504,
+                296
+              ],
+              [
+                502,
+                292
+              ],
+              [
+                500,
+                289
+              ],
+              [
+                498,
+                287
+              ],
+              [
+                498,
+                282
+              ],
+              [
+                496,
+                279
+              ],
+              [
+                494,
+                276
+              ],
+              [
+                494,
+                272
+              ],
+              [
+                492,
+                269
+              ],
+              [
+                490,
+                266
+              ],
+              [
+                490,
+                263
+              ],
+              [
+                488,
+                259
+              ],
+              [
+                488,
+                254
+              ],
+              [
+                487,
+                250
+              ],
+              [
+                486,
+                247
+              ],
+              [
+                486,
+                244
+              ],
+              [
+                488,
+                240
+              ],
+              [
+                489,
+                238
+              ],
+              [
+                490,
+                234
+              ],
+              [
+                492,
+                230
+              ],
+              [
+                494,
+                228
+              ],
+              [
+                496,
+                226
+              ],
+              [
+                500,
+                224
+              ],
+              [
+                504,
+                223
+              ],
+              [
+                506,
+                222
+              ],
+              [
+                509,
+                220
+              ],
+              [
+                510,
+                216
+              ],
+              [
+                511,
+                212
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 149
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    108
+                  ],
+                  "points": [
+                    [
+                      509,
+                      220
+                    ],
+                    [
+                      499,
+                      226
+                    ],
+                    [
+                      490,
+                      236
+                    ],
+                    [
+                      487,
+                      249
+                    ],
+                    [
+                      491,
+                      264
+                    ],
+                    [
+                      496,
+                      278
+                    ],
+                    [
+                      502,
+                      291
+                    ],
+                    [
+                      509,
+                      302
+                    ]
+                  ],
+                  "bbox": [
+                    486,
+                    220,
+                    509,
+                    302
+                  ],
+                  "point_count": 109,
+                  "points_shown": 8
+                }
+              ]
+            }
+          }
+        ],
+        "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+      },
+      "Normal epithelium": {
+        "coordinate_system": "original_mask_xy",
+        "contour_point_format": "[x, y]",
+        "components": [],
+        "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+      },
+      "Immune infiltrate": {
+        "coordinate_system": "original_mask_xy",
+        "contour_point_format": "[x, y]",
+        "components": [],
+        "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+      }
+    },
+    "primitive_policy": {
+      "name": "stromal_desmoplasia",
+      "pathology_meaning": "peritumoral desmoplastic stromal reaction",
+      "mask_operation": {
+        "type": "peritumoral_stroma_expansion_or_reinforcement",
+        "primary_sources": [
+          "Other tissue",
+          "Normal epithelium"
+        ],
+        "secondary_sources": [
+          "Immune infiltrate"
+        ],
+        "target": "Stroma",
+        "forbid_sources": [
+          "Tumor"
+        ]
+      },
+      "spatial_policy": {},
+      "parameter_ranges": {
+        "stroma_area_delta_fraction": {
+          "mild": [
+            0.08,
+            0.14
+          ],
+          "moderate": [
+            0.14,
+            0.24
+          ],
+          "significant": [
+            0.24,
+            0.35
+          ],
+          "xlarge_deid": [
+            0.35,
+            0.55
+          ]
+        },
+        "min_stroma_area_delta_pixels": {
+          "mild": 15000,
+          "moderate": 20000,
+          "significant": 25000
+        },
+        "max_distance_from_tumor_px": 64
+      },
+      "validation_rules": [
+        "stroma_area_or_generation_region_must_increase",
+        "tumor_area_must_remain_stable",
+        "change_region_must_be_outside_tumor",
+        "immune_to_stroma_fraction_within_limit",
+        "consumed_immune_must_touch_stroma"
+      ]
+    },
+    "preview": {
+      "coordinate_system": "original_mask_xy",
+      "origin": "top_left",
+      "point_format": "[x, y]",
+      "x_axis": "horizontal_column_right",
+      "y_axis": "vertical_row_down",
+      "width": 512,
+      "height": 512,
+      "grid_spacing_px": 64
+    }
+  },
+  "artifact_paths": {
+    "source_mask": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\source_mask.png",
+    "source_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\source_mask_rgb.png",
+    "source_mask_llm_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\source_mask_llm_rgb.png",
+    "source_mask_llm_rgb_grid": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\source_mask_llm_rgb_grid.png",
+    "mask_context": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\mask_context.json",
+    "final_target_mask": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\final_target_mask.png",
+    "final_target_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\final_target_mask_rgb.png",
+    "final_change_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\final_change_region.png"
+  },
+  "attempts": [
+    {
+      "attempt_index": 1,
+      "status": "validation_failed",
+      "error": null,
+      "artifact_paths": {
+        "prompt": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\prompt.txt",
+        "llm_request": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\llm_request.json",
+        "llm_response": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\llm_response.json",
+        "llm_response_raw": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\llm_response_raw.txt",
+        "validated_proposal": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\validated_proposal.json",
+        "rasterized_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\rasterized_region.png",
+        "projected_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\projected_region.png",
+        "change_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\change_region.png",
+        "target_mask": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\target_mask.png",
+        "target_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\target_mask_rgb.png",
+        "visual_qa_source_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\source_mask_rgb.png",
+        "visual_qa_source_mask_rgb_grid": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\source_mask_rgb_grid.png",
+        "visual_qa_raw_template_overlay": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\raw_template_overlay.png",
+        "visual_qa_legal_domain": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\legal_domain.png",
+        "visual_qa_template_score_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\template_score_heatmap.png",
+        "visual_qa_spatial_score_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\spatial_score_heatmap.png",
+        "visual_qa_noise_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\noise_heatmap.png",
+        "visual_qa_final_score_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\final_score_heatmap.png",
+        "visual_qa_selected_change_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\selected_change_region.png",
+        "visual_qa_target_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\target_mask_rgb.png",
+        "visual_qa_organic_projection_panel": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\organic_projection_panel.png",
+        "visual_qa_v1_v2_side_by_side": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\v1_v2_side_by_side.png",
+        "visual_qa_visual_qa_manifest": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\visual_qa\\visual_qa_manifest.json",
+        "validation": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\validation.json",
+        "repair_feedback": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\repair_feedback.json",
+        "attempt_summary": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_001\\attempt_summary.json"
+      },
+      "proposal": {
+        "primitive": "stromal_desmoplasia",
+        "reference_profile": "BCSS",
+        "target_label": "Stroma",
+        "regions": [
+          {
+            "region_id": "r1",
+            "source_labels": [
+              "Other tissue",
+              "Normal epithelium",
+              "Immune infiltrate"
+            ],
+            "points": [
+              [
+                60.0,
+                200.0
+              ],
+              [
+                95.0,
+                210.0
+              ],
+              [
+                130.0,
+                225.0
+              ],
+              [
+                165.0,
+                245.0
+              ],
+              [
+                180.0,
+                270.0
+              ],
+              [
+                170.0,
+                300.0
+              ],
+              [
+                145.0,
+                320.0
+              ],
+              [
+                110.0,
+                310.0
+              ],
+              [
+                80.0,
+                285.0
+              ],
+              [
+                65.0,
+                260.0
+              ],
+              [
+                55.0,
+                230.0
+              ]
+            ],
+            "confidence": 0.75
+          },
+          {
+            "region_id": "r2",
+            "source_labels": [
+              "Other tissue",
+              "Normal epithelium",
+              "Immune infiltrate"
+            ],
+            "points": [
+              [
+                300.0,
+                180.0
+              ],
+              [
+                335.0,
+                190.0
+              ],
+              [
+                365.0,
+                210.0
+              ],
+              [
+                390.0,
+                235.0
+              ],
+              [
+                380.0,
+                265.0
+              ],
+              [
+                355.0,
+                285.0
+              ],
+              [
+                320.0,
+                275.0
+              ],
+              [
+                295.0,
+                250.0
+              ],
+              [
+                305.0,
+                215.0
+              ]
+            ],
+            "confidence": 0.75
+          }
+        ]
+      },
+      "edit_result": {
+        "selected_pixels": 0,
+        "changed_area_fraction": 0.0,
+        "warnings": [
+          "proposal_projected_region_empty",
+          "organic_projection_template_legal_overlap_too_low"
+        ],
+        "ops_log": {
+          "backend": "organic_score_projection_v2",
+          "method": "organic_score_projection_and_deterministic_write",
+          "primitive": "stromal_desmoplasia",
+          "reference_profile": "BCSS",
+          "source_labels": [
+            "Other tissue",
+            "Normal epithelium",
+            "Immune infiltrate"
+          ],
+          "target_label": "Stroma",
+          "target_fine_id": 2,
+          "preserve_labels": [],
+          "forbidden_labels": [],
+          "raw_candidate_pixels": 15702,
+          "candidate_pixels": 15702,
+          "raw_candidate_legal_overlap_pixels": 73,
+          "template_overlap_with_legal_domain": 0.004649089287988791,
+          "legal_domain_pixels": 55401,
+          "target_pixels": 25000,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "selected_raw_template_intersection_pixels": 0,
+          "selected_raw_template_union_pixels": 15702,
+          "selected_raw_template_iou": 0.0,
+          "area_shortfall": 25000,
+          "projection_retained_fraction": 0.0,
+          "changed_area_fraction": 0.0,
+          "projection_backend": "organic_score_projection_v2",
+          "noise_seed": 47,
+          "component_policy": {
+            "policy_name": "stromal_desmoplasia_peritumoral_stroma_expansion",
+            "params": {
+              "legal_domain_policy": "primary_or_secondary_sources_outside_tumor_with_peritumoral_limit",
+              "max_distance_from_tumor_px": 64.0,
+              "desmoplasia_tumor_falloff_radius_px": 48.0,
+              "desmoplasia_stroma_neighbor_radius_px": 24.0,
+              "require_direct_stroma_adjacency_for_immune": true,
+              "max_immune_fraction_of_delta": 0.3
+            }
+          },
+          "raw_payload": {
+            "schema_version": "0.1",
+            "backend": "llm_contour_proposal",
+            "primitive": "stromal_desmoplasia",
+            "reference_profile": "BCSS",
+            "target_label": "Stroma",
+            "template_role": "coarse_template",
+            "placement_relation": "generic_label_safe",
+            "shape_hints": [
+              "irregular_boundary"
+            ],
+            "coordinate_system": {
+              "origin": "top_left",
+              "point_format": "[x, y]",
+              "x_axis": "horizontal_column_right",
+              "y_axis": "vertical_row_down",
+              "width": 512,
+              "height": 512
+            },
+            "regions": [
+              {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": [
+                  "Other tissue",
+                  "Normal epithelium",
+                  "Immune infiltrate"
+                ],
+                "source_component_ids": [
+                  "source_1"
+                ],
+                "adjacency_side": "generic_label_safe",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_boundary"
+                ],
+                "points": [
+                  [
+                    60,
+                    200
+                  ],
+                  [
+                    95,
+                    210
+                  ],
+                  [
+                    130,
+                    225
+                  ],
+                  [
+                    165,
+                    245
+                  ],
+                  [
+                    180,
+                    270
+                  ],
+                  [
+                    170,
+                    300
+                  ],
+                  [
+                    145,
+                    320
+                  ],
+                  [
+                    110,
+                    310
+                  ],
+                  [
+                    80,
+                    285
+                  ],
+                  [
+                    65,
+                    260
+                  ],
+                  [
+                    55,
+                    230
+                  ]
+                ],
+                "confidence": 0.75
+              },
+              {
+                "region_id": "r2",
+                "type": "polygon",
+                "source_labels": [
+                  "Other tissue",
+                  "Normal epithelium",
+                  "Immune infiltrate"
+                ],
+                "source_component_ids": [
+                  "source_1"
+                ],
+                "adjacency_side": "generic_label_safe",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_boundary"
+                ],
+                "points": [
+                  [
+                    300,
+                    180
+                  ],
+                  [
+                    335,
+                    190
+                  ],
+                  [
+                    365,
+                    210
+                  ],
+                  [
+                    390,
+                    235
+                  ],
+                  [
+                    380,
+                    265
+                  ],
+                  [
+                    355,
+                    285
+                  ],
+                  [
+                    320,
+                    275
+                  ],
+                  [
+                    295,
+                    250
+                  ],
+                  [
+                    305,
+                    215
+                  ]
+                ],
+                "confidence": 0.75
+              }
+            ]
+          },
+          "projection_mode": "organic_v2"
+        }
+      },
+      "validation": {
+        "passed": false,
+        "primitive": "stromal_desmoplasia",
+        "checks": [
+          {
+            "name": "change_area_nonempty",
+            "passed": false,
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "passed": false,
+            "detail": "changed_stroma_fraction=0.0000 outside [0.57, 0.57] or changed_pixels=0 < 25000"
+          },
+          {
+            "name": "label_legality",
+            "passed": true,
+            "detail": "all labels in schema."
+          },
+          {
+            "name": "no_background_leakage",
+            "passed": true,
+            "detail": "no background leakage."
+          },
+          {
+            "name": "required_labels_present",
+            "passed": true,
+            "detail": "all required labels present in src mask."
+          },
+          {
+            "name": "stroma_area_or_generation_region_must_increase",
+            "passed": false,
+            "detail": "stroma did not increase: 44015 -> 44015 pixels."
+          },
+          {
+            "name": "tumor_area_must_remain_stable",
+            "passed": true,
+            "detail": "tumor delta_fraction=0.0000 <= 0.02"
+          },
+          {
+            "name": "change_region_must_be_outside_tumor",
+            "passed": true,
+            "detail": "change region outside original tumor."
+          },
+          {
+            "name": "immune_to_stroma_fraction_within_limit",
+            "passed": true,
+            "detail": "no changed pixels."
+          },
+          {
+            "name": "consumed_immune_must_touch_stroma",
+            "passed": true,
+            "detail": "no immune pixels consumed."
+          }
+        ],
+        "warnings": [
+          "change_area_nonempty: no pixels changed.",
+          "change_area_within_range: changed_stroma_fraction=0.0000 outside [0.57, 0.57] or changed_pixels=0 < 25000",
+          "stroma_area_or_generation_region_must_increase: stroma did not increase: 44015 -> 44015 pixels."
+        ]
+      },
+      "repair_feedback": {
+        "status": "validation_failed",
+        "attempt": 1,
+        "failed_checks": [
+          {
+            "name": "change_area_nonempty",
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "detail": "changed_stroma_fraction=0.0000 outside [0.57, 0.57] or changed_pixels=0 < 25000"
+          },
+          {
+            "name": "stroma_area_or_generation_region_must_increase",
+            "detail": "stroma did not increase: 44015 -> 44015 pixels."
+          }
+        ],
+        "projection": {
+          "candidate_pixels": 15702,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "projection_retained_fraction": 0.0,
+          "projection_mode": "organic_v2",
+          "projection_backend": "organic_score_projection_v2",
+          "legal_domain_pixels": 55401,
+          "target_pixels": 25000,
+          "area_shortfall": 25000,
+          "template_overlap_with_legal_domain": 0.004649089287988791,
+          "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+        },
+        "warnings": [
+          "proposal_projected_region_empty",
+          "organic_projection_template_legal_overlap_too_low"
+        ]
+      }
+    },
+    {
+      "attempt_index": 2,
+      "status": "validated",
+      "error": null,
+      "artifact_paths": {
+        "prompt": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\prompt.txt",
+        "llm_request": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\llm_request.json",
+        "llm_response": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\llm_response.json",
+        "llm_response_raw": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\llm_response_raw.txt",
+        "validated_proposal": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\validated_proposal.json",
+        "rasterized_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\rasterized_region.png",
+        "projected_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\projected_region.png",
+        "change_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\change_region.png",
+        "target_mask": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\target_mask.png",
+        "target_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\target_mask_rgb.png",
+        "visual_qa_source_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\source_mask_rgb.png",
+        "visual_qa_source_mask_rgb_grid": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\source_mask_rgb_grid.png",
+        "visual_qa_raw_template_overlay": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\raw_template_overlay.png",
+        "visual_qa_legal_domain": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\legal_domain.png",
+        "visual_qa_template_score_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\template_score_heatmap.png",
+        "visual_qa_spatial_score_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\spatial_score_heatmap.png",
+        "visual_qa_noise_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\noise_heatmap.png",
+        "visual_qa_final_score_heatmap": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\final_score_heatmap.png",
+        "visual_qa_selected_change_region": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\selected_change_region.png",
+        "visual_qa_target_mask_rgb": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\target_mask_rgb.png",
+        "visual_qa_organic_projection_panel": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\organic_projection_panel.png",
+        "visual_qa_v1_v2_side_by_side": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\v1_v2_side_by_side.png",
+        "visual_qa_visual_qa_manifest": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\visual_qa\\visual_qa_manifest.json",
+        "validation": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\validation.json",
+        "attempt_summary": "runs\\phase3_llm_contour\\stromal_desmoplasia_llm_v2_cursorai_v1_real_masks_floor_15000_20000_25000\\case05_TCGA-A2-A0SX_x53791_y56683_py768_px1024\\attempt_002\\attempt_summary.json"
+      },
+      "proposal": {
+        "primitive": "stromal_desmoplasia",
+        "reference_profile": "BCSS",
+        "target_label": "Stroma",
+        "regions": [
+          {
+            "region_id": "r1",
+            "source_labels": [
+              "Other tissue",
+              "Normal epithelium",
+              "Immune infiltrate"
+            ],
+            "points": [
+              [
+                50.0,
+                200.0
+              ],
+              [
+                75.0,
+                210.0
+              ],
+              [
+                110.0,
+                220.0
+              ],
+              [
+                150.0,
+                215.0
+              ],
+              [
+                190.0,
+                210.0
+              ],
+              [
+                230.0,
+                200.0
+              ],
+              [
+                260.0,
+                190.0
+              ],
+              [
+                245.0,
+                160.0
+              ],
+              [
+                215.0,
+                150.0
+              ],
+              [
+                180.0,
+                155.0
+              ],
+              [
+                145.0,
+                165.0
+              ],
+              [
+                110.0,
+                175.0
+              ],
+              [
+                75.0,
+                180.0
+              ],
+              [
+                55.0,
+                190.0
+              ]
+            ],
+            "confidence": 0.85
+          },
+          {
+            "region_id": "r2",
+            "source_labels": [
+              "Other tissue",
+              "Normal epithelium",
+              "Immune infiltrate"
+            ],
+            "points": [
+              [
+                490.0,
+                230.0
+              ],
+              [
+                495.0,
+                240.0
+              ],
+              [
+                500.0,
+                250.0
+              ],
+              [
+                505.0,
+                260.0
+              ],
+              [
+                508.0,
+                270.0
+              ],
+              [
+                509.0,
+                280.0
+              ],
+              [
+                508.0,
+                290.0
+              ],
+              [
+                505.0,
+                300.0
+              ],
+              [
+                502.0,
+                305.0
+              ],
+              [
+                498.0,
+                302.0
+              ],
+              [
+                496.0,
+                295.0
+              ],
+              [
+                492.0,
+                285.0
+              ],
+              [
+                490.0,
+                275.0
+              ],
+              [
+                488.0,
+                265.0
+              ]
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "edit_result": {
+        "selected_pixels": 25000,
+        "changed_area_fraction": 0.095367431640625,
+        "warnings": [],
+        "ops_log": {
+          "backend": "organic_score_projection_v2",
+          "method": "organic_score_projection_and_deterministic_write",
+          "primitive": "stromal_desmoplasia",
+          "reference_profile": "BCSS",
+          "source_labels": [
+            "Other tissue",
+            "Normal epithelium",
+            "Immune infiltrate"
+          ],
+          "target_label": "Stroma",
+          "target_fine_id": 2,
+          "preserve_labels": [],
+          "forbidden_labels": [],
+          "raw_candidate_pixels": 9876,
+          "candidate_pixels": 9876,
+          "raw_candidate_legal_overlap_pixels": 6131,
+          "template_overlap_with_legal_domain": 0.6207978938841636,
+          "legal_domain_pixels": 55401,
+          "target_pixels": 25000,
+          "projected_pixels": 25000,
+          "selected_pixels": 25000,
+          "selected_raw_template_intersection_pixels": 6131,
+          "selected_raw_template_union_pixels": 28745,
+          "selected_raw_template_iou": 0.21328926769873022,
+          "selection_policy": {
+            "name": "template_neighborhood_constrained_top_k",
+            "template_neighborhood_radius_px": 48.0,
+            "template_spillover_fraction": 0.15,
+            "primary_zone_pixels": 11018,
+            "primary_budget_pixels": 21250,
+            "primary_selected_pixels": 11018,
+            "secondary_selected_pixels": 13982,
+            "selected_inside_primary_zone_pixels": 11018,
+            "selected_outside_primary_zone_pixels": 13982
+          },
+          "area_shortfall": 0,
+          "projection_retained_fraction": 2.5313892264074522,
+          "changed_area_fraction": 0.095367431640625,
+          "projection_backend": "organic_score_projection_v2",
+          "noise_seed": 47,
+          "strength": "significant",
+          "score_terms": {
+            "w_template": 0.45,
+            "w_spatial": 0.45,
+            "w_noise": 0.1,
+            "template_sigma": 3.0,
+            "noise_sigma": 18.0,
+            "noise_amplitude": 0.18,
+            "decay_px": 48.0,
+            "min_template_legal_overlap_fraction": 0.05,
+            "min_selected_template_iou": 0.0,
+            "template_neighborhood_radius_px": 48.0,
+            "template_spillover_fraction": 0.15
+          },
+          "component_policy": {
+            "policy_name": "stromal_desmoplasia_peritumoral_stroma_expansion",
+            "params": {
+              "legal_domain_policy": "primary_or_secondary_sources_outside_tumor_with_peritumoral_limit",
+              "max_distance_from_tumor_px": 64.0,
+              "desmoplasia_tumor_falloff_radius_px": 48.0,
+              "desmoplasia_stroma_neighbor_radius_px": 24.0,
+              "require_direct_stroma_adjacency_for_immune": true,
+              "max_immune_fraction_of_delta": 0.3
+            },
+            "spatial_score_stats": {
+              "pixels": 55401,
+              "min": 0.0,
+              "max": 1.0,
+              "mean": 0.4149457946241596
+            },
+            "template_score_stats": {
+              "pixels": 55401,
+              "min": 0.0,
+              "max": 1.0,
+              "mean": 0.4919493665229459
+            }
+          },
+          "cleanup_removed_pixels": 0,
+          "cleanup_refill_pixels": 0,
+          "cleanup_min_component_pixels": 250,
+          "cleanup_min_component_policy": "organic_min_component_fraction",
+          "pre_cleanup_pixels": 25000,
+          "post_cleanup_pixels": 25000,
+          "cleanup_single_pass": true,
+          "cleanup_iteration_limit": 1,
+          "raw_payload": {
+            "schema_version": "0.1",
+            "backend": "llm_contour_proposal",
+            "primitive": "stromal_desmoplasia",
+            "reference_profile": "BCSS",
+            "target_label": "Stroma",
+            "template_role": "coarse_template",
+            "placement_relation": "generic_label_safe",
+            "shape_hints": [
+              "irregular_boundary"
+            ],
+            "coordinate_system": {
+              "origin": "top_left",
+              "point_format": "[x, y]",
+              "x_axis": "horizontal_column_right",
+              "y_axis": "vertical_row_down",
+              "width": 512,
+              "height": 512
+            },
+            "regions": [
+              {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": [
+                  "Other tissue",
+                  "Normal epithelium",
+                  "Immune infiltrate"
+                ],
+                "source_component_ids": [
+                  "source_1"
+                ],
+                "adjacency_side": "generic_label_safe",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_boundary"
+                ],
+                "points": [
+                  [
+                    50,
+                    200
+                  ],
+                  [
+                    75,
+                    210
+                  ],
+                  [
+                    110,
+                    220
+                  ],
+                  [
+                    150,
+                    215
+                  ],
+                  [
+                    190,
+                    210
+                  ],
+                  [
+                    230,
+                    200
+                  ],
+                  [
+                    260,
+                    190
+                  ],
+                  [
+                    245,
+                    160
+                  ],
+                  [
+                    215,
+                    150
+                  ],
+                  [
+                    180,
+                    155
+                  ],
+                  [
+                    145,
+                    165
+                  ],
+                  [
+                    110,
+                    175
+                  ],
+                  [
+                    75,
+                    180
+                  ],
+                  [
+                    55,
+                    190
+                  ]
+                ],
+                "confidence": 0.85
+              },
+              {
+                "region_id": "r2",
+                "type": "polygon",
+                "source_labels": [
+                  "Other tissue",
+                  "Normal epithelium",
+                  "Immune infiltrate"
+                ],
+                "source_component_ids": [
+                  "source_2"
+                ],
+                "adjacency_side": "generic_label_safe",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_boundary"
+                ],
+                "points": [
+                  [
+                    490,
+                    230
+                  ],
+                  [
+                    495,
+                    240
+                  ],
+                  [
+                    500,
+                    250
+                  ],
+                  [
+                    505,
+                    260
+                  ],
+                  [
+                    508,
+                    270
+                  ],
+                  [
+                    509,
+                    280
+                  ],
+                  [
+                    508,
+                    290
+                  ],
+                  [
+                    505,
+                    300
+                  ],
+                  [
+                    502,
+                    305
+                  ],
+                  [
+                    498,
+                    302
+                  ],
+                  [
+                    496,
+                    295
+                  ],
+                  [
+                    492,
+                    285
+                  ],
+                  [
+                    490,
+                    275
+                  ],
+                  [
+                    488,
+                    265
+                  ]
+                ],
+                "confidence": 0.8
+              }
+            ]
+          },
+          "projection_mode": "organic_v2"
+        }
+      },
+      "validation": {
+        "passed": true,
+        "primitive": "stromal_desmoplasia",
+        "checks": [
+          {
+            "name": "change_area_nonempty",
+            "passed": true,
+            "detail": "25000 pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "passed": true,
+            "detail": "changed_stroma_fraction=0.5680 in [0.57, 0.57] and changed_pixels=25000 >= 25000"
+          },
+          {
+            "name": "label_legality",
+            "passed": true,
+            "detail": "all labels in schema."
+          },
+          {
+            "name": "no_background_leakage",
+            "passed": true,
+            "detail": "no background leakage."
+          },
+          {
+            "name": "required_labels_present",
+            "passed": true,
+            "detail": "all required labels present in src mask."
+          },
+          {
+            "name": "stroma_area_or_generation_region_must_increase",
+            "passed": true,
+            "detail": "stroma 44015 -> 69015 pixels."
+          },
+          {
+            "name": "tumor_area_must_remain_stable",
+            "passed": true,
+            "detail": "tumor delta_fraction=0.0000 <= 0.02"
+          },
+          {
+            "name": "change_region_must_be_outside_tumor",
+            "passed": true,
+            "detail": "change region outside original tumor."
+          },
+          {
+            "name": "immune_to_stroma_fraction_within_limit",
+            "passed": true,
+            "detail": "immune_to_stroma_fraction=0.0000 <= 0.30."
+          },
+          {
+            "name": "consumed_immune_must_touch_stroma",
+            "passed": true,
+            "detail": "no immune pixels consumed."
+          }
+        ],
+        "warnings": []
+      }
+    }
+  ]
+}

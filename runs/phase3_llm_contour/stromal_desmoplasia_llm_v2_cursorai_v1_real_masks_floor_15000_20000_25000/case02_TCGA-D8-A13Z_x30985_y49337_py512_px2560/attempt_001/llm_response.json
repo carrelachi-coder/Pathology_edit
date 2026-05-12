@@ -1,0 +1,149 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Normal epithelium",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_3",
+        "source_1"
+      ],
+      "adjacency_side": "Stroma_adjacent",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          250,
+          280
+        ],
+        [
+          270,
+          310
+        ],
+        [
+          290,
+          340
+        ],
+        [
+          320,
+          360
+        ],
+        [
+          350,
+          380
+        ],
+        [
+          370,
+          360
+        ],
+        [
+          360,
+          330
+        ],
+        [
+          340,
+          300
+        ],
+        [
+          310,
+          280
+        ],
+        [
+          280,
+          265
+        ],
+        [
+          260,
+          270
+        ],
+        [
+          245,
+          285
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Normal epithelium",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "Stroma_adjacent",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          410,
+          330
+        ],
+        [
+          430,
+          350
+        ],
+        [
+          450,
+          370
+        ],
+        [
+          470,
+          380
+        ],
+        [
+          490,
+          370
+        ],
+        [
+          480,
+          350
+        ],
+        [
+          460,
+          330
+        ],
+        [
+          440,
+          320
+        ],
+        [
+          420,
+          325
+        ],
+        [
+          415,
+          335
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}
