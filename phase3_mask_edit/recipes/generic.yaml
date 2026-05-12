@@ -173,6 +173,7 @@ primitives:
       organic_fill_holes_max_area_px: 0
       tumor_decrease_boundary_band_radius_px: 80
       tumor_decrease_backfill_neighbor_radius_px: 48
+      tumor_decrease_min_remaining_component_area_px: 512
     probnet_bias:
       default: none
       treatment_response_recipe:

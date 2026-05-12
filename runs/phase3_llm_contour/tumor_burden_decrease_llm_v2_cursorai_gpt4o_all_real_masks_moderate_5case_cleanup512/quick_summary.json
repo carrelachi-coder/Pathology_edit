@@ -1,0 +1,132 @@
+[
+  {
+    "case": "case01_TCGA-A8-A07O_x11777_y16227_py0_px0",
+    "status": "validated",
+    "attempt_index": 1,
+    "selected_pixels": 50382,
+    "changed_area_fraction": 0.19219207763671875,
+    "projection_backend": "organic_score_projection_v2",
+    "method": "organic_score_projection_and_deterministic_backfill",
+    "target_pixels": 49808,
+    "legal_domain_pixels": 143362,
+    "backfill_labels": [
+      "Stroma"
+    ],
+    "tumor_component_cleanup": {
+      "enabled": true,
+      "min_remaining_component_area_px": 512,
+      "removed_pixels": 574,
+      "removed_components": 3,
+      "remaining_components_before": 18,
+      "remaining_components_after": 15
+    },
+    "warnings": [
+      "tumor_decrease_removed_tiny_remaining_tumor_components"
+    ],
+    "panel": "runs\\phase3_llm_contour\\tumor_burden_decrease_llm_v2_cursorai_gpt4o_all_real_masks_moderate_5case_cleanup512\\case01_TCGA-A8-A07O_x11777_y16227_py0_px0\\attempt_001\\visual_qa\\organic_projection_panel.png"
+  },
+  {
+    "case": "case02_TCGA-C8-A3M7_x41677_y66930_py3072_px768",
+    "status": "validated",
+    "attempt_index": 1,
+    "selected_pixels": 50628,
+    "changed_area_fraction": 0.1931304931640625,
+    "projection_backend": "organic_score_projection_v2",
+    "method": "organic_score_projection_and_deterministic_backfill",
+    "target_pixels": 49808,
+    "legal_domain_pixels": 120967,
+    "backfill_labels": [
+      "Stroma"
+    ],
+    "tumor_component_cleanup": {
+      "enabled": true,
+      "min_remaining_component_area_px": 512,
+      "removed_pixels": 820,
+      "removed_components": 6,
+      "remaining_components_before": 21,
+      "remaining_components_after": 15
+    },
+    "warnings": [
+      "tumor_decrease_removed_tiny_remaining_tumor_components"
+    ],
+    "panel": "runs\\phase3_llm_contour\\tumor_burden_decrease_llm_v2_cursorai_gpt4o_all_real_masks_moderate_5case_cleanup512\\case02_TCGA-C8-A3M7_x41677_y66930_py3072_px768\\attempt_001\\visual_qa\\organic_projection_panel.png"
+  },
+  {
+    "case": "case03_TCGA-A8-A07O_x11777_y16227_py0_px256",
+    "status": "validated",
+    "attempt_index": 1,
+    "selected_pixels": 50405,
+    "changed_area_fraction": 0.19227981567382812,
+    "projection_backend": "organic_score_projection_v2",
+    "method": "organic_score_projection_and_deterministic_backfill",
+    "target_pixels": 49808,
+    "legal_domain_pixels": 113025,
+    "backfill_labels": [
+      "Stroma"
+    ],
+    "tumor_component_cleanup": {
+      "enabled": true,
+      "min_remaining_component_area_px": 512,
+      "removed_pixels": 597,
+      "removed_components": 7,
+      "remaining_components_before": 22,
+      "remaining_components_after": 15
+    },
+    "warnings": [
+      "tumor_decrease_removed_tiny_remaining_tumor_components"
+    ],
+    "panel": "runs\\phase3_llm_contour\\tumor_burden_decrease_llm_v2_cursorai_gpt4o_all_real_masks_moderate_5case_cleanup512\\case03_TCGA-A8-A07O_x11777_y16227_py0_px256\\attempt_001\\visual_qa\\organic_projection_panel.png"
+  },
+  {
+    "case": "case04_TCGA-A8-A07O_x11777_y16227_py1280_px2048",
+    "status": "validated",
+    "attempt_index": 1,
+    "selected_pixels": 51032,
+    "changed_area_fraction": 0.194671630859375,
+    "projection_backend": "organic_score_projection_v2",
+    "method": "organic_score_projection_and_deterministic_backfill",
+    "target_pixels": 49808,
+    "legal_domain_pixels": 144482,
+    "backfill_labels": [
+      "Stroma"
+    ],
+    "tumor_component_cleanup": {
+      "enabled": true,
+      "min_remaining_component_area_px": 512,
+      "removed_pixels": 1224,
+      "removed_components": 9,
+      "remaining_components_before": 20,
+      "remaining_components_after": 11
+    },
+    "warnings": [
+      "tumor_decrease_removed_tiny_remaining_tumor_components"
+    ],
+    "panel": "runs\\phase3_llm_contour\\tumor_burden_decrease_llm_v2_cursorai_gpt4o_all_real_masks_moderate_5case_cleanup512\\case04_TCGA-A8-A07O_x11777_y16227_py1280_px2048\\attempt_001\\visual_qa\\organic_projection_panel.png"
+  },
+  {
+    "case": "case05_TCGA-A2-A0T2_x63557_y56751_py1792_px2560",
+    "status": "validated",
+    "attempt_index": 1,
+    "selected_pixels": 50735,
+    "changed_area_fraction": 0.19353866577148438,
+    "projection_backend": "organic_score_projection_v2",
+    "method": "organic_score_projection_and_deterministic_backfill",
+    "target_pixels": 49808,
+    "legal_domain_pixels": 144690,
+    "backfill_labels": [
+      "Stroma"
+    ],
+    "tumor_component_cleanup": {
+      "enabled": true,
+      "min_remaining_component_area_px": 512,
+      "removed_pixels": 927,
+      "removed_components": 8,
+      "remaining_components_before": 17,
+      "remaining_components_after": 9
+    },
+    "warnings": [
+      "tumor_decrease_removed_tiny_remaining_tumor_components"
+    ],
+    "panel": "runs\\phase3_llm_contour\\tumor_burden_decrease_llm_v2_cursorai_gpt4o_all_real_masks_moderate_5case_cleanup512\\case05_TCGA-A2-A0T2_x63557_y56751_py1792_px2560\\attempt_001\\visual_qa\\organic_projection_panel.png"
+  }
+]

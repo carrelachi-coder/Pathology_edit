@@ -1,0 +1,304 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "tumor_burden_decrease",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "tumor_boundary_regression",
+  "shape_hints": [
+    "boundary_recession",
+    "asymmetric_shrink",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_4"
+      ],
+      "adjacency_side": "stroma_facing_outer_margin",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "boundary_recession",
+        "irregular_boundary",
+        "lobulated_shrink"
+      ],
+      "points": [
+        [
+          18,
+          78
+        ],
+        [
+          54,
+          64
+        ],
+        [
+          96,
+          60
+        ],
+        [
+          138,
+          58
+        ],
+        [
+          172,
+          68
+        ],
+        [
+          184,
+          92
+        ],
+        [
+          162,
+          112
+        ],
+        [
+          126,
+          122
+        ],
+        [
+          92,
+          136
+        ],
+        [
+          66,
+          156
+        ],
+        [
+          48,
+          184
+        ],
+        [
+          54,
+          214
+        ],
+        [
+          86,
+          236
+        ],
+        [
+          122,
+          246
+        ],
+        [
+          158,
+          258
+        ],
+        [
+          182,
+          284
+        ],
+        [
+          174,
+          314
+        ],
+        [
+          136,
+          320
+        ],
+        [
+          96,
+          306
+        ],
+        [
+          58,
+          292
+        ],
+        [
+          26,
+          268
+        ],
+        [
+          12,
+          232
+        ],
+        [
+          8,
+          188
+        ],
+        [
+          10,
+          144
+        ]
+      ],
+      "confidence": 0.87
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_6"
+      ],
+      "adjacency_side": "stroma_facing_superior_boundary",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "asymmetric_shrink",
+        "boundary_recession",
+        "concave_regression"
+      ],
+      "points": [
+        [
+          150,
+          118
+        ],
+        [
+          182,
+          110
+        ],
+        [
+          222,
+          112
+        ],
+        [
+          262,
+          114
+        ],
+        [
+          302,
+          110
+        ],
+        [
+          318,
+          126
+        ],
+        [
+          300,
+          144
+        ],
+        [
+          270,
+          156
+        ],
+        [
+          248,
+          170
+        ],
+        [
+          242,
+          194
+        ],
+        [
+          228,
+          214
+        ],
+        [
+          198,
+          210
+        ],
+        [
+          166,
+          200
+        ],
+        [
+          142,
+          188
+        ],
+        [
+          144,
+          164
+        ],
+        [
+          160,
+          146
+        ]
+      ],
+      "confidence": 0.82
+    },
+    {
+      "region_id": "r3",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_12"
+      ],
+      "adjacency_side": "stroma_facing_lateral_margin",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "boundary_recession",
+        "irregular_boundary",
+        "partial_margin_release"
+      ],
+      "points": [
+        [
+          12,
+          350
+        ],
+        [
+          30,
+          324
+        ],
+        [
+          58,
+          308
+        ],
+        [
+          92,
+          312
+        ],
+        [
+          124,
+          318
+        ],
+        [
+          148,
+          330
+        ],
+        [
+          150,
+          354
+        ],
+        [
+          132,
+          376
+        ],
+        [
+          106,
+          392
+        ],
+        [
+          76,
+          408
+        ],
+        [
+          50,
+          430
+        ],
+        [
+          26,
+          444
+        ],
+        [
+          12,
+          430
+        ],
+        [
+          16,
+          398
+        ],
+        [
+          8,
+          372
+        ]
+      ],
+      "confidence": 0.78
+    }
+  ]
+}

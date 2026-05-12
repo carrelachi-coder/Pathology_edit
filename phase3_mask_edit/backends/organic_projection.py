@@ -503,6 +503,14 @@ def apply_organic_tumor_burden_decrease(
 
     target_mask = np.array(mask, copy=True)
     target_mask[selected] = _nearest_backfill_fine_ids(mask, backfill_mask, selected)
+    selected, target_mask, tumor_cleanup_log = _cleanup_tiny_remaining_tumor_components(
+        mask,
+        target_mask,
+        selected,
+        schema=schema,
+        backfill_mask=backfill_mask,
+        primitive_config=primitive,
+    )
     selected_pixels = int(np.count_nonzero(selected))
     changed_area_fraction = selected_pixels / int(mask.size)
     selected_template_intersection = int(np.count_nonzero(selected & candidate))
@@ -517,6 +525,8 @@ def apply_organic_tumor_burden_decrease(
         warnings.append("organic_projection_area_shortfall")
     if cleanup_log["post_cleanup_pixels"] < cleanup_log["pre_cleanup_pixels"]:
         warnings.append("organic_projection_cleanup_removed_pixels")
+    if tumor_cleanup_log["removed_pixels"] > 0:
+        warnings.append("tumor_decrease_removed_tiny_remaining_tumor_components")
     warnings.extend(policy.warnings)
 
     ops_log = {
@@ -581,6 +591,7 @@ def apply_organic_tumor_burden_decrease(
         "post_cleanup_pixels": cleanup_log["post_cleanup_pixels"],
         "cleanup_single_pass": True,
         "cleanup_iteration_limit": 1,
+        "tumor_component_cleanup": tumor_cleanup_log,
         "decrease_semantics": "select_tumor_pixels_then_backfill_from_nearest_legal_tissue",
     }
 
@@ -927,6 +938,13 @@ def _nonnegative_float(value: float | None, default: Any) -> float:
     if not isinstance(raw, (int, float)) or float(raw) < 0:
         raise ValueError("organic projection parameter must be non-negative.")
     return float(raw)
+
+
+def _nonnegative_int_value(value: Any, default: int = 0) -> int:
+    raw = default if value is None else value
+    if not isinstance(raw, (int, float)) or int(raw) < 0:
+        raise ValueError("organic projection integer parameter must be non-negative.")
+    return int(raw)
 
 
 def _fraction_float(value: Any) -> float:
@@ -1683,6 +1701,80 @@ def _fill_small_holes_once(
             filled |= component
             added += pixels
     return filled, added
+
+
+def _cleanup_tiny_remaining_tumor_components(
+    original_mask: np.ndarray,
+    target_mask: np.ndarray,
+    selected: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    backfill_mask: np.ndarray,
+    primitive_config: Mapping[str, Any],
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    ranges = primitive_config.get("parameter_ranges", {})
+    min_remaining_component_px = _nonnegative_int_value(
+        ranges.get("tumor_decrease_min_remaining_component_area_px", 0)
+    )
+    cleanup_enabled = bool(
+        primitive_config.get("spatial_pattern", {}).get("fragment_cleanup", False)
+        if isinstance(primitive_config.get("spatial_pattern", {}), Mapping)
+        else False
+    )
+    if not cleanup_enabled or min_remaining_component_px <= 1:
+        return selected, target_mask, {
+            "enabled": cleanup_enabled,
+            "min_remaining_component_area_px": int(min_remaining_component_px),
+            "removed_pixels": 0,
+            "removed_components": 0,
+            "remaining_components_before": 0,
+            "remaining_components_after": 0,
+        }
+
+    tumor_after = np.isin(target_mask, schema.tumor_fine_ids)
+    labeled, count = ndimage.label(tumor_after, structure=np.ones((3, 3), dtype=bool))
+    cleanup_mask = np.zeros_like(tumor_after, dtype=bool)
+    removed_components = 0
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        pixels = int(np.count_nonzero(component))
+        if pixels < min_remaining_component_px:
+            cleanup_mask |= component
+            removed_components += 1
+
+    removed_pixels = int(np.count_nonzero(cleanup_mask))
+    if removed_pixels == 0:
+        return selected, target_mask, {
+            "enabled": True,
+            "min_remaining_component_area_px": int(min_remaining_component_px),
+            "removed_pixels": 0,
+            "removed_components": 0,
+            "remaining_components_before": int(count),
+            "remaining_components_after": int(count),
+        }
+
+    updated_target = np.array(target_mask, copy=True)
+    updated_selected = np.asarray(selected, dtype=bool).copy()
+    updated_selected |= cleanup_mask
+    updated_target[cleanup_mask] = _nearest_backfill_fine_ids(
+        original_mask,
+        backfill_mask,
+        cleanup_mask,
+    )
+    remaining_after = int(
+        ndimage.label(
+            np.isin(updated_target, schema.tumor_fine_ids),
+            structure=np.ones((3, 3), dtype=bool),
+        )[1]
+    )
+    return updated_selected, updated_target, {
+        "enabled": True,
+        "min_remaining_component_area_px": int(min_remaining_component_px),
+        "removed_pixels": removed_pixels,
+        "removed_components": int(removed_components),
+        "remaining_components_before": int(count),
+        "remaining_components_after": remaining_after,
+    }
 
 
 def _top_k_mask_for_refill(

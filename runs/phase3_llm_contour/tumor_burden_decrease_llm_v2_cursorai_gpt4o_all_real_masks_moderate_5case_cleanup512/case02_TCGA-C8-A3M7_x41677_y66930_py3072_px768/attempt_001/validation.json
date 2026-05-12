@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "primitive": "tumor_burden_decrease",
+  "checks": [
+    {
+      "name": "change_area_nonempty",
+      "passed": true,
+      "detail": "50628 pixels changed."
+    },
+    {
+      "name": "change_area_within_range",
+      "passed": true,
+      "detail": "changed_area_fraction=0.1931 in [0.08, 0.70]"
+    },
+    {
+      "name": "label_legality",
+      "passed": true,
+      "detail": "all labels in schema."
+    },
+    {
+      "name": "no_background_leakage",
+      "passed": true,
+      "detail": "no background leakage."
+    },
+    {
+      "name": "required_labels_present",
+      "passed": true,
+      "detail": "all required labels present in src mask."
+    },
+    {
+      "name": "tumor_area_must_decrease",
+      "passed": true,
+      "detail": "tumor 120967 -> 70339 pixels."
+    },
+    {
+      "name": "released_region_must_not_be_background",
+      "passed": true,
+      "detail": "no Background in change region."
+    },
+    {
+      "name": "released_region_must_start_from_valid_backfill_boundary",
+      "passed": true,
+      "detail": "no guard implemented; skipped."
+    },
+    {
+      "name": "released_region_boundary_smoothed_locally_by_gaussian_threshold",
+      "passed": true,
+      "detail": "no guard implemented; skipped."
+    },
+    {
+      "name": "do_not_shrink_external_background_facing_tumor_boundary",
+      "passed": true,
+      "detail": "no guard implemented; skipped."
+    },
+    {
+      "name": "do_not_orphan_existing_necrosis",
+      "passed": true,
+      "detail": "no guard implemented; skipped."
+    },
+    {
+      "name": "remaining_tumor_above_minimum_for_current_mode",
+      "passed": true,
+      "detail": "no guard implemented; skipped."
+    }
+  ],
+  "warnings": []
+}

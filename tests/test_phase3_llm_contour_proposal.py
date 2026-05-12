@@ -1596,6 +1596,48 @@ class LLMContourProposalTests(unittest.TestCase):
             "select_tumor_pixels_then_backfill_from_nearest_legal_tissue",
         )
 
+    def test_tumor_burden_decrease_removes_tiny_remaining_tumor_components(self):
+        old_mask = np.zeros((96, 96), dtype=np.int64)
+        old_mask[4:92, 4:92] = 2
+        old_mask[12:56, 12:56] = 1
+        old_mask[70:76, 70:76] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[12:56, 12:56] = True
+
+        result = apply_organic_tumor_burden_decrease(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "tumor_burden_decrease",
+                "mask_operation": {
+                    "source": "Tumor",
+                    "backfill_priority": ["Stroma"],
+                },
+                "spatial_pattern": {"fragment_cleanup": True},
+                "parameter_ranges": {
+                    "target_area_decrease_fraction": {"mild": [0.10, 0.12]},
+                    "min_remaining_tumor_fraction": {"default": 0.02},
+                    "tumor_decrease_min_remaining_component_area_px": 80,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 64,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+            },
+            seed=8,
+        )
+
+        self.assertEqual(int(np.count_nonzero(result.target_mask[70:76, 70:76] == 1)), 0)
+        self.assertGreater(int(np.count_nonzero(result.target_mask == 1)), 0)
+        cleanup = result.ops_log["tumor_component_cleanup"]
+        self.assertEqual(cleanup["removed_components"], 1)
+        self.assertEqual(cleanup["removed_pixels"], 36)
+        self.assertIn(
+            "tumor_decrease_removed_tiny_remaining_tumor_components",
+            result.warnings,
+        )
+
     def test_contour_executor_routes_tumor_decrease_to_backfill_backend(self):
         old_mask = np.zeros((40, 40), dtype=np.int64)
         old_mask[2:38, 2:38] = 2
