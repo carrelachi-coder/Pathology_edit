@@ -1,0 +1,470 @@
+{
+  "attempt_index": 1,
+  "status": "validated",
+  "error": null,
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "immune_infiltration_decrease",
+    "reference_profile": "BCSS",
+    "target_label": "Stroma",
+    "regions": [
+      {
+        "region_id": "r1",
+        "source_labels": [
+          "Immune infiltrate"
+        ],
+        "points": [
+          [
+            50.0,
+            80.0
+          ],
+          [
+            75.0,
+            90.0
+          ],
+          [
+            110.0,
+            120.0
+          ],
+          [
+            130.0,
+            160.0
+          ],
+          [
+            145.0,
+            200.0
+          ],
+          [
+            130.0,
+            220.0
+          ],
+          [
+            105.0,
+            210.0
+          ],
+          [
+            80.0,
+            180.0
+          ],
+          [
+            65.0,
+            140.0
+          ]
+        ],
+        "confidence": 0.8
+      },
+      {
+        "region_id": "r2",
+        "source_labels": [
+          "Immune infiltrate"
+        ],
+        "points": [
+          [
+            160.0,
+            380.0
+          ],
+          [
+            180.0,
+            390.0
+          ],
+          [
+            220.0,
+            420.0
+          ],
+          [
+            250.0,
+            450.0
+          ],
+          [
+            240.0,
+            470.0
+          ],
+          [
+            210.0,
+            460.0
+          ],
+          [
+            180.0,
+            440.0
+          ],
+          [
+            165.0,
+            410.0
+          ]
+        ],
+        "confidence": 0.8
+      },
+      {
+        "region_id": "r3",
+        "source_labels": [
+          "Immune infiltrate"
+        ],
+        "points": [
+          [
+            370.0,
+            460.0
+          ],
+          [
+            390.0,
+            455.0
+          ],
+          [
+            420.0,
+            460.0
+          ],
+          [
+            440.0,
+            470.0
+          ],
+          [
+            450.0,
+            480.0
+          ],
+          [
+            440.0,
+            495.0
+          ],
+          [
+            410.0,
+            490.0
+          ],
+          [
+            385.0,
+            480.0
+          ]
+        ],
+        "confidence": 0.8
+      }
+    ]
+  },
+  "edit_result": {
+    "selected_pixels": 24438,
+    "changed_area_fraction": 0.09322357177734375,
+    "warnings": [],
+    "ops_log": {
+      "backend": "organic_score_projection_v2",
+      "method": "organic_score_projection_and_deterministic_backfill",
+      "primitive": "immune_infiltration_decrease",
+      "reference_profile": "BCSS",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "target_label": "nearest_backfill_tissue",
+      "backfill_labels": [
+        "Stroma",
+        "Other tissue"
+      ],
+      "preserve_labels": [],
+      "forbidden_labels": [],
+      "raw_candidate_pixels": 11713,
+      "candidate_pixels": 11713,
+      "raw_candidate_legal_overlap_pixels": 9122,
+      "template_overlap_with_legal_domain": 0.7787927943310852,
+      "legal_domain_pixels": 82839,
+      "target_pixels": 24438,
+      "projected_pixels": 24438,
+      "selected_pixels": 24438,
+      "selected_raw_template_intersection_pixels": 6573,
+      "selected_raw_template_union_pixels": 29578,
+      "selected_raw_template_iou": 0.22222597876800324,
+      "selection_policy": {
+        "name": "template_neighborhood_constrained_top_k",
+        "template_neighborhood_radius_px": 48.0,
+        "template_spillover_fraction": 0.15,
+        "primary_zone_pixels": 38110,
+        "primary_budget_pixels": 20772,
+        "primary_selected_pixels": 20772,
+        "secondary_selected_pixels": 3666,
+        "selected_inside_primary_zone_pixels": 20772,
+        "selected_outside_primary_zone_pixels": 3666
+      },
+      "area_shortfall": 0,
+      "changed_area_fraction": 0.09322357177734375,
+      "projection_backend": "organic_score_projection_v2",
+      "noise_seed": 34,
+      "strength": "significant",
+      "score_terms": {
+        "w_template": 0.45,
+        "w_spatial": 0.45,
+        "w_noise": 0.1,
+        "template_sigma": 3.0,
+        "noise_sigma": 18.0,
+        "noise_amplitude": 0.18,
+        "min_template_legal_overlap_fraction": 0.05,
+        "template_neighborhood_radius_px": 48.0,
+        "template_spillover_fraction": 0.15
+      },
+      "component_policy": {
+        "policy_name": "immune_decrease_remove_isolated_or_distal_immune",
+        "params": {
+          "source_label": "Immune infiltrate",
+          "backfill_policy": "nearest_legal_tissue",
+          "immune_components": 6,
+          "tumor_preserve_radius_px": 48.0,
+          "selected_backfill_labels": [
+            "Stroma",
+            "Other tissue"
+          ],
+          "score_prefers": [
+            "immune_far_from_tumor",
+            "small_or_isolated_immune_components",
+            "immune_touching_backfill_tissue"
+          ]
+        },
+        "spatial_score_stats": {
+          "pixels": 82839,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.28683452255591596
+        },
+        "template_score_stats": {
+          "pixels": 82839,
+          "min": 0.0,
+          "max": 1.0,
+          "mean": 0.7267091151679338
+        }
+      },
+      "cleanup_removed_pixels": 0,
+      "cleanup_refill_pixels": 0,
+      "cleanup_min_component_pixels": 1,
+      "cleanup_min_component_policy": "immune_decrease_preserve_small_islands",
+      "pre_cleanup_pixels": 24438,
+      "post_cleanup_pixels": 24438,
+      "cleanup_single_pass": true,
+      "cleanup_iteration_limit": 1,
+      "decrease_semantics": "select_immune_pixels_then_backfill_from_nearest_legal_tissue",
+      "raw_payload": {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "immune_infiltration_decrease",
+        "reference_profile": "BCSS",
+        "target_label": "Stroma",
+        "template_role": "coarse_template",
+        "placement_relation": "immune_decrease_distal_or_isolated",
+        "shape_hints": [
+          "patchy",
+          "multifocal",
+          "irregular_boundary"
+        ],
+        "coordinate_system": {
+          "origin": "top_left",
+          "point_format": "[x, y]",
+          "x_axis": "horizontal_column_right",
+          "y_axis": "vertical_row_down",
+          "width": 512,
+          "height": 512
+        },
+        "regions": [
+          {
+            "region_id": "r1",
+            "type": "polygon",
+            "source_labels": [
+              "Immune infiltrate"
+            ],
+            "source_component_ids": [
+              "source_1"
+            ],
+            "adjacency_side": "immune_decrease_distal_or_isolated",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "patchy",
+              "multifocal",
+              "irregular_boundary"
+            ],
+            "points": [
+              [
+                50,
+                80
+              ],
+              [
+                75,
+                90
+              ],
+              [
+                110,
+                120
+              ],
+              [
+                130,
+                160
+              ],
+              [
+                145,
+                200
+              ],
+              [
+                130,
+                220
+              ],
+              [
+                105,
+                210
+              ],
+              [
+                80,
+                180
+              ],
+              [
+                65,
+                140
+              ]
+            ],
+            "confidence": 0.8
+          },
+          {
+            "region_id": "r2",
+            "type": "polygon",
+            "source_labels": [
+              "Immune infiltrate"
+            ],
+            "source_component_ids": [
+              "source_5"
+            ],
+            "adjacency_side": "immune_decrease_distal_or_isolated",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "patchy",
+              "multifocal",
+              "irregular_boundary"
+            ],
+            "points": [
+              [
+                160,
+                380
+              ],
+              [
+                180,
+                390
+              ],
+              [
+                220,
+                420
+              ],
+              [
+                250,
+                450
+              ],
+              [
+                240,
+                470
+              ],
+              [
+                210,
+                460
+              ],
+              [
+                180,
+                440
+              ],
+              [
+                165,
+                410
+              ]
+            ],
+            "confidence": 0.8
+          },
+          {
+            "region_id": "r3",
+            "type": "polygon",
+            "source_labels": [
+              "Immune infiltrate"
+            ],
+            "source_component_ids": [
+              "source_4"
+            ],
+            "adjacency_side": "immune_decrease_distal_or_isolated",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "patchy",
+              "multifocal",
+              "irregular_boundary"
+            ],
+            "points": [
+              [
+                370,
+                460
+              ],
+              [
+                390,
+                455
+              ],
+              [
+                420,
+                460
+              ],
+              [
+                440,
+                470
+              ],
+              [
+                450,
+                480
+              ],
+              [
+                440,
+                495
+              ],
+              [
+                410,
+                490
+              ],
+              [
+                385,
+                480
+              ]
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "projection_mode": "organic_v2"
+    }
+  },
+  "validation": {
+    "passed": true,
+    "primitive": "immune_infiltration_decrease",
+    "checks": [
+      {
+        "name": "change_area_nonempty",
+        "passed": true,
+        "detail": "24438 pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "passed": true,
+        "detail": "changed_area_fraction=0.0932 in [0.08, 0.70]"
+      },
+      {
+        "name": "label_legality",
+        "passed": true,
+        "detail": "all labels in schema."
+      },
+      {
+        "name": "no_background_leakage",
+        "passed": true,
+        "detail": "no background leakage."
+      },
+      {
+        "name": "required_labels_present",
+        "passed": true,
+        "detail": "all required labels present in src mask."
+      },
+      {
+        "name": "immune_area_must_decrease",
+        "passed": true,
+        "detail": "immune 82839 -> 58401 pixels."
+      },
+      {
+        "name": "backfill_must_be_legal_tissue",
+        "passed": true,
+        "detail": "no Background used as backfill."
+      },
+      {
+        "name": "no_background_holes",
+        "passed": true,
+        "detail": "no background holes created."
+      }
+    ],
+    "warnings": []
+  }
+}

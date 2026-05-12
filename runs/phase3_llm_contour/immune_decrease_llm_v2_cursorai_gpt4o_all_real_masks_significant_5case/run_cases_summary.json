@@ -1,0 +1,37 @@
+﻿[
+    {
+        "case":  1,
+        "stem":  "TCGA-C8-A12V_x11056_y54401_py2304_px3328",
+        "mask":  "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-C8-A12V_x11056_y54401_py2304_px3328.png",
+        "output":  "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case01_TCGA-C8-A12V_x11056_y54401_py2304_px3328",
+        "exit_code":  0
+    },
+    {
+        "case":  2,
+        "stem":  "TCGA-BH-A0WA_x56581_y24774_py3072_px2816",
+        "mask":  "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-BH-A0WA_x56581_y24774_py3072_px2816.png",
+        "output":  "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816",
+        "exit_code":  0
+    },
+    {
+        "case":  3,
+        "stem":  "TCGA-A2-A3XT_x83566_y29931_py1536_px3328",
+        "mask":  "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-A2-A3XT_x83566_y29931_py1536_px3328.png",
+        "output":  "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case03_TCGA-A2-A3XT_x83566_y29931_py1536_px3328",
+        "exit_code":  0
+    },
+    {
+        "case":  4,
+        "stem":  "TCGA-GM-A2DB_x50586_y43110_py2816_px6656",
+        "mask":  "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-GM-A2DB_x50586_y43110_py2816_px6656.png",
+        "output":  "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case04_TCGA-GM-A2DB_x50586_y43110_py2816_px6656",
+        "exit_code":  0
+    },
+    {
+        "case":  5,
+        "stem":  "TCGA-C8-A1HJ_x46412_y17174_py0_px2816",
+        "mask":  "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-C8-A1HJ_x46412_y17174_py0_px2816.png",
+        "output":  "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case05_TCGA-C8-A1HJ_x46412_y17174_py0_px2816",
+        "exit_code":  0
+    }
+]

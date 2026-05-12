@@ -1,0 +1,20 @@
+{
+  "attempt_index": 2,
+  "image_paths": [
+    "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case03_TCGA-A2-A3XT_x83566_y29931_py1536_px3328\\source_mask_llm_rgb_grid.png",
+    "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case03_TCGA-A2-A3XT_x83566_y29931_py1536_px3328\\source_mask_llm_rgb.png"
+  ],
+  "provider_metadata": {
+    "provider_name": "openai_compatible_multimodal",
+    "provider_class": "OpenAICompatibleMultimodalContourProvider",
+    "request_mode": "multimodal",
+    "image_paths_available": 2,
+    "image_parts_expected": 1,
+    "image_policy": "send first image path only as data:image/png;base64 image_url"
+  },
+  "repair_feedback": {
+    "status": "proposal_rejected",
+    "attempt": 1,
+    "error": "point [348, 512] is outside mask bounds 512x512."
+  }
+}

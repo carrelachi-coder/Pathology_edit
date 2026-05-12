@@ -1,0 +1,208 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "immune_infiltration_decrease",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "immune_decrease_distal_or_isolated",
+  "shape_hints": [
+    "patchy",
+    "multifocal",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "immune_decrease_distal_or_isolated",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "patchy",
+        "multifocal",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          430,
+          500
+        ],
+        [
+          440,
+          475
+        ],
+        [
+          430,
+          450
+        ],
+        [
+          420,
+          430
+        ],
+        [
+          410,
+          400
+        ],
+        [
+          395,
+          370
+        ],
+        [
+          380,
+          340
+        ],
+        [
+          360,
+          320
+        ],
+        [
+          340,
+          305
+        ],
+        [
+          320,
+          290
+        ],
+        [
+          300,
+          275
+        ],
+        [
+          285,
+          290
+        ],
+        [
+          270,
+          310
+        ],
+        [
+          260,
+          335
+        ],
+        [
+          275,
+          360
+        ],
+        [
+          290,
+          380
+        ],
+        [
+          315,
+          400
+        ],
+        [
+          345,
+          420
+        ],
+        [
+          370,
+          440
+        ],
+        [
+          390,
+          460
+        ]
+      ],
+      "confidence": 0.8
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_3"
+      ],
+      "adjacency_side": "immune_decrease_distal_or_isolated",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "patchy",
+        "multifocal",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          180,
+          380
+        ],
+        [
+          190,
+          395
+        ],
+        [
+          210,
+          410
+        ],
+        [
+          230,
+          420
+        ],
+        [
+          250,
+          430
+        ],
+        [
+          270,
+          440
+        ],
+        [
+          290,
+          450
+        ],
+        [
+          310,
+          460
+        ],
+        [
+          330,
+          470
+        ],
+        [
+          350,
+          480
+        ],
+        [
+          360,
+          495
+        ],
+        [
+          340,
+          500
+        ],
+        [
+          320,
+          505
+        ],
+        [
+          300,
+          510
+        ],
+        [
+          280,
+          505
+        ],
+        [
+          260,
+          500
+        ]
+      ],
+      "confidence": 0.75
+    }
+  ]
+}

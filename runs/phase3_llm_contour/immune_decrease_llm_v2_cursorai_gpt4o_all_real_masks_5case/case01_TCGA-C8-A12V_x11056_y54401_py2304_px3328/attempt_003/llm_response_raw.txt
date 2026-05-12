@@ -1,0 +1,284 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "immune_infiltration_decrease",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "immune_decrease_distal_or_isolated",
+  "shape_hints": [
+    "patchy",
+    "multifocal",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "immune_decrease_distal_or_isolated",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "broad_patch",
+        "irregular_boundary",
+        "peripheral"
+      ],
+      "points": [
+        [
+          132,
+          446
+        ],
+        [
+          154,
+          426
+        ],
+        [
+          181,
+          410
+        ],
+        [
+          214,
+          394
+        ],
+        [
+          250,
+          376
+        ],
+        [
+          287,
+          358
+        ],
+        [
+          326,
+          347
+        ],
+        [
+          366,
+          348
+        ],
+        [
+          405,
+          356
+        ],
+        [
+          437,
+          374
+        ],
+        [
+          456,
+          398
+        ],
+        [
+          463,
+          425
+        ],
+        [
+          454,
+          451
+        ],
+        [
+          431,
+          469
+        ],
+        [
+          394,
+          481
+        ],
+        [
+          352,
+          486
+        ],
+        [
+          307,
+          484
+        ],
+        [
+          263,
+          478
+        ],
+        [
+          223,
+          470
+        ],
+        [
+          186,
+          463
+        ],
+        [
+          155,
+          456
+        ]
+      ],
+      "confidence": 0.87
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "immune_decrease_distal_or_isolated",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "elongated",
+        "patchy",
+        "organic"
+      ],
+      "points": [
+        [
+          250,
+          503
+        ],
+        [
+          278,
+          489
+        ],
+        [
+          314,
+          479
+        ],
+        [
+          356,
+          473
+        ],
+        [
+          401,
+          472
+        ],
+        [
+          439,
+          480
+        ],
+        [
+          468,
+          495
+        ],
+        [
+          485,
+          511
+        ],
+        [
+          454,
+          511
+        ],
+        [
+          418,
+          511
+        ],
+        [
+          377,
+          511
+        ],
+        [
+          336,
+          511
+        ],
+        [
+          298,
+          511
+        ],
+        [
+          267,
+          510
+        ]
+      ],
+      "confidence": 0.82
+    },
+    {
+      "region_id": "r3",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "immune_decrease_distal_or_isolated",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "lobulated",
+        "multifocal",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          392,
+          58
+        ],
+        [
+          422,
+          50
+        ],
+        [
+          456,
+          56
+        ],
+        [
+          484,
+          72
+        ],
+        [
+          500,
+          97
+        ],
+        [
+          507,
+          127
+        ],
+        [
+          503,
+          158
+        ],
+        [
+          490,
+          182
+        ],
+        [
+          468,
+          198
+        ],
+        [
+          440,
+          206
+        ],
+        [
+          414,
+          201
+        ],
+        [
+          397,
+          183
+        ],
+        [
+          393,
+          154
+        ],
+        [
+          396,
+          124
+        ],
+        [
+          388,
+          95
+        ]
+      ],
+      "confidence": 0.79
+    }
+  ]
+}

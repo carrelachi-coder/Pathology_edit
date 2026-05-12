@@ -1,0 +1,1614 @@
+{
+  "status": "validated",
+  "backend": "llm_contour_proposal",
+  "projection_mode": "organic_v2",
+  "error": null,
+  "context": {
+    "mask_shape": [
+      512,
+      512
+    ],
+    "reference_profile": "BCSS",
+    "primitive": "immune_infiltration_decrease",
+    "strength": "significant",
+    "target_label": "Stroma",
+    "allowed_source_labels": [
+      "Immune infiltrate"
+    ],
+    "label_areas": {
+      "Blood vessel": 0,
+      "Immune infiltrate": 87110,
+      "Necrosis": 0,
+      "Normal epithelium": 0,
+      "Other tissue": 13269,
+      "Stroma": 89441,
+      "Tumor": 72324
+    },
+    "label_palette_rgb": {
+      "Background": [
+        30,
+        30,
+        30
+      ],
+      "Tumor": [
+        180,
+        60,
+        60
+      ],
+      "Stroma": [
+        60,
+        150,
+        60
+      ],
+      "Necrosis": [
+        60,
+        60,
+        180
+      ],
+      "Immune infiltrate": [
+        140,
+        60,
+        180
+      ],
+      "Normal epithelium": [
+        180,
+        180,
+        80
+      ],
+      "Blood vessel": [
+        60,
+        140,
+        100
+      ],
+      "Other tissue": [
+        170,
+        170,
+        170
+      ]
+    },
+    "visual_label_legend": {
+      "Background": "dark gray / nearly black",
+      "Tumor": "red",
+      "Stroma": "green",
+      "Necrosis": "blue",
+      "Immune infiltrate": "purple",
+      "Normal epithelium": "yellow",
+      "Blood vessel": "teal",
+      "Other tissue": "gray"
+    },
+    "proposal_policy": {
+      "backend": "llm_contour_proposal",
+      "schema_version": "0.1",
+      "max_regions": 8,
+      "max_points_per_region": 64,
+      "template_role": "coarse_template",
+      "known_optional_v2_fields": [
+        "source_component_ids",
+        "adjacency_side",
+        "placement_relation",
+        "template_role",
+        "shape_hints"
+      ],
+      "executor_contract": "LLM polygons are approximate organic intent templates. Deterministic code projects them to legal source labels, controls final area, and writes final pixels."
+    },
+    "target_area_hint": {
+      "area_semantics": "projection_after_legal_source_label_filtering",
+      "reference_area_label": "Immune infiltrate",
+      "reference_pixels": 87110,
+      "strength": "significant",
+      "target_fraction_min": 0.24,
+      "target_fraction_max": 0.35,
+      "target_changed_pixels_min": 20907,
+      "target_changed_pixels_max": 30488,
+      "raw_polygon_margin_guidance": "Raw polygons are coarse organic templates. They may be broader than the projected target range because Phase 3 will select final legal source-label pixels deterministically."
+    },
+    "llm_task_requirements": {
+      "pathology_goal": "Decrease immune infiltrate burden while preserving plausible surrounding tissue.",
+      "mask_edit": "Select Immune infiltrate pixels for removal. The executor will backfill selected pixels from nearby legal tissue such as Stroma, Other tissue, or Tumor according to recipe priority.",
+      "source_label": "Immune infiltrate",
+      "target_label": "nearest legal backfill tissue",
+      "where_to_draw": [
+        "Draw on purple Immune infiltrate regions that should disappear or thin out.",
+        "Prefer isolated immune islands, peripheral immune patches, or immune far from Tumor.",
+        "Avoid drawing mainly on Tumor, Stroma, Background, or Necrosis because only Immune infiltrate is legal source.",
+        "Leave Tumor-adjacent immune patches if the intent suggests preserving residual peritumoral immune context."
+      ],
+      "shape_style": [
+        "Organic removal templates over immune components.",
+        "Patchy or multifocal contours are appropriate when removing scattered immune islands.",
+        "Avoid one broad template that wipes out all immune unless strength is significant."
+      ],
+      "area_requirement": "After Phase 3 deterministically projects the coarse template to legal source-label pixels, the changed area should be about 20907 to 30488 pixels (0.24-0.35 of Immune infiltrate). The raw polygon is only a coarse template; deterministic projection controls final area.",
+      "recipe_constraints": {
+        "spatial_pattern": {
+          "reduce_priority": [
+            "isolated_immune_components",
+            "peripheral_immune_components",
+            "immune_far_from_tumor"
+          ],
+          "preserve_policy": {
+            "keep_fraction_near_tumor": true
+          }
+        },
+        "parameter_ranges": {
+          "immune_area_decrease_fraction": {
+            "mild": [
+              0.08,
+              0.14
+            ],
+            "moderate": [
+              0.14,
+              0.24
+            ],
+            "significant": [
+              0.24,
+              0.35
+            ],
+            "xlarge_deid": [
+              0.35,
+              0.6
+            ]
+          },
+          "min_remaining_immune_fraction": 0.005,
+          "immune_decrease_tumor_preserve_radius_px": 48,
+          "organic_template_sigma_px": 3.0,
+          "organic_noise_sigma_px": 18.0,
+          "organic_noise_amplitude": 0.18,
+          "organic_score_weights": {
+            "template": 0.45,
+            "spatial": 0.45,
+            "noise": 0.1
+          },
+          "organic_min_template_legal_overlap_fraction": 0.05,
+          "organic_template_neighborhood_radius_px": 48,
+          "organic_template_spillover_fraction": 0.15
+        },
+        "validation_rules": [
+          "immune_area_must_decrease",
+          "backfill_must_be_legal_tissue",
+          "no_background_holes"
+        ],
+        "backfill_priority": [
+          "Stroma",
+          "Other tissue",
+          "Tumor"
+        ]
+      }
+    },
+    "contour_style_hint": {
+      "recommended_region_count_range": [
+        1,
+        3
+      ],
+      "points_per_region_range": [
+        16,
+        32
+      ],
+      "boundary_style": "irregular organic boundary",
+      "region_variation_requirement": "Do not duplicate shapes across regions."
+    },
+    "source_spatial_hints": {
+      "Immune infiltrate": {
+        "total_pixels": 87110,
+        "components": [
+          {
+            "component_id": "c2",
+            "area_px": 54625,
+            "bbox": [
+              242,
+              119,
+              511,
+              511
+            ],
+            "centroid": [
+              422.9,
+              295.7
+            ]
+          },
+          {
+            "component_id": "c3",
+            "area_px": 30049,
+            "bbox": [
+              166,
+              294,
+              382,
+              511
+            ],
+            "centroid": [
+              271.0,
+              422.7
+            ]
+          },
+          {
+            "component_id": "c1",
+            "area_px": 2436,
+            "bbox": [
+              453,
+              92,
+              511,
+              145
+            ],
+            "centroid": [
+              487.6,
+              115.7
+            ]
+          }
+        ],
+        "high_purity_grid_tiles": [
+          {
+            "bbox": [
+              384,
+              192,
+              447,
+              255
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              448,
+              192,
+              511,
+              255
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              384,
+              256,
+              447,
+              319
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              448,
+              256,
+              511,
+              319
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              448,
+              320,
+              511,
+              383
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              192,
+              384,
+              255,
+              447
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          }
+        ],
+        "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+      }
+    },
+    "source_contour_context": {
+      "Immune infiltrate": {
+        "coordinate_system": "original_mask_xy",
+        "contour_point_format": "[x, y]",
+        "components": [
+          {
+            "component_id": "source_2",
+            "area_px": 54625,
+            "bbox": [
+              242,
+              119,
+              511,
+              511
+            ],
+            "centroid": [
+              422.9,
+              295.7
+            ],
+            "contour_simplified": [
+              [
+                420,
+                511
+              ],
+              [
+                424,
+                481
+              ],
+              [
+                414,
+                460
+              ],
+              [
+                428,
+                441
+              ],
+              [
+                434,
+                413
+              ],
+              [
+                425,
+                394
+              ],
+              [
+                403,
+                382
+              ],
+              [
+                388,
+                364
+              ],
+              [
+                378,
+                340
+              ],
+              [
+                358,
+                326
+              ],
+              [
+                340,
+                312
+              ],
+              [
+                328,
+                291
+              ],
+              [
+                310,
+                274
+              ],
+              [
+                286,
+                280
+              ],
+              [
+                266,
+                272
+              ],
+              [
+                242,
+                263
+              ],
+              [
+                254,
+                242
+              ],
+              [
+                268,
+                222
+              ],
+              [
+                282,
+                203
+              ],
+              [
+                304,
+                200
+              ],
+              [
+                334,
+                204
+              ],
+              [
+                363,
+                200
+              ],
+              [
+                380,
+                184
+              ],
+              [
+                364,
+                166
+              ],
+              [
+                352,
+                146
+              ],
+              [
+                370,
+                131
+              ],
+              [
+                392,
+                120
+              ],
+              [
+                418,
+                126
+              ],
+              [
+                439,
+                138
+              ],
+              [
+                456,
+                154
+              ],
+              [
+                479,
+                164
+              ],
+              [
+                511,
+                162
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 1038
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    132
+                  ],
+                  "points": [
+                    [
+                      400,
+                      119
+                    ],
+                    [
+                      444,
+                      144
+                    ],
+                    [
+                      371,
+                      171
+                    ],
+                    [
+                      350,
+                      204
+                    ],
+                    [
+                      299,
+                      273
+                    ],
+                    [
+                      369,
+                      331
+                    ],
+                    [
+                      437,
+                      401
+                    ],
+                    [
+                      423,
+                      507
+                    ]
+                  ],
+                  "bbox": [
+                    243,
+                    119,
+                    507,
+                    507
+                  ],
+                  "point_count": 133,
+                  "points_shown": 8
+                }
+              ]
+            }
+          },
+          {
+            "component_id": "source_3",
+            "area_px": 30049,
+            "bbox": [
+              166,
+              294,
+              382,
+              511
+            ],
+            "centroid": [
+              271.0,
+              422.7
+            ],
+            "contour_simplified": [
+              [
+                194,
+                511
+              ],
+              [
+                196,
+                491
+              ],
+              [
+                198,
+                469
+              ],
+              [
+                192,
+                451
+              ],
+              [
+                186,
+                434
+              ],
+              [
+                174,
+                422
+              ],
+              [
+                166,
+                406
+              ],
+              [
+                166,
+                382
+              ],
+              [
+                178,
+                372
+              ],
+              [
+                198,
+                368
+              ],
+              [
+                215,
+                360
+              ],
+              [
+                222,
+                343
+              ],
+              [
+                224,
+                321
+              ],
+              [
+                230,
+                303
+              ],
+              [
+                236,
+                301
+              ],
+              [
+                250,
+                312
+              ],
+              [
+                264,
+                320
+              ],
+              [
+                280,
+                328
+              ],
+              [
+                294,
+                338
+              ],
+              [
+                307,
+                350
+              ],
+              [
+                322,
+                359
+              ],
+              [
+                336,
+                368
+              ],
+              [
+                350,
+                378
+              ],
+              [
+                362,
+                390
+              ],
+              [
+                370,
+                405
+              ],
+              [
+                376,
+                424
+              ],
+              [
+                378,
+                445
+              ],
+              [
+                382,
+                465
+              ],
+              [
+                364,
+                470
+              ],
+              [
+                350,
+                481
+              ],
+              [
+                340,
+                494
+              ],
+              [
+                332,
+                511
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 743
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    75
+                  ],
+                  "points": [
+                    [
+                      230,
+                      294
+                    ],
+                    [
+                      245,
+                      309
+                    ],
+                    [
+                      265,
+                      322
+                    ],
+                    [
+                      288,
+                      335
+                    ],
+                    [
+                      305,
+                      349
+                    ],
+                    [
+                      216,
+                      361
+                    ],
+                    [
+                      188,
+                      369
+                    ],
+                    [
+                      346,
+                      376
+                    ]
+                  ],
+                  "bbox": [
+                    168,
+                    294,
+                    346,
+                    376
+                  ],
+                  "point_count": 76,
+                  "points_shown": 8
+                },
+                {
+                  "point_index_range": [
+                    77,
+                    77
+                  ],
+                  "points": [
+                    [
+                      349,
+                      379
+                    ]
+                  ],
+                  "bbox": [
+                    349,
+                    379,
+                    349,
+                    379
+                  ],
+                  "point_count": 1,
+                  "points_shown": 1
+                }
+              ],
+              "Other tissue": [
+                {
+                  "point_index_range": [
+                    76,
+                    76
+                  ],
+                  "points": [
+                    [
+                      166,
+                      378
+                    ]
+                  ],
+                  "bbox": [
+                    166,
+                    378,
+                    166,
+                    378
+                  ],
+                  "point_count": 1,
+                  "points_shown": 1
+                },
+                {
+                  "point_index_range": [
+                    78,
+                    78
+                  ],
+                  "points": [
+                    [
+                      166,
+                      381
+                    ]
+                  ],
+                  "bbox": [
+                    166,
+                    381,
+                    166,
+                    381
+                  ],
+                  "point_count": 1,
+                  "points_shown": 1
+                }
+              ]
+            }
+          },
+          {
+            "component_id": "source_1",
+            "area_px": 2436,
+            "bbox": [
+              453,
+              92,
+              511,
+              145
+            ],
+            "centroid": [
+              487.6,
+              115.7
+            ],
+            "contour_simplified": [
+              [
+                511,
+                144
+              ],
+              [
+                506,
+                144
+              ],
+              [
+                501,
+                144
+              ],
+              [
+                496,
+                145
+              ],
+              [
+                490,
+                146
+              ],
+              [
+                487,
+                144
+              ],
+              [
+                482,
+                142
+              ],
+              [
+                479,
+                140
+              ],
+              [
+                476,
+                137
+              ],
+              [
+                473,
+                134
+              ],
+              [
+                470,
+                132
+              ],
+              [
+                468,
+                128
+              ],
+              [
+                466,
+                124
+              ],
+              [
+                464,
+                120
+              ],
+              [
+                462,
+                117
+              ],
+              [
+                460,
+                112
+              ],
+              [
+                458,
+                108
+              ],
+              [
+                457,
+                104
+              ],
+              [
+                455,
+                100
+              ],
+              [
+                452,
+                97
+              ],
+              [
+                455,
+                94
+              ],
+              [
+                460,
+                95
+              ],
+              [
+                464,
+                96
+              ],
+              [
+                467,
+                94
+              ],
+              [
+                472,
+                94
+              ],
+              [
+                476,
+                92
+              ],
+              [
+                482,
+                92
+              ],
+              [
+                487,
+                92
+              ],
+              [
+                493,
+                92
+              ],
+              [
+                499,
+                92
+              ],
+              [
+                505,
+                92
+              ],
+              [
+                511,
+                92
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 182
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    149
+                  ],
+                  "points": [
+                    [
+                      475,
+                      92
+                    ],
+                    [
+                      499,
+                      92
+                    ],
+                    [
+                      457,
+                      95
+                    ],
+                    [
+                      456,
+                      101
+                    ],
+                    [
+                      463,
+                      118
+                    ],
+                    [
+                      472,
+                      133
+                    ],
+                    [
+                      487,
+                      143
+                    ],
+                    [
+                      495,
+                      145
+                    ]
+                  ],
+                  "bbox": [
+                    453,
+                    92,
+                    509,
+                    145
+                  ],
+                  "point_count": 150,
+                  "points_shown": 8
+                }
+              ]
+            }
+          }
+        ],
+        "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+      }
+    },
+    "primitive_policy": {
+      "name": "immune_infiltration_decrease",
+      "pathology_meaning": "immune-cold conversion or immune suppression",
+      "mask_operation": {
+        "type": "immune_region_reduction",
+        "source": "Immune infiltrate",
+        "backfill_priority": [
+          "Stroma",
+          "Other tissue",
+          "Tumor"
+        ]
+      },
+      "spatial_policy": {},
+      "parameter_ranges": {
+        "immune_area_decrease_fraction": {
+          "mild": [
+            0.08,
+            0.14
+          ],
+          "moderate": [
+            0.14,
+            0.24
+          ],
+          "significant": [
+            0.24,
+            0.35
+          ],
+          "xlarge_deid": [
+            0.35,
+            0.6
+          ]
+        },
+        "min_remaining_immune_fraction": 0.005,
+        "immune_decrease_tumor_preserve_radius_px": 48,
+        "organic_template_sigma_px": 3.0,
+        "organic_noise_sigma_px": 18.0,
+        "organic_noise_amplitude": 0.18,
+        "organic_score_weights": {
+          "template": 0.45,
+          "spatial": 0.45,
+          "noise": 0.1
+        },
+        "organic_min_template_legal_overlap_fraction": 0.05,
+        "organic_template_neighborhood_radius_px": 48,
+        "organic_template_spillover_fraction": 0.15
+      },
+      "validation_rules": [
+        "immune_area_must_decrease",
+        "backfill_must_be_legal_tissue",
+        "no_background_holes"
+      ]
+    },
+    "preview": {
+      "coordinate_system": "original_mask_xy",
+      "origin": "top_left",
+      "point_format": "[x, y]",
+      "x_axis": "horizontal_column_right",
+      "y_axis": "vertical_row_down",
+      "width": 512,
+      "height": 512,
+      "grid_spacing_px": 64
+    }
+  },
+  "artifact_paths": {
+    "source_mask": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\source_mask.png",
+    "source_mask_rgb": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\source_mask_rgb.png",
+    "source_mask_llm_rgb": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\source_mask_llm_rgb.png",
+    "source_mask_llm_rgb_grid": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\source_mask_llm_rgb_grid.png",
+    "mask_context": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\mask_context.json",
+    "final_target_mask": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\final_target_mask.png",
+    "final_target_mask_rgb": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\final_target_mask_rgb.png",
+    "final_change_region": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\final_change_region.png"
+  },
+  "attempts": [
+    {
+      "attempt_index": 1,
+      "status": "validated",
+      "error": null,
+      "artifact_paths": {
+        "prompt": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\prompt.txt",
+        "llm_request": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\llm_request.json",
+        "llm_response": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\llm_response.json",
+        "llm_response_raw": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\llm_response_raw.txt",
+        "validated_proposal": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\validated_proposal.json",
+        "rasterized_region": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\rasterized_region.png",
+        "projected_region": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\projected_region.png",
+        "change_region": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\change_region.png",
+        "target_mask": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\target_mask.png",
+        "target_mask_rgb": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\target_mask_rgb.png",
+        "visual_qa_source_mask_rgb": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\source_mask_rgb.png",
+        "visual_qa_source_mask_rgb_grid": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\source_mask_rgb_grid.png",
+        "visual_qa_raw_template_overlay": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\raw_template_overlay.png",
+        "visual_qa_legal_domain": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\legal_domain.png",
+        "visual_qa_template_score_heatmap": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\template_score_heatmap.png",
+        "visual_qa_spatial_score_heatmap": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\spatial_score_heatmap.png",
+        "visual_qa_noise_heatmap": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\noise_heatmap.png",
+        "visual_qa_final_score_heatmap": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\final_score_heatmap.png",
+        "visual_qa_selected_change_region": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\selected_change_region.png",
+        "visual_qa_target_mask_rgb": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\target_mask_rgb.png",
+        "visual_qa_organic_projection_panel": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\organic_projection_panel.png",
+        "visual_qa_v1_v2_side_by_side": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\v1_v2_side_by_side.png",
+        "visual_qa_visual_qa_manifest": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\visual_qa\\visual_qa_manifest.json",
+        "validation": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\validation.json",
+        "attempt_summary": "runs\\phase3_llm_contour\\immune_decrease_llm_v2_cursorai_gpt4o_all_real_masks_significant_5case\\case02_TCGA-BH-A0WA_x56581_y24774_py3072_px2816\\attempt_001\\attempt_summary.json"
+      },
+      "proposal": {
+        "primitive": "immune_infiltration_decrease",
+        "reference_profile": "BCSS",
+        "target_label": "Stroma",
+        "regions": [
+          {
+            "region_id": "r1",
+            "source_labels": [
+              "Immune infiltrate"
+            ],
+            "points": [
+              [
+                430.0,
+                500.0
+              ],
+              [
+                440.0,
+                475.0
+              ],
+              [
+                430.0,
+                450.0
+              ],
+              [
+                420.0,
+                430.0
+              ],
+              [
+                410.0,
+                400.0
+              ],
+              [
+                395.0,
+                370.0
+              ],
+              [
+                380.0,
+                340.0
+              ],
+              [
+                360.0,
+                320.0
+              ],
+              [
+                340.0,
+                305.0
+              ],
+              [
+                320.0,
+                290.0
+              ],
+              [
+                300.0,
+                275.0
+              ],
+              [
+                285.0,
+                290.0
+              ],
+              [
+                270.0,
+                310.0
+              ],
+              [
+                260.0,
+                335.0
+              ],
+              [
+                275.0,
+                360.0
+              ],
+              [
+                290.0,
+                380.0
+              ],
+              [
+                315.0,
+                400.0
+              ],
+              [
+                345.0,
+                420.0
+              ],
+              [
+                370.0,
+                440.0
+              ],
+              [
+                390.0,
+                460.0
+              ]
+            ],
+            "confidence": 0.8
+          },
+          {
+            "region_id": "r2",
+            "source_labels": [
+              "Immune infiltrate"
+            ],
+            "points": [
+              [
+                180.0,
+                380.0
+              ],
+              [
+                190.0,
+                395.0
+              ],
+              [
+                210.0,
+                410.0
+              ],
+              [
+                230.0,
+                420.0
+              ],
+              [
+                250.0,
+                430.0
+              ],
+              [
+                270.0,
+                440.0
+              ],
+              [
+                290.0,
+                450.0
+              ],
+              [
+                310.0,
+                460.0
+              ],
+              [
+                330.0,
+                470.0
+              ],
+              [
+                350.0,
+                480.0
+              ],
+              [
+                360.0,
+                495.0
+              ],
+              [
+                340.0,
+                500.0
+              ],
+              [
+                320.0,
+                505.0
+              ],
+              [
+                300.0,
+                510.0
+              ],
+              [
+                280.0,
+                505.0
+              ],
+              [
+                260.0,
+                500.0
+              ]
+            ],
+            "confidence": 0.75
+          }
+        ]
+      },
+      "edit_result": {
+        "selected_pixels": 25698,
+        "changed_area_fraction": 0.09803009033203125,
+        "warnings": [],
+        "ops_log": {
+          "backend": "organic_score_projection_v2",
+          "method": "organic_score_projection_and_deterministic_backfill",
+          "primitive": "immune_infiltration_decrease",
+          "reference_profile": "BCSS",
+          "source_labels": [
+            "Immune infiltrate"
+          ],
+          "target_label": "nearest_backfill_tissue",
+          "backfill_labels": [
+            "Stroma",
+            "Other tissue",
+            "Tumor"
+          ],
+          "preserve_labels": [],
+          "forbidden_labels": [],
+          "raw_candidate_pixels": 22723,
+          "candidate_pixels": 22723,
+          "raw_candidate_legal_overlap_pixels": 12249,
+          "template_overlap_with_legal_domain": 0.5390573427804427,
+          "legal_domain_pixels": 87110,
+          "target_pixels": 25698,
+          "projected_pixels": 25698,
+          "selected_pixels": 25698,
+          "selected_raw_template_intersection_pixels": 11979,
+          "selected_raw_template_union_pixels": 36442,
+          "selected_raw_template_iou": 0.3287141210690961,
+          "selection_policy": {
+            "name": "template_neighborhood_constrained_top_k",
+            "template_neighborhood_radius_px": 48.0,
+            "template_spillover_fraction": 0.15,
+            "primary_zone_pixels": 47580,
+            "primary_budget_pixels": 21843,
+            "primary_selected_pixels": 21843,
+            "secondary_selected_pixels": 3855,
+            "selected_inside_primary_zone_pixels": 25424,
+            "selected_outside_primary_zone_pixels": 274
+          },
+          "area_shortfall": 0,
+          "changed_area_fraction": 0.09803009033203125,
+          "projection_backend": "organic_score_projection_v2",
+          "noise_seed": 32,
+          "strength": "significant",
+          "score_terms": {
+            "w_template": 0.45,
+            "w_spatial": 0.45,
+            "w_noise": 0.1,
+            "template_sigma": 3.0,
+            "noise_sigma": 18.0,
+            "noise_amplitude": 0.18,
+            "min_template_legal_overlap_fraction": 0.05,
+            "template_neighborhood_radius_px": 48.0,
+            "template_spillover_fraction": 0.15
+          },
+          "component_policy": {
+            "policy_name": "immune_decrease_remove_isolated_or_distal_immune",
+            "params": {
+              "source_label": "Immune infiltrate",
+              "backfill_policy": "nearest_legal_tissue",
+              "immune_components": 3,
+              "tumor_preserve_radius_px": 48.0,
+              "selected_backfill_labels": [
+                "Stroma",
+                "Other tissue",
+                "Tumor"
+              ],
+              "score_prefers": [
+                "immune_far_from_tumor",
+                "small_or_isolated_immune_components",
+                "immune_touching_backfill_tissue"
+              ]
+            },
+            "spatial_score_stats": {
+              "pixels": 87110,
+              "min": 0.0,
+              "max": 1.0,
+              "mean": 0.32582177247508737
+            },
+            "template_score_stats": {
+              "pixels": 87110,
+              "min": 0.0,
+              "max": 1.0,
+              "mean": 0.6784920764628016
+            }
+          },
+          "cleanup_removed_pixels": 0,
+          "cleanup_refill_pixels": 0,
+          "cleanup_min_component_pixels": 1,
+          "cleanup_min_component_policy": "immune_decrease_preserve_small_islands",
+          "pre_cleanup_pixels": 25698,
+          "post_cleanup_pixels": 25698,
+          "cleanup_single_pass": true,
+          "cleanup_iteration_limit": 1,
+          "decrease_semantics": "select_immune_pixels_then_backfill_from_nearest_legal_tissue",
+          "raw_payload": {
+            "schema_version": "0.1",
+            "backend": "llm_contour_proposal",
+            "primitive": "immune_infiltration_decrease",
+            "reference_profile": "BCSS",
+            "target_label": "Stroma",
+            "template_role": "coarse_template",
+            "placement_relation": "immune_decrease_distal_or_isolated",
+            "shape_hints": [
+              "patchy",
+              "multifocal",
+              "irregular_boundary"
+            ],
+            "coordinate_system": {
+              "origin": "top_left",
+              "point_format": "[x, y]",
+              "x_axis": "horizontal_column_right",
+              "y_axis": "vertical_row_down",
+              "width": 512,
+              "height": 512
+            },
+            "regions": [
+              {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": [
+                  "Immune infiltrate"
+                ],
+                "source_component_ids": [
+                  "source_2"
+                ],
+                "adjacency_side": "immune_decrease_distal_or_isolated",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "patchy",
+                  "multifocal",
+                  "irregular_boundary"
+                ],
+                "points": [
+                  [
+                    430,
+                    500
+                  ],
+                  [
+                    440,
+                    475
+                  ],
+                  [
+                    430,
+                    450
+                  ],
+                  [
+                    420,
+                    430
+                  ],
+                  [
+                    410,
+                    400
+                  ],
+                  [
+                    395,
+                    370
+                  ],
+                  [
+                    380,
+                    340
+                  ],
+                  [
+                    360,
+                    320
+                  ],
+                  [
+                    340,
+                    305
+                  ],
+                  [
+                    320,
+                    290
+                  ],
+                  [
+                    300,
+                    275
+                  ],
+                  [
+                    285,
+                    290
+                  ],
+                  [
+                    270,
+                    310
+                  ],
+                  [
+                    260,
+                    335
+                  ],
+                  [
+                    275,
+                    360
+                  ],
+                  [
+                    290,
+                    380
+                  ],
+                  [
+                    315,
+                    400
+                  ],
+                  [
+                    345,
+                    420
+                  ],
+                  [
+                    370,
+                    440
+                  ],
+                  [
+                    390,
+                    460
+                  ]
+                ],
+                "confidence": 0.8
+              },
+              {
+                "region_id": "r2",
+                "type": "polygon",
+                "source_labels": [
+                  "Immune infiltrate"
+                ],
+                "source_component_ids": [
+                  "source_3"
+                ],
+                "adjacency_side": "immune_decrease_distal_or_isolated",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "patchy",
+                  "multifocal",
+                  "irregular_boundary"
+                ],
+                "points": [
+                  [
+                    180,
+                    380
+                  ],
+                  [
+                    190,
+                    395
+                  ],
+                  [
+                    210,
+                    410
+                  ],
+                  [
+                    230,
+                    420
+                  ],
+                  [
+                    250,
+                    430
+                  ],
+                  [
+                    270,
+                    440
+                  ],
+                  [
+                    290,
+                    450
+                  ],
+                  [
+                    310,
+                    460
+                  ],
+                  [
+                    330,
+                    470
+                  ],
+                  [
+                    350,
+                    480
+                  ],
+                  [
+                    360,
+                    495
+                  ],
+                  [
+                    340,
+                    500
+                  ],
+                  [
+                    320,
+                    505
+                  ],
+                  [
+                    300,
+                    510
+                  ],
+                  [
+                    280,
+                    505
+                  ],
+                  [
+                    260,
+                    500
+                  ]
+                ],
+                "confidence": 0.75
+              }
+            ]
+          },
+          "projection_mode": "organic_v2"
+        }
+      },
+      "validation": {
+        "passed": true,
+        "primitive": "immune_infiltration_decrease",
+        "checks": [
+          {
+            "name": "change_area_nonempty",
+            "passed": true,
+            "detail": "25698 pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "passed": true,
+            "detail": "changed_area_fraction=0.0980 in [0.08, 0.70]"
+          },
+          {
+            "name": "label_legality",
+            "passed": true,
+            "detail": "all labels in schema."
+          },
+          {
+            "name": "no_background_leakage",
+            "passed": true,
+            "detail": "no background leakage."
+          },
+          {
+            "name": "required_labels_present",
+            "passed": true,
+            "detail": "all required labels present in src mask."
+          },
+          {
+            "name": "immune_area_must_decrease",
+            "passed": true,
+            "detail": "immune 87110 -> 61412 pixels."
+          },
+          {
+            "name": "backfill_must_be_legal_tissue",
+            "passed": true,
+            "detail": "no Background used as backfill."
+          },
+          {
+            "name": "no_background_holes",
+            "passed": true,
+            "detail": "no background holes created."
+          }
+        ],
+        "warnings": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "status": "proposal_rejected",
+  "attempt": 1,
+  "error": "point [348, 512] is outside mask bounds 512x512."
+}
