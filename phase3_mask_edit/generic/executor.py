@@ -89,6 +89,11 @@ def _auto_register() -> None:
     register_primitive("stromal_desmoplasia", apply_stromal_desmoplasia)
 
 
+_EXECUTION_STRATEGY_REGISTRY: dict[str, Callable] = {
+    "id_transition": apply_fine_label_transition,
+}
+
+
 # ── main executor ──────────────────────────────────────────────────
 
 def execute_edit(
@@ -130,10 +135,7 @@ def execute_edit(
         )
 
     # ── step 3: mask transform ───────────────────────────────────
-    operation_type = primitive_config.get("mask_operation", {}).get("type")
-    fn = _PRIMITIVE_REGISTRY.get(intent.primitive)
-    if fn is None and isinstance(operation_type, str):
-        fn = _PRIMITIVE_REGISTRY.get(operation_type)
+    fn = _resolve_primitive_function(primitive_config, intent.primitive)
     if fn is None:
         raise PrimitiveExecutionError(
             f"No registered primitive function for {intent.primitive}."
@@ -194,3 +196,14 @@ def _find_primitive_config(
         if isinstance(primitive, Mapping) and primitive.get("name") == primitive_name:
             return primitive
     return None
+
+
+def _resolve_primitive_function(
+    primitive_config: Mapping[str, Any], primitive_name: str
+) -> Callable | None:
+    strategy = primitive_config.get("execution_strategy")
+    if isinstance(strategy, str):
+        fn = _EXECUTION_STRATEGY_REGISTRY.get(strategy)
+        if fn is not None:
+            return fn
+    return _PRIMITIVE_REGISTRY.get(primitive_name)

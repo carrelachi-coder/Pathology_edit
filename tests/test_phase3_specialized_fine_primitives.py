@@ -32,9 +32,23 @@ class SpecializedFinePrimitiveRecipeTests(unittest.TestCase):
         for filename, names in expected.items():
             with self.subTest(filename=filename):
                 recipe = load_recipe(Path("phase3_mask_edit/recipes") / filename)
-                primitive_names = {primitive["name"] for primitive in recipe["primitives"]}
+                primitives = {
+                    primitive["name"]: primitive for primitive in recipe["primitives"]
+                }
+                primitive_names = set(primitives)
                 self.assertTrue(names.issubset(primitive_names))
                 self.assertEqual(set(recipe["specialized_strategies"]), names)
+                for name in names:
+                    self.assertEqual(primitives[name]["execution_strategy"], "id_transition")
+
+    def test_generic_primitives_default_to_geometric_organic_strategy(self):
+        recipe = load_recipe("phase3_mask_edit/recipes/generic.yaml")
+        primitive = next(
+            primitive
+            for primitive in recipe["primitives"]
+            if primitive["name"] == "stromal_immune_infiltration"
+        )
+        self.assertEqual(primitive["execution_strategy"], "geometric_organic")
 
     def test_coarse_dataset_recipes_do_not_add_fine_specials(self):
         for filename in ("ignite.yaml", "puma.yaml", "orca.yaml"):
@@ -71,9 +85,21 @@ class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
         self.assertEqual(result.status, "executed_validated")
         self.assertIsNotNone(result.edit_result)
         target = result.edit_result.target_mask
+        ops = result.edit_result.ops_log
         self.assertLess(np.count_nonzero(target == 8), np.count_nonzero(old_mask == 8))
         self.assertGreater(np.count_nonzero(target == 9), np.count_nonzero(old_mask == 9))
         self.assertTrue(np.all(old_mask[result.edit_result.change_region] == 8))
+        self.assertEqual(ops["execution_strategy"], "id_transition")
+        self.assertEqual(
+            ops["target_change_fraction_semantics"],
+            "source_fine_id_relative_relabel_fraction",
+        )
+        self.assertEqual(ops["target_change_fraction_denominator"], "source_fine_id_pixels")
+        self.assertEqual(ops["candidate_pixels"], 8)
+        self.assertEqual(ops["target_pixels"], 4)
+        self.assertEqual(ops["selected_pixels"], 4)
+        self.assertAlmostEqual(ops["source_relative_fraction"], 4 / 8)
+        self.assertAlmostEqual(ops["changed_area_fraction"], 4 / old_mask.size)
 
     def test_missing_source_fine_id_is_rejected(self):
         recipe = load_recipe("phase3_mask_edit/recipes/panda.yaml")

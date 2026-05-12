@@ -15,6 +15,7 @@ FROZEN_PRIMITIVE_FIELDS = frozenset(
     {
         "name",
         "version",
+        "execution_strategy",
         "pathology_meaning",
         "required_tissue_labels",
         "required_context",
@@ -76,8 +77,35 @@ def load_recipe(path: str | Path) -> dict[str, Any]:
         recipe = yaml.safe_load(stream)
 
     recipe = expand_recipe(recipe, base_path=recipe_path)
+    recipe = normalize_recipe_execution_strategy(recipe)
     validate_recipe_schema(recipe)
     return recipe
+
+
+def normalize_recipe_execution_strategy(recipe: dict[str, Any]) -> dict[str, Any]:
+    """Fill default execution strategies for older generic recipe entries."""
+
+    if not isinstance(recipe, dict):
+        return recipe
+    primitives = recipe.get("primitives")
+    if not isinstance(primitives, list):
+        return recipe
+    normalized = deepcopy(recipe)
+    for primitive in normalized.get("primitives", []):
+        if not isinstance(primitive, dict):
+            continue
+        primitive.setdefault(
+            "execution_strategy",
+            _default_execution_strategy(primitive),
+        )
+    return normalized
+
+
+def _default_execution_strategy(primitive: dict[str, Any]) -> str:
+    mask_operation = primitive.get("mask_operation", {})
+    if isinstance(mask_operation, dict) and mask_operation.get("type") == "fine_label_transition":
+        return "id_transition"
+    return "geometric_organic"
 
 
 def expand_recipe(recipe: dict[str, Any], *, base_path: Path | None = None) -> dict[str, Any]:

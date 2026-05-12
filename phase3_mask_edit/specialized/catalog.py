@@ -25,6 +25,7 @@ def _fine_transition(
     return {
         "name": name,
         "version": "v1",
+        "execution_strategy": "id_transition",
         "pathology_meaning": meaning,
         "required_tissue_labels": [source_label],
         "required_context": ["source_fine_id_present"],
