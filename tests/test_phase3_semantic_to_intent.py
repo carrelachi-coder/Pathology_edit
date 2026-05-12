@@ -192,20 +192,6 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
 
         self.assertEqual(intents[0].primitive, "grade_upgrade")
 
-    def test_bcss_dcis_invasion_maps_to_special(self):
-        diff = semantic_diff_with(
-            tumor_change={"growth": "none", "grade_change": "upgrade"}
-        )
-
-        intents = semantic_diff_to_intents(
-            diff,
-            reference_profile="BCSS",
-            old_prompt="Breast lesion with DCIS.",
-            new_prompt="DCIS becomes invasive carcinoma.",
-        )
-
-        self.assertEqual(intents[0].primitive, "dcis_invasion")
-
     def test_applicability_rejection_removes_intent_from_executable_list(self):
         diff = semantic_diff_with(
             lymphocyte_change={"infiltration": "increase", "degree": "moderate"}

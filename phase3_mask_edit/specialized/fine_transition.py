@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 import numpy as np
+from scipy import ndimage as ndi
 
 from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
@@ -12,6 +13,18 @@ from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.generic.tumor_burden import (
     PrimitiveEditResult,
     PrimitiveExecutionError,
+)
+
+COMPONENT_SELECTION_PRIMITIVES = frozenset(
+    {
+        "gleason_upgrade_3to4",
+        "gleason_upgrade_4to5",
+        "gleason_downgrade_4to3",
+        "normal_to_adenomatous",
+        "adenoma_to_carcinoma",
+        "grade_upgrade",
+        "treatment_dedifferentiation",
+    }
 )
 
 
@@ -25,9 +38,9 @@ def apply_fine_label_transition(
     """Convert selected source fine IDs into one target fine ID.
 
     This is the shared mask primitive for grade/subtype specials such as
-    PANDA Gleason transitions, GlaS differentiation shifts, and BCSS DCIS or
-    angioinvasion emphasis. Geometry is intentionally conservative: pixels are
-    relabeled in place, preserving the original region footprint.
+    PANDA Gleason transitions and GlaS differentiation shifts. Geometry is
+    intentionally conservative: pixels are relabeled in place, preserving the
+    original region footprint.
     """
 
     del old_mask
@@ -54,7 +67,11 @@ def apply_fine_label_transition(
 
     target_fraction = _target_fraction_for_intent(primitive_config, intent)
     target_pixels = max(1, min(candidate_pixels, int(round(target_fraction * candidate_pixels))))
-    change_region = _select_transition_pixels(candidate_mask, target_pixels)
+    change_region, selection_log = _select_transition_pixels(
+        candidate_mask,
+        target_pixels,
+        primitive_name=str(primitive_config.get("name", intent.primitive)),
+    )
     selected_pixels = int(np.count_nonzero(change_region))
     if selected_pixels == 0:
         raise PrimitiveExecutionError("fine_transition_empty_selection")
@@ -84,16 +101,105 @@ def apply_fine_label_transition(
             "selected_pixels": selected_pixels,
             "source_relative_fraction": selected_pixels / candidate_pixels,
             "changed_area_fraction": changed_area_fraction,
+            **selection_log,
         },
     )
 
 
-def _select_transition_pixels(candidate_mask: np.ndarray, target_pixels: int) -> np.ndarray:
+def _select_transition_pixels(
+    candidate_mask: np.ndarray,
+    target_pixels: int,
+    *,
+    primitive_name: str,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Select source pixels for a fine-ID transition."""
+
+    if primitive_name in COMPONENT_SELECTION_PRIMITIVES:
+        return _select_connected_components(candidate_mask, target_pixels)
+
+    return _select_central_pixels(candidate_mask, target_pixels)
+
+
+def _select_connected_components(
+    candidate_mask: np.ndarray, target_pixels: int
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Select whole source components, preserving existing gland/tumor geometry."""
+
+    labeled, num_components = ndi.label(candidate_mask, structure=np.ones((3, 3), dtype=bool))
+    if num_components == 0:
+        return (
+            np.zeros(candidate_mask.shape, dtype=bool),
+            {
+                "selection_unit": "connected_component",
+                "selection_policy": "whole_source_components",
+                "source_component_count": 0,
+                "selected_component_ids": [],
+                "selected_component_areas": [],
+                "area_budget_policy": "empty_source",
+            },
+        )
+
+    component_ids = np.arange(1, num_components + 1, dtype=np.int64)
+    component_areas = ndi.sum(candidate_mask, labeled, component_ids).astype(np.int64)
+    order = np.lexsort((component_ids, -component_areas))
+    selected_ids: list[int] = []
+    selected_areas: list[int] = []
+    selected_pixels = 0
+    skipped_oversize = 0
+
+    for index in order:
+        component_id = int(component_ids[index])
+        area = int(component_areas[index])
+        if area > target_pixels - selected_pixels and selected_pixels > 0:
+            skipped_oversize += 1
+            continue
+        if area > target_pixels and selected_pixels == 0:
+            skipped_oversize += 1
+            continue
+        selected_ids.append(component_id)
+        selected_areas.append(area)
+        selected_pixels += area
+        if selected_pixels >= target_pixels:
+            break
+
+    if not selected_ids:
+        # If every source component is larger than the requested area, choose the
+        # smallest whole component instead of cutting an artificial patch through it.
+        index = int(np.argmin(component_areas))
+        selected_ids = [int(component_ids[index])]
+        selected_areas = [int(component_areas[index])]
+        selected_pixels = selected_areas[0]
+
+    selected = np.isin(labeled, selected_ids)
+    return (
+        selected,
+        {
+            "selection_unit": "connected_component",
+            "selection_policy": "whole_source_components",
+            "source_component_count": int(num_components),
+            "selected_component_ids": selected_ids,
+            "selected_component_areas": selected_areas,
+            "area_budget_policy": "whole_components_no_partial_split",
+            "area_budget_delta_pixels": int(selected_pixels - target_pixels),
+            "skipped_components_due_to_area_budget": int(skipped_oversize),
+        },
+    )
+
+
+def _select_central_pixels(
+    candidate_mask: np.ndarray, target_pixels: int
+) -> tuple[np.ndarray, dict[str, Any]]:
     """Select a deterministic central subset of candidate pixels."""
 
     ys, xs = np.nonzero(candidate_mask)
     if len(ys) <= target_pixels:
-        return candidate_mask.copy()
+        return (
+            candidate_mask.copy(),
+            {
+                "selection_unit": "pixel",
+                "selection_policy": "central_source_pixels",
+            },
+        )
 
     cy = float(np.mean(ys))
     cx = float(np.mean(xs))
@@ -101,7 +207,13 @@ def _select_transition_pixels(candidate_mask: np.ndarray, target_pixels: int) ->
     selected = np.zeros(candidate_mask.shape, dtype=bool)
     keep = order[:target_pixels]
     selected[ys[keep], xs[keep]] = True
-    return selected
+    return (
+        selected,
+        {
+            "selection_unit": "pixel",
+            "selection_policy": "central_source_pixels",
+        },
+    )
 
 
 def _target_fraction_for_intent(

@@ -25,8 +25,6 @@ PlanItemStatus = Literal[
 INTENT_ORDER = {
     "tumor_burden_increase": 10,
     "tumor_burden_decrease": 20,
-    "dcis_invasion": 25,
-    "angioinvasion_emphasis": 26,
     "benign_to_gleason3": 27,
     "normal_to_adenomatous": 27,
     "gleason_upgrade_3to4": 28,
@@ -451,16 +449,6 @@ def _specialized_grade_primitive(
         if _contains_any(combined, ("adenoma", "adenomatous")):
             return "adenoma_to_carcinoma"
         return "grade_upgrade"
-
-    if profile == "BCSS":
-        if _contains_any(
-            new_text, ("angioinvasion", "vascular invasion", "lymphovascular")
-        ):
-            return "angioinvasion_emphasis"
-        if "dcis" in old_text and _contains_any(new_text, ("invasive", "invasion")):
-            return "dcis_invasion"
-        if "dcis" in combined and _contains_any(new_text, ("invasive", "invasion")):
-            return "dcis_invasion"
 
     return None
 

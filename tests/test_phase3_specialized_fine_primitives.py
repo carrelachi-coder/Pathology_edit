@@ -16,7 +16,7 @@ from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 class SpecializedFinePrimitiveRecipeTests(unittest.TestCase):
     def test_fine_dataset_recipes_expand_specialized_primitives(self):
         expected = {
-            "bcss.yaml": {"dcis_invasion", "angioinvasion_emphasis"},
+            "bcss.yaml": set(),
             "panda.yaml": {
                 "gleason_upgrade_3to4",
                 "gleason_upgrade_4to5",
@@ -106,11 +106,11 @@ class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
         schema = MaskProfileSchema.from_reference_profile("PANDA")
         old_mask = np.array(
             [
-                [8, 8, 8, 2, 0],
-                [8, 8, 8, 2, 0],
-                [8, 8, 9, 2, 0],
-                [5, 5, 2, 2, 0],
-                [0, 0, 0, 0, 0],
+                [8, 8, 2, 8, 8],
+                [8, 8, 2, 8, 8],
+                [2, 2, 2, 2, 2],
+                [5, 5, 2, 9, 9],
+                [0, 0, 2, 9, 9],
             ],
             dtype=np.int64,
         )
@@ -132,6 +132,8 @@ class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
         self.assertLess(np.count_nonzero(target == 8), np.count_nonzero(old_mask == 8))
         self.assertGreater(np.count_nonzero(target == 9), np.count_nonzero(old_mask == 9))
         self.assertTrue(np.all(old_mask[result.edit_result.change_region] == 8))
+        self.assertEqual(ops["selection_unit"], "connected_component")
+        self.assertEqual(ops["selection_policy"], "whole_source_components")
         self.assertEqual(ops["execution_strategy"], "id_transition")
         self.assertEqual(
             ops["target_change_fraction_semantics"],
@@ -141,8 +143,61 @@ class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
         self.assertEqual(ops["candidate_pixels"], 8)
         self.assertEqual(ops["target_pixels"], 4)
         self.assertEqual(ops["selected_pixels"], 4)
+        self.assertEqual(ops["selected_component_areas"], [4])
         self.assertAlmostEqual(ops["source_relative_fraction"], 4 / 8)
         self.assertAlmostEqual(ops["changed_area_fraction"], 4 / old_mask.size)
+
+        changed = result.edit_result.change_region
+        self.assertTrue(
+            np.array_equal(changed[:2, :2], np.ones((2, 2), dtype=bool))
+            or np.array_equal(changed[:2, 3:], np.ones((2, 2), dtype=bool))
+        )
+        self.assertFalse(np.any(changed[:2, :2]) and np.any(changed[:2, 3:]))
+
+    def test_glas_grade_upgrade_uses_whole_connected_components(self):
+        recipe = load_recipe("phase3_mask_edit/recipes/glas.yaml")
+        schema = MaskProfileSchema.from_reference_profile("GlaS")
+        old_mask = np.array(
+            [
+                [12, 12, 2, 12, 12],
+                [12, 12, 2, 12, 12],
+                [2, 2, 2, 2, 2],
+                [11, 11, 2, 13, 13],
+                [0, 0, 2, 13, 13],
+            ],
+            dtype=np.int64,
+        )
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "grade_upgrade",
+                "reference_profile": "GlaS",
+                "target_change_fraction": 0.5,
+            }
+        )
+
+        result = execute_edit(old_mask, intent, recipe, schema, context)
+
+        self.assertEqual(result.status, "executed_validated")
+        self.assertIsNotNone(result.edit_result)
+        target = result.edit_result.target_mask
+        ops = result.edit_result.ops_log
+        self.assertLess(np.count_nonzero(target == 12), np.count_nonzero(old_mask == 12))
+        self.assertGreater(np.count_nonzero(target == 13), np.count_nonzero(old_mask == 13))
+        self.assertTrue(np.all(old_mask[result.edit_result.change_region] == 12))
+        self.assertEqual(ops["selection_unit"], "connected_component")
+        self.assertEqual(ops["selection_policy"], "whole_source_components")
+        self.assertEqual(ops["candidate_pixels"], 8)
+        self.assertEqual(ops["target_pixels"], 4)
+        self.assertEqual(ops["selected_pixels"], 4)
+        self.assertEqual(ops["selected_component_areas"], [4])
+
+        changed = result.edit_result.change_region
+        self.assertTrue(
+            np.array_equal(changed[:2, :2], np.ones((2, 2), dtype=bool))
+            or np.array_equal(changed[:2, 3:], np.ones((2, 2), dtype=bool))
+        )
+        self.assertFalse(np.any(changed[:2, :2]) and np.any(changed[:2, 3:]))
 
     def test_missing_source_fine_id_is_rejected(self):
         recipe = load_recipe("phase3_mask_edit/recipes/panda.yaml")
@@ -170,7 +225,6 @@ class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
         self.assertTrue(
             any("source_fine_id_absent" in reason for reason in result.applicability.reasons)
         )
-
 
 if __name__ == "__main__":
     unittest.main()

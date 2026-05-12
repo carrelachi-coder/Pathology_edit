@@ -136,6 +136,14 @@ def _check_change_area_range(
     defaults = primitive_config.get("_defaults", {})
 
     if (
+        _is_fine_label_transition(primitive_config)
+        and src_mask is not None
+        and change_region is not None
+    ):
+        return _check_fine_transition_source_relative_change_area(
+            src_mask, change_region, ranges, primitive_config
+        )
+    if (
         primitive_config.get("name") == "necrosis_appearance"
         and src_mask is not None
         and change_region is not None
@@ -209,6 +217,62 @@ def _check_change_area_range(
         f"changed_area_fraction={changed_area_fraction:.4f} outside "
         f"[{min_fraction:.2f}, {max_fraction:.2f}]",
     )
+
+
+def _check_fine_transition_source_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    ranges: Mapping[str, Any],
+    primitive_config: Mapping[str, Any],
+) -> ValidationCheck:
+    source_ids = _fine_transition_source_ids(primitive_config)
+    source_pixels = int(np.count_nonzero(np.isin(src_mask, source_ids)))
+    changed_pixels = int(np.count_nonzero(change_region))
+    if source_pixels == 0:
+        return ValidationCheck(
+            "fine_transition_source_relative_change_area",
+            False,
+            f"source fine IDs {list(source_ids)} absent.",
+        )
+
+    fraction = changed_pixels / source_pixels
+    min_fraction, max_fraction = _resolve_fine_transition_fraction_range(ranges)
+    if min_fraction <= fraction <= max_fraction:
+        return ValidationCheck(
+            "fine_transition_source_relative_change_area",
+            True,
+            f"source_relative_fraction={fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "fine_transition_source_relative_change_area",
+        False,
+        f"source_relative_fraction={fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _resolve_fine_transition_fraction_range(ranges: Mapping[str, Any]) -> tuple[float, float]:
+    transition_ranges = ranges.get("source_area_transition_fraction", {})
+    if isinstance(transition_ranges, Mapping):
+        lows: list[float] = []
+        highs: list[float] = []
+        for interval in transition_ranges.values():
+            if (
+                isinstance(interval, list)
+                and len(interval) == 2
+                and all(isinstance(item, (int, float)) for item in interval)
+            ):
+                lows.append(float(interval[0]))
+                highs.append(float(interval[1]))
+        if lows and highs:
+            return min(lows), max(highs)
+    return 0.08, 0.70
+
+
+def _is_fine_label_transition(primitive_config: Mapping[str, Any]) -> bool:
+    mask_operation = primitive_config.get("mask_operation", {})
+    return isinstance(mask_operation, Mapping) and mask_operation.get("type") == "fine_label_transition"
 
 
 def _check_necrosis_tumor_relative_change_area(

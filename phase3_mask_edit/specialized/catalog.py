@@ -70,28 +70,6 @@ def _fine_transition(
 
 
 SPECIALIZED_PRIMITIVES: dict[str, tuple[dict[str, Any], ...]] = {
-    "BCSS": (
-        _fine_transition(
-            name="dcis_invasion",
-            meaning="DCIS focus becomes invasive tumor while retaining local footprint",
-            source_label="Tumor",
-            target_label="Tumor",
-            source_fine_ids=(14,),
-            target_fine_id=1,
-            source_description="DCIS",
-            target_description="invasive Tumor",
-        ),
-        _fine_transition(
-            name="angioinvasion_emphasis",
-            meaning="invasive tumor/DCIS focus gains angioinvasion subtype",
-            source_label="Tumor",
-            target_label="Tumor",
-            source_fine_ids=(1, 14),
-            target_fine_id=15,
-            source_description="Tumor or DCIS",
-            target_description="Angioinvasion",
-        ),
-    ),
     "PANDA": (
         _fine_transition(
             name="gleason_upgrade_3to4",
