@@ -204,6 +204,18 @@ class LLMContourAgentTests(unittest.TestCase):
             result.context["allowed_source_labels"],
             ["Other tissue", "Normal epithelium", "Immune infiltrate"],
         )
+        self.assertEqual(
+            result.context["llm_task_requirements"]["pathology_goal"],
+            "Increase peritumoral desmoplastic stromal reaction.",
+        )
+        self.assertEqual(
+            result.context["contour_style_hint"]["shape_intent"],
+            "peritumoral_desmoplastic_stroma_expansion",
+        )
+        self.assertEqual(
+            result.context["primitive_policy"]["mask_operation"]["primary_sources"],
+            ["Other tissue", "Normal epithelium"],
+        )
         self.assertIsNotNone(result.edit_result)
         self.assertEqual(
             result.edit_result.ops_log["projection_mode"],

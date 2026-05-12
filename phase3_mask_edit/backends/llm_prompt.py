@@ -573,6 +573,38 @@ def _build_llm_task_requirements(
                 "backfill_priority": operation.get("backfill_priority", []),
             },
         }
+    if name == "stromal_desmoplasia":
+        return {
+            "pathology_goal": "Increase peritumoral desmoplastic stromal reaction.",
+            "mask_edit": (
+                "Convert legal primary or secondary source pixels near tumor to "
+                "Stroma pixels. The executor will enforce peritumoral placement, "
+                "tumor preservation, and immune-to-stroma limits."
+            ),
+            "source_label": {
+                "primary_sources": operation.get("primary_sources", []),
+                "secondary_sources": operation.get("secondary_sources", []),
+            },
+            "target_label": operation.get("target", "Stroma"),
+            "where_to_draw": [
+                "Draw outside red Tumor, near the Tumor-Stroma interface.",
+                "Prefer gray Other tissue or yellow Normal epithelium adjacent to existing green Stroma.",
+                "Immune infiltrate may be included only as a secondary source and should touch existing Stroma.",
+                "Do not draw inside Tumor or Background.",
+            ],
+            "shape_style": [
+                "Irregular peritumoral stromal expansion or reinforcement.",
+                "Follow local stromal compartment boundaries with uneven organic contours.",
+                "Avoid a uniform halo, rectangle, or symmetric ring around tumor.",
+            ],
+            "area_requirement": _area_requirement_text(target_area_hint),
+            "recipe_constraints": {
+                "mask_operation": operation,
+                "spatial_pattern": spatial,
+                "parameter_ranges": ranges,
+                "validation_rules": validation_rules,
+            },
+        }
     return {
         "pathology_goal": primitive_config.get("pathology_meaning"),
         "mask_operation": operation,
@@ -1136,6 +1168,12 @@ def _organic_shape_instruction(context: Mapping[str, Any]) -> str:
             "Prefer isolated or distal immune patches for removal; use patchy organic contours rather than a single global wipeout. "
             "The executor will keep only legal Immune infiltrate pixels and backfill selected pixels from nearby tissue."
         )
+    if primitive == "stromal_desmoplasia":
+        return (
+            "Shape style: propose irregular peritumoral desmoplasia templates over editable non-stroma tissue near existing Stroma and Tumor. "
+            "Prefer asymmetric stromal reinforcement along local compartments rather than a complete uniform halo. "
+            "The executor will keep only legal primary or secondary source pixels and write Stroma deterministically."
+        )
     return (
         "Shape style: use organic irregular polygon boundaries with enough points to avoid simple geometric templates. "
         "Avoid rectangles, diamonds, symmetric shapes, and repeated duplicate parts."
@@ -1154,6 +1192,8 @@ def _default_placement_relation(context: Mapping[str, Any]) -> str:
         return "tumor_boundary_regression"
     if primitive == "immune_infiltration_decrease":
         return "immune_decrease_distal_or_isolated"
+    if primitive == "stromal_desmoplasia":
+        return "peritumoral_desmoplastic_stroma_expansion"
     return "generic_label_safe"
 
 
@@ -1169,4 +1209,6 @@ def _default_shape_hints(context: Mapping[str, Any]) -> list[str]:
         return ["boundary_recession", "asymmetric_shrink", "irregular_boundary"]
     if primitive == "immune_infiltration_decrease":
         return ["patchy", "multifocal", "irregular_boundary"]
+    if primitive == "stromal_desmoplasia":
+        return ["peritumoral", "stromal_reinforcement", "irregular_boundary"]
     return ["irregular_boundary"]
