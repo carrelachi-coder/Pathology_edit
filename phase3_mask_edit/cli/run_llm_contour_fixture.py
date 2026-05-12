@@ -131,7 +131,12 @@ def _default_source_labels(
     primitive_name = primitive_config.get("name")
     if primitive_name == "tumor_burden_increase":
         return _labels_from_operation(operation.get("target_priority"))
-    return _labels_from_operation(operation.get("source"))
+    labels = _labels_from_operation(operation.get("source"))
+    if labels:
+        return labels
+    labels.extend(_labels_from_operation(operation.get("primary_sources")))
+    labels.extend(_labels_from_operation(operation.get("secondary_sources")))
+    return list(dict.fromkeys(labels))
 
 
 def _string_or_none(value: Any) -> str | None:

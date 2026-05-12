@@ -153,6 +153,74 @@ class LLMContourAgentTests(unittest.TestCase):
             target_id=4,
         )
 
+    def test_stromal_desmoplasia_defaults_source_policy_from_recipe(self):
+        primitive_config = _primitive(self.recipe, "stromal_desmoplasia")
+        intent = EditIntent(
+            primitive="stromal_desmoplasia",
+            strength="mild",
+            reference_profile="BCSS",
+            target_label="Stroma",
+        )
+        mask = _synthetic_desmoplasia_mask()
+        provider = FakeSequenceContourProvider(
+            (
+                {
+                    "schema_version": "0.1",
+                    "backend": "llm_contour_proposal",
+                    "primitive": "stromal_desmoplasia",
+                    "reference_profile": "BCSS",
+                    "target_label": "Stroma",
+                    "coordinate_system": {
+                        "origin": "top_left",
+                        "point_format": "[x, y]",
+                        "x_axis": "horizontal_column_right",
+                        "y_axis": "vertical_row_down",
+                        "width": 96,
+                        "height": 96,
+                    },
+                    "regions": [
+                        {
+                            "region_id": "r1",
+                            "type": "polygon",
+                            "source_labels": ["Other tissue", "Normal epithelium"],
+                            "points": [[8, 8], [87, 8], [87, 87], [8, 87]],
+                            "confidence": 0.8,
+                        }
+                    ],
+                },
+            )
+        )
+
+        result = execute_llm_contour_agent(
+            old_mask=mask,
+            schema=self.schema,
+            intent=intent,
+            primitive_config=primitive_config,
+            provider=provider,
+        )
+
+        self.assertEqual(result.status, STATUS_VALIDATED)
+        self.assertEqual(
+            result.context["allowed_source_labels"],
+            ["Other tissue", "Normal epithelium", "Immune infiltrate"],
+        )
+        self.assertIsNotNone(result.edit_result)
+        self.assertEqual(
+            result.edit_result.ops_log["projection_mode"],
+            "organic_v2",
+        )
+        self.assertEqual(
+            result.edit_result.ops_log["component_policy"]["policy_name"],
+            "stromal_desmoplasia_peritumoral_stroma_expansion",
+        )
+        _assert_final_diff_labels(
+            self,
+            old_mask=mask,
+            target_mask=result.edit_result.target_mask,
+            allowed_source_ids={4, 6, 7},
+            target_id=2,
+        )
+
     def test_fake_sequence_repairs_rejected_proposal_on_second_attempt(self):
         bad = _proposal(points=[[1, 1], [99, 1], [1, 8]])
         good = _proposal(points=[[2, 2], [17, 2], [17, 25], [2, 25]])
@@ -584,6 +652,18 @@ def _synthetic_bcss_mask() -> np.ndarray:
     mask = np.zeros((64, 64), dtype=np.int64)
     mask[8:56, 8:56] = 2
     mask[18:46, 18:46] = 1
+    return mask
+
+
+def _synthetic_desmoplasia_mask() -> np.ndarray:
+    mask = np.zeros((96, 96), dtype=np.int64)
+    mask[4:92, 4:92] = 7
+    mask[32:64, 32:64] = 1
+    ring = np.zeros_like(mask, dtype=bool)
+    ring[24:72, 24:72] = True
+    mask[ring & (mask != 1)] = 2
+    mask[18:30, 46:66] = 4
+    mask[20:30, 20:44] = 6
     return mask
 
 
