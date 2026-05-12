@@ -76,6 +76,8 @@ def _build_intent(
 
     resolved_source = tuple(source_labels or _labels_from_operation(operation.get("source")))
     resolved_target = target_label or _string_or_none(operation.get("target"))
+    if not resolved_target and primitive_config.get("name") == "immune_infiltration_decrease":
+        resolved_target = _first_backfill_label(operation)
     if not resolved_source:
         raise ValueError(
             f"Primitive {primitive_config.get('name')} needs --source-label "
@@ -115,6 +117,15 @@ def _labels_from_operation(value: Any) -> list[str]:
 
 def _string_or_none(value: Any) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _first_backfill_label(operation: Mapping[str, Any]) -> str | None:
+    priority = operation.get("backfill_priority", ())
+    if isinstance(priority, list):
+        for label in priority:
+            if isinstance(label, str):
+                return label
+    return None
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:

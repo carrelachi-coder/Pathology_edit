@@ -288,6 +288,8 @@ def execute_llm_contour_agent(
     target_label = intent.target_label or _string_or_none(
         primitive_config.get("mask_operation", {}).get("target")
     )
+    if not target_label and primitive_config.get("name") == "immune_infiltration_decrease":
+        target_label = _immune_decrease_prompt_target_label(primitive_config, schema)
     if not target_label:
         raise ValueError("LLM contour agent requires a target label.")
 
@@ -714,6 +716,19 @@ def _labels_from_operation(value: Any) -> list[str]:
 
 def _string_or_none(value: Any) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _immune_decrease_prompt_target_label(
+    primitive_config: Mapping[str, Any],
+    schema: MaskProfileSchema,
+) -> str:
+    operation = primitive_config.get("mask_operation", {})
+    priority = operation.get("backfill_priority", ()) if isinstance(operation, Mapping) else ()
+    if isinstance(priority, list):
+        for label in priority:
+            if isinstance(label, str) and label in schema.writable_labels:
+                return label
+    return schema.choose_default_backfill_label(exclude_labels=("Immune infiltrate",))
 
 
 def _provider_request_metadata(
