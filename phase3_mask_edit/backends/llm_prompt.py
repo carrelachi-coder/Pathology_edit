@@ -203,6 +203,7 @@ def build_contour_prompt(
         "Within each source component, contour_adjacency_segments groups contour coordinates by the tissue just across the boundary. Prefer choosing component ids and adjacency sides before drawing points.",
         "For stromal immune infiltration, prefer Stroma contour segments adjacent to Tumor and avoid segments adjacent to Necrosis unless the recipe explicitly asks for necrosis-adjacent change.",
         "For necrosis appearance, prefer Tumor interior components and avoid hugging the outer Tumor boundary unless the intent requires it.",
+        "For immune infiltration decrease, draw coarse templates over existing Immune infiltrate that should be removed; final pixels will be backfilled from nearby legal tissue by deterministic code.",
         "Generate a rough organic template around the intended pathology location; do not optimize vertices to be pixel-perfect source-label coordinates.",
         "The downstream executor will rasterize, project to legal source labels, control final changed area, write the target label, and validate.",
         "If target_area_hint is present, its target_changed_pixels_min/max refer to the desired area after deterministic projection, not raw polygon area.",
@@ -350,6 +351,13 @@ def _build_target_area_hint(
         )
         reference_pixels = int(label_areas.get("Stroma", 0))
         reference = "Stroma"
+    elif primitive_name == "immune_infiltration_decrease":
+        bucket = _interval_for_strength(
+            ranges.get("immune_area_decrease_fraction"),
+            intent.strength,
+        )
+        reference_pixels = int(label_areas.get("Immune infiltrate", 0))
+        reference = "Immune infiltrate"
     else:
         bucket = None
         reference_pixels = 0
@@ -467,6 +475,35 @@ def _build_llm_task_requirements(
                 "spatial_pattern": spatial,
                 "parameter_ranges": ranges,
                 "validation_rules": validation_rules,
+            },
+        }
+    if name == "immune_infiltration_decrease":
+        return {
+            "pathology_goal": "Decrease immune infiltrate burden while preserving plausible surrounding tissue.",
+            "mask_edit": (
+                "Select Immune infiltrate pixels for removal. The executor will "
+                "backfill selected pixels from nearby legal tissue such as Stroma, "
+                "Other tissue, or Tumor according to recipe priority."
+            ),
+            "source_label": operation.get("source", "Immune infiltrate"),
+            "target_label": "nearest legal backfill tissue",
+            "where_to_draw": [
+                "Draw on purple Immune infiltrate regions that should disappear or thin out.",
+                "Prefer isolated immune islands, peripheral immune patches, or immune far from Tumor.",
+                "Avoid drawing mainly on Tumor, Stroma, Background, or Necrosis because only Immune infiltrate is legal source.",
+                "Leave Tumor-adjacent immune patches if the intent suggests preserving residual peritumoral immune context.",
+            ],
+            "shape_style": [
+                "Organic removal templates over immune components.",
+                "Patchy or multifocal contours are appropriate when removing scattered immune islands.",
+                "Avoid one broad template that wipes out all immune unless strength is significant.",
+            ],
+            "area_requirement": _area_requirement_text(target_area_hint),
+            "recipe_constraints": {
+                "spatial_pattern": spatial,
+                "parameter_ranges": ranges,
+                "validation_rules": validation_rules,
+                "backfill_priority": operation.get("backfill_priority", []),
             },
         }
     return {
@@ -1014,6 +1051,12 @@ def _organic_shape_instruction(context: Mapping[str, Any]) -> str:
             "Use many boundary points, following contour_style_hint, for each substantial region. "
             "Avoid rectangles, diamonds, circles, symmetric shapes, repeated duplicate parts, and tiny decorative polygons."
         )
+    if primitive == "immune_infiltration_decrease":
+        return (
+            "Shape style: propose irregular removal templates over existing immune infiltrate. "
+            "Prefer isolated or distal immune patches for removal; use patchy organic contours rather than a single global wipeout. "
+            "The executor will keep only legal Immune infiltrate pixels and backfill selected pixels from nearby tissue."
+        )
     return (
         "Shape style: use organic irregular polygon boundaries with enough points to avoid simple geometric templates. "
         "Avoid rectangles, diamonds, symmetric shapes, and repeated duplicate parts."
@@ -1026,6 +1069,8 @@ def _default_placement_relation(context: Mapping[str, Any]) -> str:
         return "tumor_adjacent_stroma"
     if primitive == "necrosis_appearance":
         return "tumor_interior"
+    if primitive == "immune_infiltration_decrease":
+        return "immune_decrease_distal_or_isolated"
     return "generic_label_safe"
 
 
@@ -1035,4 +1080,6 @@ def _default_shape_hints(context: Mapping[str, Any]) -> list[str]:
         return ["patchy", "band_like", "irregular_boundary"]
     if primitive == "necrosis_appearance":
         return ["patchy", "irregular_boundary"]
+    if primitive == "immune_infiltration_decrease":
+        return ["patchy", "multifocal", "irregular_boundary"]
     return ["irregular_boundary"]

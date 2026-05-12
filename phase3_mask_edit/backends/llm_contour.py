@@ -16,7 +16,10 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage
 
-from phase3_mask_edit.backends.organic_projection import apply_organic_projected_label_write
+from phase3_mask_edit.backends.organic_projection import (
+    apply_organic_immune_infiltration_decrease,
+    apply_organic_projected_label_write,
+)
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.core.labels import MaskProfileSchema, MaskProfileSchemaError
 from phase3_mask_edit.generic.tumor_burden import PrimitiveEditResult
@@ -284,18 +287,31 @@ def execute_contour_proposal_write(
                 label for region in proposal.regions for label in region.source_labels
             )
         )
-        result = apply_organic_projected_label_write(
-            old_mask,
-            raw_candidate,
-            schema=schema,
-            source_labels=source_labels,
-            target_label=proposal.target_label,
-            primitive_config=primitive_config,
-            preserve_labels=preserve_labels,
-            forbidden_labels=forbidden_labels,
-            seed=organic_seed,
-            strength=strength,
-        )
+        primitive_name = str((primitive_config or {}).get("name", ""))
+        if primitive_name == "immune_infiltration_decrease":
+            result = apply_organic_immune_infiltration_decrease(
+                old_mask,
+                raw_candidate,
+                schema=schema,
+                primitive_config=primitive_config,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                seed=organic_seed,
+                strength=strength,
+            )
+        else:
+            result = apply_organic_projected_label_write(
+                old_mask,
+                raw_candidate,
+                schema=schema,
+                source_labels=source_labels,
+                target_label=proposal.target_label,
+                primitive_config=primitive_config,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                seed=organic_seed,
+                strength=strength,
+            )
         result.ops_log["raw_payload"] = dict(proposal.raw_payload)
         result.ops_log["projection_mode"] = projection_mode
         return result

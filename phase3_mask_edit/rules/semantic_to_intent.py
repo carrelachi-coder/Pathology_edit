@@ -27,6 +27,7 @@ INTENT_ORDER = {
     "tumor_burden_decrease": 20,
     "necrosis_appearance": 30,
     "stromal_immune_infiltration": 40,
+    "immune_infiltration_decrease": 45,
 }
 
 
@@ -286,11 +287,14 @@ def _raw_intent_specs(
             )
         )
     elif infiltration == "decrease":
-        unsupported.append(
-            PlanningWarning(
-                field="lymphocyte_change.infiltration",
-                value=infiltration,
-                reason="Phase3 immune decrease primitive is not implemented yet.",
+        raw_items.append(
+            _intent_payload(
+                "immune_infiltration_decrease",
+                _strength_from_degree(lymphocyte_change["degree"]),
+                reference_profile,
+                old_prompt,
+                new_prompt,
+                prompt_diff,
             )
         )
 

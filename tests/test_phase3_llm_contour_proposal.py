@@ -22,6 +22,7 @@ from phase3_mask_edit.backends.llm_contour import (
 )
 from phase3_mask_edit.backends.organic_projection import (
     ORGANIC_PROJECTION_BACKEND,
+    apply_organic_immune_infiltration_decrease,
     apply_organic_projected_label_write,
 )
 from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
@@ -1437,6 +1438,154 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertTrue(np.all(np.isin(old_mask[result.change_region], (4, 7))))
         dist_to_tumor = ndimage.distance_transform_edt(old_mask != 1)
         self.assertLessEqual(float(dist_to_tumor[result.change_region].max()), 20.0)
+
+    def test_immune_decrease_selects_immune_and_backfills_nearest_tissue(self):
+        old_mask = np.zeros((72, 72), dtype=np.int64)
+        old_mask[4:68, 4:68] = 2
+        old_mask[24:48, 24:48] = 1
+        old_mask[8:18, 8:18] = 4
+        old_mask[54:64, 54:64] = 4
+        old_mask[30:38, 12:20] = 4
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[6:21, 6:21] = True
+        raw_candidate[52:66, 52:66] = True
+        raw_candidate[24:48, 24:48] = True
+
+        result = apply_organic_immune_infiltration_decrease(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "immune_infiltration_decrease",
+                "mask_operation": {
+                    "source": "Immune infiltrate",
+                    "backfill_priority": ["Stroma", "Other tissue", "Tumor"],
+                },
+                "parameter_ranges": {
+                    "immune_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "min_remaining_immune_fraction": 0.005,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 24,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.45,
+                        "spatial": 0.55,
+                        "noise": 0.0,
+                    },
+                },
+            },
+            seed=9,
+            target_pixels=60,
+        )
+
+        self.assertEqual(
+            result.ops_log["component_policy"]["policy_name"],
+            "immune_decrease_remove_isolated_or_distal_immune",
+        )
+        self.assertEqual(result.ops_log["projection_backend"], ORGANIC_PROJECTION_BACKEND)
+        self.assertEqual(result.selected_pixels, 60)
+        self.assertTrue(np.all(old_mask[result.change_region] == 4))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
+        self.assertEqual(int(np.count_nonzero(result.target_mask == 4)), int(np.count_nonzero(old_mask == 4)) - 60)
+        self.assertNotIn("organic_projection_area_shortfall", result.warnings)
+        self.assertEqual(
+            result.ops_log["decrease_semantics"],
+            "select_immune_pixels_then_backfill_from_nearest_legal_tissue",
+        )
+
+    def test_immune_decrease_target_pixels_and_min_remaining_are_immune_relative(self):
+        old_mask = np.zeros((60, 60), dtype=np.int64)
+        old_mask[4:56, 4:56] = 2
+        old_mask[10:30, 10:30] = 4
+        old_mask[34:44, 34:44] = 4
+        raw_candidate = old_mask == 4
+        immune_pixels = int(np.count_nonzero(old_mask == 4))
+
+        result = apply_organic_immune_infiltration_decrease(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "immune_infiltration_decrease",
+                "mask_operation": {
+                    "source": "Immune infiltrate",
+                    "backfill_priority": ["Stroma", "Tumor"],
+                },
+                "parameter_ranges": {
+                    "immune_area_decrease_fraction": {"moderate": [0.14, 0.24]},
+                    "min_remaining_immune_fraction": 0.90,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 128,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+            },
+            seed=1,
+            strength="moderate",
+            target_pixels=None,
+        )
+
+        self.assertEqual(result.ops_log["target_pixels"], int(np.floor(immune_pixels * 0.10)))
+        self.assertEqual(result.selected_pixels, result.ops_log["target_pixels"])
+        self.assertEqual(
+            int(np.count_nonzero(result.target_mask == 4)),
+            immune_pixels - result.selected_pixels,
+        )
+
+    def test_contour_executor_routes_immune_decrease_to_backfill_backend(self):
+        old_mask = np.zeros((40, 40), dtype=np.int64)
+        old_mask[2:38, 2:38] = 2
+        old_mask[8:24, 8:24] = 4
+        proposal = validate_contour_proposal(
+            {
+                "schema_version": CONTOUR_PROPOSAL_SCHEMA_VERSION,
+                "backend": CONTOUR_PROPOSAL_BACKEND,
+                "primitive": "immune_infiltration_decrease",
+                "reference_profile": "BCSS",
+                "target_label": "Stroma",
+                "regions": [
+                    {
+                        "region_id": "r1",
+                        "type": "polygon",
+                        "source_labels": ["Immune infiltrate"],
+                        "points": [[6, 6], [26, 6], [26, 26], [6, 26]],
+                        "confidence": 0.8,
+                    }
+                ],
+            },
+            schema=self.schema,
+            target_label="Stroma",
+            allowed_source_labels=("Immune infiltrate",),
+        )
+
+        result = execute_contour_proposal_write(
+            old_mask,
+            proposal,
+            schema=self.schema,
+            primitive_config={
+                "name": "immune_infiltration_decrease",
+                "mask_operation": {
+                    "source": "Immune infiltrate",
+                    "backfill_priority": ["Stroma", "Tumor"],
+                },
+                "parameter_ranges": {
+                    "immune_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "min_remaining_immune_fraction": 0.005,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 128,
+                    "organic_template_spillover_fraction": 0.0,
+                },
+            },
+            projection_mode="organic_v2",
+            organic_seed=3,
+        )
+
+        self.assertEqual(
+            result.ops_log["method"],
+            "organic_score_projection_and_deterministic_backfill",
+        )
+        self.assertEqual(result.ops_log["projection_mode"], "organic_v2")
+        self.assertTrue(np.all(old_mask[result.change_region] == 4))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
 
     def test_stromal_desmoplasia_target_pixels_are_stroma_relative(self):
         old_mask = np.zeros((80, 80), dtype=np.int64)
