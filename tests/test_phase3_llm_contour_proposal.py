@@ -1553,6 +1553,7 @@ class LLMContourProposalTests(unittest.TestCase):
                 ],
             },
             schema=self.schema,
+            mask_shape=old_mask.shape,
             target_label="Stroma",
             allowed_source_labels=("Immune infiltrate",),
         )
