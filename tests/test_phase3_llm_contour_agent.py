@@ -175,15 +175,15 @@ class LLMContourAgentTests(unittest.TestCase):
                         "point_format": "[x, y]",
                         "x_axis": "horizontal_column_right",
                         "y_axis": "vertical_row_down",
-                        "width": 96,
-                        "height": 96,
+                        "width": 260,
+                        "height": 260,
                     },
                     "regions": [
                         {
                             "region_id": "r1",
                             "type": "polygon",
                             "source_labels": ["Other tissue", "Normal epithelium"],
-                            "points": [[8, 8], [87, 8], [87, 87], [8, 87]],
+                            "points": [[45, 45], [214, 45], [214, 214], [45, 214]],
                             "confidence": 0.8,
                         }
                     ],
@@ -656,14 +656,14 @@ def _synthetic_bcss_mask() -> np.ndarray:
 
 
 def _synthetic_desmoplasia_mask() -> np.ndarray:
-    mask = np.zeros((96, 96), dtype=np.int64)
-    mask[4:92, 4:92] = 7
-    mask[32:64, 32:64] = 1
-    ring = np.zeros_like(mask, dtype=bool)
-    ring[24:72, 24:72] = True
-    mask[ring & (mask != 1)] = 2
-    mask[18:30, 46:66] = 4
-    mask[20:30, 20:44] = 6
+    mask = np.zeros((260, 260), dtype=np.int64)
+    mask[20:240, 20:240] = 2
+    mask[100:160, 100:160] = 1
+    mask[50:100, 50:210] = 7
+    mask[160:210, 50:210] = 7
+    mask[100:160, 50:100] = 6
+    mask[100:160, 160:210] = 6
+    mask[86:102, 118:142] = 4
     return mask
 
 
