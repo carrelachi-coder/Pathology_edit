@@ -35,7 +35,13 @@ from phase3_mask_edit.backends.llm_contour import PROJECTION_MODE_ORGANIC_V2
 from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
-from phase3_mask_edit.core.mask_io import load_change_region, load_id_mask, save_change_region, save_id_mask
+from phase3_mask_edit.core.mask_io import (
+    load_change_region,
+    load_id_mask,
+    save_change_region,
+    save_id_mask,
+    save_metadata,
+)
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
     QwenLocalParserConfig,
@@ -661,44 +667,53 @@ def build_ui() -> gr.Blocks:
 
         gr.Markdown("### Tissue mask edit")
         with gr.Row():
-            primitive = gr.Dropdown(
-                [
-                    "stromal_immune_infiltration",
-                    "necrosis_appearance",
-                    "tumor_burden_increase",
-                    "tumor_burden_decrease",
-                    "immune_infiltration_decrease",
-                    "stromal_desmoplasia",
-                    "stroma_decrease",
-                    "stromal_reduction",
-                ],
-                value="stromal_immune_infiltration",
-                label="primitive",
-            )
-            strength = gr.Radio(["mild", "moderate", "significant"], value="mild", label="strength")
+            old_prompt = gr.Textbox(label="src prompt", lines=3)
+            new_prompt = gr.Textbox(label="new prompt", lines=3)
         with gr.Row():
-            source_labels = gr.Textbox(label="source labels", placeholder="Stroma")
-            target_label = gr.Textbox(label="target label", placeholder="Immune infiltrate")
+            parser = gr.Radio(["api", "qwen-local"], value="api", label="parser")
+            no_few_shot = gr.Checkbox(value=False, label="no few shot")
         with gr.Row():
-            provider = gr.Radio(["api-text", "api-multimodal", "fixture"], value="api-multimodal", label="provider")
-            api_image_detail = gr.Radio(["low", "high", "auto"], value="high", label="image detail")
+            api_model = gr.Textbox(label="api model", placeholder="gpt-4o")
+            qwen_model_path = gr.Textbox(label="qwen model path")
         with gr.Row():
             api_base_url = gr.Textbox(value="https://api.openai.com/v1", label="api base url")
             api_key_env = gr.Textbox(value="OPENAI_API_KEY", label="api key env")
-        with gr.Row():
-            api_model = gr.Textbox(label="api model")
-            fixture_file = gr.File(label="contour fixture JSON", file_types=[".json"], type="filepath")
-        with gr.Row():
-            max_attempts = gr.Slider(1, 8, value=4, step=1, label="max attempts")
-            max_regions = gr.Slider(1, 8, value=8, step=1, label="max regions")
-            max_points_per_region = gr.Slider(8, 128, value=64, step=1, label="max points / region")
-        organic_seed = gr.Number(value=0, precision=0, label="organic seed")
         continue_on_failure = gr.Checkbox(value=False, label="continue on Phase3 failure")
-        tissue_button = gr.Button("2. Run organic v2 contour edit")
+        tissue_button = gr.Button("2. Run prompt-driven organic v2 contour edit")
         tissue_log = gr.Code(label="tissue log", language="json")
         with gr.Row():
             target_tissue_preview = gr.Image(label="target tissue")
             change_region_preview = gr.Image(label="change region")
+        with gr.Accordion("Advanced overrides", open=False):
+            with gr.Row():
+                primitive = gr.Dropdown(
+                    [
+                        "stromal_immune_infiltration",
+                        "necrosis_appearance",
+                        "tumor_burden_increase",
+                        "tumor_burden_decrease",
+                        "immune_infiltration_decrease",
+                        "stromal_desmoplasia",
+                        "stroma_decrease",
+                        "stromal_reduction",
+                    ],
+                    value="stromal_immune_infiltration",
+                    label="primitive fallback",
+                )
+                strength = gr.Radio(["mild", "moderate", "significant"], value="mild", label="strength")
+            with gr.Row():
+                source_labels = gr.Textbox(label="source labels fallback", placeholder="Stroma")
+                target_label = gr.Textbox(label="target label fallback", placeholder="Immune infiltrate")
+            with gr.Row():
+                provider = gr.Radio(["api-text", "api-multimodal", "fixture"], value="api-multimodal", label="contour provider")
+                api_image_detail = gr.Radio(["low", "high", "auto"], value="high", label="image detail")
+            with gr.Row():
+                fixture_file = gr.File(label="contour fixture JSON", file_types=[".json"], type="filepath")
+            with gr.Row():
+                max_attempts = gr.Slider(1, 8, value=4, step=1, label="max attempts")
+                max_regions = gr.Slider(1, 8, value=8, step=1, label="max regions")
+                max_points_per_region = gr.Slider(8, 128, value=64, step=1, label="max points / region")
+            organic_seed = gr.Number(value=0, precision=0, label="organic seed")
 
         gr.Markdown("### Cell mask synthesis")
         with gr.Row():
@@ -747,14 +762,19 @@ def build_ui() -> gr.Blocks:
             run_tissue_stage,
             inputs=[
                 state,
+                old_prompt,
+                new_prompt,
+                parser,
+                api_base_url,
+                api_key_env,
+                api_model,
+                qwen_model_path,
+                no_few_shot,
                 primitive,
                 source_labels,
                 target_label,
                 strength,
                 provider,
-                api_base_url,
-                api_key_env,
-                api_model,
                 api_image_detail,
                 fixture_file,
                 max_attempts,
