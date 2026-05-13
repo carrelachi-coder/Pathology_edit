@@ -204,7 +204,25 @@ def _run_cellvit(
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(cellvit_root) + os.pathsep + env.get("PYTHONPATH", "")
-    subprocess.run(cmd, cwd=cellvit_root, env=env, check=True)
+    try:
+        subprocess.run(
+            cmd,
+            cwd=cellvit_root,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        parts = [f"CellViT detect_cells.py failed with exit code {exc.returncode}."]
+        parts.append(f"Command: {exc.cmd!r}")
+        stdout = (exc.stdout or "").strip()
+        stderr = (exc.stderr or "").strip()
+        if stdout:
+            parts.append(f"stdout:\n{stdout}")
+        if stderr:
+            parts.append(f"stderr:\n{stderr}")
+        raise RuntimeError("\n".join(parts)) from exc
 
     expected = run_dir / f"{image_path.stem}_cells.json"
     if expected.exists():

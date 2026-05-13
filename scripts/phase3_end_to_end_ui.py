@@ -62,6 +62,7 @@ from scripts.run_phase3_inpaint_pipeline import (
     _format_subprocess_error,
     _validate_same_size,
 )
+from scripts.run_cellvit_single_patch import DEFAULT_CELLVIT_ROOT
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +71,9 @@ DEFAULT_API_MODEL = "gpt-4o-all"
 DEFAULT_API_BASE_URL = "https://api.cursorai.art/v1"
 DEFAULT_API_KEY_ENV = "OPENAI_API_KEY"
 DEFAULT_QWEN_DEVICE = "cuda:0"
+DEFAULT_CELLVIT_SCRIPT = REPO_ROOT / "scripts" / "run_cellvit_single_patch.py"
+DEFAULT_CELLVIT_MODEL = r"D:\path\to\CellViT-SAM-H-x40-AMP-001.pth"
+DEFAULT_CELLVIT_DEVICE = "cuda:0"
 DEFAULT_PROBNET_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/checkpoints/best.pt"
 DEFAULT_NUCLEI_LIBRARY_TEMPLATE = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/nuclei_library/{profile}"
 DEFAULT_DENSITY_SCALE_TEMPLATE = (
@@ -105,6 +109,15 @@ def _profile_defaults(profile: str) -> dict[str, str]:
 
 def _defaulted_text(value: str | None, default: str) -> str:
     return (value or "").strip() or default
+
+
+def _cuda_index(device: str | None) -> int:
+    text = (device or DEFAULT_CELLVIT_DEVICE).strip().lower()
+    if text.startswith("cuda:"):
+        return int(text.split(":", 1)[1])
+    if text == "cuda":
+        return 0
+    return int(text)
 
 
 def _file_path(value: Any) -> Path | None:
@@ -242,26 +255,57 @@ def load_inputs(
     source_image,
     source_tissue_mask,
     source_cell_mask,
-    cellvit_command: str,
-    output_root: str,
+    cellvit_script: str,
+    cellvit_model: str,
+    cellvit_root: str,
+    cellvit_device: str,
 ) -> tuple[dict[str, Any], str, str | None, str | None]:
     run_id = time.strftime("%Y%m%d_%H%M%S")
-    output_dir = Path(output_root or DEFAULT_OUTPUT_ROOT) / run_id
+    output_dir = DEFAULT_OUTPUT_ROOT / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
     image_path = _copy_input(source_image, output_dir, "source_image.png")
     tissue_path = _copy_input(source_tissue_mask, output_dir, "source_tissue_mask.png")
     nuclei_path = _file_path(source_cell_mask)
     if nuclei_path is None:
-        command = (cellvit_command or "").strip()
-        if not command:
-            raise gr.Error("Upload a CellViT source cell mask, or provide a CellViT command template.")
         nuclei_path = output_dir / "inputs" / "source_cell_mask.png"
         nuclei_path.parent.mkdir(parents=True, exist_ok=True)
-        formatted = command.format(image=str(image_path), output=str(nuclei_path))
-        subprocess.run(formatted, shell=True, cwd=REPO_ROOT, check=True)
+        script_path = Path(_defaulted_text(cellvit_script, str(DEFAULT_CELLVIT_SCRIPT)))
+        model_path = Path(_defaulted_text(cellvit_model, DEFAULT_CELLVIT_MODEL))
+        root_path = Path(_defaulted_text(cellvit_root, str(DEFAULT_CELLVIT_ROOT)))
+        command = [
+            sys.executable,
+            str(script_path),
+            "--image",
+            str(image_path),
+            "--output-mask",
+            str(nuclei_path),
+            "--model",
+            str(model_path),
+            "--cellvit-root",
+            str(root_path),
+            "--gpu",
+            str(_cuda_index(cellvit_device)),
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            log_path = output_dir / "cellvit_error.log"
+            log_path.write_text(_format_subprocess_error(exc, label="CellViT"), encoding="utf-8")
+            raise gr.Error(_format_subprocess_error(exc, label="CellViT")) from exc
+        log_text = "\n".join(
+            part for part in [(result.stdout or "").strip(), (result.stderr or "").strip()] if part
+        )
+        if log_text:
+            (output_dir / "cellvit.log").write_text(log_text, encoding="utf-8")
         if not nuclei_path.exists():
-            raise gr.Error(f"CellViT command finished but did not write {nuclei_path}")
+            raise gr.Error(f"CellViT finished but did not write {nuclei_path}")
     else:
         nuclei_path = _copy_input(source_cell_mask, output_dir, "source_cell_mask.png")
 
@@ -924,15 +968,10 @@ def build_ui() -> gr.Blocks:
 
         with gr.Row():
             profile = gr.Dropdown(["BCSS", "PANDA", "GlaS", "IGNITE", "PUMA", "ORCA"], value="BCSS", label="profile")
-            output_root = gr.Textbox(value=str(DEFAULT_OUTPUT_ROOT), label="output root")
         with gr.Row():
             source_image = gr.File(label="src_image", file_types=["image"], type="filepath")
             source_tissue = gr.File(label="src_tissue_mask", file_types=["image"], type="filepath")
             source_cell = gr.File(label="src_cell_mask / CellViT output", file_types=["image"], type="filepath")
-        cellvit_command = gr.Textbox(
-            label="optional CellViT command template",
-            placeholder="python scripts/run_cellvit_single_patch.py --image {image} --output-mask {output} --model D:\\path\\to\\CellViT-SAM-H-x40-AMP-001.pth",
-        )
         load_button = gr.Button("1. Load inputs")
         load_log = gr.Code(label="load log", language="json")
         with gr.Row():
@@ -957,6 +996,12 @@ def build_ui() -> gr.Blocks:
                 qwen_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_QWEN_DEVICE, label="qwen device")
                 cuda_memory_button = gr.Button("Check CUDA memory")
             cuda_memory_log = gr.Textbox(label="CUDA memory", lines=8, interactive=False)
+            with gr.Row():
+                cellvit_script = gr.Textbox(value=str(DEFAULT_CELLVIT_SCRIPT), label="CellViT runner script")
+                cellvit_model = gr.Textbox(value=DEFAULT_CELLVIT_MODEL, label="CellViT model")
+            with gr.Row():
+                cellvit_root = gr.Textbox(value=str(DEFAULT_CELLVIT_ROOT), label="CellViT source root")
+                cellvit_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_CELLVIT_DEVICE, label="CellViT device")
         continue_on_failure = gr.Checkbox(value=False, label="continue on Phase3 failure")
         tissue_button = gr.Button("2. Run prompt-driven organic v2 contour edit")
         tissue_log = gr.Code(label="tissue log", language="json")
@@ -1035,7 +1080,16 @@ def build_ui() -> gr.Blocks:
 
         load_button.click(
             load_inputs,
-            inputs=[profile, source_image, source_tissue, source_cell, cellvit_command, output_root],
+            inputs=[
+                profile,
+                source_image,
+                source_tissue,
+                source_cell,
+                cellvit_script,
+                cellvit_model,
+                cellvit_root,
+                cellvit_device,
+            ],
             outputs=[state, load_log, src_image_preview, src_tissue_preview],
         )
         profile.change(

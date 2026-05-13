@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -434,6 +435,7 @@ def _run_probnet_cell_fill(
     input_nuclei = save_id_mask(reference_nuclei, cell_dir / "input_nuclei.png")
     edit_region = save_change_region(change_region, cell_dir / "edit_region.png")
     output_nuclei = cell_dir / "target_nuclei.png"
+    probnet_device, probnet_env, visible_device = _normalize_probnet_device(args.probnet_device)
 
     cmd = [
         sys.executable,
@@ -453,12 +455,17 @@ def _run_probnet_cell_fill(
         "--output",
         str(output_nuclei),
         "--device",
-        args.probnet_device,
+        probnet_device,
         "--gamma-values",
         args.probnet_gamma_values,
     ]
     if args.density_scale_json:
         cmd.extend(["--density-scale-json", str(args.density_scale_json)])
+    display_cmd = (
+        f"CUDA_VISIBLE_DEVICES={visible_device} " + " ".join(map(str, cmd))
+        if visible_device is not None
+        else " ".join(map(str, cmd))
+    )
 
     try:
         subprocess.run(
@@ -467,11 +474,31 @@ def _run_probnet_cell_fill(
             check=True,
             capture_output=True,
             text=True,
+            env=probnet_env,
         )
     except subprocess.CalledProcessError as exc:
         details = _format_subprocess_error(exc, label="ProbNet generate.py")
+        if visible_device is not None:
+            details = details.replace("Command: " + str(cmd), "Command: " + display_cmd)
         raise RuntimeError(details) from exc
     return _load_uint8_mask(output_nuclei), "probnet_generated"
+
+
+def _normalize_probnet_device(device: str | None) -> tuple[str, dict[str, str] | None, str | None]:
+    """Map cuda:N UI choices onto generate.py's auto/cuda/cpu CLI contract."""
+
+    value = (device or "auto").strip().lower()
+    if value in {"auto", "cuda", "cpu"}:
+        return value, None, None
+    if value.startswith("cuda:"):
+        index = value.split(":", 1)[1]
+        if index.isdigit():
+            env = dict(os.environ)
+            env["CUDA_VISIBLE_DEVICES"] = index
+            return "cuda", env, index
+    raise ValueError(
+        f"Unsupported ProbNet device {device!r}; choose auto, cuda, cpu, or cuda:<index>."
+    )
 
 
 def _run_generation_stage(
