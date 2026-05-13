@@ -30,6 +30,7 @@ if __package__ in (None, ""):
 
 from controlnet_train.inference import (
     EditPipelineInputs,
+    EditRoutingConfig,
     load_inpaint_bundle,
     run_edit_pipeline,
     run_inpaint_bundle,
@@ -97,7 +98,13 @@ def main(argv: list[str] | None = None) -> int:
         change_region=change_region,
     )
 
-    target_nuclei, cell_info = _build_target_nuclei(args, reference_nuclei, target_tissue, change_region, output_dir)
+    target_nuclei, cell_info = _build_target_nuclei(
+        args,
+        reference_nuclei,
+        target_tissue,
+        change_region,
+        output_dir,
+    )
     target_nuclei_path = save_id_mask(target_nuclei, output_dir / "target_nuclei_mask.png")
     cell_info["target_nuclei_mask"] = str(target_nuclei_path)
     save_metadata(cell_info, output_dir / "cell_fill_log.json")
@@ -306,12 +313,20 @@ def _build_target_nuclei(
     change_region: np.ndarray,
     output_dir: Path,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    retained = np.array(reference_nuclei, copy=True)
-    retained[np.asarray(change_region, dtype=bool)] = 0
+    requested_policy = args.crossing_cell_policy
+    effective_policy = "delete" if args.cell_fill_mode == "probnet" else requested_policy
+    retained, integrity_info = _retain_complete_reference_cells(
+        reference_nuclei,
+        change_region,
+        policy=effective_policy,
+    )
+    integrity_info["requested_policy"] = requested_policy
+    if requested_policy != effective_policy:
+        integrity_info["policy_override"] = "probnet_fill_requires_delete_to_avoid_clipped_source_cells"
     save_id_mask(retained, output_dir / "retained_nuclei_mask.png")
 
     if args.cell_fill_mode == "preserve":
-        target = np.array(reference_nuclei, copy=True)
+        target = np.array(retained, copy=True)
         new = np.zeros_like(reference_nuclei, dtype=np.uint8)
         status = "preserved_reference_nuclei"
     elif args.cell_fill_mode == "blank":
@@ -319,7 +334,7 @@ def _build_target_nuclei(
         new = np.zeros_like(reference_nuclei, dtype=np.uint8)
         status = "blanked_change_region"
     else:
-        target, status = _run_probnet_cell_fill(args, target_tissue, reference_nuclei, change_region, output_dir)
+        target, status = _run_probnet_cell_fill(args, target_tissue, retained, change_region, output_dir)
         new = np.array(target, copy=True)
         new[~np.asarray(change_region, dtype=bool)] = 0
 
@@ -328,10 +343,71 @@ def _build_target_nuclei(
         "mode": args.cell_fill_mode,
         "status": status,
         "changed_pixels": int(np.count_nonzero(change_region)),
+        "source_cell_integrity": integrity_info,
         "retained_nuclei_mask": str(output_dir / "retained_nuclei_mask.png"),
         "new_nuclei_mask": str(output_dir / "new_nuclei_mask.png"),
         "target_combined_mask": str(output_dir / "target_combined_mask.png"),
     }
+
+
+def _retain_complete_reference_cells(
+    reference_nuclei: np.ndarray,
+    change_region: np.ndarray,
+    *,
+    policy: str = "delete",
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Retain source nuclei as whole connected components.
+
+    Any source cell touching the changed region is handled as a complete
+    component, so the target mask never contains clipped source-cell fragments.
+    """
+    if policy not in {"delete", "keep", "majority"}:
+        raise ValueError(f"Unsupported crossing-cell-policy: {policy}")
+
+    from scipy import ndimage
+
+    source = np.asarray(reference_nuclei, dtype=np.uint8)
+    changed = np.asarray(change_region, dtype=bool)
+    labeled, count = ndimage.label(source > 0)
+    retained = np.zeros_like(source, dtype=np.uint8)
+    stats = {
+        "policy": policy,
+        "source_components": int(count),
+        "kept_components": 0,
+        "deleted_components": 0,
+        "crossing_components": 0,
+        "inside_change_components": 0,
+        "outside_change_components": 0,
+    }
+
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        touches_change = bool(np.any(component & changed))
+        touches_unchanged = bool(np.any(component & ~changed))
+
+        keep = False
+        if touches_change and touches_unchanged:
+            stats["crossing_components"] += 1
+            if policy == "keep":
+                keep = True
+            elif policy == "majority":
+                keep = int(np.count_nonzero(component & ~changed)) >= int(np.count_nonzero(component & changed))
+            else:
+                keep = False
+        elif touches_change:
+            stats["inside_change_components"] += 1
+            keep = policy == "keep"
+        else:
+            stats["outside_change_components"] += 1
+            keep = True
+
+        if keep:
+            retained[component] = source[component]
+            stats["kept_components"] += 1
+        else:
+            stats["deleted_components"] += 1
+
+    return retained, stats
 
 
 def _run_probnet_cell_fill(
@@ -400,25 +476,45 @@ def _run_generation_stage(
         erased = reference_image.copy()
         erased[np.asarray(change_region, dtype=bool)] = np.array([128, 128, 128], dtype=np.uint8)
         generated = _save_rgb_array(erased, output_dir / "generated_image.png")
+        change_ratio = _change_area_fraction(change_region)
+        selected_mode = _select_generation_mode(args.generation_mode, change_ratio, args.route_threshold)
         info = {
             "generation_mode": "dry-run",
             "status": "skipped_model_generation",
             "generated_image": str(generated),
+            "selected_mode": selected_mode,
+            "change_ratio": change_ratio,
+            "route_threshold": args.route_threshold,
         }
         save_metadata(info, output_dir / "generation_info.json")
         return generated, info
 
-    missing = [
-        name for name, value in {
-            "--pretrained-model-name-or-path": args.pretrained_model_name_or_path,
-            "--inpaint-checkpoint": args.inpaint_checkpoint,
-        }.items()
-        if value is None
-    ]
+    change_ratio = _change_area_fraction(change_region)
+    selected_mode = _select_generation_mode(args.generation_mode, change_ratio, args.route_threshold)
+    required = {
+        "--pretrained-model-name-or-path": args.pretrained_model_name_or_path,
+    }
+    if selected_mode == "inpaint":
+        required["--inpaint-checkpoint"] = args.inpaint_checkpoint
+    else:
+        required["--cross-v1-checkpoint"] = args.cross_v1_checkpoint
+        required["--uni-checkpoint"] = args.uni_checkpoint
+    missing = [name for name, value in required.items() if value is None]
     if missing:
-        raise SystemExit(f"{', '.join(missing)} required with --generation-mode inpaint")
+        raise SystemExit(f"{', '.join(missing)} required with --generation-mode {args.generation_mode}")
 
-    controlnet_dir = output_dir / "controlnet_inpaint"
+    cross_bundle = object()
+    if selected_mode == "cross-v1":
+        from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
+
+        cross_bundle = load_cross_v1_bundle(
+            pretrained_model_name_or_path=args.pretrained_model_name_or_path,
+            checkpoint_path=args.cross_v1_checkpoint,
+            uni_checkpoint_path=args.uni_checkpoint,
+            device=args.device,
+        )
+
+    controlnet_dir = output_dir / f"controlnet_{selected_mode.replace('-', '_')}"
     result = run_edit_pipeline(
         inputs=EditPipelineInputs(
             reference_image=args.reference_image,
@@ -429,33 +525,66 @@ def _run_generation_stage(
             output_dir=controlnet_dir,
             prompt=args.prompt,
             dataset=args.profile,
-            force_mode="inpaint",
+            force_mode=selected_mode if selected_mode != "cross-v1" else "cross",
             save_debug_artifacts=True,
         ),
-        inpaint_bundle=load_inpaint_bundle(
-            pretrained_model_name_or_path=args.pretrained_model_name_or_path,
-            checkpoint_path=args.inpaint_checkpoint,
-            device=args.device,
+        inpaint_bundle=(
+            load_inpaint_bundle(
+                pretrained_model_name_or_path=args.pretrained_model_name_or_path,
+                checkpoint_path=args.inpaint_checkpoint,
+                device=args.device,
+            )
+            if selected_mode == "inpaint"
+            else object()
         ),
-        cross_bundle=object(),
+        cross_bundle=(
+            cross_bundle
+        ),
         inpaint_runner=run_inpaint_bundle,
-        cross_runner=lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            RuntimeError("cross runner is disabled in Phase3 inpaint-first pipeline")
-        ),
+        cross_runner=_run_cross_v1_loaded_bundle,
+        routing_config=EditRoutingConfig(t_inpaint=args.route_threshold, t_cross=args.route_threshold),
     )
     generated = output_dir / "generated_image.png"
     result.image.save(generated)
     info = {
-        "generation_mode": "inpaint",
+        "generation_mode": args.generation_mode,
         "status": "generated",
         "generated_image": str(generated),
         "controlnet_output_dir": str(controlnet_dir),
-        "selected_mode": result.selected_mode,
+        "selected_mode": selected_mode,
         "change_ratio": result.change_ratio,
+        "route_threshold": args.route_threshold,
         "prompt": result.prompt,
     }
     save_metadata(info, output_dir / "generation_info.json")
     return generated, info
+
+
+def _change_area_fraction(change_region: np.ndarray) -> float:
+    changed = np.asarray(change_region, dtype=bool)
+    return float(np.count_nonzero(changed)) / int(changed.size) if changed.size else 0.0
+
+
+def _select_generation_mode(generation_mode: str, change_ratio: float, threshold: float) -> str:
+    if generation_mode == "auto":
+        return "inpaint" if change_ratio > threshold else "cross-v1"
+    if generation_mode in {"inpaint", "cross-v1"}:
+        return generation_mode
+    return "dry-run"
+
+
+def _run_cross_v1_loaded_bundle(bundle, inputs, prompt: str):
+    from controlnet_train.inference.pipeline_cross_v1 import run_cross_v1_bundle
+
+    return run_cross_v1_bundle(
+        bundle,
+        reference_image=inputs.reference_image,
+        reference_tissue_mask=inputs.reference_tissue_mask,
+        reference_nuclei_mask=inputs.reference_nuclei_mask,
+        target_tissue_mask=inputs.target_tissue_mask,
+        target_nuclei_mask=inputs.target_nuclei_mask,
+        prompt=prompt,
+    )
 
 
 def _save_compare_panel(
@@ -533,7 +662,7 @@ def _read_text_arg(value: str | None, path: Path | None) -> str | None:
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Phase3 inpaint-first end-to-end pipeline.")
+    parser = argparse.ArgumentParser(description="Run Phase3 end-to-end tissue/cell/edit pipeline.")
     parser.add_argument("--mode", choices=("gen", "diff", "prompt"), required=True)
     parser.add_argument("--profile", required=True, help="Reference profile, e.g. BCSS.")
     parser.add_argument("--reference-image", required=True, type=Path)
@@ -577,6 +706,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default="preserve",
         help="How to build target nuclei before ControlNet generation.",
     )
+    parser.add_argument(
+        "--crossing-cell-policy",
+        choices=("delete", "keep", "majority"),
+        default="delete",
+        help="How to handle source nuclei components touching both changed and unchanged regions.",
+    )
     parser.add_argument("--probnet-ckpt", type=Path)
     parser.add_argument("--nuclei-library", type=Path)
     parser.add_argument("--probnet-device", default="auto", choices=("auto", "cuda", "cpu"))
@@ -585,12 +720,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--generation-mode",
-        choices=("dry-run", "inpaint"),
+        choices=("dry-run", "inpaint", "cross-v1", "auto"),
         default="dry-run",
-        help="dry-run writes artifacts without loading ControlNet.",
+        help="dry-run writes artifacts without loading ControlNet; auto uses >threshold inpaint else cross-v1.",
     )
+    parser.add_argument("--route-threshold", type=float, default=0.35)
     parser.add_argument("--pretrained-model-name-or-path")
     parser.add_argument("--inpaint-checkpoint", type=Path)
+    parser.add_argument("--cross-v1-checkpoint", type=Path)
+    parser.add_argument("--uni-checkpoint", type=Path)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--print-summary", action="store_true")

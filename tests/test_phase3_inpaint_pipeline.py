@@ -9,7 +9,10 @@ from PIL import Image
 
 from phase3_mask_edit.core.mask_io import save_id_mask
 from phase3_mask_edit.parser.semantic_diff import DEFAULT_SEMANTIC_DIFF
-from scripts.run_phase3_inpaint_pipeline import main as run_phase3_inpaint_pipeline
+from scripts.run_phase3_inpaint_pipeline import (
+    _select_generation_mode,
+    main as run_phase3_inpaint_pipeline,
+)
 
 
 def _write_rgb(path: Path, value: tuple[int, int, int] = (180, 120, 160)) -> None:
@@ -94,6 +97,64 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             self.assertEqual(summary["generation_mode"], "dry-run")
             self.assertEqual(summary["cell_fill_mode"], "blank")
             self.assertGreater(summary["changed_pixels"], 0)
+
+    def test_gen_blank_deletes_whole_source_cells_crossing_change_region(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = root / "image.png"
+            source = root / "source_mask.png"
+            target = root / "target_mask.png"
+            nuclei = root / "nuclei.png"
+            output = root / "out"
+
+            source_mask = _source_mask()
+            target_mask = source_mask.copy()
+            target_mask[30:40, 30:40] = 3
+            source_nuclei = np.zeros((96, 96), dtype=np.uint8)
+            source_nuclei[28:34, 32:36] = 101  # Crosses into the changed region.
+            source_nuclei[60:64, 60:64] = 102  # Fully outside, should remain.
+
+            _write_rgb(image)
+            save_id_mask(source_mask, source)
+            save_id_mask(target_mask, target)
+            Image.fromarray(source_nuclei).save(nuclei)
+
+            exit_code = run_phase3_inpaint_pipeline(
+                [
+                    "--mode",
+                    "gen",
+                    "--profile",
+                    "BCSS",
+                    "--reference-image",
+                    str(image),
+                    "--reference-tissue-mask",
+                    str(source),
+                    "--reference-nuclei-mask",
+                    str(nuclei),
+                    "--target-tissue-mask",
+                    str(target),
+                    "--output",
+                    str(output),
+                    "--generation-mode",
+                    "dry-run",
+                    "--cell-fill-mode",
+                    "blank",
+                ]
+            )
+
+            self.assertEqual(exit_code, 0)
+            retained = np.asarray(Image.open(output / "retained_nuclei_mask.png").convert("L"))
+            self.assertFalse(np.any(retained[28:34, 32:36]))
+            self.assertTrue(np.any(retained[60:64, 60:64] == 102))
+
+            log = json.loads((output / "cell_fill_log.json").read_text(encoding="utf-8"))
+            self.assertEqual(log["source_cell_integrity"]["crossing_components"], 1)
+            self.assertGreaterEqual(log["source_cell_integrity"]["deleted_components"], 1)
+
+    def test_auto_generation_route_uses_large_change_for_inpaint(self):
+        self.assertEqual(_select_generation_mode("auto", 0.36, 0.35), "inpaint")
+        self.assertEqual(_select_generation_mode("auto", 0.35, 0.35), "cross-v1")
+        self.assertEqual(_select_generation_mode("auto", 0.10, 0.35), "cross-v1")
 
     def test_diff_dry_run_executes_phase3_mask_edit_first(self):
         with tempfile.TemporaryDirectory() as tmp:
