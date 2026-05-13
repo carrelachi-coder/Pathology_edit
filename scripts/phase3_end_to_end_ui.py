@@ -25,20 +25,35 @@ except ImportError as exc:  # pragma: no cover - exercised by users launching th
         "Gradio is required for the local UI. Install it in this environment with `pip install gradio`."
     ) from exc
 
+from phase3_mask_edit.backends.llm_agent import (
+    FixtureContourProvider,
+    OpenAICompatibleMultimodalContourProvider,
+    OpenAICompatibleTextContourProvider,
+    execute_llm_contour_agent,
+)
+from phase3_mask_edit.backends.llm_contour import PROJECTION_MODE_ORGANIC_V2
+from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
+from phase3_mask_edit.core.intent import EditIntent
+from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import load_change_region, load_id_mask, save_change_region, save_id_mask
+from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
+from phase3_mask_edit.parser.qwen_local_parser import (
+    QwenLocalParserConfig,
+    parse_prompts_with_qwen_local,
+)
+from phase3_mask_edit.parser.semantic_diff import save_semantic_diff
+from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 from scripts.run_phase3_inpaint_pipeline import (
     _build_target_nuclei,
     _change_area_fraction,
     _load_rgb_image,
     _load_uint8_mask,
-    _read_text_arg,
-    _resolve_semantic_diff,
     _run_generation_stage,
-    _run_phase3_semantic_stage,
     _save_compare_panel,
     _save_pre_generation_artifacts,
     _save_target_combined_mask,
     _select_generation_mode,
+    _format_subprocess_error,
     _validate_same_size,
 )
 
@@ -68,31 +83,12 @@ def _copy_input(value: Any, output_dir: Path, filename: str) -> Path:
 
 def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
     defaults = {
-        "mode": "prompt",
         "profile": state.get("profile", "BCSS"),
         "reference_image": Path(state["reference_image"]),
         "reference_tissue_mask": Path(state["reference_tissue_mask"]),
         "reference_nuclei_mask": Path(state["reference_nuclei_mask"]),
         "target_tissue_mask": Path(state["target_tissue_mask"]) if state.get("target_tissue_mask") else None,
         "change_region": Path(state["change_region"]) if state.get("change_region") else None,
-        "semantic_diff": None,
-        "old_prompt": None,
-        "new_prompt": None,
-        "old_prompt_file": None,
-        "new_prompt_file": None,
-        "parser": "api",
-        "api_base_url": "https://api.openai.com/v1",
-        "api_key_env": "OPENAI_API_KEY",
-        "api_model": None,
-        "api_timeout_sec": 60.0,
-        "api_temperature": 0.0,
-        "qwen_model_path": None,
-        "qwen_device": "cuda",
-        "qwen_max_new_tokens": 256,
-        "qwen_temperature": 0.1,
-        "qwen_top_p": 0.9,
-        "qwen_greedy": False,
-        "no_few_shot": False,
         "output": Path(state["output_dir"]),
         "continue_on_failure": False,
         "cell_fill_mode": "preserve",
@@ -173,7 +169,6 @@ def load_inputs(
 
 def run_tissue_stage(
     state: dict[str, Any],
-    mode: str,
     old_prompt: str,
     new_prompt: str,
     parser: str,
@@ -181,8 +176,18 @@ def run_tissue_stage(
     api_key_env: str,
     api_model: str,
     qwen_model_path: str,
-    semantic_diff_file,
-    target_tissue_file,
+    no_few_shot: bool,
+    primitive: str,
+    source_labels: str,
+    target_label: str,
+    strength: str,
+    provider: str,
+    api_image_detail: str,
+    fixture_file,
+    max_attempts: int,
+    max_regions: int,
+    max_points_per_region: int,
+    organic_seed: int,
     continue_on_failure: bool,
 ) -> tuple[dict[str, Any], str, str, str]:
     if not state:
@@ -190,46 +195,135 @@ def run_tissue_stage(
     output_dir = Path(state["output_dir"])
     reference_image = _load_rgb_image(state["reference_image"])
     reference_tissue = load_id_mask(state["reference_tissue_mask"])
-
-    if mode == "target mask":
-        target_path = _copy_input(target_tissue_file, output_dir, "target_tissue_mask.png")
-        target_tissue = load_id_mask(target_path)
-        phase3_info = {"mode": "target_mask_upload", "target_tissue_mask": str(target_path)}
-    else:
-        diff_path = _file_path(semantic_diff_file)
-        args = _make_args(
-            state,
-            mode="diff" if mode == "semantic diff" else "prompt",
-            semantic_diff=diff_path,
-            old_prompt=old_prompt or None,
-            new_prompt=new_prompt or None,
-            parser=parser,
-            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
-            api_key_env=api_key_env or "OPENAI_API_KEY",
-            api_model=api_model or None,
-            qwen_model_path=qwen_model_path or None,
-            continue_on_failure=continue_on_failure,
-        )
-        try:
-            semantic_diff, parser_info = _resolve_semantic_diff(args)
-            target_tissue, phase3_info = _run_phase3_semantic_stage(
-                args,
-                reference_tissue,
-                output_dir,
-                semantic_diff=semantic_diff,
-                parser_info=parser_info,
+    schema = MaskProfileSchema.from_reference_profile(state["profile"])
+    recipe = load_recipe(default_recipe_path_for_profile(state["profile"]))
+    try:
+        if old_prompt.strip() and new_prompt.strip():
+            semantic_diff, parser_info = _resolve_prompt_semantic_diff(
+                old_prompt=old_prompt,
+                new_prompt=new_prompt,
+                parser=parser,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+                api_model=api_model,
+                qwen_model_path=qwen_model_path,
+                no_few_shot=no_few_shot,
+                output_dir=output_dir,
             )
-        except SystemExit as exc:
-            raise gr.Error(str(exc) or "Tissue stage failed.") from exc
-        except Exception as exc:
-            raise gr.Error(f"{type(exc).__name__}: {exc}") from exc
-        target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
+            plan = plan_edit_intents(
+                semantic_diff,
+                reference_profile=state["profile"],
+                old_mask=reference_tissue,
+                old_prompt=old_prompt,
+                new_prompt=new_prompt,
+            )
+            save_semantic_diff(semantic_diff, output_dir / "phase3_mask_edit" / "semantic_diff.json")
+            save_metadata(
+                plan.to_metadata(),
+                output_dir / "phase3_mask_edit" / "planning_summary.json",
+            )
+            provider_instance = _build_contour_provider(
+                provider=provider,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+                api_model=api_model,
+                api_image_detail=api_image_detail,
+                fixture_file=fixture_file,
+            )
+            current_mask = np.array(reference_tissue, copy=True)
+            last_result = None
+            attempt_logs: list[dict[str, Any]] = []
+            for intent in plan.intents:
+                primitive_config = _primitive_config(recipe, intent.primitive)
+                result = execute_llm_contour_agent(
+                    old_mask=current_mask,
+                    schema=schema,
+                    intent=intent,
+                    primitive_config=primitive_config,
+                    provider=provider_instance,
+                    output_dir=output_dir / "phase3_mask_edit" / "llm_contour" / intent.primitive,
+                    projection_mode=PROJECTION_MODE_ORGANIC_V2,
+                    organic_seed=organic_seed,
+                    max_attempts=max_attempts,
+                    max_regions=max_regions,
+                    max_points_per_region=max_points_per_region,
+                )
+                attempt_logs.append(
+                    {
+                        "primitive": intent.primitive,
+                        "status": result.status,
+                        "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                        "error": result.error,
+                        "artifact_paths": result.artifact_paths,
+                    }
+                )
+                last_result = result
+                if result.edit_result is None:
+                    if not continue_on_failure:
+                        break
+                    continue
+                current_mask = np.array(result.edit_result.target_mask, copy=True)
+                if result.status != "validated" and not continue_on_failure:
+                    break
+            if last_result is None or last_result.edit_result is None:
+                raise gr.Error("Prompt-driven contour planning did not produce an edit.")
+            result = last_result
+            phase3_info = {
+                "mode": "prompt_to_contour",
+                "parser": parser_info,
+                "semantic_diff": semantic_diff,
+                "plan": plan.to_metadata(),
+                "attempts": attempt_logs,
+                "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+            }
+        else:
+            primitive_config = _primitive_config(recipe, primitive)
+            intent = _build_contour_intent(
+                primitive_config,
+                profile=state["profile"],
+                strength=strength,
+                source_labels=source_labels,
+                target_label=target_label,
+            )
+            provider_instance = _build_contour_provider(
+                provider=provider,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+                api_model=api_model,
+                api_image_detail=api_image_detail,
+                fixture_file=fixture_file,
+            )
+            result = execute_llm_contour_agent(
+                old_mask=reference_tissue,
+                schema=schema,
+                intent=intent,
+                primitive_config=primitive_config,
+                provider=provider_instance,
+                output_dir=output_dir / "phase3_mask_edit" / "llm_contour",
+                projection_mode=PROJECTION_MODE_ORGANIC_V2,
+                organic_seed=organic_seed,
+                max_attempts=max_attempts,
+                max_regions=max_regions,
+                max_points_per_region=max_points_per_region,
+            )
+            phase3_info = result.to_metadata()
+    except Exception as exc:
+        raise gr.Error(f"{type(exc).__name__}: {exc}") from exc
+
+    if result.edit_result is None:
+        raise gr.Error(result.error or "Contour stage did not produce an edit.")
+    if result.status != "validated" and not continue_on_failure:
+        raise gr.Error(result.error or f"Contour stage finished with status {result.status}.")
+
+    target_tissue = result.edit_result.target_mask
+    target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
+    phase3_info = result.to_metadata()
 
     _validate_same_size(reference_image, target_tissue, "target_tissue_mask")
     change_region = reference_tissue != target_tissue
     stage_paths = _save_pre_generation_artifacts(
         output_dir=output_dir,
-        reference_image=reference_image,
+        reference_image=_load_rgb_image(state["reference_image"]),
         reference_tissue=reference_tissue,
         target_tissue=target_tissue,
         change_region=change_region,
@@ -243,6 +337,9 @@ def run_tissue_stage(
     )
     info = {
         "status": "tissue_done",
+        "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+        "primitive": primitive,
+        "prompt_mode": bool(old_prompt.strip() and new_prompt.strip()),
         "changed_area_fraction": _change_area_fraction(change_region),
         "target_tissue_mask": str(target_path),
         "change_region": stage_paths["change_region"],
@@ -276,7 +373,14 @@ def run_cell_stage(
         probnet_device=probnet_device,
         probnet_gamma_values=gamma_values or "1.0",
     )
-    target_nuclei, cell_info = _build_target_nuclei(args, reference_nuclei, target_tissue, change_region, output_dir)
+    try:
+        target_nuclei, cell_info = _build_target_nuclei(
+            args, reference_nuclei, target_tissue, change_region, output_dir
+        )
+    except subprocess.CalledProcessError as exc:
+        raise gr.Error(_format_subprocess_error(exc, label="ProbNet cell fill")) from exc
+    except RuntimeError as exc:
+        raise gr.Error(str(exc)) from exc
     target_nuclei_path = save_id_mask(target_nuclei, output_dir / "target_nuclei_mask.png")
     combined_path = _save_target_combined_mask(
         output_dir / "target_combined_mask.png",
@@ -372,6 +476,167 @@ def preview_route(state: dict[str, Any], threshold: float) -> str:
     return f"change_region = {ratio:.2%}; auto route = {selected} (threshold {threshold:.0%})"
 
 
+def _primitive_config(recipe: dict[str, Any], primitive_name: str) -> dict[str, Any]:
+    for primitive in recipe.get("primitives", []):
+        if isinstance(primitive, dict) and primitive.get("name") == primitive_name:
+            return primitive
+    raise gr.Error(f"Unknown primitive: {primitive_name}")
+
+
+def _build_contour_intent(
+    primitive_config: dict[str, Any],
+    *,
+    profile: str,
+    strength: str,
+    source_labels: str,
+    target_label: str,
+) -> EditIntent:
+    operation = primitive_config.get("mask_operation", {})
+    source = _split_csv(source_labels) or _default_contour_sources(primitive_config, operation)
+    target = target_label.strip() if target_label else ""
+    if not target:
+        target = _default_contour_target(primitive_config, operation)
+    if not source:
+        raise gr.Error("Please provide at least one source label.")
+    if not target:
+        raise gr.Error("Please provide a target label.")
+    return EditIntent(
+        primitive=str(primitive_config["name"]),
+        strength=strength,
+        reference_profile=profile,
+        source_labels=tuple(source),
+        target_label=target,
+    )
+
+
+def _build_contour_provider(
+    *,
+    provider: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    api_image_detail: str,
+    fixture_file,
+):
+    if provider == "api-text":
+        if not api_model:
+            raise gr.Error("--api model is required for api-text.")
+        return OpenAICompatibleTextContourProvider(
+            model=api_model,
+            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
+            api_key_env=api_key_env or "OPENAI_API_KEY",
+        )
+    if provider == "api-multimodal":
+        if not api_model:
+            raise gr.Error("--api model is required for api-multimodal.")
+        return OpenAICompatibleMultimodalContourProvider(
+            model=api_model,
+            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
+            api_key_env=api_key_env or "OPENAI_API_KEY",
+            image_detail=api_image_detail,
+        )
+    if provider == "fixture":
+        fixture_path = _file_path(fixture_file)
+        if fixture_path is None:
+            raise gr.Error("Upload a contour fixture JSON when using fixture provider.")
+        return FixtureContourProvider(fixture_path)
+    raise gr.Error(f"Unsupported contour provider: {provider}")
+
+
+def _resolve_prompt_semantic_diff(
+    *,
+    old_prompt: str,
+    new_prompt: str,
+    parser: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    qwen_model_path: str,
+    no_few_shot: bool,
+    output_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if parser == "api":
+        if not api_model:
+            raise gr.Error("api model is required for prompt parsing.")
+        config = ApiParserConfig(
+            model=api_model,
+            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
+            api_key_env=api_key_env or "OPENAI_API_KEY",
+            debug_dir=str(output_dir / "phase3_mask_edit" / "api_parser_debug"),
+            use_few_shot=not no_few_shot,
+        )
+        return parse_prompts_with_api(old_prompt, new_prompt, config=config), {
+            "mode": "api",
+            "api_base_url": config.api_base_url,
+            "api_key_env": config.api_key_env,
+            "api_model": api_model,
+            "use_few_shot": not no_few_shot,
+        }
+    if parser == "qwen-local":
+        if not qwen_model_path:
+            raise gr.Error("qwen model path is required for prompt parsing.")
+        config = QwenLocalParserConfig(
+            model_path=qwen_model_path,
+            device="cuda",
+            max_new_tokens=256,
+            temperature=0.1,
+            top_p=0.9,
+            do_sample=not no_few_shot,
+            use_few_shot=not no_few_shot,
+        )
+        return parse_prompts_with_qwen_local(old_prompt, new_prompt, config=config), {
+            "mode": "qwen-local",
+            "model_path": qwen_model_path,
+            "use_few_shot": not no_few_shot,
+        }
+    raise gr.Error(f"Unsupported parser: {parser}")
+
+
+def _split_csv(value: str) -> list[str]:
+    labels = [part.strip() for part in value.split(",")]
+    return [label for label in labels if label]
+
+
+def _default_contour_sources(
+    primitive_config: dict[str, Any],
+    operation: dict[str, Any],
+) -> list[str]:
+    labels = _labels_from_operation(operation.get("source"))
+    if labels:
+        return labels
+    labels.extend(_labels_from_operation(operation.get("primary_sources")))
+    labels.extend(_labels_from_operation(operation.get("secondary_sources")))
+    return list(dict.fromkeys(labels))
+
+
+def _default_contour_target(primitive_config: dict[str, Any], operation: dict[str, Any]) -> str:
+    target = operation.get("target")
+    if isinstance(target, str):
+        return target
+    if primitive_config.get("name") == "tumor_burden_increase":
+        return "Tumor"
+    if primitive_config.get("name") in {
+        "immune_infiltration_decrease",
+        "stroma_decrease",
+        "stromal_reduction",
+        "tumor_burden_decrease",
+    }:
+        priority = operation.get("backfill_priority", ())
+        if isinstance(priority, list):
+            for label in priority:
+                if isinstance(label, str):
+                    return label
+    return ""
+
+
+def _labels_from_operation(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return list(value)
+    return []
+
+
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Pathology Edit Pipeline") as demo:
         gr.Markdown("## Pathology edit pipeline")
@@ -396,22 +661,40 @@ def build_ui() -> gr.Blocks:
 
         gr.Markdown("### Tissue mask edit")
         with gr.Row():
-            tissue_mode = gr.Radio(["prompt", "semantic diff", "target mask"], value="prompt", label="mode")
-            parser = gr.Radio(["api", "qwen-local", "fixture"], value="api", label="parser")
+            primitive = gr.Dropdown(
+                [
+                    "stromal_immune_infiltration",
+                    "necrosis_appearance",
+                    "tumor_burden_increase",
+                    "tumor_burden_decrease",
+                    "immune_infiltration_decrease",
+                    "stromal_desmoplasia",
+                    "stroma_decrease",
+                    "stromal_reduction",
+                ],
+                value="stromal_immune_infiltration",
+                label="primitive",
+            )
+            strength = gr.Radio(["mild", "moderate", "significant"], value="mild", label="strength")
         with gr.Row():
-            old_prompt = gr.Textbox(label="src_prompt", lines=3)
-            new_prompt = gr.Textbox(label="new_prompt", lines=3)
+            source_labels = gr.Textbox(label="source labels", placeholder="Stroma")
+            target_label = gr.Textbox(label="target label", placeholder="Immune infiltrate")
+        with gr.Row():
+            provider = gr.Radio(["api-text", "api-multimodal", "fixture"], value="api-multimodal", label="provider")
+            api_image_detail = gr.Radio(["low", "high", "auto"], value="high", label="image detail")
         with gr.Row():
             api_base_url = gr.Textbox(value="https://api.openai.com/v1", label="api base url")
             api_key_env = gr.Textbox(value="OPENAI_API_KEY", label="api key env")
         with gr.Row():
             api_model = gr.Textbox(label="api model")
-            qwen_model_path = gr.Textbox(label="qwen model path")
+            fixture_file = gr.File(label="contour fixture JSON", file_types=[".json"], type="filepath")
         with gr.Row():
-            semantic_diff = gr.File(label="semantic_diff JSON", file_types=[".json"], type="filepath")
-            target_tissue = gr.File(label="target_tissue_mask", file_types=["image"], type="filepath")
+            max_attempts = gr.Slider(1, 8, value=4, step=1, label="max attempts")
+            max_regions = gr.Slider(1, 8, value=8, step=1, label="max regions")
+            max_points_per_region = gr.Slider(8, 128, value=64, step=1, label="max points / region")
+        organic_seed = gr.Number(value=0, precision=0, label="organic seed")
         continue_on_failure = gr.Checkbox(value=False, label="continue on Phase3 failure")
-        tissue_button = gr.Button("2. Run LLM parser + organic v2 tissue edit")
+        tissue_button = gr.Button("2. Run organic v2 contour edit")
         tissue_log = gr.Code(label="tissue log", language="json")
         with gr.Row():
             target_tissue_preview = gr.Image(label="target tissue")
@@ -464,16 +747,20 @@ def build_ui() -> gr.Blocks:
             run_tissue_stage,
             inputs=[
                 state,
-                tissue_mode,
-                old_prompt,
-                new_prompt,
-                parser,
+                primitive,
+                source_labels,
+                target_label,
+                strength,
+                provider,
                 api_base_url,
                 api_key_env,
                 api_model,
-                qwen_model_path,
-                semantic_diff,
-                target_tissue,
+                api_image_detail,
+                fixture_file,
+                max_attempts,
+                max_regions,
+                max_points_per_region,
+                organic_seed,
                 continue_on_failure,
             ],
             outputs=[state, tissue_log, target_tissue_preview, change_region_preview],

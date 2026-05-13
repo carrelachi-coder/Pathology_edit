@@ -205,6 +205,7 @@ def _resolve_semantic_diff(args: argparse.Namespace) -> tuple[dict[str, Any], di
             timeout_sec=args.api_timeout_sec,
             temperature=args.api_temperature,
             use_few_shot=not args.no_few_shot,
+            debug_dir=str(args.output / "phase3_mask_edit" / "api_parser_debug"),
         )
         return parse_prompts_with_api(old_prompt, new_prompt, config=config), {
             "mode": "api",
@@ -459,7 +460,17 @@ def _run_probnet_cell_fill(
     if args.density_scale_json:
         cmd.extend(["--density-scale-json", str(args.density_scale_json)])
 
-    subprocess.run(cmd, cwd=Path(__file__).resolve().parents[1], check=True)
+    try:
+        subprocess.run(
+            cmd,
+            cwd=Path(__file__).resolve().parents[1],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        details = _format_subprocess_error(exc, label="ProbNet generate.py")
+        raise RuntimeError(details) from exc
     return _load_uint8_mask(output_nuclei), "probnet_generated"
 
 
@@ -629,6 +640,19 @@ def _save_target_combined_mask(
     combined = id_to_rgb(target_tissue)
     combined[np.asarray(target_nuclei) > 0] = np.array([255, 255, 255], dtype=np.uint8)
     return _save_rgb_array(combined, path)
+
+
+def _format_subprocess_error(exc: subprocess.CalledProcessError, *, label: str) -> str:
+    parts = [f"{label} failed with exit code {exc.returncode}."]
+    if exc.cmd:
+        parts.append(f"Command: {exc.cmd!r}")
+    stdout = (exc.stdout or "").strip()
+    stderr = (exc.stderr or "").strip()
+    if stdout:
+        parts.append(f"stdout:\n{stdout}")
+    if stderr:
+        parts.append(f"stderr:\n{stderr}")
+    return "\n".join(parts)
 
 
 def _load_rgb_image(path: str | Path) -> np.ndarray:

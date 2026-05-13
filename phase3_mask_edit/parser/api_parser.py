@@ -8,6 +8,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 
 from phase3_mask_edit.parser.semantic_diff import (
@@ -226,6 +227,7 @@ class ApiParserConfig:
     timeout_sec: float = 60.0
     temperature: float = 0.0
     use_few_shot: bool = True
+    debug_dir: str | None = None
 
 
 class ApiParserError(RuntimeError):
@@ -255,19 +257,40 @@ def parse_prompts_with_api(
         ),
         "response_format": {"type": "json_object"},
     }
+    debug_dir = Path(config.debug_dir) if config.debug_dir else None
+    if debug_dir is not None:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        (debug_dir / "api_request.json").write_text(
+            json.dumps(request_payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     response_payload = _post_chat_completion(
         request_payload,
         api_base_url=config.api_base_url,
         api_key=api_key,
         timeout_sec=config.timeout_sec,
+        debug_dir=debug_dir,
     )
     content = _response_content(response_payload)
+    if debug_dir is not None:
+        (debug_dir / "api_message_content.txt").write_text(content, encoding="utf-8")
     try:
         parsed = extract_json_object(content)
         parsed.setdefault("schema_version", SEMANTIC_DIFF_SCHEMA_VERSION)
-        return normalize_semantic_diff(parsed, fill_missing=True)
+        normalized = normalize_semantic_diff(parsed, fill_missing=True)
+        if debug_dir is not None:
+            (debug_dir / "semantic_diff_normalized.json").write_text(
+                json.dumps(normalized, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        return normalized
     except SemanticDiffValidationError as exc:
-        raise ApiParserError(f"API response did not match semantic_diff schema: {exc}") from exc
+        suffix = (
+            f" Raw model content saved to: {debug_dir / 'api_message_content.txt'}"
+            if debug_dir is not None
+            else ""
+        )
+        raise ApiParserError(f"API response did not match semantic_diff schema: {exc}.{suffix}") from exc
 
 
 def build_parser_prompt(old_prompt: str, new_prompt: str) -> str:
@@ -310,6 +333,7 @@ def _post_chat_completion(
     api_base_url: str,
     api_key: str,
     timeout_sec: float,
+    debug_dir: Path | None = None,
 ) -> dict[str, Any]:
     endpoint = api_base_url.rstrip("/") + "/chat/completions"
     data = json.dumps(payload).encode("utf-8")
@@ -328,16 +352,31 @@ def _post_chat_completion(
             response_data = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
+        if debug_dir is not None:
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            (debug_dir / "api_http_error_body.txt").write_text(body, encoding="utf-8")
         raise ApiParserError(f"API request failed with HTTP {exc.code}: {body}") from exc
     except urllib.error.URLError as exc:
         raise ApiParserError(f"API request failed: {exc}") from exc
 
+    raw_path = None
+    if debug_dir is not None:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = debug_dir / "api_response_raw.txt"
+        raw_path.write_text(response_data, encoding="utf-8")
+
     try:
         decoded = json.loads(response_data)
     except json.JSONDecodeError as exc:
-        raise ApiParserError("API response was not valid JSON.") from exc
+        suffix = f" Raw response saved to: {raw_path}" if raw_path is not None else ""
+        raise ApiParserError(f"API response was not valid JSON.{suffix}") from exc
     if not isinstance(decoded, dict):
         raise ApiParserError("API response root must be a JSON object.")
+    if debug_dir is not None:
+        (debug_dir / "api_response.json").write_text(
+            json.dumps(decoded, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     return decoded
 
 
