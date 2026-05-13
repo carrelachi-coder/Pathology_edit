@@ -66,6 +66,45 @@ from scripts.run_phase3_inpaint_pipeline import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "runs" / "phase3_end_to_end_ui"
+DEFAULT_API_MODEL = "gpt-4o-all"
+DEFAULT_API_BASE_URL = "https://api.cursorai.art/v1"
+DEFAULT_API_KEY_ENV = "OPENAI_API_KEY"
+DEFAULT_QWEN_DEVICE = "cuda:0"
+DEFAULT_PROBNET_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/checkpoints/best.pt"
+DEFAULT_NUCLEI_LIBRARY_TEMPLATE = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/nuclei_library/{profile}"
+DEFAULT_DENSITY_SCALE_TEMPLATE = (
+    "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/configs/"
+    "density_scale_{profile_lower}.json"
+)
+DEFAULT_PRETRAINED_MODEL = "/data/huggingface/FLUX.1-dev"
+DEFAULT_INPAINT_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_inpaint_all"
+DEFAULT_CROSS_V1_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1/checkpoint-40000"
+DEFAULT_UNI_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorch_model.bin"
+CUDA_DEVICE_CHOICES = [f"cuda:{idx}" for idx in range(8)]
+PROBNET_DEVICE_CHOICES = ["auto", *CUDA_DEVICE_CHOICES, "cpu"]
+GENERATION_DEVICE_CHOICES = CUDA_DEVICE_CHOICES
+
+
+def _canonical_profile(profile: str) -> str:
+    if profile == "GlaS":
+        return "GlaS"
+    return (profile or "BCSS").upper()
+
+
+def _profile_defaults(profile: str) -> dict[str, str]:
+    profile_name = _canonical_profile(profile)
+    return {
+        "probnet_ckpt": DEFAULT_PROBNET_CHECKPOINT,
+        "nuclei_library": DEFAULT_NUCLEI_LIBRARY_TEMPLATE.format(profile=profile_name),
+        "density_scale_json": DEFAULT_DENSITY_SCALE_TEMPLATE.format(
+            profile=profile_name,
+            profile_lower=profile_name.lower(),
+        ),
+    }
+
+
+def _defaulted_text(value: str | None, default: str) -> str:
+    return (value or "").strip() or default
 
 
 def _file_path(value: Any) -> Path | None:
@@ -258,6 +297,7 @@ def run_tissue_stage(
     api_key_env: str,
     api_model: str,
     qwen_model_path: str,
+    qwen_device: str,
     no_few_shot: bool,
     primitive: str,
     source_labels: str,
@@ -289,6 +329,7 @@ def run_tissue_stage(
                 api_key_env=api_key_env,
                 api_model=api_model,
                 qwen_model_path=qwen_model_path,
+                qwen_device=qwen_device,
                 no_few_shot=no_few_shot,
                 output_dir=output_dir,
             )
@@ -308,7 +349,7 @@ def run_tissue_stage(
                 provider=provider,
                 api_base_url=api_base_url,
                 api_key_env=api_key_env,
-                api_model=api_model,
+                api_model=_defaulted_text(api_model, DEFAULT_API_MODEL),
                 api_image_detail=api_image_detail,
                 fixture_file=fixture_file,
             )
@@ -503,13 +544,14 @@ def run_cell_stage(
     target_tissue = load_id_mask(state["target_tissue_mask"])
     reference_nuclei = _load_uint8_mask(state["reference_nuclei_mask"])
     change_region = load_change_region(state["change_region"])
+    profile_defaults = _profile_defaults(state.get("profile", "BCSS"))
     args = _make_args(
         state,
         cell_fill_mode=cell_fill_mode,
         crossing_cell_policy=crossing_cell_policy,
-        probnet_ckpt=Path(probnet_ckpt) if probnet_ckpt else None,
-        nuclei_library=Path(nuclei_library) if nuclei_library else None,
-        density_scale_json=Path(density_scale_json) if density_scale_json else None,
+        probnet_ckpt=Path(_defaulted_text(probnet_ckpt, profile_defaults["probnet_ckpt"])),
+        nuclei_library=Path(_defaulted_text(nuclei_library, profile_defaults["nuclei_library"])),
+        density_scale_json=Path(_defaulted_text(density_scale_json, profile_defaults["density_scale_json"])),
         probnet_device=probnet_device,
         probnet_gamma_values=gamma_values or "1.0",
     )
@@ -554,7 +596,6 @@ def run_generation_stage(
     cross_v1_checkpoint: str,
     uni_checkpoint: str,
     device: str,
-    prompt: str,
 ) -> tuple[dict[str, Any], str, str, str]:
     if not state or not state.get("target_nuclei_mask"):
         raise gr.Error("Run the cell-mask stage first.")
@@ -565,12 +606,12 @@ def run_generation_stage(
         state,
         generation_mode=generation_mode,
         route_threshold=route_threshold,
-        pretrained_model_name_or_path=model_path or None,
-        inpaint_checkpoint=Path(inpaint_checkpoint) if inpaint_checkpoint else None,
-        cross_v1_checkpoint=Path(cross_v1_checkpoint) if cross_v1_checkpoint else None,
-        uni_checkpoint=Path(uni_checkpoint) if uni_checkpoint else None,
-        device=device,
-        prompt=prompt or None,
+        pretrained_model_name_or_path=_defaulted_text(model_path, DEFAULT_PRETRAINED_MODEL),
+        inpaint_checkpoint=Path(_defaulted_text(inpaint_checkpoint, DEFAULT_INPAINT_CHECKPOINT)),
+        cross_v1_checkpoint=Path(_defaulted_text(cross_v1_checkpoint, DEFAULT_CROSS_V1_CHECKPOINT)),
+        uni_checkpoint=Path(_defaulted_text(uni_checkpoint, DEFAULT_UNI_CHECKPOINT)),
+        device=device or GENERATION_DEVICE_CHOICES[0],
+        prompt=None,
     )
     generated_path, generation_info = _run_generation_stage(
         args=args,
@@ -614,6 +655,38 @@ def preview_route(state: dict[str, Any], threshold: float) -> str:
     ratio = _change_area_fraction(change_region)
     selected = _select_generation_mode("auto", ratio, threshold)
     return f"change_region = {ratio:.2%}; auto route = {selected} (threshold {threshold:.0%})"
+
+
+def check_cuda_memory() -> str:
+    query = [
+        "nvidia-smi",
+        "--query-gpu=index,name,memory.free,memory.total",
+        "--format=csv,noheader,nounits",
+    ]
+    try:
+        result = subprocess.run(
+            query,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        return "nvidia-smi not found. CUDA memory cannot be checked on this machine."
+    except subprocess.TimeoutExpired:
+        return "nvidia-smi timed out while checking CUDA memory."
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        return f"nvidia-smi failed: {detail or exc}"
+
+    lines: list[str] = []
+    for raw_line in result.stdout.splitlines():
+        parts = [part.strip() for part in raw_line.split(",")]
+        if len(parts) != 4:
+            continue
+        index, name, free_mib, total_mib = parts
+        lines.append(f"cuda:{index}  {free_mib} / {total_mib} MiB free  {name}")
+    return "\n".join(lines) if lines else "No CUDA GPU memory rows returned by nvidia-smi."
 
 
 def _primitive_config(recipe: dict[str, Any], primitive_name: str) -> dict[str, Any]:
@@ -722,21 +795,20 @@ def _build_contour_provider(
     api_image_detail: str,
     fixture_file,
 ):
+    api_model = _defaulted_text(api_model, DEFAULT_API_MODEL)
+    api_base_url = _defaulted_text(api_base_url, DEFAULT_API_BASE_URL).rstrip("/")
+    api_key_env = _defaulted_text(api_key_env, DEFAULT_API_KEY_ENV)
     if provider == "api-text":
-        if not api_model:
-            raise gr.Error("--api model is required for api-text.")
         return OpenAICompatibleTextContourProvider(
             model=api_model,
-            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
-            api_key_env=api_key_env or "OPENAI_API_KEY",
+            api_base_url=api_base_url,
+            api_key_env=api_key_env,
         )
     if provider == "api-multimodal":
-        if not api_model:
-            raise gr.Error("--api model is required for api-multimodal.")
         return OpenAICompatibleMultimodalContourProvider(
             model=api_model,
-            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
-            api_key_env=api_key_env or "OPENAI_API_KEY",
+            api_base_url=api_base_url,
+            api_key_env=api_key_env,
             image_detail=api_image_detail,
         )
     if provider == "fixture":
@@ -758,14 +830,14 @@ def _resolve_prompt_semantic_diff(
     qwen_model_path: str,
     no_few_shot: bool,
     output_dir: Path,
+    qwen_device: str = DEFAULT_QWEN_DEVICE,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if parser == "api":
-        if not api_model:
-            raise gr.Error("api model is required for prompt parsing.")
+        api_model = _defaulted_text(api_model, DEFAULT_API_MODEL)
         config = ApiParserConfig(
             model=api_model,
-            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
-            api_key_env=api_key_env or "OPENAI_API_KEY",
+            api_base_url=_defaulted_text(api_base_url, DEFAULT_API_BASE_URL).rstrip("/"),
+            api_key_env=_defaulted_text(api_key_env, DEFAULT_API_KEY_ENV),
             debug_dir=str(output_dir / "phase3_mask_edit" / "api_parser_debug"),
             use_few_shot=not no_few_shot,
         )
@@ -781,7 +853,7 @@ def _resolve_prompt_semantic_diff(
             raise gr.Error("qwen model path is required for prompt parsing.")
         config = QwenLocalParserConfig(
             model_path=qwen_model_path,
-            device="cuda",
+            device=qwen_device or DEFAULT_QWEN_DEVICE,
             max_new_tokens=256,
             temperature=0.1,
             top_p=0.9,
@@ -791,6 +863,7 @@ def _resolve_prompt_semantic_diff(
         return parse_prompts_with_qwen_local(old_prompt, new_prompt, config=config), {
             "mode": "qwen-local",
             "model_path": qwen_model_path,
+            "device": config.device,
             "use_few_shot": not no_few_shot,
         }
     raise gr.Error(f"Unsupported parser: {parser}")
@@ -874,11 +947,16 @@ def build_ui() -> gr.Blocks:
             parser = gr.Radio(["api", "qwen-local"], value="api", label="parser")
             no_few_shot = gr.Checkbox(value=False, label="no few shot")
         with gr.Row():
-            api_model = gr.Textbox(label="api model", placeholder="gpt-4o")
+            api_model = gr.Textbox(value=DEFAULT_API_MODEL, label="api model")
             qwen_model_path = gr.Textbox(label="qwen model path")
-        with gr.Row():
-            api_base_url = gr.Textbox(value="https://api.openai.com/v1", label="api base url")
-            api_key_env = gr.Textbox(value="OPENAI_API_KEY", label="api key env")
+        with gr.Accordion("Advanced parser inputs", open=False):
+            with gr.Row():
+                api_base_url = gr.Textbox(value=DEFAULT_API_BASE_URL, label="api base url")
+                api_key_env = gr.Textbox(value=DEFAULT_API_KEY_ENV, label="api key env")
+            with gr.Row():
+                qwen_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_QWEN_DEVICE, label="qwen device")
+                cuda_memory_button = gr.Button("Check CUDA memory")
+            cuda_memory_log = gr.Textbox(label="CUDA memory", lines=8, interactive=False)
         continue_on_failure = gr.Checkbox(value=False, label="continue on Phase3 failure")
         tissue_button = gr.Button("2. Run prompt-driven organic v2 contour edit")
         tissue_log = gr.Code(label="tissue log", language="json")
@@ -920,12 +998,13 @@ def build_ui() -> gr.Blocks:
         with gr.Row():
             cell_fill = gr.Radio(["probnet", "blank", "preserve"], value="probnet", label="cell fill")
             crossing_policy = gr.Radio(["delete", "majority", "keep"], value="delete", label="crossing source-cell policy")
-        with gr.Row():
-            probnet_ckpt = gr.Textbox(label="ProbNet checkpoint")
-            nuclei_library = gr.Textbox(label="nuclei library directory")
-            density_scale_json = gr.Textbox(label="density scale JSON")
-        with gr.Row():
-            probnet_device = gr.Radio(["auto", "cuda", "cpu"], value="auto", label="ProbNet device")
+        profile_default_values = _profile_defaults("BCSS")
+        with gr.Accordion("Advanced ProbNet inputs", open=False):
+            with gr.Row():
+                probnet_ckpt = gr.Textbox(value=profile_default_values["probnet_ckpt"], label="ProbNet checkpoint")
+                nuclei_library = gr.Textbox(value=profile_default_values["nuclei_library"], label="nuclei library directory")
+                density_scale_json = gr.Textbox(value=profile_default_values["density_scale_json"], label="density scale JSON")
+            probnet_device = gr.Dropdown(PROBNET_DEVICE_CHOICES, value="auto", label="ProbNet device")
             gamma_values = gr.Textbox(value="1.0", label="gamma values")
         cell_button = gr.Button("3. Build target cell mask")
         cell_log = gr.Code(label="cell log", language="json")
@@ -940,14 +1019,14 @@ def build_ui() -> gr.Blocks:
             route_threshold = gr.Slider(0.0, 1.0, value=0.35, step=0.01, label="inpaint if change > threshold")
         route_button = gr.Button("Preview route")
         route_log = gr.Textbox(label="route")
-        with gr.Row():
-            model_path = gr.Textbox(label="pretrained FLUX/model path")
-            device = gr.Textbox(value="cuda", label="device")
-        with gr.Row():
-            inpaint_checkpoint = gr.Textbox(label="inpaint checkpoint")
-            cross_v1_checkpoint = gr.Textbox(label="cross-v1 checkpoint")
-            uni_checkpoint = gr.Textbox(label="UNI checkpoint")
-        generation_prompt = gr.Textbox(label="generation prompt", lines=2)
+        with gr.Accordion("Advanced generation inputs", open=False):
+            with gr.Row():
+                model_path = gr.Textbox(value=DEFAULT_PRETRAINED_MODEL, label="pretrained FLUX/model path")
+                device = gr.Dropdown(GENERATION_DEVICE_CHOICES, value=GENERATION_DEVICE_CHOICES[0], label="device")
+            with gr.Row():
+                inpaint_checkpoint = gr.Textbox(value=DEFAULT_INPAINT_CHECKPOINT, label="inpaint checkpoint")
+                cross_v1_checkpoint = gr.Textbox(value=DEFAULT_CROSS_V1_CHECKPOINT, label="cross-v1 checkpoint")
+                uni_checkpoint = gr.Textbox(value=DEFAULT_UNI_CHECKPOINT, label="UNI checkpoint")
         generate_button = gr.Button("4. Route + generate")
         generation_log = gr.Code(label="summary", language="json")
         with gr.Row():
@@ -959,6 +1038,12 @@ def build_ui() -> gr.Blocks:
             inputs=[profile, source_image, source_tissue, source_cell, cellvit_command, output_root],
             outputs=[state, load_log, src_image_preview, src_tissue_preview],
         )
+        profile.change(
+            lambda value: tuple(_profile_defaults(value).values()),
+            inputs=[profile],
+            outputs=[probnet_ckpt, nuclei_library, density_scale_json],
+        )
+        cuda_memory_button.click(check_cuda_memory, inputs=[], outputs=[cuda_memory_log])
         tissue_button.click(
             run_tissue_stage,
             inputs=[
@@ -970,6 +1055,7 @@ def build_ui() -> gr.Blocks:
                 api_key_env,
                 api_model,
                 qwen_model_path,
+                qwen_device,
                 no_few_shot,
                 primitive,
                 source_labels,
@@ -1012,7 +1098,6 @@ def build_ui() -> gr.Blocks:
                 cross_v1_checkpoint,
                 uni_checkpoint,
                 device,
-                generation_prompt,
             ],
             outputs=[state, generation_log, generated_preview, panel_preview],
         )
