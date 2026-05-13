@@ -122,6 +122,43 @@ def _json_text(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+def _contour_failure_message(result: Any) -> str:
+    lines = [f"Contour stage finished with status {result.status}."]
+    if result.error:
+        lines.append(f"Error: {result.error}")
+
+    final_attempt = getattr(result, "final_attempt", None)
+    if final_attempt is not None:
+        lines.append(f"Final attempt status: {final_attempt.status}")
+        if final_attempt.error:
+            lines.append(f"Final attempt error: {final_attempt.error}")
+        if final_attempt.validation is not None:
+            failed = [
+                f"{check.name}: {check.detail}"
+                for check in final_attempt.validation.failed_checks
+            ]
+            if failed:
+                lines.append("Failed validation checks:")
+                lines.extend(f"- {item}" for item in failed)
+            warnings = list(final_attempt.validation.warnings)
+            if warnings:
+                lines.append("Validation warnings:")
+                lines.extend(f"- {warning}" for warning in warnings)
+        if final_attempt.repair_feedback:
+            lines.append("Repair feedback:")
+            lines.append(_json_text(final_attempt.repair_feedback))
+        if final_attempt.artifact_paths:
+            lines.append("Attempt artifacts:")
+            for name, path in final_attempt.artifact_paths.items():
+                lines.append(f"- {name}: {path}")
+
+    if getattr(result, "artifact_paths", None):
+        lines.append("Run artifacts:")
+        for name, path in result.artifact_paths.items():
+            lines.append(f"- {name}: {path}")
+    return "\n".join(lines)
+
+
 def load_inputs(
     profile: str,
     source_image,
@@ -271,8 +308,10 @@ def run_tissue_stage(
                 current_mask = np.array(result.edit_result.target_mask, copy=True)
                 if result.status != "validated" and not continue_on_failure:
                     break
-            if last_result is None or last_result.edit_result is None:
+            if last_result is None:
                 raise gr.Error("Prompt-driven contour planning did not produce an edit.")
+            if last_result.edit_result is None:
+                raise gr.Error(_contour_failure_message(last_result))
             result = last_result
             phase3_info = {
                 "mode": "prompt_to_contour",
@@ -317,9 +356,9 @@ def run_tissue_stage(
         raise gr.Error(f"{type(exc).__name__}: {exc}") from exc
 
     if result.edit_result is None:
-        raise gr.Error(result.error or "Contour stage did not produce an edit.")
+        raise gr.Error(_contour_failure_message(result))
     if result.status != "validated" and not continue_on_failure:
-        raise gr.Error(result.error or f"Contour stage finished with status {result.status}.")
+        raise gr.Error(_contour_failure_message(result))
 
     target_tissue = result.edit_result.target_mask
     target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
