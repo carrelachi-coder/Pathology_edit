@@ -191,15 +191,8 @@ Cross Metadata 约定
 当前配对规则：
 
 - 只在同一 `case_id` / WSI 内配对
-- 默认按 `full / partial / low` 三档 reference coverage 混合采样
-  - `full`：`reference` 覆盖 `target` 的全部主要 tissue ID
-  - `partial`：`reference` 覆盖一部分 `target` tissue ID，允许 target 出现 reference 中没有的组织
-  - `low`：`reference` 不覆盖 `target` 的主要 tissue ID，作为少量困难样本
-- 每个 pair 会记录 `pair_difficulty`、`tissue_coverage_ratio`、`area_coverage_ratio`、
-  `missing_target_tissue_ids` 和 `covered_target_tissue_ids`
-- nuclei 分布和 stain 仍作为软排序信号
-- 如果遇到截断 PNG 或非法 mask，默认跳过该 patch，并在输出目录写入
-  `skipped_cross_samples.json`；如需严格失败，可加 `--strict`
+- `reference` 必须覆盖 `target` 的 tissue 语义集合
+- nuclei 分布和 stain 只作为软排序信号
 
 GT synthesis mode
 ------------------
@@ -250,9 +243,6 @@ python controlnet_train/cli/generate_training_pairs.py ^
   --dataset-root BCSS=D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES ^
   --dataset-root PANDA=D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES ^
   --dataset-root GlaS=D:\\WQX\\datasets\\GlaS\\GlaS_PATCHES ^
-  --full-coverage-weight 0.6 ^
-  --partial-coverage-weight 0.3 ^
-  --low-coverage-weight 0.1 ^
   --output-dir phase5_runs\\cross_meta
 ```
 
@@ -273,26 +263,6 @@ python controlnet_train/cli/train_controlnet_flux_cross.py ^
   --train-metadata phase5_runs\\cross_meta\\metadata_cross_train.json ^
   --output-dir phase5_runs\\controlnet_cross
 ```
-
-`cross` 训练默认使用 dataset-level prompt（每个数据集一个默认 prompt），避免把
-metadata 中大量 patch prompt 全部预编码到 prompt cache。若要显式使用 metadata prompt，
-可添加 `--prompt-source metadata`；若要全局固定一个 prompt，可添加 `--prompt "..."`。
-
-cross V0 可视化评估：
-
-```bash
-python controlnet_train/cli/eval_controlnet_flux_cross.py ^
-  --pretrained-model-name-or-path black-forest-labs/FLUX.1-dev ^
-  --checkpoint phase5_runs\\controlnet_cross ^
-  --metadata phase5_runs\\cross_meta\\metadata_cross_val.json ^
-  --output-dir phase5_runs\\eval_cross ^
-  --num-samples 16 ^
-  --prompt-source dataset
-```
-
-每个样本会输出 `reference.png`、`prediction.png`、`target.png`、mask、`abs_error.png`
-和 `panel.png`；总览输出到 `overview_grid.png`，指标输出到 `metrics.csv` /
-`metrics.jsonl` / `metrics_summary.json`。
 
 Phase 5.3 架构说明
 -----------------

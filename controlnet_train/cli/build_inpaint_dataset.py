@@ -1,4 +1,13 @@
-"""Normalize Phase 5 inpaint metadata into train/val jsonl files."""
+"""Normalize Phase 5 inpaint metadata into train/val jsonl files.
+
+python controlnet_train/cli/build_inpaint_dataset.py \
+  --dataset-root ORCA=/home/lyw/wqx-DL/flow-edit/FlowEdit-main/data/ORCA_PATCHES \
+  --output-dir phase5_runs/inpaint_meta_orca \
+  --forced-mode mixed \
+  --forced-size-bucket medium \
+  --val-ratio 0.1 \
+  --seed 42
+"""
 
 from __future__ import annotations
 

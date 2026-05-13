@@ -6,6 +6,10 @@ It duplicates the shared training loop from flux_phase5.py and adds:
 - ReferenceImageEncoder (UNI2-h + Perceiver resampler) for reference appearance injection
 - joint_attention_kwargs passing in the transformer forward call
 - Separate save strategy for IP-Adapter and ref_encoder modules
+
+Multi-GPU DDP fix: trainable sub-modules that can't be directly wrapped (because they
+live inside frozen parents or contain huge frozen backbones) are extracted into small
+wrapper nn.Modules and passed through accelerator.prepare() independently.
 """
 
 from __future__ import annotations
@@ -73,13 +77,12 @@ class IPAdapterListProjection(nn.Module):
         self.proj = proj
 
     def forward(self, image_embeds):
-        # Force output dtype to match proj weights — mixed precision autocast
-        # can produce float32 output even when weights are bfloat16.
         target_dtype = next(self.proj.parameters()).dtype
         if isinstance(image_embeds, list):
             return [self.proj(embed).to(dtype=target_dtype) for embed in image_embeds]
         return self.proj(image_embeds).to(dtype=target_dtype)
-    
+
+
 def install_flux_ip_adapter_attention(
     transformer: FluxTransformer2DModel,
     hidden_dim: int = 3072,
@@ -91,7 +94,6 @@ def install_flux_ip_adapter_attention(
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
     from diffusers.models.embeddings import IPAdapterFullImageProjection
 
-    # 1. Add encoder_hid_proj
     raw_proj = IPAdapterFullImageProjection(
         image_embed_dim=cross_attention_dim,
         cross_attention_dim=cross_attention_dim,
@@ -104,7 +106,6 @@ def install_flux_ip_adapter_attention(
             linear2.bias.zero_()
     transformer.encoder_hid_proj = IPAdapterListProjection(raw_proj)
 
-    # 2. Replace attention processors on double-stream blocks
     for block in transformer.transformer_blocks:
         processor = FluxIPAdapterJointAttnProcessor2_0(
             hidden_size=hidden_dim,
@@ -121,8 +122,6 @@ def install_flux_ip_adapter_attention(
                 linear.weight.zero_()
                 if linear.bias is not None:
                     linear.bias.zero_()
-
-
         block.attn.set_processor(processor)
 
 
@@ -142,14 +141,65 @@ def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str
 
 
 def _sync_ip_adapter_to_transformer(
-    ip_adapter_modules: dict[str, nn.Module],
+    ip_wrapper: "IPAdapterTrainableWrapper",
     transformer: FluxTransformer2DModel,
 ) -> None:
-    """Sync trained IP-Adapter weights from detached modules back to transformer."""
-    transformer.encoder_hid_proj = ip_adapter_modules["encoder_hid_proj"]
+    """Sync trained IP-Adapter weights from wrapper back to transformer processors.
+
+    After accelerator.prepare(), the wrapper holds the DDP-managed parameters.
+    We need the transformer's forward pass to use these exact parameter objects
+    so that gradients flow correctly.
+    """
+    transformer.encoder_hid_proj = ip_wrapper.encoder_hid_proj
     for i, block in enumerate(transformer.transformer_blocks):
-        block.attn.processor.to_k_ip = ip_adapter_modules[f"block_{i}_to_k_ip"]
-        block.attn.processor.to_v_ip = ip_adapter_modules[f"block_{i}_to_v_ip"]
+        k_key = f"block_{i}_to_k_ip"
+        v_key = f"block_{i}_to_v_ip"
+        if hasattr(ip_wrapper, k_key):
+            block.attn.processor.to_k_ip = getattr(ip_wrapper, k_key)
+            block.attn.processor.to_v_ip = getattr(ip_wrapper, v_key)
+
+
+# ---------------------------------------------------------------------------
+# ★ FIX 1: Wrapper modules for DDP — 把散落的可训练参数包成 nn.Module
+# ---------------------------------------------------------------------------
+
+class IPAdapterTrainableWrapper(nn.Module):
+    """Wraps all IP-Adapter trainable sub-modules into one nn.Module for DDP.
+
+    This allows accelerator.prepare() to handle gradient synchronization across GPUs
+    without needing to DDP-wrap the entire frozen transformer.
+    """
+
+    def __init__(self, ip_adapter_modules: dict[str, nn.Module]):
+        super().__init__()
+        # Register each module as a sub-module so DDP sees them
+        for name, module in ip_adapter_modules.items():
+            # nn.Module attribute names can't have dots, replace if needed
+            safe_name = name.replace(".", "_")
+            self.add_module(safe_name, module)
+
+
+class RefEncoderTrainableWrapper(nn.Module):
+    """Wraps the trainable parts of ReferenceImageEncoder for DDP.
+
+    The frozen UNI2-h backbone (~1.9B params) stays outside DDP to avoid
+    broadcast hangs. Only proj_mlp, perceiver_layers, latent_queries,
+    and perceiver_norm go through accelerator.prepare().
+    """
+
+    def __init__(self, ref_encoder: ReferenceImageEncoder):
+        super().__init__()
+        self.proj_mlp = ref_encoder.proj_mlp
+        self.perceiver_layers = ref_encoder.perceiver_layers
+        self.latent_queries = nn.Parameter(ref_encoder.latent_queries.data)
+        self.perceiver_norm = ref_encoder.perceiver_norm
+
+    def sync_back(self, ref_encoder: ReferenceImageEncoder) -> None:
+        """After prepare(), point ref_encoder's trainable parts to our (DDP-managed) params."""
+        ref_encoder.proj_mlp = self.proj_mlp
+        ref_encoder.perceiver_layers = self.perceiver_layers
+        ref_encoder.latent_queries = self.latent_queries
+        ref_encoder.perceiver_norm = self.perceiver_norm
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +245,7 @@ def _build_cross_v1_control_batch(
     )
     return target_image_latent, control_tensor
 
+
 def _build_ip_adapter_kwargs(
     batch: dict,
     modules: dict[str, torch.nn.Module],
@@ -208,7 +259,6 @@ def _build_ip_adapter_kwargs(
     ref_ip_features = ref_encoder(
         batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
     ).to(dtype=weight_dtype)
-    # Project through encoder_hid_proj and cast to weight_dtype
     ip_hidden_states = transformer.encoder_hid_proj([ref_ip_features])
     ip_hidden_states = [hs.to(dtype=weight_dtype) for hs in ip_hidden_states]
     return {"ip_hidden_states": ip_hidden_states}
@@ -355,6 +405,7 @@ def _save_checkpoint(accelerator: Accelerator, args: argparse.Namespace, global_
     logger.info("Saved state to %s", save_path)
 
 
+# ★ FIX 3: 保存时不再原地改 dtype，而是拷贝 state_dict 后转换
 def _save_condition_modules(
     output_dir: str,
     modules: dict[str, nn.Module],
@@ -366,29 +417,36 @@ def _save_condition_modules(
         unwrapped = unwrap_model(module)
         if name == "ref_encoder":
             # Only save trainable parts, skip frozen UNI2-h backbone (~4GB)
-            unwrapped.to(save_dtype)
-            state["ref_encoder_proj_mlp"] = unwrapped.proj_mlp.state_dict()
-            state["ref_encoder_perceiver_layers"] = unwrapped.perceiver_layers.state_dict()
-            state["ref_encoder_latent_queries"] = unwrapped.latent_queries.data.cpu()
-            state["ref_encoder_perceiver_norm"] = unwrapped.perceiver_norm.state_dict()
+            state["ref_encoder_proj_mlp"] = {
+                k: v.to(save_dtype) for k, v in unwrapped.proj_mlp.state_dict().items()
+            }
+            state["ref_encoder_perceiver_layers"] = {
+                k: v.to(save_dtype) for k, v in unwrapped.perceiver_layers.state_dict().items()
+            }
+            state["ref_encoder_latent_queries"] = unwrapped.latent_queries.data.cpu().to(save_dtype)
+            state["ref_encoder_perceiver_norm"] = {
+                k: v.to(save_dtype) for k, v in unwrapped.perceiver_norm.state_dict().items()
+            }
         else:
-            unwrapped.to(save_dtype)
-            state[name] = unwrapped.state_dict()
+            state[name] = {
+                k: v.to(save_dtype) for k, v in unwrapped.state_dict().items()
+            }
     torch.save(state, os.path.join(output_dir, "phase5_conditioning.pt"))
 
 
 def _save_ip_adapter_modules(
     output_dir: str,
-    ip_adapter_modules: dict[str, nn.Module],
+    ip_wrapper: nn.Module,
     unwrap_model: Callable,
     save_dtype: torch.dtype,
 ) -> None:
-    state = {}
-    for name, module in ip_adapter_modules.items():
-        unwrapped = unwrap_model(module)
-        unwrapped.to(save_dtype)
-        state[name] = unwrapped.state_dict()
-    state["scale"] = 0.1  # fixed value, saved for reference
+    unwrapped = unwrap_model(ip_wrapper)
+    state = {
+        name: {k: v.to(save_dtype) for k, v in mod.state_dict().items()}
+        for name, mod in unwrapped.named_modules()
+        if name  # skip root module
+    }
+    state["scale"] = 0.1
     torch.save(state, os.path.join(output_dir, "phase5_ip_adapter.pt"))
 
 
@@ -430,6 +488,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
     # ---- accelerator setup ----
     logging_out_dir = Path(args.output_dir, args.logging_dir)
+    print(">>> BEFORE Accelerator init", flush=True)
     accelerator_project_config = ProjectConfiguration(
         project_dir=args.output_dir, logging_dir=str(logging_out_dir),
     )
@@ -442,6 +501,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         project_config=accelerator_project_config,
         kwargs_handlers=[kwargs],
     )
+    print(f">>> AFTER Accelerator init, rank={accelerator.process_index}", flush=True)
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -534,17 +594,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
     # ---- freeze transformer, re-enable IP-Adapter modules ----
     flux_transformer.to(accelerator.device, dtype=weight_dtype)
-    # Ensure IP-Adapter modules (added after transformer creation) are also cast
     if hasattr(flux_transformer, 'encoder_hid_proj'):
         flux_transformer.encoder_hid_proj.to(dtype=weight_dtype)
-    logger.info("=== DEBUG dtype check ===")
-    for n, p in flux_transformer.encoder_hid_proj.named_parameters():
-        logger.info(f"encoder_hid_proj {n}: {p.dtype}")
-    for block_key in list(ip_adapter_modules.keys())[:3]:
-        mod = ip_adapter_modules[block_key]
-        for n, p in mod.named_parameters():
-            logger.info(f"{block_key} {n}: {p.dtype}")
-            break
     flux_transformer.requires_grad_(False)
     for module in ip_adapter_modules.values():
         module.requires_grad_(True)
@@ -568,9 +619,6 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         flux_transformer.enable_xformers_memory_efficient_attention()
         flux_controlnet.enable_xformers_memory_efficient_attention()
     if args.gradient_checkpointing:
-        # Do NOT enable gradient checkpointing on transformer — diffusers 0.32.2's
-        # checkpointing wrapper doesn't pass joint_attention_kwargs to blocks,
-        # which breaks IP-Adapter. ControlNet checkpointing is fine.
         flux_controlnet.enable_gradient_checkpointing()
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -586,8 +634,28 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     else:
         optimizer_class = torch.optim.AdamW
 
-    # ---- optimizer: include IP-Adapter modules, filter frozen params ----
-    trainable_modules_list = [flux_controlnet, *modules.values(), *ip_adapter_modules.values()]
+    # =========================================================================
+    # ★ FIX 1 & 2: 用 wrapper 包住不能直接 prepare 的可训练参数
+    # =========================================================================
+
+    # --- FIX 2: ref_encoder 可训练部分包成 wrapper ---
+    ref_encoder_raw = modules.pop("ref_encoder")
+    ref_encoder_raw.to(accelerator.device)
+    # 冻结的 UNI backbone 手动放到 device，不过 DDP
+    ref_encoder_raw.uni.to(accelerator.device)
+
+    ref_trainable_wrapper = RefEncoderTrainableWrapper(ref_encoder_raw)
+
+    # --- FIX 1: IP-Adapter 可训练部分包成 wrapper ---
+    ip_trainable_wrapper = IPAdapterTrainableWrapper(ip_adapter_modules)
+
+    # ---- optimizer: 现在所有可训练参数都在可 prepare 的 module 里 ----
+    trainable_modules_list = [
+        flux_controlnet,
+        *modules.values(),            # hte, tissue_downsampler, nuclei_encoder
+        ref_trainable_wrapper,         # ref_encoder 可训练部分
+        ip_trainable_wrapper,          # IP-Adapter 可训练部分
+    ]
     optimizer = optimizer_class(
         [p for m in trainable_modules_list for p in m.parameters() if p.requires_grad],
         lr=args.learning_rate,
@@ -602,15 +670,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         num_workers=args.dataloader_num_workers, pin_memory=True,
     )
 
-    if args.max_train_steps is None:
-        num_update_steps_per_epoch = math.ceil(
-            math.ceil(len(train_dataloader) / accelerator.num_processes)
-            / args.gradient_accumulation_steps
-        )
-    else:
-        num_update_steps_per_epoch = math.ceil(
-            len(train_dataloader) / args.gradient_accumulation_steps
-        )
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler, optimizer=optimizer,
@@ -623,29 +685,36 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     )
 
     # ---- accelerator.prepare ----
-    n_modules = len(modules)
-    n_ip_adapter = len(ip_adapter_modules)
-    all_modules_to_prepare = [
+    # 所有可训练 module 都过 prepare，冻结的 UNI backbone 不在里面
+    n_cond_modules = len(modules)  # hte, tissue_downsampler, nuclei_encoder
+    all_to_prepare = [
         flux_controlnet,
         *modules.values(),
-        *ip_adapter_modules.values(),
+        ref_trainable_wrapper,
+        ip_trainable_wrapper,
     ]
-    prepared = accelerator.prepare(*all_modules_to_prepare, optimizer, train_dataloader, lr_scheduler)
-    prepared_models = prepared[: len(all_modules_to_prepare)]
-    flux_controlnet = prepared_models[0]
+    prepared = accelerator.prepare(
+        *all_to_prepare, optimizer, train_dataloader, lr_scheduler,
+    )
+    n_models = len(all_to_prepare)
 
-    prepared_module_values = prepared_models[1 : 1 + n_modules]
-    modules = dict(zip(modules.keys(), prepared_module_values))
+    flux_controlnet = prepared[0]
+    prepared_cond = prepared[1 : 1 + n_cond_modules]
+    modules = dict(zip(modules.keys(), prepared_cond))
+    ref_trainable_wrapper = prepared[1 + n_cond_modules]
+    ip_trainable_wrapper = prepared[1 + n_cond_modules + 1]
 
-    ip_adapter_prepared = prepared_models[1 + n_modules : 1 + n_modules + n_ip_adapter]
-    ip_adapter_modules = dict(zip(ip_adapter_modules.keys(), ip_adapter_prepared))
+    optimizer = prepared[n_models]
+    train_dataloader = prepared[n_models + 1]
+    lr_scheduler = prepared[n_models + 2]
 
-    # Sync IP-Adapter modules back to the frozen transformer after accelerator wrapping
-    _sync_ip_adapter_to_transformer(ip_adapter_modules, flux_transformer)
+    # ★ 关键：把 prepare 后的参数同步回原始对象
+    # ref_encoder: wrapper 的参数指回 ref_encoder_raw
+    unwrap_model(ref_trainable_wrapper).sync_back(ref_encoder_raw)
+    modules["ref_encoder"] = ref_encoder_raw
 
-    optimizer = prepared[len(all_modules_to_prepare)]
-    train_dataloader = prepared[len(all_modules_to_prepare) + 1]
-    lr_scheduler = prepared[len(all_modules_to_prepare) + 2]
+    # ip_adapter: wrapper 的参数指回 transformer 的 processor
+    _sync_ip_adapter_to_transformer(unwrap_model(ip_trainable_wrapper), flux_transformer)
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
@@ -767,7 +836,6 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     return_dict=False,
                 )
 
-                # V1: build joint_attention_kwargs for IP-Adapter reference injection
                 joint_attention_kwargs = _build_ip_adapter_kwargs(
                     batch, modules, accelerator, weight_dtype, flux_transformer,
                 )
@@ -797,7 +865,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    all_trainable = [flux_controlnet, *modules.values(), *ip_adapter_modules.values()]
+                    # ★ 梯度裁剪也要包含 wrapper 里的参数
+                    all_trainable = [
+                        flux_controlnet,
+                        *modules.values(),
+                        ref_trainable_wrapper,
+                        ip_trainable_wrapper,
+                    ]
                     accelerator.clip_grad_norm_(
                         [p for m in all_trainable for p in m.parameters() if p.requires_grad],
                         args.max_grad_norm,
@@ -828,13 +902,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             args.save_weight_dtype, torch.float32,
         )
         unwrapped_controlnet = unwrap_model(flux_controlnet)
-        unwrapped_controlnet.to(save_dtype)
+        # ★ FIX 3: 不原地改 dtype
         if args.save_weight_dtype != "fp32":
             unwrapped_controlnet.save_pretrained(args.output_dir, variant=args.save_weight_dtype)
         else:
             unwrapped_controlnet.save_pretrained(args.output_dir)
         _save_condition_modules(args.output_dir, modules, unwrap_model, save_dtype)
-        _save_ip_adapter_modules(args.output_dir, ip_adapter_modules, unwrap_model, save_dtype)
+        _save_ip_adapter_modules(args.output_dir, ip_trainable_wrapper, unwrap_model, save_dtype)
         logger.info("Saved Phase 5.3 cross-v1 artifacts to %s", args.output_dir)
 
     accelerator.end_training()

@@ -1,5 +1,3 @@
-"""Evaluate Phase 5.3 Cross V1 (IP-Adapter reference attention) on cross-reconstruction metadata."""
-
 from __future__ import annotations
 
 import argparse

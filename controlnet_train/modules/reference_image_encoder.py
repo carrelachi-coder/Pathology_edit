@@ -75,13 +75,23 @@ class ReferenceImageEncoder(nn.Module):
         self.perceiver_norm = nn.LayerNorm(hidden_dim)
 
     def _load_uni(self, checkpoint_path: str | Path):
+        import torch.distributed as dist
+
+        rank = dist.get_rank() if dist.is_initialized() else -1
+        print(f"[rank {rank}] >>> BEFORE torch.load UNI: {checkpoint_path}", flush=True)
+
         model = timm.create_model(**UNI2H_KWARGS, pretrained=False)
-        state_dict = torch.load(str(checkpoint_path), map_location="cpu")
+        state_dict = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+
+        print(f"[rank {rank}] >>> AFTER torch.load, num_keys={len(state_dict)}", flush=True)
+
         missing, unexpected = model.load_state_dict(state_dict, strict=True)
         if missing or unexpected:
             raise RuntimeError(
                 f"UNI2-h checkpoint mismatch: missing={missing}, unexpected={unexpected}"
             )
+
+        print(f"[rank {rank}] >>> UNI model loaded successfully", flush=True)
         return model
 
     @torch.no_grad()
@@ -89,6 +99,11 @@ class ReferenceImageEncoder(nn.Module):
         x = F.interpolate(images, size=(224, 224), mode="bilinear", align_corners=False)
         x = (x - self.mean) / self.std
         features = self.uni.forward_features(x)
+        if features.ndim == 3 and features.shape[1] > 1:
+            # Strip CLS token if present (forward_features may prepend one)
+            # With no_embed_class=True + reg_tokens=8, shape is (B, 1+256+8, 1536)
+            # We keep all tokens — Perceiver resampler handles the spatial structure
+            pass
         return features
 
     def _resample(self, projected: torch.Tensor) -> torch.Tensor:
