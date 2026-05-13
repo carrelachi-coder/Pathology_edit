@@ -159,6 +159,45 @@ def _contour_failure_message(result: Any) -> str:
     return "\n".join(lines)
 
 
+class _NoOpEditResult:
+    def __init__(self, target_mask: np.ndarray) -> None:
+        self.target_mask = np.array(target_mask, copy=True)
+
+
+class _SkippedPromptResult:
+    status = "skipped_no_source_region"
+    error = None
+    final_attempt = None
+    validation = None
+    projection_mode = PROJECTION_MODE_ORGANIC_V2
+
+    def __init__(
+        self,
+        *,
+        source_mask: np.ndarray,
+        target_mask: np.ndarray,
+        attempts: list[dict[str, Any]],
+        artifact_paths: dict[str, str],
+    ) -> None:
+        self.source_mask = np.array(source_mask, copy=True)
+        self.attempts = tuple(attempts)
+        self.artifact_paths = dict(artifact_paths)
+        self._edit_result = _NoOpEditResult(target_mask)
+
+    @property
+    def edit_result(self) -> _NoOpEditResult:
+        return self._edit_result
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "error": self.error,
+            "projection_mode": self.projection_mode,
+            "attempts": list(self.attempts),
+            "artifact_paths": dict(self.artifact_paths),
+        }
+
+
 def load_inputs(
     profile: str,
     source_image,
@@ -275,9 +314,27 @@ def run_tissue_stage(
             )
             current_mask = np.array(reference_tissue, copy=True)
             last_result = None
+            last_edit_result = None
             attempt_logs: list[dict[str, Any]] = []
             for intent in plan.intents:
                 primitive_config = _primitive_config(recipe, intent.primitive)
+                source_summary = _source_region_summary(current_mask, schema, intent)
+                if source_summary["source_pixels"] == 0:
+                    attempt_logs.append(
+                        {
+                            "primitive": intent.primitive,
+                            "status": "skipped_no_source_region",
+                            "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                            "source_labels": source_summary["source_labels"],
+                            "source_pixels": 0,
+                            "error": (
+                                "Skipped because prior edits left no pixels for "
+                                f"source labels {source_summary['source_labels']}."
+                            ),
+                            "artifact_paths": {},
+                        }
+                    )
+                    continue
                 result = execute_llm_contour_agent(
                     old_mask=current_mask,
                     schema=schema,
@@ -305,22 +362,49 @@ def run_tissue_stage(
                     if not continue_on_failure:
                         break
                     continue
+                last_edit_result = result.edit_result
                 current_mask = np.array(result.edit_result.target_mask, copy=True)
                 if result.status != "validated" and not continue_on_failure:
                     break
             if last_result is None:
-                raise gr.Error("Prompt-driven contour planning did not produce an edit.")
-            if last_result.edit_result is None:
+                result = _SkippedPromptResult(
+                    source_mask=reference_tissue,
+                    target_mask=current_mask,
+                    attempts=attempt_logs,
+                    artifact_paths={},
+                )
+                phase3_info = {
+                    "mode": "prompt_to_contour",
+                    "parser": parser_info,
+                    "semantic_diff": semantic_diff,
+                    "plan": plan.to_metadata(),
+                    "attempts": attempt_logs,
+                    "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                    "status": "all_intents_skipped",
+                }
+                save_metadata(
+                    phase3_info,
+                    output_dir / "phase3_mask_edit" / "execution_summary.json",
+                )
+                if not attempt_logs:
+                    raise gr.Error("Prompt-driven contour planning produced no intents.")
+                if not continue_on_failure:
+                    raise gr.Error(
+                        "All prompt-driven contour intents were skipped because no "
+                        "requested source regions remained."
+                    )
+            elif last_edit_result is None:
                 raise gr.Error(_contour_failure_message(last_result))
-            result = last_result
-            phase3_info = {
-                "mode": "prompt_to_contour",
-                "parser": parser_info,
-                "semantic_diff": semantic_diff,
-                "plan": plan.to_metadata(),
-                "attempts": attempt_logs,
-                "projection_mode": PROJECTION_MODE_ORGANIC_V2,
-            }
+            else:
+                result = last_result
+                phase3_info = {
+                    "mode": "prompt_to_contour",
+                    "parser": parser_info,
+                    "semantic_diff": semantic_diff,
+                    "plan": plan.to_metadata(),
+                    "attempts": attempt_logs,
+                    "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                }
         else:
             primitive_config = _primitive_config(recipe, primitive)
             intent = _build_contour_intent(
@@ -362,7 +446,10 @@ def run_tissue_stage(
 
     target_tissue = result.edit_result.target_mask
     target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
-    phase3_info = result.to_metadata()
+    if phase3_info.get("mode") == "prompt_to_contour":
+        phase3_info = {**phase3_info, "result": result.to_metadata()}
+    else:
+        phase3_info = result.to_metadata()
 
     _validate_same_size(reference_image, target_tissue, "target_tissue_mask")
     change_region = reference_tissue != target_tissue
@@ -526,6 +613,37 @@ def _primitive_config(recipe: dict[str, Any], primitive_name: str) -> dict[str, 
         if isinstance(primitive, dict) and primitive.get("name") == primitive_name:
             return primitive
     raise gr.Error(f"Unknown primitive: {primitive_name}")
+
+
+def _source_region_summary(
+    mask: np.ndarray,
+    schema: MaskProfileSchema,
+    intent: EditIntent,
+) -> dict[str, Any]:
+    labels = tuple(intent.source_labels)
+    if not labels:
+        return {
+            "source_labels": [],
+            "source_pixels": int(np.count_nonzero(mask)),
+        }
+
+    source_mask = np.zeros(mask.shape, dtype=bool)
+    resolved_labels: list[str] = []
+    missing_labels: list[str] = []
+    for label in labels:
+        try:
+            fine_ids = schema.resolve_fine_ids(label)
+        except Exception:
+            missing_labels.append(label)
+            continue
+        source_mask |= np.isin(mask, fine_ids)
+        resolved_labels.append(label)
+
+    return {
+        "source_labels": resolved_labels,
+        "missing_source_labels": missing_labels,
+        "source_pixels": int(np.count_nonzero(source_mask)),
+    }
 
 
 def _build_contour_intent(
