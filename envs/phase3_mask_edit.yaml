@@ -1,0 +1,35 @@
+name: pathology-phase3-mask-edit
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - numpy=1.26.4
+  - scipy=1.13.1
+  - pillow=10.4.0
+  - pyyaml=6.0.1
+  - pytest=7.4.4
+  - pandas=2.2.2
+  - matplotlib=3.9.2
+  - scikit-image=0.24.0
+  - scikit-learn=1.5.1
+  - tqdm=4.66.5
+  - pip:
+      - openai==2.12.0
+
+# Optional local-Qwen / ControlNet stack. These were referenced by the repo
+# but were not installed in the current base environment when this file was
+# created, so keep them opt-in instead of pretending they were verified here.
+#
+# For GPU training/inference, prefer envs/phase5_controlnet_inpaint.yaml.
+#
+# Example additions:
+#   - pytorch
+#   - torchvision
+#   - pytorch-cuda=12.1
+#   - pip:
+#       - accelerate==0.33.0
+#       - diffusers==0.31.0
+#       - safetensors==0.4.*
+#       - transformers==4.44.2
