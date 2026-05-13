@@ -177,6 +177,8 @@ def run_tissue_stage(
     old_prompt: str,
     new_prompt: str,
     parser: str,
+    api_base_url: str,
+    api_key_env: str,
     api_model: str,
     qwen_model_path: str,
     semantic_diff_file,
@@ -202,18 +204,25 @@ def run_tissue_stage(
             old_prompt=old_prompt or None,
             new_prompt=new_prompt or None,
             parser=parser,
+            api_base_url=(api_base_url or "https://api.openai.com/v1").rstrip("/"),
+            api_key_env=api_key_env or "OPENAI_API_KEY",
             api_model=api_model or None,
             qwen_model_path=qwen_model_path or None,
             continue_on_failure=continue_on_failure,
         )
-        semantic_diff, parser_info = _resolve_semantic_diff(args)
-        target_tissue, phase3_info = _run_phase3_semantic_stage(
-            args,
-            reference_tissue,
-            output_dir,
-            semantic_diff=semantic_diff,
-            parser_info=parser_info,
-        )
+        try:
+            semantic_diff, parser_info = _resolve_semantic_diff(args)
+            target_tissue, phase3_info = _run_phase3_semantic_stage(
+                args,
+                reference_tissue,
+                output_dir,
+                semantic_diff=semantic_diff,
+                parser_info=parser_info,
+            )
+        except SystemExit as exc:
+            raise gr.Error(str(exc) or "Tissue stage failed.") from exc
+        except Exception as exc:
+            raise gr.Error(f"{type(exc).__name__}: {exc}") from exc
         target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
 
     _validate_same_size(reference_image, target_tissue, "target_tissue_mask")
@@ -393,6 +402,9 @@ def build_ui() -> gr.Blocks:
             old_prompt = gr.Textbox(label="src_prompt", lines=3)
             new_prompt = gr.Textbox(label="new_prompt", lines=3)
         with gr.Row():
+            api_base_url = gr.Textbox(value="https://api.openai.com/v1", label="api base url")
+            api_key_env = gr.Textbox(value="OPENAI_API_KEY", label="api key env")
+        with gr.Row():
             api_model = gr.Textbox(label="api model")
             qwen_model_path = gr.Textbox(label="qwen model path")
         with gr.Row():
@@ -456,6 +468,8 @@ def build_ui() -> gr.Blocks:
                 old_prompt,
                 new_prompt,
                 parser,
+                api_base_url,
+                api_key_env,
                 api_model,
                 qwen_model_path,
                 semantic_diff,
