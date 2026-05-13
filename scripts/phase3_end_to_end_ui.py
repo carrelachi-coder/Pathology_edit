@@ -388,11 +388,6 @@ def run_tissue_stage(
                 )
                 if not attempt_logs:
                     raise gr.Error("Prompt-driven contour planning produced no intents.")
-                if not continue_on_failure:
-                    raise gr.Error(
-                        "All prompt-driven contour intents were skipped because no "
-                        "requested source regions remained."
-                    )
             elif last_edit_result is None:
                 raise gr.Error(_contour_failure_message(last_result))
             else:
@@ -441,7 +436,10 @@ def run_tissue_stage(
 
     if result.edit_result is None:
         raise gr.Error(_contour_failure_message(result))
-    if result.status != "validated" and not continue_on_failure:
+    if (
+        result.status not in {"validated", "skipped_no_source_region"}
+        and not continue_on_failure
+    ):
         raise gr.Error(_contour_failure_message(result))
 
     target_tissue = result.edit_result.target_mask
