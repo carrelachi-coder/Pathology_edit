@@ -128,6 +128,108 @@ class LLMContourAgentTests(unittest.TestCase):
         self.assertIn("intended placement should be on the Stroma side", prompt)
         self.assertIn('"target_label": "Immune infiltrate"', prompt)
 
+    def test_backfill_priority_supplies_target_label_when_intent_omits_it(self):
+        primitive_config = _primitive(self.recipe, "necrosis_resolution")
+        mask = np.array(self.mask, copy=True)
+        mask[24:40, 24:40] = self.schema.resolve_fine_ids("Necrosis")[0]
+        provider = FakeSequenceContourProvider(
+            [
+                {
+                    "schema_version": "0.1",
+                    "backend": "llm_contour_proposal",
+                    "primitive": "necrosis_resolution",
+                    "reference_profile": "BCSS",
+                    "target_label": "Tumor",
+                    "coordinate_system": {
+                        "origin": "top_left",
+                        "point_format": "[x, y]",
+                        "x_axis": "horizontal_column_right",
+                        "y_axis": "vertical_row_down",
+                        "width": 64,
+                        "height": 64,
+                    },
+                    "regions": [
+                        {
+                            "region_id": "necrosis-core",
+                            "source_labels": ["Necrosis"],
+                            "points": [[24, 24], [39, 24], [39, 39], [24, 39]],
+                            "confidence": 0.9,
+                        }
+                    ],
+                }
+            ]
+        )
+        intent = EditIntent(
+            primitive="necrosis_resolution",
+            strength="mild",
+            reference_profile="BCSS",
+        )
+
+        result = execute_llm_contour_agent(
+            old_mask=mask,
+            schema=self.schema,
+            intent=intent,
+            primitive_config=primitive_config,
+            provider=provider,
+            max_attempts=1,
+            projection_mode=PROJECTION_MODE_HARD_V1,
+        )
+
+        self.assertNotIn("requires a target label", result.error or "")
+        self.assertEqual(result.context["target_label"], "Tumor")
+
+    def test_necrosis_resolution_runs_on_tumor_necrosis_only_mask(self):
+        primitive_config = _primitive(self.recipe, "necrosis_resolution")
+        mask = np.full((64, 64), self.schema.resolve_fine_ids("Tumor")[0], dtype=np.int64)
+        mask[20:44, 20:44] = self.schema.resolve_fine_ids("Necrosis")[0]
+        provider = FakeSequenceContourProvider(
+            [
+                {
+                    "schema_version": "0.1",
+                    "backend": "llm_contour_proposal",
+                    "primitive": "necrosis_resolution",
+                    "reference_profile": "BCSS",
+                    "target_label": "Tumor",
+                    "coordinate_system": {
+                        "origin": "top_left",
+                        "point_format": "[x, y]",
+                        "x_axis": "horizontal_column_right",
+                        "y_axis": "vertical_row_down",
+                        "width": 64,
+                        "height": 64,
+                    },
+                    "regions": [
+                        {
+                            "region_id": "necrosis-core",
+                            "type": "polygon",
+                            "source_labels": ["Necrosis"],
+                            "points": [[20, 20], [31, 20], [31, 31], [20, 31]],
+                            "confidence": 0.9,
+                        }
+                    ],
+                }
+            ]
+        )
+        intent = EditIntent(
+            primitive="necrosis_resolution",
+            strength="mild",
+            reference_profile="BCSS",
+        )
+
+        result = execute_llm_contour_agent(
+            old_mask=mask,
+            schema=self.schema,
+            intent=intent,
+            primitive_config=primitive_config,
+            provider=provider,
+            max_attempts=1,
+            projection_mode=PROJECTION_MODE_HARD_V1,
+        )
+
+        self.assertEqual(result.status, STATUS_VALIDATED)
+        self.assertIsNotNone(result.edit_result)
+        self.assertGreater(result.edit_result.selected_pixels, 0)
+
     def test_fixture_provider_runs_single_valid_attempt(self):
         provider = FixtureContourProvider(
             "tests/fixtures/llm_contour_stromal_immune_bcss.json"

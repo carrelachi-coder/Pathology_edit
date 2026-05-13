@@ -290,19 +290,31 @@ def _raw_intent_specs(
             )
         )
     elif necrosis_action in {"decrease", "remove"}:
-        raw_items.append(
-            _intent_payload(
-                "necrosis_resolution",
-                _strength_from_necrosis_resolution(
-                    necrosis_action,
-                    necrosis_change["extent"],
-                ),
-                reference_profile,
-                old_prompt,
-                new_prompt,
-                prompt_diff,
+        if tumor_growth == "increase":
+            unsupported.append(
+                PlanningWarning(
+                    field="necrosis_change.action",
+                    value=necrosis_action,
+                    reason=(
+                        "Deferred because tumor_burden_increase can consume or "
+                        "replace minor necrotic/debris regions as a secondary effect."
+                    ),
+                )
             )
-        )
+        else:
+            raw_items.append(
+                _intent_payload(
+                    "necrosis_resolution",
+                    _strength_from_necrosis_resolution(
+                        necrosis_action,
+                        necrosis_change["extent"],
+                    ),
+                    reference_profile,
+                    old_prompt,
+                    new_prompt,
+                    prompt_diff,
+                )
+            )
 
     lymphocyte_change = semantic_diff["lymphocyte_change"]
     infiltration = lymphocyte_change["infiltration"]
@@ -318,16 +330,28 @@ def _raw_intent_specs(
             )
         )
     elif infiltration == "decrease":
-        raw_items.append(
-            _intent_payload(
-                "immune_infiltration_decrease",
-                _strength_from_degree(lymphocyte_change["degree"]),
-                reference_profile,
-                old_prompt,
-                new_prompt,
-                prompt_diff,
+        if tumor_growth == "increase":
+            unsupported.append(
+                PlanningWarning(
+                    field="lymphocyte_change.infiltration",
+                    value=infiltration,
+                    reason=(
+                        "Deferred because lymphocyte reduction is already implied "
+                        "by tumor_burden_increase replacing immune-rich tissue."
+                    ),
+                )
             )
-        )
+        else:
+            raw_items.append(
+                _intent_payload(
+                    "immune_infiltration_decrease",
+                    _strength_from_degree(lymphocyte_change["degree"]),
+                    reference_profile,
+                    old_prompt,
+                    new_prompt,
+                    prompt_diff,
+                )
+            )
 
     stroma_change = semantic_diff["stroma_change"]
     if stroma_change["density"] == "increase":

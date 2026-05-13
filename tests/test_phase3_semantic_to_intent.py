@@ -126,6 +126,24 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             ],
         )
 
+    def test_tumor_growth_defers_secondary_immune_and_necrosis_decrease(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "increase", "degree": "significant"},
+            lymphocyte_change={"infiltration": "decrease", "degree": "moderate"},
+            necrosis_change={"action": "decrease", "extent": "focal"},
+        )
+
+        plan = plan_edit_intents(diff, reference_profile="BCSS")
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["tumor_burden_increase"],
+        )
+        self.assertEqual(
+            [warning.field for warning in plan.unsupported_changes],
+            ["necrosis_change.action", "lymphocyte_change.infiltration"],
+        )
+
     def test_stroma_density_increase_maps_to_desmoplasia(self):
         diff = semantic_diff_with(
             stroma_change={"density": "increase", "degree": "moderate"}

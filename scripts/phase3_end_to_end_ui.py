@@ -318,7 +318,13 @@ def run_tissue_stage(
             attempt_logs: list[dict[str, Any]] = []
             for intent in plan.intents:
                 primitive_config = _primitive_config(recipe, intent.primitive)
-                source_summary = _source_region_summary(current_mask, schema, intent)
+                intent = _with_default_contour_labels(intent, primitive_config, schema)
+                source_summary = _source_region_summary(
+                    current_mask,
+                    schema,
+                    intent,
+                    primitive_config,
+                )
                 if source_summary["source_pixels"] == 0:
                     attempt_logs.append(
                         {
@@ -326,6 +332,10 @@ def run_tissue_stage(
                             "status": "skipped_no_source_region",
                             "projection_mode": PROJECTION_MODE_ORGANIC_V2,
                             "source_labels": source_summary["source_labels"],
+                            "missing_source_labels": source_summary.get(
+                                "missing_source_labels",
+                                [],
+                            ),
                             "source_pixels": 0,
                             "error": (
                                 "Skipped because prior edits left no pixels for "
@@ -617,8 +627,17 @@ def _source_region_summary(
     mask: np.ndarray,
     schema: MaskProfileSchema,
     intent: EditIntent,
+    primitive_config: dict[str, Any],
 ) -> dict[str, Any]:
     labels = tuple(intent.source_labels)
+    if not labels:
+        operation = primitive_config.get("mask_operation", {})
+        operation = operation if isinstance(operation, dict) else {}
+        labels = tuple(_default_contour_sources(primitive_config, operation))
+    if not labels:
+        required = primitive_config.get("required_tissue_labels", ())
+        if isinstance(required, list) and all(isinstance(item, str) for item in required):
+            labels = tuple(required)
     if not labels:
         return {
             "source_labels": [],
@@ -656,7 +675,8 @@ def _build_contour_intent(
     source = _split_csv(source_labels) or _default_contour_sources(primitive_config, operation)
     target = target_label.strip() if target_label else ""
     if not target:
-        target = _default_contour_target(primitive_config, operation)
+        schema = MaskProfileSchema.from_reference_profile(profile)
+        target = _default_contour_target(primitive_config, operation, schema=schema)
     if not source:
         raise gr.Error("Please provide at least one source label.")
     if not target:
@@ -668,6 +688,29 @@ def _build_contour_intent(
         source_labels=tuple(source),
         target_label=target,
     )
+
+
+def _with_default_contour_labels(
+    intent: EditIntent,
+    primitive_config: dict[str, Any],
+    schema: MaskProfileSchema,
+) -> EditIntent:
+    operation = primitive_config.get("mask_operation", {})
+    operation = operation if isinstance(operation, dict) else {}
+    source = tuple(intent.source_labels) or tuple(
+        _default_contour_sources(primitive_config, operation)
+    )
+    target = intent.target_label or _default_contour_target(
+        primitive_config,
+        operation,
+        schema=schema,
+    )
+    if source == tuple(intent.source_labels) and target == intent.target_label:
+        return intent
+    payload = intent.to_metadata()
+    payload["source_labels"] = list(source)
+    payload["target_label"] = target
+    return EditIntent.from_mapping(payload)
 
 
 def _build_contour_provider(
@@ -762,6 +805,8 @@ def _default_contour_sources(
     primitive_config: dict[str, Any],
     operation: dict[str, Any],
 ) -> list[str]:
+    if primitive_config.get("name") == "tumor_burden_increase":
+        return _labels_from_operation(operation.get("target_priority"))
     labels = _labels_from_operation(operation.get("source"))
     if labels:
         return labels
@@ -770,23 +815,24 @@ def _default_contour_sources(
     return list(dict.fromkeys(labels))
 
 
-def _default_contour_target(primitive_config: dict[str, Any], operation: dict[str, Any]) -> str:
+def _default_contour_target(
+    primitive_config: dict[str, Any],
+    operation: dict[str, Any],
+    *,
+    schema: MaskProfileSchema | None = None,
+) -> str:
     target = operation.get("target")
     if isinstance(target, str):
         return target
     if primitive_config.get("name") == "tumor_burden_increase":
         return "Tumor"
-    if primitive_config.get("name") in {
-        "immune_infiltration_decrease",
-        "stroma_decrease",
-        "stromal_reduction",
-        "tumor_burden_decrease",
-    }:
-        priority = operation.get("backfill_priority", ())
-        if isinstance(priority, list):
-            for label in priority:
-                if isinstance(label, str):
-                    return label
+    priority = operation.get("backfill_priority", ())
+    if isinstance(priority, list):
+        for label in priority:
+            if not isinstance(label, str):
+                continue
+            if schema is None or label in schema.writable_labels:
+                return label
     return ""
 
 
