@@ -32,8 +32,18 @@ from phase3_mask_edit.backends.llm_agent import (
     OpenAICompatibleTextContourProvider,
     execute_llm_contour_agent,
 )
-from phase3_mask_edit.backends.llm_contour import PROJECTION_MODE_ORGANIC_V2
+from phase3_mask_edit.backends.llm_contour import (
+    CONTOUR_PROPOSAL_BACKEND,
+    CONTOUR_PROPOSAL_SCHEMA_VERSION,
+    PROJECTION_MODE_ORGANIC_V2,
+    ContourProposalValidationError,
+    execute_contour_proposal_write,
+    load_contour_proposal_json,
+    validate_contour_proposal,
+)
 from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
+from phase3_mask_edit.core.applicability import assess_edit_applicability
+from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import (
@@ -43,6 +53,7 @@ from phase3_mask_edit.core.mask_io import (
     save_id_mask,
     save_metadata,
 )
+from phase3_mask_edit.generic.executor import execute_edit
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
     QwenLocalParserConfig,
@@ -89,6 +100,15 @@ DEFAULT_UNI_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorc
 CUDA_DEVICE_CHOICES = []
 PROBNET_DEVICE_CHOICES = ["auto", *CUDA_DEVICE_CHOICES, "cpu"]
 GENERATION_DEVICE_CHOICES = ["cuda", *CUDA_DEVICE_CHOICES, "cpu"]
+EDIT_MODE_PROMPT = "prompt"
+EDIT_MODE_MANUAL_CONTOUR = "manual_contour"
+EDIT_MODE_AUTO_RECOMMEND = "auto_recommend"
+EDIT_MODE_CHOICES = [
+    EDIT_MODE_PROMPT,
+    EDIT_MODE_MANUAL_CONTOUR,
+    EDIT_MODE_AUTO_RECOMMEND,
+]
+_STRONGEST_FIRST = {"xlarge_deid": 3, "significant": 2, "moderate": 1, "mild": 0}
 
 
 def _detect_visible_cuda_device_choices() -> list[str]:
@@ -211,6 +231,29 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
 
 def _json_text(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(nested) for key, nested in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
+    return value
+
+
+def _prefer_primary_intent(
+    intents: list[tuple[EditIntent, dict[str, Any]]]
+) -> list[tuple[EditIntent, dict[str, Any]]]:
+    if not intents:
+        return []
+    primary = intents[0][0].primitive
+    return [item for item in intents if item[0].primitive == primary][:3]
 
 
 def _contour_failure_message(result: Any) -> str:
@@ -373,8 +416,11 @@ def load_inputs(
 
 def run_tissue_stage(
     state: dict[str, Any],
+    edit_mode: str,
     old_prompt: str,
     new_prompt: str,
+    manual_contour_json: str,
+    manual_contour_file,
     parser: str,
     api_base_url: str,
     api_key_env: str,
@@ -403,7 +449,45 @@ def run_tissue_stage(
     schema = MaskProfileSchema.from_reference_profile(state["profile"])
     recipe = load_recipe(default_recipe_path_for_profile(state["profile"]))
     try:
-        if old_prompt.strip() and new_prompt.strip():
+        if edit_mode == EDIT_MODE_MANUAL_CONTOUR:
+            result, phase3_info = _run_manual_contour_stage(
+                state=state,
+                reference_tissue=reference_tissue,
+                schema=schema,
+                recipe=recipe,
+                manual_contour_json=manual_contour_json,
+                manual_contour_file=manual_contour_file,
+                output_dir=output_dir,
+                provider=provider,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+                api_model=api_model,
+                api_image_detail=api_image_detail,
+                fixture_file=fixture_file,
+                organic_seed=organic_seed,
+                max_attempts=max_attempts,
+                max_regions=max_regions,
+                max_points_per_region=max_points_per_region,
+            )
+        elif edit_mode == EDIT_MODE_AUTO_RECOMMEND:
+            result, phase3_info = _run_auto_recommend_stage(
+                state=state,
+                reference_tissue=reference_tissue,
+                schema=schema,
+                recipe=recipe,
+                output_dir=output_dir,
+                provider=provider,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+                api_model=api_model,
+                api_image_detail=api_image_detail,
+                fixture_file=fixture_file,
+                organic_seed=organic_seed,
+                max_attempts=max_attempts,
+                max_regions=max_regions,
+                max_points_per_region=max_points_per_region,
+            )
+        elif old_prompt.strip() and new_prompt.strip():
             semantic_diff, parser_info = _resolve_prompt_semantic_diff(
                 old_prompt=old_prompt,
                 new_prompt=new_prompt,
@@ -580,6 +664,8 @@ def run_tissue_stage(
     target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
     if phase3_info.get("mode") == "prompt_to_contour":
         phase3_info = {**phase3_info, "result": result.to_metadata()}
+    elif phase3_info.get("mode") in {EDIT_MODE_MANUAL_CONTOUR, EDIT_MODE_AUTO_RECOMMEND}:
+        phase3_info = _merge_phase3_info(phase3_info, result)
     else:
         phase3_info = result.to_metadata()
 
@@ -602,13 +688,244 @@ def run_tissue_stage(
     info = {
         "status": "tissue_done",
         "projection_mode": PROJECTION_MODE_ORGANIC_V2,
-        "primitive": primitive,
-        "prompt_mode": bool(old_prompt.strip() and new_prompt.strip()),
+        "primitive": phase3_info.get("primitive", primitive),
+        "edit_mode": edit_mode,
+        "prompt_mode": edit_mode == EDIT_MODE_PROMPT and bool(old_prompt.strip() and new_prompt.strip()),
         "changed_area_fraction": _change_area_fraction(change_region),
         "target_tissue_mask": str(target_path),
         "change_region": stage_paths["change_region"],
     }
     return state, _json_text(info), stage_paths["target_mask_rgb"], stage_paths["change_region"]
+
+
+def _run_manual_contour_stage(
+    *,
+    state: dict[str, Any],
+    reference_tissue: np.ndarray,
+    schema: MaskProfileSchema,
+    recipe: dict[str, Any],
+    manual_contour_json: str,
+    manual_contour_file,
+    output_dir: Path,
+    provider: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    api_image_detail: str,
+    fixture_file,
+    organic_seed: int,
+    max_attempts: int,
+    max_regions: int,
+    max_points_per_region: int,
+) -> tuple[Any, dict[str, Any]]:
+    del state, provider, api_base_url, api_key_env, api_model, api_image_detail, fixture_file, max_attempts, max_regions, max_points_per_region
+    payload = _load_manual_contour_payload(manual_contour_json, manual_contour_file)
+    proposal = validate_contour_proposal(
+        payload,
+        schema=schema,
+        mask_shape=reference_tissue.shape,
+    )
+    edit_result = execute_contour_proposal_write(
+        reference_tissue,
+        proposal,
+        schema=schema,
+        primitive_config=_primitive_config(recipe, proposal.primitive),
+        projection_mode=PROJECTION_MODE_ORGANIC_V2,
+        organic_seed=organic_seed,
+    )
+    phase3_info = {
+        "mode": EDIT_MODE_MANUAL_CONTOUR,
+        "proposal": _json_safe(proposal.raw_payload),
+        "primitive": proposal.primitive,
+        "reference_profile": proposal.reference_profile,
+        "target_label": proposal.target_label,
+        "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+    }
+    save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
+    save_metadata(
+        _json_safe(proposal.raw_payload),
+        output_dir / "phase3_mask_edit" / "manual_contour.json",
+    )
+    result = SimpleNamespace(
+        status="validated",
+        edit_result=edit_result,
+        error=None,
+        final_attempt=None,
+        validation=None,
+        projection_mode=PROJECTION_MODE_ORGANIC_V2,
+        to_metadata=lambda: phase3_info,
+    )
+    return result, phase3_info
+
+
+def _load_manual_contour_payload(manual_contour_json: str, manual_contour_file) -> dict[str, Any]:
+    if manual_contour_file is not None:
+        path = _file_path(manual_contour_file)
+        if path is not None:
+            return load_contour_proposal_json(path)
+    text = (manual_contour_json or "").strip()
+    if not text:
+        raise gr.Error("Provide a manual contour JSON or upload a contour file.")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise gr.Error(f"Invalid contour JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise gr.Error("Manual contour JSON must be an object.")
+    payload.setdefault("schema_version", CONTOUR_PROPOSAL_SCHEMA_VERSION)
+    payload.setdefault("backend", CONTOUR_PROPOSAL_BACKEND)
+    return payload
+
+
+def _run_auto_recommend_stage(
+    *,
+    state: dict[str, Any],
+    reference_tissue: np.ndarray,
+    schema: MaskProfileSchema,
+    recipe: dict[str, Any],
+    output_dir: Path,
+    provider: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    api_image_detail: str,
+    fixture_file,
+    organic_seed: int,
+    max_attempts: int,
+    max_regions: int,
+    max_points_per_region: int,
+) -> tuple[Any, dict[str, Any]]:
+    del provider, api_base_url, api_key_env, api_model, api_image_detail, fixture_file, organic_seed, max_attempts, max_regions, max_points_per_region
+    context = MaskEditContext.from_mask(reference_tissue, schema)
+    recommendations = _recommend_edit_intents(reference_tissue, schema, recipe, context)
+    if not recommendations:
+        raise gr.Error(
+            f"No applicable primitive/strength combinations found for {schema.reference_profile}."
+        )
+    recommendations = _prefer_primary_intent(recommendations)
+    current_mask = np.array(reference_tissue, copy=True)
+    attempt_logs: list[dict[str, Any]] = []
+    last_result = None
+    for intent, primitive_config in recommendations:
+        decision = assess_edit_applicability(intent, recipe, schema, context)
+        if decision.status == "rejected":
+            attempt_logs.append(
+                {
+                    "primitive": intent.primitive,
+                    "strength": intent.strength,
+                    "status": "rejected",
+                    "reasons": list(decision.reasons),
+                }
+            )
+            continue
+        result = execute_edit(current_mask, intent, recipe, schema, context)
+        attempt_logs.append(
+            {
+                "primitive": intent.primitive,
+                "strength": intent.strength,
+                "status": result.status,
+                "reasons": list(result.applicability.reasons),
+                "warnings": list(result.applicability.warnings),
+                "primitive_config": primitive_config.get("name"),
+            }
+        )
+        last_result = result
+        if result.edit_result is not None:
+            current_mask = np.array(result.edit_result.target_mask, copy=True)
+            context = MaskEditContext.from_mask(current_mask, schema)
+        if len(attempt_logs) >= 3:
+            break
+    if last_result is None or last_result.edit_result is None:
+        raise gr.Error("Auto recommendation found candidates but none executed.")
+    phase3_info = {
+        "mode": EDIT_MODE_AUTO_RECOMMEND,
+        "recommendations": [
+            {
+                "primitive": intent.primitive,
+                "strength": intent.strength,
+                "reference_profile": intent.reference_profile,
+                "source_labels": list(intent.source_labels),
+                "target_label": intent.target_label,
+            }
+            for intent, _ in recommendations[:3]
+        ],
+        "attempts": attempt_logs,
+        "primitive": last_result.edit_result.ops_log.get("primitive", last_result.applicability.primitive),
+        "projection_mode": "primitive_executor",
+    }
+    save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
+    return last_result, phase3_info
+
+
+def _recommend_edit_intents(
+    mask: np.ndarray,
+    schema: MaskProfileSchema,
+    recipe: dict[str, Any],
+    context: MaskEditContext,
+) -> list[tuple[EditIntent, dict[str, Any]]]:
+    candidates: list[tuple[int, int, EditIntent, dict[str, Any]]] = []
+    for primitive_config in recipe.get("primitives", []):
+        if not isinstance(primitive_config, dict):
+            continue
+        primitive_name = primitive_config.get("name")
+        if not isinstance(primitive_name, str):
+            continue
+        strengths = _primitive_strengths(primitive_config)
+        if not strengths:
+            strengths = ("moderate",)
+        for strength in strengths:
+            intent = EditIntent(
+                primitive=primitive_name,
+                strength=strength,
+                reference_profile=schema.reference_profile,
+            )
+            intent = _with_default_contour_labels(intent, primitive_config, schema)
+            decision = assess_edit_applicability(intent, recipe, schema, context)
+            if decision.status == "rejected":
+                continue
+            score = _recommendation_score(primitive_config, context, decision)
+            candidates.append((score, _STRONGEST_FIRST.get(strength, 0), intent, primitive_config))
+    candidates.sort(key=lambda item: (-item[0], -item[1], item[2].primitive))
+    return [(intent, primitive_config) for _, _, intent, primitive_config in candidates]
+
+
+def _primitive_strengths(primitive_config: dict[str, Any]) -> tuple[str, ...]:
+    ranges = primitive_config.get("parameter_ranges", {})
+    if not isinstance(ranges, dict):
+        return ()
+    strengths = [key for key in ("mild", "moderate", "significant", "xlarge_deid") if key in ranges]
+    return tuple(strengths)
+
+
+def _recommendation_score(
+    primitive_config: dict[str, Any],
+    context: MaskEditContext,
+    decision,
+) -> int:
+    score = 0
+    if decision.status == "degraded":
+        score += 1
+    mask_operation = primitive_config.get("mask_operation", {})
+    if isinstance(mask_operation, dict):
+        source = mask_operation.get("source")
+        if isinstance(source, str) and source in context.present_labels:
+            score += 3
+        target = mask_operation.get("target")
+        if isinstance(target, str) and target in context.present_labels:
+            score += 1
+    score += min(4, len(decision.warnings))
+    score += min(4, len(decision.fallback_actions))
+    return score
+
+
+def _merge_phase3_info(base: dict[str, Any], result: Any) -> dict[str, Any]:
+    phase3_info = dict(base)
+    if hasattr(result, "to_metadata"):
+        try:
+            phase3_info["result"] = result.to_metadata()
+        except Exception:
+            pass
+    return phase3_info
 
 
 def run_cell_stage(
@@ -1112,9 +1429,17 @@ def build_ui() -> gr.Blocks:
             src_tissue_preview = gr.Image(label="source tissue")
 
         gr.Markdown("### Tissue mask edit")
+        edit_mode = gr.Radio(
+            EDIT_MODE_CHOICES,
+            value=EDIT_MODE_PROMPT,
+            label="edit mode",
+        )
         with gr.Row():
             old_prompt = gr.Textbox(label="src prompt", lines=3)
             new_prompt = gr.Textbox(label="new prompt", lines=3)
+        with gr.Row():
+            manual_contour_file = gr.File(label="manual contour JSON", file_types=[".json"], type="filepath")
+            manual_contour_json = gr.Textbox(label="manual contour JSON text", lines=8)
         with gr.Row():
             parser = gr.Radio(["api", "qwen-local"], value="api", label="parser")
             no_few_shot = gr.Checkbox(value=False, label="no few shot")
@@ -1238,8 +1563,11 @@ def build_ui() -> gr.Blocks:
             run_tissue_stage,
             inputs=[
                 state,
+                edit_mode,
                 old_prompt,
                 new_prompt,
+                manual_contour_json,
+                manual_contour_file,
                 parser,
                 api_base_url,
                 api_key_env,
