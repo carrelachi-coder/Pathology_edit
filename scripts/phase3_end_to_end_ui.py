@@ -378,12 +378,18 @@ def _refresh_edit_mode_panels(
     dict[str, Any],
     dict[str, Any],
     dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
 ]:
     """Return panel visibility and auto-recommendation UI state."""
 
     prompt_visible = gr.update(visible=edit_mode == EDIT_MODE_PROMPT)
     manual_visible = gr.update(visible=edit_mode == EDIT_MODE_MANUAL_CONTOUR)
     auto_visible = gr.update(visible=edit_mode == EDIT_MODE_AUTO_RECOMMEND)
+    tissue_button_visible = gr.update(visible=edit_mode != EDIT_MODE_AUTO_RECOMMEND)
+    auto_execute_visible = gr.update(visible=edit_mode == EDIT_MODE_AUTO_RECOMMEND)
     manual_editor_value = gr.update()
     manual_target_update = gr.update()
     auto_choices_update = gr.update(choices=[], value=[])
@@ -399,6 +405,8 @@ def _refresh_edit_mode_panels(
             manual_target_update,
             auto_choices_update,
             auto_summary,
+            tissue_button_visible,
+            auto_execute_visible,
         )
 
     if edit_mode == EDIT_MODE_MANUAL_CONTOUR:
@@ -430,6 +438,8 @@ def _refresh_edit_mode_panels(
         manual_target_update,
         auto_choices_update,
         auto_summary,
+        tissue_button_visible,
+        auto_execute_visible,
     )
 
 
@@ -721,7 +731,7 @@ def run_tissue_stage(
                 primitive="manual_contour",
             )
         elif edit_mode == EDIT_MODE_AUTO_RECOMMEND:
-            result, phase3_info = _run_auto_recommend_stage(
+            result, phase3_info = _execute_selected_recommendations(
                 state=state,
                 reference_tissue=reference_tissue,
                 schema=schema,
@@ -897,6 +907,7 @@ def run_tissue_stage(
     state.update(
         {
             "target_tissue_mask": str(target_path),
+            "target_mask_rgb": stage_paths["target_mask_rgb"],
             "change_region": stage_paths["change_region"],
             "phase3": phase3_info,
         }
@@ -987,7 +998,7 @@ def _run_manual_contour_stage(
         final_attempt=None,
         validation=None,
         projection_mode="manual_projected_label_write",
-        to_metadata=lambda: phase3_info,
+        to_metadata=lambda: dict(phase3_info),
     )
     return result, phase3_info
 
@@ -1705,42 +1716,47 @@ def build_ui() -> gr.Blocks:
             value=EDIT_MODE_PROMPT,
             label="edit mode",
         )
-        with gr.Row():
-            old_prompt = gr.Textbox(label="src prompt", lines=3)
-            new_prompt = gr.Textbox(label="new prompt", lines=3)
-        with gr.Row():
-            manual_contour_file = gr.File(label="manual contour JSON", file_types=[".json"], type="filepath")
-            manual_contour_json = gr.Textbox(label="manual contour JSON text", lines=8)
-        with gr.Row():
-            parser = gr.Radio(["api", "qwen-local"], value="api", label="parser")
-            no_few_shot = gr.Checkbox(value=False, label="no few shot")
-        with gr.Row():
-            api_model = gr.Textbox(value=DEFAULT_API_MODEL, label="api model")
-            qwen_model_path = gr.Textbox(label="qwen model path")
-        with gr.Accordion("Advanced parser inputs", open=False):
+        prompt_panel = gr.Column(visible=True)
+        with prompt_panel:
             with gr.Row():
-                api_base_url = gr.Textbox(value=DEFAULT_API_BASE_URL, label="api base url")
-                api_key_env = gr.Textbox(value=DEFAULT_API_KEY_ENV, label="api key env")
+                old_prompt = gr.Textbox(label="src prompt", lines=3)
+                new_prompt = gr.Textbox(label="new prompt", lines=3)
             with gr.Row():
-                qwen_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_QWEN_DEVICE, label="qwen device")
-                cuda_memory_button = gr.Button("Check CUDA memory")
-            cuda_memory_log = gr.Textbox(label="CUDA memory", lines=8, interactive=False)
+                parser = gr.Radio(["api", "qwen-local"], value="api", label="parser")
+                no_few_shot = gr.Checkbox(value=False, label="no few shot")
             with gr.Row():
-                cellvit_script = gr.Textbox(value=str(DEFAULT_CELLVIT_SCRIPT), label="CellViT runner script")
-                cellvit_model = gr.Textbox(value=DEFAULT_CELLVIT_MODEL, label="CellViT model")
+                api_model = gr.Textbox(value=DEFAULT_API_MODEL, label="api model")
+                qwen_model_path = gr.Textbox(label="qwen model path")
+            with gr.Accordion("Advanced parser inputs", open=False):
+                with gr.Row():
+                    api_base_url = gr.Textbox(value=DEFAULT_API_BASE_URL, label="api base url")
+                    api_key_env = gr.Textbox(value=DEFAULT_API_KEY_ENV, label="api key env")
+                with gr.Row():
+                    qwen_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_QWEN_DEVICE, label="qwen device")
+                    cuda_memory_button = gr.Button("Check CUDA memory")
+                cuda_memory_log = gr.Textbox(label="CUDA memory", lines=8, interactive=False)
+                with gr.Row():
+                    cellvit_script = gr.Textbox(value=str(DEFAULT_CELLVIT_SCRIPT), label="CellViT runner script")
+                    cellvit_model = gr.Textbox(value=DEFAULT_CELLVIT_MODEL, label="CellViT model")
+                with gr.Row():
+                    cellvit_root = gr.Textbox(value=str(DEFAULT_CELLVIT_ROOT), label="CellViT source root")
+                    cellvit_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_CELLVIT_DEVICE, label="CellViT device")
+
+        manual_panel = gr.Column(visible=False)
+        with manual_panel:
+            manual_editor = gr.ImageEditor(
+                label="draw contour on mask",
+                sources=["upload", "clipboard"],
+                type="numpy",
+                value=None,
+            )
             with gr.Row():
-                cellvit_root = gr.Textbox(value=str(DEFAULT_CELLVIT_ROOT), label="CellViT source root")
-                cellvit_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_CELLVIT_DEVICE, label="CellViT device")
-        continue_on_failure = gr.Checkbox(value=False, label="continue on Phase3 failure")
-        tissue_button = gr.Button("2. Run prompt-driven organic v2 contour edit")
-        tissue_log = gr.Code(label="tissue log", language="json")
-        with gr.Row():
-            target_tissue_preview = gr.Image(label="target tissue")
-            change_region_preview = gr.Image(label="change region")
-        with gr.Accordion("Advanced overrides", open=False):
+                target_label = gr.Dropdown([], value=None, label="target label")
+                source_labels = gr.Textbox(label="source labels", placeholder="Stroma")
             with gr.Row():
                 primitive = gr.Dropdown(
                     [
+                        "manual_contour",
                         "stromal_immune_infiltration",
                         "necrosis_appearance",
                         "tumor_burden_increase",
@@ -1750,13 +1766,22 @@ def build_ui() -> gr.Blocks:
                         "stroma_decrease",
                         "stromal_reduction",
                     ],
-                    value="stromal_immune_infiltration",
-                    label="primitive fallback",
+                    value="manual_contour",
+                    label="manual primitive tag",
                 )
-                strength = gr.Radio(["mild", "moderate", "significant"], value="mild", label="strength")
-            with gr.Row():
-                source_labels = gr.Textbox(label="source labels fallback", placeholder="Stroma")
-                target_label = gr.Textbox(label="target label fallback", placeholder="Immune infiltrate")
+
+        auto_panel = gr.Column(visible=False)
+        with auto_panel:
+            auto_choices = gr.CheckboxGroup(label="recommendations", choices=[])
+            auto_summary = gr.Textbox(label="recommendation summary", lines=6, interactive=False)
+
+        continue_on_failure = gr.Checkbox(value=False, label="continue on Phase3 failure")
+        tissue_button = gr.Button("2. Run tissue-stage edit")
+        tissue_log = gr.Code(label="tissue log", language="json")
+        with gr.Row():
+            target_tissue_preview = gr.Image(label="target tissue")
+            change_region_preview = gr.Image(label="change region")
+        with gr.Accordion("Advanced overrides", open=False):
             with gr.Row():
                 provider = gr.Radio(["api-text", "api-multimodal", "fixture"], value="api-multimodal", label="contour provider")
                 api_image_detail = gr.Radio(["low", "high", "auto"], value="high", label="image detail")
@@ -1767,6 +1792,8 @@ def build_ui() -> gr.Blocks:
                 max_regions = gr.Slider(1, 8, value=8, step=1, label="max regions")
                 max_points_per_region = gr.Slider(8, 128, value=64, step=1, label="max points / region")
             organic_seed = gr.Number(value=0, precision=0, label="organic seed")
+
+        auto_execute_button = gr.Button("Run selected recommendations", visible=False)
 
         gr.Markdown("### Cell mask synthesis")
         with gr.Row():
@@ -1823,6 +1850,37 @@ def build_ui() -> gr.Blocks:
                 cellvit_device,
             ],
             outputs=[state, load_log, src_image_preview, src_tissue_preview],
+        ).then(
+            _refresh_edit_mode_panels,
+            inputs=[state, edit_mode],
+            outputs=[
+                state,
+                prompt_panel,
+                manual_panel,
+                auto_panel,
+                manual_editor,
+                target_label,
+                auto_choices,
+                auto_summary,
+                tissue_button,
+                auto_execute_button,
+            ],
+        )
+        edit_mode.change(
+            _refresh_edit_mode_panels,
+            inputs=[state, edit_mode],
+            outputs=[
+                state,
+                prompt_panel,
+                manual_panel,
+                auto_panel,
+                manual_editor,
+                target_label,
+                auto_choices,
+                auto_summary,
+                tissue_button,
+                auto_execute_button,
+            ],
         )
         profile.change(
             lambda value: tuple(_profile_defaults(value).values()),
@@ -1837,8 +1895,8 @@ def build_ui() -> gr.Blocks:
                 edit_mode,
                 old_prompt,
                 new_prompt,
-                manual_contour_json,
-                manual_contour_file,
+                manual_editor,
+                auto_choices,
                 parser,
                 api_base_url,
                 api_key_env,
@@ -1846,10 +1904,8 @@ def build_ui() -> gr.Blocks:
                 qwen_model_path,
                 qwen_device,
                 no_few_shot,
-                primitive,
                 source_labels,
                 target_label,
-                strength,
                 provider,
                 api_image_detail,
                 fixture_file,
@@ -1860,6 +1916,41 @@ def build_ui() -> gr.Blocks:
                 continue_on_failure,
             ],
             outputs=[state, tissue_log, target_tissue_preview, change_region_preview],
+        ).then(
+            _refresh_edit_mode_panels,
+            inputs=[state, edit_mode],
+            outputs=[
+                state,
+                prompt_panel,
+                manual_panel,
+                auto_panel,
+                manual_editor,
+                target_label,
+                auto_choices,
+                auto_summary,
+                tissue_button,
+                auto_execute_button,
+            ],
+        )
+        auto_execute_button.click(
+            _run_auto_selected_from_ui,
+            inputs=[state, auto_choices],
+            outputs=[state, tissue_log, target_tissue_preview, change_region_preview],
+        ).then(
+            _refresh_edit_mode_panels,
+            inputs=[state, edit_mode],
+            outputs=[
+                state,
+                prompt_panel,
+                manual_panel,
+                auto_panel,
+                manual_editor,
+                target_label,
+                auto_choices,
+                auto_summary,
+                tissue_button,
+                auto_execute_button,
+            ],
         )
         cell_button.click(
             run_cell_stage,
@@ -1893,6 +1984,52 @@ def build_ui() -> gr.Blocks:
             outputs=[state, generation_log, generated_preview, panel_preview],
         )
     return demo
+
+
+def _run_auto_selected_from_ui(
+    state: dict[str, Any],
+    auto_recommendation_keys,
+) -> tuple[dict[str, Any], str, str, str]:
+    if not state:
+        raise gr.Error("Load inputs first.")
+    output_dir = Path(state["output_dir"])
+    reference_tissue = load_id_mask(state.get("target_tissue_mask") or state["reference_tissue_mask"])
+    schema = MaskProfileSchema.from_reference_profile(state["profile"])
+    recipe = load_recipe(default_recipe_path_for_profile(state["profile"]))
+    result, phase3_info = _execute_selected_recommendations(
+        state=state,
+        reference_tissue=reference_tissue,
+        schema=schema,
+        recipe=recipe,
+        output_dir=output_dir,
+        selected_keys=list(auto_recommendation_keys or []),
+    )
+    target_tissue = result.edit_result.target_mask
+    target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
+    _validate_same_size(_load_rgb_image(state["reference_image"]), target_tissue, "target_tissue_mask")
+    change_region = reference_tissue != target_tissue
+    stage_paths = _save_pre_generation_artifacts(
+        output_dir=output_dir,
+        reference_image=_load_rgb_image(state["reference_image"]),
+        reference_tissue=reference_tissue,
+        target_tissue=target_tissue,
+        change_region=change_region,
+    )
+    state.update(
+        {
+            "target_tissue_mask": str(target_path),
+            "target_mask_rgb": stage_paths["target_mask_rgb"],
+            "change_region": stage_paths["change_region"],
+            "phase3": phase3_info,
+        }
+    )
+    info = {
+        "status": "tissue_done",
+        "edit_mode": EDIT_MODE_AUTO_RECOMMEND,
+        "target_tissue_mask": str(target_path),
+        "change_region": stage_paths["change_region"],
+    }
+    return state, _json_text(info), stage_paths["target_mask_rgb"], stage_paths["change_region"]
 
 
 def main() -> None:
