@@ -109,6 +109,7 @@ EDIT_MODE_CHOICES = [
     EDIT_MODE_AUTO_RECOMMEND,
 ]
 _STRONGEST_FIRST = {"xlarge_deid": 3, "significant": 2, "moderate": 1, "mild": 0}
+AUTO_RECOMMEND_LIMIT = 6
 
 
 def _detect_visible_cuda_device_choices() -> list[str]:
@@ -247,13 +248,265 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _prefer_primary_intent(
-    intents: list[tuple[EditIntent, dict[str, Any]]]
-) -> list[tuple[EditIntent, dict[str, Any]]]:
-    if not intents:
+def _manual_contour_editor_value(source_mask_rgb: str | None) -> dict[str, Any] | None:
+    if not source_mask_rgb:
+        return None
+    return {"background": source_mask_rgb, "layers": [], "composite": None}
+
+
+def _ordered_schema_labels(schema: MaskProfileSchema) -> list[str]:
+    return [label for label in schema.label_to_fine_ids if label in schema.readable_labels]
+
+
+def _manual_target_label_choices(schema: MaskProfileSchema) -> list[str]:
+    return [label for label in _ordered_schema_labels(schema) if label != "Background"]
+
+
+def _default_manual_target_label(schema: MaskProfileSchema) -> str:
+    choices = _manual_target_label_choices(schema)
+    if "Tumor" in choices:
+        return "Tumor"
+    return choices[0] if choices else ""
+
+
+def _image_to_array(image: Any) -> np.ndarray | None:
+    if image is None:
+        return None
+    if isinstance(image, np.ndarray):
+        return np.asarray(image)
+    if isinstance(image, (str, Path)):
+        try:
+            return np.asarray(Image.open(image))
+        except Exception:
+            return None
+    try:
+        return np.asarray(image)
+    except Exception:
+        return None
+
+
+def _resize_binary_mask(mask: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    if mask.shape == shape:
+        return mask.astype(bool)
+    pil = Image.fromarray(mask.astype(np.uint8) * 255, mode="L")
+    resized = pil.resize((shape[1], shape[0]), Image.NEAREST)
+    return (np.asarray(resized) > 0).astype(bool)
+
+
+def _editor_value_to_binary_mask(value: Any, shape: tuple[int, int]) -> np.ndarray:
+    if value is None:
+        return np.zeros(shape, dtype=bool)
+    if not isinstance(value, dict):
+        arr = _image_to_array(value)
+        if arr is None:
+            return np.zeros(shape, dtype=bool)
+        if arr.ndim == 2:
+            return _resize_binary_mask(arr > 0, shape)
+        if arr.ndim == 3:
+            return _resize_binary_mask(np.any(arr[..., :3] != 0, axis=2), shape)
+        return np.zeros(shape, dtype=bool)
+
+    background = _image_to_array(value.get("background"))
+    composite = _image_to_array(value.get("composite"))
+    layers = value.get("layers", [])
+    candidate = np.zeros(shape, dtype=bool)
+
+    def _merge_from_array(arr: np.ndarray | None) -> None:
+        nonlocal candidate
+        if arr is None:
+            return
+        if arr.ndim == 2:
+            mask = arr > 0
+        elif arr.ndim == 3 and arr.shape[2] == 4:
+            mask = arr[..., 3] > 0
+            if background is not None and background.shape[:2] == arr.shape[:2]:
+                base = background[..., :3] if background.ndim == 3 else background
+                mask |= np.any(arr[..., :3] != base[..., :3], axis=2)
+        elif arr.ndim == 3:
+            mask = np.any(arr[..., :3] != 0, axis=2)
+            if background is not None and background.shape[:2] == arr.shape[:2]:
+                base = background[..., :3] if background.ndim == 3 else background
+                mask |= np.any(arr[..., :3] != base[..., :3], axis=2)
+        else:
+            return
+        candidate |= _resize_binary_mask(mask, shape)
+
+    _merge_from_array(composite)
+    if isinstance(layers, list):
+        for layer in layers:
+            _merge_from_array(_image_to_array(layer))
+
+    if not np.any(candidate) and composite is not None and background is not None:
+        comp = _image_to_array(composite)
+        base = _image_to_array(background)
+        if comp is not None and base is not None and comp.ndim == 3 and base.ndim == 3:
+            diff = np.any(comp[..., :3] != base[..., :3], axis=2)
+            candidate |= _resize_binary_mask(diff, shape)
+
+    return candidate
+
+
+def _manual_source_labels(
+    mask: np.ndarray,
+    schema: MaskProfileSchema,
+    candidate_region: np.ndarray,
+    target_label: str,
+) -> tuple[str, ...]:
+    labels: list[str] = []
+    region_ids = np.unique(mask[candidate_region])
+    for fine_id in region_ids:
+        if int(fine_id) in schema.skip_fine_ids:
+            continue
+        label = None
+        for name, fine_ids in schema.label_to_fine_ids.items():
+            if int(fine_id) in fine_ids:
+                label = name
+                break
+        if label and label != target_label and label not in labels:
+            labels.append(label)
+    return tuple(labels)
+
+
+def _refresh_edit_mode_panels(
+    state: dict[str, Any],
+    edit_mode: str,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+]:
+    """Return panel visibility and auto-recommendation UI state."""
+
+    prompt_visible = gr.update(visible=edit_mode == EDIT_MODE_PROMPT)
+    manual_visible = gr.update(visible=edit_mode == EDIT_MODE_MANUAL_CONTOUR)
+    auto_visible = gr.update(visible=edit_mode == EDIT_MODE_AUTO_RECOMMEND)
+    manual_editor_value = gr.update()
+    manual_target_update = gr.update()
+    auto_choices_update = gr.update(choices=[], value=[])
+    auto_summary = ""
+
+    if not state:
+        return (
+            state,
+            prompt_visible,
+            manual_visible,
+            auto_visible,
+            manual_editor_value,
+            manual_target_update,
+            auto_choices_update,
+            auto_summary,
+        )
+
+    if edit_mode == EDIT_MODE_MANUAL_CONTOUR:
+        schema = MaskProfileSchema.from_reference_profile(state.get("profile", "BCSS"))
+        manual_editor_value = gr.update(value=_manual_contour_editor_value(state.get("source_mask_rgb")))
+        manual_target_update = gr.update(
+            choices=_manual_target_label_choices(schema),
+            value=_default_manual_target_label(schema),
+        )
+    else:
+        manual_target_update = gr.update(choices=[], value=None)
+
+    if edit_mode == EDIT_MODE_AUTO_RECOMMEND:
+        auto_pool = _build_auto_recommendation_pool(state)
+        state["auto_recommendations"] = auto_pool
+        auto_choices = [(item["label"], item["key"]) for item in auto_pool]
+        auto_selected = [auto_pool[0]["key"]] if auto_pool else []
+        auto_choices_update = gr.update(choices=auto_choices, value=auto_selected)
+        auto_summary = _format_auto_recommendation_summary(auto_pool)
+    else:
+        state.pop("auto_recommendations", None)
+
+    return (
+        state,
+        prompt_visible,
+        manual_visible,
+        auto_visible,
+        manual_editor_value,
+        manual_target_update,
+        auto_choices_update,
+        auto_summary,
+    )
+
+
+def _build_auto_recommendation_pool(state: dict[str, Any]) -> list[dict[str, Any]]:
+    profile = state.get("profile", "BCSS")
+    if not state.get("reference_tissue_mask"):
         return []
-    primary = intents[0][0].primitive
-    return [item for item in intents if item[0].primitive == primary][:3]
+    reference_tissue = load_id_mask(state["reference_tissue_mask"])
+    schema = MaskProfileSchema.from_reference_profile(profile)
+    recipe = load_recipe(default_recipe_path_for_profile(profile))
+    context = MaskEditContext.from_mask(reference_tissue, schema)
+    recommendations = _recommend_edit_intents(reference_tissue, schema, recipe, context)
+    pool: list[dict[str, Any]] = []
+    for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
+        decision = assess_edit_applicability(intent, recipe, schema, context)
+        key = _recommendation_key(intent)
+        pool.append(
+            {
+                "key": key,
+                "label": f"{rank}. {intent.primitive} / {intent.strength}",
+                "primitive": intent.primitive,
+                "strength": intent.strength,
+                "reference_profile": intent.reference_profile,
+                "source_labels": list(intent.source_labels),
+                "target_label": intent.target_label,
+                "score": _recommendation_score(primitive_config, context, decision),
+                "status": decision.status,
+                "reasons": list(decision.reasons),
+                "warnings": list(decision.warnings),
+            }
+        )
+    return pool
+
+
+def _format_auto_recommendation_summary(pool: list[dict[str, Any]]) -> str:
+    if not pool:
+        return "No applicable primitive/strength combinations were found for this mask."
+    return _json_text(
+        {
+            "count": len(pool),
+            "recommendations": pool,
+        }
+    )
+
+
+def _recommendation_key(intent: EditIntent) -> str:
+    return f"{intent.primitive}|{intent.strength}"
+
+
+def _selected_recommendations_to_intents(
+    state: dict[str, Any],
+    selected_keys: list[str],
+) -> list[tuple[EditIntent, dict[str, Any]]]:
+    recommendations = state.get("auto_recommendations") or []
+    selected = set(selected_keys)
+    if not selected and recommendations:
+        selected = {recommendations[0]["key"]}
+
+    profile = state.get("profile", "BCSS")
+    schema = MaskProfileSchema.from_reference_profile(profile)
+    recipe = load_recipe(default_recipe_path_for_profile(profile))
+
+    intents: list[tuple[EditIntent, dict[str, Any]]] = []
+    for item in recommendations:
+        if item.get("key") not in selected:
+            continue
+        primitive_config = _primitive_config(recipe, str(item["primitive"]))
+        payload = {
+            "primitive": item["primitive"],
+            "strength": item["strength"],
+            "reference_profile": profile,
+            "source_labels": item.get("source_labels", []),
+            "target_label": item.get("target_label"),
+        }
+        intent = EditIntent.from_mapping(payload)
+        intent = _with_default_contour_labels(intent, primitive_config, schema)
+        intents.append((intent, primitive_config))
+    return intents
 
 
 def _contour_failure_message(result: Any) -> str:
@@ -403,6 +656,7 @@ def load_inputs(
         "reference_image": str(image_path),
         "reference_tissue_mask": str(tissue_path),
         "reference_nuclei_mask": str(nuclei_path),
+        "source_mask_rgb": str(source_rgb),
     }
     source_rgb = str(_save_pre_generation_artifacts(
         output_dir=output_dir,
@@ -704,48 +958,72 @@ def _run_manual_contour_stage(
     reference_tissue: np.ndarray,
     schema: MaskProfileSchema,
     recipe: dict[str, Any],
-    manual_contour_json: str,
-    manual_contour_file,
+    manual_contour_editor,
+    manual_target_label: str,
     output_dir: Path,
-    provider: str,
-    api_base_url: str,
-    api_key_env: str,
-    api_model: str,
-    api_image_detail: str,
-    fixture_file,
     organic_seed: int,
-    max_attempts: int,
-    max_regions: int,
-    max_points_per_region: int,
 ) -> tuple[Any, dict[str, Any]]:
-    del state, provider, api_base_url, api_key_env, api_model, api_image_detail, fixture_file, max_attempts, max_regions, max_points_per_region
-    payload = _load_manual_contour_payload(manual_contour_json, manual_contour_file)
-    proposal = validate_contour_proposal(
-        payload,
-        schema=schema,
-        mask_shape=reference_tissue.shape,
-    )
-    edit_result = execute_contour_proposal_write(
+    del state
+    candidate_region = _editor_value_to_binary_mask(manual_contour_editor, reference_tissue.shape)
+    if not np.any(candidate_region):
+        raise gr.Error("Draw a contour on the mask first.")
+
+    target_label = manual_target_label.strip()
+    if not target_label:
+        target_label = _default_manual_target_label(schema)
+    if target_label not in schema.writable_labels:
+        raise gr.Error(f"Target label {target_label!r} is not writable for {schema.reference_profile}.")
+
+    source_labels = _manual_source_labels(
         reference_tissue,
-        proposal,
-        schema=schema,
-        primitive_config=_primitive_config(recipe, proposal.primitive),
-        projection_mode=PROJECTION_MODE_ORGANIC_V2,
-        organic_seed=organic_seed,
+        schema,
+        candidate_region,
+        target_label,
+    )
+    if not source_labels:
+        source_labels = tuple(
+            label for label in _ordered_schema_labels(schema) if label != target_label
+        )[:1]
+    if not source_labels:
+        raise gr.Error("Could not infer source labels from the drawn contour.")
+
+    primitive_name = "tumor_burden_increase" if target_label == "Tumor" else "tumor_burden_decrease"
+    if target_label == "Necrosis":
+        primitive_name = "necrosis_appearance"
+    elif target_label == "Immune infiltrate":
+        primitive_name = "stromal_immune_infiltration"
+    elif target_label == "Stroma":
+        primitive_name = "stromal_desmoplasia"
+
+    primitive_config = _primitive_config(recipe, primitive_name)
+    intent = EditIntent(
+        primitive=primitive_name,
+        strength="moderate",
+        reference_profile=schema.reference_profile,
+        source_labels=tuple(source_labels),
+        target_label=target_label,
+        target_change_fraction=float(np.count_nonzero(candidate_region)) / float(reference_tissue.size),
+        region_hint={"mode": "manual_contour", "source": "editor"},
+    )
+    intent = _with_default_contour_labels(intent, primitive_config, schema)
+    edit_result = execute_edit(
+        reference_tissue,
+        intent,
+        recipe,
+        schema,
+        MaskEditContext.from_mask(reference_tissue, schema),
     )
     phase3_info = {
         "mode": EDIT_MODE_MANUAL_CONTOUR,
-        "proposal": _json_safe(proposal.raw_payload),
-        "primitive": proposal.primitive,
-        "reference_profile": proposal.reference_profile,
-        "target_label": proposal.target_label,
+        "primitive": intent.primitive,
+        "strength": intent.strength,
+        "reference_profile": intent.reference_profile,
+        "target_label": target_label,
+        "source_labels": list(intent.source_labels),
+        "manual_contour": True,
         "projection_mode": PROJECTION_MODE_ORGANIC_V2,
     }
     save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
-    save_metadata(
-        _json_safe(proposal.raw_payload),
-        output_dir / "phase3_mask_edit" / "manual_contour.json",
-    )
     result = SimpleNamespace(
         status="validated",
         edit_result=edit_result,
@@ -784,77 +1062,47 @@ def _run_auto_recommend_stage(
     schema: MaskProfileSchema,
     recipe: dict[str, Any],
     output_dir: Path,
-    provider: str,
-    api_base_url: str,
-    api_key_env: str,
-    api_model: str,
-    api_image_detail: str,
-    fixture_file,
-    organic_seed: int,
-    max_attempts: int,
-    max_regions: int,
-    max_points_per_region: int,
-) -> tuple[Any, dict[str, Any]]:
-    del provider, api_base_url, api_key_env, api_model, api_image_detail, fixture_file, organic_seed, max_attempts, max_regions, max_points_per_region
+) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
     context = MaskEditContext.from_mask(reference_tissue, schema)
     recommendations = _recommend_edit_intents(reference_tissue, schema, recipe, context)
     if not recommendations:
         raise gr.Error(
             f"No applicable primitive/strength combinations found for {schema.reference_profile}."
         )
-    recommendations = _prefer_primary_intent(recommendations)
-    current_mask = np.array(reference_tissue, copy=True)
-    attempt_logs: list[dict[str, Any]] = []
-    last_result = None
-    for intent, primitive_config in recommendations:
+    pool: list[dict[str, Any]] = []
+    for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
         decision = assess_edit_applicability(intent, recipe, schema, context)
-        if decision.status == "rejected":
-            attempt_logs.append(
-                {
-                    "primitive": intent.primitive,
-                    "strength": intent.strength,
-                    "status": "rejected",
-                    "reasons": list(decision.reasons),
-                }
-            )
-            continue
-        result = execute_edit(current_mask, intent, recipe, schema, context)
-        attempt_logs.append(
+        pool.append(
             {
-                "primitive": intent.primitive,
-                "strength": intent.strength,
-                "status": result.status,
-                "reasons": list(result.applicability.reasons),
-                "warnings": list(result.applicability.warnings),
-                "primitive_config": primitive_config.get("name"),
-            }
-        )
-        last_result = result
-        if result.edit_result is not None:
-            current_mask = np.array(result.edit_result.target_mask, copy=True)
-            context = MaskEditContext.from_mask(current_mask, schema)
-        if len(attempt_logs) >= 3:
-            break
-    if last_result is None or last_result.edit_result is None:
-        raise gr.Error("Auto recommendation found candidates but none executed.")
-    phase3_info = {
-        "mode": EDIT_MODE_AUTO_RECOMMEND,
-        "recommendations": [
-            {
+                "rank": rank,
+                "key": _recommendation_key(intent),
                 "primitive": intent.primitive,
                 "strength": intent.strength,
                 "reference_profile": intent.reference_profile,
                 "source_labels": list(intent.source_labels),
                 "target_label": intent.target_label,
+                "score": _recommendation_score(primitive_config, context, decision),
+                "status": decision.status,
+                "reasons": list(decision.reasons),
+                "warnings": list(decision.warnings),
             }
-            for intent, _ in recommendations[:3]
-        ],
-        "attempts": attempt_logs,
-        "primitive": last_result.edit_result.ops_log.get("primitive", last_result.applicability.primitive),
-        "projection_mode": "primitive_executor",
+        )
+    result = SimpleNamespace(
+        status="recommendations_ready",
+        edit_result=None,
+        error=None,
+        final_attempt=None,
+        validation=None,
+        projection_mode="recommendation",
+        to_metadata=lambda: {"mode": EDIT_MODE_AUTO_RECOMMEND, "recommendations": pool},
+    )
+    phase3_info = {
+        "mode": EDIT_MODE_AUTO_RECOMMEND,
+        "recommendations": pool,
+        "projection_mode": "recommendation",
     }
     save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
-    return last_result, phase3_info
+    return result, phase3_info, pool
 
 
 def _recommend_edit_intents(
