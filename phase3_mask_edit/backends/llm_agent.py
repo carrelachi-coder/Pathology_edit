@@ -528,6 +528,7 @@ def _execute_one_attempt(
             primitive_config=primitive_config,
             changed_area_fraction=edit_result.changed_area_fraction,
             strength=intent.strength,
+            execution_log=edit_result.ops_log,
         )
         status = STATUS_VALIDATED if validation.passed else STATUS_VALIDATION_FAILED
         feedback = None

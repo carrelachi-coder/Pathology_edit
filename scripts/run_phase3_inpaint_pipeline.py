@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 from PIL import Image, ImageDraw
 
 if __package__ in (None, ""):
@@ -32,10 +33,13 @@ if __package__ in (None, ""):
 from controlnet_train.inference import (
     EditPipelineInputs,
     EditRoutingConfig,
+    load_cross_bundle,
     load_inpaint_bundle,
+    run_cross_v0_bundle,
     run_edit_pipeline,
     run_inpaint_bundle,
 )
+from controlnet_train.data.common import default_prompt_for_dataset
 from phase3_mask_edit.cli.edit_from_intents import (
     execute_intents_on_mask,
     save_sequential_execution_output,
@@ -55,6 +59,11 @@ from phase3_mask_edit.parser.qwen_local_parser import (
 )
 from phase3_mask_edit.parser.semantic_diff import load_semantic_diff, save_semantic_diff
 from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
+
+
+_INPAINT_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
+_CROSS_V0_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
+_CROSS_V1_BUNDLE_CACHE: dict[tuple[str, str, str, str, str, int, float, float], Any] = {}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         target_mask_rgb=np.asarray(Image.open(stage_paths["target_mask_rgb"]).convert("RGB")),
         generated_image=np.asarray(Image.open(generated_path).convert("RGB")),
         title=f"Phase3 {args.mode} / {generation_info['generation_mode']}",
+        prompt=result.prompt,
     )
 
     summary = {
@@ -515,7 +525,12 @@ def _run_generation_stage(
         erased[np.asarray(change_region, dtype=bool)] = np.array([128, 128, 128], dtype=np.uint8)
         generated = _save_rgb_array(erased, output_dir / "generated_image.png")
         change_ratio = _change_area_fraction(change_region)
-        selected_mode = _select_generation_mode(args.generation_mode, change_ratio, args.route_threshold)
+        selected_mode = _select_generation_mode(
+            args.generation_mode,
+            change_ratio,
+            args.route_threshold,
+            cross_backend=getattr(args, "cross_backend", "cross-v1"),
+        )
         info = {
             "generation_mode": "dry-run",
             "status": "skipped_model_generation",
@@ -528,12 +543,19 @@ def _run_generation_stage(
         return generated, info
 
     change_ratio = _change_area_fraction(change_region)
-    selected_mode = _select_generation_mode(args.generation_mode, change_ratio, args.route_threshold)
+    selected_mode = _select_generation_mode(
+        args.generation_mode,
+        change_ratio,
+        args.route_threshold,
+        cross_backend=getattr(args, "cross_backend", "cross-v1"),
+    )
     required = {
         "--pretrained-model-name-or-path": args.pretrained_model_name_or_path,
     }
     if selected_mode == "inpaint":
         required["--inpaint-checkpoint"] = args.inpaint_checkpoint
+    elif selected_mode == "cross-v0":
+        required["--cross-checkpoint"] = args.cross_checkpoint
     else:
         required["--cross-v1-checkpoint"] = args.cross_v1_checkpoint
         required["--uni-checkpoint"] = args.uni_checkpoint
@@ -542,60 +564,173 @@ def _run_generation_stage(
         raise SystemExit(f"{', '.join(missing)} required with --generation-mode {args.generation_mode}")
 
     cross_bundle = object()
-    if selected_mode == "cross-v1":
-        from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
-
-        cross_bundle = load_cross_v1_bundle(
+    cross_runner = _run_cross_v1_loaded_bundle
+    if selected_mode == "cross-v0":
+        cross_bundle = _cached_cross_v0_bundle(
+            pretrained_model_name_or_path=args.pretrained_model_name_or_path,
+            checkpoint_path=args.cross_checkpoint,
+            device=args.device,
+        )
+        cross_runner = run_cross_v0_bundle
+    elif selected_mode == "cross-v1":
+        torch_dtype = _parse_torch_dtype(getattr(args, "torch_dtype", "bf16"))
+        cross_bundle = _cached_cross_v1_bundle(
             pretrained_model_name_or_path=args.pretrained_model_name_or_path,
             checkpoint_path=args.cross_v1_checkpoint,
             uni_checkpoint_path=args.uni_checkpoint,
             device=args.device,
+            torch_dtype=torch_dtype,
+            num_inference_steps=getattr(args, "num_inference_steps", 28),
+            guidance_scale=getattr(args, "guidance_scale", 3.5),
+            controlnet_conditioning_scale=getattr(args, "controlnet_conditioning_scale", 1.0),
         )
 
     controlnet_dir = output_dir / f"controlnet_{selected_mode.replace('-', '_')}"
-    result = run_edit_pipeline(
-        inputs=EditPipelineInputs(
-            reference_image=args.reference_image,
-            reference_tissue_mask=args.reference_tissue_mask,
-            reference_nuclei_mask=args.reference_nuclei_mask,
-            target_tissue_mask=target_tissue_path,
-            target_nuclei_mask=target_nuclei_path,
-            output_dir=controlnet_dir,
-            prompt=args.prompt,
+    with torch.inference_mode():
+        prompt = _resolve_cross_v1_prompt(
+            prompt_override=args.prompt,
+            prompt_source=getattr(args, "prompt_source", "dataset"),
             dataset=args.profile,
-            force_mode=selected_mode if selected_mode != "cross-v1" else "cross",
-            save_debug_artifacts=True,
-        ),
-        inpaint_bundle=(
-            load_inpaint_bundle(
-                pretrained_model_name_or_path=args.pretrained_model_name_or_path,
-                checkpoint_path=args.inpaint_checkpoint,
-                device=args.device,
-            )
-            if selected_mode == "inpaint"
-            else object()
-        ),
-        cross_bundle=(
-            cross_bundle
-        ),
-        inpaint_runner=run_inpaint_bundle,
-        cross_runner=_run_cross_v1_loaded_bundle,
-        routing_config=EditRoutingConfig(t_inpaint=args.route_threshold, t_cross=args.route_threshold),
-    )
+        )
+        result = run_edit_pipeline(
+            inputs=EditPipelineInputs(
+                reference_image=args.reference_image,
+                reference_tissue_mask=args.reference_tissue_mask,
+                reference_nuclei_mask=args.reference_nuclei_mask,
+                target_tissue_mask=target_tissue_path,
+                target_nuclei_mask=target_nuclei_path,
+                output_dir=controlnet_dir,
+                prompt=prompt,
+                dataset=args.profile,
+                force_mode=selected_mode if selected_mode == "inpaint" else "cross",
+                save_debug_artifacts=True,
+            ),
+            inpaint_bundle=(
+                _cached_inpaint_bundle(
+                    pretrained_model_name_or_path=args.pretrained_model_name_or_path,
+                    checkpoint_path=args.inpaint_checkpoint,
+                    device=args.device,
+                )
+                if selected_mode == "inpaint"
+                else object()
+            ),
+            cross_bundle=(
+                cross_bundle
+            ),
+            inpaint_runner=run_inpaint_bundle,
+            cross_runner=cross_runner,
+            routing_config=EditRoutingConfig(t_inpaint=args.route_threshold, t_cross=args.route_threshold),
+        )
     generated = output_dir / "generated_image.png"
-    result.image.save(generated)
+    raw_generated = output_dir / "generated_image_raw.png"
+    result.image.save(raw_generated)
+    color_match_method = getattr(args, "color_match", "lab")
+    color_match_applied = False
+    if selected_mode.startswith("cross-") and color_match_method != "none":
+        matched = _match_image_color_to_reference(
+            source=np.asarray(result.image.convert("RGB"), dtype=np.uint8),
+            reference=reference_image,
+            method=color_match_method,
+        )
+        _save_rgb_array(matched, generated)
+        color_match_applied = True
+    else:
+        result.image.save(generated)
     info = {
         "generation_mode": args.generation_mode,
         "status": "generated",
         "generated_image": str(generated),
+        "raw_generated_image": str(raw_generated),
         "controlnet_output_dir": str(controlnet_dir),
         "selected_mode": selected_mode,
         "change_ratio": result.change_ratio,
         "route_threshold": args.route_threshold,
         "prompt": result.prompt,
+        "color_match": {
+            "method": color_match_method,
+            "applied": color_match_applied,
+            "reference": str(args.reference_image),
+        },
     }
     save_metadata(info, output_dir / "generation_info.json")
     return generated, info
+
+
+def _cached_inpaint_bundle(
+    *,
+    pretrained_model_name_or_path: str | Path,
+    checkpoint_path: str | Path,
+    device: str,
+):
+    key = (
+        str(pretrained_model_name_or_path),
+        str(checkpoint_path),
+        str(device),
+    )
+    if key not in _INPAINT_BUNDLE_CACHE:
+        _INPAINT_BUNDLE_CACHE[key] = load_inpaint_bundle(
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            checkpoint_path=checkpoint_path,
+            device=device,
+        )
+    return _INPAINT_BUNDLE_CACHE[key]
+
+
+def _cached_cross_v0_bundle(
+    *,
+    pretrained_model_name_or_path: str | Path,
+    checkpoint_path: str | Path,
+    device: str,
+):
+    key = (
+        str(pretrained_model_name_or_path),
+        str(checkpoint_path),
+        str(device),
+    )
+    if key not in _CROSS_V0_BUNDLE_CACHE:
+        _CROSS_V0_BUNDLE_CACHE[key] = load_cross_bundle(
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            checkpoint_path=checkpoint_path,
+            device=device,
+        )
+    return _CROSS_V0_BUNDLE_CACHE[key]
+
+
+def _cached_cross_v1_bundle(
+    *,
+    pretrained_model_name_or_path: str | Path,
+    checkpoint_path: str | Path,
+    uni_checkpoint_path: str | Path,
+    device: str,
+    torch_dtype: torch.dtype,
+    num_inference_steps: int,
+    guidance_scale: float,
+    controlnet_conditioning_scale: float,
+):
+    key = (
+        str(pretrained_model_name_or_path),
+        str(checkpoint_path),
+        str(uni_checkpoint_path),
+        str(device),
+        str(torch_dtype),
+        int(num_inference_steps),
+        float(guidance_scale),
+        float(controlnet_conditioning_scale),
+    )
+    if key not in _CROSS_V1_BUNDLE_CACHE:
+        from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
+
+        _CROSS_V1_BUNDLE_CACHE[key] = load_cross_v1_bundle(
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            checkpoint_path=checkpoint_path,
+            uni_checkpoint_path=uni_checkpoint_path,
+            device=device,
+            torch_dtype=torch_dtype,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            controlnet_conditioning_scale=controlnet_conditioning_scale,
+        )
+    return _CROSS_V1_BUNDLE_CACHE[key]
 
 
 def _change_area_fraction(change_region: np.ndarray) -> float:
@@ -603,10 +738,16 @@ def _change_area_fraction(change_region: np.ndarray) -> float:
     return float(np.count_nonzero(changed)) / int(changed.size) if changed.size else 0.0
 
 
-def _select_generation_mode(generation_mode: str, change_ratio: float, threshold: float) -> str:
+def _select_generation_mode(
+    generation_mode: str,
+    change_ratio: float,
+    threshold: float,
+    *,
+    cross_backend: str = "cross-v1",
+) -> str:
     if generation_mode == "auto":
-        return "inpaint" if change_ratio > threshold else "cross-v1"
-    if generation_mode in {"inpaint", "cross-v1"}:
+        return "inpaint" if change_ratio > threshold else cross_backend
+    if generation_mode in {"inpaint", "cross-v0", "cross-v1"}:
         return generation_mode
     return "dry-run"
 
@@ -633,6 +774,7 @@ def _save_compare_panel(
     target_mask_rgb: np.ndarray,
     generated_image: np.ndarray,
     title: str,
+    prompt: str,
 ) -> Path:
     panels = [
         ("Reference", reference_image),
@@ -641,7 +783,7 @@ def _save_compare_panel(
         ("Generated", generated_image),
     ]
     h, w = reference_image.shape[:2]
-    header_h = 28
+    header_h = 52
     footer_h = 26
     gap = 4
     out = Image.new("RGB", (w * len(panels) + gap * (len(panels) - 1), h + header_h + footer_h), (245, 245, 245))
@@ -650,10 +792,58 @@ def _save_compare_panel(
         x = idx * (w + gap)
         out.paste(Image.fromarray(array).resize((w, h)), (x, header_h))
         draw.text((x + 5, 7), label, fill=(0, 0, 0))
+    draw.text((5, 24), title[:180], fill=(0, 0, 0))
+    draw.text((5, 38), f"prompt: {prompt[:220]}", fill=(0, 0, 0))
     draw.text((5, h + header_h + 6), title[:180], fill=(0, 0, 0))
     path.parent.mkdir(parents=True, exist_ok=True)
     out.save(path)
     return path
+
+
+def _match_image_color_to_reference(
+    *,
+    source: np.ndarray,
+    reference: np.ndarray,
+    method: str,
+) -> np.ndarray:
+    if method == "lab":
+        return _mean_std_transfer_pil_lab(source=source, reference=reference)
+    raise ValueError(f"Unsupported color match method: {method}")
+
+
+def _mean_std_transfer_pil_lab(*, source: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    from skimage.color import lab2rgb, rgb2lab
+
+    source_rgb = np.asarray(source, dtype=np.float32) / 255.0
+    reference_rgb = np.asarray(reference, dtype=np.float32) / 255.0
+    source_lab = rgb2lab(source_rgb).astype(np.float32)
+    reference_lab = rgb2lab(reference_rgb).astype(np.float32)
+    source_mask = _tissue_mask_from_rgb(source_rgb)
+    reference_mask = _tissue_mask_from_rgb(reference_rgb)
+
+    if not np.any(source_mask) or not np.any(reference_mask):
+        return np.asarray(source, dtype=np.uint8)
+
+    matched_lab = source_lab.copy()
+    for channel in range(3):
+        source_values = source_lab[..., channel][source_mask]
+        reference_values = reference_lab[..., channel][reference_mask]
+        source_std = float(source_values.std())
+        reference_std = float(reference_values.std())
+        matched_lab[..., channel][source_mask] = (
+            (source_values - float(source_values.mean()))
+            * (reference_std / max(source_std, 1e-6))
+            + float(reference_values.mean())
+        )
+
+    matched_rgb = np.clip(lab2rgb(matched_lab), 0.0, 1.0)
+    output = source_rgb.copy()
+    output[source_mask] = matched_rgb[source_mask]
+    return (output * 255.0).round().astype(np.uint8)
+
+
+def _tissue_mask_from_rgb(rgb_float: np.ndarray, threshold: float = 0.85) -> np.ndarray:
+    return rgb_float.mean(axis=-1) < threshold
 
 
 def _save_target_combined_mask(
@@ -771,19 +961,57 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--generation-mode",
-        choices=("dry-run", "inpaint", "cross-v1", "auto"),
+        choices=("dry-run", "inpaint", "cross-v0", "cross-v1", "auto"),
         default="dry-run",
-        help="dry-run writes artifacts without loading ControlNet; auto uses >threshold inpaint else cross-v1.",
+        help="dry-run writes artifacts without loading ControlNet; auto uses >threshold inpaint else the selected cross backend.",
     )
     parser.add_argument("--route-threshold", type=float, default=0.35)
+    parser.add_argument(
+        "--cross-backend",
+        choices=("cross-v0", "cross-v1"),
+        default="cross-v1",
+        help="Cross model used by --generation-mode auto.",
+    )
     parser.add_argument("--pretrained-model-name-or-path")
     parser.add_argument("--inpaint-checkpoint", type=Path)
+    parser.add_argument("--cross-checkpoint", type=Path)
     parser.add_argument("--cross-v1-checkpoint", type=Path)
     parser.add_argument("--uni-checkpoint", type=Path)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--prompt", default=None)
+    parser.add_argument("--prompt-source", choices=("metadata", "dataset"), default="dataset")
+    parser.add_argument("--torch-dtype", choices=("bf16", "fp16", "fp32"), default="bf16")
+    parser.add_argument("--num-inference-steps", type=int, default=28)
+    parser.add_argument("--guidance-scale", type=float, default=3.5)
+    parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--color-match",
+        choices=("none", "lab"),
+        default="lab",
+        help="Postprocess cross-v1 output to match reference stain/color statistics.",
+    )
     parser.add_argument("--print-summary", action="store_true")
     return parser
+
+
+def _parse_torch_dtype(name: str) -> torch.dtype:
+    dtype_by_name = {
+        "bf16": torch.bfloat16,
+        "fp16": torch.float16,
+        "fp32": torch.float32,
+    }
+    try:
+        return dtype_by_name[name]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported torch dtype: {name!r}") from exc
+
+
+def _resolve_cross_v1_prompt(*, prompt_override: str | None, prompt_source: str, dataset: str) -> str:
+    if prompt_override:
+        return prompt_override
+    if prompt_source == "dataset":
+        return default_prompt_for_dataset(dataset)
+    return default_prompt_for_dataset(dataset)
 
 
 if __name__ == "__main__":

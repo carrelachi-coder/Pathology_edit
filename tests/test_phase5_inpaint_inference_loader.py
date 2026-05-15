@@ -110,6 +110,21 @@ class Phase5InpaintInferenceLoaderTests(unittest.TestCase):
 
         self.assertEqual(output.dtype, torch.float64)
 
+    @unittest.skipIf(torch is None, "torch is required for the device validation test")
+    def test_resolve_device_rejects_non_visible_cuda_index(self):
+        with patch.object(pipeline.torch.cuda, "is_available", return_value=True), patch.object(
+            pipeline.torch.cuda, "device_count", return_value=1
+        ), patch.dict("os.environ", {"CUDA_VISIBLE_DEVICES": "3"}):
+            with self.assertRaisesRegex(ValueError, "not visible"):
+                pipeline._resolve_device("cuda:1")
+
+    @unittest.skipIf(torch is None, "torch is required for the device validation test")
+    def test_resolve_device_accepts_cuda_alias_for_first_visible_gpu(self):
+        with patch.object(pipeline.torch.cuda, "is_available", return_value=True), patch.object(
+            pipeline.torch.cuda, "device_count", return_value=1
+        ):
+            self.assertEqual(pipeline._resolve_device("cuda"), "cuda")
+
 
 if __name__ == "__main__":
     unittest.main()

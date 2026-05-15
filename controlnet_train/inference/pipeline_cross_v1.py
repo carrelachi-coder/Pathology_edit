@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -60,6 +61,7 @@ def load_cross_v1_bundle(
     guidance_scale: float = 3.5,
     controlnet_conditioning_scale: float = 1.0,
 ) -> CrossV1InferenceBundle:
+    device = _resolve_device(device)
     dtype = _resolve_torch_dtype(torch_dtype, device)
     checkpoint = _validate_checkpoint_dir(checkpoint_path)
 
@@ -81,6 +83,7 @@ def load_cross_v1_bundle(
     for i, block in enumerate(pipe.transformer.transformer_blocks):
         block.attn.processor.to_k_ip.load_state_dict(ip_state[f"block_{i}_to_k_ip"])
         block.attn.processor.to_v_ip.load_state_dict(ip_state[f"block_{i}_to_v_ip"])
+    _move_ip_adapter_modules(pipe.transformer, device=device, torch_dtype=dtype)
 
     ip_adapter_modules = _collect_ip_adapter_modules(pipe.transformer)
 
@@ -122,6 +125,12 @@ def run_cross_v1_bundle(
     ref_features = bundle.ref_encoder(
         reference_image.unsqueeze(0).to(device=bundle.device, dtype=bundle.torch_dtype)
     )
+    ref_features = ref_features.to(device=bundle.device, dtype=bundle.torch_dtype)
+    ip_hidden_states = bundle.flux_pipeline.transformer.encoder_hid_proj([ref_features])
+    ip_hidden_states = [
+        hidden.to(device=bundle.device, dtype=bundle.torch_dtype)
+        for hidden in ip_hidden_states
+    ]
 
     # Build spatial control tensor (no reference_image_latent)
     reference_tissue_feat = bundle.condition_modules["tissue_downsampler"](
@@ -160,7 +169,7 @@ def run_cross_v1_bundle(
         num_inference_steps=bundle.num_inference_steps,
         guidance_scale=bundle.guidance_scale,
         controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
-        joint_attention_kwargs={"ip_adapter_image_embeds": [ref_features]},
+        joint_attention_kwargs={"ip_hidden_states": ip_hidden_states},
     )
 
 
@@ -174,6 +183,41 @@ def _resolve_torch_dtype(torch_dtype: torch.dtype | None, device: str) -> torch.
     return torch.bfloat16 if "cuda" in str(device).lower() else torch.float32
 
 
+def _resolve_device(device: str | torch.device | None) -> str:
+    value = str(device or "cuda").strip().lower()
+    if value == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if value == "cpu":
+        return value
+    if value == "cuda":
+        _validate_cuda_device(value, index=0)
+        return value
+    if value.startswith("cuda:"):
+        try:
+            index = int(value.split(":", 1)[1])
+        except ValueError as exc:
+            raise ValueError(f"Invalid CUDA device {device!r}; expected cuda or cuda:<index>.") from exc
+        _validate_cuda_device(value, index=index)
+        return value
+    raise ValueError(f"Unsupported device {device!r}; choose auto, cpu, cuda, or cuda:<index>.")
+
+
+def _validate_cuda_device(device: str, *, index: int) -> None:
+    if index < 0:
+        raise ValueError(f"Invalid CUDA device {device!r}; CUDA index must be non-negative.")
+    if not torch.cuda.is_available():
+        raise ValueError(f"CUDA device {device!r} was requested, but CUDA is not available.")
+    visible_count = torch.cuda.device_count()
+    if index >= visible_count:
+        visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+        visible_msg = f" CUDA_VISIBLE_DEVICES={visible!r}." if visible is not None else ""
+        raise ValueError(
+            f"CUDA device {device!r} is not visible to this process; "
+            f"torch sees {visible_count} CUDA device(s).{visible_msg} "
+            "Use 'cuda'/'cuda:0' for the first visible GPU, or adjust CUDA_VISIBLE_DEVICES."
+        )
+
+
 def _validate_checkpoint_dir(checkpoint_path: str | Path) -> Path:
     checkpoint = Path(checkpoint_path)
     if not checkpoint.exists():
@@ -183,6 +227,17 @@ def _validate_checkpoint_dir(checkpoint_path: str | Path) -> Path:
     if not (checkpoint / "phase5_conditioning.pt").exists():
         raise FileNotFoundError(f"Missing phase5_conditioning.pt under checkpoint path: {checkpoint}")
     return checkpoint
+
+
+def _move_ip_adapter_modules(transformer: nn.Module, *, device: str, torch_dtype: torch.dtype) -> None:
+    if hasattr(transformer, "encoder_hid_proj"):
+        transformer.encoder_hid_proj.to(device=device, dtype=torch_dtype)
+    for block in getattr(transformer, "transformer_blocks", []):
+        processor = getattr(getattr(block, "attn", None), "processor", None)
+        for name in ("to_k_ip", "to_v_ip"):
+            module = getattr(processor, name, None)
+            if module is not None:
+                module.to(device=device, dtype=torch_dtype)
 
 
 def _load_flux_controlnet_pipeline(

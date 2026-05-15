@@ -210,6 +210,27 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
 
         self.assertEqual(intents[0].primitive, "grade_upgrade")
 
+    def test_glas_growth_and_grade_upgrade_plans_both_area_and_fine_transition(self):
+        diff = semantic_diff_with(
+            tumor_change={
+                "growth": "increase",
+                "degree": "moderate",
+                "grade_change": "upgrade",
+            }
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="GlaS",
+            old_prompt="Adenomatous low-grade malignant glands.",
+            new_prompt="Higher-grade colorectal adenocarcinoma appearance.",
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["tumor_burden_increase", "adenoma_to_carcinoma"],
+        )
+
     def test_applicability_rejection_removes_intent_from_executable_list(self):
         diff = semantic_diff_with(
             lymphocyte_change={"infiltration": "increase", "degree": "moderate"}

@@ -254,7 +254,7 @@ def _raw_intent_specs(
             )
         )
 
-    if tumor_change["grade_change"] != "none" and tumor_growth == "none":
+    if tumor_change["grade_change"] != "none":
         special_payload = _specialized_grade_payload(
             tumor_change["grade_change"],
             reference_profile=reference_profile,

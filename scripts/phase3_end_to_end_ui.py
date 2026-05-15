@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -82,11 +83,41 @@ DEFAULT_DENSITY_SCALE_TEMPLATE = (
 )
 DEFAULT_PRETRAINED_MODEL = "/data/huggingface/FLUX.1-dev"
 DEFAULT_INPAINT_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_inpaint_all"
+DEFAULT_CROSS_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross"
 DEFAULT_CROSS_V1_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1/checkpoint-40000"
 DEFAULT_UNI_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorch_model.bin"
-CUDA_DEVICE_CHOICES = [f"cuda:{idx}" for idx in range(8)]
+CUDA_DEVICE_CHOICES = []
 PROBNET_DEVICE_CHOICES = ["auto", *CUDA_DEVICE_CHOICES, "cpu"]
-GENERATION_DEVICE_CHOICES = CUDA_DEVICE_CHOICES
+GENERATION_DEVICE_CHOICES = ["cuda", *CUDA_DEVICE_CHOICES, "cpu"]
+
+
+def _detect_visible_cuda_device_choices() -> list[str]:
+    try:
+        import torch
+
+        count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    except Exception:
+        count = _detect_nvidia_smi_gpu_count()
+    return [f"cuda:{idx}" for idx in range(count)] or ["cuda:0"]
+
+
+def _detect_nvidia_smi_gpu_count() -> int:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index", "--format=csv,noheader,nounits"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return 0
+    return sum(1 for line in result.stdout.splitlines() if line.strip())
+
+
+CUDA_DEVICE_CHOICES = _detect_visible_cuda_device_choices()
+PROBNET_DEVICE_CHOICES = ["auto", *CUDA_DEVICE_CHOICES, "cpu"]
+GENERATION_DEVICE_CHOICES = ["cuda", *CUDA_DEVICE_CHOICES, "cpu"]
 
 
 def _canonical_profile(profile: str) -> str:
@@ -157,13 +188,21 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
         "probnet_gamma_values": "1.0",
         "density_scale_json": None,
         "generation_mode": "dry-run",
+        "cross_backend": "cross-v1",
         "route_threshold": 0.35,
         "pretrained_model_name_or_path": None,
         "inpaint_checkpoint": None,
+        "cross_checkpoint": None,
         "cross_v1_checkpoint": None,
         "uni_checkpoint": None,
         "device": "cuda",
         "prompt": None,
+        "prompt_source": "dataset",
+        "torch_dtype": "bf16",
+        "num_inference_steps": 28,
+        "guidance_scale": 3.5,
+        "controlnet_conditioning_scale": 1.0,
+        "color_match": "lab",
         "print_summary": False,
     }
     defaults.update(overrides)
@@ -634,9 +673,11 @@ def run_cell_stage(
 def run_generation_stage(
     state: dict[str, Any],
     generation_mode: str,
+    cross_backend: str,
     route_threshold: float,
     model_path: str,
     inpaint_checkpoint: str,
+    cross_checkpoint: str,
     cross_v1_checkpoint: str,
     uni_checkpoint: str,
     device: str,
@@ -649,14 +690,24 @@ def run_generation_stage(
     args = _make_args(
         state,
         generation_mode=generation_mode,
+        cross_backend=cross_backend,
         route_threshold=route_threshold,
         pretrained_model_name_or_path=_defaulted_text(model_path, DEFAULT_PRETRAINED_MODEL),
         inpaint_checkpoint=Path(_defaulted_text(inpaint_checkpoint, DEFAULT_INPAINT_CHECKPOINT)),
+        cross_checkpoint=Path(_defaulted_text(cross_checkpoint, DEFAULT_CROSS_CHECKPOINT)),
         cross_v1_checkpoint=Path(_defaulted_text(cross_v1_checkpoint, DEFAULT_CROSS_V1_CHECKPOINT)),
         uni_checkpoint=Path(_defaulted_text(uni_checkpoint, DEFAULT_UNI_CHECKPOINT)),
         device=device or GENERATION_DEVICE_CHOICES[0],
         prompt=None,
     )
+    change_ratio = _change_area_fraction(change_region)
+    selected_mode = _select_generation_mode(
+        generation_mode,
+        change_ratio,
+        route_threshold,
+        cross_backend=cross_backend,
+    )
+    _validate_generation_paths(args, selected_mode)
     generated_path, generation_info = _run_generation_stage(
         args=args,
         output_dir=output_dir,
@@ -672,6 +723,7 @@ def run_generation_stage(
         target_mask_rgb=np.asarray(Image.open(output_dir / "target_mask_rgb.png").convert("RGB")),
         generated_image=np.asarray(Image.open(generated_path).convert("RGB")),
         title=f"{generation_info['selected_mode']} / change={generation_info['change_ratio']:.3f}",
+        prompt=str(generation_info.get("prompt", "")),
     )
     summary = {
         "status": "completed",
@@ -692,12 +744,32 @@ def run_generation_stage(
     return state, _json_text(summary), str(generated_path), str(panel_path)
 
 
-def preview_route(state: dict[str, Any], threshold: float) -> str:
+def _validate_generation_paths(args: SimpleNamespace, selected_mode: str) -> None:
+    required_paths: dict[str, Path] = {}
+    if selected_mode == "inpaint":
+        required_paths["inpaint checkpoint"] = Path(args.inpaint_checkpoint)
+    elif selected_mode == "cross-v0":
+        required_paths["cross-v0 checkpoint"] = Path(args.cross_checkpoint)
+    elif selected_mode == "cross-v1":
+        required_paths["cross-v1 checkpoint"] = Path(args.cross_v1_checkpoint)
+        required_paths["UNI checkpoint"] = Path(args.uni_checkpoint)
+
+    missing = [f"{label}: {path}" for label, path in required_paths.items() if not path.exists()]
+    if missing:
+        detail = "\n".join(f"- {item}" for item in missing)
+        raise gr.Error(
+            f"Selected generation mode '{selected_mode}' is missing required files:\n"
+            f"{detail}\n"
+            "Update the corresponding path in Advanced generation inputs, or choose dry-run."
+        )
+
+
+def preview_route(state: dict[str, Any], threshold: float, cross_backend: str) -> str:
     if not state or not state.get("change_region"):
         return "Run the tissue stage first."
     change_region = load_change_region(state["change_region"])
     ratio = _change_area_fraction(change_region)
-    selected = _select_generation_mode("auto", ratio, threshold)
+    selected = _select_generation_mode("auto", ratio, threshold, cross_backend=cross_backend)
     return f"change_region = {ratio:.2%}; auto route = {selected} (threshold {threshold:.0%})"
 
 
@@ -724,13 +796,31 @@ def check_cuda_memory() -> str:
         return f"nvidia-smi failed: {detail or exc}"
 
     lines: list[str] = []
+    visible_devices = _cuda_visible_devices_summary()
+    if visible_devices:
+        lines.append(visible_devices)
     for raw_line in result.stdout.splitlines():
         parts = [part.strip() for part in raw_line.split(",")]
         if len(parts) != 4:
             continue
         index, name, free_mib, total_mib = parts
-        lines.append(f"cuda:{index}  {free_mib} / {total_mib} MiB free  {name}")
+        lines.append(f"physical GPU {index}  {free_mib} / {total_mib} MiB free  {name}")
     return "\n".join(lines) if lines else "No CUDA GPU memory rows returned by nvidia-smi."
+
+
+def _cuda_visible_devices_summary() -> str:
+    try:
+        import torch
+
+        torch_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    except Exception:
+        torch_count = 0
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    parts = [f"PyTorch visible devices: cuda:0..cuda:{torch_count - 1}" if torch_count else "PyTorch visible devices: none"]
+    if visible is not None:
+        parts.append(f"CUDA_VISIBLE_DEVICES={visible}")
+    parts.append("nvidia-smi rows below use physical GPU indexes")
+    return "; ".join(parts)
 
 
 def _primitive_config(recipe: dict[str, Any], primitive_name: str) -> dict[str, Any]:
@@ -788,14 +878,22 @@ def _build_contour_intent(
     source_labels: str,
     target_label: str,
 ) -> EditIntent:
+    schema = MaskProfileSchema.from_reference_profile(profile)
     operation = primitive_config.get("mask_operation", {})
-    source = _split_csv(source_labels) or _default_contour_sources(primitive_config, operation)
-    target = target_label.strip() if target_label else ""
+    source = _filter_schema_labels(
+        _split_csv(source_labels) or _default_contour_sources(primitive_config, operation),
+        schema,
+    )
+    target = _schema_label_or_none(target_label.strip() if target_label else "", schema) or ""
     if not target:
-        schema = MaskProfileSchema.from_reference_profile(profile)
         target = _default_contour_target(primitive_config, operation, schema=schema)
+    target = _schema_label_or_none(target, schema) or ""
     if not source:
-        raise gr.Error("Please provide at least one source label.")
+        raise gr.Error(
+            "Please provide at least one source label available in "
+            f"profile {schema.reference_profile}. Readable labels are: "
+            f"{', '.join(sorted(schema.readable_labels))}."
+        )
     if not target:
         raise gr.Error("Please provide a target label.")
     return EditIntent(
@@ -814,20 +912,55 @@ def _with_default_contour_labels(
 ) -> EditIntent:
     operation = primitive_config.get("mask_operation", {})
     operation = operation if isinstance(operation, dict) else {}
-    source = tuple(intent.source_labels) or tuple(
-        _default_contour_sources(primitive_config, operation)
+    source = tuple(
+        _filter_schema_labels(
+            tuple(intent.source_labels)
+            or tuple(_default_contour_sources(primitive_config, operation)),
+            schema,
+        )
     )
-    target = intent.target_label or _default_contour_target(
-        primitive_config,
-        operation,
-        schema=schema,
+    target = _schema_label_or_none(
+        intent.target_label
+        or _default_contour_target(
+            primitive_config,
+            operation,
+            schema=schema,
+        ),
+        schema,
     )
-    if source == tuple(intent.source_labels) and target == intent.target_label:
+    preserve = tuple(_filter_schema_labels(intent.preserve_labels, schema))
+    forbidden = tuple(_filter_schema_labels(intent.forbidden_labels, schema))
+    if not target:
+        target = schema.choose_default_backfill_label(exclude_labels=source)
+    if not source:
+        raise gr.Error(
+            "No valid source labels remain for "
+            f"profile {schema.reference_profile} and primitive {intent.primitive}. "
+            f"Readable labels are: {', '.join(sorted(schema.readable_labels))}."
+        )
+    if (
+        source == list(intent.source_labels)
+        and target == intent.target_label
+        and preserve == tuple(intent.preserve_labels)
+        and forbidden == tuple(intent.forbidden_labels)
+    ):
         return intent
     payload = intent.to_metadata()
     payload["source_labels"] = list(source)
     payload["target_label"] = target
+    payload["preserve_labels"] = list(preserve)
+    payload["forbidden_labels"] = list(forbidden)
     return EditIntent.from_mapping(payload)
+
+
+def _filter_schema_labels(labels: tuple[str, ...] | list[str], schema: MaskProfileSchema) -> list[str]:
+    return [label for label in labels if label in schema.readable_labels]
+
+
+def _schema_label_or_none(label: str | None, schema: MaskProfileSchema) -> str | None:
+    if label and label in schema.writable_labels:
+        return label
+    return None
 
 
 def _build_contour_provider(
@@ -1060,7 +1193,8 @@ def build_ui() -> gr.Blocks:
 
         gr.Markdown("### Image generation")
         with gr.Row():
-            generation_mode = gr.Radio(["dry-run", "auto", "inpaint", "cross-v1"], value="dry-run", label="generation mode")
+            generation_mode = gr.Radio(["dry-run", "auto", "inpaint", "cross-v0", "cross-v1"], value="dry-run", label="generation mode")
+            cross_backend = gr.Radio(["cross-v0", "cross-v1"], value="cross-v1", label="auto cross backend")
             route_threshold = gr.Slider(0.0, 1.0, value=0.35, step=0.01, label="inpaint if change > threshold")
         route_button = gr.Button("Preview route")
         route_log = gr.Textbox(label="route")
@@ -1070,7 +1204,9 @@ def build_ui() -> gr.Blocks:
                 device = gr.Dropdown(GENERATION_DEVICE_CHOICES, value=GENERATION_DEVICE_CHOICES[0], label="device")
             with gr.Row():
                 inpaint_checkpoint = gr.Textbox(value=DEFAULT_INPAINT_CHECKPOINT, label="inpaint checkpoint")
+                cross_checkpoint = gr.Textbox(value=DEFAULT_CROSS_CHECKPOINT, label="cross-v0 checkpoint")
                 cross_v1_checkpoint = gr.Textbox(value=DEFAULT_CROSS_V1_CHECKPOINT, label="cross-v1 checkpoint")
+            with gr.Row():
                 uni_checkpoint = gr.Textbox(value=DEFAULT_UNI_CHECKPOINT, label="UNI checkpoint")
         generate_button = gr.Button("4. Route + generate")
         generation_log = gr.Code(label="summary", language="json")
@@ -1140,15 +1276,17 @@ def build_ui() -> gr.Blocks:
             ],
             outputs=[state, cell_log, retained_preview, new_cells_preview, combined_preview],
         )
-        route_button.click(preview_route, inputs=[state, route_threshold], outputs=[route_log])
+        route_button.click(preview_route, inputs=[state, route_threshold, cross_backend], outputs=[route_log])
         generate_button.click(
             run_generation_stage,
             inputs=[
                 state,
                 generation_mode,
+                cross_backend,
                 route_threshold,
                 model_path,
                 inpaint_checkpoint,
+                cross_checkpoint,
                 cross_v1_checkpoint,
                 uni_checkpoint,
                 device,

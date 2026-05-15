@@ -184,6 +184,7 @@ def execute_fixture_contour_backend(
             primitive_config=primitive_config,
             changed_area_fraction=edit_result.changed_area_fraction,
             strength=intent.strength,
+            execution_log=edit_result.ops_log,
         )
         status = STATUS_VALIDATED if validation.passed else STATUS_VALIDATION_FAILED
     except Exception as exc:  # pragma: no cover - defensive boundary for CLI use.
@@ -378,6 +379,7 @@ def _save_projection_comparison_artifacts(
             schema=schema,
             primitive_config=primitive_config,
             changed_area_fraction=edit.changed_area_fraction,
+            execution_log=edit.ops_log,
         )
         branch_role = "primary" if mode == primary_projection_mode else "debug"
         mode_dir = output_dir / mode
@@ -441,6 +443,7 @@ def _save_projection_comparison_artifacts(
         schema=schema,
         primitive_config=primitive_config,
         changed_area_fraction=primary_edit.changed_area_fraction,
+        execution_log=primary_edit.ops_log,
     )
     visual_paths = save_visual_qa_bundle(
         source_mask=source_mask,

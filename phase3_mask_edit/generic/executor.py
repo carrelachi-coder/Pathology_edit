@@ -172,6 +172,7 @@ def execute_edit(
         schema=schema,
         primitive_config=primitive_config,
         changed_area_fraction=edit_result.changed_area_fraction,
+        execution_log=edit_result.ops_log,
     )
 
     status = "executed_validated" if validation.passed else "executed_with_validation_warnings"

@@ -53,6 +53,7 @@ def validate_edit_result(
     primitive_config: Mapping[str, Any],
     changed_area_fraction: float,
     strength: str = "mild",
+    execution_log: Mapping[str, Any] | None = None,
 ) -> ValidationResult:
     """Run all applicable validation checks on a primitive edit output.
 
@@ -75,6 +76,7 @@ def validate_edit_result(
             change_region=change_region,
             schema=schema,
             strength=strength,
+            execution_log=execution_log,
         )
     )
     checks.append(_check_label_legality(target_mask, schema))
@@ -131,6 +133,7 @@ def _check_change_area_range(
     change_region: np.ndarray | None = None,
     schema: MaskProfileSchema | None = None,
     strength: str = "mild",
+    execution_log: Mapping[str, Any] | None = None,
 ) -> ValidationCheck:
     ranges = primitive_config.get("parameter_ranges", {})
     defaults = primitive_config.get("_defaults", {})
@@ -141,7 +144,12 @@ def _check_change_area_range(
         and change_region is not None
     ):
         return _check_fine_transition_source_relative_change_area(
-            src_mask, change_region, ranges, primitive_config
+            src_mask,
+            change_region,
+            ranges,
+            primitive_config,
+            strength=strength,
+            execution_log=execution_log,
         )
     if (
         primitive_config.get("name") == "necrosis_appearance"
@@ -224,6 +232,9 @@ def _check_fine_transition_source_relative_change_area(
     change_region: np.ndarray,
     ranges: Mapping[str, Any],
     primitive_config: Mapping[str, Any],
+    *,
+    strength: str,
+    execution_log: Mapping[str, Any] | None,
 ) -> ValidationCheck:
     source_ids = _fine_transition_source_ids(primitive_config)
     source_pixels = int(np.count_nonzero(np.isin(src_mask, source_ids)))
@@ -236,13 +247,28 @@ def _check_fine_transition_source_relative_change_area(
         )
 
     fraction = changed_pixels / source_pixels
-    min_fraction, max_fraction = _resolve_fine_transition_fraction_range(ranges)
+    min_fraction, max_fraction = _resolve_fine_transition_fraction_range(
+        ranges,
+        strength=strength,
+    )
     if min_fraction <= fraction <= max_fraction:
         return ValidationCheck(
             "fine_transition_source_relative_change_area",
             True,
             f"source_relative_fraction={fraction:.4f} in "
             f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    whole_component_detail = _whole_component_budget_exception_detail(
+        fraction=fraction,
+        max_fraction=max_fraction,
+        source_pixels=source_pixels,
+        execution_log=execution_log,
+    )
+    if whole_component_detail is not None:
+        return ValidationCheck(
+            "fine_transition_source_relative_change_area",
+            True,
+            whole_component_detail,
         )
     return ValidationCheck(
         "fine_transition_source_relative_change_area",
@@ -252,9 +278,20 @@ def _check_fine_transition_source_relative_change_area(
     )
 
 
-def _resolve_fine_transition_fraction_range(ranges: Mapping[str, Any]) -> tuple[float, float]:
+def _resolve_fine_transition_fraction_range(
+    ranges: Mapping[str, Any],
+    *,
+    strength: str,
+) -> tuple[float, float]:
     transition_ranges = ranges.get("source_area_transition_fraction", {})
     if isinstance(transition_ranges, Mapping):
+        interval = transition_ranges.get(strength)
+        if (
+            isinstance(interval, list)
+            and len(interval) == 2
+            and all(isinstance(item, (int, float)) for item in interval)
+        ):
+            return float(interval[0]), float(interval[1])
         lows: list[float] = []
         highs: list[float] = []
         for interval in transition_ranges.values():
@@ -268,6 +305,51 @@ def _resolve_fine_transition_fraction_range(ranges: Mapping[str, Any]) -> tuple[
         if lows and highs:
             return min(lows), max(highs)
     return 0.08, 0.70
+
+
+def _whole_component_budget_exception_detail(
+    *,
+    fraction: float,
+    max_fraction: float,
+    source_pixels: int,
+    execution_log: Mapping[str, Any] | None,
+) -> str | None:
+    if fraction <= max_fraction or not isinstance(execution_log, Mapping):
+        return None
+    if execution_log.get("area_budget_policy") != "whole_components_no_partial_split":
+        return None
+    if execution_log.get("selection_unit") != "connected_component":
+        return None
+
+    selected_areas = _positive_int_list(execution_log.get("selected_component_areas"))
+    if not selected_areas:
+        return None
+    selected_pixels = sum(selected_areas)
+    max_pixels = int(np.floor(source_pixels * max_fraction))
+    smallest_selected = min(selected_areas)
+
+    # Whole-component fine transitions must not split glands/tumor objects. If the
+    # smallest selected source component already exceeds the requested upper
+    # fraction, the overshoot is the legal object-level minimum, not a bad edit.
+    if smallest_selected <= max_pixels:
+        return None
+    return (
+        f"source_relative_fraction={fraction:.4f} exceeds max {max_fraction:.2f}, "
+        "accepted because whole connected-component relabeling cannot satisfy "
+        "the area cap without splitting a source component; "
+        f"selected_component_areas={selected_areas}, source_pixels={source_pixels}, "
+        f"max_pixels={max_pixels}, selected_pixels={selected_pixels}."
+    )
+
+
+def _positive_int_list(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    for item in value:
+        if isinstance(item, int) and item > 0:
+            result.append(int(item))
+    return result
 
 
 def _is_fine_label_transition(primitive_config: Mapping[str, Any]) -> bool:

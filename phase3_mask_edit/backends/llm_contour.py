@@ -323,6 +323,16 @@ def execute_contour_proposal_write(
                 seed=organic_seed,
                 strength=strength,
             )
+        elif _is_fine_label_transition(primitive_config):
+            result = _execute_fine_transition_projection(
+                old_mask,
+                raw_candidate,
+                proposal,
+                schema=schema,
+                primitive_config=primitive_config or {},
+                seed=organic_seed,
+                strength=strength,
+            )
         else:
             result = apply_organic_projected_label_write(
                 old_mask,
@@ -448,6 +458,221 @@ def _execute_hard_projection(
         warnings=warnings,
         ops_log=ops_log,
     )
+
+
+def _is_fine_label_transition(primitive_config: Mapping[str, Any] | None) -> bool:
+    operation = (primitive_config or {}).get("mask_operation", {})
+    return isinstance(operation, Mapping) and operation.get("type") == "fine_label_transition"
+
+
+def _execute_fine_transition_projection(
+    old_mask: np.ndarray,
+    raw_candidate: np.ndarray,
+    proposal: ContourProposal,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    seed: int,
+    strength: str,
+) -> PrimitiveEditResult:
+    del schema, proposal, seed
+    operation = primitive_config.get("mask_operation", {})
+    if not isinstance(operation, Mapping):
+        raise ContourProposalValidationError("fine_label_transition requires mask_operation.")
+    source_ids = _int_tuple(operation.get("source_fine_ids"))
+    target_id = operation.get("target_fine_id")
+    if not source_ids or not isinstance(target_id, int):
+        raise ContourProposalValidationError(
+            "fine_label_transition requires source_fine_ids and target_fine_id."
+        )
+
+    target_pixels = _fine_transition_target_pixels(
+        old_mask,
+        primitive_config=primitive_config,
+        strength=strength,
+    )
+    legal_domain = np.isin(old_mask, source_ids)
+    change_region, selection_log = _fine_transition_change_region(
+        raw_candidate,
+        legal_domain=legal_domain,
+        target_pixels=target_pixels,
+    )
+    selected_pixels = int(np.count_nonzero(change_region))
+    target_mask = np.array(old_mask, copy=True)
+    if selected_pixels > 0:
+        target_mask[change_region] = int(target_id)
+    candidate_pixels = int(np.count_nonzero(raw_candidate))
+    legal_pixels = int(np.count_nonzero(legal_domain))
+    raw_legal_overlap = int(np.count_nonzero(raw_candidate & legal_domain))
+    changed_area_fraction = selected_pixels / int(old_mask.size)
+    warnings = ("proposal_projected_region_empty",) if selected_pixels == 0 else ()
+    if selected_pixels < target_pixels:
+        warnings = (*warnings, "fine_transition_area_shortfall")
+    return PrimitiveEditResult(
+        target_mask=target_mask,
+        change_region=change_region,
+        changed_area_fraction=changed_area_fraction,
+        selected_pixels=selected_pixels,
+        warnings=warnings,
+        ops_log={
+            "backend": CONTOUR_PROPOSAL_BACKEND,
+            "projection_backend": "fine_transition_source_fine_id_projection",
+            "method": "fine_transition_source_fine_id_template_projection",
+            "primitive": primitive_config.get("name"),
+            "operation_type": "fine_label_transition",
+            "target_change_fraction_semantics": "source_fine_id_relative_relabel_fraction",
+            "target_change_fraction_denominator": "source_fine_id_pixels",
+            "source_fine_ids": list(source_ids),
+            "target_fine_id": int(target_id),
+            "target_label_write_source": "fine_label_transition.target_fine_id",
+            "raw_candidate_pixels": candidate_pixels,
+            "candidate_pixels": candidate_pixels,
+            "raw_candidate_legal_overlap_pixels": raw_legal_overlap,
+            "legal_domain_pixels": legal_pixels,
+            "target_pixels": int(target_pixels),
+            "projected_pixels": selected_pixels,
+            "selected_pixels": selected_pixels,
+            "source_relative_fraction": (
+                selected_pixels / legal_pixels if legal_pixels else 0.0
+            ),
+            "changed_area_fraction": changed_area_fraction,
+            "projection_retained_fraction": (
+                selected_pixels / candidate_pixels if candidate_pixels else 0.0
+            ),
+            "area_shortfall": int(max(target_pixels - selected_pixels, 0)),
+            **selection_log,
+        },
+    )
+
+
+def _fine_transition_change_region(
+    raw_candidate: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    target_pixels: int,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    target_pixels = max(0, min(int(target_pixels), int(np.count_nonzero(legal_domain))))
+    selected = np.zeros(legal_domain.shape, dtype=bool)
+    selection_log: dict[str, Any] = {
+        "selection_unit": "connected_component",
+        "selection_policy": "whole_source_components_template_prioritized",
+        "area_budget_policy": "whole_components_no_partial_split",
+        "source_component_count": 0,
+        "selected_component_ids": [],
+        "selected_component_areas": [],
+        "selected_component_template_overlap_pixels": [],
+        "area_budget_delta_pixels": int(-target_pixels),
+        "skipped_components_due_to_area_budget": 0,
+    }
+    if target_pixels == 0:
+        return selected, selection_log
+
+    labeled, component_count = ndimage.label(
+        legal_domain,
+        structure=np.ones((3, 3), dtype=bool),
+    )
+    selection_log["source_component_count"] = int(component_count)
+    if component_count == 0:
+        return selected, selection_log
+
+    component_ids = np.arange(1, component_count + 1, dtype=np.int64)
+    component_areas = ndimage.sum(legal_domain, labeled, component_ids).astype(np.int64)
+    template = np.asarray(raw_candidate, dtype=bool)
+    overlap_areas = ndimage.sum(template, labeled, component_ids).astype(np.int64)
+
+    # Prefer components touched by the LLM template, then larger overlap, then larger
+    # source components. The write itself remains whole-component and in-place.
+    touched = overlap_areas > 0
+    order = np.lexsort((component_ids, -component_areas, -overlap_areas, ~touched))
+    selected_ids: list[int] = []
+    selected_areas: list[int] = []
+    selected_overlaps: list[int] = []
+    selected_pixels = 0
+    skipped_oversize = 0
+
+    for index in order:
+        component_id = int(component_ids[index])
+        area = int(component_areas[index])
+        if area > target_pixels - selected_pixels and selected_pixels > 0:
+            skipped_oversize += 1
+            continue
+        if area > target_pixels and selected_pixels == 0:
+            skipped_oversize += 1
+            continue
+        selected_ids.append(component_id)
+        selected_areas.append(area)
+        selected_overlaps.append(int(overlap_areas[index]))
+        selected_pixels += area
+        if selected_pixels >= target_pixels:
+            break
+
+    if not selected_ids:
+        overlapping_indices = np.flatnonzero(touched)
+        if len(overlapping_indices) > 0:
+            best = max(
+                overlapping_indices,
+                key=lambda idx: (int(overlap_areas[idx]), -int(component_areas[idx])),
+            )
+            index = int(best)
+        else:
+            index = int(np.argmin(component_areas))
+        selected_ids = [int(component_ids[index])]
+        selected_areas = [int(component_areas[index])]
+        selected_overlaps = [int(overlap_areas[index])]
+        selected_pixels = selected_areas[0]
+
+    selected = np.isin(labeled, selected_ids)
+    selection_log.update(
+        {
+            "selected_component_ids": selected_ids,
+            "selected_component_areas": selected_areas,
+            "selected_component_template_overlap_pixels": selected_overlaps,
+            "area_budget_delta_pixels": int(selected_pixels - target_pixels),
+            "skipped_components_due_to_area_budget": int(skipped_oversize),
+        }
+    )
+    return selected, selection_log
+
+
+def _fine_transition_target_pixels(
+    old_mask: np.ndarray,
+    *,
+    primitive_config: Mapping[str, Any],
+    strength: str,
+) -> int:
+    operation = primitive_config.get("mask_operation", {})
+    source_ids = _int_tuple(operation.get("source_fine_ids")) if isinstance(operation, Mapping) else ()
+    source_pixels = int(np.count_nonzero(np.isin(old_mask, source_ids)))
+    if source_pixels <= 0:
+        return 0
+
+    ranges = primitive_config.get("parameter_ranges", {})
+    fraction = _source_transition_fraction(ranges, strength=strength)
+    return max(1, min(source_pixels, int(round(source_pixels * fraction))))
+
+
+def _source_transition_fraction(ranges: Any, *, strength: str) -> float:
+    if not isinstance(ranges, Mapping):
+        return 0.25
+    intervals = ranges.get("source_area_transition_fraction")
+    if not isinstance(intervals, Mapping):
+        return 0.25
+    interval = intervals.get(strength)
+    if (
+        isinstance(interval, list)
+        and len(interval) == 2
+        and all(isinstance(item, (int, float)) for item in interval)
+    ):
+        return float(interval[0] + interval[1]) / 2.0
+    return 0.25
+
+
+def _int_tuple(value: Any) -> tuple[int, ...]:
+    if isinstance(value, int):
+        return (value,)
+    if isinstance(value, (list, tuple)) and all(isinstance(item, int) for item in value):
+        return tuple(value)
+    return ()
 
 
 def _validate_region(

@@ -760,6 +760,71 @@ class LLMContourAgentTests(unittest.TestCase):
         self.assertIn("Tumor", segments)
         self.assertNotIn("Background", segments)
 
+    def test_fine_transition_organic_projection_relabels_whole_source_components(self):
+        schema = MaskProfileSchema.from_reference_profile("GlaS")
+        recipe = load_recipe("phase3_mask_edit/recipes/glas.yaml")
+        primitive_config = _primitive(recipe, "adenoma_to_carcinoma")
+        mask = np.zeros((40, 40), dtype=np.int64)
+        mask[4:14, 4:14] = 11
+        mask[20:36, 20:36] = 11
+        provider = FakeSequenceContourProvider(
+            [
+                {
+                    "schema_version": "0.1",
+                    "backend": "llm_contour_proposal",
+                    "primitive": "adenoma_to_carcinoma",
+                    "reference_profile": "GlaS",
+                    "target_label": "Tumor",
+                    "coordinate_system": {
+                        "origin": "top_left",
+                        "point_format": "[x, y]",
+                        "x_axis": "horizontal_column_right",
+                        "y_axis": "vertical_row_down",
+                        "width": 40,
+                        "height": 40,
+                    },
+                    "regions": [
+                        {
+                            "region_id": "adenoma-template",
+                            "type": "polygon",
+                            "source_labels": ["Tumor"],
+                            "points": [[20, 20], [35, 20], [35, 35], [20, 35]],
+                            "confidence": 0.9,
+                        }
+                    ],
+                }
+            ]
+        )
+        intent = EditIntent(
+            primitive="adenoma_to_carcinoma",
+            strength="moderate",
+            reference_profile="GlaS",
+            source_labels=("Tumor",),
+            target_label="Tumor",
+        )
+
+        result = execute_llm_contour_agent(
+            old_mask=mask,
+            schema=schema,
+            intent=intent,
+            primitive_config=primitive_config,
+            provider=provider,
+            max_attempts=1,
+        )
+
+        self.assertEqual(result.status, STATUS_VALIDATED)
+        self.assertIsNotNone(result.edit_result)
+        selected_pixels = int(result.edit_result.selected_pixels)
+        self.assertEqual(selected_pixels, 100)
+        self.assertEqual(np.count_nonzero(result.edit_result.target_mask == 12), 100)
+        self.assertEqual(np.count_nonzero(result.edit_result.target_mask == 11), 256)
+        self.assertEqual(
+            result.edit_result.ops_log["selection_policy"],
+            "whole_source_components_template_prioritized",
+        )
+        self.assertEqual(result.edit_result.ops_log["selection_unit"], "connected_component")
+        self.assertEqual(result.edit_result.ops_log["selected_component_areas"], [100])
+
 
 def _synthetic_bcss_mask() -> np.ndarray:
     mask = np.zeros((64, 64), dtype=np.int64)

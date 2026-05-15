@@ -155,6 +155,11 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
         self.assertEqual(_select_generation_mode("auto", 0.36, 0.35), "inpaint")
         self.assertEqual(_select_generation_mode("auto", 0.35, 0.35), "cross-v1")
         self.assertEqual(_select_generation_mode("auto", 0.10, 0.35), "cross-v1")
+        self.assertEqual(
+            _select_generation_mode("auto", 0.10, 0.35, cross_backend="cross-v0"),
+            "cross-v0",
+        )
+        self.assertEqual(_select_generation_mode("cross-v0", 0.90, 0.35), "cross-v0")
 
     def test_diff_dry_run_executes_phase3_mask_edit_first(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -172,6 +173,7 @@ def load_inpaint_bundle(
     guidance_scale: float = 3.5,
     controlnet_conditioning_scale: float = 1.0,
 ) -> InpaintInferenceBundle:
+    device = _resolve_device(device)
     dtype = _resolve_torch_dtype(torch_dtype, device)
     checkpoint = _validate_checkpoint_dir(checkpoint_path)
     pipe, controlnet = _load_flux_controlnet_pipeline(
@@ -211,6 +213,7 @@ def load_cross_bundle(
     guidance_scale: float = 3.5,
     controlnet_conditioning_scale: float = 1.0,
 ) -> CrossV0InferenceBundle:
+    device = _resolve_device(device)
     dtype = _resolve_torch_dtype(torch_dtype, device)
     checkpoint = _validate_checkpoint_dir(checkpoint_path)
     pipe, controlnet = _load_flux_controlnet_pipeline(
@@ -450,6 +453,41 @@ def _resolve_torch_dtype(torch_dtype: torch.dtype | None, device: str) -> torch.
     if torch_dtype is not None:
         return torch_dtype
     return torch.bfloat16 if "cuda" in str(device).lower() else torch.float32
+
+
+def _resolve_device(device: str | torch.device | None) -> str:
+    value = str(device or "cuda").strip().lower()
+    if value == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if value == "cpu":
+        return value
+    if value == "cuda":
+        _validate_cuda_device(value, index=0)
+        return value
+    if value.startswith("cuda:"):
+        try:
+            index = int(value.split(":", 1)[1])
+        except ValueError as exc:
+            raise ValueError(f"Invalid CUDA device {device!r}; expected cuda or cuda:<index>.") from exc
+        _validate_cuda_device(value, index=index)
+        return value
+    raise ValueError(f"Unsupported device {device!r}; choose auto, cpu, cuda, or cuda:<index>.")
+
+
+def _validate_cuda_device(device: str, *, index: int) -> None:
+    if index < 0:
+        raise ValueError(f"Invalid CUDA device {device!r}; CUDA index must be non-negative.")
+    if not torch.cuda.is_available():
+        raise ValueError(f"CUDA device {device!r} was requested, but CUDA is not available.")
+    visible_count = torch.cuda.device_count()
+    if index >= visible_count:
+        visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+        visible_msg = f" CUDA_VISIBLE_DEVICES={visible!r}." if visible is not None else ""
+        raise ValueError(
+            f"CUDA device {device!r} is not visible to this process; "
+            f"torch sees {visible_count} CUDA device(s).{visible_msg} "
+            "Use 'cuda'/'cuda:0' for the first visible GPU, or adjust CUDA_VISIBLE_DEVICES."
+        )
 
 
 def _validate_checkpoint_dir(checkpoint_path: str | Path) -> Path:

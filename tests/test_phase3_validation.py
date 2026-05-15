@@ -73,6 +73,30 @@ def _boundary_pushing_config() -> dict:
     }
 
 
+def _glas_fine_transition_config() -> dict:
+    return {
+        "name": "adenoma_to_carcinoma",
+        "mask_operation": {
+            "type": "fine_label_transition",
+            "source_fine_ids": [11],
+            "target_fine_id": 12,
+        },
+        "required_tissue_labels": ["Tumor"],
+        "parameter_ranges": {
+            "source_area_transition_fraction": {
+                "mild": [0.08, 0.20],
+                "moderate": [0.20, 0.40],
+                "significant": [0.40, 0.70],
+            }
+        },
+        "validation_rules": [
+            "fine_transition_source_must_decrease",
+            "fine_transition_target_must_increase",
+            "change_region_must_match_source_fine_ids",
+        ],
+    }
+
+
 class GlobalValidationTests(unittest.TestCase):
     def test_change_area_nonempty_passes(self):
         schema = _bcss_schema()
@@ -488,6 +512,65 @@ class StromaDesmoplasiaGuardTests(unittest.TestCase):
             src, tgt, change, schema, config, 1 / 3,
         )
         check = next(c for c in result.checks if c.name == "change_region_must_be_outside_tumor")
+        self.assertFalse(check.passed)
+
+
+class FineTransitionValidationTests(unittest.TestCase):
+    def test_whole_component_overshoot_passes_when_smallest_component_exceeds_budget(self):
+        schema = MaskProfileSchema.from_reference_profile("GlaS")
+        src = np.zeros((1, 4), dtype=np.int64)
+        src[0, :3] = 11
+        tgt = np.array(src, copy=True)
+        tgt[0, :3] = 12
+        change = src == 11
+
+        result = validate_edit_result(
+            src,
+            tgt,
+            change,
+            schema,
+            _glas_fine_transition_config(),
+            changed_area_fraction=3 / 4,
+            strength="moderate",
+            execution_log={
+                "selection_unit": "connected_component",
+                "area_budget_policy": "whole_components_no_partial_split",
+                "selected_component_areas": [3],
+            },
+        )
+
+        check = next(
+            c
+            for c in result.checks
+            if c.name == "fine_transition_source_relative_change_area"
+        )
+        self.assertTrue(check.passed)
+        self.assertIn("accepted because whole connected-component", check.detail)
+
+    def test_fine_transition_overshoot_without_whole_component_policy_fails(self):
+        schema = MaskProfileSchema.from_reference_profile("GlaS")
+        src = np.zeros((1, 4), dtype=np.int64)
+        src[0, :3] = 11
+        tgt = np.array(src, copy=True)
+        tgt[0, :3] = 12
+        change = src == 11
+
+        result = validate_edit_result(
+            src,
+            tgt,
+            change,
+            schema,
+            _glas_fine_transition_config(),
+            changed_area_fraction=3 / 4,
+            strength="moderate",
+            execution_log={},
+        )
+
+        check = next(
+            c
+            for c in result.checks
+            if c.name == "fine_transition_source_relative_change_area"
+        )
         self.assertFalse(check.passed)
 
 
