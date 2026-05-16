@@ -17,7 +17,7 @@ class Phase3RecipeConfigTests(unittest.TestCase):
         recipe = load_recipe(GENERIC_RECIPE)
 
         self.assertEqual(recipe["schema_version"], 1)
-        self.assertEqual(len(recipe["primitives"]), 10)
+        self.assertEqual(len(recipe["primitives"]), 9)
         self.assertEqual(len(recipe["composite_recipes"]), 5)
 
         primitive_names = {primitive["name"] for primitive in recipe["primitives"]}
@@ -26,7 +26,6 @@ class Phase3RecipeConfigTests(unittest.TestCase):
             {
                 "tumor_burden_increase",
                 "tumor_burden_decrease",
-                "boundary_pushing_remodel",
                 "necrosis_appearance",
                 "necrosis_resolution",
                 "stromal_immune_infiltration",
@@ -63,15 +62,15 @@ class Phase3RecipeConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(RecipeValidationError, "lower < upper"):
             validate_recipe_schema(mutated)
 
-    def test_validator_rejects_boundary_primitive_with_xlarge_deid_bucket(self):
+    def test_validator_rejects_non_deid_primitive_with_xlarge_deid_bucket(self):
         recipe = load_recipe(GENERIC_RECIPE)
         mutated = copy.deepcopy(recipe)
-        boundary = next(
+        primitive = next(
             primitive
             for primitive in mutated["primitives"]
-            if primitive["name"] == "boundary_pushing_remodel"
+            if primitive["name"] == "stromal_immune_infiltration"
         )
-        boundary["parameter_ranges"]["target_changed_area_fraction"][
+        primitive["parameter_ranges"]["immune_area_delta_fraction"][
             "xlarge_deid"
         ] = [0.40, 0.50]
 

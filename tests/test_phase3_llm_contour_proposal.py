@@ -20,7 +20,9 @@ from phase3_mask_edit.backends.llm_contour import (
 )
 from phase3_mask_edit.backends.organic_projection import (
     ORGANIC_PROJECTION_BACKEND,
+    _solidify_intratumoral_immune_spots,
     apply_organic_immune_infiltration_decrease,
+    apply_organic_necrosis_resolution,
     apply_organic_projected_label_write,
     apply_organic_stroma_decrease,
     apply_organic_tumor_burden_decrease,
@@ -1291,6 +1293,29 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertTrue(np.all(result.target_mask[result.change_region] == 4))
         self.assertNotIn("organic_projection_area_shortfall", result.warnings)
 
+    def test_intratumoral_immune_spot_cleanup_fills_holes_inside_tumor(self):
+        yy, xx = np.ogrid[:80, :80]
+        legal_domain = np.zeros((80, 80), dtype=bool)
+        legal_domain[8:72, 8:72] = True
+        outer = (yy - 40) ** 2 + (xx - 40) ** 2 <= 11**2
+        inner = (yy - 40) ** 2 + (xx - 40) ** 2 <= 3**2
+        ring = outer & ~inner & legal_domain
+        target_pixels = int(np.count_nonzero(outer & legal_domain))
+
+        cleaned, cleanup_log = _solidify_intratumoral_immune_spots(
+            ring,
+            legal_domain=legal_domain,
+            final_score=legal_domain.astype(float),
+            target_pixels=target_pixels,
+            rng=np.random.default_rng(13),
+        )
+
+        self.assertTrue(cleanup_log["enabled"])
+        self.assertGreater(cleanup_log["hole_fill_pixels"], 0)
+        self.assertEqual(int(np.count_nonzero(cleaned)), target_pixels)
+        self.assertTrue(cleaned[40, 40])
+        self.assertTrue(np.all(cleaned <= legal_domain))
+
     def test_intratumoral_immune_policy_uses_existing_immune_neighborhood(self):
         old_mask = np.zeros((72, 72), dtype=np.int64)
         old_mask[8:64, 8:64] = 1
@@ -1398,7 +1423,7 @@ class LLMContourProposalTests(unittest.TestCase):
         score_terms = result.ops_log["score_terms"]
         self.assertEqual(
             params["tumor_boundary_score_policy"],
-            "soft_inner_infiltration_band_not_hard_edge_ring",
+            "soft_interior_gradient_not_boundary_ring",
         )
         self.assertTrue(score_terms["intratumoral_broad_template_suppressed"])
         self.assertEqual(result.selected_pixels, 256)
@@ -1518,10 +1543,64 @@ class LLMContourProposalTests(unittest.TestCase):
 
         spot_log = result.ops_log["spot_policy"]
         self.assertTrue(spot_log["enabled"])
-        self.assertGreaterEqual(spot_log["final_component_count"], 2)
-        self.assertEqual(spot_log["oversized_component_count"], 0)
-        self.assertLessEqual(max(spot_log["final_component_sizes"]), 64)
+        self.assertLessEqual(spot_log["final_component_count"], 3)
+        self.assertGreaterEqual(max(spot_log["final_component_sizes"]), 64)
+        self.assertLessEqual(spot_log["oversized_component_count"], 3)
+        self.assertGreaterEqual(spot_log["selected_spots"], 1)
         self.assertEqual(result.selected_pixels, 320)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 4))
+
+    def test_intratumoral_immune_policy_produces_rounder_single_spot_geometry(self):
+        old_mask = np.zeros((80, 80), dtype=np.int64)
+        old_mask[8:72, 8:72] = 1
+        raw_candidate = old_mask == 1
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Immune infiltrate",
+            primitive_config={
+                "name": "intratumoral_immune_infiltration",
+                "required_tissue_labels": ["Tumor", "Immune infiltrate"],
+                "spatial_pattern": {
+                    "region": "inside_tumor",
+                    "spot_policy": {
+                        "max_total_area_fraction_of_tumor": 0.18,
+                        "min_spot_area_px": 1,
+                        "max_spot_area_px": 256,
+                        "max_spots_per_patch": 1,
+                    },
+                },
+                "parameter_ranges": {
+                    "target_changed_area_fraction": {"mild": [0.05, 0.10]},
+                    "max_changed_area_fraction": 0.18,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_fill_holes_max_area_px": 0,
+                    "organic_template_neighborhood_radius_px": 24,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_selected_template_iou": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.0,
+                        "spatial": 1.0,
+                        "noise": 0.0,
+                    },
+                },
+                "validation_rules": ["new_immune_must_be_inside_original_tumor"],
+            },
+            seed=5,
+            target_pixels=180,
+        )
+
+        ys, xs = np.where(result.change_region)
+        bbox_area = float((ys.max() - ys.min() + 1) * (xs.max() - xs.min() + 1))
+        fill_ratio = result.selected_pixels / bbox_area
+
+        self.assertEqual(result.selected_pixels, 180)
+        self.assertGreater(fill_ratio, 0.49)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
         self.assertTrue(np.all(result.target_mask[result.change_region] == 4))
 
@@ -1696,6 +1775,88 @@ class LLMContourProposalTests(unittest.TestCase):
             result.ops_log["decrease_semantics"],
             "select_tumor_pixels_then_backfill_from_nearest_legal_tissue",
         )
+
+    def test_necrosis_resolution_backfills_only_to_stroma(self):
+        old_mask = np.zeros((72, 72), dtype=np.int64)
+        old_mask[4:68, 4:68] = 2
+        old_mask[18:54, 18:54] = 1
+        old_mask[30:42, 30:42] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[28:44, 28:44] = True
+
+        result = apply_organic_necrosis_resolution(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "necrosis_resolution",
+                "mask_operation": {
+                    "source": "Necrosis",
+                    "backfill_priority": ["Stroma"],
+                },
+                "parameter_ranges": {
+                    "necrosis_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 32,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.3,
+                        "spatial": 0.7,
+                        "noise": 0.0,
+                    },
+                },
+            },
+            seed=6,
+            target_pixels=40,
+        )
+
+        self.assertEqual(result.selected_pixels, 40)
+        self.assertTrue(np.all(old_mask[result.change_region] == 3))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
+        self.assertEqual(result.ops_log["backfill_labels"], ["Stroma"])
+        self.assertEqual(
+            result.ops_log["component_policy"]["params"]["backfill_policy"],
+            "nearest_stroma_only",
+        )
+
+    def test_necrosis_resolution_does_not_score_patch_edge_as_viable_front(self):
+        old_mask = np.zeros((64, 64), dtype=np.int64)
+        old_mask[16:48, 0:20] = 3
+        old_mask[16:48, 20:34] = 2
+        old_mask[16:48, 34:56] = 1
+        raw_candidate = old_mask == 3
+
+        result = apply_organic_necrosis_resolution(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "necrosis_resolution",
+                "mask_operation": {
+                    "source": "Necrosis",
+                    "backfill_priority": ["Stroma"],
+                },
+                "parameter_ranges": {
+                    "necrosis_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 128,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.0,
+                        "spatial": 1.0,
+                        "noise": 0.0,
+                    },
+                },
+            },
+            seed=5,
+            target_pixels=64,
+        )
+
+        selected_cols = np.argwhere(result.change_region)[:, 1]
+        self.assertEqual(result.selected_pixels, 64)
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
+        self.assertGreaterEqual(int(selected_cols.min()), 17)
+        self.assertGreater(float(np.mean(selected_cols)), 17.0)
 
     def test_tumor_burden_decrease_removes_tiny_remaining_tumor_components(self):
         old_mask = np.zeros((96, 96), dtype=np.int64)

@@ -54,25 +54,6 @@ def _tumor_burden_decrease_config() -> dict:
     }
 
 
-def _boundary_pushing_config() -> dict:
-    return {
-        "name": "boundary_pushing_remodel",
-        "required_tissue_labels": ["Tumor"],
-        "parameter_ranges": {
-            "target_changed_area_fraction": {
-                "mild": [0.08, 0.14],
-                "moderate": [0.14, 0.20],
-            },
-            "max_changed_area_fraction": 0.30,
-            "max_abs_tumor_area_delta_fraction": 0.02,
-        },
-        "validation_rules": [
-            "tumor_area_change_must_remain_small",
-            "tumor_must_not_fragment_or_disappear",
-        ],
-    }
-
-
 def _glas_fine_transition_config() -> dict:
     return {
         "name": "adenoma_to_carcinoma",
@@ -307,47 +288,6 @@ class TumorBurdenDecreaseGuardTests(unittest.TestCase):
             src, tgt, change, schema, config, 1 / 6,
         )
         check = next(c for c in result.checks if c.name == "released_region_must_not_be_background")
-        self.assertFalse(check.passed)
-
-
-class BoundaryPushingRemodelGuardTests(unittest.TestCase):
-    def test_tumor_area_change_small_passes(self):
-        schema = _bcss_schema()
-        src = np.array([[1, 1, 2, 2, 0]], dtype=np.int64)
-        tgt = np.array([[1, 2, 1, 2, 0]], dtype=np.int64)
-        change = np.array([[False, True, True, False, False]], dtype=bool)
-        config = _boundary_pushing_config()
-
-        result = validate_edit_result(
-            src, tgt, change, schema, config, 2 / 5,
-        )
-        check = next(c for c in result.checks if c.name == "tumor_area_change_must_remain_small")
-        self.assertTrue(check.passed)
-
-    def test_tumor_must_not_fragment_passes(self):
-        schema = _bcss_schema()
-        src = np.array([[1, 1, 2, 0, 0]], dtype=np.int64)
-        tgt = np.array([[1, 2, 2, 0, 0]], dtype=np.int64)
-        change = np.array([[False, True, False, False, False]], dtype=bool)
-        config = _boundary_pushing_config()
-
-        result = validate_edit_result(
-            src, tgt, change, schema, config, 1 / 5,
-        )
-        check = next(c for c in result.checks if c.name == "tumor_must_not_fragment_or_disappear")
-        self.assertTrue(check.passed)
-
-    def test_tumor_disappears_fails(self):
-        schema = _bcss_schema()
-        src = np.array([[1, 2, 0]], dtype=np.int64)
-        tgt = np.array([[2, 2, 0]], dtype=np.int64)
-        change = np.array([[True, False, False]], dtype=bool)
-        config = _boundary_pushing_config()
-
-        result = validate_edit_result(
-            src, tgt, change, schema, config, 1 / 3,
-        )
-        check = next(c for c in result.checks if c.name == "tumor_must_not_fragment_or_disappear")
         self.assertFalse(check.passed)
 
 

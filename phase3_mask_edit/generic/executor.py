@@ -32,9 +32,6 @@ from phase3_mask_edit.generic.tumor_burden import (
     apply_tumor_burden_decrease,
     apply_tumor_burden_increase,
 )
-from phase3_mask_edit.generic.boundary import (
-    apply_boundary_pushing_remodel,
-)
 from phase3_mask_edit.generic.necrosis import (
     apply_necrosis_appearance,
     apply_necrosis_resolution,
@@ -78,7 +75,6 @@ def _auto_register() -> None:
         return
     register_primitive("tumor_burden_increase", apply_tumor_burden_increase)
     register_primitive("tumor_burden_decrease", apply_tumor_burden_decrease)
-    register_primitive("boundary_pushing_remodel", apply_boundary_pushing_remodel)
     register_primitive("necrosis_appearance", apply_necrosis_appearance)
     register_primitive("necrosis_resolution", apply_necrosis_resolution)
     register_primitive("fine_label_transition", apply_fine_label_transition)

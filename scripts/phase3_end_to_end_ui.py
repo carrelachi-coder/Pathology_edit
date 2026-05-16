@@ -113,8 +113,8 @@ EDIT_MODE_CHOICES = [
     EDIT_MODE_MANUAL_CONTOUR,
     EDIT_MODE_AUTO_RECOMMEND,
 ]
-_STRONGEST_FIRST = {"xlarge_deid": 3, "significant": 2, "moderate": 1, "mild": 0}
-AUTO_RECOMMEND_LIMIT = 10
+AUTO_RECOMMEND_DEFAULT_PRIMITIVE = "tumor_burden_increase"
+AUTO_RECOMMEND_DEFAULT_STRENGTH = "moderate"
 MANUAL_CONTOUR_MAX_COMPONENTS = 24
 MANUAL_CONTOUR_MAX_POINTS = 32
 
@@ -889,6 +889,7 @@ def _refresh_edit_mode_panels(
     dict[str, Any],
     dict[str, Any],
     dict[str, Any],
+    dict[str, Any],
 ]:
     """Return panel visibility and auto-recommendation UI state."""
 
@@ -900,7 +901,8 @@ def _refresh_edit_mode_panels(
     manual_editor_value = gr.update(value="")
     manual_contour_payload_value = gr.update(value="")
     manual_target_update = gr.update()
-    auto_choices_update = gr.update(choices=[], value=[])
+    auto_primitive_update = gr.update(choices=[], value=None)
+    auto_strength_update = gr.update(choices=[], value=None)
     auto_summary = gr.update(value="")
 
     if not state:
@@ -912,7 +914,8 @@ def _refresh_edit_mode_panels(
             manual_editor_value,
             manual_contour_payload_value,
             manual_target_update,
-            auto_choices_update,
+            auto_primitive_update,
+            auto_strength_update,
             auto_summary,
             tissue_button_visible,
             auto_execute_visible,
@@ -963,13 +966,26 @@ def _refresh_edit_mode_panels(
         manual_target_update = gr.update(choices=[], value=None)
 
     if edit_mode == EDIT_MODE_AUTO_RECOMMEND:
-        auto_pool = _build_auto_recommendation_pool(state)
-        state["auto_recommendations"] = auto_pool
-        auto_choices = [(item["label"], item["key"]) for item in auto_pool]
-        auto_choices_update = gr.update(choices=auto_choices, value=[])
-        auto_summary = gr.update(value=_format_auto_recommendation_summary(auto_pool))
+        primitive_choices = _auto_primitive_choices_for_state(state)
+        primitive_value = _auto_selected_primitive(state, primitive_choices)
+        strength_choices = _auto_strength_choices_for_state(state, primitive_value)
+        strength_value = _auto_selected_strength(state, strength_choices)
+        state["auto_selected_primitive"] = primitive_value
+        state["auto_selected_strength"] = strength_value
+        auto_primitive_update = gr.update(
+            choices=primitive_choices,
+            value=primitive_value,
+        )
+        auto_strength_update = gr.update(
+            choices=strength_choices,
+            value=strength_value,
+        )
+        auto_summary = gr.update(
+            value=_format_auto_selection_summary(state, primitive_value, strength_value)
+        )
     else:
-        state.pop("auto_recommendations", None)
+        state.pop("auto_selected_primitive", None)
+        state.pop("auto_selected_strength", None)
 
     return (
         state,
@@ -979,103 +995,168 @@ def _refresh_edit_mode_panels(
         manual_editor_value,
         manual_contour_payload_value,
         manual_target_update,
-        auto_choices_update,
+        auto_primitive_update,
+        auto_strength_update,
         auto_summary,
         tissue_button_visible,
         auto_execute_visible,
     )
 
 
-def _build_auto_recommendation_pool(state: dict[str, Any]) -> list[dict[str, Any]]:
+def _auto_recipe_for_state(state: dict[str, Any]) -> dict[str, Any]:
+    profile = state.get("profile", "BCSS")
+    return load_recipe(default_recipe_path_for_profile(profile))
+
+
+def _auto_primitive_choices_for_state(state: dict[str, Any]) -> list[str]:
+    recipe = _auto_recipe_for_state(state)
+    choices: list[str] = []
+    for primitive_config in recipe.get("primitives", []):
+        if not isinstance(primitive_config, dict):
+            continue
+        primitive_name = primitive_config.get("name")
+        if isinstance(primitive_name, str):
+            choices.append(primitive_name)
+    return choices
+
+
+def _auto_strength_choices_for_state(
+    state: dict[str, Any],
+    primitive_name: str | None,
+) -> list[str]:
+    if not primitive_name:
+        return []
+    recipe = _auto_recipe_for_state(state)
+    try:
+        primitive_config = _primitive_config(recipe, primitive_name)
+    except gr.Error:
+        return []
+    strengths = list(_primitive_strengths(primitive_config))
+    return strengths or [AUTO_RECOMMEND_DEFAULT_STRENGTH]
+
+
+def _auto_selected_primitive(
+    state: dict[str, Any],
+    choices: list[str],
+) -> str | None:
+    current = state.get("auto_selected_primitive")
+    if isinstance(current, str) and current in choices:
+        return current
+    if AUTO_RECOMMEND_DEFAULT_PRIMITIVE in choices:
+        return AUTO_RECOMMEND_DEFAULT_PRIMITIVE
+    return choices[0] if choices else None
+
+
+def _auto_selected_strength(
+    state: dict[str, Any],
+    choices: list[str],
+) -> str | None:
+    current = state.get("auto_selected_strength")
+    if isinstance(current, str) and current in choices:
+        return current
+    if AUTO_RECOMMEND_DEFAULT_STRENGTH in choices:
+        return AUTO_RECOMMEND_DEFAULT_STRENGTH
+    return choices[0] if choices else None
+
+
+def _refresh_auto_strength_options(
+    state: dict[str, Any],
+    primitive_name: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    if not state:
+        return state, gr.update(choices=[], value=None), gr.update(value="")
+    primitive_value = primitive_name if isinstance(primitive_name, str) else None
+    state["auto_selected_primitive"] = primitive_value
+    strength_choices = _auto_strength_choices_for_state(state, primitive_value)
+    strength_value = _auto_selected_strength(state, strength_choices)
+    state["auto_selected_strength"] = strength_value
+    return (
+        state,
+        gr.update(choices=strength_choices, value=strength_value),
+        gr.update(value=_format_auto_selection_summary(state, primitive_value, strength_value)),
+    )
+
+
+def _refresh_auto_selection_summary(
+    state: dict[str, Any],
+    primitive_name: str | None,
+    strength: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not state:
+        return state, gr.update(value="")
+    state["auto_selected_primitive"] = primitive_name
+    state["auto_selected_strength"] = strength
+    return (
+        state,
+        gr.update(value=_format_auto_selection_summary(state, primitive_name, strength)),
+    )
+
+
+def _format_auto_selection_summary(
+    state: dict[str, Any],
+    primitive_name: str | None,
+    strength: str | None,
+) -> str:
+    if not primitive_name or not strength:
+        return "Select both primitive and strength before running auto recommend."
     profile = state.get("profile", "BCSS")
     tissue_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
     if not tissue_path:
-        return []
+        return f"Selected: {primitive_name} / {strength}"
     reference_tissue = load_id_mask(tissue_path)
     schema = MaskProfileSchema.from_reference_profile(profile)
     recipe = load_recipe(default_recipe_path_for_profile(profile))
+    primitive_config = _primitive_config(recipe, primitive_name)
+    intent = EditIntent(
+        primitive=primitive_name,
+        strength=strength,
+        reference_profile=schema.reference_profile,
+    )
+    intent = _with_default_contour_labels(intent, primitive_config, schema)
     context = MaskEditContext.from_mask(reference_tissue, schema)
-    recommendations = _recommend_edit_intents(reference_tissue, schema, recipe, context)
-    pool: list[dict[str, Any]] = []
-    for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
-        decision = assess_edit_applicability(intent, recipe, schema, context)
-        feasibility = _estimate_recommendation_capacity(
-            reference_tissue, intent, primitive_config, schema
-        )
-        key = _recommendation_key(intent)
-        pool.append(
-            {
-                "key": key,
-                "label": f"{rank}. {intent.primitive} / {intent.strength}",
-                "primitive": intent.primitive,
-                "strength": intent.strength,
-                "reference_profile": intent.reference_profile,
-                "source_labels": list(intent.source_labels),
-                "target_label": intent.target_label,
-                "score": _recommendation_score(primitive_config, context, decision, feasibility),
-                "status": decision.status,
-                "reasons": list(decision.reasons),
-                "warnings": list(decision.warnings),
-                "feasibility": feasibility,
-                "recommendation_notes": feasibility.get("notes", []),
-            }
-        )
-    return pool
-
-
-def _format_auto_recommendation_summary(pool: list[dict[str, Any]]) -> str:
-    if not pool:
-        return "No applicable primitive/strength combinations were found for this mask."
-    lines = [f"{len(pool)} recommendations found."]
-    for item in pool:
-        source = ", ".join(item.get("source_labels", [])) or "-"
-        target = item.get("target_label") or "-"
-        feasibility = item.get("feasibility", {})
-        changed = feasibility.get("changed_area_fraction")
-        changed_text = f"{float(changed):.3f}" if isinstance(changed, (int, float)) else "-"
-        lines.append(
-            f"{item['label']} | score={item['score']} | status={item['status']} | changed={changed_text}"
-        )
-        lines.append(f"source: {source} -> target: {target}")
-        notes = item.get("recommendation_notes") or []
-        if notes:
-            lines.append(f"notes: {'; '.join(str(note) for note in notes)}")
+    decision = assess_edit_applicability(intent, recipe, schema, context)
+    feasibility = _estimate_recommendation_capacity(
+        reference_tissue, intent, primitive_config, schema
+    )
+    source = ", ".join(intent.source_labels) or "-"
+    target = intent.target_label or "-"
+    changed = feasibility.get("changed_area_fraction")
+    changed_text = f"{float(changed):.3f}" if isinstance(changed, (int, float)) else "-"
+    lines = [
+        f"Selected: {primitive_name} / {strength}",
+        f"status={decision.status} | changed={changed_text}",
+        f"source: {source} -> target: {target}",
+    ]
+    notes = list(decision.reasons) + list(decision.warnings) + list(feasibility.get("notes", []))
+    failed = feasibility.get("validation_failed_checks") or []
+    notes.extend(str(item) for item in failed)
+    if notes:
+        lines.append(f"notes: {'; '.join(str(note) for note in notes)}")
     return "\n".join(lines)
 
 
-def _recommendation_key(intent: EditIntent) -> str:
-    return f"{intent.primitive}|{intent.strength}"
-
-
-def _selected_recommendations_to_intents(
+def _auto_selection_to_intent(
     state: dict[str, Any],
-    selected_keys: list[str],
-) -> list[tuple[EditIntent, dict[str, Any]]]:
-    recommendations = state.get("auto_recommendations") or _build_auto_recommendation_pool(state)
-    selected = {key for key in selected_keys if key}
-    if not selected:
-        return []
-
+    primitive_name: str | None,
+    strength: str | None,
+) -> tuple[EditIntent, dict[str, Any]]:
+    if not primitive_name or not strength:
+        raise gr.Error("Select both primitive and strength before running auto recommend.")
     profile = state.get("profile", "BCSS")
     schema = MaskProfileSchema.from_reference_profile(profile)
     recipe = load_recipe(default_recipe_path_for_profile(profile))
-
-    intents: list[tuple[EditIntent, dict[str, Any]]] = []
-    for item in recommendations:
-        if item.get("key") not in selected:
-            continue
-        primitive_config = _primitive_config(recipe, str(item["primitive"]))
-        payload = {
-            "primitive": item["primitive"],
-            "strength": item["strength"],
-            "reference_profile": profile,
-            "source_labels": item.get("source_labels", []),
-            "target_label": item.get("target_label"),
-        }
-        intent = EditIntent.from_mapping(payload)
-        intent = _with_default_contour_labels(intent, primitive_config, schema)
-        intents.append((intent, primitive_config))
-    return intents
+    primitive_config = _primitive_config(recipe, primitive_name)
+    strengths = _primitive_strengths(primitive_config)
+    if strengths and strength not in strengths:
+        raise gr.Error(f"Primitive {primitive_name} does not support strength {strength}.")
+    payload = {
+        "primitive": primitive_name,
+        "strength": strength,
+        "reference_profile": profile,
+    }
+    intent = EditIntent.from_mapping(payload)
+    intent = _with_default_contour_labels(intent, primitive_config, schema)
+    return intent, primitive_config
 
 
 def _contour_failure_message(result: Any) -> str:
@@ -1248,7 +1329,8 @@ def run_tissue_stage(
     new_prompt: str,
     manual_contour_editor,
     manual_contour_payload,
-    auto_recommendation_keys,
+    auto_primitive: str | None,
+    auto_strength: str | None,
     parser: str,
     api_base_url: str,
     api_key_env: str,
@@ -1295,7 +1377,8 @@ def run_tissue_stage(
                 schema=schema,
                 recipe=recipe,
                 output_dir=output_dir,
-                selected_keys=list(auto_recommendation_keys or []),
+                primitive=auto_primitive,
+                strength=auto_strength,
                 provider=provider,
                 api_base_url=contour_api_base_url,
                 api_key_env=contour_api_key_env,
@@ -1788,61 +1871,6 @@ def _load_manual_contour_payload(manual_contour_json: str, manual_contour_file) 
     return payload
 
 
-def _run_auto_recommend_stage(
-    *,
-    state: dict[str, Any],
-    reference_tissue: np.ndarray,
-    schema: MaskProfileSchema,
-    recipe: dict[str, Any],
-    output_dir: Path,
-) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
-    context = MaskEditContext.from_mask(reference_tissue, schema)
-    recommendations = _recommend_edit_intents(reference_tissue, schema, recipe, context)
-    if not recommendations:
-        raise gr.Error(
-            f"No applicable primitive/strength combinations found for {schema.reference_profile}."
-        )
-    pool: list[dict[str, Any]] = []
-    for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
-        decision = assess_edit_applicability(intent, recipe, schema, context)
-        feasibility = _estimate_recommendation_capacity(
-            reference_tissue, intent, primitive_config, schema
-        )
-        pool.append(
-            {
-                "rank": rank,
-                "key": _recommendation_key(intent),
-                "primitive": intent.primitive,
-                "strength": intent.strength,
-                "reference_profile": intent.reference_profile,
-                "source_labels": list(intent.source_labels),
-                "target_label": intent.target_label,
-                "score": _recommendation_score(primitive_config, context, decision, feasibility),
-                "status": decision.status,
-                "reasons": list(decision.reasons),
-                "warnings": list(decision.warnings),
-                "feasibility": feasibility,
-                "recommendation_notes": feasibility.get("notes", []),
-            }
-        )
-    result = SimpleNamespace(
-        status="recommendations_ready",
-        edit_result=None,
-        error=None,
-        final_attempt=None,
-        validation=None,
-        projection_mode="recommendation",
-        to_metadata=lambda: {"mode": EDIT_MODE_AUTO_RECOMMEND, "recommendations": pool},
-    )
-    phase3_info = {
-        "mode": EDIT_MODE_AUTO_RECOMMEND,
-        "recommendations": pool,
-        "projection_mode": "recommendation",
-    }
-    save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
-    return result, phase3_info, pool
-
-
 def _execute_selected_recommendations(
     *,
     state: dict[str, Any],
@@ -1850,7 +1878,8 @@ def _execute_selected_recommendations(
     schema: MaskProfileSchema,
     recipe: dict[str, Any],
     output_dir: Path,
-    selected_keys: list[str],
+    primitive: str | None,
+    strength: str | None,
     provider: str,
     api_base_url: str,
     api_key_env: str,
@@ -1862,12 +1891,7 @@ def _execute_selected_recommendations(
     max_points_per_region: int,
     organic_seed: int,
 ) -> tuple[Any, dict[str, Any]]:
-    recommendations = _build_auto_recommendation_pool(state)
-    if not recommendations:
-        raise gr.Error("No auto-recommendations available. Re-run the auto-recommend panel.")
-    selected_intents = _selected_recommendations_to_intents(state, selected_keys)
-    if not selected_intents:
-        raise gr.Error("Select at least one recommendation before running auto recommend.")
+    intent, primitive_config = _auto_selection_to_intent(state, primitive, strength)
 
     current_mask = np.array(reference_tissue, copy=True)
     attempt_logs: list[dict[str, Any]] = []
@@ -1880,18 +1904,22 @@ def _execute_selected_recommendations(
         api_image_detail=api_image_detail,
         fixture_file=fixture_file,
     )
-    for intent, primitive_config in selected_intents[:AUTO_RECOMMEND_LIMIT]:
-        decision = assess_edit_applicability(intent, recipe, schema, MaskEditContext.from_mask(current_mask, schema))
-        if decision.status == "rejected":
-            attempt_logs.append(
-                {
-                    "primitive": intent.primitive,
-                    "strength": intent.strength,
-                    "status": "rejected",
-                    "reasons": list(decision.reasons),
-                }
-            )
-            continue
+    decision = assess_edit_applicability(
+        intent,
+        recipe,
+        schema,
+        MaskEditContext.from_mask(current_mask, schema),
+    )
+    if decision.status == "rejected":
+        attempt_logs.append(
+            {
+                "primitive": intent.primitive,
+                "strength": intent.strength,
+                "status": "rejected",
+                "reasons": list(decision.reasons),
+            }
+        )
+    else:
         result = execute_llm_contour_agent(
             old_mask=current_mask,
             schema=schema,
@@ -1905,6 +1933,9 @@ def _execute_selected_recommendations(
             max_regions=max_regions,
             max_points_per_region=max_points_per_region,
         )
+        if result.status == STATUS_VALIDATED and result.edit_result is not None:
+            last_success = result
+            current_mask = np.array(result.edit_result.target_mask, copy=True)
         attempt_logs.append(
             {
                 "primitive": intent.primitive,
@@ -1917,92 +1948,20 @@ def _execute_selected_recommendations(
                 "primitive_config": primitive_config.get("name"),
             }
         )
-        if result.status == STATUS_VALIDATED and result.edit_result is not None:
-            last_success = result
-            current_mask = np.array(result.edit_result.target_mask, copy=True)
 
     if last_success is None or last_success.edit_result is None:
         raise gr.Error(_auto_recommend_execution_failure_message(attempt_logs))
 
     phase3_info = {
         "mode": EDIT_MODE_AUTO_RECOMMEND,
-        "recommendations": recommendations,
-        "selected_keys": list(selected_keys),
+        "selected_primitive": intent.primitive,
+        "selected_strength": intent.strength,
         "attempts": attempt_logs,
         "primitive": last_success.edit_result.ops_log.get("primitive", ""),
         "projection_mode": PROJECTION_MODE_ORGANIC_V2,
     }
     save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
     return last_success, phase3_info
-
-
-def _recommend_edit_intents(
-    mask: np.ndarray,
-    schema: MaskProfileSchema,
-    recipe: dict[str, Any],
-    context: MaskEditContext,
-) -> list[tuple[EditIntent, dict[str, Any]]]:
-    candidates: list[tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]]] = []
-    for primitive_config in recipe.get("primitives", []):
-        if not isinstance(primitive_config, dict):
-            continue
-        primitive_name = primitive_config.get("name")
-        if not isinstance(primitive_name, str):
-            continue
-        strengths = _primitive_strengths(primitive_config)
-        if not strengths:
-            strengths = ("moderate",)
-        for strength in strengths:
-            intent = EditIntent(
-                primitive=primitive_name,
-                strength=strength,
-                reference_profile=schema.reference_profile,
-            )
-            intent = _with_default_contour_labels(intent, primitive_config, schema)
-            decision = assess_edit_applicability(intent, recipe, schema, context)
-            if decision.status == "rejected":
-                continue
-            feasibility = _estimate_recommendation_capacity(
-                mask, intent, primitive_config, schema
-            )
-            if feasibility["status"] != "executable":
-                continue
-            score = _recommendation_score(primitive_config, context, decision, feasibility)
-            candidates.append(
-                (score, _STRONGEST_FIRST.get(strength, 0), intent, primitive_config, feasibility)
-            )
-    candidates.sort(key=_recommendation_sort_key)
-    diverse_first: list[tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]]] = []
-    overflow: list[tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]]] = []
-    seen_primitives: set[str] = set()
-    for candidate in candidates:
-        primitive = candidate[2].primitive
-        if primitive in seen_primitives:
-            overflow.append(candidate)
-            continue
-        diverse_first.append(candidate)
-        seen_primitives.add(primitive)
-    ordered = diverse_first + overflow
-    return [(intent, primitive_config) for _, _, intent, primitive_config, _ in ordered]
-
-
-def _recommendation_sort_key(
-    item: tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]],
-) -> tuple[int, int, int, str]:
-    score, strength_rank, intent, _primitive_config, _feasibility = item
-    return (-score, -_primitive_family_priority(intent.primitive), -strength_rank, intent.primitive)
-
-
-def _primitive_family_priority(primitive: str) -> int:
-    if primitive in {"tumor_burden_increase", "tumor_burden_decrease"}:
-        return 4
-    if primitive in {"necrosis_appearance", "necrosis_resolution"}:
-        return 3
-    if "immune" in primitive:
-        return 2
-    if "stroma" in primitive or "stromal" in primitive:
-        return 1
-    return 0
 
 
 def _primitive_strengths(primitive_config: dict[str, Any]) -> tuple[str, ...]:
@@ -2017,37 +1976,6 @@ def _primitive_strengths(primitive_config: dict[str, Any]) -> tuple[str, ...]:
         if any(isinstance(value, dict) and key in value for value in ranges.values()):
             strengths.append(key)
     return tuple(strengths)
-
-
-def _recommendation_score(
-    primitive_config: dict[str, Any],
-    context: MaskEditContext,
-    decision,
-    feasibility: dict[str, Any] | None = None,
-) -> int:
-    score = 0
-    if decision.status == "executable":
-        score += 8
-    elif decision.status == "degraded":
-        score += 4
-    mask_operation = primitive_config.get("mask_operation", {})
-    if isinstance(mask_operation, dict):
-        source = mask_operation.get("source")
-        if isinstance(source, str) and source in context.present_labels:
-            score += 3
-        target = mask_operation.get("target")
-        if isinstance(target, str) and target in context.present_labels:
-            score += 1
-    if feasibility:
-        if feasibility.get("validation_passed") is True:
-            score += 6
-        changed = feasibility.get("changed_area_fraction")
-        if isinstance(changed, (int, float)) and changed > 0:
-            score += min(5, int(float(changed) * 100))
-        score -= min(6, 2 * len(feasibility.get("validation_failed_checks") or []))
-    score -= min(4, len(decision.warnings))
-    score += min(2, len(decision.fallback_actions))
-    return score
 
 
 def _estimate_recommendation_capacity(
@@ -2855,8 +2783,10 @@ def build_ui() -> gr.Blocks:
 
         auto_panel = gr.Column(visible=False)
         with auto_panel:
-            auto_choices = gr.CheckboxGroup(label="recommendations", choices=[])
-            auto_summary = gr.Textbox(label="recommendation summary", lines=6, interactive=False)
+            with gr.Row():
+                auto_primitive = gr.Dropdown([], value=None, label="primitive")
+                auto_strength = gr.Dropdown([], value=None, label="strength")
+            auto_summary = gr.Textbox(label="selection summary", lines=6, interactive=False)
 
         continue_on_failure = gr.Checkbox(value=False, label="continue on Phase3 failure")
         tissue_button = gr.Button("2. Run tissue-stage edit")
@@ -2879,7 +2809,7 @@ def build_ui() -> gr.Blocks:
                 max_points_per_region = gr.Slider(8, 128, value=64, step=1, label="max points / region")
             organic_seed = gr.Number(value=0, precision=0, label="organic seed")
 
-        auto_execute_button = gr.Button("Run selected recommendations", visible=False)
+        auto_execute_button = gr.Button("Run selected primitive", visible=False)
 
         gr.Markdown("### Cell mask synthesis")
         with gr.Row():
@@ -2947,7 +2877,8 @@ def build_ui() -> gr.Blocks:
                 manual_editor,
                 manual_contour_payload,
                 target_label,
-                auto_choices,
+                auto_primitive,
+                auto_strength,
                 auto_summary,
                 tissue_button,
                 auto_execute_button,
@@ -2964,11 +2895,22 @@ def build_ui() -> gr.Blocks:
                 manual_editor,
                 manual_contour_payload,
                 target_label,
-                auto_choices,
+                auto_primitive,
+                auto_strength,
                 auto_summary,
                 tissue_button,
                 auto_execute_button,
             ],
+        )
+        auto_primitive.change(
+            _refresh_auto_strength_options,
+            inputs=[state, auto_primitive],
+            outputs=[state, auto_strength, auto_summary],
+        )
+        auto_strength.change(
+            _refresh_auto_selection_summary,
+            inputs=[state, auto_primitive, auto_strength],
+            outputs=[state, auto_summary],
         )
         profile.change(
             lambda value: tuple(_profile_defaults(value).values()),
@@ -3000,7 +2942,8 @@ def build_ui() -> gr.Blocks:
                 manual_editor,
                 manual_contour_payload,
                 target_label,
-                auto_choices,
+                auto_primitive,
+                auto_strength,
                 auto_summary,
                 tissue_button,
                 auto_execute_button,
@@ -3016,7 +2959,8 @@ def build_ui() -> gr.Blocks:
                 new_prompt,
                 manual_editor,
                 manual_contour_payload,
-                auto_choices,
+                auto_primitive,
+                auto_strength,
                 parser,
                 api_base_url,
                 api_key_env,
@@ -3049,7 +2993,8 @@ def build_ui() -> gr.Blocks:
                 manual_editor,
                 manual_contour_payload,
                 target_label,
-                auto_choices,
+                auto_primitive,
+                auto_strength,
                 auto_summary,
                 tissue_button,
                 auto_execute_button,
@@ -3059,7 +3004,8 @@ def build_ui() -> gr.Blocks:
             _run_auto_selected_from_ui,
             inputs=[
                 state,
-                auto_choices,
+                auto_primitive,
+                auto_strength,
                 provider,
                 contour_api_base_url,
                 contour_api_key_env,
@@ -3083,7 +3029,8 @@ def build_ui() -> gr.Blocks:
                 manual_editor,
                 manual_contour_payload,
                 target_label,
-                auto_choices,
+                auto_primitive,
+                auto_strength,
                 auto_summary,
                 tissue_button,
                 auto_execute_button,
@@ -3125,7 +3072,8 @@ def build_ui() -> gr.Blocks:
 
 def _run_auto_selected_from_ui(
     state: dict[str, Any],
-    auto_recommendation_keys,
+    auto_primitive: str | None,
+    auto_strength: str | None,
     provider: str,
     api_base_url: str,
     api_key_env: str,
@@ -3149,7 +3097,8 @@ def _run_auto_selected_from_ui(
         schema=schema,
         recipe=recipe,
         output_dir=output_dir,
-        selected_keys=list(auto_recommendation_keys or []),
+        primitive=auto_primitive,
+        strength=auto_strength,
         provider=provider,
         api_base_url=api_base_url,
         api_key_env=api_key_env,

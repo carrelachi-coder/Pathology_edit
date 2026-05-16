@@ -155,7 +155,7 @@ class Phase3EditIntentTests(unittest.TestCase):
         recipe = load_recipe(GENERIC_RECIPE)
         intent = EditIntent.from_mapping(
             {
-                "primitive": "boundary_pushing_remodel",
+                "primitive": "stromal_immune_infiltration",
                 "strength": "xlarge_deid",
             }
         )

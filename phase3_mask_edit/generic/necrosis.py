@@ -192,7 +192,7 @@ def apply_necrosis_resolution(
     primitive_config: Mapping[str, Any],
     intent: EditIntent,
 ) -> PrimitiveEditResult:
-    """Replace existing Necrosis with nearest Tumor or Stroma backfill."""
+    """Replace existing Necrosis with nearest Stroma backfill."""
 
     _validate_necrosis_resolution_request(
         old_mask, schema, context, primitive_config, intent
@@ -246,7 +246,7 @@ def apply_necrosis_resolution(
         "changed_necrosis_fraction": selected_pixels / necrosis_pixels,
         "selected_pixels": selected_pixels,
         "spatial": {
-            "method": "nearest_tumor_or_stroma_backfill",
+            "method": "nearest_stroma_backfill",
             "target_area_reference": "necrosis",
             "target_pixels": int(target_count),
             "capped_target_pixels": int(capped_target_count),
@@ -378,11 +378,13 @@ def _available_resolution_backfill_labels(
         else ()
     )
     if not isinstance(priority, list):
-        priority = ["Tumor", "Stroma"]
+        priority = ["Stroma"]
     labels = tuple(
         label
         for label in priority
-        if isinstance(label, str) and label in schema.readable_labels
+        if isinstance(label, str)
+        and label == "Stroma"
+        and label in schema.readable_labels
     )
     if labels:
         return labels

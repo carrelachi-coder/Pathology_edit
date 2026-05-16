@@ -138,7 +138,7 @@ class LLMContourAgentTests(unittest.TestCase):
                     "backend": "llm_contour_proposal",
                     "primitive": "necrosis_resolution",
                     "reference_profile": "BCSS",
-                    "target_label": "Tumor",
+                    "target_label": "Stroma",
                     "coordinate_system": {
                         "origin": "top_left",
                         "point_format": "[x, y]",
@@ -174,9 +174,9 @@ class LLMContourAgentTests(unittest.TestCase):
         )
 
         self.assertNotIn("requires a target label", result.error or "")
-        self.assertEqual(result.context["target_label"], "Tumor")
+        self.assertEqual(result.context["target_label"], "Stroma")
 
-    def test_necrosis_resolution_runs_on_tumor_necrosis_only_mask(self):
+    def test_necrosis_resolution_rejects_tumor_necrosis_only_mask(self):
         primitive_config = _primitive(self.recipe, "necrosis_resolution")
         mask = np.full((64, 64), self.schema.resolve_fine_ids("Tumor")[0], dtype=np.int64)
         mask[20:44, 20:44] = self.schema.resolve_fine_ids("Necrosis")[0]
@@ -187,7 +187,7 @@ class LLMContourAgentTests(unittest.TestCase):
                     "backend": "llm_contour_proposal",
                     "primitive": "necrosis_resolution",
                     "reference_profile": "BCSS",
-                    "target_label": "Tumor",
+                    "target_label": "Stroma",
                     "coordinate_system": {
                         "origin": "top_left",
                         "point_format": "[x, y]",
@@ -223,9 +223,17 @@ class LLMContourAgentTests(unittest.TestCase):
             max_attempts=1,
         )
 
-        self.assertEqual(result.status, STATUS_VALIDATED)
+        self.assertNotEqual(result.status, STATUS_VALIDATED)
         self.assertIsNotNone(result.edit_result)
-        self.assertGreater(result.edit_result.selected_pixels, 0)
+        self.assertEqual(result.edit_result.selected_pixels, 0)
+        self.assertIn(
+            "necrosis_resolution_no_valid_backfill_tissue",
+            result.edit_result.warnings,
+        )
+        self.assertEqual(
+            result.edit_result.ops_log["top_failed_reason"],
+            "necrosis_resolution_no_valid_backfill_tissue",
+        )
 
     def test_fixture_provider_runs_single_valid_attempt(self):
         provider = FixtureContourProvider(

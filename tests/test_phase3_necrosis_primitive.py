@@ -352,7 +352,7 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
         self.assertTrue(result.validation.passed)
         self.assertGreater(result.edit_result.selected_pixels, 0)
 
-    def test_necrosis_resolution_backfills_nearest_tumor_or_stroma(self):
+    def test_necrosis_resolution_backfills_to_stroma(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = np.full((96, 96), 2, dtype=np.int64)
         old_mask[12:84, 12:48] = 1
@@ -381,14 +381,14 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
         self.assertGreater(result.selected_pixels, 0)
         self.assertTrue(np.all(result.change_region <= (old_mask == 3)))
         self.assertFalse(np.any(result.target_mask[result.change_region] == 3))
-        self.assertTrue(np.all(np.isin(result.target_mask[result.change_region], (1, 2))))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
         self.assertLess(
             np.count_nonzero(result.target_mask == 3),
             np.count_nonzero(old_mask == 3),
         )
-        self.assertEqual(result.ops_log["spatial"]["backfill_labels"], ["Tumor", "Stroma"])
+        self.assertEqual(result.ops_log["spatial"]["backfill_labels"], ["Stroma"])
 
-    def test_necrosis_resolution_backfills_to_tumor_when_only_tumor_and_necrosis_exist(self):
+    def test_necrosis_resolution_rejects_tumor_only_backfill(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = np.full((96, 96), 1, dtype=np.int64)
         old_mask[32:64, 32:64] = 3
@@ -405,6 +405,34 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
             }
         )
 
+        with self.assertRaisesRegex(PrimitiveExecutionError, "no_valid_backfill_tissue"):
+            apply_necrosis_resolution(
+                old_mask,
+                schema,
+                context,
+                self.resolution_primitive,
+                intent,
+            )
+
+    def test_necrosis_resolution_does_not_treat_patch_background_as_necrosis_edge(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = np.zeros((64, 64), dtype=np.int64)
+        old_mask[16:48, 0:20] = 3
+        old_mask[16:48, 20:34] = 2
+        old_mask[16:48, 34:56] = 1
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "necrosis_resolution",
+                "reference_profile": "BCSS",
+                "target_change_fraction": 0.10,
+                "parameters": {
+                    "min_necrosis_resolution_component_area_px": 1,
+                    "necrosis_resolution_noise_weight": 0.0,
+                },
+            }
+        )
+
         result = apply_necrosis_resolution(
             old_mask,
             schema,
@@ -414,8 +442,10 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
         )
 
         self.assertGreater(result.selected_pixels, 0)
-        self.assertTrue(np.all(result.target_mask[result.change_region] == 1))
-        self.assertEqual(result.ops_log["spatial"]["backfill_labels"], ["Tumor", "Stroma"])
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 2))
+        selected_cols = np.argwhere(result.change_region)[:, 1]
+        self.assertGreaterEqual(int(selected_cols.min()), 17)
+        self.assertGreater(float(np.mean(selected_cols)), 17.0)
 
     def test_executor_runs_necrosis_resolution_and_validates(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")

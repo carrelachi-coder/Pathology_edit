@@ -197,65 +197,6 @@ primitives:
       use_stromal_desmoplasia_for_external_stromal_reaction
 
   # ════════════════════════════════════════════════════════════════════════
-  # 3. BOUNDARY PUSHING REMODEL
-  # ════════════════════════════════════════════════════════════════════════
-  - name: boundary_pushing_remodel
-    version: v1
-    pathology_meaning: infiltrative tumor margin remodeled toward a pushing or circumscribed border
-    required_tissue_labels:
-      - Tumor
-    required_context:
-      - valid_backfill_tissue
-    optional_tissue_labels:
-      - Stroma
-      - Other tissue
-      - Normal epithelium
-    mask_operation:
-      type: infiltrative_to_pushing_margin
-      source: Tumor
-      backfill_priority:
-        - Stroma
-        - Other tissue
-        - Normal epithelium
-    spatial_pattern:
-      remodel_direction: infiltrative_to_pushing
-      remove_features:
-        - small_spikes
-        - jagged_edges
-        - isolated_tumor_islands
-      fill_features:
-        - shallow_stromal_notches
-      area_change_mode: near_conservative
-      protect_internal_holes:
-        - Background
-        - Necrosis
-    parameter_ranges:
-      target_changed_area_fraction:
-        mild: [0.08, 0.14]
-        moderate: [0.14, 0.20]
-        significant: [0.20, 0.28]
-      max_changed_area_fraction: 0.30
-      default_smooth_radius_px: 18
-      max_abs_tumor_area_delta_fraction: 0.02
-      min_component_area_px: 80
-    probnet_bias:
-      default: none
-      Stroma: Connective_up_slight_if_backfilled
-    validation_rules:
-      - boundary_complexity_must_decrease
-      - tumor_area_change_must_remain_small
-      - tumor_must_not_fragment_or_disappear
-      - do_not_fill_background_or_necrosis_holes
-    expected_failure_cases:
-      - no_tumor
-      - tumor_too_small
-      - tumor_already_pushing_or_smooth
-      - remodeling_would_delete_tumor
-    overlap_guard:
-      use_tumor_burden_decrease_for_large_regression
-      use_boundary_pushing_remodel_for_opposite_infiltrative_direction
-
-  # ════════════════════════════════════════════════════════════════════════
   # 4. NECROSIS APPEARANCE
   # ════════════════════════════════════════════════════════════════════════
   - name: necrosis_appearance
@@ -337,25 +278,23 @@ primitives:
 
   - name: necrosis_resolution
     version: v1
-    pathology_meaning: necrosis resolution or replacement by viable tumor/stroma context
+    pathology_meaning: necrosis resolution or replacement by viable stroma context
     required_tissue_labels:
       - Necrosis
     required_context:
       - valid_backfill_tissue
     optional_tissue_labels:
-      - Tumor
       - Stroma
     mask_operation:
       type: necrosis_region_reduction
       source: Necrosis
       backfill_priority:
-        - Tumor
         - Stroma
     spatial_pattern:
       reduce_priority:
         - necrosis_touching_viable_tissue
         - necrosis_periphery_before_core
-      backfill_policy: nearest_tumor_or_stroma
+      backfill_policy: nearest_stroma
       forbid_targets:
         - Background
     parameter_ranges:
@@ -367,8 +306,7 @@ primitives:
       min_necrosis_resolution_component_area_px: 64
     probnet_bias:
       Dead: down
-      Neoplastic: up_if_backfilled_to_tumor
-      Connective: up_if_backfilled_to_stroma
+      Connective: up
     validation_rules:
       - necrosis_area_must_decrease
       - resolved_necrosis_must_be_original_necrosis

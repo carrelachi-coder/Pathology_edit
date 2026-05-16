@@ -1,8 +1,5 @@
 """Generic mask editing strategies that must work on all six datasets."""
 
-from phase3_mask_edit.generic.boundary import (
-    apply_boundary_pushing_remodel,
-)
 from phase3_mask_edit.generic.executor import (
     EditExecutionResult,
     execute_edit,
@@ -28,7 +25,6 @@ __all__ = [
     "EditExecutionResult",
     "PrimitiveEditResult",
     "PrimitiveExecutionError",
-    "apply_boundary_pushing_remodel",
     "apply_necrosis_appearance",
     "apply_stromal_desmoplasia",
     "apply_stromal_immune_infiltration",
