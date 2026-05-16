@@ -13,8 +13,6 @@ from phase3_mask_edit.backends.fixture_contour import (
 )
 from phase3_mask_edit.backends.llm_contour import (
     DEFAULT_PROJECTION_MODE,
-    PROJECTION_MODE_HARD_V1,
-    PROJECTION_MODE_COMPARE_V1_V2,
     PROJECTION_MODE_ORGANIC_V2,
 )
 from phase3_mask_edit.core.config import load_recipe
@@ -175,11 +173,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-points-per-region", type=int, default=64)
     parser.add_argument(
         "--projection-mode",
-        choices=(
-            PROJECTION_MODE_HARD_V1,
-            PROJECTION_MODE_ORGANIC_V2,
-            PROJECTION_MODE_COMPARE_V1_V2,
-        ),
+        choices=(PROJECTION_MODE_ORGANIC_V2,),
         default=DEFAULT_PROJECTION_MODE,
     )
     parser.add_argument("--organic-seed", type=int, default=0)

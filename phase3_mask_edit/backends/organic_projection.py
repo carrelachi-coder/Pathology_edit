@@ -605,6 +605,251 @@ def apply_organic_tumor_burden_decrease(
     )
 
 
+def apply_organic_necrosis_resolution(
+    old_mask: np.ndarray,
+    raw_candidate: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any] | None = None,
+    preserve_labels: Sequence[str] = (),
+    forbidden_labels: Sequence[str] = (),
+    seed: int = 0,
+    strength: str = "mild",
+    target_pixels: int | None = None,
+    template_sigma: float | None = None,
+    noise_sigma: float | None = None,
+    noise_amplitude: float | None = None,
+    w_template: float | None = None,
+    w_spatial: float | None = None,
+    w_noise: float | None = None,
+) -> PrimitiveEditResult:
+    """Select Necrosis pixels to resolve, then backfill from nearby viable tissue."""
+
+    mask = np.asarray(old_mask)
+    if mask.ndim != 2:
+        raise ValueError("old_mask must be a 2D id mask.")
+
+    candidate = np.asarray(raw_candidate, dtype=bool)
+    if candidate.shape != mask.shape:
+        raise ValueError(
+            "raw_candidate shape must match old_mask shape: "
+            f"{candidate.shape} != {mask.shape}."
+        )
+
+    primitive = primitive_config or {}
+    params = _projection_params(
+        primitive,
+        template_sigma=template_sigma,
+        noise_sigma=noise_sigma,
+        noise_amplitude=noise_amplitude,
+        w_template=w_template,
+        w_spatial=w_spatial,
+        w_noise=w_noise,
+        decay_px=None,
+    )
+    forbidden = tuple(dict.fromkeys(tuple(preserve_labels) + tuple(forbidden_labels)))
+    necrosis = _safe_label_mask(mask, schema, "Necrosis")
+    removal_mask = _label_mask(mask, schema, forbidden) if forbidden else np.zeros(mask.shape, dtype=bool)
+    legal_domain = necrosis & ~removal_mask & ~np.isin(mask, tuple(schema.skip_fine_ids))
+    backfill_labels, backfill_mask = _necrosis_resolution_backfill_domain(
+        mask,
+        schema=schema,
+        primitive_config=primitive,
+        preserve_labels=preserve_labels,
+        forbidden_labels=forbidden_labels,
+    )
+
+    raw_candidate_pixels = int(np.count_nonzero(candidate))
+    legal_pixels = int(np.count_nonzero(legal_domain))
+    raw_legal_overlap = int(np.count_nonzero(candidate & legal_domain))
+    if target_pixels is None:
+        target_pixels = _necrosis_resolution_target_pixels(
+            mask,
+            schema=schema,
+            primitive_config=primitive,
+            legal_pixels=legal_pixels,
+            strength=strength,
+        )
+    target_pixels = max(int(target_pixels or 0), 0)
+    selected_target_pixels = min(target_pixels, legal_pixels)
+
+    policy = _necrosis_resolution_policy(
+        mask,
+        schema=schema,
+        primitive_config=primitive,
+        legal_domain=legal_domain,
+        backfill_mask=backfill_mask,
+    )
+
+    empty_reason: str | None = None
+    if legal_pixels == 0:
+        empty_reason = "necrosis_resolution_no_necrosis_legal_domain"
+    elif not np.any(backfill_mask):
+        empty_reason = "necrosis_resolution_no_valid_backfill_tissue"
+    elif selected_target_pixels == 0:
+        empty_reason = "necrosis_resolution_target_pixels_zero"
+    elif raw_legal_overlap == 0:
+        empty_reason = "organic_projection_template_no_legal_overlap"
+    if empty_reason is not None:
+        return _empty_necrosis_resolution_result(
+            mask,
+            schema=schema,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            raw_candidate_pixels=raw_candidate_pixels,
+            legal_pixels=legal_pixels,
+            target_pixels=target_pixels,
+            seed=seed,
+            raw_legal_overlap=raw_legal_overlap,
+            backfill_labels=backfill_labels,
+            policy=policy,
+            warning=empty_reason,
+        )
+
+    template_overlap_fraction = raw_legal_overlap / raw_candidate_pixels if raw_candidate_pixels else 0.0
+    if template_overlap_fraction < params.min_template_legal_overlap_fraction:
+        return _empty_necrosis_resolution_result(
+            mask,
+            schema=schema,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            raw_candidate_pixels=raw_candidate_pixels,
+            legal_pixels=legal_pixels,
+            target_pixels=target_pixels,
+            seed=seed,
+            raw_legal_overlap=raw_legal_overlap,
+            backfill_labels=backfill_labels,
+            policy=policy,
+            warning="organic_projection_template_legal_overlap_too_low",
+        )
+
+    template_score = _template_score(candidate, sigma=params.template_sigma)
+    spatial_score = policy.spatial_score
+    noise = _smooth_noise(mask.shape, seed=seed, sigma=params.noise_sigma)
+    template_norm = _normalize_on_domain(template_score, legal_domain)
+    spatial_norm = _normalize_on_domain(spatial_score, legal_domain)
+    noise_norm = _normalize_on_domain(noise, legal_domain)
+    final_score = (
+        params.w_template * template_norm
+        + params.w_spatial * spatial_norm
+        + params.w_noise * params.noise_amplitude * noise_norm
+    )
+    final_score = np.asarray(final_score, dtype=float)
+    final_score[~legal_domain] = -np.inf
+
+    selected, selection_log = _template_constrained_top_k_mask(
+        final_score,
+        legal_domain=legal_domain,
+        raw_template=candidate,
+        target_pixels=selected_target_pixels,
+        neighborhood_radius_px=params.template_neighborhood_radius_px,
+        spillover_fraction=params.template_spillover_fraction,
+    )
+    selected, cleanup_log = _cleanup_and_refill_once(
+        selected,
+        legal_domain=legal_domain,
+        final_score=final_score,
+        target_pixels=selected_target_pixels,
+        min_component_fraction=0.0,
+        fill_holes_max_area_px=0,
+        min_component_pixels=_min_necrosis_resolution_component_pixels(
+            primitive,
+            target_pixels=selected_target_pixels,
+        ),
+    )
+
+    target_mask = np.array(mask, copy=True)
+    target_mask[selected] = _nearest_backfill_fine_ids(mask, backfill_mask, selected)
+    selected_pixels = int(np.count_nonzero(selected))
+    changed_area_fraction = selected_pixels / int(mask.size)
+    selected_template_intersection = int(np.count_nonzero(selected & candidate))
+    selected_template_union = int(np.count_nonzero(selected | candidate))
+    selected_template_iou = (
+        selected_template_intersection / selected_template_union
+        if selected_template_union
+        else 0.0
+    )
+    warnings: list[str] = []
+    if selected_pixels < target_pixels:
+        warnings.append("organic_projection_area_shortfall")
+    if cleanup_log["post_cleanup_pixels"] < cleanup_log["pre_cleanup_pixels"]:
+        warnings.append("organic_projection_cleanup_removed_pixels")
+    warnings.extend(policy.warnings)
+
+    ops_log = {
+        "backend": ORGANIC_PROJECTION_BACKEND,
+        "method": "organic_score_projection_and_deterministic_backfill",
+        "primitive": "necrosis_resolution",
+        "reference_profile": schema.reference_profile,
+        "source_labels": ["Necrosis"],
+        "target_label": "nearest_backfill_tissue",
+        "backfill_labels": list(backfill_labels),
+        "preserve_labels": list(preserve_labels),
+        "forbidden_labels": list(forbidden_labels),
+        "raw_candidate_pixels": raw_candidate_pixels,
+        "candidate_pixels": raw_candidate_pixels,
+        "raw_candidate_legal_overlap_pixels": raw_legal_overlap,
+        "template_overlap_with_legal_domain": template_overlap_fraction,
+        "legal_domain_pixels": legal_pixels,
+        "target_pixels": target_pixels,
+        "projected_pixels": selected_pixels,
+        "selected_pixels": selected_pixels,
+        "selected_raw_template_intersection_pixels": selected_template_intersection,
+        "selected_raw_template_union_pixels": selected_template_union,
+        "selected_raw_template_iou": selected_template_iou,
+        "selection_policy": {
+            "name": "template_neighborhood_constrained_top_k",
+            **selection_log,
+        },
+        "area_shortfall": int(max(target_pixels - selected_pixels, 0)),
+        "changed_area_fraction": changed_area_fraction,
+        "changed_necrosis_fraction": (
+            selected_pixels / legal_pixels if legal_pixels else 0.0
+        ),
+        "projection_backend": ORGANIC_PROJECTION_BACKEND,
+        "noise_seed": int(seed),
+        "strength": str(strength),
+        "score_terms": {
+            "w_template": float(params.w_template),
+            "w_spatial": float(params.w_spatial),
+            "w_noise": float(params.w_noise),
+            "template_sigma": float(params.template_sigma),
+            "noise_sigma": float(params.noise_sigma),
+            "noise_amplitude": float(params.noise_amplitude),
+            "min_template_legal_overlap_fraction": float(
+                params.min_template_legal_overlap_fraction
+            ),
+            "template_neighborhood_radius_px": float(
+                params.template_neighborhood_radius_px
+            ),
+            "template_spillover_fraction": float(params.template_spillover_fraction),
+        },
+        "component_policy": {
+            "policy_name": policy.policy_name,
+            "params": policy.policy_params,
+            "spatial_score_stats": _score_stats(spatial_norm, legal_domain),
+            "template_score_stats": _score_stats(template_norm, legal_domain),
+        },
+        "cleanup_removed_pixels": cleanup_log["cleanup_removed_pixels"],
+        "cleanup_refill_pixels": cleanup_log["cleanup_refill_pixels"],
+        "cleanup_min_component_pixels": cleanup_log["cleanup_min_component_pixels"],
+        "cleanup_min_component_policy": cleanup_log["cleanup_min_component_policy"],
+        "pre_cleanup_pixels": cleanup_log["pre_cleanup_pixels"],
+        "post_cleanup_pixels": cleanup_log["post_cleanup_pixels"],
+        "cleanup_single_pass": True,
+        "cleanup_iteration_limit": 1,
+        "resolution_semantics": "select_necrosis_pixels_then_backfill_from_nearest_legal_tissue",
+    }
+    return PrimitiveEditResult(
+        target_mask=target_mask,
+        change_region=selected,
+        changed_area_fraction=changed_area_fraction,
+        selected_pixels=selected_pixels,
+        warnings=tuple(warnings),
+        ops_log=ops_log,
+    )
+
+
 def apply_organic_immune_infiltration_decrease(
     old_mask: np.ndarray,
     raw_candidate: np.ndarray,
@@ -1476,6 +1721,51 @@ def _tumor_decrease_policy(
     )
 
 
+def _necrosis_resolution_policy(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    legal_domain: np.ndarray,
+    backfill_mask: np.ndarray,
+) -> OrganicProjectionPolicy:
+    ranges = primitive_config.get("parameter_ranges", {})
+    necrosis = _safe_label_mask(mask, schema, "Necrosis")
+    backfill_radius = _positive_float(
+        None, ranges.get("necrosis_resolution_backfill_neighbor_radius_px", 48.0)
+    )
+    score = np.zeros(mask.shape, dtype=float)
+    if np.any(backfill_mask):
+        dist_to_backfill = ndimage.distance_transform_edt(~backfill_mask)
+        score += 0.70 * np.exp(-dist_to_backfill / backfill_radius)
+        touches_backfill = ndimage.binary_dilation(
+            backfill_mask,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        score += 0.30 * (legal_domain & touches_backfill).astype(float)
+    score[~legal_domain] = 0.0
+    return OrganicProjectionPolicy(
+        spatial_score=score.astype(float),
+        policy_name="necrosis_resolution_viable_backfill_front",
+        policy_params={
+            "legal_domain_policy": "current_necrosis_excluding_background",
+            "backfill_policy": "nearest_tumor_or_stroma",
+            "necrosis_pixels": int(np.count_nonzero(necrosis)),
+            "backfill_neighbor_radius_px": backfill_radius,
+            "selected_backfill_labels": _labels_present_in_mask(
+                mask,
+                schema=schema,
+                labels=_backfill_priority_from_config(primitive_config),
+            ),
+            "score_prefers": [
+                "necrosis_touching_viable_tissue",
+                "necrosis_near_legal_backfill_tissue",
+            ],
+        },
+        legal_domain=legal_domain,
+    )
+
+
 def _stromal_immune_policy(
     mask: np.ndarray,
     *,
@@ -2166,6 +2456,29 @@ def _stroma_decrease_target_pixels(
     return min(target, legal_pixels)
 
 
+def _necrosis_resolution_target_pixels(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    legal_pixels: int,
+    strength: str,
+) -> int:
+    ranges = primitive_config.get("parameter_ranges", {})
+    bucket = _first_interval(
+        ranges.get("necrosis_area_decrease_fraction"), strength=strength
+    )
+    if bucket is None:
+        return legal_pixels
+    lower, upper = bucket
+    midpoint = (lower + upper) / 2.0
+    necrosis_pixels = int(
+        np.count_nonzero(_safe_label_mask(mask, schema, "Necrosis"))
+    )
+    target = int(np.ceil(necrosis_pixels * midpoint))
+    return min(target, legal_pixels)
+
+
 def _stroma_decrease_max_removable_pixels(
     mask: np.ndarray,
     *,
@@ -2315,6 +2628,21 @@ def _min_component_pixels_for_cleanup(
     )
 
 
+def _min_necrosis_resolution_component_pixels(
+    primitive_config: Mapping[str, Any],
+    *,
+    target_pixels: int,
+) -> tuple[int, str]:
+    ranges = primitive_config.get("parameter_ranges", {})
+    value = ranges.get("min_necrosis_resolution_component_area_px", 1)
+    if isinstance(value, (int, float)) and int(value) > 0:
+        return (
+            min(int(value), max(1, int(target_pixels))),
+            "min_necrosis_resolution_component_area_px",
+        )
+    return 1, "necrosis_resolution_preserve_small_components"
+
+
 def _spot_policy_min_area_px(primitive_config: Mapping[str, Any]) -> int | None:
     spatial_pattern = primitive_config.get("spatial_pattern", {})
     if not isinstance(spatial_pattern, Mapping):
@@ -2378,6 +2706,29 @@ def _immune_decrease_backfill_domain(
     forbidden_labels: Sequence[str],
 ) -> tuple[tuple[str, ...], np.ndarray]:
     forbidden = set(preserve_labels) | set(forbidden_labels) | {"Immune infiltrate"}
+    labels: list[str] = []
+    domain = np.zeros(mask.shape, dtype=bool)
+    for label in _backfill_priority_from_config(primitive_config):
+        if label in forbidden or label not in schema.readable_labels:
+            continue
+        label_mask = _safe_label_mask(mask, schema, label)
+        if not np.any(label_mask):
+            continue
+        domain |= label_mask
+        labels.append(label)
+    domain &= ~np.isin(mask, tuple(schema.skip_fine_ids))
+    return tuple(labels), domain
+
+
+def _necrosis_resolution_backfill_domain(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    preserve_labels: Sequence[str],
+    forbidden_labels: Sequence[str],
+) -> tuple[tuple[str, ...], np.ndarray]:
+    forbidden = set(preserve_labels) | set(forbidden_labels) | {"Necrosis"}
     labels: list[str] = []
     domain = np.zeros(mask.shape, dtype=bool)
     for label in _backfill_priority_from_config(primitive_config):
@@ -2696,6 +3047,69 @@ def _empty_immune_decrease_result(
         "cleanup_single_pass": True,
         "cleanup_iteration_limit": 1,
         "decrease_semantics": "select_immune_pixels_then_backfill_from_nearest_legal_tissue",
+        "top_failed_reason": warning,
+    }
+    return PrimitiveEditResult(
+        target_mask=np.array(mask, copy=True),
+        change_region=np.zeros(mask.shape, dtype=bool),
+        changed_area_fraction=0.0,
+        selected_pixels=0,
+        warnings=tuple(dict.fromkeys(("proposal_projected_region_empty", warning, *policy.warnings))),
+        ops_log=ops_log,
+    )
+
+
+def _empty_necrosis_resolution_result(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    preserve_labels: Sequence[str],
+    forbidden_labels: Sequence[str],
+    raw_candidate_pixels: int,
+    legal_pixels: int,
+    target_pixels: int,
+    seed: int,
+    raw_legal_overlap: int,
+    backfill_labels: Sequence[str],
+    policy: OrganicProjectionPolicy,
+    warning: str,
+) -> PrimitiveEditResult:
+    ops_log = {
+        "backend": ORGANIC_PROJECTION_BACKEND,
+        "method": "organic_score_projection_and_deterministic_backfill",
+        "primitive": "necrosis_resolution",
+        "reference_profile": schema.reference_profile,
+        "source_labels": ["Necrosis"],
+        "target_label": "nearest_backfill_tissue",
+        "backfill_labels": list(backfill_labels),
+        "preserve_labels": list(preserve_labels),
+        "forbidden_labels": list(forbidden_labels),
+        "raw_candidate_pixels": int(raw_candidate_pixels),
+        "candidate_pixels": int(raw_candidate_pixels),
+        "raw_candidate_legal_overlap_pixels": int(raw_legal_overlap),
+        "template_overlap_with_legal_domain": (
+            raw_legal_overlap / raw_candidate_pixels if raw_candidate_pixels else 0.0
+        ),
+        "legal_domain_pixels": int(legal_pixels),
+        "target_pixels": int(target_pixels),
+        "projected_pixels": 0,
+        "selected_pixels": 0,
+        "area_shortfall": int(target_pixels),
+        "projection_retained_fraction": 0.0,
+        "changed_area_fraction": 0.0,
+        "projection_backend": ORGANIC_PROJECTION_BACKEND,
+        "noise_seed": int(seed),
+        "component_policy": {
+            "policy_name": policy.policy_name,
+            "params": policy.policy_params,
+            "spatial_score_stats": _score_stats(policy.spatial_score, policy.legal_domain),
+            "template_score_stats": {"pixels": 0, "min": 0.0, "max": 0.0, "mean": 0.0},
+        },
+        "cleanup_removed_pixels": 0,
+        "cleanup_refill_pixels": 0,
+        "cleanup_single_pass": True,
+        "cleanup_iteration_limit": 1,
+        "resolution_semantics": "select_necrosis_pixels_then_backfill_from_nearest_legal_tissue",
         "top_failed_reason": warning,
     }
     return PrimitiveEditResult(

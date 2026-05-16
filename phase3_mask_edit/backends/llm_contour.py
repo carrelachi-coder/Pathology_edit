@@ -18,21 +18,19 @@ from scipy import ndimage
 
 from phase3_mask_edit.backends.organic_projection import (
     apply_organic_immune_infiltration_decrease,
+    apply_organic_necrosis_resolution,
     apply_organic_projected_label_write,
     apply_organic_stroma_decrease,
     apply_organic_tumor_burden_decrease,
 )
-from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.core.labels import MaskProfileSchema, MaskProfileSchemaError
 from phase3_mask_edit.generic.tumor_burden import PrimitiveEditResult
 
 
 CONTOUR_PROPOSAL_SCHEMA_VERSION = "0.1"
 CONTOUR_PROPOSAL_BACKEND = "llm_contour_proposal"
-PROJECTION_MODE_HARD_V1 = "v1_hard_projection"
 PROJECTION_MODE_ORGANIC_V2 = "organic_v2"
 DEFAULT_PROJECTION_MODE = PROJECTION_MODE_ORGANIC_V2
-PROJECTION_MODE_COMPARE_V1_V2 = "compare_v1_v2"
 
 _REQUIRED_PROPOSAL_FIELDS = frozenset(
     {
@@ -269,21 +267,6 @@ def execute_contour_proposal_write(
 
     if projection_mode == PROJECTION_MODE_ORGANIC_V2:
         primitive_name = str((primitive_config or {}).get("name", ""))
-        source_label_sets = {region.source_labels for region in proposal.regions}
-        if len(source_label_sets) > 1 and primitive_name != "tumor_burden_increase":
-            result = _execute_hard_projection(
-                old_mask,
-                proposal,
-                schema=schema,
-                preserve_labels=preserve_labels,
-                forbidden_labels=forbidden_labels,
-            )
-            result.ops_log["projection_mode"] = PROJECTION_MODE_HARD_V1
-            result.ops_log["requested_projection_mode"] = PROJECTION_MODE_ORGANIC_V2
-            result.ops_log["projection_fallback_reason"] = (
-                "organic_v2_mvp_requires_uniform_region_source_labels"
-            )
-            return result
         raw_candidate = rasterize_contour_proposal(proposal)
         source_labels = tuple(
             dict.fromkeys(
@@ -323,6 +306,17 @@ def execute_contour_proposal_write(
                 seed=organic_seed,
                 strength=strength,
             )
+        elif primitive_name == "necrosis_resolution":
+            result = apply_organic_necrosis_resolution(
+                old_mask,
+                raw_candidate,
+                schema=schema,
+                primitive_config=primitive_config,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                seed=organic_seed,
+                strength=strength,
+            )
         elif _is_fine_label_transition(primitive_config):
             result = _execute_fine_transition_projection(
                 old_mask,
@@ -350,113 +344,8 @@ def execute_contour_proposal_write(
         result.ops_log["projection_mode"] = projection_mode
         return result
 
-    if projection_mode == PROJECTION_MODE_COMPARE_V1_V2:
-        raise ContourProposalValidationError(
-            "compare_v1_v2 is an orchestration/debug mode and must not be "
-            "passed to execute_contour_proposal_write() as a single write backend."
-        )
-
-    if projection_mode != PROJECTION_MODE_HARD_V1:
-        raise ContourProposalValidationError(
-            f"unknown projection_mode {projection_mode!r}."
-        )
-
-    result = _execute_hard_projection(
-        old_mask,
-        proposal,
-        schema=schema,
-        preserve_labels=preserve_labels,
-        forbidden_labels=forbidden_labels,
-    )
-    result.ops_log["projection_mode"] = PROJECTION_MODE_HARD_V1
-    result.ops_log["projection_backend"] = PROJECTION_MODE_HARD_V1
-    return result
-
-
-def _execute_hard_projection(
-    old_mask: np.ndarray,
-    proposal: ContourProposal,
-    *,
-    schema: MaskProfileSchema,
-    preserve_labels: Sequence[str],
-    forbidden_labels: Sequence[str],
-) -> PrimitiveEditResult:
-    projected_candidate = np.zeros((proposal.height, proposal.width), dtype=bool)
-    region_logs: list[dict[str, Any]] = []
-    for region in proposal.regions:
-        raw_region = rasterize_polygon(
-            region.points,
-            mask_shape=(proposal.height, proposal.width),
-        )
-        raw_region = smooth_candidate_region(raw_region)
-        region_result = apply_projected_label_write(
-            old_mask,
-            raw_region,
-            schema=schema,
-            source_labels=region.source_labels,
-            target_label=proposal.target_label,
-            preserve_labels=preserve_labels,
-            forbidden_labels=forbidden_labels,
-            backend=CONTOUR_PROPOSAL_BACKEND,
-        )
-        projected_candidate |= region_result.change_region
-        region_logs.append(
-            {
-                "region_id": region.region_id,
-                "source_labels": list(region.source_labels),
-                "confidence": region.confidence,
-                "candidate_pixels": region_result.ops_log["candidate_pixels"],
-                "projected_pixels": region_result.ops_log["projected_pixels"],
-                "selected_pixels": region_result.selected_pixels,
-                "projection_retained_fraction": region_result.ops_log[
-                    "projection_retained_fraction"
-                ],
-            }
-        )
-
-    selected_pixels = int(np.count_nonzero(projected_candidate))
-    target_ids = schema.resolve_fine_ids(proposal.target_label)
-    target_mask = np.array(old_mask, copy=True)
-    if selected_pixels > 0:
-        target_mask[projected_candidate] = int(target_ids[0])
-
-    raw_candidate = rasterize_contour_proposal(proposal)
-    candidate_pixels = int(np.count_nonzero(raw_candidate))
-    changed_area_fraction = selected_pixels / int(old_mask.size)
-    warnings = ("proposal_projected_region_empty",) if selected_pixels == 0 else ()
-    ops_log = {
-        "backend": CONTOUR_PROPOSAL_BACKEND,
-        "projection_backend": PROJECTION_MODE_HARD_V1,
-        "method": "per_region_source_label_projection_and_deterministic_write",
-        "primitive": proposal.primitive,
-        "reference_profile": schema.reference_profile,
-        "target_label": proposal.target_label,
-        "target_fine_id": int(target_ids[0]),
-        "candidate_pixels": candidate_pixels,
-        "raw_candidate_pixels": candidate_pixels,
-        "projected_pixels": selected_pixels,
-        "intersected_pixels": selected_pixels,
-        "selected_pixels": selected_pixels,
-        "projection_retained_fraction": (
-            selected_pixels / candidate_pixels if candidate_pixels > 0 else 0.0
-        ),
-        "changed_area_fraction": changed_area_fraction,
-        "preserve_labels": list(preserve_labels),
-        "forbidden_labels": list(forbidden_labels),
-        "raw_payload": dict(proposal.raw_payload),
-    }
-    ops_log["region_projection"] = region_logs
-    ops_log["source_labels"] = sorted(
-        {label for region in proposal.regions for label in region.source_labels}
-    )
-
-    return PrimitiveEditResult(
-        target_mask=target_mask,
-        change_region=projected_candidate,
-        changed_area_fraction=changed_area_fraction,
-        selected_pixels=selected_pixels,
-        warnings=warnings,
-        ops_log=ops_log,
+    raise ContourProposalValidationError(
+        f"unsupported projection_mode {projection_mode!r}; organic_v2 is the only active LLM projection backend."
     )
 
 

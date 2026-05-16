@@ -1,8 +1,8 @@
 """Run the Phase 3 organic projection Stage 2 experiment.
 
 The experiment is intentionally narrow:
-1. Re-run the real proposal as v1 hard projection vs organic_v2 smoke.
-2. Sweep only organic_v2 score weights and peritumoral decay over seeds.
+1. Re-run the real proposal through organic_v2 smoke.
+2. Sweep organic_v2 score weights and peritumoral decay over seeds.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ import numpy as np
 from scipy import ndimage
 
 from phase3_mask_edit.backends.llm_contour import (
-    PROJECTION_MODE_HARD_V1,
     PROJECTION_MODE_ORGANIC_V2,
     execute_contour_proposal_write,
     load_contour_proposal_json,
@@ -110,8 +109,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.print_summary:
         print(
-            f"smoke v1_pass={smoke['v1_hard_projection']['validation_passed']} "
-            f"v2_pass={smoke['organic_v2']['validation_passed']} "
+            f"smoke organic_v2_pass={smoke['organic_v2']['validation_passed']} "
             f"grid_runs={len(grid_rows)}"
         )
         print(f"trend_summary={out / 'trend_summary.json'}")
@@ -128,52 +126,52 @@ def run_v1_v2_smoke(
     organic_seed: int,
     output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Run v1/v2 once and return compact smoke metrics."""
+    """Run organic_v2 once and return compact smoke metrics."""
 
     summary: dict[str, Any] = {}
-    for mode in (PROJECTION_MODE_HARD_V1, PROJECTION_MODE_ORGANIC_V2):
-        edit = execute_contour_proposal_write(
-            mask,
-            proposal,
-            schema=schema,
-            primitive_config=primitive_config,
-            projection_mode=mode,
-            organic_seed=organic_seed,
-        )
-        validation = validate_edit_result(
-            src_mask=mask,
-            target_mask=edit.target_mask,
-            change_region=edit.change_region,
-            schema=schema,
-            primitive_config=primitive_config,
-            changed_area_fraction=edit.changed_area_fraction,
-        )
-        metrics = projection_metrics(
-            mask,
-            edit.change_region,
-            schema=schema,
-            source_labels=tuple(edit.ops_log.get("source_labels", ())),
-            target_label=str(edit.ops_log.get("target_label", "")),
-        )
-        entry = {
-            "projection_mode": mode,
-            "validation_passed": bool(validation.passed),
-            "failed_checks": [check.name for check in validation.failed_checks],
-            "selected_pixels": int(edit.selected_pixels),
-            "changed_area_fraction": float(edit.changed_area_fraction),
-            "warnings": list(edit.warnings),
-            "ops_log": edit.ops_log,
-            "metrics": metrics,
-            "validation": _jsonable_dataclass(validation),
-        }
-        summary[mode] = entry
+    mode = PROJECTION_MODE_ORGANIC_V2
+    edit = execute_contour_proposal_write(
+        mask,
+        proposal,
+        schema=schema,
+        primitive_config=primitive_config,
+        projection_mode=mode,
+        organic_seed=organic_seed,
+    )
+    validation = validate_edit_result(
+        src_mask=mask,
+        target_mask=edit.target_mask,
+        change_region=edit.change_region,
+        schema=schema,
+        primitive_config=primitive_config,
+        changed_area_fraction=edit.changed_area_fraction,
+    )
+    metrics = projection_metrics(
+        mask,
+        edit.change_region,
+        schema=schema,
+        source_labels=tuple(edit.ops_log.get("source_labels", ())),
+        target_label=str(edit.ops_log.get("target_label", "")),
+    )
+    entry = {
+        "projection_mode": mode,
+        "validation_passed": bool(validation.passed),
+        "failed_checks": [check.name for check in validation.failed_checks],
+        "selected_pixels": int(edit.selected_pixels),
+        "changed_area_fraction": float(edit.changed_area_fraction),
+        "warnings": list(edit.warnings),
+        "ops_log": edit.ops_log,
+        "metrics": metrics,
+        "validation": _jsonable_dataclass(validation),
+    }
+    summary[mode] = entry
 
-        if output_dir is not None:
-            mode_dir = output_dir / mode
-            save_change_region(edit.change_region, mode_dir / "change_region.png")
-            save_id_mask(edit.target_mask, mode_dir / "target_mask.png")
-            save_rgb_mask(edit.target_mask, mode_dir / "target_mask_rgb.png")
-            save_metadata(entry, mode_dir / "summary.json")
+    if output_dir is not None:
+        mode_dir = output_dir / mode
+        save_change_region(edit.change_region, mode_dir / "change_region.png")
+        save_id_mask(edit.target_mask, mode_dir / "target_mask.png")
+        save_rgb_mask(edit.target_mask, mode_dir / "target_mask_rgb.png")
+        save_metadata(entry, mode_dir / "summary.json")
 
     return summary
 

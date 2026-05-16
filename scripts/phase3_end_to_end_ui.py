@@ -33,6 +33,7 @@ from phase3_mask_edit.backends.llm_agent import (
     FixtureContourProvider,
     OpenAICompatibleMultimodalContourProvider,
     OpenAICompatibleTextContourProvider,
+    STATUS_VALIDATED,
     execute_llm_contour_agent,
 )
 from phase3_mask_edit.backends.llm_contour import (
@@ -58,7 +59,6 @@ from phase3_mask_edit.core.mask_io import (
     save_id_mask,
     save_metadata,
 )
-from phase3_mask_edit.generic.executor import execute_edit
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
     QwenLocalParserConfig,
@@ -999,8 +999,8 @@ def _build_auto_recommendation_pool(state: dict[str, Any]) -> list[dict[str, Any
     pool: list[dict[str, Any]] = []
     for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
         decision = assess_edit_applicability(intent, recipe, schema, context)
-        feasibility = _estimate_recommendation_feasibility(
-            reference_tissue, intent, primitive_config, recipe, schema, context
+        feasibility = _estimate_recommendation_capacity(
+            reference_tissue, intent, primitive_config, schema
         )
         key = _recommendation_key(intent)
         pool.append(
@@ -1294,6 +1294,16 @@ def run_tissue_stage(
                 recipe=recipe,
                 output_dir=output_dir,
                 selected_keys=list(auto_recommendation_keys or []),
+                provider=provider,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+                api_model=api_model,
+                api_image_detail=api_image_detail,
+                fixture_file=fixture_file,
+                max_attempts=max_attempts,
+                max_regions=max_regions,
+                max_points_per_region=max_points_per_region,
+                organic_seed=organic_seed,
             )
         elif old_prompt.strip() and new_prompt.strip():
             semantic_diff, parser_info = _resolve_prompt_semantic_diff(
@@ -1792,8 +1802,8 @@ def _run_auto_recommend_stage(
     pool: list[dict[str, Any]] = []
     for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
         decision = assess_edit_applicability(intent, recipe, schema, context)
-        feasibility = _estimate_recommendation_feasibility(
-            reference_tissue, intent, primitive_config, recipe, schema, context
+        feasibility = _estimate_recommendation_capacity(
+            reference_tissue, intent, primitive_config, schema
         )
         pool.append(
             {
@@ -1838,6 +1848,16 @@ def _execute_selected_recommendations(
     recipe: dict[str, Any],
     output_dir: Path,
     selected_keys: list[str],
+    provider: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    api_image_detail: str,
+    fixture_file,
+    max_attempts: int,
+    max_regions: int,
+    max_points_per_region: int,
+    organic_seed: int,
 ) -> tuple[Any, dict[str, Any]]:
     recommendations = _build_auto_recommendation_pool(state)
     if not recommendations:
@@ -1848,7 +1868,15 @@ def _execute_selected_recommendations(
 
     current_mask = np.array(reference_tissue, copy=True)
     attempt_logs: list[dict[str, Any]] = []
-    last_result = None
+    last_success = None
+    provider_instance = _build_contour_provider(
+        provider=provider,
+        api_base_url=api_base_url,
+        api_key_env=api_key_env,
+        api_model=_defaulted_text(api_model, DEFAULT_API_MODEL),
+        api_image_detail=api_image_detail,
+        fixture_file=fixture_file,
+    )
     for intent, primitive_config in selected_intents[:AUTO_RECOMMEND_LIMIT]:
         decision = assess_edit_applicability(intent, recipe, schema, MaskEditContext.from_mask(current_mask, schema))
         if decision.status == "rejected":
@@ -1861,29 +1889,36 @@ def _execute_selected_recommendations(
                 }
             )
             continue
-        result = execute_edit(
-            current_mask,
-            intent,
-            recipe,
-            schema,
-            MaskEditContext.from_mask(current_mask, schema),
+        result = execute_llm_contour_agent(
+            old_mask=current_mask,
+            schema=schema,
+            intent=intent,
+            primitive_config=primitive_config,
+            provider=provider_instance,
+            output_dir=output_dir / "phase3_mask_edit" / "auto_recommend" / intent.primitive,
+            projection_mode=PROJECTION_MODE_ORGANIC_V2,
+            organic_seed=organic_seed,
+            max_attempts=max_attempts,
+            max_regions=max_regions,
+            max_points_per_region=max_points_per_region,
         )
         attempt_logs.append(
             {
                 "primitive": intent.primitive,
                 "strength": intent.strength,
                 "status": result.status,
-                "reasons": list(result.applicability.reasons),
-                "warnings": list(result.applicability.warnings),
+                "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                "error": result.error,
+                "artifact_paths": result.artifact_paths,
                 "validation_failed_checks": _validation_failed_checks(result.validation),
                 "primitive_config": primitive_config.get("name"),
             }
         )
-        last_result = result
-        if result.edit_result is not None:
+        if result.status == STATUS_VALIDATED and result.edit_result is not None:
+            last_success = result
             current_mask = np.array(result.edit_result.target_mask, copy=True)
 
-    if last_result is None or last_result.edit_result is None:
+    if last_success is None or last_success.edit_result is None:
         raise gr.Error(_auto_recommend_execution_failure_message(attempt_logs))
 
     phase3_info = {
@@ -1891,11 +1926,11 @@ def _execute_selected_recommendations(
         "recommendations": recommendations,
         "selected_keys": list(selected_keys),
         "attempts": attempt_logs,
-        "primitive": last_result.edit_result.ops_log.get("primitive", last_result.applicability.primitive),
-        "projection_mode": "primitive_executor",
+        "primitive": last_success.edit_result.ops_log.get("primitive", ""),
+        "projection_mode": PROJECTION_MODE_ORGANIC_V2,
     }
     save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
-    return last_result, phase3_info
+    return last_success, phase3_info
 
 
 def _recommend_edit_intents(
@@ -1924,8 +1959,8 @@ def _recommend_edit_intents(
             decision = assess_edit_applicability(intent, recipe, schema, context)
             if decision.status == "rejected":
                 continue
-            feasibility = _estimate_recommendation_feasibility(
-                mask, intent, primitive_config, recipe, schema, context
+            feasibility = _estimate_recommendation_capacity(
+                mask, intent, primitive_config, schema
             )
             if feasibility["status"] != "executable":
                 continue
@@ -1941,7 +1976,13 @@ def _primitive_strengths(primitive_config: dict[str, Any]) -> tuple[str, ...]:
     ranges = primitive_config.get("parameter_ranges", {})
     if not isinstance(ranges, dict):
         return ()
-    strengths = [key for key in ("mild", "moderate", "significant", "xlarge_deid") if key in ranges]
+    strengths: list[str] = []
+    for key in ("mild", "moderate", "significant", "xlarge_deid"):
+        if key in ranges:
+            strengths.append(key)
+            continue
+        if any(isinstance(value, dict) and key in value for value in ranges.values()):
+            strengths.append(key)
     return tuple(strengths)
 
 
@@ -1976,54 +2017,46 @@ def _recommendation_score(
     return score
 
 
-def _estimate_recommendation_feasibility(
+def _estimate_recommendation_capacity(
     mask: np.ndarray,
     intent: EditIntent,
     primitive_config: dict[str, Any],
-    recipe: dict[str, Any],
     schema: MaskProfileSchema,
-    context: MaskEditContext,
 ) -> dict[str, Any]:
-    try:
-        result = execute_edit(mask, intent, recipe, schema, context)
-    except Exception as exc:
-        return {
-            "status": "execution_error",
-            "error": f"{type(exc).__name__}: {exc}",
-        }
-    if result.edit_result is None:
-        return {
-            "status": result.status,
-            "reasons": list(result.applicability.reasons),
-            "warnings": list(result.applicability.warnings),
-        }
-    failed = _validation_failed_checks(result.validation)
-    strength_fit = _strength_fit_summary(
-        mask,
-        result.edit_result.change_region,
-        intent,
-        primitive_config,
-        schema,
-    )
-    if not strength_fit["fits"]:
-        failed = [*failed, str(strength_fit["detail"])]
+    interval = _strength_interval(primitive_config, intent.strength)
+    denominator = _strength_denominator_pixels(mask, primitive_config, schema)
+    legal_pixels = _recommendation_legal_pixels(mask, primitive_config, schema)
+    failed: list[str] = []
+    if denominator <= 0:
+        failed.append("capacity failed: no denominator pixels in current mask.")
+    if legal_pixels <= 0:
+        failed.append("capacity failed: no legal source pixels in current mask.")
+    if interval is not None and denominator > 0:
+        lower, upper = interval
+        lower_pixels = int(np.ceil(denominator * lower))
+        upper_pixels = int(np.floor(denominator * upper))
+        if legal_pixels < lower_pixels:
+            failed.append(
+                f"capacity failed: legal_pixels={legal_pixels} below "
+                f"{intent.strength} minimum {lower_pixels}."
+            )
+    else:
+        lower_pixels = 1 if denominator > 0 else 0
+        upper_pixels = legal_pixels
+    target_pixels = max(1, int(round((lower_pixels + max(upper_pixels, lower_pixels)) / 2))) if legal_pixels > 0 else 0
+    achievable_pixels = min(target_pixels, legal_pixels)
+    fraction = achievable_pixels / denominator if denominator > 0 else None
     return {
-        "status": (
-            "executable"
-            if (result.validation is None or result.validation.passed) and strength_fit["fits"]
-            else "validation_failed"
-        ),
-        "execution_status": result.status,
-        "validation_passed": (
-            (None if result.validation is None else result.validation.passed)
-            and strength_fit["fits"]
-        ),
+        "status": "executable" if not failed else "capacity_failed",
+        "validation_passed": not failed,
         "validation_failed_checks": failed,
-        "changed_area_fraction": float(result.edit_result.changed_area_fraction),
-        "strength_fraction": strength_fit["fraction"],
-        "strength_range": strength_fit["range"],
-        "selected_pixels": int(result.edit_result.selected_pixels),
-        "notes": list(result.edit_result.warnings),
+        "changed_area_fraction": fraction,
+        "strength_fraction": fraction,
+        "strength_range": list(interval) if interval is not None else None,
+        "selected_pixels": int(achievable_pixels),
+        "legal_pixels": int(legal_pixels),
+        "denominator_pixels": int(denominator),
+        "notes": ["static_mask_capacity_estimate_only"],
     }
 
 
@@ -2117,6 +2150,61 @@ def _strength_denominator_pixels(
     return int(mask.size)
 
 
+def _recommendation_legal_pixels(
+    mask: np.ndarray,
+    primitive_config: dict[str, Any],
+    schema: MaskProfileSchema,
+) -> int:
+    name = primitive_config.get("name")
+    operation = primitive_config.get("mask_operation", {})
+    operation = operation if isinstance(operation, dict) else {}
+    if name in {"necrosis_appearance", "intratumoral_immune_infiltration"}:
+        target = operation.get("target")
+        target_mask = (
+            _safe_schema_label_mask(mask, schema, target)
+            if isinstance(target, str)
+            else np.zeros(mask.shape, dtype=bool)
+        )
+        return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids) & ~target_mask))
+    if name == "tumor_burden_increase":
+        labels = _labels_from_operation(operation.get("target_priority"))
+        legal = np.zeros(mask.shape, dtype=bool)
+        for label in labels:
+            legal |= _safe_schema_label_mask(mask, schema, label)
+        legal &= ~_safe_schema_label_mask(mask, schema, "Necrosis")
+        return int(np.count_nonzero(legal))
+    if name in {
+        "tumor_burden_decrease",
+        "necrosis_resolution",
+        "immune_infiltration_decrease",
+        "stroma_decrease",
+        "stromal_reduction",
+    }:
+        source = operation.get("source")
+        if isinstance(source, str):
+            return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, source)))
+    if name == "stromal_immune_infiltration":
+        return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, "Stroma")))
+    if name == "stromal_desmoplasia":
+        sources = [
+            *_labels_from_operation(operation.get("primary_sources")),
+            *_labels_from_operation(operation.get("secondary_sources")),
+        ]
+        legal = np.zeros(mask.shape, dtype=bool)
+        for label in sources:
+            legal |= _safe_schema_label_mask(mask, schema, label)
+        return int(np.count_nonzero(legal))
+    source_ids = operation.get("source_fine_ids")
+    if isinstance(source_ids, int):
+        return int(np.count_nonzero(mask == source_ids))
+    if isinstance(source_ids, (list, tuple)):
+        return int(np.count_nonzero(np.isin(mask, tuple(source_ids))))
+    source = operation.get("source")
+    if isinstance(source, str):
+        return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, source)))
+    return int(np.count_nonzero(~np.isin(mask, tuple(schema.skip_fine_ids))))
+
+
 def _safe_schema_label_mask(
     mask: np.ndarray,
     schema: MaskProfileSchema,
@@ -2146,6 +2234,7 @@ def _auto_recommend_execution_failure_message(attempt_logs: list[dict[str, Any]]
         )
         details = (
             attempt.get("reasons")
+            or ([attempt["error"]] if attempt.get("error") else [])
             or attempt.get("validation_failed_checks")
             or attempt.get("warnings")
             or []
@@ -2930,7 +3019,20 @@ def build_ui() -> gr.Blocks:
         )
         auto_execute_button.click(
             _run_auto_selected_from_ui,
-            inputs=[state, auto_choices],
+            inputs=[
+                state,
+                auto_choices,
+                provider,
+                api_base_url,
+                api_key_env,
+                api_model,
+                api_image_detail,
+                fixture_file,
+                max_attempts,
+                max_regions,
+                max_points_per_region,
+                organic_seed,
+            ],
             outputs=[state, tissue_log, target_tissue_preview, change_region_preview],
         ).then(
             _refresh_edit_mode_panels,
@@ -2986,6 +3088,16 @@ def build_ui() -> gr.Blocks:
 def _run_auto_selected_from_ui(
     state: dict[str, Any],
     auto_recommendation_keys,
+    provider: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    api_image_detail: str,
+    fixture_file,
+    max_attempts: int,
+    max_regions: int,
+    max_points_per_region: int,
+    organic_seed: int,
 ) -> tuple[dict[str, Any], str, str, str]:
     if not state:
         raise gr.Error("Load inputs first.")
@@ -3000,6 +3112,16 @@ def _run_auto_selected_from_ui(
         recipe=recipe,
         output_dir=output_dir,
         selected_keys=list(auto_recommendation_keys or []),
+        provider=provider,
+        api_base_url=api_base_url,
+        api_key_env=api_key_env,
+        api_model=api_model,
+        api_image_detail=api_image_detail,
+        fixture_file=fixture_file,
+        max_attempts=max_attempts,
+        max_regions=max_regions,
+        max_points_per_region=max_points_per_region,
+        organic_seed=organic_seed,
     )
     target_tissue = result.edit_result.target_mask
     target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")

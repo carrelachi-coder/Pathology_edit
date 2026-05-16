@@ -146,6 +146,12 @@ def save_sequential_execution_output(
 def main(argv: list[str] | None = None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    if not args.allow_legacy_deterministic_executor:
+        parser.error(
+            "edit_from_intents uses the legacy deterministic primitive executor. "
+            "Use the LLM contour organic_v2 UI/CLI instead, or pass "
+            "--allow-legacy-deterministic-executor for debugging old primitive tests."
+        )
 
     mask = load_id_mask(args.mask)
     intents = load_intents(args.intents)
@@ -224,6 +230,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", required=True, type=Path, help="Output directory.")
     parser.add_argument("--continue-on-failure", action="store_true")
+    parser.add_argument(
+        "--allow-legacy-deterministic-executor",
+        action="store_true",
+        help="Permit the old non-LLM execute_edit path for legacy/debug use.",
+    )
     parser.add_argument("--print-summary", action="store_true")
     return parser
 
