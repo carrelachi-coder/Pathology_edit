@@ -1339,6 +1339,71 @@ class LLMContourProposalTests(unittest.TestCase):
         selected_cols = np.argwhere(result.change_region)[:, 1]
         self.assertLess(float(np.mean(selected_cols)), 30.0)
 
+    def test_intratumoral_immune_policy_prefers_inner_tumor_boundary_not_center(self):
+        old_mask = np.zeros((96, 96), dtype=np.int64)
+        old_mask[8:88, 8:88] = 1
+        raw_candidate = old_mask == 1
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Immune infiltrate",
+            primitive_config={
+                "name": "intratumoral_immune_infiltration",
+                "required_tissue_labels": ["Tumor", "Immune infiltrate"],
+                "spatial_pattern": {
+                    "region": "inside_tumor",
+                    "spot_policy": {
+                        "max_total_area_fraction_of_tumor": 0.30,
+                        "min_spot_area_px": 1,
+                        "max_spot_area_px": 64,
+                        "max_spots_per_patch": 8,
+                    },
+                },
+                "parameter_ranges": {
+                    "target_changed_area_fraction": {"mild": [0.05, 0.10]},
+                    "organic_score_weights": {
+                        "template": 0.0,
+                        "spatial": 1.0,
+                        "noise": 0.0,
+                    },
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 128,
+                    "organic_template_spillover_fraction": 0.0,
+                    "tumor_boundary_margin_radius_px": 24,
+                    "max_changed_area_fraction": 0.30,
+                },
+            },
+            seed=1,
+            target_pixels=256,
+        )
+
+        selected_rows, selected_cols = np.where(result.change_region)
+        dist_to_nearest_edge = np.minimum.reduce(
+            [
+                selected_rows - 8,
+                87 - selected_rows,
+                selected_cols - 8,
+                87 - selected_cols,
+            ]
+        )
+        center_rows = np.arange(36, 60)
+        center_cols = np.arange(36, 60)
+        center_region = np.zeros_like(old_mask, dtype=bool)
+        center_region[np.ix_(center_rows, center_cols)] = True
+
+        params = result.ops_log["component_policy"]["params"]
+        self.assertEqual(
+            params["tumor_boundary_score_policy"],
+            "prefer_inner_tumor_invasive_front_not_geometric_center",
+        )
+        self.assertEqual(result.selected_pixels, 256)
+        self.assertLess(float(np.mean(dist_to_nearest_edge)), 12.0)
+        self.assertEqual(int(np.count_nonzero(result.change_region & center_region)), 0)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+
     def test_intratumoral_immune_cap_ignores_existing_stromal_immune(self):
         old_mask = np.zeros((80, 80), dtype=np.int64)
         old_mask[4:76, 4:76] = 2

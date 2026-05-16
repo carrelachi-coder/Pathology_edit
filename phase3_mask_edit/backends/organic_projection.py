@@ -1934,13 +1934,14 @@ def _intratumoral_immune_policy(
         tumor,
         pad_width=int(round(boundary_radius)),
     )
-    score += np.clip(interior_dist / boundary_radius, 0.0, 1.0)
+    inner_boundary_score = np.exp(-interior_dist / max(boundary_radius, 1.0))
+    score += inner_boundary_score
 
     immune_radius = _positive_float(None, ranges.get("immune_neighbor_radius_px", 36.0))
     used_existing_immune = bool(np.any(immune))
     if used_existing_immune:
         dist_to_immune = ndimage.distance_transform_edt(~immune)
-        score += 0.35 * np.exp(-dist_to_immune / immune_radius)
+        score += 0.55 * np.exp(-dist_to_immune / immune_radius)
 
     score[~legal] = 0.0
     tumor_pixels = int(np.count_nonzero(tumor))
@@ -1963,8 +1964,14 @@ def _intratumoral_immune_policy(
             "max_intratumoral_immune_pixels": max_immune_pixels,
             "remaining_allowed_intratumoral_immune_pixels": max_immune_pixels,
             "tumor_boundary_margin_radius_px": boundary_radius,
+            "tumor_boundary_score_policy": "prefer_inner_tumor_invasive_front_not_geometric_center",
             "immune_neighbor_radius_px": immune_radius,
             "used_existing_immune_neighborhood": used_existing_immune,
+            "score_prefers": [
+                "tumor_pixels_just_inside_tumor_stroma_boundary",
+                "tumor_pixels_near_existing_immune_infiltrate",
+                "patchy_spots_over_concentric_central_sheet",
+            ],
             "spot_policy_min_spot_area_px": min_spot_area_px,
             "spot_policy_max_spot_area_px": _spot_policy_int(
                 spot_policy.get("max_spot_area_px"), default=0
