@@ -288,6 +288,7 @@ def _manual_contour_payload_value(
             "width": int(shape[1]) if shape else None,
             "target_label": target_label or "",
             "target_color": list(target_color or (59, 130, 246)),
+            "dirty": False,
         },
         ensure_ascii=False,
     )
@@ -338,9 +339,30 @@ def _polygon_area(points: np.ndarray) -> float:
 def _simplify_closed_contour(points: np.ndarray, max_points: int) -> np.ndarray:
     if len(points) <= max_points:
         return points
-    step = max(1, int(np.ceil(len(points) / max_points)))
-    indices = np.arange(0, len(points), step, dtype=int)[:max_points]
-    return points[indices]
+    try:
+        from skimage.measure import approximate_polygon
+    except Exception:
+        step = max(1, int(np.ceil(len(points) / max_points)))
+        indices = np.arange(0, len(points), step, dtype=int)[:max_points]
+        return points[indices]
+
+    tolerance = 0.75
+    simplified = np.asarray(points, dtype=float)
+    for _ in range(12):
+        candidate = np.asarray(approximate_polygon(points, tolerance=tolerance), dtype=float)
+        if len(candidate) >= 2 and np.allclose(candidate[0], candidate[-1]):
+            candidate = candidate[:-1]
+        if 3 <= len(candidate) <= max_points:
+            simplified = candidate
+            break
+        if len(candidate) < 3:
+            break
+        simplified = candidate
+        tolerance *= 1.35
+    if len(simplified) > max_points:
+        indices = np.linspace(0, len(simplified) - 1, num=max_points, endpoint=False, dtype=int)
+        simplified = simplified[indices]
+    return simplified
 
 
 def _extract_manual_contour_components(
@@ -371,11 +393,17 @@ def _extract_manual_contour_components(
             if area == 0:
                 continue
             ys, xs = np.where(component)
-            contours = measure.find_contours(component.astype(float), level=0.5)
+            padded_component = np.pad(component.astype(float), pad_width=1, mode="constant", constant_values=0)
+            contours = measure.find_contours(padded_component, level=0.5)
             if not contours:
                 continue
             contour = max(contours, key=len)
-            contour_xy = np.asarray([[float(point[1]), float(point[0])] for point in contour], dtype=float)
+            contour_xy = np.asarray(
+                [[float(point[1] - 1.0), float(point[0] - 1.0)] for point in contour],
+                dtype=float,
+            )
+            contour_xy[:, 0] = np.clip(contour_xy[:, 0], 0.0, float(mask.shape[1] - 1))
+            contour_xy[:, 1] = np.clip(contour_xy[:, 1], 0.0, float(mask.shape[0] - 1))
             if len(contour_xy) < 3:
                 continue
             if _polygon_area(contour_xy) < 0:
@@ -471,6 +499,7 @@ def _manual_contour_editor_html(
       active: null,
       drawing: null,
       drawMode: false,
+      dirty: false,
     }};
     const ns = 'http://www.w3.org/2000/svg';
     const targetColor = seed.target_color || [59, 130, 246];
@@ -485,24 +514,38 @@ def _manual_contour_editor_html(
     }}
 
     function resolvePayloadBox() {{
-      if (payloadBox && document.contains(payloadBox)) return payloadBox;
-      payloadBox = window.parent.document.querySelector('#manualContourPayload textarea, #manualContourPayload input');
+      const parentDocument = window.parent.document;
+      if (payloadBox && parentDocument.contains(payloadBox)) return payloadBox;
+      payloadBox = parentDocument.querySelector(
+        '#manualContourPayload textarea, #manualContourPayload input, textarea#manualContourPayload, input#manualContourPayload'
+      );
       return payloadBox;
     }}
 
     function emit() {{
+      const parentWindow = window.parent;
       const box = resolvePayloadBox();
-      if (!box) return;
-      box.value = JSON.stringify({{
+      if (!box) {{
+        status.textContent = 'payload bridge missing';
+        return;
+      }}
+      const nextValue = JSON.stringify({{
         background: seed.background,
         components: state.components,
         height: seed.height,
         width: seed.width,
         target_label: seed.target_label,
         target_color: seed.target_color,
+        dirty: state.dirty,
       }});
-      box.dispatchEvent(new Event('input', {{ bubbles: true }}));
-      box.dispatchEvent(new Event('change', {{ bubbles: true }}));
+      const proto = box.tagName && box.tagName.toLowerCase() === 'textarea'
+        ? parentWindow.HTMLTextAreaElement.prototype
+        : parentWindow.HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+      if (setter) setter.call(box, nextValue);
+      else box.value = nextValue;
+      box.dispatchEvent(new parentWindow.Event('input', {{ bubbles: true }}));
+      box.dispatchEvent(new parentWindow.Event('change', {{ bubbles: true }}));
     }}
 
     function render() {{
@@ -588,6 +631,7 @@ def _manual_contour_editor_html(
       }});
       state.drawing = null;
       state.drawMode = false;
+      state.dirty = true;
       render();
     }}
 
@@ -601,11 +645,13 @@ def _manual_contour_editor_html(
       const [x, y] = toSvgPoint(event);
       if (state.active) {{
         state.components[state.active.compIndex].points[state.active.pointIndex] = [x, y];
+        state.dirty = true;
         render();
       }} else if (state.drawing) {{
         const last = state.drawing[state.drawing.length - 1];
         if (!last || Math.hypot(last[0] - x, last[1] - y) >= 2) {{
           state.drawing.push([x, y]);
+          state.dirty = true;
           render();
         }}
       }}
@@ -792,7 +838,8 @@ def _manual_editor_updates_for_label(
 
     schema = MaskProfileSchema.from_reference_profile(state.get("profile", "BCSS"))
     selected_label = target_label if target_label in schema.writable_labels else _default_manual_target_label(schema)
-    tissue_mask_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
+    state["manual_selected_label"] = selected_label
+    tissue_mask_path = state.get("manual_working_tissue_mask") or state.get("target_tissue_mask") or state.get("reference_tissue_mask")
     if not tissue_mask_path:
         return gr.update(value=""), gr.update(value="")
 
@@ -873,8 +920,9 @@ def _refresh_edit_mode_panels(
 
     if edit_mode == EDIT_MODE_MANUAL_CONTOUR:
         schema = MaskProfileSchema.from_reference_profile(state.get("profile", "BCSS"))
-        selected_label = _default_manual_target_label(schema)
-        tissue_mask_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
+        state_label = state.get("manual_selected_label")
+        selected_label = state_label if state_label in schema.writable_labels else _default_manual_target_label(schema)
+        tissue_mask_path = state.get("manual_working_tissue_mask") or state.get("target_tissue_mask") or state.get("reference_tissue_mask")
         tissue_shape = None
         components: list[dict[str, Any]] = []
         background_rgb = ""
@@ -1521,11 +1569,35 @@ def _save_manual_current_label(
     source_labels: str,
     target_label: str,
 ) -> tuple[dict[str, Any], dict[str, Any], str, str, str]:
+    state, log, working_rgb_path = _save_manual_current_label_state(
+        state,
+        manual_contour_payload,
+        source_labels,
+        target_label,
+    )
+    editor_update, payload_update = _manual_editor_updates_for_label(state, target_label)
+    return state, editor_update, payload_update, _json_text(log), working_rgb_path
+
+
+def _save_manual_current_label_state(
+    state: dict[str, Any],
+    manual_contour_payload,
+    source_labels: str,
+    target_label: str,
+) -> tuple[dict[str, Any], dict[str, Any], str]:
     if not state:
         raise gr.Error("Load inputs first.")
     output_dir = Path(state["output_dir"])
     schema = MaskProfileSchema.from_reference_profile(state["profile"])
     base_mask = load_id_mask(state.get("manual_working_tissue_mask") or state.get("target_tissue_mask") or state["reference_tissue_mask"])
+    if not (isinstance(manual_contour_payload, str) and manual_contour_payload.strip()):
+        components = state.get("manual_contour_components") or []
+        if components:
+            manual_contour_payload = {
+                "components": components,
+                "target_label": target_label,
+                "dirty": False,
+            }
     result, phase3_info = _run_manual_contour_stage(
         reference_tissue=base_mask,
         schema=schema,
@@ -1552,10 +1624,10 @@ def _save_manual_current_label(
         {
             "manual_working_tissue_mask": str(working_path),
             "manual_working_tissue_rgb": str(working_rgb_path),
+            "manual_selected_label": target_label,
             "manual_steps": manual_steps,
         }
     )
-    editor_update, payload_update = _manual_editor_updates_for_label(state, target_label)
     log = {
         "status": "manual_label_saved",
         "target_label": target_label,
@@ -1563,14 +1635,66 @@ def _save_manual_current_label(
         "selected_pixels": phase3_info.get("selected_pixels", 0),
         "steps": manual_steps,
     }
-    return state, editor_update, payload_update, _json_text(log), str(working_rgb_path)
+    return state, log, str(working_rgb_path)
+
+
+def _manual_switch_label_saving_current(
+    state: dict[str, Any],
+    manual_contour_payload,
+    source_labels: str,
+    next_label: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], str, str]:
+    if not state:
+        return state, gr.update(value=""), gr.update(value=""), "", None
+
+    previous_label = state.get("manual_selected_label")
+    log: dict[str, Any] = {"status": "manual_label_switched", "from": previous_label, "to": next_label}
+    preview_path: str | None = None
+    payload_components = []
+    payload_dirty = False
+    if isinstance(manual_contour_payload, str) and manual_contour_payload.strip():
+        try:
+            payload_data = json.loads(manual_contour_payload)
+            if isinstance(payload_data, dict):
+                payload_components = payload_data.get("components", [])
+                payload_dirty = bool(payload_data.get("dirty"))
+        except json.JSONDecodeError:
+            payload_components = []
+
+    if previous_label and previous_label in MaskProfileSchema.from_reference_profile(state["profile"]).writable_labels and payload_components and payload_dirty:
+        state, save_log, preview_path = _save_manual_current_label_state(
+            state,
+            manual_contour_payload,
+            source_labels,
+            previous_label,
+        )
+        log["saved_previous"] = save_log
+
+    editor_update, payload_update = _manual_editor_updates_for_label(state, next_label)
+    state["manual_selected_label"] = next_label
+    return state, editor_update, payload_update, _json_text(log), preview_path
 
 
 def _finalize_manual_tissue_stage(
     state: dict[str, Any],
+    manual_contour_payload=None,
+    source_labels: str = "",
+    target_label: str | None = None,
 ) -> tuple[dict[str, Any], str, str, str]:
     if not state:
         raise gr.Error("Load inputs first.")
+    if manual_contour_payload and target_label:
+        try:
+            payload_data = json.loads(manual_contour_payload) if isinstance(manual_contour_payload, str) else {}
+        except json.JSONDecodeError:
+            payload_data = {}
+        if isinstance(payload_data, dict) and payload_data.get("dirty"):
+            state, _, _ = _save_manual_current_label_state(
+                state,
+                manual_contour_payload,
+                source_labels,
+                target_label,
+            )
     if not state.get("manual_working_tissue_mask"):
         raise gr.Error("Save at least one manual tissue edit first.")
 
@@ -2307,12 +2431,21 @@ def _labels_from_operation(value: Any) -> list[str]:
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Pathology Edit Pipeline") as demo:
+    with gr.Blocks(
+        title="Pathology Edit Pipeline",
+        css="#manualContourPayload {display:none !important;}",
+    ) as demo:
         gr.Markdown("## Pathology edit pipeline")
         state = gr.State({})
 
         with gr.Row():
             profile = gr.Dropdown(["BCSS", "PANDA", "GlaS", "IGNITE", "PUMA", "ORCA"], value="BCSS", label="profile")
+        gr.Markdown("### Tissue mask edit")
+        edit_mode = gr.Radio(
+            EDIT_MODE_CHOICES,
+            value=EDIT_MODE_PROMPT,
+            label="edit mode",
+        )
         with gr.Row():
             source_image = gr.File(label="src_image", file_types=["image"], type="filepath")
             source_tissue = gr.File(label="src_tissue_mask", file_types=["image"], type="filepath")
@@ -2323,12 +2456,6 @@ def build_ui() -> gr.Blocks:
             src_image_preview = gr.Image(label="source image")
             src_tissue_preview = gr.Image(label="source tissue")
 
-        gr.Markdown("### Tissue mask edit")
-        edit_mode = gr.Radio(
-            EDIT_MODE_CHOICES,
-            value=EDIT_MODE_PROMPT,
-            label="edit mode",
-        )
         prompt_panel = gr.Column(visible=True)
         with prompt_panel:
             with gr.Row():
@@ -2359,7 +2486,6 @@ def build_ui() -> gr.Blocks:
         with manual_panel:
             manual_editor = gr.HTML(label="manual contour editor")
             manual_contour_payload = gr.Textbox(
-                visible=False,
                 value="",
                 label="manual contour payload",
                 elem_id="manualContourPayload",
@@ -2507,9 +2633,9 @@ def build_ui() -> gr.Blocks:
             outputs=[probnet_ckpt, nuclei_library, density_scale_json],
         )
         target_label.change(
-            _manual_editor_updates_for_label,
-            inputs=[state, target_label],
-            outputs=[manual_editor, manual_contour_payload],
+            _manual_switch_label_saving_current,
+            inputs=[state, manual_contour_payload, source_labels, target_label],
+            outputs=[state, manual_editor, manual_contour_payload, tissue_log, target_tissue_preview],
         )
         manual_save_label_button.click(
             _save_manual_current_label,
@@ -2518,7 +2644,7 @@ def build_ui() -> gr.Blocks:
         )
         manual_finalize_button.click(
             _finalize_manual_tissue_stage,
-            inputs=[state],
+            inputs=[state, manual_contour_payload, source_labels, target_label],
             outputs=[state, tissue_log, target_tissue_preview, change_region_preview],
         ).then(
             _refresh_edit_mode_panels,
