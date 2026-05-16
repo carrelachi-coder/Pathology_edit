@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
 
-    smoke = run_v1_v2_smoke(
+    smoke = run_organic_v2_smoke(
         mask,
         proposal,
         schema=schema,
@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def run_v1_v2_smoke(
+def run_organic_v2_smoke(
     mask: np.ndarray,
     proposal,
     *,
@@ -174,6 +174,9 @@ def run_v1_v2_smoke(
         save_metadata(entry, mode_dir / "summary.json")
 
     return summary
+
+
+run_v1_v2_smoke = run_organic_v2_smoke
 
 
 def run_weight_decay_seed_grid(

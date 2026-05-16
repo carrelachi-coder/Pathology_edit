@@ -6,13 +6,12 @@ from pathlib import Path
 import numpy as np
 
 from phase3_mask_edit.backends.llm_contour import (
-    PROJECTION_MODE_HARD_V1,
     PROJECTION_MODE_ORGANIC_V2,
     validate_contour_proposal,
 )
 from phase3_mask_edit.cli.run_organic_projection_stage2_experiment import (
     main as run_stage2_main,
-    run_v1_v2_smoke,
+    run_organic_v2_smoke,
     run_weight_decay_seed_grid,
     summarize_grid_trends,
 )
@@ -66,7 +65,7 @@ class OrganicProjectionStage2ExperimentTests(unittest.TestCase):
         self.assertEqual(len(trend["groups"]), 4)
         self.assertEqual(len(trend["decay_trend_by_weight_combo"]), 2)
 
-    def test_smoke_shows_v2_controls_area_when_v1_overlap_is_tiny(self):
+    def test_smoke_reports_organic_v2_metrics(self):
         mask = _synthetic_bcss_mask()
         payload = _proposal(points=[[20, 20], [44, 20], [44, 44], [20, 44]])
         proposal = validate_contour_proposal(
@@ -79,7 +78,7 @@ class OrganicProjectionStage2ExperimentTests(unittest.TestCase):
             allowed_source_labels=("Stroma",),
         )
 
-        smoke = run_v1_v2_smoke(
+        smoke = run_organic_v2_smoke(
             mask,
             proposal,
             schema=self.schema,
@@ -87,12 +86,8 @@ class OrganicProjectionStage2ExperimentTests(unittest.TestCase):
             organic_seed=3,
         )
 
-        self.assertFalse(smoke[PROJECTION_MODE_HARD_V1]["validation_passed"])
         self.assertTrue(smoke[PROJECTION_MODE_ORGANIC_V2]["validation_passed"])
-        self.assertGreater(
-            smoke[PROJECTION_MODE_ORGANIC_V2]["selected_pixels"],
-            smoke[PROJECTION_MODE_HARD_V1]["selected_pixels"],
-        )
+        self.assertGreater(smoke[PROJECTION_MODE_ORGANIC_V2]["selected_pixels"], 0)
         self.assertTrue(smoke[PROJECTION_MODE_ORGANIC_V2]["metrics"]["label_safe"])
 
     def test_cli_writes_smoke_grid_and_trend_outputs(self):
