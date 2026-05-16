@@ -1339,7 +1339,7 @@ class LLMContourProposalTests(unittest.TestCase):
         selected_cols = np.argwhere(result.change_region)[:, 1]
         self.assertLess(float(np.mean(selected_cols)), 30.0)
 
-    def test_intratumoral_immune_policy_prefers_inner_tumor_boundary_not_center(self):
+    def test_intratumoral_immune_policy_avoids_center_and_boundary_rings_for_broad_template(self):
         old_mask = np.zeros((96, 96), dtype=np.int64)
         old_mask[8:88, 8:88] = 1
         raw_candidate = old_mask == 1
@@ -1395,13 +1395,16 @@ class LLMContourProposalTests(unittest.TestCase):
         center_region[np.ix_(center_rows, center_cols)] = True
 
         params = result.ops_log["component_policy"]["params"]
+        score_terms = result.ops_log["score_terms"]
         self.assertEqual(
             params["tumor_boundary_score_policy"],
-            "prefer_inner_tumor_invasive_front_not_geometric_center",
+            "soft_inner_infiltration_band_not_hard_edge_ring",
         )
+        self.assertTrue(score_terms["intratumoral_broad_template_suppressed"])
         self.assertEqual(result.selected_pixels, 256)
-        self.assertLess(float(np.mean(dist_to_nearest_edge)), 12.0)
-        self.assertEqual(int(np.count_nonzero(result.change_region & center_region)), 0)
+        self.assertGreater(float(np.mean(dist_to_nearest_edge)), 8.0)
+        self.assertLess(float(np.mean(dist_to_nearest_edge)), 32.0)
+        self.assertLess(int(np.count_nonzero(result.change_region & center_region)), 80)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
 
     def test_intratumoral_immune_cap_ignores_existing_stromal_immune(self):

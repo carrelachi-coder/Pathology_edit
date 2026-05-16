@@ -195,6 +195,16 @@ def apply_organic_projected_label_write(
     template_norm = _normalize_on_domain(template_score, legal_domain)
     spatial_norm = _normalize_on_domain(spatial_score, legal_domain)
     noise_norm = _normalize_on_domain(noise, legal_domain)
+    broad_template_fraction = (
+        raw_legal_overlap / legal_pixels if legal_pixels else 0.0
+    )
+    suppress_broad_intratumoral_template = (
+        primitive_name == "intratumoral_immune_infiltration"
+        and broad_template_fraction
+        >= _intratumoral_broad_template_fraction_threshold(primitive_config or {})
+    )
+    if suppress_broad_intratumoral_template:
+        template_norm = np.zeros_like(template_norm)
 
     final_score = (
         params.w_template * template_norm
@@ -233,6 +243,7 @@ def apply_organic_projected_label_write(
             final_score=final_score,
             target_pixels=selected_target_pixels,
             primitive_config=primitive_config or {},
+            seed=seed,
         )
     target_ids = schema.resolve_fine_ids(target_label)
     target_mask = np.array(mask, copy=True)
@@ -317,6 +328,10 @@ def apply_organic_projected_label_write(
                 params.template_neighborhood_radius_px
             ),
             "template_spillover_fraction": float(params.template_spillover_fraction),
+            "intratumoral_broad_template_fraction": float(broad_template_fraction),
+            "intratumoral_broad_template_suppressed": bool(
+                suppress_broad_intratumoral_template
+            ),
         },
         "component_policy": {
             "policy_name": policy.policy_name,
@@ -1934,14 +1949,29 @@ def _intratumoral_immune_policy(
         tumor,
         pad_width=int(round(boundary_radius)),
     )
-    inner_boundary_score = np.exp(-interior_dist / max(boundary_radius, 1.0))
-    score += inner_boundary_score
-
+    infiltration_depth = _positive_float(
+        None,
+        ranges.get(
+            "intratumoral_infiltration_depth_px",
+            min(24.0, max(8.0, boundary_radius * 0.5)),
+        ),
+    )
+    infiltration_sigma = _positive_float(
+        None,
+        ranges.get(
+            "intratumoral_infiltration_band_sigma_px",
+            max(4.0, infiltration_depth * 0.5),
+        ),
+    )
     immune_radius = _positive_float(None, ranges.get("immune_neighbor_radius_px", 36.0))
     used_existing_immune = bool(np.any(immune))
+    infiltration_band = np.exp(
+        -0.5 * ((interior_dist - infiltration_depth) / infiltration_sigma) ** 2
+    )
+    score += (0.45 if used_existing_immune else 1.0) * infiltration_band
     if used_existing_immune:
         dist_to_immune = ndimage.distance_transform_edt(~immune)
-        score += 0.55 * np.exp(-dist_to_immune / immune_radius)
+        score += 1.25 * np.exp(-dist_to_immune / immune_radius)
 
     score[~legal] = 0.0
     tumor_pixels = int(np.count_nonzero(tumor))
@@ -1964,13 +1994,16 @@ def _intratumoral_immune_policy(
             "max_intratumoral_immune_pixels": max_immune_pixels,
             "remaining_allowed_intratumoral_immune_pixels": max_immune_pixels,
             "tumor_boundary_margin_radius_px": boundary_radius,
-            "tumor_boundary_score_policy": "prefer_inner_tumor_invasive_front_not_geometric_center",
+            "tumor_boundary_score_policy": "soft_inner_infiltration_band_not_hard_edge_ring",
+            "intratumoral_infiltration_depth_px": infiltration_depth,
+            "intratumoral_infiltration_band_sigma_px": infiltration_sigma,
             "immune_neighbor_radius_px": immune_radius,
             "used_existing_immune_neighborhood": used_existing_immune,
             "score_prefers": [
-                "tumor_pixels_just_inside_tumor_stroma_boundary",
+                "tumor_pixels_inside_but_not_on_tumor_boundary",
                 "tumor_pixels_near_existing_immune_infiltrate",
-                "patchy_spots_over_concentric_central_sheet",
+                "llm_local_template_when_specific",
+                "patchy_spots_over_concentric_center_or_boundary_sheet",
             ],
             "spot_policy_min_spot_area_px": min_spot_area_px,
             "spot_policy_max_spot_area_px": _spot_policy_int(
@@ -2296,6 +2329,7 @@ def _apply_intratumoral_immune_spot_policy(
     final_score: np.ndarray,
     target_pixels: int,
     primitive_config: Mapping[str, Any],
+    seed: int = 0,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     spatial_pattern = primitive_config.get("spatial_pattern", {})
     spot_policy = (
@@ -2333,6 +2367,7 @@ def _apply_intratumoral_immune_spot_policy(
     if not np.any(seed_domain):
         seed_domain = np.asarray(legal_domain, dtype=bool)
     seed_score[~seed_domain] = -np.inf
+    rng = np.random.default_rng(int(seed))
 
     result = np.zeros_like(selected, dtype=bool)
     suppressed = np.zeros_like(selected, dtype=bool)
@@ -2360,12 +2395,14 @@ def _apply_intratumoral_immune_spot_policy(
         if not np.any(seed_mask):
             break
 
-        spot_budget = min(max_spot_area_px, remaining)
+        jitter = 0.72 + 0.40 * float(rng.random())
+        spot_budget = min(max_spot_area_px, remaining, max(1, int(round(max_spot_area_px * jitter))))
         spot = _grow_score_ordered_spot(
             seed_mask,
             legal_domain=legal_domain & ~result & ~buffered_result,
             final_score=final_score,
             max_pixels=spot_budget,
+            rng=rng,
         )
         pixels = int(np.count_nonzero(spot))
         if pixels == 0:
@@ -2390,6 +2427,7 @@ def _apply_intratumoral_immune_spot_policy(
             max_spot_area_px=max_spot_area_px,
             max_extra_spots=max(max_spots - len(spot_sizes), 0),
             spot_gap_radius=spot_gap_radius,
+            rng=rng,
         )
         result |= refill
     else:
@@ -2427,6 +2465,7 @@ def _fill_intratumoral_immune_spot_shortfall(
     max_spot_area_px: int,
     max_extra_spots: int,
     spot_gap_radius: int,
+    rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, dict[str, int]]:
     if needed <= 0 or max_extra_spots <= 0:
         return np.zeros_like(current, dtype=bool), {
@@ -2458,6 +2497,7 @@ def _fill_intratumoral_immune_spot_shortfall(
             legal_domain=seed_domain,
             final_score=final_score,
             max_pixels=min(max_spot_area_px, remaining),
+            rng=rng,
         )
         pixels = int(np.count_nonzero(spot))
         if pixels == 0:
@@ -2478,6 +2518,7 @@ def _grow_score_ordered_spot(
     legal_domain: np.ndarray,
     final_score: np.ndarray,
     max_pixels: int,
+    rng: np.random.Generator | None = None,
 ) -> np.ndarray:
     spot = np.asarray(seed, dtype=bool) & legal_domain
     if max_pixels <= 0 or not np.any(spot):
@@ -2491,8 +2532,12 @@ def _grow_score_ordered_spot(
         if not np.any(frontier):
             break
         needed = int(max_pixels) - int(np.count_nonzero(spot))
+        frontier_score = np.asarray(final_score, dtype=float).copy()
+        if rng is not None:
+            frontier_score[frontier] += 0.12 * rng.normal(size=frontier_score.shape)[frontier]
+            frontier_score[frontier] += 0.05 * rng.uniform(-1.0, 1.0, size=int(np.count_nonzero(frontier)))
         add = _top_k_mask_for_refill(
-            final_score,
+            frontier_score,
             legal_domain=frontier,
             k=min(needed, int(np.count_nonzero(frontier))),
         )
@@ -2884,6 +2929,20 @@ def _spot_policy_min_area_px(primitive_config: Mapping[str, Any]) -> int | None:
     if value is None:
         return None
     return _spot_policy_int(value, default=1)
+
+
+def _intratumoral_broad_template_fraction_threshold(
+    primitive_config: Mapping[str, Any],
+) -> float:
+    ranges = primitive_config.get("parameter_ranges", {})
+    value = (
+        ranges.get("intratumoral_broad_template_fraction_threshold", 0.50)
+        if isinstance(ranges, Mapping)
+        else 0.50
+    )
+    if not isinstance(value, (int, float)) or not 0 < float(value) <= 1:
+        raise ValueError("invalid intratumoral_broad_template_fraction_threshold.")
+    return float(value)
 
 
 def _spot_policy_int(value: Any, *, default: int) -> int:
