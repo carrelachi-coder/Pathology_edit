@@ -1009,13 +1009,28 @@ def _auto_recipe_for_state(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def _auto_primitive_choices_for_state(state: dict[str, Any]) -> list[str]:
-    recipe = _auto_recipe_for_state(state)
+    profile = state.get("profile", "BCSS")
+    tissue_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
+    if not tissue_path:
+        return []
+    reference_tissue = load_id_mask(tissue_path)
+    schema = MaskProfileSchema.from_reference_profile(profile)
+    recipe = load_recipe(default_recipe_path_for_profile(profile))
+    context = MaskEditContext.from_mask(reference_tissue, schema)
     choices: list[str] = []
     for primitive_config in recipe.get("primitives", []):
         if not isinstance(primitive_config, dict):
             continue
         primitive_name = primitive_config.get("name")
-        if isinstance(primitive_name, str):
+        if not isinstance(primitive_name, str):
+            continue
+        if _auto_feasible_strengths_for_primitive(
+            reference_tissue,
+            schema=schema,
+            recipe=recipe,
+            context=context,
+            primitive_config=primitive_config,
+        ):
             choices.append(primitive_name)
     return choices
 
@@ -1026,13 +1041,63 @@ def _auto_strength_choices_for_state(
 ) -> list[str]:
     if not primitive_name:
         return []
-    recipe = _auto_recipe_for_state(state)
+    profile = state.get("profile", "BCSS")
+    tissue_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
+    if not tissue_path:
+        return []
+    reference_tissue = load_id_mask(tissue_path)
+    schema = MaskProfileSchema.from_reference_profile(profile)
+    recipe = load_recipe(default_recipe_path_for_profile(profile))
     try:
         primitive_config = _primitive_config(recipe, primitive_name)
     except gr.Error:
         return []
-    strengths = list(_primitive_strengths(primitive_config))
-    return strengths or [AUTO_RECOMMEND_DEFAULT_STRENGTH]
+    context = MaskEditContext.from_mask(reference_tissue, schema)
+    return list(
+        _auto_feasible_strengths_for_primitive(
+            reference_tissue,
+            schema=schema,
+            recipe=recipe,
+            context=context,
+            primitive_config=primitive_config,
+        )
+    )
+
+
+def _auto_feasible_strengths_for_primitive(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    recipe: dict[str, Any],
+    context: MaskEditContext,
+    primitive_config: dict[str, Any],
+) -> tuple[str, ...]:
+    primitive_name = primitive_config.get("name")
+    if not isinstance(primitive_name, str):
+        return ()
+    strengths = _primitive_strengths(primitive_config) or (
+        AUTO_RECOMMEND_DEFAULT_STRENGTH,
+    )
+    feasible: list[str] = []
+    for strength in strengths:
+        intent = EditIntent(
+            primitive=primitive_name,
+            strength=strength,
+            reference_profile=schema.reference_profile,
+        )
+        intent = _with_default_contour_labels(intent, primitive_config, schema)
+        decision = assess_edit_applicability(intent, recipe, schema, context)
+        if decision.status == "rejected":
+            continue
+        feasibility = _estimate_recommendation_capacity(
+            mask,
+            intent,
+            primitive_config,
+            schema,
+        )
+        if feasibility.get("status") == "executable":
+            feasible.append(strength)
+    return tuple(feasible)
 
 
 def _auto_selected_primitive(
@@ -1098,7 +1163,7 @@ def _format_auto_selection_summary(
     strength: str | None,
 ) -> str:
     if not primitive_name or not strength:
-        return "Select both primitive and strength before running auto recommend."
+        return "No feasible primitive/strength options for the current mask."
     profile = state.get("profile", "BCSS")
     tissue_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
     if not tissue_path:
@@ -1146,9 +1211,25 @@ def _auto_selection_to_intent(
     schema = MaskProfileSchema.from_reference_profile(profile)
     recipe = load_recipe(default_recipe_path_for_profile(profile))
     primitive_config = _primitive_config(recipe, primitive_name)
-    strengths = _primitive_strengths(primitive_config)
-    if strengths and strength not in strengths:
-        raise gr.Error(f"Primitive {primitive_name} does not support strength {strength}.")
+    tissue_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
+    if not tissue_path:
+        raise gr.Error("Load inputs first.")
+    reference_tissue = load_id_mask(tissue_path)
+    feasible_strengths = _auto_feasible_strengths_for_primitive(
+        reference_tissue,
+        schema=schema,
+        recipe=recipe,
+        context=MaskEditContext.from_mask(reference_tissue, schema),
+        primitive_config=primitive_config,
+    )
+    if strength not in feasible_strengths:
+        if feasible_strengths:
+            available = ", ".join(feasible_strengths)
+            raise gr.Error(
+                f"Primitive {primitive_name} is not feasible with strength {strength}; "
+                f"available strengths: {available}."
+            )
+        raise gr.Error(f"Primitive {primitive_name} is not feasible for the current mask.")
     payload = {
         "primitive": primitive_name,
         "strength": strength,
@@ -2090,6 +2171,8 @@ def _strength_denominator_pixels(
     schema: MaskProfileSchema,
 ) -> int:
     name = primitive_config.get("name")
+    if name in {"tumor_burden_increase", "tumor_burden_decrease"}:
+        return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     if name in {"necrosis_appearance", "intratumoral_immune_infiltration"}:
         return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     if name == "necrosis_resolution":
@@ -2128,6 +2211,8 @@ def _recommendation_legal_pixels(
         )
         return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids) & ~target_mask))
     if name == "tumor_burden_increase":
+        if not np.any(np.isin(mask, schema.tumor_fine_ids)):
+            return 0
         labels = _labels_from_operation(operation.get("target_priority"))
         legal = np.zeros(mask.shape, dtype=bool)
         for label in labels:
@@ -2187,8 +2272,8 @@ def _validation_failed_checks(validation: Any) -> list[str]:
 
 def _auto_recommend_execution_failure_message(attempt_logs: list[dict[str, Any]]) -> str:
     if not attempt_logs:
-        return "Selected recommendations could not be executed: no attempts were made."
-    lines = ["Selected recommendations could not be executed."]
+        return "Selected primitive/strength could not be executed: no attempts were made."
+    lines = ["Selected primitive/strength could not be executed."]
     for attempt in attempt_logs:
         lines.append(
             f"- {attempt.get('primitive')} / {attempt.get('strength')}: {attempt.get('status')}"
