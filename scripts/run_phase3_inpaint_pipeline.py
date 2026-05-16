@@ -40,10 +40,6 @@ from controlnet_train.inference import (
     run_inpaint_bundle,
 )
 from controlnet_train.data.common import default_prompt_for_dataset
-from phase3_mask_edit.cli.edit_from_intents import (
-    execute_intents_on_mask,
-    save_sequential_execution_output,
-)
 from phase3_mask_edit.core.mask_io import (
     load_change_region,
     load_id_mask,
@@ -277,14 +273,11 @@ def _run_phase3_semantic_stage(
     planning_summary["parser"] = parser_info
     save_metadata(planning_summary, diff_dir / "planning_summary.json")
 
-    execution = execute_intents_on_mask(
-        reference_tissue,
-        plan.intents,
-        reference_profile=args.profile,
-        stop_on_failure=not args.continue_on_failure,
+    raise RuntimeError(
+        "The diff/prompt modes used the retired non-LLM deterministic primitive "
+        "executor. Run organic_v2 mask editing first through the LLM contour UI/API, "
+        "then call this pipeline with --mode gen and --target-tissue-mask."
     )
-    mask_edit_dir = diff_dir / "mask_edit"
-    save_sequential_execution_output(execution, mask_edit_dir)
 
     return execution.target_mask, {
         "semantic_diff": str(diff_dir / "semantic_diff.json"),

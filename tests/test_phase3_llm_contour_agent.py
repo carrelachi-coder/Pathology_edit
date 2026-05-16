@@ -19,7 +19,6 @@ from phase3_mask_edit.backends.llm_agent import (
     OpenAICompatibleTextContourProvider,
     execute_llm_contour_agent,
 )
-from phase3_mask_edit.backends.llm_contour import PROJECTION_MODE_HARD_V1
 from phase3_mask_edit.backends.llm_prompt import build_contour_prompt, build_mask_context
 from phase3_mask_edit.cli.run_llm_contour_api import main as run_api_main
 from phase3_mask_edit.core.config import load_recipe
@@ -172,7 +171,6 @@ class LLMContourAgentTests(unittest.TestCase):
             primitive_config=primitive_config,
             provider=provider,
             max_attempts=1,
-            projection_mode=PROJECTION_MODE_HARD_V1,
         )
 
         self.assertNotIn("requires a target label", result.error or "")
@@ -223,7 +221,6 @@ class LLMContourAgentTests(unittest.TestCase):
             primitive_config=primitive_config,
             provider=provider,
             max_attempts=1,
-            projection_mode=PROJECTION_MODE_HARD_V1,
         )
 
         self.assertEqual(result.status, STATUS_VALIDATED)
@@ -346,7 +343,6 @@ class LLMContourAgentTests(unittest.TestCase):
             primitive_config=self.primitive_config,
             provider=provider,
             max_attempts=3,
-            projection_mode=PROJECTION_MODE_HARD_V1,
         )
 
         self.assertEqual(result.status, STATUS_VALIDATED)
@@ -368,7 +364,6 @@ class LLMContourAgentTests(unittest.TestCase):
             primitive_config=self.primitive_config,
             provider=provider,
             max_attempts=3,
-            projection_mode=PROJECTION_MODE_HARD_V1,
         )
 
         self.assertEqual(result.status, STATUS_VALIDATED)
@@ -441,7 +436,6 @@ class LLMContourAgentTests(unittest.TestCase):
                 provider=provider,
                 output_dir=tmp,
                 max_attempts=3,
-                projection_mode=PROJECTION_MODE_HARD_V1,
             )
 
             self.assertEqual(result.status, STATUS_VALIDATED)

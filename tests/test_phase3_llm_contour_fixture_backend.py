@@ -12,7 +12,6 @@ from phase3_mask_edit.backends.fixture_contour import (
     STATUS_VALIDATION_FAILED,
     execute_fixture_contour_backend,
 )
-from phase3_mask_edit.backends.llm_contour import PROJECTION_MODE_HARD_V1
 from phase3_mask_edit.cli.run_llm_contour_fixture import main as run_fixture_main
 from phase3_mask_edit.core.config import load_recipe
 from phase3_mask_edit.core.intent import EditIntent
@@ -121,7 +120,6 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
             schema=self.schema,
             intent=intent,
             primitive_config=_primitive(self.recipe, "stromal_immune_infiltration"),
-            projection_mode=PROJECTION_MODE_HARD_V1,
         )
 
         self.assertEqual(result.status, STATUS_VALIDATION_FAILED)
@@ -268,7 +266,7 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    def test_cli_compare_mode_writes_v1_and_v2_artifacts(self):
+    def test_cli_rejects_retired_compare_mode(self):
         WORKSPACE_TMP.mkdir(exist_ok=True)
         tmp = WORKSPACE_TMP / f"compare_{uuid.uuid4().hex}"
         tmp.mkdir(parents=True)
@@ -298,63 +296,9 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
                 ]
             )
 
-            self.assertEqual(code, 0)
-            self.assertTrue((output_dir / "v1_hard_projection" / "summary.json").exists())
-            self.assertTrue((output_dir / "organic_v2" / "summary.json").exists())
-            self.assertTrue(
-                (
-                    output_dir
-                    / "organic_v2"
-                    / "visual_qa"
-                    / "visual_qa_manifest.json"
-                ).exists()
-            )
-            self.assertTrue(
-                (output_dir / "organic_v2" / "visual_qa" / "v1_v2_side_by_side.png").exists()
-            )
-            self.assertTrue(
-                (
-                    output_dir
-                    / "organic_v2"
-                    / "visual_qa"
-                    / "organic_projection_panel.png"
-                ).exists()
-            )
-            comparison = load_metadata(output_dir / "projection_comparison_summary.json")
-            self.assertEqual(comparison["primary_projection_mode"], "organic_v2")
-            self.assertEqual(
-                comparison["repair_loop_consumes"],
-                "primary_result_only",
-            )
-            self.assertFalse(
-                comparison["results"]["v1_hard_projection"]["repair_loop_eligible"]
-            )
-            self.assertTrue(
-                comparison["results"]["organic_v2"]["repair_loop_eligible"]
-            )
-            execution_summary = load_metadata(output_dir / "execution_summary.json")
-            self.assertEqual(
-                execution_summary["edit_result"]["ops_log"]["projection_mode"],
-                "organic_v2",
-            )
-            self.assertEqual(
-                execution_summary["edit_result"]["ops_log"]["requested_projection_mode"],
-                "compare_v1_v2",
-            )
-            v2 = load_metadata(output_dir / "organic_v2" / "summary.json")
-            v1 = load_metadata(output_dir / "v1_hard_projection" / "summary.json")
-            self.assertEqual(v2["branch_role"], "primary")
-            self.assertEqual(v1["branch_role"], "debug")
-            self.assertEqual(
-                v2["edit_result"]["ops_log"]["projection_backend"],
-                "organic_score_projection_v2",
-            )
-            manifest = load_metadata(
-                output_dir / "organic_v2" / "visual_qa" / "visual_qa_manifest.json"
-            )
-            self.assertEqual(manifest["projection_mode"], "organic_v2")
-            self.assertIn("selected_raw_template_iou", manifest)
-            self.assertGreater(manifest["union_pixels"], 0)
+            self.assertNotEqual(code, 0)
+            self.assertFalse((output_dir / "v1_hard_projection").exists())
+            self.assertFalse((output_dir / "projection_comparison_summary.json").exists())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

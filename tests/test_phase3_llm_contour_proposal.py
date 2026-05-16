@@ -10,8 +10,6 @@ from phase3_mask_edit.backends.llm_contour import (
     CONTOUR_PROPOSAL_BACKEND,
     CONTOUR_PROPOSAL_SCHEMA_VERSION,
     ContourProposalValidationError,
-    PROJECTION_MODE_HARD_V1,
-    PROJECTION_MODE_COMPARE_V1_V2,
     PROJECTION_MODE_ORGANIC_V2,
     execute_contour_proposal_write,
     load_contour_proposal_json,
@@ -27,7 +25,6 @@ from phase3_mask_edit.backends.organic_projection import (
     apply_organic_stroma_decrease,
     apply_organic_tumor_burden_decrease,
 )
-from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
 from phase3_mask_edit.backends.llm_prompt import build_repair_feedback
 from phase3_mask_edit.backends.llm_preview import (
     add_coordinate_grid_overlay,
@@ -273,13 +270,13 @@ class LLMContourProposalTests(unittest.TestCase):
         )
         candidate = np.ones_like(old_mask, dtype=bool)
 
-        result = apply_projected_label_write(
+        result = apply_organic_projected_label_write(
             old_mask,
             candidate,
             schema=self.schema,
             source_labels=("Stroma",),
             target_label="Immune infiltrate",
-            backend=CONTOUR_PROPOSAL_BACKEND,
+            target_pixels=8,
         )
 
         self.assertEqual(result.selected_pixels, 8)
@@ -307,18 +304,17 @@ class LLMContourProposalTests(unittest.TestCase):
         )
         candidate = np.ones_like(old_mask, dtype=bool)
 
-        result = apply_projected_label_write(
+        result = apply_organic_projected_label_write(
             old_mask,
             candidate,
             schema=self.schema,
             source_labels=("Stroma",),
             target_label="Immune infiltrate",
-            backend=CONTOUR_PROPOSAL_BACKEND,
+            target_pixels=4,
         )
 
         self.assertEqual(result.ops_log["candidate_pixels"], 36)
         self.assertEqual(result.ops_log["projected_pixels"], 4)
-        self.assertEqual(result.ops_log["source_projected_pixels"], 4)
         self.assertGreater(
             result.ops_log["candidate_pixels"],
             result.ops_log["projected_pixels"],
@@ -336,7 +332,7 @@ class LLMContourProposalTests(unittest.TestCase):
         )
         candidate = np.ones_like(old_mask, dtype=bool)
 
-        result = apply_projected_label_write(
+        result = apply_organic_projected_label_write(
             old_mask,
             candidate,
             schema=self.schema,
@@ -344,6 +340,7 @@ class LLMContourProposalTests(unittest.TestCase):
             target_label="Immune infiltrate",
             preserve_labels=("Blood vessel",),
             forbidden_labels=("Tumor",),
+            target_pixels=5,
         )
 
         self.assertEqual(result.selected_pixels, 5)
@@ -385,26 +382,12 @@ class LLMContourProposalTests(unittest.TestCase):
         result = execute_contour_proposal_write(old_mask, proposal, schema=self.schema)
 
         self.assertGreater(result.selected_pixels, 0)
-        self.assertEqual(result.ops_log["projection_mode"], PROJECTION_MODE_HARD_V1)
-        self.assertEqual(
-            result.ops_log["projection_fallback_reason"],
-            "organic_v2_mvp_requires_uniform_region_source_labels",
-        )
+        self.assertEqual(result.ops_log["projection_mode"], PROJECTION_MODE_ORGANIC_V2)
+        self.assertNotIn("projection_fallback_reason", result.ops_log)
         self.assertTrue(np.all(result.target_mask[10:31, 10:21] == 4))
-        region_a_tumor_coords = np.argwhere(old_mask[10:31, 21:31] == 1)
-        region_a_tumor_rows = region_a_tumor_coords[:, 0] + 10
-        region_a_tumor_cols = region_a_tumor_coords[:, 1] + 21
-        np.testing.assert_array_equal(
-            result.target_mask[region_a_tumor_rows, region_a_tumor_cols],
-            old_mask[region_a_tumor_rows, region_a_tumor_cols],
-        )
         self.assertTrue(np.all(result.target_mask[10:31, 34:55] == 4))
-        self.assertEqual(len(result.ops_log["region_projection"]), 2)
-        region_logs = {item["region_id"]: item for item in result.ops_log["region_projection"]}
-        self.assertGreater(
-            region_logs["stroma_region"]["candidate_pixels"],
-            region_logs["stroma_region"]["projected_pixels"],
-        )
+        changed_old_labels = set(np.unique(old_mask[result.change_region]).astype(int).tolist())
+        self.assertLessEqual(changed_old_labels, {1, 2})
 
     def test_empty_projection_is_left_for_validation_feedback(self):
         old_mask = np.ones(self.mask_shape, dtype=np.int64)
@@ -419,7 +402,7 @@ class LLMContourProposalTests(unittest.TestCase):
             old_mask,
             proposal,
             schema=self.schema,
-            projection_mode=PROJECTION_MODE_HARD_V1,
+            projection_mode=PROJECTION_MODE_ORGANIC_V2,
         )
 
         self.assertEqual(result.selected_pixels, 0)
@@ -470,7 +453,7 @@ class LLMContourProposalTests(unittest.TestCase):
             old_mask,
             proposal,
             schema=self.schema,
-            projection_mode=PROJECTION_MODE_HARD_V1,
+            projection_mode=PROJECTION_MODE_ORGANIC_V2,
         )
 
         self.assertGreater(result.selected_pixels, 0)
@@ -567,7 +550,7 @@ class LLMContourProposalTests(unittest.TestCase):
             result.ops_log["source_label_contributions"]["Other tissue"], 0
         )
 
-    def test_compare_mode_is_rejected_by_single_write_executor(self):
+    def test_unsupported_projection_mode_is_rejected_by_single_write_executor(self):
         proposal = validate_contour_proposal(
             self._proposal(),
             schema=self.schema,
@@ -575,12 +558,12 @@ class LLMContourProposalTests(unittest.TestCase):
             allowed_source_labels=("Stroma",),
         )
 
-        with self.assertRaisesRegex(ContourProposalValidationError, "orchestration"):
+        with self.assertRaisesRegex(ContourProposalValidationError, "unsupported projection_mode"):
             execute_contour_proposal_write(
                 np.zeros(self.mask_shape, dtype=np.int64),
                 proposal,
                 schema=self.schema,
-                projection_mode=PROJECTION_MODE_COMPARE_V1_V2,
+                projection_mode="compare_v1_v2",
             )
 
     def test_validation_detects_projected_area_too_small(self):
@@ -589,12 +572,13 @@ class LLMContourProposalTests(unittest.TestCase):
         candidate = np.zeros_like(old_mask, dtype=bool)
         candidate[1, 1] = True
 
-        result = apply_projected_label_write(
+        result = apply_organic_projected_label_write(
             old_mask,
             candidate,
             schema=self.schema,
             source_labels=("Stroma",),
             target_label="Immune infiltrate",
+            target_pixels=1,
         )
         validation = validate_edit_result(
             src_mask=old_mask,
@@ -741,13 +725,6 @@ class LLMContourProposalTests(unittest.TestCase):
         raw_pixels = int(np.count_nonzero(raw_candidate))
         target_pixels = 900
 
-        hard = apply_projected_label_write(
-            old_mask,
-            raw_candidate,
-            schema=self.schema,
-            source_labels=("Stroma",),
-            target_label="Immune infiltrate",
-        )
         organic = apply_organic_projected_label_write(
             old_mask,
             raw_candidate,
@@ -769,7 +746,6 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertGreaterEqual(int(np.count_nonzero(old_mask == 2)), 3 * target_pixels)
         self.assertGreaterEqual(raw_overlap / raw_pixels, 0.10)
         self.assertLessEqual(raw_overlap / raw_pixels, 0.15)
-        self.assertLess(hard.selected_pixels, target_pixels)
         self.assertEqual(organic.selected_pixels, target_pixels)
         self.assertGreater(organic.selected_pixels, raw_overlap)
         self.assertEqual(

@@ -5,10 +5,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from phase3_mask_edit.cli.edit_from_intents import (
-    execute_intents_on_mask,
-    save_sequential_execution_output,
-)
 from phase3_mask_edit.core.mask_io import load_id_mask, save_metadata
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
@@ -110,21 +106,11 @@ def main(argv: list[str] | None = None) -> int:
     save_metadata(planning_summary, output_dir / "planning_summary.json")
 
     if args.execute:
-        if old_mask is None:
-            parser.error("--mask is required when --execute is used")
-        execution_result = execute_intents_on_mask(
-            old_mask,
-            plan.intents,
-            reference_profile=args.profile,
-            stop_on_failure=not args.continue_on_failure,
+        parser.error(
+            "--execute used the retired non-LLM deterministic primitive executor. "
+            "Planning still writes semantic_diff/edit_intents; execute masks through "
+            "the LLM contour organic_v2 UI/API/fixture backend."
         )
-        execution_dir = output_dir / "mask_edit"
-        save_sequential_execution_output(execution_result, execution_dir)
-        planning_summary["execution"] = {
-            "output_dir": str(execution_dir),
-            **execution_result.to_metadata(),
-        }
-        save_metadata(planning_summary, output_dir / "planning_summary.json")
 
     if args.print_summary:
         print(json.dumps(planning_summary, indent=2, ensure_ascii=False))

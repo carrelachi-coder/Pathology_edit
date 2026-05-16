@@ -30,7 +30,6 @@ from phase3_mask_edit.core.mask_io import (
     save_metadata,
     save_rgb_mask,
 )
-from phase3_mask_edit.generic.executor import execute_edit
 
 
 RECIPE_PATH = Path("phase3_mask_edit/recipes/generic.yaml")
@@ -210,68 +209,27 @@ def run_primitive_case(
     strength: str,
     seed: int,
 ) -> dict[str, Any]:
-    """Execute one primitive case through the unified executor."""
+    """Retired smoke path for old non-LLM primitive execution."""
 
-    intent = EditIntent.from_mapping({
-        "primitive": primitive,
-        "reference_profile": schema.reference_profile,
-        "strength": strength,
-        "seed": seed,
-    })
-    result = execute_edit(old_mask, intent, recipe, schema, context)
-    edit_result = result.edit_result
-    validation = result.validation
-
+    del context, recipe
     metadata: dict[str, Any] = {
         "primitive": primitive,
         "profile": schema.reference_profile,
         "strength": strength,
         "seed": seed,
-        "status": result.status,
-        "applicability": {
-            "status": result.applicability.status,
-            "reasons": list(result.applicability.reasons),
-            "warnings": list(result.applicability.warnings),
-            "fallback_actions": list(result.applicability.fallback_actions),
-        },
+        "status": "retired",
+        "applicability": None,
         "validation": None,
         "selected_pixels": 0,
         "changed_area_fraction": 0.0,
         "ops_log": {},
-        "failure_reason": None,
+        "failure_reason": (
+            "legacy_non_llm_deterministic_executor_retired; use LLM contour "
+            "organic_v2 smoke/API paths"
+        ),
+        "target_mask": old_mask.copy(),
+        "change_region": np.zeros(old_mask.shape, dtype=bool),
     }
-
-    if validation is not None:
-        metadata["validation"] = {
-            "passed": validation.passed,
-            "checks": [
-                {
-                    "name": check.name,
-                    "passed": check.passed,
-                    "detail": check.detail,
-                }
-                for check in validation.checks
-            ],
-            "warnings": list(validation.warnings),
-        }
-
-    if edit_result is None:
-        if result.applicability.reasons:
-            metadata["failure_reason"] = ";".join(result.applicability.reasons)
-        else:
-            metadata["failure_reason"] = result.status
-        metadata["target_mask"] = old_mask.copy()
-        metadata["change_region"] = np.zeros(old_mask.shape, dtype=bool)
-        return metadata
-
-    metadata.update({
-        "selected_pixels": int(edit_result.selected_pixels),
-        "changed_area_fraction": float(edit_result.changed_area_fraction),
-        "ops_log": edit_result.ops_log,
-        "target_mask": edit_result.target_mask,
-        "change_region": edit_result.change_region,
-    })
-    metadata.update(_primitive_summary_fields(primitive, edit_result.ops_log))
     return metadata
 
 
