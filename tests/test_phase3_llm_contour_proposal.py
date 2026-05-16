@@ -1401,6 +1401,62 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.selected_pixels, target_pixels)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
 
+    def test_intratumoral_immune_policy_splits_large_template_into_spots(self):
+        old_mask = np.zeros((96, 96), dtype=np.int64)
+        old_mask[8:88, 8:88] = 1
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[28:68, 28:68] = True
+
+        primitive_config = {
+            "name": "intratumoral_immune_infiltration",
+            "required_tissue_labels": ["Tumor", "Immune infiltrate"],
+            "spatial_pattern": {
+                "region": "inside_tumor",
+                "spot_policy": {
+                    "max_total_area_fraction_of_tumor": 0.30,
+                    "min_spot_area_px": 12,
+                    "max_spot_area_px": 64,
+                    "max_spots_per_patch": 8,
+                },
+            },
+            "parameter_ranges": {
+                "target_changed_area_fraction": {"mild": [0.05, 0.10]},
+                "max_changed_area_fraction": 0.30,
+                "organic_min_component_fraction": 0.0,
+                "organic_fill_holes_max_area_px": 0,
+                "organic_template_neighborhood_radius_px": 32,
+                "organic_template_spillover_fraction": 0.15,
+                "organic_min_template_legal_overlap_fraction": 0.0,
+                "organic_min_selected_template_iou": 0.0,
+                "organic_score_weights": {
+                    "template": 0.45,
+                    "spatial": 0.45,
+                    "noise": 0.10,
+                },
+            },
+            "validation_rules": ["new_immune_must_be_inside_original_tumor"],
+        }
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Immune infiltrate",
+            primitive_config=primitive_config,
+            seed=7,
+            target_pixels=320,
+        )
+
+        spot_log = result.ops_log["spot_policy"]
+        self.assertTrue(spot_log["enabled"])
+        self.assertGreaterEqual(spot_log["final_component_count"], 2)
+        self.assertEqual(spot_log["oversized_component_count"], 0)
+        self.assertLessEqual(max(spot_log["final_component_sizes"]), 64)
+        self.assertEqual(result.selected_pixels, 320)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 4))
+
     def test_organic_projection_generic_policy_is_label_safe_and_logged(self):
         old_mask = np.zeros((24, 24), dtype=np.int64)
         old_mask[2:22, 2:12] = 2

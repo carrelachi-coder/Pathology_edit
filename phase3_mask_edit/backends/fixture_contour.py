@@ -6,7 +6,7 @@ as if it came from a multimodal LLM, then runs the normal Phase 3 safety path.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -315,3 +315,8 @@ def _save_rgb_array(rgb: np.ndarray, path: str | Path) -> Path:
     Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB").save(p)
     return p
 
+
+def _jsonable_dataclass(value: Any) -> Any:
+    if is_dataclass(value):
+        return asdict(value)
+    return value

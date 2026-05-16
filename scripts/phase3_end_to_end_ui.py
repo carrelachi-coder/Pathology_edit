@@ -45,7 +45,7 @@ from phase3_mask_edit.backends.llm_contour import (
     load_contour_proposal_json,
     validate_contour_proposal,
 )
-from phase3_mask_edit.backends.proposal_execution import apply_projected_label_write
+from phase3_mask_edit.backends.organic_projection import apply_organic_projected_label_write
 from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
 from phase3_mask_edit.core.applicability import assess_edit_applicability
 from phase3_mask_edit.core.context import MaskEditContext
@@ -114,7 +114,7 @@ EDIT_MODE_CHOICES = [
     EDIT_MODE_AUTO_RECOMMEND,
 ]
 _STRONGEST_FIRST = {"xlarge_deid": 3, "significant": 2, "moderate": 1, "mild": 0}
-AUTO_RECOMMEND_LIMIT = 6
+AUTO_RECOMMEND_LIMIT = 10
 MANUAL_CONTOUR_MAX_COMPONENTS = 24
 MANUAL_CONTOUR_MAX_POINTS = 32
 
@@ -1259,6 +1259,8 @@ def run_tissue_stage(
     source_labels: str,
     target_label: str,
     provider: str,
+    contour_api_base_url: str,
+    contour_api_key_env: str,
     api_image_detail: str,
     fixture_file,
     max_attempts: int,
@@ -1295,8 +1297,8 @@ def run_tissue_stage(
                 output_dir=output_dir,
                 selected_keys=list(auto_recommendation_keys or []),
                 provider=provider,
-                api_base_url=api_base_url,
-                api_key_env=api_key_env,
+                api_base_url=contour_api_base_url,
+                api_key_env=contour_api_key_env,
                 api_model=api_model,
                 api_image_detail=api_image_detail,
                 fixture_file=fixture_file,
@@ -1332,8 +1334,8 @@ def run_tissue_stage(
             )
             provider_instance = _build_contour_provider(
                 provider=provider,
-                api_base_url=api_base_url,
-                api_key_env=api_key_env,
+                api_base_url=contour_api_base_url,
+                api_key_env=contour_api_key_env,
                 api_model=_defaulted_text(api_model, DEFAULT_API_MODEL),
                 api_image_detail=api_image_detail,
                 fixture_file=fixture_file,
@@ -1532,20 +1534,21 @@ def _run_manual_contour_stage(
             "Draw over a visible source label or provide source labels."
         )
 
-    edit_result = apply_projected_label_write(
+    primitive_config = _primitive_config(load_recipe(default_recipe_path_for_profile(schema.reference_profile)), primitive)
+    edit_result = apply_organic_projected_label_write(
         reference_tissue,
         candidate_region,
         schema=schema,
         source_labels=inferred_source_labels,
         target_label=target_label,
-        backend="manual_contour",
-        raw_payload={
-            "primitive": primitive,
-            "mode": EDIT_MODE_MANUAL_CONTOUR,
-            "manual_target_label": target_label,
-            "source_labels": list(inferred_source_labels),
-        },
+        primitive_config=primitive_config,
     )
+    edit_result.ops_log["manual_payload"] = {
+        "primitive": primitive,
+        "mode": EDIT_MODE_MANUAL_CONTOUR,
+        "manual_target_label": target_label,
+        "source_labels": list(inferred_source_labels),
+    }
     true_change_region = edit_result.target_mask != reference_tissue
     if not np.array_equal(true_change_region, edit_result.change_region):
         edit_result = type(edit_result)(
@@ -1968,8 +1971,38 @@ def _recommend_edit_intents(
             candidates.append(
                 (score, _STRONGEST_FIRST.get(strength, 0), intent, primitive_config, feasibility)
             )
-    candidates.sort(key=lambda item: (-item[0], -item[1], item[2].primitive))
-    return [(intent, primitive_config) for _, _, intent, primitive_config, _ in candidates]
+    candidates.sort(key=_recommendation_sort_key)
+    diverse_first: list[tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]]] = []
+    overflow: list[tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]]] = []
+    seen_primitives: set[str] = set()
+    for candidate in candidates:
+        primitive = candidate[2].primitive
+        if primitive in seen_primitives:
+            overflow.append(candidate)
+            continue
+        diverse_first.append(candidate)
+        seen_primitives.add(primitive)
+    ordered = diverse_first + overflow
+    return [(intent, primitive_config) for _, _, intent, primitive_config, _ in ordered]
+
+
+def _recommendation_sort_key(
+    item: tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]],
+) -> tuple[int, int, int, str]:
+    score, strength_rank, intent, _primitive_config, _feasibility = item
+    return (-score, -_primitive_family_priority(intent.primitive), -strength_rank, intent.primitive)
+
+
+def _primitive_family_priority(primitive: str) -> int:
+    if primitive in {"tumor_burden_increase", "tumor_burden_decrease"}:
+        return 4
+    if primitive in {"necrosis_appearance", "necrosis_resolution"}:
+        return 3
+    if "immune" in primitive:
+        return 2
+    if "stroma" in primitive or "stromal" in primitive:
+        return 1
+    return 0
 
 
 def _primitive_strengths(primitive_config: dict[str, Any]) -> tuple[str, ...]:
@@ -2836,6 +2869,9 @@ def build_ui() -> gr.Blocks:
                 provider = gr.Radio(["api-text", "api-multimodal", "fixture"], value="api-multimodal", label="contour provider")
                 api_image_detail = gr.Radio(["low", "high", "auto"], value="high", label="image detail")
             with gr.Row():
+                contour_api_base_url = gr.Textbox(value=DEFAULT_API_BASE_URL, label="contour api base url")
+                contour_api_key_env = gr.Textbox(value=DEFAULT_API_KEY_ENV, label="contour api key env")
+            with gr.Row():
                 fixture_file = gr.File(label="contour fixture JSON", file_types=[".json"], type="filepath")
             with gr.Row():
                 max_attempts = gr.Slider(1, 8, value=4, step=1, label="max attempts")
@@ -2991,6 +3027,8 @@ def build_ui() -> gr.Blocks:
                 source_labels,
                 target_label,
                 provider,
+                contour_api_base_url,
+                contour_api_key_env,
                 api_image_detail,
                 fixture_file,
                 max_attempts,
@@ -3023,8 +3061,8 @@ def build_ui() -> gr.Blocks:
                 state,
                 auto_choices,
                 provider,
-                api_base_url,
-                api_key_env,
+                contour_api_base_url,
+                contour_api_key_env,
                 api_model,
                 api_image_detail,
                 fixture_file,

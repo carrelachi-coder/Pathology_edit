@@ -225,6 +225,15 @@ def apply_organic_projected_label_write(
             min_component_fraction=params.min_component_fraction,
         ),
     )
+    spot_policy_log: dict[str, Any] = {"enabled": False}
+    if primitive_name == "intratumoral_immune_infiltration":
+        selected, spot_policy_log = _apply_intratumoral_immune_spot_policy(
+            selected,
+            legal_domain=legal_domain,
+            final_score=final_score,
+            target_pixels=selected_target_pixels,
+            primitive_config=primitive_config or {},
+        )
     target_ids = schema.resolve_fine_ids(target_label)
     target_mask = np.array(mask, copy=True)
     if primitive_name == "tumor_burden_increase":
@@ -323,6 +332,7 @@ def apply_organic_projected_label_write(
         "post_cleanup_pixels": cleanup_log["post_cleanup_pixels"],
         "cleanup_single_pass": True,
         "cleanup_iteration_limit": 1,
+        "spot_policy": spot_policy_log,
     }
     if primitive_name == "tumor_burden_increase":
         ops_log["source_label_contributions"] = _source_label_contributions(
@@ -2270,6 +2280,219 @@ def _remove_small_components(
         else:
             removed += pixels
     return cleaned, removed
+
+
+def _apply_intratumoral_immune_spot_policy(
+    selected: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    final_score: np.ndarray,
+    target_pixels: int,
+    primitive_config: Mapping[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    spot_policy = (
+        spatial_pattern.get("spot_policy", {})
+        if isinstance(spatial_pattern, Mapping)
+        else {}
+    )
+    if not isinstance(spot_policy, Mapping):
+        spot_policy = {}
+
+    max_spot_area_px = _spot_policy_int(spot_policy.get("max_spot_area_px"), default=0)
+    max_spots = _spot_policy_int(spot_policy.get("max_spots_per_patch"), default=0)
+    if max_spot_area_px <= 0 and max_spots <= 0:
+        return selected, {"enabled": False}
+
+    min_spot_area_px = _spot_policy_min_area_px(primitive_config) or 1
+    if max_spot_area_px <= 0:
+        max_spot_area_px = max(int(target_pixels), min_spot_area_px)
+    if max_spots <= 0:
+        max_spots = max(1, int(np.ceil(max(int(target_pixels), 1) / max_spot_area_px)))
+
+    target_pixels = min(int(target_pixels), int(np.count_nonzero(legal_domain)))
+    if target_pixels <= 0:
+        return np.zeros_like(selected, dtype=bool), {
+            "enabled": True,
+            "max_spot_area_px": int(max_spot_area_px),
+            "max_spots_per_patch": int(max_spots),
+            "selected_spots": 0,
+            "selected_pixels_before": int(np.count_nonzero(selected)),
+            "selected_pixels_after": 0,
+        }
+
+    seed_score = np.asarray(final_score, dtype=float).copy()
+    seed_domain = np.asarray(selected, dtype=bool) & legal_domain
+    if not np.any(seed_domain):
+        seed_domain = np.asarray(legal_domain, dtype=bool)
+    seed_score[~seed_domain] = -np.inf
+
+    result = np.zeros_like(selected, dtype=bool)
+    suppressed = np.zeros_like(selected, dtype=bool)
+    spot_sizes: list[int] = []
+    grow_structure = np.ones((3, 3), dtype=bool)
+    spot_gap_radius = max(2, int(round(np.sqrt(float(max_spot_area_px)) / 2.0)))
+    remaining = target_pixels
+
+    while remaining > 0 and len(spot_sizes) < max_spots:
+        buffered_result = (
+            ndimage.binary_dilation(
+                result,
+                iterations=spot_gap_radius,
+                structure=grow_structure,
+            )
+            if np.any(result)
+            else result
+        )
+        available_seed = seed_domain & ~suppressed & ~buffered_result & ~result
+        if not np.any(available_seed):
+            break
+        seed_scores = seed_score.copy()
+        seed_scores[~available_seed] = -np.inf
+        seed_mask = _top_k_mask(seed_scores, 1)
+        if not np.any(seed_mask):
+            break
+
+        spot_budget = min(max_spot_area_px, remaining)
+        spot = _grow_score_ordered_spot(
+            seed_mask,
+            legal_domain=legal_domain & ~result & ~buffered_result,
+            final_score=final_score,
+            max_pixels=spot_budget,
+        )
+        pixels = int(np.count_nonzero(spot))
+        if pixels == 0:
+            suppressed |= seed_mask
+            continue
+        result |= spot
+        spot_sizes.append(pixels)
+        remaining = target_pixels - int(np.count_nonzero(result))
+        suppressed |= ndimage.binary_dilation(
+            spot,
+            iterations=spot_gap_radius,
+            structure=grow_structure,
+        )
+
+    if int(np.count_nonzero(result)) < target_pixels:
+        needed = target_pixels - int(np.count_nonzero(result))
+        refill, refill_log = _fill_intratumoral_immune_spot_shortfall(
+            result,
+            legal_domain=legal_domain,
+            final_score=final_score,
+            needed=needed,
+            max_spot_area_px=max_spot_area_px,
+            max_extra_spots=max(max_spots - len(spot_sizes), 0),
+            spot_gap_radius=spot_gap_radius,
+        )
+        result |= refill
+    else:
+        refill_log = {"refill_pixels": 0, "refill_spots": 0}
+
+    final_labeled, final_count = ndimage.label(result, structure=grow_structure)
+    final_sizes = [
+        int(np.count_nonzero(final_labeled == component_id))
+        for component_id in range(1, final_count + 1)
+    ]
+    oversized = [size for size in final_sizes if size > max_spot_area_px]
+    return result, {
+        "enabled": True,
+        "max_spot_area_px": int(max_spot_area_px),
+        "max_spots_per_patch": int(max_spots),
+        "min_spot_area_px": int(min_spot_area_px),
+        "selected_spots": int(len(spot_sizes)),
+        "selected_pixels_before": int(np.count_nonzero(selected)),
+        "selected_pixels_after": int(np.count_nonzero(result)),
+        "spot_sizes": spot_sizes,
+        **refill_log,
+        "final_component_count": int(final_count),
+        "final_component_sizes": final_sizes,
+        "oversized_component_count": int(len(oversized)),
+        "spot_gap_radius_px": int(spot_gap_radius),
+    }
+
+
+def _fill_intratumoral_immune_spot_shortfall(
+    current: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    final_score: np.ndarray,
+    needed: int,
+    max_spot_area_px: int,
+    max_extra_spots: int,
+    spot_gap_radius: int,
+) -> tuple[np.ndarray, dict[str, int]]:
+    if needed <= 0 or max_extra_spots <= 0:
+        return np.zeros_like(current, dtype=bool), {
+            "refill_pixels": 0,
+            "refill_spots": 0,
+        }
+
+    refill = np.zeros_like(current, dtype=bool)
+    structure = np.ones((3, 3), dtype=bool)
+    remaining = int(needed)
+    spots = 0
+    while remaining > 0 and spots < max_extra_spots:
+        occupied = current | refill
+        buffered = (
+            ndimage.binary_dilation(
+                occupied,
+                iterations=spot_gap_radius,
+                structure=structure,
+            )
+            if np.any(occupied)
+            else occupied
+        )
+        seed_domain = legal_domain & ~occupied & ~buffered
+        seed = _top_k_mask_for_refill(final_score, legal_domain=seed_domain, k=1)
+        if not np.any(seed):
+            break
+        spot = _grow_score_ordered_spot(
+            seed,
+            legal_domain=seed_domain,
+            final_score=final_score,
+            max_pixels=min(max_spot_area_px, remaining),
+        )
+        pixels = int(np.count_nonzero(spot))
+        if pixels == 0:
+            break
+        refill |= spot
+        remaining -= pixels
+        spots += 1
+
+    return refill, {
+        "refill_pixels": int(np.count_nonzero(refill)),
+        "refill_spots": int(spots),
+    }
+
+
+def _grow_score_ordered_spot(
+    seed: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    final_score: np.ndarray,
+    max_pixels: int,
+) -> np.ndarray:
+    spot = np.asarray(seed, dtype=bool) & legal_domain
+    if max_pixels <= 0 or not np.any(spot):
+        return np.zeros_like(seed, dtype=bool)
+    if int(np.count_nonzero(spot)) >= max_pixels:
+        return spot
+
+    structure = np.ones((3, 3), dtype=bool)
+    while int(np.count_nonzero(spot)) < max_pixels:
+        frontier = ndimage.binary_dilation(spot, structure=structure) & legal_domain & ~spot
+        if not np.any(frontier):
+            break
+        needed = int(max_pixels) - int(np.count_nonzero(spot))
+        add = _top_k_mask_for_refill(
+            final_score,
+            legal_domain=frontier,
+            k=min(needed, int(np.count_nonzero(frontier))),
+        )
+        if not np.any(add):
+            break
+        spot |= add
+    return spot & legal_domain
 
 
 def _fill_small_holes_once(

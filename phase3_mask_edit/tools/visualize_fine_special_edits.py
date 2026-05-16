@@ -13,11 +13,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from dataset_config.unified_labels import FINE_LABELS, UNIFIED_COLOR_MAP
 from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
-from phase3_mask_edit.core.context import MaskEditContext
-from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import id_to_rgb, load_id_mask, save_metadata
-from phase3_mask_edit.generic.executor import execute_edit
 
 
 DEFAULT_CASES: tuple[dict[str, str], ...] = (
@@ -123,68 +120,21 @@ def _run_case(
     recipe = load_recipe(default_recipe_path_for_profile(profile))
     schema = MaskProfileSchema.from_reference_profile(profile)
     mask = load_id_mask(mask_path)
-    context = MaskEditContext.from_mask(mask, schema)
-    intent = EditIntent.from_mapping(
-        {
-            "primitive": primitive,
-            "strength": strength,
-            "reference_profile": schema.reference_profile,
-            "target_change_fraction": target_change_fraction,
-        }
-    )
-    result = execute_edit(mask, intent, recipe, schema, context)
-    if result.edit_result is None:
-        summary = {
-            "profile": profile,
-            "primitive": primitive,
-            "mask": str(mask_path),
-            "status": result.status,
-            "applicability": asdict(result.applicability),
-        }
-        case_dir = output_root / f"{profile.lower()}_{primitive}"
-        case_dir.mkdir(parents=True, exist_ok=True)
-        save_metadata(summary, case_dir / "summary.json")
-        panel = _make_failure_panel(summary, case_dir / "panel.png")
-        return summary, panel
-
-    edit = result.edit_result
+    del recipe, target_change_fraction
     case_dir = output_root / f"{profile.lower()}_{primitive}"
     case_dir.mkdir(parents=True, exist_ok=True)
-    before_rgb = id_to_rgb(mask)
-    after_rgb = id_to_rgb(edit.target_mask)
-    overlay_rgb = _change_overlay(before_rgb, edit.change_region)
-    diff_rgb = _transition_only_rgb(mask, edit.target_mask, edit.change_region)
-
-    Image.fromarray(before_rgb).save(case_dir / "before_rgb.png")
-    Image.fromarray(after_rgb).save(case_dir / "after_rgb.png")
-    Image.fromarray(overlay_rgb).save(case_dir / "changed_overlay.png")
-    Image.fromarray(diff_rgb).save(case_dir / "transition_only.png")
-    panel = _make_panel(
-        profile=profile,
-        primitive=primitive,
-        mask_name=mask_path.name,
-        before_rgb=before_rgb,
-        after_rgb=after_rgb,
-        overlay_rgb=overlay_rgb,
-        diff_rgb=diff_rgb,
-        ops_log=edit.ops_log,
-        output_path=case_dir / "panel.png",
-    )
-
     summary = {
         "profile": profile,
         "primitive": primitive,
         "mask": str(mask_path),
-        "status": result.status,
-        "validation": _jsonable(result.validation),
-        "ops_log": edit.ops_log,
-        "source_counts_before": _counts(mask, edit.ops_log.get("source_fine_ids", [])),
-        "target_count_before": _counts(mask, [edit.ops_log.get("target_fine_id")]),
-        "source_counts_after": _counts(edit.target_mask, edit.ops_log.get("source_fine_ids", [])),
-        "target_count_after": _counts(edit.target_mask, [edit.ops_log.get("target_fine_id")]),
-        "panel": str(panel),
+        "status": "retired",
+        "failure_reason": (
+            "legacy_non_llm_deterministic_executor_retired; use LLM contour "
+            "organic_v2 for active mask editing"
+        ),
     }
     save_metadata(summary, case_dir / "summary.json")
+    panel = _make_failure_panel(summary, case_dir / "panel.png")
     return summary, panel
 
 

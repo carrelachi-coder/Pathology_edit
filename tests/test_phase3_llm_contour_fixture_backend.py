@@ -275,28 +275,29 @@ class LLMContourFixtureBackendTests(unittest.TestCase):
             output_dir = tmp / "run"
             save_id_mask(self.mask, mask_path)
 
-            code = run_fixture_main(
-                [
-                    "--profile",
-                    "BCSS",
-                    "--primitive",
-                    "stromal_immune_infiltration",
-                    "--strength",
-                    "mild",
-                    "--mask",
-                    str(mask_path),
-                    "--fixture",
-                    "tests/fixtures/llm_contour_stromal_immune_bcss.json",
-                    "--output",
-                    str(output_dir),
-                    "--projection-mode",
-                    "compare_v1_v2",
-                    "--organic-seed",
-                    "11",
-                ]
-            )
+            with self.assertRaises(SystemExit) as raised:
+                run_fixture_main(
+                    [
+                        "--profile",
+                        "BCSS",
+                        "--primitive",
+                        "stromal_immune_infiltration",
+                        "--strength",
+                        "mild",
+                        "--mask",
+                        str(mask_path),
+                        "--fixture",
+                        "tests/fixtures/llm_contour_stromal_immune_bcss.json",
+                        "--output",
+                        str(output_dir),
+                        "--projection-mode",
+                        "compare_v1_v2",
+                        "--organic-seed",
+                        "11",
+                    ]
+                )
 
-            self.assertNotEqual(code, 0)
+            self.assertEqual(raised.exception.code, 2)
             self.assertFalse((output_dir / "v1_hard_projection").exists())
             self.assertFalse((output_dir / "projection_comparison_summary.json").exists())
         finally:
