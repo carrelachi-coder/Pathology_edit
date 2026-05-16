@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import base64
+import html as html_lib
 import json
 import os
 import shutil
@@ -15,6 +17,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
+from PIL import ImageDraw
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -48,6 +51,7 @@ from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import (
+    id_to_rgb,
     load_change_region,
     load_id_mask,
     save_change_region,
@@ -111,6 +115,8 @@ EDIT_MODE_CHOICES = [
 ]
 _STRONGEST_FIRST = {"xlarge_deid": 3, "significant": 2, "moderate": 1, "mild": 0}
 AUTO_RECOMMEND_LIMIT = 6
+MANUAL_CONTOUR_MAX_COMPONENTS = 24
+MANUAL_CONTOUR_MAX_POINTS = 32
 
 
 def _detect_visible_cuda_device_choices() -> list[str]:
@@ -249,10 +255,392 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _manual_contour_editor_value(source_mask_rgb: str | None) -> dict[str, Any] | None:
-    if not source_mask_rgb:
-        return None
-    return {"background": source_mask_rgb, "layers": [], "composite": None}
+def _manual_contour_editor_value(
+    background_rgb: str | None,
+    components: list[dict[str, Any]] | None,
+    shape: tuple[int, int] | None = None,
+    *,
+    target_label: str | None = None,
+    target_color: tuple[int, int, int] | None = None,
+) -> str:
+    return _manual_contour_editor_html(
+        background_rgb,
+        components,
+        shape=shape,
+        target_label=target_label,
+        target_color=target_color,
+    )
+
+
+def _manual_contour_payload_value(
+    background_rgb: str | None,
+    components: list[dict[str, Any]] | None,
+    shape: tuple[int, int] | None = None,
+    *,
+    target_label: str | None = None,
+    target_color: tuple[int, int, int] | None = None,
+) -> str:
+    return json.dumps(
+        {
+            "background": _background_data_uri(background_rgb),
+            "components": components or [],
+            "height": int(shape[0]) if shape else None,
+            "width": int(shape[1]) if shape else None,
+            "target_label": target_label or "",
+            "target_color": list(target_color or (59, 130, 246)),
+        },
+        ensure_ascii=False,
+    )
+
+
+def _encode_data_uri(path: str | Path) -> str:
+    data = Path(path).read_bytes()
+    mime = "image/png"
+    if str(path).lower().endswith((".jpg", ".jpeg")):
+        mime = "image/jpeg"
+    return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+def _background_data_uri(value: str | Path | None) -> str:
+    if not value:
+        return ""
+    text = str(value)
+    if text.startswith("data:"):
+        return text
+    return _encode_data_uri(value)
+
+
+def _rgb_array_data_uri(rgb: np.ndarray) -> str:
+    import io
+
+    buffer = io.BytesIO()
+    Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB").save(buffer, format="PNG")
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
+
+
+def _label_color(schema: MaskProfileSchema, label: str | None) -> tuple[int, int, int]:
+    if label:
+        fine_ids = schema.label_to_fine_ids.get(label, ())
+        for fine_id in fine_ids:
+            rgb = id_to_rgb(np.asarray([[fine_id]], dtype=np.int64))[0, 0]
+            return tuple(int(channel) for channel in rgb)
+    return (59, 130, 246)
+
+
+def _polygon_area(points: np.ndarray) -> float:
+    if len(points) < 3:
+        return 0.0
+    x = points[:, 0]
+    y = points[:, 1]
+    return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+
+def _simplify_closed_contour(points: np.ndarray, max_points: int) -> np.ndarray:
+    if len(points) <= max_points:
+        return points
+    step = max(1, int(np.ceil(len(points) / max_points)))
+    indices = np.arange(0, len(points), step, dtype=int)[:max_points]
+    return points[indices]
+
+
+def _extract_manual_contour_components(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    label_filter: str | None = None,
+    max_components: int = MANUAL_CONTOUR_MAX_COMPONENTS,
+    max_points: int = MANUAL_CONTOUR_MAX_POINTS,
+) -> list[dict[str, Any]]:
+    from scipy import ndimage
+    from skimage import measure
+
+    components: list[dict[str, Any]] = []
+    for label_name in _ordered_schema_labels(schema):
+        if label_name == "Background":
+            continue
+        if label_filter and label_name != label_filter:
+            continue
+        fine_ids = schema.label_to_fine_ids.get(label_name, ())
+        label_mask = np.isin(mask, fine_ids)
+        if not np.any(label_mask):
+            continue
+        labeled, count = ndimage.label(label_mask)
+        for component_id in range(1, count + 1):
+            component = labeled == component_id
+            area = int(np.count_nonzero(component))
+            if area == 0:
+                continue
+            ys, xs = np.where(component)
+            contours = measure.find_contours(component.astype(float), level=0.5)
+            if not contours:
+                continue
+            contour = max(contours, key=len)
+            contour_xy = np.asarray([[float(point[1]), float(point[0])] for point in contour], dtype=float)
+            if len(contour_xy) < 3:
+                continue
+            if _polygon_area(contour_xy) < 0:
+                contour_xy = contour_xy[::-1]
+            contour_xy = _simplify_closed_contour(contour_xy, max_points=max_points)
+            components.append(
+                {
+                    "component_id": f"{label_name}_{component_id}",
+                    "label": label_name,
+                    "area_px": area,
+                    "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())],
+                    "centroid": [round(float(xs.mean()), 1), round(float(ys.mean()), 1)],
+                    "points": contour_xy.round(2).tolist(),
+                }
+            )
+    components.sort(key=lambda item: int(item["area_px"]), reverse=True)
+    return components[:max_components]
+
+
+def _manual_contour_editor_html(
+    background_rgb: str | None,
+    components: list[dict[str, Any]] | None,
+    *,
+    shape: tuple[int, int] | None = None,
+    target_label: str | None = None,
+    target_color: tuple[int, int, int] | None = None,
+) -> str:
+    payload = {
+        "background": _background_data_uri(background_rgb),
+        "components": components or [],
+        "height": int(shape[0]) if shape else 768,
+        "width": int(shape[1]) if shape else 1024,
+        "target_label": target_label or "",
+        "target_color": list(target_color or (59, 130, 246)),
+    }
+    srcdoc = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body {{ margin: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; font-family: sans-serif; }}
+    .wrap {{ display: flex; flex-direction: column; gap: 8px; padding: 8px; box-sizing: border-box; width: 100%; height: 100%; }}
+    .bar {{ display:flex; justify-content:space-between; align-items:center; }}
+    .grid {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; flex:1; min-height:0; }}
+    .pane {{ display:flex; flex-direction:column; gap:6px; min-width:0; min-height:0; }}
+    .title {{ font-size: 13px; color:#374151; }}
+    .stage {{ position: relative; width:100%; aspect-ratio: {payload["width"]} / {payload["height"]}; max-height:100%; border: 1px solid #d1d5db; overflow: hidden; background: #f8fafc; }}
+    img, svg, canvas {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }}
+    svg {{ touch-action: none; }}
+    button {{ border:1px solid #d1d5db; background:#fff; border-radius:6px; padding:4px 8px; cursor:pointer; }}
+    button.active {{ background:#f97316; color:#fff; border-color:#f97316; }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">
+      <div>Drag contour points</div>
+      <button id="drawModeButton" type="button">Add shape</button>
+      <div id="status"></div>
+    </div>
+    <div class="grid">
+      <div class="pane">
+        <div class="title">edit mask contour</div>
+        <div class="stage">
+          <img id="bg" />
+          <svg id="svg" viewBox="0 0 {payload["width"]} {payload["height"]}" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="title">live color-mask preview</div>
+        <div class="stage">
+          <canvas id="preview" width="{payload["width"]}" height="{payload["height"]}"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const seed = {json.dumps(payload, ensure_ascii=False)};
+    const status = document.getElementById('status');
+    const svg = document.getElementById('svg');
+    const bg = document.getElementById('bg');
+    const drawModeButton = document.getElementById('drawModeButton');
+    const preview = document.getElementById('preview');
+    const previewCtx = preview.getContext('2d');
+    let payloadBox = null;
+    let backgroundLoaded = false;
+    const state = {{
+      components: (seed.components || []).map((component) => ({{
+        ...component,
+        points: (component.points || []).map((point) => [Number(point[0]), Number(point[1])]),
+      }})),
+      active: null,
+      drawing: null,
+      drawMode: false,
+    }};
+    const ns = 'http://www.w3.org/2000/svg';
+    const targetColor = seed.target_color || [59, 130, 246];
+    const targetFill = `rgba(${{targetColor[0]}},${{targetColor[1]}},${{targetColor[2]}},0.24)`;
+    const targetStroke = `rgb(${{targetColor[0]}},${{targetColor[1]}},${{targetColor[2]}})`;
+    if (seed.background) {{
+      bg.onload = () => {{
+        backgroundLoaded = true;
+        renderPreview();
+      }};
+      bg.src = seed.background;
+    }}
+
+    function resolvePayloadBox() {{
+      if (payloadBox && document.contains(payloadBox)) return payloadBox;
+      payloadBox = window.parent.document.querySelector('#manualContourPayload textarea, #manualContourPayload input');
+      return payloadBox;
+    }}
+
+    function emit() {{
+      const box = resolvePayloadBox();
+      if (!box) return;
+      box.value = JSON.stringify({{
+        background: seed.background,
+        components: state.components,
+        height: seed.height,
+        width: seed.width,
+        target_label: seed.target_label,
+        target_color: seed.target_color,
+      }});
+      box.dispatchEvent(new Event('input', {{ bubbles: true }}));
+      box.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    }}
+
+    function render() {{
+      svg.innerHTML = '';
+      if (state.drawing && state.drawing.length) {{
+        const path = document.createElementNS(ns, 'polyline');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', '#f97316');
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('points', state.drawing.map((p) => `${{p[0]}},${{p[1]}}`).join(' '));
+        svg.appendChild(path);
+      }}
+      state.components.forEach((component, compIndex) => {{
+        if (!component.points || component.points.length < 3) return;
+        const polygon = document.createElementNS(ns, 'polygon');
+        polygon.setAttribute('fill', targetFill);
+        polygon.setAttribute('stroke', targetStroke);
+        polygon.setAttribute('stroke-width', '2');
+        polygon.setAttribute('points', component.points.map((p) => `${{p[0]}},${{p[1]}}`).join(' '));
+        svg.appendChild(polygon);
+        component.points.forEach((point, pointIndex) => {{
+          const handle = document.createElementNS(ns, 'circle');
+          handle.setAttribute('cx', point[0]);
+          handle.setAttribute('cy', point[1]);
+          handle.setAttribute('r', '5');
+          handle.setAttribute('fill', state.active && state.active.compIndex === compIndex && state.active.pointIndex === pointIndex ? '#f97316' : '#fff');
+          handle.setAttribute('stroke', '#111827');
+          handle.setAttribute('stroke-width', '1.5');
+          handle.style.cursor = 'move';
+          handle.addEventListener('pointerdown', (event) => {{
+            event.preventDefault();
+            state.active = {{ compIndex, pointIndex }};
+            handle.setPointerCapture(event.pointerId);
+          }});
+          svg.appendChild(handle);
+        }});
+      }});
+      status.textContent = state.components.length ? `${{seed.target_label || 'selected label'}}: ${{state.components.length}} contour(s)` : 'click to draw a new contour';
+      drawModeButton.classList.toggle('active', state.drawMode);
+      renderPreview();
+      emit();
+    }}
+
+    function toSvgPoint(event) {{
+      const point = svg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+      const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
+      const x = transformed.x;
+      const y = transformed.y;
+      return [Math.max(0, Math.min(seed.width, x)), Math.max(0, Math.min(seed.height, y))];
+    }}
+
+    function renderPreview() {{
+      previewCtx.clearRect(0, 0, seed.width, seed.height);
+      if (backgroundLoaded) previewCtx.drawImage(bg, 0, 0, seed.width, seed.height);
+      previewCtx.fillStyle = `rgb(${{targetColor[0]}},${{targetColor[1]}},${{targetColor[2]}})`;
+      state.components.forEach((component) => {{
+        if (!component.points || component.points.length < 3) return;
+        previewCtx.beginPath();
+        component.points.forEach((point, index) => {{
+          if (index === 0) previewCtx.moveTo(point[0], point[1]);
+          else previewCtx.lineTo(point[0], point[1]);
+        }});
+        previewCtx.closePath();
+        previewCtx.fill();
+      }});
+    }}
+
+    function addDrawnContour() {{
+      if (!state.drawing || state.drawing.length < 3) {{
+        state.drawing = null;
+        render();
+        return;
+      }}
+      state.components.push({{
+        component_id: `${{seed.target_label || 'manual'}}_new_${{Date.now()}}`,
+        label: seed.target_label || '',
+        area_px: 0,
+        bbox: [],
+        centroid: [],
+        points: state.drawing,
+      }});
+      state.drawing = null;
+      state.drawMode = false;
+      render();
+    }}
+
+    drawModeButton.addEventListener('click', () => {{
+      state.drawMode = !state.drawMode;
+      state.drawing = null;
+      render();
+    }});
+
+    svg.addEventListener('pointermove', (event) => {{
+      const [x, y] = toSvgPoint(event);
+      if (state.active) {{
+        state.components[state.active.compIndex].points[state.active.pointIndex] = [x, y];
+        render();
+      }} else if (state.drawing) {{
+        const last = state.drawing[state.drawing.length - 1];
+        if (!last || Math.hypot(last[0] - x, last[1] - y) >= 2) {{
+          state.drawing.push([x, y]);
+          render();
+        }}
+      }}
+    }});
+    svg.addEventListener('pointerdown', (event) => {{
+      if (event.target && event.target.tagName && event.target.tagName.toLowerCase() === 'circle') return;
+      if (!state.drawMode) return;
+      event.preventDefault();
+      state.drawing = [toSvgPoint(event)];
+      svg.setPointerCapture(event.pointerId);
+    }});
+    svg.addEventListener('pointerup', () => {{
+      if (state.active) state.active = null;
+      else addDrawnContour();
+    }});
+    svg.addEventListener('pointerleave', () => {{
+      state.active = null;
+      if (state.drawing) addDrawnContour();
+    }});
+    render();
+    let retries = 0;
+    const timer = setInterval(() => {{
+      retries += 1;
+      if (resolvePayloadBox()) {{
+        emit();
+        clearInterval(timer);
+      }} else if (retries >= 50) {{
+        clearInterval(timer);
+      }}
+    }}, 100);
+  </script>
+</body>
+</html>
+"""
+    return f'<iframe style="width:100%;height:760px;border:0;" srcdoc="{html_lib.escape(srcdoc, quote=True)}"></iframe>'
 
 
 def _ordered_schema_labels(schema: MaskProfileSchema) -> list[str]:
@@ -297,6 +685,14 @@ def _resize_binary_mask(mask: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
 def _editor_value_to_binary_mask(value: Any, shape: tuple[int, int]) -> np.ndarray:
     if value is None:
         return np.zeros(shape, dtype=bool)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return np.zeros(shape, dtype=bool)
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            return np.zeros(shape, dtype=bool)
     if not isinstance(value, dict):
         arr = _image_to_array(value)
         if arr is None:
@@ -306,6 +702,25 @@ def _editor_value_to_binary_mask(value: Any, shape: tuple[int, int]) -> np.ndarr
         if arr.ndim == 3:
             return _resize_binary_mask(np.any(arr[..., :3] != 0, axis=2), shape)
         return np.zeros(shape, dtype=bool)
+
+    if isinstance(value.get("components"), list):
+        candidate = np.zeros(shape, dtype=bool)
+        for component in value["components"]:
+            points = component.get("points") if isinstance(component, dict) else None
+            if not isinstance(points, list) or len(points) < 3:
+                continue
+            polygon = []
+            for point in points:
+                if not isinstance(point, (list, tuple)) or len(point) < 2:
+                    continue
+                polygon.append((float(point[0]), float(point[1])))
+            if len(polygon) < 3:
+                continue
+            image = Image.new("L", (shape[1], shape[0]), 0)
+            draw = ImageDraw.Draw(image)
+            draw.polygon(polygon, fill=1)
+            candidate |= np.asarray(image, dtype=np.uint8).astype(bool)
+        return candidate
 
     background = _image_to_array(value.get("background"))
     composite = _image_to_array(value.get("composite"))
@@ -363,9 +778,53 @@ def _manual_source_labels(
             if int(fine_id) in fine_ids:
                 label = name
                 break
-        if label and label != target_label and label not in labels:
+        if label and label not in labels:
             labels.append(label)
     return tuple(labels)
+
+
+def _manual_editor_updates_for_label(
+    state: dict[str, Any],
+    target_label: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not state:
+        return gr.update(value=""), gr.update(value="")
+
+    schema = MaskProfileSchema.from_reference_profile(state.get("profile", "BCSS"))
+    selected_label = target_label if target_label in schema.writable_labels else _default_manual_target_label(schema)
+    tissue_mask_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
+    if not tissue_mask_path:
+        return gr.update(value=""), gr.update(value="")
+
+    tissue_mask = load_id_mask(tissue_mask_path)
+    background_uri = _rgb_array_data_uri(id_to_rgb(tissue_mask))
+    components = _extract_manual_contour_components(
+        tissue_mask,
+        schema=schema,
+        label_filter=selected_label,
+    )
+    state["manual_contour_components"] = components
+    color = _label_color(schema, selected_label)
+    return (
+        gr.update(
+            value=_manual_contour_editor_value(
+                background_uri,
+                components,
+                tissue_mask.shape,
+                target_label=selected_label,
+                target_color=color,
+            )
+        ),
+        gr.update(
+            value=_manual_contour_payload_value(
+                background_uri,
+                components,
+                tissue_mask.shape,
+                target_label=selected_label,
+                target_color=color,
+            )
+        ),
+    )
 
 
 def _refresh_edit_mode_panels(
@@ -382,15 +841,17 @@ def _refresh_edit_mode_panels(
     dict[str, Any],
     dict[str, Any],
     dict[str, Any],
+    dict[str, Any],
 ]:
     """Return panel visibility and auto-recommendation UI state."""
 
     prompt_visible = gr.update(visible=edit_mode == EDIT_MODE_PROMPT)
     manual_visible = gr.update(visible=edit_mode == EDIT_MODE_MANUAL_CONTOUR)
     auto_visible = gr.update(visible=edit_mode == EDIT_MODE_AUTO_RECOMMEND)
-    tissue_button_visible = gr.update(visible=edit_mode != EDIT_MODE_AUTO_RECOMMEND)
+    tissue_button_visible = gr.update(visible=edit_mode == EDIT_MODE_PROMPT)
     auto_execute_visible = gr.update(visible=edit_mode == EDIT_MODE_AUTO_RECOMMEND)
-    manual_editor_value = gr.update()
+    manual_editor_value = gr.update(value="")
+    manual_contour_payload_value = gr.update(value="")
     manual_target_update = gr.update()
     auto_choices_update = gr.update(choices=[], value=[])
     auto_summary = gr.update(value="")
@@ -402,6 +863,7 @@ def _refresh_edit_mode_panels(
             manual_visible,
             auto_visible,
             manual_editor_value,
+            manual_contour_payload_value,
             manual_target_update,
             auto_choices_update,
             auto_summary,
@@ -411,11 +873,43 @@ def _refresh_edit_mode_panels(
 
     if edit_mode == EDIT_MODE_MANUAL_CONTOUR:
         schema = MaskProfileSchema.from_reference_profile(state.get("profile", "BCSS"))
-        background_rgb = state.get("target_mask_rgb") or state.get("source_mask_rgb")
-        manual_editor_value = gr.update(value=_manual_contour_editor_value(background_rgb))
+        selected_label = _default_manual_target_label(schema)
+        tissue_mask_path = state.get("target_tissue_mask") or state.get("reference_tissue_mask")
+        tissue_shape = None
+        components: list[dict[str, Any]] = []
+        background_rgb = ""
+        if tissue_mask_path:
+            tissue_mask = load_id_mask(tissue_mask_path)
+            tissue_shape = tissue_mask.shape
+            background_rgb = _rgb_array_data_uri(id_to_rgb(tissue_mask))
+            components = _extract_manual_contour_components(
+                tissue_mask,
+                schema=schema,
+                label_filter=selected_label,
+            )
+        state["manual_contour_components"] = components
+        target_color = _label_color(schema, selected_label)
+        manual_editor_value = gr.update(
+            value=_manual_contour_editor_value(
+                background_rgb,
+                components,
+                tissue_shape,
+                target_label=selected_label,
+                target_color=target_color,
+            )
+        )
+        manual_contour_payload_value = gr.update(
+            value=_manual_contour_payload_value(
+                background_rgb,
+                components,
+                tissue_shape,
+                target_label=selected_label,
+                target_color=target_color,
+            )
+        )
         manual_target_update = gr.update(
             choices=_manual_target_label_choices(schema),
-            value=_default_manual_target_label(schema),
+            value=selected_label,
         )
     else:
         manual_target_update = gr.update(choices=[], value=None)
@@ -435,6 +929,7 @@ def _refresh_edit_mode_panels(
         manual_visible,
         auto_visible,
         manual_editor_value,
+        manual_contour_payload_value,
         manual_target_update,
         auto_choices_update,
         auto_summary,
@@ -693,6 +1188,7 @@ def run_tissue_stage(
     old_prompt: str,
     new_prompt: str,
     manual_contour_editor,
+    manual_contour_payload,
     auto_recommendation_keys,
     parser: str,
     api_base_url: str,
@@ -725,6 +1221,7 @@ def run_tissue_stage(
                 reference_tissue=reference_tissue,
                 schema=schema,
                 manual_contour_editor=manual_contour_editor,
+                manual_contour_payload=manual_contour_payload,
                 manual_target_label=target_label,
                 output_dir=output_dir,
                 source_labels=source_labels,
@@ -930,12 +1427,13 @@ def _run_manual_contour_stage(
     reference_tissue: np.ndarray,
     schema: MaskProfileSchema,
     manual_contour_editor,
+    manual_contour_payload,
     manual_target_label: str,
     output_dir: Path,
     source_labels: str,
     primitive: str,
 ) -> tuple[Any, dict[str, Any]]:
-    candidate_region = _editor_value_to_binary_mask(manual_contour_editor, reference_tissue.shape)
+    candidate_region = _editor_value_to_binary_mask(manual_contour_payload, reference_tissue.shape)
     if not np.any(candidate_region):
         raise gr.Error("Draw a contour on the mask first.")
 
@@ -953,9 +1451,7 @@ def _run_manual_contour_stage(
     )
     override_source_labels = tuple(_filter_schema_labels(_split_csv(source_labels), schema))
     if override_source_labels:
-        inferred_source_labels = tuple(
-            label for label in override_source_labels if label != target_label
-        )
+        inferred_source_labels = override_source_labels
     if not inferred_source_labels:
         raise gr.Error(
             "Could not infer source labels from the drawn contour. "
@@ -976,6 +1472,21 @@ def _run_manual_contour_stage(
             "source_labels": list(inferred_source_labels),
         },
     )
+    true_change_region = edit_result.target_mask != reference_tissue
+    if not np.array_equal(true_change_region, edit_result.change_region):
+        edit_result = type(edit_result)(
+            target_mask=edit_result.target_mask,
+            change_region=true_change_region,
+            changed_area_fraction=float(np.count_nonzero(true_change_region)) / int(true_change_region.size),
+            selected_pixels=int(np.count_nonzero(true_change_region)),
+            warnings=edit_result.warnings,
+            ops_log={
+                **edit_result.ops_log,
+                "projected_pixels_including_existing_target": int(np.count_nonzero(edit_result.change_region)),
+                "selected_pixels": int(np.count_nonzero(true_change_region)),
+                "changed_area_fraction": float(np.count_nonzero(true_change_region)) / int(true_change_region.size),
+            },
+        )
     phase3_info = {
         "mode": EDIT_MODE_MANUAL_CONTOUR,
         "primitive": primitive,
@@ -984,6 +1495,7 @@ def _run_manual_contour_stage(
         "source_labels": list(inferred_source_labels),
         "selected_pixels": int(np.count_nonzero(edit_result.change_region)),
         "manual_contour": True,
+        "manual_contour_points": _json_safe(manual_contour_payload),
         "projection_mode": "manual_projected_label_write",
         "result": {
             "ops_log": edit_result.ops_log,
@@ -1001,6 +1513,107 @@ def _run_manual_contour_stage(
         to_metadata=lambda: dict(phase3_info),
     )
     return result, phase3_info
+
+
+def _save_manual_current_label(
+    state: dict[str, Any],
+    manual_contour_payload,
+    source_labels: str,
+    target_label: str,
+) -> tuple[dict[str, Any], dict[str, Any], str, str, str]:
+    if not state:
+        raise gr.Error("Load inputs first.")
+    output_dir = Path(state["output_dir"])
+    schema = MaskProfileSchema.from_reference_profile(state["profile"])
+    base_mask = load_id_mask(state.get("manual_working_tissue_mask") or state.get("target_tissue_mask") or state["reference_tissue_mask"])
+    result, phase3_info = _run_manual_contour_stage(
+        reference_tissue=base_mask,
+        schema=schema,
+        manual_contour_editor=None,
+        manual_contour_payload=manual_contour_payload,
+        manual_target_label=target_label,
+        output_dir=output_dir,
+        source_labels=source_labels,
+        primitive="manual_contour",
+    )
+    working_mask = result.edit_result.target_mask
+    working_path = save_id_mask(working_mask, output_dir / "manual_working_tissue_mask.png")
+    working_rgb_path = output_dir / "manual_working_tissue_rgb.png"
+    Image.fromarray(id_to_rgb(working_mask), mode="RGB").save(working_rgb_path)
+    manual_steps = list(state.get("manual_steps", []))
+    manual_steps.append(
+        {
+            "target_label": target_label,
+            "source_labels": phase3_info.get("source_labels", []),
+            "selected_pixels": phase3_info.get("selected_pixels", 0),
+        }
+    )
+    state.update(
+        {
+            "manual_working_tissue_mask": str(working_path),
+            "manual_working_tissue_rgb": str(working_rgb_path),
+            "manual_steps": manual_steps,
+        }
+    )
+    editor_update, payload_update = _manual_editor_updates_for_label(state, target_label)
+    log = {
+        "status": "manual_label_saved",
+        "target_label": target_label,
+        "working_tissue_mask": str(working_path),
+        "selected_pixels": phase3_info.get("selected_pixels", 0),
+        "steps": manual_steps,
+    }
+    return state, editor_update, payload_update, _json_text(log), str(working_rgb_path)
+
+
+def _finalize_manual_tissue_stage(
+    state: dict[str, Any],
+) -> tuple[dict[str, Any], str, str, str]:
+    if not state:
+        raise gr.Error("Load inputs first.")
+    if not state.get("manual_working_tissue_mask"):
+        raise gr.Error("Save at least one manual tissue edit first.")
+
+    output_dir = Path(state["output_dir"])
+    reference_image = _load_rgb_image(state["reference_image"])
+    reference_tissue = load_id_mask(state["reference_tissue_mask"])
+    target_tissue = load_id_mask(state["manual_working_tissue_mask"])
+    _validate_same_size(reference_image, target_tissue, "target_tissue_mask")
+    target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
+    change_region = reference_tissue != target_tissue
+    stage_paths = _save_pre_generation_artifacts(
+        output_dir=output_dir,
+        reference_image=reference_image,
+        reference_tissue=reference_tissue,
+        target_tissue=target_tissue,
+        change_region=change_region,
+    )
+    phase3_info = {
+        "mode": EDIT_MODE_MANUAL_CONTOUR,
+        "primitive": "manual_contour",
+        "reference_profile": state.get("profile", "BCSS"),
+        "projection_mode": "manual_stepwise_projected_label_write",
+        "manual_steps": list(state.get("manual_steps", [])),
+        "selected_pixels": int(np.count_nonzero(change_region)),
+    }
+    save_metadata(phase3_info, output_dir / "phase3_mask_edit" / "execution_summary.json")
+    state.update(
+        {
+            "target_tissue_mask": str(target_path),
+            "target_mask_rgb": stage_paths["target_mask_rgb"],
+            "change_region": stage_paths["change_region"],
+            "phase3": phase3_info,
+        }
+    )
+    info = {
+        "status": "tissue_done",
+        "edit_mode": EDIT_MODE_MANUAL_CONTOUR,
+        "target_tissue_mask": str(target_path),
+        "change_region": stage_paths["change_region"],
+        "changed_area_fraction": _change_area_fraction(change_region),
+        "manual_steps": phase3_info["manual_steps"],
+    }
+    return state, _json_text(info), stage_paths["target_mask_rgb"], stage_paths["change_region"]
 
 
 def _load_manual_contour_payload(manual_contour_json: str, manual_contour_file) -> dict[str, Any]:
@@ -1744,15 +2357,19 @@ def build_ui() -> gr.Blocks:
 
         manual_panel = gr.Column(visible=False)
         with manual_panel:
-            manual_editor = gr.ImageEditor(
-                label="draw contour on mask",
-                sources=["upload", "clipboard"],
-                type="numpy",
-                value=None,
+            manual_editor = gr.HTML(label="manual contour editor")
+            manual_contour_payload = gr.Textbox(
+                visible=False,
+                value="",
+                label="manual contour payload",
+                elem_id="manualContourPayload",
             )
             with gr.Row():
                 target_label = gr.Dropdown([], value=None, label="target label")
                 source_labels = gr.Textbox(label="source labels", placeholder="Stroma")
+            with gr.Row():
+                manual_save_label_button = gr.Button("Save current tissue edit")
+                manual_finalize_button = gr.Button("Save full manual mask")
             with gr.Row():
                 primitive = gr.Dropdown(
                     [
@@ -1859,6 +2476,7 @@ def build_ui() -> gr.Blocks:
                 manual_panel,
                 auto_panel,
                 manual_editor,
+                manual_contour_payload,
                 target_label,
                 auto_choices,
                 auto_summary,
@@ -1875,6 +2493,7 @@ def build_ui() -> gr.Blocks:
                 manual_panel,
                 auto_panel,
                 manual_editor,
+                manual_contour_payload,
                 target_label,
                 auto_choices,
                 auto_summary,
@@ -1887,6 +2506,37 @@ def build_ui() -> gr.Blocks:
             inputs=[profile],
             outputs=[probnet_ckpt, nuclei_library, density_scale_json],
         )
+        target_label.change(
+            _manual_editor_updates_for_label,
+            inputs=[state, target_label],
+            outputs=[manual_editor, manual_contour_payload],
+        )
+        manual_save_label_button.click(
+            _save_manual_current_label,
+            inputs=[state, manual_contour_payload, source_labels, target_label],
+            outputs=[state, manual_editor, manual_contour_payload, tissue_log, target_tissue_preview],
+        )
+        manual_finalize_button.click(
+            _finalize_manual_tissue_stage,
+            inputs=[state],
+            outputs=[state, tissue_log, target_tissue_preview, change_region_preview],
+        ).then(
+            _refresh_edit_mode_panels,
+            inputs=[state, edit_mode],
+            outputs=[
+                state,
+                prompt_panel,
+                manual_panel,
+                auto_panel,
+                manual_editor,
+                manual_contour_payload,
+                target_label,
+                auto_choices,
+                auto_summary,
+                tissue_button,
+                auto_execute_button,
+            ],
+        )
         cuda_memory_button.click(check_cuda_memory, inputs=[], outputs=[cuda_memory_log])
         tissue_button.click(
             run_tissue_stage,
@@ -1896,6 +2546,7 @@ def build_ui() -> gr.Blocks:
                 old_prompt,
                 new_prompt,
                 manual_editor,
+                manual_contour_payload,
                 auto_choices,
                 parser,
                 api_base_url,
@@ -1925,6 +2576,7 @@ def build_ui() -> gr.Blocks:
                 manual_panel,
                 auto_panel,
                 manual_editor,
+                manual_contour_payload,
                 target_label,
                 auto_choices,
                 auto_summary,
@@ -1945,6 +2597,7 @@ def build_ui() -> gr.Blocks:
                 manual_panel,
                 auto_panel,
                 manual_editor,
+                manual_contour_payload,
                 target_label,
                 auto_choices,
                 auto_summary,
