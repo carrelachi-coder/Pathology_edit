@@ -2109,10 +2109,14 @@ def _target_pixels_from_config(
         )
         reference_pixels = int(mask.size)
     elif name == "necrosis_appearance":
-        bucket = _first_interval(ranges.get("target_changed_area_fraction"))
+        bucket = _first_interval(
+            ranges.get("target_changed_area_fraction"), strength=strength
+        )
         reference_pixels = int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     elif name == "intratumoral_immune_infiltration":
-        bucket = _first_interval(ranges.get("target_changed_area_fraction"))
+        bucket = _first_interval(
+            ranges.get("target_changed_area_fraction"), strength=strength
+        )
         reference_pixels = int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     elif name == "stromal_desmoplasia":
         bucket = _first_interval(ranges.get("stroma_area_delta_fraction"))

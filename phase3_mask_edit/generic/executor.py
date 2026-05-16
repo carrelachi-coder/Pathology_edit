@@ -172,6 +172,7 @@ def execute_edit(
         schema=schema,
         primitive_config=primitive_config,
         changed_area_fraction=edit_result.changed_area_fraction,
+        strength=intent.strength,
         execution_log=edit_result.ops_log,
     )
 

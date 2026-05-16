@@ -999,6 +999,9 @@ def _build_auto_recommendation_pool(state: dict[str, Any]) -> list[dict[str, Any
     pool: list[dict[str, Any]] = []
     for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
         decision = assess_edit_applicability(intent, recipe, schema, context)
+        feasibility = _estimate_recommendation_feasibility(
+            reference_tissue, intent, primitive_config, recipe, schema, context
+        )
         key = _recommendation_key(intent)
         pool.append(
             {
@@ -1009,10 +1012,12 @@ def _build_auto_recommendation_pool(state: dict[str, Any]) -> list[dict[str, Any
                 "reference_profile": intent.reference_profile,
                 "source_labels": list(intent.source_labels),
                 "target_label": intent.target_label,
-                "score": _recommendation_score(primitive_config, context, decision),
+                "score": _recommendation_score(primitive_config, context, decision, feasibility),
                 "status": decision.status,
                 "reasons": list(decision.reasons),
                 "warnings": list(decision.warnings),
+                "feasibility": feasibility,
+                "recommendation_notes": feasibility.get("notes", []),
             }
         )
     return pool
@@ -1025,10 +1030,16 @@ def _format_auto_recommendation_summary(pool: list[dict[str, Any]]) -> str:
     for item in pool:
         source = ", ".join(item.get("source_labels", [])) or "-"
         target = item.get("target_label") or "-"
+        feasibility = item.get("feasibility", {})
+        changed = feasibility.get("changed_area_fraction")
+        changed_text = f"{float(changed):.3f}" if isinstance(changed, (int, float)) else "-"
         lines.append(
-            f"{item['label']} | score={item['score']} | status={item['status']}"
+            f"{item['label']} | score={item['score']} | status={item['status']} | changed={changed_text}"
         )
         lines.append(f"source: {source} -> target: {target}")
+        notes = item.get("recommendation_notes") or []
+        if notes:
+            lines.append(f"notes: {'; '.join(str(note) for note in notes)}")
     return "\n".join(lines)
 
 
@@ -1426,7 +1437,12 @@ def run_tissue_stage(
     if result.edit_result is None:
         raise gr.Error(_contour_failure_message(result))
     if (
-        result.status not in {"validated", "skipped_no_source_region"}
+        result.status not in {
+            "validated",
+            "skipped_no_source_region",
+            "executed_validated",
+            "degraded_executed",
+        }
         and not continue_on_failure
     ):
         raise gr.Error(_contour_failure_message(result))
@@ -1776,6 +1792,9 @@ def _run_auto_recommend_stage(
     pool: list[dict[str, Any]] = []
     for rank, (intent, primitive_config) in enumerate(recommendations[:AUTO_RECOMMEND_LIMIT], start=1):
         decision = assess_edit_applicability(intent, recipe, schema, context)
+        feasibility = _estimate_recommendation_feasibility(
+            reference_tissue, intent, primitive_config, recipe, schema, context
+        )
         pool.append(
             {
                 "rank": rank,
@@ -1785,10 +1804,12 @@ def _run_auto_recommend_stage(
                 "reference_profile": intent.reference_profile,
                 "source_labels": list(intent.source_labels),
                 "target_label": intent.target_label,
-                "score": _recommendation_score(primitive_config, context, decision),
+                "score": _recommendation_score(primitive_config, context, decision, feasibility),
                 "status": decision.status,
                 "reasons": list(decision.reasons),
                 "warnings": list(decision.warnings),
+                "feasibility": feasibility,
+                "recommendation_notes": feasibility.get("notes", []),
             }
         )
     result = SimpleNamespace(
@@ -1854,6 +1875,7 @@ def _execute_selected_recommendations(
                 "status": result.status,
                 "reasons": list(result.applicability.reasons),
                 "warnings": list(result.applicability.warnings),
+                "validation_failed_checks": _validation_failed_checks(result.validation),
                 "primitive_config": primitive_config.get("name"),
             }
         )
@@ -1862,7 +1884,7 @@ def _execute_selected_recommendations(
             current_mask = np.array(result.edit_result.target_mask, copy=True)
 
     if last_result is None or last_result.edit_result is None:
-        raise gr.Error("Selected recommendations could not be executed.")
+        raise gr.Error(_auto_recommend_execution_failure_message(attempt_logs))
 
     phase3_info = {
         "mode": EDIT_MODE_AUTO_RECOMMEND,
@@ -1882,7 +1904,7 @@ def _recommend_edit_intents(
     recipe: dict[str, Any],
     context: MaskEditContext,
 ) -> list[tuple[EditIntent, dict[str, Any]]]:
-    candidates: list[tuple[int, int, EditIntent, dict[str, Any]]] = []
+    candidates: list[tuple[int, int, EditIntent, dict[str, Any], dict[str, Any]]] = []
     for primitive_config in recipe.get("primitives", []):
         if not isinstance(primitive_config, dict):
             continue
@@ -1902,10 +1924,17 @@ def _recommend_edit_intents(
             decision = assess_edit_applicability(intent, recipe, schema, context)
             if decision.status == "rejected":
                 continue
-            score = _recommendation_score(primitive_config, context, decision)
-            candidates.append((score, _STRONGEST_FIRST.get(strength, 0), intent, primitive_config))
+            feasibility = _estimate_recommendation_feasibility(
+                mask, intent, primitive_config, recipe, schema, context
+            )
+            if feasibility["status"] != "executable":
+                continue
+            score = _recommendation_score(primitive_config, context, decision, feasibility)
+            candidates.append(
+                (score, _STRONGEST_FIRST.get(strength, 0), intent, primitive_config, feasibility)
+            )
     candidates.sort(key=lambda item: (-item[0], -item[1], item[2].primitive))
-    return [(intent, primitive_config) for _, _, intent, primitive_config in candidates]
+    return [(intent, primitive_config) for _, _, intent, primitive_config, _ in candidates]
 
 
 def _primitive_strengths(primitive_config: dict[str, Any]) -> tuple[str, ...]:
@@ -1920,10 +1949,13 @@ def _recommendation_score(
     primitive_config: dict[str, Any],
     context: MaskEditContext,
     decision,
+    feasibility: dict[str, Any] | None = None,
 ) -> int:
     score = 0
-    if decision.status == "degraded":
-        score += 1
+    if decision.status == "executable":
+        score += 8
+    elif decision.status == "degraded":
+        score += 4
     mask_operation = primitive_config.get("mask_operation", {})
     if isinstance(mask_operation, dict):
         source = mask_operation.get("source")
@@ -1932,9 +1964,195 @@ def _recommendation_score(
         target = mask_operation.get("target")
         if isinstance(target, str) and target in context.present_labels:
             score += 1
-    score += min(4, len(decision.warnings))
-    score += min(4, len(decision.fallback_actions))
+    if feasibility:
+        if feasibility.get("validation_passed") is True:
+            score += 6
+        changed = feasibility.get("changed_area_fraction")
+        if isinstance(changed, (int, float)) and changed > 0:
+            score += min(5, int(float(changed) * 100))
+        score -= min(6, 2 * len(feasibility.get("validation_failed_checks") or []))
+    score -= min(4, len(decision.warnings))
+    score += min(2, len(decision.fallback_actions))
     return score
+
+
+def _estimate_recommendation_feasibility(
+    mask: np.ndarray,
+    intent: EditIntent,
+    primitive_config: dict[str, Any],
+    recipe: dict[str, Any],
+    schema: MaskProfileSchema,
+    context: MaskEditContext,
+) -> dict[str, Any]:
+    try:
+        result = execute_edit(mask, intent, recipe, schema, context)
+    except Exception as exc:
+        return {
+            "status": "execution_error",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    if result.edit_result is None:
+        return {
+            "status": result.status,
+            "reasons": list(result.applicability.reasons),
+            "warnings": list(result.applicability.warnings),
+        }
+    failed = _validation_failed_checks(result.validation)
+    strength_fit = _strength_fit_summary(
+        mask,
+        result.edit_result.change_region,
+        intent,
+        primitive_config,
+        schema,
+    )
+    if not strength_fit["fits"]:
+        failed = [*failed, str(strength_fit["detail"])]
+    return {
+        "status": (
+            "executable"
+            if (result.validation is None or result.validation.passed) and strength_fit["fits"]
+            else "validation_failed"
+        ),
+        "execution_status": result.status,
+        "validation_passed": (
+            (None if result.validation is None else result.validation.passed)
+            and strength_fit["fits"]
+        ),
+        "validation_failed_checks": failed,
+        "changed_area_fraction": float(result.edit_result.changed_area_fraction),
+        "strength_fraction": strength_fit["fraction"],
+        "strength_range": strength_fit["range"],
+        "selected_pixels": int(result.edit_result.selected_pixels),
+        "notes": list(result.edit_result.warnings),
+    }
+
+
+def _strength_fit_summary(
+    mask: np.ndarray,
+    change_region: np.ndarray,
+    intent: EditIntent,
+    primitive_config: dict[str, Any],
+    schema: MaskProfileSchema,
+) -> dict[str, Any]:
+    interval = _strength_interval(primitive_config, intent.strength)
+    if interval is None:
+        return {"fits": True, "fraction": None, "range": None, "detail": ""}
+    denominator = _strength_denominator_pixels(mask, primitive_config, schema)
+    if denominator <= 0:
+        return {
+            "fits": False,
+            "fraction": None,
+            "range": list(interval),
+            "detail": "strength feasibility failed: no denominator pixels in current mask.",
+        }
+    fraction = int(np.count_nonzero(change_region)) / denominator
+    lower, upper = interval
+    fits = lower <= fraction <= upper
+    return {
+        "fits": fits,
+        "fraction": float(fraction),
+        "range": [float(lower), float(upper)],
+        "detail": (
+            f"strength feasibility failed: achieved_fraction={fraction:.4f} "
+            f"outside {intent.strength} range [{lower:.2f}, {upper:.2f}]"
+        ),
+    }
+
+
+def _strength_interval(
+    primitive_config: dict[str, Any],
+    strength: str,
+) -> tuple[float, float] | None:
+    ranges = primitive_config.get("parameter_ranges", {})
+    if not isinstance(ranges, dict):
+        return None
+    for key in (
+        "target_changed_area_fraction",
+        "target_area_delta_fraction",
+        "target_area_decrease_fraction",
+        "necrosis_area_decrease_fraction",
+        "immune_area_delta_fraction",
+        "immune_area_decrease_fraction",
+        "stroma_area_delta_fraction",
+        "stroma_area_decrease_fraction",
+        "source_area_transition_fraction",
+    ):
+        value = ranges.get(key)
+        if not isinstance(value, dict):
+            continue
+        interval = value.get(strength)
+        if (
+            isinstance(interval, list)
+            and len(interval) == 2
+            and all(isinstance(item, (int, float)) for item in interval)
+        ):
+            return float(interval[0]), float(interval[1])
+    return None
+
+
+def _strength_denominator_pixels(
+    mask: np.ndarray,
+    primitive_config: dict[str, Any],
+    schema: MaskProfileSchema,
+) -> int:
+    name = primitive_config.get("name")
+    if name in {"necrosis_appearance", "intratumoral_immune_infiltration"}:
+        return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
+    if name == "necrosis_resolution":
+        return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, "Necrosis")))
+    if name in {"immune_infiltration_decrease"}:
+        return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, "Immune infiltrate")))
+    if name == "stromal_immune_infiltration":
+        stroma = _safe_schema_label_mask(mask, schema, "Stroma")
+        immune = _safe_schema_label_mask(mask, schema, "Immune infiltrate")
+        return int(np.count_nonzero(stroma | immune))
+    if name in {"stromal_desmoplasia", "stroma_decrease", "stromal_reduction"}:
+        return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, "Stroma")))
+    if name in {"grade_upgrade", "adenoma_to_carcinoma", "gleason_upgrade_3to4", "gleason_upgrade_4to5", "benign_to_gleason3"}:
+        source_ids = primitive_config.get("mask_operation", {}).get("source_fine_ids", ())
+        if isinstance(source_ids, int):
+            source_ids = (source_ids,)
+        if isinstance(source_ids, (list, tuple)):
+            return int(np.count_nonzero(np.isin(mask, tuple(source_ids))))
+    return int(mask.size)
+
+
+def _safe_schema_label_mask(
+    mask: np.ndarray,
+    schema: MaskProfileSchema,
+    label: str,
+) -> np.ndarray:
+    if label not in schema.readable_labels:
+        return np.zeros(mask.shape, dtype=bool)
+    return np.isin(mask, schema.resolve_fine_ids(label))
+
+
+def _validation_failed_checks(validation: Any) -> list[str]:
+    if validation is None:
+        return []
+    return [
+        f"{check.name}: {check.detail}"
+        for check in getattr(validation, "failed_checks", ())
+    ]
+
+
+def _auto_recommend_execution_failure_message(attempt_logs: list[dict[str, Any]]) -> str:
+    if not attempt_logs:
+        return "Selected recommendations could not be executed: no attempts were made."
+    lines = ["Selected recommendations could not be executed."]
+    for attempt in attempt_logs:
+        lines.append(
+            f"- {attempt.get('primitive')} / {attempt.get('strength')}: {attempt.get('status')}"
+        )
+        details = (
+            attempt.get("reasons")
+            or attempt.get("validation_failed_checks")
+            or attempt.get("warnings")
+            or []
+        )
+        for detail in details[:4]:
+            lines.append(f"  {detail}")
+    return "\n".join(lines)
 
 
 def _merge_phase3_info(base: dict[str, Any], result: Any) -> dict[str, Any]:
