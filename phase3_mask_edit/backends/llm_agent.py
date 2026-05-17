@@ -293,7 +293,11 @@ def execute_llm_contour_agent(
     if not target_label and primitive_config.get("name") == "tumor_burden_increase":
         target_label = "Tumor"
     if not target_label:
-        target_label = _backfill_prompt_target_label(primitive_config, schema)
+        target_label = _backfill_prompt_target_label(
+            primitive_config,
+            schema,
+            source_mask,
+        )
     if not target_label:
         raise ValueError("LLM contour agent requires a target label.")
 
@@ -774,13 +778,19 @@ def _string_or_none(value: Any) -> str | None:
 def _backfill_prompt_target_label(
     primitive_config: Mapping[str, Any],
     schema: MaskProfileSchema,
+    mask: np.ndarray | None = None,
 ) -> str | None:
     operation = primitive_config.get("mask_operation", {})
     priority = operation.get("backfill_priority", ()) if isinstance(operation, Mapping) else ()
     if isinstance(priority, list):
         for label in priority:
-            if isinstance(label, str) and label in schema.writable_labels:
+            if not isinstance(label, str) or label not in schema.writable_labels:
+                continue
+            if mask is not None and label in schema.readable_labels:
+                if not np.any(np.isin(mask, schema.resolve_fine_ids(label))):
+                    continue
                 return label
+            return label
     return None
 
 

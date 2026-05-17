@@ -144,6 +144,48 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             ["necrosis_change.action", "lymphocyte_change.infiltration"],
         )
 
+    def test_tumor_growth_on_tumor_necrosis_only_mask_uses_necrosis_resolution(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "increase", "degree": "moderate"}
+        )
+        old_mask = np.array(
+            [
+                [1, 1, 3],
+                [1, 3, 3],
+                [3, 3, 3],
+            ],
+            dtype=np.int64,
+        )
+
+        plan = plan_edit_intents(diff, reference_profile="BCSS", old_mask=old_mask)
+
+        self.assertEqual(len(plan.intents), 1)
+        self.assertEqual(plan.intents[0].primitive, "necrosis_resolution")
+        self.assertEqual(plan.intents[0].strength, "moderate")
+        self.assertEqual(plan.items[0].status, "degraded_planned")
+        self.assertIn("optional_label_absent_in_mask:Stroma", plan.items[0].warnings)
+
+    def test_tumor_decrease_on_tumor_necrosis_only_mask_uses_necrosis_appearance(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "decrease", "degree": "moderate"}
+        )
+        old_mask = np.array(
+            [
+                [1, 1, 3],
+                [1, 3, 3],
+                [3, 3, 3],
+            ],
+            dtype=np.int64,
+        )
+
+        plan = plan_edit_intents(diff, reference_profile="BCSS", old_mask=old_mask)
+
+        self.assertEqual(len(plan.intents), 1)
+        self.assertEqual(plan.intents[0].primitive, "necrosis_appearance")
+        self.assertEqual(plan.intents[0].strength, "moderate")
+        self.assertEqual(plan.items[0].status, "degraded_planned")
+        self.assertIn("optional_label_absent_in_mask:Stroma", plan.items[0].warnings)
+
     def test_stroma_density_increase_maps_to_desmoplasia(self):
         diff = semantic_diff_with(
             stroma_change={"density": "increase", "degree": "moderate"}
@@ -195,6 +237,34 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         )
 
         self.assertEqual(intents[0].primitive, "gleason_upgrade_4to5")
+
+    def test_instruction_style_panda_gleason_3to4_maps_without_old_prompt(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "none", "grade_change": "upgrade"}
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="PANDA",
+            new_prompt="upgrade prostate tumor from Gleason pattern 3 to pattern 4",
+        )
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(intents[0].primitive, "gleason_upgrade_3to4")
+
+    def test_instruction_style_glas_normal_to_adenomatous_maps_without_old_prompt(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "none", "grade_change": "upgrade"}
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="GlaS",
+            new_prompt="convert normal colonic glands into adenomatous glands",
+        )
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(intents[0].primitive, "normal_to_adenomatous")
 
     def test_glas_grade_upgrade_maps_to_grade_special(self):
         diff = semantic_diff_with(

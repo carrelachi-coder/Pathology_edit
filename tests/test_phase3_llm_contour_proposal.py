@@ -958,7 +958,7 @@ class LLMContourProposalTests(unittest.TestCase):
         selected_cols = np.argwhere(result.change_region)[:, 1]
         self.assertGreater(float(np.mean(selected_cols)), 42.0)
 
-    def test_organic_projection_necrosis_policy_caps_area_like_validation(self):
+    def test_organic_projection_necrosis_policy_does_not_cap_total_necrosis_fraction(self):
         old_mask = np.zeros((80, 80), dtype=np.int64)
         old_mask[8:72, 8:72] = 2
         old_mask[20:60, 20:60] = 1
@@ -968,15 +968,13 @@ class LLMContourProposalTests(unittest.TestCase):
         raw_candidate = np.ones_like(old_mask, dtype=bool)
         original_tumor_pixels = int(np.count_nonzero(old_mask == 1))
         existing_necrosis_pixels = int(np.count_nonzero(old_mask == 3))
-        max_fraction = 0.60
-        expected_remaining = int(round(original_tumor_pixels * max_fraction)) - existing_necrosis_pixels
+        requested_pixels = 500
 
         primitive_config = {
             "name": "necrosis_appearance",
             "required_tissue_labels": ["Tumor"],
             "parameter_ranges": {
                 "target_changed_area_fraction": {"mild": [0.08, 0.14]},
-                "max_necrosis_fraction_of_tumor": max_fraction,
                 "organic_min_component_fraction": 0.0,
             },
             "validation_rules": [
@@ -992,10 +990,10 @@ class LLMContourProposalTests(unittest.TestCase):
             target_label="Necrosis",
             primitive_config=primitive_config,
             seed=9,
-            target_pixels=500,
+            target_pixels=requested_pixels,
         )
 
-        self.assertEqual(result.selected_pixels, expected_remaining)
+        self.assertEqual(result.selected_pixels, requested_pixels)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
         policy = result.ops_log["component_policy"]
         self.assertEqual(policy["policy_name"], "necrosis_intratumoral_hypoxic")
@@ -1008,6 +1006,8 @@ class LLMContourProposalTests(unittest.TestCase):
             policy["params"]["existing_necrosis_pixels"],
             existing_necrosis_pixels,
         )
+        self.assertNotIn("max_necrosis_fraction_of_tumor", policy["params"])
+        self.assertNotIn("remaining_allowed_necrosis_pixels", policy["params"])
         validation = validate_edit_result(
             src_mask=old_mask,
             target_mask=result.target_mask,
@@ -1042,7 +1042,6 @@ class LLMContourProposalTests(unittest.TestCase):
                     "organic_template_neighborhood_radius_px": 128,
                     "organic_template_spillover_fraction": 0.0,
                     "tumor_boundary_margin_radius_px": 18,
-                    "max_necrosis_fraction_of_tumor": 1.0,
                 },
             },
             seed=4,
@@ -1087,7 +1086,6 @@ class LLMContourProposalTests(unittest.TestCase):
                     "organic_template_spillover_fraction": 0.0,
                     "tumor_boundary_margin_radius_px": 200,
                     "necrosis_neighbor_radius_px": 10,
-                    "max_necrosis_fraction_of_tumor": 1.0,
                 },
             },
             seed=1,
@@ -1099,6 +1097,57 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
         selected_cols = np.argwhere(result.change_region)[:, 1]
         self.assertLess(float(np.mean(selected_cols)), 30.0)
+
+    def test_necrosis_policy_with_existing_necrosis_expands_from_necrotic_front(self):
+        old_mask = np.zeros((96, 96), dtype=np.int64)
+        old_mask[8:88, 8:88] = 2
+        old_mask[16:80, 16:80] = 1
+        old_mask[42:54, 18:30] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[42:54, 62:74] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "organic_score_weights": {
+                        "template": 1.0,
+                        "spatial": 0.0,
+                        "noise": 0.0,
+                    },
+                    "organic_min_template_legal_overlap_fraction": 0.05,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 8,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_neighbor_radius_px": 12,
+                },
+            },
+            seed=1,
+            target_pixels=80,
+        )
+
+        params = result.ops_log["component_policy"]["params"]
+        self.assertEqual(
+            params["legal_domain_policy"],
+            "tumor_near_existing_necrosis_expansion_band",
+        )
+        self.assertFalse(
+            params["allow_multifocal_new_foci_when_existing_necrosis"]
+        )
+        self.assertEqual(
+            result.ops_log["raw_candidate_legal_overlap_pixels"],
+            0,
+        )
+        self.assertEqual(result.selected_pixels, 80)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+        dist_to_necrosis = ndimage.distance_transform_edt(old_mask != 3)
+        self.assertLessEqual(float(dist_to_necrosis[result.change_region].max()), 12.0)
+        self.assertFalse(np.any(result.change_region & raw_candidate))
 
     def test_necrosis_policy_avoids_blood_vessel_neighborhood(self):
         old_mask = np.zeros((72, 72), dtype=np.int64)
@@ -1127,7 +1176,6 @@ class LLMContourProposalTests(unittest.TestCase):
                     "tumor_boundary_margin_radius_px": 200,
                     "vessel_avoidance_radius_px": 24,
                     "vessel_avoidance_weight": 1.0,
-                    "max_necrosis_fraction_of_tumor": 1.0,
                 },
             },
             seed=1,
@@ -1816,7 +1864,50 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.ops_log["backfill_labels"], ["Stroma"])
         self.assertEqual(
             result.ops_log["component_policy"]["params"]["backfill_policy"],
-            "nearest_stroma_only",
+            "nearest_stroma_or_tumor_fallback",
+        )
+        self.assertFalse(result.ops_log["fallback_backfill_to_tumor"])
+
+    def test_necrosis_resolution_falls_back_to_tumor_without_stroma(self):
+        old_mask = np.full((72, 72), 1, dtype=np.int64)
+        old_mask[24:48, 24:48] = 3
+        raw_candidate = old_mask == 3
+
+        result = apply_organic_necrosis_resolution(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            primitive_config={
+                "name": "necrosis_resolution",
+                "mask_operation": {
+                    "source": "Necrosis",
+                    "backfill_priority": ["Stroma", "Tumor"],
+                },
+                "parameter_ranges": {
+                    "necrosis_area_decrease_fraction": {"mild": [0.08, 0.14]},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 32,
+                    "organic_template_spillover_fraction": 0.0,
+                    "organic_score_weights": {
+                        "template": 0.3,
+                        "spatial": 0.7,
+                        "noise": 0.0,
+                    },
+                    "min_necrosis_resolution_component_area_px": 1,
+                },
+            },
+            seed=6,
+            target_pixels=40,
+        )
+
+        self.assertEqual(result.selected_pixels, 40)
+        self.assertTrue(np.all(old_mask[result.change_region] == 3))
+        self.assertTrue(np.all(result.target_mask[result.change_region] == 1))
+        self.assertEqual(result.ops_log["backfill_labels"], ["Tumor"])
+        self.assertTrue(result.ops_log["fallback_backfill_to_tumor"])
+        self.assertIn(
+            "necrosis_resolution_fallback_backfill_to_tumor",
+            result.warnings,
         )
 
     def test_necrosis_resolution_does_not_score_patch_edge_as_viable_front(self):

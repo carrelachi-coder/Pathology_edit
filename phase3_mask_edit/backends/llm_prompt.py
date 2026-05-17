@@ -203,6 +203,7 @@ def build_contour_prompt(
         "Within each source component, contour_adjacency_segments groups contour coordinates by the tissue just across the boundary. Prefer choosing component ids and adjacency sides before drawing points.",
         "For stromal immune infiltration, prefer Stroma contour segments adjacent to Tumor and avoid segments adjacent to Necrosis unless the recipe explicitly asks for necrosis-adjacent change.",
         "For necrosis appearance, prefer Tumor interior components and avoid hugging the outer Tumor boundary unless the intent requires it.",
+        "For intratumoral immune infiltration, draw coarse immune spot templates on existing Tumor; final pixels become Immune infiltrate inside the original Tumor.",
         "For tumor burden increase, draw coarse growth templates on editable non-tumor tissue adjacent to Tumor; final write uses nearest original Tumor subtype.",
         "For tumor burden decrease, draw coarse regression templates on existing Tumor near legal backfill tissue; final pixels will be backfilled deterministically.",
         "For immune infiltration decrease, draw coarse templates over existing Immune infiltrate that should be removed; final pixels will be backfilled from nearby legal tissue by deterministic code.",
@@ -486,6 +487,29 @@ def _build_llm_task_requirements(
                 "Irregular blob or fissure-like region.",
                 "Natural uneven necrotic boundary.",
                 "Avoid regular geometric shapes.",
+            ],
+            "area_requirement": _area_requirement_text(target_area_hint),
+            "recipe_constraints": {
+                "spatial_pattern": spatial,
+                "parameter_ranges": ranges,
+                "validation_rules": validation_rules,
+            },
+        }
+    if name == "intratumoral_immune_infiltration":
+        return {
+            "pathology_goal": "Increase intratumoral tumor-infiltrating lymphocytes.",
+            "mask_edit": "Convert selected Tumor pixels to Immune infiltrate pixels.",
+            "source_label": operation.get("source", "Tumor"),
+            "target_label": operation.get("target", "Immune infiltrate"),
+            "where_to_draw": [
+                "Draw inside red Tumor, not on pre-existing purple Immune infiltrate.",
+                "Prefer small patchy intratumoral foci or clusters within the tumor body.",
+                "Avoid drawing mainly on Stroma, Necrosis, Background, or outside the original Tumor.",
+            ],
+            "shape_style": [
+                "Small organic spot or multifocal patch contours.",
+                "Use irregular boundaries and varied sizes for separate foci.",
+                "Avoid one large sheet-like replacement of the tumor.",
             ],
             "area_requirement": _area_requirement_text(target_area_hint),
             "recipe_constraints": {
@@ -1150,6 +1174,12 @@ def _organic_shape_instruction(context: Mapping[str, Any]) -> str:
             "Use many boundary points, following contour_style_hint, for each substantial region. "
             "Avoid rectangles, diamonds, circles, symmetric shapes, repeated duplicate parts, and tiny decorative polygons."
         )
+    if primitive == "intratumoral_immune_infiltration":
+        return (
+            "Shape style: propose small, organic intratumoral immune spot templates on red Tumor. "
+            "Use patchy or multifocal contours with varied sizes and irregular boundaries. "
+            "The executor will keep only legal Tumor pixels and write Immune infiltrate, so existing purple Immune pixels are not required."
+        )
     if primitive == "tumor_burden_increase":
         return (
             "Shape style: propose irregular invasive tumor growth templates on adjacent editable non-tumor tissue. "
@@ -1186,6 +1216,8 @@ def _default_placement_relation(context: Mapping[str, Any]) -> str:
         return "tumor_adjacent_stroma"
     if primitive == "necrosis_appearance":
         return "tumor_interior"
+    if primitive == "intratumoral_immune_infiltration":
+        return "tumor_interior_immune_spots"
     if primitive == "tumor_burden_increase":
         return "tumor_adjacent_editable_non_tumor"
     if primitive == "tumor_burden_decrease":
@@ -1203,6 +1235,8 @@ def _default_shape_hints(context: Mapping[str, Any]) -> list[str]:
         return ["patchy", "band_like", "irregular_boundary"]
     if primitive == "necrosis_appearance":
         return ["patchy", "irregular_boundary"]
+    if primitive == "intratumoral_immune_infiltration":
+        return ["spot_like", "multifocal", "irregular_boundary"]
     if primitive == "tumor_burden_increase":
         return ["invasive_tongues", "lobulated_boundary", "irregular_boundary"]
     if primitive == "tumor_burden_decrease":

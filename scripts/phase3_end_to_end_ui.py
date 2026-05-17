@@ -60,6 +60,10 @@ from phase3_mask_edit.core.mask_io import (
     save_metadata,
 )
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
+from phase3_mask_edit.parser.instruction_parser import (
+    InstructionParserConfig,
+    parse_instruction,
+)
 from phase3_mask_edit.parser.qwen_local_parser import (
     QwenLocalParserConfig,
     parse_prompts_with_qwen_local,
@@ -106,10 +110,12 @@ CUDA_DEVICE_CHOICES = []
 PROBNET_DEVICE_CHOICES = ["auto", *CUDA_DEVICE_CHOICES, "cpu"]
 GENERATION_DEVICE_CHOICES = ["cuda", *CUDA_DEVICE_CHOICES, "cpu"]
 EDIT_MODE_PROMPT = "prompt"
+EDIT_MODE_INSTRUCTION = "instruction"
 EDIT_MODE_MANUAL_CONTOUR = "manual_contour"
 EDIT_MODE_AUTO_RECOMMEND = "auto_recommend"
 EDIT_MODE_CHOICES = [
     EDIT_MODE_PROMPT,
+    EDIT_MODE_INSTRUCTION,
     EDIT_MODE_MANUAL_CONTOUR,
     EDIT_MODE_AUTO_RECOMMEND,
 ]
@@ -890,13 +896,17 @@ def _refresh_edit_mode_panels(
     dict[str, Any],
     dict[str, Any],
     dict[str, Any],
+    dict[str, Any],
 ]:
     """Return panel visibility and auto-recommendation UI state."""
 
     prompt_visible = gr.update(visible=edit_mode == EDIT_MODE_PROMPT)
+    instruction_visible = gr.update(visible=edit_mode == EDIT_MODE_INSTRUCTION)
     manual_visible = gr.update(visible=edit_mode == EDIT_MODE_MANUAL_CONTOUR)
     auto_visible = gr.update(visible=edit_mode == EDIT_MODE_AUTO_RECOMMEND)
-    tissue_button_visible = gr.update(visible=edit_mode == EDIT_MODE_PROMPT)
+    tissue_button_visible = gr.update(
+        visible=edit_mode in {EDIT_MODE_PROMPT, EDIT_MODE_INSTRUCTION}
+    )
     auto_execute_visible = gr.update(visible=edit_mode == EDIT_MODE_AUTO_RECOMMEND)
     manual_editor_value = gr.update(value="")
     manual_contour_payload_value = gr.update(value="")
@@ -909,6 +919,7 @@ def _refresh_edit_mode_panels(
         return (
             state,
             prompt_visible,
+            instruction_visible,
             manual_visible,
             auto_visible,
             manual_editor_value,
@@ -990,6 +1001,7 @@ def _refresh_edit_mode_panels(
     return (
         state,
         prompt_visible,
+        instruction_visible,
         manual_visible,
         auto_visible,
         manual_editor_value,
@@ -1408,6 +1420,8 @@ def run_tissue_stage(
     edit_mode: str,
     old_prompt: str,
     new_prompt: str,
+    instruction_text: str,
+    instruction_parser: str,
     manual_contour_editor,
     manual_contour_payload,
     auto_primitive: str | None,
@@ -1471,7 +1485,43 @@ def run_tissue_stage(
                 max_points_per_region=max_points_per_region,
                 organic_seed=organic_seed,
             )
-        elif old_prompt.strip() and new_prompt.strip():
+        elif edit_mode == EDIT_MODE_INSTRUCTION:
+            semantic_diff, parser_info = _resolve_instruction_semantic_diff(
+                instruction=instruction_text,
+                parser=instruction_parser,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+                api_model=api_model,
+                output_dir=output_dir,
+            )
+            plan = plan_edit_intents(
+                semantic_diff,
+                reference_profile=state["profile"],
+                old_mask=reference_tissue,
+                new_prompt=instruction_text,
+            )
+            result, phase3_info = _execute_planned_intents(
+                reference_tissue=reference_tissue,
+                schema=schema,
+                recipe=recipe,
+                output_dir=output_dir,
+                plan=plan,
+                semantic_diff=semantic_diff,
+                parser_info=parser_info,
+                execution_mode=EDIT_MODE_INSTRUCTION,
+                provider=provider,
+                api_base_url=contour_api_base_url,
+                api_key_env=contour_api_key_env,
+                api_model=api_model,
+                api_image_detail=api_image_detail,
+                fixture_file=fixture_file,
+                max_attempts=max_attempts,
+                max_regions=max_regions,
+                max_points_per_region=max_points_per_region,
+                organic_seed=organic_seed,
+                continue_on_failure=continue_on_failure,
+            )
+        elif edit_mode == EDIT_MODE_PROMPT and old_prompt.strip() and new_prompt.strip():
             semantic_diff, parser_info = _resolve_prompt_semantic_diff(
                 old_prompt=old_prompt,
                 new_prompt=new_prompt,
@@ -1491,121 +1541,32 @@ def run_tissue_stage(
                 old_prompt=old_prompt,
                 new_prompt=new_prompt,
             )
-            save_semantic_diff(semantic_diff, output_dir / "phase3_mask_edit" / "semantic_diff.json")
-            save_metadata(
-                plan.to_metadata(),
-                output_dir / "phase3_mask_edit" / "planning_summary.json",
-            )
-            provider_instance = _build_contour_provider(
+            result, phase3_info = _execute_planned_intents(
+                reference_tissue=reference_tissue,
+                schema=schema,
+                recipe=recipe,
+                output_dir=output_dir,
+                plan=plan,
+                semantic_diff=semantic_diff,
+                parser_info=parser_info,
+                execution_mode="prompt_to_contour",
                 provider=provider,
                 api_base_url=contour_api_base_url,
                 api_key_env=contour_api_key_env,
-                api_model=_defaulted_text(api_model, DEFAULT_API_MODEL),
+                api_model=api_model,
                 api_image_detail=api_image_detail,
                 fixture_file=fixture_file,
+                max_attempts=max_attempts,
+                max_regions=max_regions,
+                max_points_per_region=max_points_per_region,
+                organic_seed=organic_seed,
+                continue_on_failure=continue_on_failure,
             )
-            current_mask = np.array(reference_tissue, copy=True)
-            last_result = None
-            last_edit_result = None
-            attempt_logs: list[dict[str, Any]] = []
-            for intent in plan.intents:
-                primitive_config = _primitive_config(recipe, intent.primitive)
-                intent = _with_default_contour_labels(intent, primitive_config, schema)
-                source_summary = _source_region_summary(
-                    current_mask,
-                    schema,
-                    intent,
-                    primitive_config,
-                )
-                if source_summary["source_pixels"] == 0:
-                    attempt_logs.append(
-                        {
-                            "primitive": intent.primitive,
-                            "status": "skipped_no_source_region",
-                            "projection_mode": PROJECTION_MODE_ORGANIC_V2,
-                            "source_labels": source_summary["source_labels"],
-                            "missing_source_labels": source_summary.get(
-                                "missing_source_labels",
-                                [],
-                            ),
-                            "source_pixels": 0,
-                            "error": (
-                                "Skipped because prior edits left no pixels for "
-                                f"source labels {source_summary['source_labels']}."
-                            ),
-                            "artifact_paths": {},
-                        }
-                    )
-                    continue
-                result = execute_llm_contour_agent(
-                    old_mask=current_mask,
-                    schema=schema,
-                    intent=intent,
-                    primitive_config=primitive_config,
-                    provider=provider_instance,
-                    output_dir=output_dir / "phase3_mask_edit" / "llm_contour" / intent.primitive,
-                    projection_mode=PROJECTION_MODE_ORGANIC_V2,
-                    organic_seed=organic_seed,
-                    max_attempts=max_attempts,
-                    max_regions=max_regions,
-                    max_points_per_region=max_points_per_region,
-                )
-                attempt_logs.append(
-                    {
-                        "primitive": intent.primitive,
-                        "status": result.status,
-                        "projection_mode": PROJECTION_MODE_ORGANIC_V2,
-                        "error": result.error,
-                        "artifact_paths": result.artifact_paths,
-                    }
-                )
-                last_result = result
-                if result.edit_result is None:
-                    if not continue_on_failure:
-                        break
-                    continue
-                last_edit_result = result.edit_result
-                current_mask = np.array(result.edit_result.target_mask, copy=True)
-                if result.status != "validated" and not continue_on_failure:
-                    break
-            if last_result is None:
-                result = _SkippedPromptResult(
-                    source_mask=reference_tissue,
-                    target_mask=current_mask,
-                    attempts=attempt_logs,
-                    artifact_paths={},
-                )
-                phase3_info = {
-                    "mode": "prompt_to_contour",
-                    "parser": parser_info,
-                    "semantic_diff": semantic_diff,
-                    "plan": plan.to_metadata(),
-                    "attempts": attempt_logs,
-                    "projection_mode": PROJECTION_MODE_ORGANIC_V2,
-                    "status": "all_intents_skipped",
-                }
-                save_metadata(
-                    phase3_info,
-                    output_dir / "phase3_mask_edit" / "execution_summary.json",
-                )
-                if not attempt_logs:
-                    raise gr.Error("Prompt-driven contour planning produced no intents.")
-            elif last_edit_result is None:
-                raise gr.Error(_contour_failure_message(last_result))
-            else:
-                result = last_result
-                phase3_info = {
-                    "mode": "prompt_to_contour",
-                    "parser": parser_info,
-                    "semantic_diff": semantic_diff,
-                    "plan": plan.to_metadata(),
-                    "attempts": attempt_logs,
-                    "projection_mode": PROJECTION_MODE_ORGANIC_V2,
-                }
         else:
             raise gr.Error(
-                "Prompt mode requires both old and new prompts. "
-                "Choose manual contour or auto recommend for non-prompt edits."
+                "Prompt mode requires both old and new prompts. Instruction mode "
+                "requires one edit instruction. Choose manual contour or auto "
+                "recommend for direct non-prompt edits."
             )
     except Exception as exc:
         raise gr.Error(f"{type(exc).__name__}: {exc}") from exc
@@ -1625,7 +1586,7 @@ def run_tissue_stage(
 
     target_tissue = result.edit_result.target_mask
     target_path = save_id_mask(target_tissue, output_dir / "target_mask.png")
-    if phase3_info.get("mode") == "prompt_to_contour":
+    if phase3_info.get("mode") in {"prompt_to_contour", EDIT_MODE_INSTRUCTION}:
         phase3_info = {**phase3_info, "result": result.to_metadata()}
     elif phase3_info.get("mode") in {EDIT_MODE_MANUAL_CONTOUR, EDIT_MODE_AUTO_RECOMMEND}:
         phase3_info = _merge_phase3_info(phase3_info, result)
@@ -1652,7 +1613,10 @@ def run_tissue_stage(
     info = {
         "status": "tissue_done",
         "projection_mode": PROJECTION_MODE_ORGANIC_V2,
-        "primitive": phase3_info.get("primitive", primitive),
+        "primitive": phase3_info.get(
+            "primitive",
+            phase3_info.get("selected_primitive", auto_primitive or ""),
+        ),
         "edit_mode": edit_mode,
         "prompt_mode": edit_mode == EDIT_MODE_PROMPT and bool(old_prompt.strip() and new_prompt.strip()),
         "changed_area_fraction": _change_area_fraction(change_region),
@@ -1754,6 +1718,153 @@ def _run_manual_contour_stage(
         to_metadata=lambda: dict(phase3_info),
     )
     return result, phase3_info
+
+
+def _execute_planned_intents(
+    *,
+    reference_tissue: np.ndarray,
+    schema: MaskProfileSchema,
+    recipe: dict[str, Any],
+    output_dir: Path,
+    plan,
+    semantic_diff: dict[str, Any],
+    parser_info: dict[str, Any],
+    execution_mode: str,
+    provider: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    api_image_detail: str,
+    fixture_file,
+    max_attempts: int,
+    max_regions: int,
+    max_points_per_region: int,
+    organic_seed: int,
+    continue_on_failure: bool,
+) -> tuple[Any, dict[str, Any]]:
+    save_semantic_diff(
+        semantic_diff,
+        output_dir / "phase3_mask_edit" / "semantic_diff.json",
+    )
+    save_metadata(
+        plan.to_metadata(),
+        output_dir / "phase3_mask_edit" / "planning_summary.json",
+    )
+    provider_instance = _build_contour_provider(
+        provider=provider,
+        api_base_url=api_base_url,
+        api_key_env=api_key_env,
+        api_model=_defaulted_text(api_model, DEFAULT_API_MODEL),
+        api_image_detail=api_image_detail,
+        fixture_file=fixture_file,
+    )
+    current_mask = np.array(reference_tissue, copy=True)
+    last_result = None
+    last_edit_result = None
+    attempt_logs: list[dict[str, Any]] = []
+    for intent in plan.intents:
+        primitive_config = _primitive_config(recipe, intent.primitive)
+        intent = _with_default_contour_labels(intent, primitive_config, schema)
+        source_summary = _source_region_summary(
+            current_mask,
+            schema,
+            intent,
+            primitive_config,
+        )
+        if source_summary["source_pixels"] == 0:
+            attempt_logs.append(
+                {
+                    "primitive": intent.primitive,
+                    "status": "skipped_no_source_region",
+                    "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                    "source_labels": source_summary["source_labels"],
+                    "missing_source_labels": source_summary.get(
+                        "missing_source_labels",
+                        [],
+                    ),
+                    "source_pixels": 0,
+                    "error": (
+                        "Skipped because prior edits left no pixels for "
+                        f"source labels {source_summary['source_labels']}."
+                    ),
+                    "artifact_paths": {},
+                }
+            )
+            continue
+        result = execute_llm_contour_agent(
+            old_mask=current_mask,
+            schema=schema,
+            intent=intent,
+            primitive_config=primitive_config,
+            provider=provider_instance,
+            output_dir=(
+                output_dir
+                / "phase3_mask_edit"
+                / execution_mode
+                / intent.primitive
+            ),
+            projection_mode=PROJECTION_MODE_ORGANIC_V2,
+            organic_seed=organic_seed,
+            max_attempts=max_attempts,
+            max_regions=max_regions,
+            max_points_per_region=max_points_per_region,
+        )
+        attempt_logs.append(
+            {
+                "primitive": intent.primitive,
+                "strength": intent.strength,
+                "status": result.status,
+                "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                "error": result.error,
+                "artifact_paths": result.artifact_paths,
+            }
+        )
+        last_result = result
+        if result.edit_result is None:
+            if not continue_on_failure:
+                break
+            continue
+        last_edit_result = result.edit_result
+        current_mask = np.array(result.edit_result.target_mask, copy=True)
+        if result.status != "validated" and not continue_on_failure:
+            break
+
+    if last_result is None:
+        result = _SkippedPromptResult(
+            source_mask=reference_tissue,
+            target_mask=current_mask,
+            attempts=attempt_logs,
+            artifact_paths={},
+        )
+        phase3_info = {
+            "mode": execution_mode,
+            "parser": parser_info,
+            "semantic_diff": semantic_diff,
+            "plan": plan.to_metadata(),
+            "attempts": attempt_logs,
+            "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+            "status": "all_intents_skipped",
+        }
+        save_metadata(
+            phase3_info,
+            output_dir / "phase3_mask_edit" / "execution_summary.json",
+        )
+        if not attempt_logs:
+            raise gr.Error("Instruction planning produced no executable intents.")
+        return result, phase3_info
+
+    if last_edit_result is None:
+        raise gr.Error(_contour_failure_message(last_result))
+
+    phase3_info = {
+        "mode": execution_mode,
+        "parser": parser_info,
+        "semantic_diff": semantic_diff,
+        "plan": plan.to_metadata(),
+        "attempts": attempt_logs,
+        "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+    }
+    return last_result, phase3_info
 
 
 def _save_manual_current_label(
@@ -2068,11 +2179,15 @@ def _estimate_recommendation_capacity(
     interval = _strength_interval(primitive_config, intent.strength)
     denominator = _strength_denominator_pixels(mask, primitive_config, schema)
     legal_pixels = _recommendation_legal_pixels(mask, primitive_config, schema)
+    dependency_failures = _recommendation_dependency_failures(
+        mask, primitive_config, schema
+    )
     failed: list[str] = []
     if denominator <= 0:
         failed.append("capacity failed: no denominator pixels in current mask.")
     if legal_pixels <= 0:
         failed.append("capacity failed: no legal source pixels in current mask.")
+    failed.extend(dependency_failures)
     if interval is not None and denominator > 0:
         lower, upper = interval
         lower_pixels = int(np.ceil(denominator * lower))
@@ -2249,6 +2364,69 @@ def _recommendation_legal_pixels(
     if isinstance(source, str):
         return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, source)))
     return int(np.count_nonzero(~np.isin(mask, tuple(schema.skip_fine_ids))))
+
+
+def _recommendation_dependency_failures(
+    mask: np.ndarray,
+    primitive_config: dict[str, Any],
+    schema: MaskProfileSchema,
+) -> list[str]:
+    """Check current-mask target/backfill tissue needed by auto recommendations."""
+
+    failures: list[str] = []
+    for kind, labels in _recommendation_required_context_labels(
+        primitive_config, schema
+    ):
+        if not labels:
+            failures.append(f"capacity failed: no configured {kind} labels.")
+            continue
+        if _schema_labels_pixel_count(mask, schema, labels) > 0:
+            continue
+        failures.append(
+            "capacity failed: no "
+            f"{kind} pixels in current mask ({', '.join(labels)})."
+        )
+    return failures
+
+
+def _recommendation_required_context_labels(
+    primitive_config: dict[str, Any],
+    schema: MaskProfileSchema,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    operation = primitive_config.get("mask_operation", {})
+    operation = operation if isinstance(operation, dict) else {}
+    required_context = primitive_config.get("required_context", ())
+    required_context = required_context if isinstance(required_context, list) else ()
+    required: list[tuple[str, tuple[str, ...]]] = []
+    name = primitive_config.get("name")
+    if name == "tumor_burden_increase":
+        labels = tuple(
+            _filter_schema_labels(
+                _labels_from_operation(operation.get("target_priority")),
+                schema,
+            )
+        )
+        required.append(("target tissue", labels))
+    if "valid_backfill_tissue" in required_context:
+        labels = tuple(
+            _filter_schema_labels(
+                _labels_from_operation(operation.get("backfill_priority")),
+                schema,
+            )
+        )
+        required.append(("backfill tissue", labels))
+    return tuple(required)
+
+
+def _schema_labels_pixel_count(
+    mask: np.ndarray,
+    schema: MaskProfileSchema,
+    labels: tuple[str, ...],
+) -> int:
+    pixels = 0
+    for label in labels:
+        pixels += int(np.count_nonzero(_safe_schema_label_mask(mask, schema, label)))
+    return pixels
 
 
 def _safe_schema_label_mask(
@@ -2735,6 +2913,40 @@ def _resolve_prompt_semantic_diff(
     raise gr.Error(f"Unsupported parser: {parser}")
 
 
+def _resolve_instruction_semantic_diff(
+    *,
+    instruction: str,
+    parser: str,
+    api_base_url: str,
+    api_key_env: str,
+    api_model: str,
+    output_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    instruction = (instruction or "").strip()
+    if not instruction:
+        raise gr.Error("Instruction mode requires one edit instruction.")
+    if parser == "rule-based":
+        return parse_instruction(instruction, mode="rule-based"), {
+            "mode": "instruction_rule_based",
+        }
+    if parser == "api":
+        config = InstructionParserConfig(
+            model=_defaulted_text(api_model, DEFAULT_API_MODEL),
+            api_base_url=_defaulted_text(api_base_url, DEFAULT_API_BASE_URL).rstrip("/"),
+            api_key_env=_defaulted_text(api_key_env, DEFAULT_API_KEY_ENV),
+            timeout_sec=60.0,
+            temperature=0.0,
+            debug_dir=str(output_dir / "phase3_mask_edit" / "instruction_parser_debug"),
+        )
+        return parse_instruction(instruction, mode="api", config=config), {
+            "mode": "instruction_api",
+            "api_base_url": config.api_base_url,
+            "api_key_env": config.api_key_env,
+            "api_model": config.model,
+        }
+    raise gr.Error(f"Unsupported instruction parser: {parser}")
+
+
 def _split_csv(value: str) -> list[str]:
     labels = [part.strip() for part in value.split(",")]
     return [label for label in labels if label]
@@ -2834,6 +3046,19 @@ def build_ui() -> gr.Blocks:
                 with gr.Row():
                     cellvit_root = gr.Textbox(value=str(DEFAULT_CELLVIT_ROOT), label="CellViT source root")
                     cellvit_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_CELLVIT_DEVICE, label="CellViT device")
+
+        instruction_panel = gr.Column(visible=False)
+        with instruction_panel:
+            instruction_text = gr.Textbox(
+                label="edit instruction",
+                lines=3,
+                placeholder="Example: make the tumor moderately larger",
+            )
+            instruction_parser = gr.Radio(
+                ["rule-based", "api"],
+                value="rule-based",
+                label="instruction parser",
+            )
 
         manual_panel = gr.Column(visible=False)
         with manual_panel:
@@ -2957,6 +3182,7 @@ def build_ui() -> gr.Blocks:
             outputs=[
                 state,
                 prompt_panel,
+                instruction_panel,
                 manual_panel,
                 auto_panel,
                 manual_editor,
@@ -2975,6 +3201,7 @@ def build_ui() -> gr.Blocks:
             outputs=[
                 state,
                 prompt_panel,
+                instruction_panel,
                 manual_panel,
                 auto_panel,
                 manual_editor,
@@ -3022,6 +3249,7 @@ def build_ui() -> gr.Blocks:
             outputs=[
                 state,
                 prompt_panel,
+                instruction_panel,
                 manual_panel,
                 auto_panel,
                 manual_editor,
@@ -3042,6 +3270,8 @@ def build_ui() -> gr.Blocks:
                 edit_mode,
                 old_prompt,
                 new_prompt,
+                instruction_text,
+                instruction_parser,
                 manual_editor,
                 manual_contour_payload,
                 auto_primitive,
@@ -3073,6 +3303,7 @@ def build_ui() -> gr.Blocks:
             outputs=[
                 state,
                 prompt_panel,
+                instruction_panel,
                 manual_panel,
                 auto_panel,
                 manual_editor,
@@ -3109,6 +3340,7 @@ def build_ui() -> gr.Blocks:
             outputs=[
                 state,
                 prompt_panel,
+                instruction_panel,
                 manual_panel,
                 auto_panel,
                 manual_editor,

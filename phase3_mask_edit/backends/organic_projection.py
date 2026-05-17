@@ -110,6 +110,11 @@ def apply_organic_projected_label_write(
     legal_pixels = int(np.count_nonzero(legal_domain))
     raw_candidate_pixels = int(np.count_nonzero(candidate))
     raw_legal_overlap = int(np.count_nonzero(candidate & legal_domain))
+    necrosis_expansion_mode = (
+        primitive_name == "necrosis_appearance"
+        and policy.policy_params.get("legal_domain_policy")
+        == "tumor_near_existing_necrosis_expansion_band"
+    )
 
     if target_pixels is None:
         target_pixels = _target_pixels_from_config(
@@ -120,11 +125,6 @@ def apply_organic_projected_label_write(
             strength=strength,
         )
     target_pixels = max(int(target_pixels or 0), 0)
-    if primitive_name == "necrosis_appearance":
-        remaining_allowed = int(
-            policy.policy_params.get("remaining_allowed_necrosis_pixels", target_pixels)
-        )
-        target_pixels = min(target_pixels, max(remaining_allowed, 0))
     if primitive_name == "intratumoral_immune_infiltration":
         remaining_allowed = int(
             policy.policy_params.get(
@@ -150,7 +150,7 @@ def apply_organic_projected_label_write(
             component_policy=policy,
             raw_legal_overlap=raw_legal_overlap,
         )
-    if raw_legal_overlap == 0:
+    if raw_legal_overlap == 0 and not necrosis_expansion_mode:
         return _empty_result(
             mask,
             schema=schema,
@@ -170,7 +170,10 @@ def apply_organic_projected_label_write(
     template_overlap_fraction = (
         raw_legal_overlap / raw_candidate_pixels if raw_candidate_pixels else 0.0
     )
-    if template_overlap_fraction < params.min_template_legal_overlap_fraction:
+    if (
+        template_overlap_fraction < params.min_template_legal_overlap_fraction
+        and not necrosis_expansion_mode
+    ):
         return _empty_result(
             mask,
             schema=schema,
@@ -205,6 +208,8 @@ def apply_organic_projected_label_write(
     )
     if suppress_broad_intratumoral_template:
         template_norm = np.zeros_like(template_norm)
+    if necrosis_expansion_mode and raw_legal_overlap == 0:
+        template_norm = np.zeros_like(template_norm)
 
     final_score = (
         params.w_template * template_norm
@@ -220,7 +225,11 @@ def apply_organic_projected_label_write(
         raw_template=candidate,
         target_pixels=selected_target_pixels,
         neighborhood_radius_px=params.template_neighborhood_radius_px,
-        spillover_fraction=params.template_spillover_fraction,
+        spillover_fraction=(
+            1.0
+            if necrosis_expansion_mode and raw_legal_overlap == 0
+            else params.template_spillover_fraction
+        ),
     )
     selected, cleanup_log = _cleanup_and_refill_once(
         selected,
@@ -704,6 +713,7 @@ def apply_organic_necrosis_resolution(
         primitive_config=primitive,
         legal_domain=legal_domain,
         backfill_mask=backfill_mask,
+        backfill_labels=backfill_labels,
     )
 
     empty_reason: str | None = None
@@ -799,6 +809,8 @@ def apply_organic_necrosis_resolution(
         warnings.append("organic_projection_area_shortfall")
     if cleanup_log["post_cleanup_pixels"] < cleanup_log["pre_cleanup_pixels"]:
         warnings.append("organic_projection_cleanup_removed_pixels")
+    if "Tumor" in backfill_labels:
+        warnings.append("necrosis_resolution_fallback_backfill_to_tumor")
     warnings.extend(policy.warnings)
 
     ops_log = {
@@ -809,6 +821,7 @@ def apply_organic_necrosis_resolution(
         "source_labels": ["Necrosis"],
         "target_label": "nearest_backfill_tissue",
         "backfill_labels": list(backfill_labels),
+        "fallback_backfill_to_tumor": "Tumor" in backfill_labels,
         "preserve_labels": list(preserve_labels),
         "forbidden_labels": list(forbidden_labels),
         "raw_candidate_pixels": raw_candidate_pixels,
@@ -1469,6 +1482,14 @@ def _fraction_float(value: Any) -> float:
     return float(value)
 
 
+def _config_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (0, 1):
+        return bool(value)
+    return False
+
+
 def _policy_for_primitive(
     mask: np.ndarray,
     *,
@@ -1753,6 +1774,7 @@ def _necrosis_resolution_policy(
     primitive_config: Mapping[str, Any],
     legal_domain: np.ndarray,
     backfill_mask: np.ndarray,
+    backfill_labels: Sequence[str],
 ) -> OrganicProjectionPolicy:
     ranges = primitive_config.get("parameter_ranges", {})
     necrosis = _safe_label_mask(mask, schema, "Necrosis")
@@ -1774,14 +1796,10 @@ def _necrosis_resolution_policy(
         policy_name="necrosis_resolution_viable_backfill_front",
         policy_params={
             "legal_domain_policy": "current_necrosis_excluding_background",
-            "backfill_policy": "nearest_stroma_only",
+            "backfill_policy": "nearest_stroma_or_tumor_fallback",
             "necrosis_pixels": int(np.count_nonzero(necrosis)),
             "backfill_neighbor_radius_px": backfill_radius,
-            "selected_backfill_labels": _labels_present_in_mask(
-                mask,
-                schema=schema,
-                labels=("Stroma",),
-            ),
+            "selected_backfill_labels": list(backfill_labels),
             "score_prefers": [
                 "necrosis_touching_viable_tissue",
                 "necrosis_near_legal_backfill_tissue",
@@ -1859,6 +1877,20 @@ def _necrosis_policy(
     legal = legal_domain & tumor & ~necrosis
     score = np.zeros(mask.shape, dtype=float)
 
+    necrosis_radius = _positive_float(
+        None, ranges.get("necrosis_neighbor_radius_px", 48.0)
+    )
+    used_existing_necrosis = bool(np.any(necrosis))
+    allow_multifocal_new_foci = _config_bool(
+        ranges.get("allow_multifocal_new_foci_when_existing_necrosis", False)
+    )
+    expansion_band_pixels = 0
+    if used_existing_necrosis and not allow_multifocal_new_foci:
+        dist_to_necrosis = ndimage.distance_transform_edt(~necrosis)
+        expansion_domain = legal & (dist_to_necrosis <= necrosis_radius)
+        legal = expansion_domain
+        expansion_band_pixels = int(np.count_nonzero(expansion_domain))
+
     boundary_radius = _positive_float(
         None, ranges.get("tumor_boundary_margin_radius_px", 64.0)
     )
@@ -1868,13 +1900,12 @@ def _necrosis_policy(
     )
     score += np.clip(interior_dist / boundary_radius, 0.0, 1.0)
 
-    necrosis_radius = _positive_float(
-        None, ranges.get("necrosis_neighbor_radius_px", 48.0)
-    )
-    used_existing_necrosis = bool(np.any(necrosis))
     if used_existing_necrosis:
         dist_to_necrosis = ndimage.distance_transform_edt(~necrosis)
-        score += 0.45 * np.exp(-dist_to_necrosis / necrosis_radius)
+        if allow_multifocal_new_foci:
+            score += 0.45 * np.exp(-dist_to_necrosis / necrosis_radius)
+        else:
+            score += 1.00 * np.exp(-dist_to_necrosis / necrosis_radius)
 
     vessel = _safe_label_mask(mask, schema, "Blood vessel")
     vessel_radius = _positive_float(
@@ -1892,26 +1923,27 @@ def _necrosis_policy(
     score[~legal] = 0.0
     tumor_pixels = int(np.count_nonzero(tumor))
     existing_necrosis_pixels = int(np.count_nonzero(necrosis))
-    max_fraction = _max_necrosis_fraction_of_tumor(primitive_config)
-    max_necrosis_pixels = int(round(max_fraction * tumor_pixels))
     return OrganicProjectionPolicy(
         spatial_score=score,
         policy_name="necrosis_intratumoral_hypoxic",
         policy_params={
-            "legal_domain_policy": "original_tumor_only_excluding_existing_necrosis",
+            "legal_domain_policy": (
+                "tumor_near_existing_necrosis_expansion_band"
+                if used_existing_necrosis and not allow_multifocal_new_foci
+                else "original_tumor_only_excluding_existing_necrosis"
+            ),
             "tumor_pixels": tumor_pixels,
             "existing_necrosis_pixels": existing_necrosis_pixels,
-            "max_necrosis_fraction_of_tumor": max_fraction,
-            "max_necrosis_pixels": max_necrosis_pixels,
-            "remaining_allowed_necrosis_pixels": int(
-                max(max_necrosis_pixels - existing_necrosis_pixels, 0)
-            ),
             "necrosis_denominator_policy": (
                 "original_tumor_fine_ids_only_matches_validation"
             ),
             "tumor_boundary_margin_radius_px": boundary_radius,
             "necrosis_neighbor_radius_px": necrosis_radius,
             "used_existing_necrosis_neighborhood": used_existing_necrosis,
+            "allow_multifocal_new_foci_when_existing_necrosis": (
+                allow_multifocal_new_foci
+            ),
+            "existing_necrosis_expansion_band_pixels": expansion_band_pixels,
             "vessel_avoidance_radius_px": vessel_radius,
             "vessel_avoidance_weight": vessel_weight,
             "used_vessel_avoidance": used_vessel_avoidance,
@@ -3377,15 +3409,6 @@ def _pixel_floor_from_config(value: Any, *, strength: str) -> int:
     return 0
 
 
-def _max_necrosis_fraction_of_tumor(primitive_config: Mapping[str, Any]) -> float:
-    value = primitive_config.get("parameter_ranges", {}).get(
-        "max_necrosis_fraction_of_tumor", 0.60
-    )
-    if not isinstance(value, (int, float)) or not 0 < float(value) <= 1:
-        raise ValueError("invalid max_necrosis_fraction_of_tumor.")
-    return float(value)
-
-
 def _max_intratumoral_immune_fraction_of_tumor(
     primitive_config: Mapping[str, Any]
 ) -> float:
@@ -3547,6 +3570,13 @@ def _necrosis_resolution_backfill_domain(
             continue
         domain |= label_mask
         labels.append(label)
+    if not labels and "Tumor" not in set(preserve_labels) | set(forbidden_labels):
+        label = "Tumor"
+        if label in schema.readable_labels:
+            label_mask = _safe_label_mask(mask, schema, label)
+            if np.any(label_mask):
+                domain |= label_mask
+                labels.append(label)
     domain &= ~np.isin(mask, tuple(schema.skip_fine_ids))
     return tuple(labels), domain
 

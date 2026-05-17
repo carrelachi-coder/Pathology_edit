@@ -34,3 +34,18 @@ __all__ = [
     "save_semantic_diff",
     "validate_semantic_diff",
 ]
+from phase3_mask_edit.parser.instruction_parser import (
+    InstructionParserConfig,
+    InstructionParserError,
+    parse_instruction,
+    parse_instruction_rule_based,
+    parse_instruction_with_api,
+)
+
+__all__ = [
+    "InstructionParserConfig",
+    "InstructionParserError",
+    "parse_instruction",
+    "parse_instruction_rule_based",
+    "parse_instruction_with_api",
+]

@@ -121,6 +121,34 @@ class Phase3ApplicabilityTests(unittest.TestCase):
         self.assertEqual(decision.status, "rejected")
         self.assertIn("required_context_label_absent_in_mask:Tumor", decision.reasons)
 
+    def test_intratumoral_immune_infiltration_does_not_require_existing_immune(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        context = MaskEditContext.from_mask(
+            np.array(
+                [
+                    [1, 1, 2],
+                    [1, 2, 2],
+                    [0, 2, 2],
+                ],
+                dtype=np.int64,
+            ),
+            schema,
+        )
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "intratumoral_immune_infiltration",
+                "reference_profile": "BCSS",
+            }
+        )
+
+        decision = assess_edit_applicability(intent, self.recipe, schema, context)
+
+        self.assertEqual(decision.status, "executable")
+        self.assertNotIn(
+            "required_context_label_absent_in_mask:Immune infiltrate",
+            decision.reasons,
+        )
+
     def test_profile_mismatch_is_rejected(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         context = MaskEditContext.from_mask(

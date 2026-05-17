@@ -143,11 +143,17 @@ def plan_edit_intents(
     if not reference_profile:
         raise ValueError("reference_profile is required.")
 
+    context = None
+    if old_mask is not None:
+        schema = MaskProfileSchema.from_reference_profile(reference_profile)
+        context = MaskEditContext.from_mask(old_mask, schema)
+
     raw_items, unsupported = _raw_intent_specs(
         validated,
         reference_profile=reference_profile,
         old_prompt=old_prompt,
         new_prompt=new_prompt,
+        context=context,
     )
     raw_items.sort(key=lambda item: INTENT_ORDER.get(item["primitive"], 999))
 
@@ -175,8 +181,7 @@ def plan_edit_intents(
     if recipe is None:
         recipe = load_recipe(default_recipe_path_for_profile(reference_profile))
 
-    schema = MaskProfileSchema.from_reference_profile(reference_profile)
-    context = MaskEditContext.from_mask(old_mask, schema)
+    assert context is not None
     gated_items: list[IntentPlanItem] = []
     for payload in raw_items:
         intent = EditIntent.from_mapping(payload)
@@ -224,6 +229,7 @@ def _raw_intent_specs(
     reference_profile: str,
     old_prompt: str | None,
     new_prompt: str | None,
+    context: MaskEditContext | None,
 ) -> tuple[list[dict[str, Any]], list[PlanningWarning]]:
     prompt_diff = {"semantic_diff": semantic_diff}
     raw_items: list[dict[str, Any]] = []
@@ -232,27 +238,57 @@ def _raw_intent_specs(
     tumor_change = semantic_diff["tumor_change"]
     tumor_growth = tumor_change["growth"]
     if tumor_growth == "increase":
-        raw_items.append(
-            _intent_payload(
-                "tumor_burden_increase",
-                _strength_from_degree(tumor_change["degree"]),
-                reference_profile,
-                old_prompt,
-                new_prompt,
-                prompt_diff,
+        primitive, warning = _select_tumor_growth_primitive(context)
+        if primitive is None:
+            unsupported.append(
+                PlanningWarning(
+                    field="tumor_change.growth",
+                    value=tumor_growth,
+                    reason=(
+                        "No feasible primitive can realize tumor growth from the "
+                        "current mask composition."
+                    ),
+                )
             )
-        )
+        else:
+            raw_items.append(
+                _intent_payload(
+                    primitive,
+                    _strength_from_degree(tumor_change["degree"]),
+                    reference_profile,
+                    old_prompt,
+                    new_prompt,
+                    prompt_diff,
+                )
+            )
+            if warning is not None:
+                unsupported.append(warning)
     elif tumor_growth == "decrease":
-        raw_items.append(
-            _intent_payload(
-                "tumor_burden_decrease",
-                _strength_from_degree(tumor_change["degree"]),
-                reference_profile,
-                old_prompt,
-                new_prompt,
-                prompt_diff,
+        primitive, warning = _select_tumor_decrease_primitive(context)
+        if primitive is None:
+            unsupported.append(
+                PlanningWarning(
+                    field="tumor_change.growth",
+                    value=tumor_growth,
+                    reason=(
+                        "No feasible primitive can realize tumor decrease from the "
+                        "current mask composition."
+                    ),
+                )
             )
-        )
+        else:
+            raw_items.append(
+                _intent_payload(
+                    primitive,
+                    _strength_from_degree(tumor_change["degree"]),
+                    reference_profile,
+                    old_prompt,
+                    new_prompt,
+                    prompt_diff,
+                )
+            )
+            if warning is not None:
+                unsupported.append(warning)
 
     if tumor_change["grade_change"] != "none":
         special_payload = _specialized_grade_payload(
@@ -380,6 +416,62 @@ def _raw_intent_specs(
     return raw_items, unsupported
 
 
+def _select_tumor_growth_primitive(
+    context: MaskEditContext | None,
+) -> tuple[str | None, PlanningWarning | None]:
+    if context is None:
+        return "tumor_burden_increase", None
+
+    present = set(context.present_labels)
+    has_editable_non_tumor = bool(
+        present & {"Stroma", "Normal epithelium", "Other tissue", "Immune infiltrate"}
+    )
+    has_necrosis = "Necrosis" in present
+    if has_editable_non_tumor:
+        return "tumor_burden_increase", None
+    if has_necrosis:
+        return (
+            "necrosis_resolution",
+            PlanningWarning(
+                field="tumor_change.growth",
+                value="increase",
+                reason=(
+                    "Mapped tumor growth to necrosis_resolution because the mask "
+                    "contains necrosis but lacks editable non-tumor source tissue."
+                ),
+            ),
+        )
+    return None, None
+
+
+def _select_tumor_decrease_primitive(
+    context: MaskEditContext | None,
+) -> tuple[str | None, PlanningWarning | None]:
+    if context is None:
+        return "tumor_burden_decrease", None
+
+    present = set(context.present_labels)
+    has_editable_backfill = bool(
+        present & {"Stroma", "Normal epithelium", "Other tissue", "Immune infiltrate"}
+    )
+    has_necrosis = "Necrosis" in present
+    if has_editable_backfill:
+        return "tumor_burden_decrease", None
+    if has_necrosis:
+        return (
+            "necrosis_appearance",
+            PlanningWarning(
+                field="tumor_change.growth",
+                value="decrease",
+                reason=(
+                    "Mapped tumor decrease to necrosis_appearance because the mask "
+                    "contains necrosis but lacks editable backfill tissue."
+                ),
+            ),
+        )
+    return None, None
+
+
 def _intent_payload(
     primitive: str,
     strength: str,
@@ -439,6 +531,18 @@ def _specialized_grade_primitive(
     if profile == "PANDA":
         if grade_change == "downgrade":
             return "gleason_downgrade_4to3"
+        if _mentions_benign_to_gleason3(old_text, new_text) or (
+            _contains_any(combined, ("benign", "normal epithelium"))
+            and _contains_any(
+                combined,
+                ("gleason 3", "pattern 3", "low grade malignant"),
+            )
+        ):
+            return "benign_to_gleason3"
+        if _mentions_single_prompt_transition(combined, "4", "5"):
+            return "gleason_upgrade_4to5"
+        if _mentions_single_prompt_transition(combined, "3", "4"):
+            return "gleason_upgrade_3to4"
         if _mentions_benign_to_gleason3(old_text, new_text):
             return "benign_to_gleason3"
         if _mentions_gleason5(new_text) or _mentions_transition(
@@ -456,17 +560,41 @@ def _specialized_grade_primitive(
     if profile == "GLAS":
         if grade_change == "downgrade":
             return "treatment_dedifferentiation"
-        if "normal" in old_text and _contains_any(
-            new_text, ("adenoma", "adenomatous")
+        if (
+            "normal" in old_text
+            and _contains_any(new_text, ("adenoma", "adenomatous"))
+        ) or (
+            "normal" in combined
+            and _contains_any(combined, ("adenoma", "adenomatous"))
         ):
             return "normal_to_adenomatous"
-        if _contains_any(old_text, ("adenoma", "adenomatous")) and _contains_any(
-            new_text,
-            ("carcinoma", "moderately differentiated", "moderate differentiation"),
+        if (
+            _contains_any(old_text, ("adenoma", "adenomatous"))
+            and _contains_any(
+                new_text,
+                (
+                    "carcinoma",
+                    "moderately differentiated",
+                    "moderate differentiation",
+                ),
+            )
+        ) or (
+            _contains_any(combined, ("adenoma", "adenomatous"))
+            and _contains_any(
+                combined,
+                (
+                    "carcinoma",
+                    "moderately differentiated",
+                    "moderate differentiation",
+                ),
+            )
         ):
             return "adenoma_to_carcinoma"
         if _contains_any(
             new_text,
+            ("poorly differentiated", "poor differentiation", "high grade"),
+        ) or _contains_any(
+            combined,
             ("poorly differentiated", "poor differentiation", "high grade"),
         ):
             return "grade_upgrade"
@@ -508,6 +636,22 @@ def _mentions_transition(old_text: str, new_text: str, source: str, target: str)
     return (
         _contains_any(old_text, (f"gleason {source}", f"pattern {source}"))
         and _contains_any(new_text, (f"gleason {target}", f"pattern {target}"))
+    )
+
+
+def _mentions_single_prompt_transition(text: str, source: str, target: str) -> bool:
+    source_terms = (f"gleason {source}", f"pattern {source}")
+    target_terms = (f"gleason {target}", f"pattern {target}")
+    transition_terms = (
+        f"{source} to {target}",
+        f"{source}->{target}",
+        f"{source} -> {target}",
+        f"{source}to{target}",
+    )
+    return (
+        _contains_any(text, source_terms)
+        and _contains_any(text, target_terms)
+        and _contains_any(text, transition_terms + ("upgrade", "upgraded", "convert"))
     )
 
 

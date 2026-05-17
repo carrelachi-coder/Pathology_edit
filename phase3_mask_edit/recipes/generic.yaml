@@ -241,7 +241,6 @@ primitives:
         moderate: [0.14, 0.24]
         significant: [0.24, 0.40]
         xlarge_deid: [0.40, 0.60]
-      max_necrosis_fraction_of_tumor: 0.60
       organic_template_sigma_px: 3.0
       organic_noise_sigma_px: 18.0
       organic_noise_amplitude: 0.18
@@ -259,6 +258,10 @@ primitives:
       necrosis_neighbor_radius_px: 48
       vessel_avoidance_radius_px: 96
       vessel_avoidance_weight: 0.20
+      # When Necrosis is already present, default necrosis_appearance means
+      # expansion from the existing necrotic front rather than a distant new focus.
+      # Set true only for explicit multifocal necrosis edits.
+      allow_multifocal_new_foci_when_existing_necrosis: false
     probnet_bias:
       Dead: up
       Neoplastic: down
@@ -278,7 +281,7 @@ primitives:
 
   - name: necrosis_resolution
     version: v1
-    pathology_meaning: necrosis resolution or replacement by viable stroma context
+    pathology_meaning: necrosis resolution with stromal repair, falling back to viable tumor in tumor-necrosis-only masks
     required_tissue_labels:
       - Necrosis
     required_context:
@@ -290,11 +293,12 @@ primitives:
       source: Necrosis
       backfill_priority:
         - Stroma
+        - Tumor
     spatial_pattern:
       reduce_priority:
         - necrosis_touching_viable_tissue
         - necrosis_periphery_before_core
-      backfill_policy: nearest_stroma
+      backfill_policy: nearest_stroma_or_tumor_fallback
       forbid_targets:
         - Background
     parameter_ranges:
@@ -316,7 +320,7 @@ primitives:
       - no_necrosis_label
       - no_necrosis
       - necrosis_area_too_small
-      - no_valid_backfill_tissue
+      - no_valid_backfill_tissue # no Stroma or Tumor fallback available
     overlap_guard:
       use_necrosis_appearance_for_necrosis_expansion
       use_tumor_burden_decrease_for_tumor_regression
@@ -393,7 +397,6 @@ primitives:
     pathology_meaning: intratumoral TIL increase
     required_tissue_labels:
       - Tumor
-      - Immune infiltrate
     required_context:
       - sufficient_intratumoral_candidate_area
     optional_tissue_labels:
@@ -444,7 +447,7 @@ primitives:
       - no_bias_only_edit_without_immune_tissue_label
     expected_failure_cases:
       - no_tumor
-      - no_immune_label
+      - no_writable_immune_target_label
       - tumor_too_small
       - insufficient_intratumoral_candidate_area
     overlap_guard:

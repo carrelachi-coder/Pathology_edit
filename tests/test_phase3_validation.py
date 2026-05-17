@@ -380,6 +380,10 @@ class ImmuneGuardTests(unittest.TestCase):
         config = {
             "name": "intratumoral_immune_infiltration",
             "required_tissue_labels": ["Tumor", "Immune infiltrate"],
+            "mask_operation": {
+                "source": "Tumor",
+                "target": "Immune infiltrate",
+            },
             "parameter_ranges": {},
             "validation_rules": ["new_immune_must_be_inside_original_tumor"],
         }
@@ -387,6 +391,8 @@ class ImmuneGuardTests(unittest.TestCase):
         result = validate_edit_result(
             src, tgt, change, schema, config, 1 / 3,
         )
+        required_check = next(c for c in result.checks if c.name == "required_labels_present")
+        self.assertTrue(required_check.passed)
         check = next(c for c in result.checks if c.name == "new_immune_must_be_inside_original_tumor")
         self.assertTrue(check.passed)
 

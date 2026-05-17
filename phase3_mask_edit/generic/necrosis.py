@@ -40,6 +40,8 @@ class _ScoreInfo:
     score: np.ndarray
     used_existing_necrosis_neighborhood: bool
     used_blood_vessel_distance: bool
+    existing_necrosis_expansion_band_pixels: int
+    allow_multifocal_new_foci_when_existing_necrosis: bool
     active_weights: dict[str, float]
     radii: dict[str, float]
 
@@ -84,20 +86,21 @@ def apply_necrosis_appearance(
     if tumor_pixels == 0:
         raise PrimitiveExecutionError("no_tumor")
 
-    candidate_base = source_tumor & ~existing_necrosis
+    raw_candidate_base = source_tumor & ~existing_necrosis
+    candidate_base = _necrosis_appearance_candidate_base(
+        raw_candidate_base,
+        existing_necrosis,
+        primitive_config,
+        intent,
+    )
     candidate_pixels = int(np.count_nonzero(candidate_base))
     if candidate_pixels == 0:
-        raise PrimitiveExecutionError("tumor_too_small")
+        raise PrimitiveExecutionError("no_high_probability_hypoxic_candidate_region")
 
-    max_necrosis_fraction = _max_necrosis_fraction_of_tumor(primitive_config)
     existing_necrosis_pixels = int(np.count_nonzero(existing_necrosis))
-    max_necrosis_pixels = int(round(max_necrosis_fraction * tumor_pixels))
-    remaining_allowed = max_necrosis_pixels - existing_necrosis_pixels
-    if remaining_allowed < 1:
-        raise PrimitiveExecutionError("necrosis_fraction_limit_reached")
 
     target_count = _target_pixels(target_fraction, tumor_pixels)
-    capped_target_count = min(target_count, remaining_allowed, candidate_pixels)
+    capped_target_count = min(target_count, candidate_pixels)
     if capped_target_count < 1:
         raise PrimitiveExecutionError("no_high_probability_hypoxic_candidate_region")
 
@@ -150,10 +153,23 @@ def apply_necrosis_appearance(
             "capped_target_pixels": int(capped_target_count),
             "tumor_pixels": tumor_pixels,
             "existing_necrosis_pixels": existing_necrosis_pixels,
-            "max_necrosis_fraction_of_tumor": max_necrosis_fraction,
             "necrosis_denominator_policy": "tumor_only",
-            "remaining_allowed_necrosis_pixels": int(remaining_allowed),
             "candidate_pixels": candidate_pixels,
+            "raw_candidate_pixels": int(np.count_nonzero(raw_candidate_base)),
+            "candidate_domain_policy": (
+                "tumor_near_existing_necrosis_expansion_band"
+                if (
+                    score_info.used_existing_necrosis_neighborhood
+                    and not score_info.allow_multifocal_new_foci_when_existing_necrosis
+                )
+                else "original_tumor_only_excluding_existing_necrosis"
+            ),
+            "existing_necrosis_expansion_band_pixels": (
+                score_info.existing_necrosis_expansion_band_pixels
+            ),
+            "allow_multifocal_new_foci_when_existing_necrosis": (
+                score_info.allow_multifocal_new_foci_when_existing_necrosis
+            ),
             "used_existing_necrosis_neighborhood": (
                 score_info.used_existing_necrosis_neighborhood
             ),
@@ -213,7 +229,11 @@ def apply_necrosis_resolution(
     if capped_target_count < 1:
         raise PrimitiveExecutionError("necrosis_area_too_small")
 
-    backfill_labels = _available_resolution_backfill_labels(schema, primitive_config)
+    backfill_labels = _available_resolution_backfill_labels(
+        normalized,
+        schema,
+        primitive_config,
+    )
     backfill = np.zeros_like(necrosis, dtype=bool)
     for label in backfill_labels:
         backfill |= np.isin(normalized, schema.resolve_fine_ids(label))
@@ -246,12 +266,18 @@ def apply_necrosis_resolution(
         "changed_necrosis_fraction": selected_pixels / necrosis_pixels,
         "selected_pixels": selected_pixels,
         "spatial": {
-            "method": "nearest_stroma_backfill",
+            "method": "nearest_stroma_or_tumor_fallback_backfill",
             "target_area_reference": "necrosis",
             "target_pixels": int(target_count),
             "capped_target_pixels": int(capped_target_count),
             "necrosis_pixels": necrosis_pixels,
             "backfill_labels": list(backfill_labels),
+            "backfill_policy": (
+                "nearest_tumor_fallback"
+                if "Tumor" in backfill_labels
+                else "nearest_stroma"
+            ),
+            "fallback_backfill_to_tumor": "Tumor" in backfill_labels,
             "backfill_pixels": int(np.count_nonzero(backfill)),
             "score_threshold": selection.score_threshold,
             "threshold_percentile": selection.threshold_percentile,
@@ -261,13 +287,18 @@ def apply_necrosis_resolution(
             "min_component_area_px": min_component_area,
         },
     }
+    warnings = (
+        ("necrosis_resolution_fallback_backfill_to_tumor",)
+        if "Tumor" in backfill_labels
+        else ()
+    )
 
     return PrimitiveEditResult(
         target_mask=target_mask,
         change_region=change_region,
         changed_area_fraction=changed_area_fraction,
         selected_pixels=selected_pixels,
-        warnings=(),
+        warnings=warnings,
         ops_log=ops_log,
     )
 
@@ -368,6 +399,7 @@ def _target_necrosis_resolution_fraction_for_intent(
 
 
 def _available_resolution_backfill_labels(
+    mask: np.ndarray,
     schema: MaskProfileSchema,
     primitive_config: Mapping[str, Any],
 ) -> tuple[str, ...]:
@@ -378,16 +410,16 @@ def _available_resolution_backfill_labels(
         else ()
     )
     if not isinstance(priority, list):
-        priority = ["Stroma"]
-    labels = tuple(
-        label
-        for label in priority
-        if isinstance(label, str)
-        and label == "Stroma"
-        and label in schema.readable_labels
-    )
-    if labels:
-        return labels
+        priority = ["Stroma", "Tumor"]
+
+    # Prefer true stromal repair when any Stroma exists.  Tumor is a fallback
+    # for tumor+necrosis-only masks where "resolved necrosis" means viable tumor.
+    for allowed in ("Stroma", "Tumor"):
+        if allowed not in priority or allowed not in schema.readable_labels:
+            continue
+        label_mask = np.isin(mask, schema.resolve_fine_ids(allowed))
+        if np.any(label_mask):
+            return (allowed,)
     raise PrimitiveExecutionError("no_valid_backfill_tissue")
 
 
@@ -463,13 +495,36 @@ def _nearest_backfill_labels(mask: np.ndarray, backfill: np.ndarray) -> np.ndarr
     return mask[indices[0], indices[1]]
 
 
-def _max_necrosis_fraction_of_tumor(primitive_config: Mapping[str, Any]) -> float:
-    value = primitive_config.get("parameter_ranges", {}).get(
-        "max_necrosis_fraction_of_tumor", 0.60
+def _necrosis_appearance_candidate_base(
+    raw_candidate_base: np.ndarray,
+    existing_necrosis: np.ndarray,
+    primitive_config: Mapping[str, Any],
+    intent: EditIntent,
+) -> np.ndarray:
+    if not np.any(existing_necrosis):
+        return raw_candidate_base
+    config_allows_multifocal = _config_bool(
+        primitive_config.get("parameter_ranges", {}).get(
+            "allow_multifocal_new_foci_when_existing_necrosis",
+            False,
+        )
     )
-    if not isinstance(value, (int, float)) or not 0 < float(value) <= 1:
-        raise PrimitiveExecutionError("invalid max_necrosis_fraction_of_tumor.")
-    return float(value)
+    if _intent_bool_parameter(
+        intent,
+        "allow_multifocal_new_foci_when_existing_necrosis",
+        config_allows_multifocal,
+    ):
+        return raw_candidate_base
+
+    radius_cap = max(1.0, float(min(raw_candidate_base.shape) // 4))
+    necrosis_radius = _clamped_positive_float_parameter(
+        intent,
+        "necrosis_neighbor_radius_px",
+        _DEFAULT_NECROSIS_NEIGHBOR_RADIUS_PX,
+        radius_cap,
+    )
+    dist_to_necrosis = ndimage.distance_transform_edt(~existing_necrosis)
+    return raw_candidate_base & (dist_to_necrosis <= necrosis_radius)
 
 
 def _necrosis_probability_score(
@@ -549,12 +604,29 @@ def _necrosis_probability_score(
         score += noise_weight * _smooth_noise(shape, seed=intent.seed)
 
     score[~candidate_base] = -np.inf
+    allow_multifocal_new_foci = _intent_bool_parameter(
+        intent,
+        "allow_multifocal_new_foci_when_existing_necrosis",
+        _config_bool(
+            primitive_config.get("parameter_ranges", {}).get(
+                "allow_multifocal_new_foci_when_existing_necrosis",
+                False,
+            )
+        ),
+    )
+    expansion_band_pixels = (
+        int(np.count_nonzero(candidate_base))
+        if has_existing_necrosis and not allow_multifocal_new_foci
+        else 0
+    )
     return _ScoreInfo(
         score=score,
         used_existing_necrosis_neighborhood=(
             "existing_necrosis_neighborhood" in weights
         ),
         used_blood_vessel_distance=("tumor_region_far_from_blood_vessel" in weights),
+        existing_necrosis_expansion_band_pixels=expansion_band_pixels,
+        allow_multifocal_new_foci_when_existing_necrosis=allow_multifocal_new_foci,
         active_weights=weights,
         radii={
             "necrosis_neighbor_radius_px": necrosis_radius,
@@ -1031,6 +1103,23 @@ def _nonnegative_float_parameter(
     if not isinstance(value, (int, float)) or float(value) < 0:
         raise PrimitiveExecutionError(f"parameters.{key} must be a non-negative number.")
     return float(value)
+
+
+def _intent_bool_parameter(intent: EditIntent, key: str, default: bool) -> bool:
+    value = intent.parameters.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if value in (0, 1):
+        return bool(value)
+    raise PrimitiveExecutionError(f"parameters.{key} must be a boolean.")
+
+
+def _config_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (0, 1):
+        return bool(value)
+    return False
 
 
 def _min_component_area_for_intent(

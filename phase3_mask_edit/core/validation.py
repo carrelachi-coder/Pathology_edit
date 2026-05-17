@@ -86,7 +86,7 @@ def validate_edit_result(
     required_labels = primitive_config.get("required_tissue_labels", [])
     if isinstance(required_labels, list):
         checks.append(
-            _check_required_labels_present(src_mask, schema, required_labels, primitive_name)
+            _check_required_labels_present(src_mask, schema, required_labels, primitive_config)
         )
 
     # ── primitive-specific guards ───────────────────────────────
@@ -375,22 +375,21 @@ def _check_necrosis_tumor_relative_change_area(
     min_fraction = _min_interval_lower_bound(
         ranges.get("target_changed_area_fraction", {})
     )
-    max_fraction = float(ranges.get("max_necrosis_fraction_of_tumor", 0.60))
     if min_fraction is None:
         min_fraction = 0.0
 
-    if min_fraction <= changed_tumor_fraction <= max_fraction:
+    if changed_tumor_fraction >= min_fraction:
         return ValidationCheck(
             "change_area_within_range",
             True,
-            f"changed_tumor_fraction={changed_tumor_fraction:.4f} in "
-            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+            f"changed_tumor_fraction={changed_tumor_fraction:.4f} >= "
+            f"{min_fraction:.2f}",
         )
     return ValidationCheck(
         "change_area_within_range",
         False,
-        f"changed_tumor_fraction={changed_tumor_fraction:.4f} outside "
-        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        f"changed_tumor_fraction={changed_tumor_fraction:.4f} below "
+        f"{min_fraction:.2f}",
     )
 
 
@@ -688,10 +687,16 @@ def _check_required_labels_present(
     src_mask: np.ndarray,
     schema: MaskProfileSchema,
     required_labels: list[str],
-    primitive_name: str,
+    primitive_config: Mapping[str, Any],
 ) -> ValidationCheck:
     missing: list[str] = []
-    for label in required_labels:
+    source_label = _operation_label(primitive_config, "source")
+    target_label = _operation_label(primitive_config, "target")
+    for label in _labels_required_in_current_mask(
+        required_labels=tuple(required_labels),
+        source_label=source_label,
+        target_label=target_label,
+    ):
         fine_ids = schema.label_to_fine_ids.get(label)
         if fine_ids is None:
             missing.append(label)
@@ -708,6 +713,27 @@ def _check_required_labels_present(
         "required_labels_present", False,
         f"missing required labels in src mask: {missing}",
     )
+
+
+def _operation_label(primitive_config: Mapping[str, Any], key: str) -> str | None:
+    mask_operation = primitive_config.get("mask_operation", {})
+    value = mask_operation.get(key) if isinstance(mask_operation, Mapping) else None
+    return value if isinstance(value, str) else None
+
+
+def _labels_required_in_current_mask(
+    *, required_labels: tuple[str, ...], source_label: str | None, target_label: str | None
+) -> tuple[str, ...]:
+    labels: list[str] = []
+    for label in required_labels:
+        # A target-only label must be supported by the schema, but it does not
+        # need to already exist in the source mask before the edit writes it.
+        if label == target_label and label != source_label:
+            continue
+        labels.append(label)
+    if source_label and source_label not in labels:
+        labels.append(source_label)
+    return tuple(labels)
 
 
 # ── primitive-specific guard dispatch ──────────────────────────────
