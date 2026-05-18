@@ -235,6 +235,12 @@ primitives:
       shape_mode:
         - irregular_blob
         - fissure_like_region
+      necrosis_engulf_intrusion_labels:
+        - Tumor
+        - Immune infiltrate
+        - Stroma
+        - Other tissue
+        - Normal epithelium
     parameter_ranges:
       target_changed_area_fraction:
         mild: [0.08, 0.14]
@@ -262,6 +268,7 @@ primitives:
       # expansion from the existing necrotic front rather than a distant new focus.
       # Set true only for explicit multifocal necrosis edits.
       allow_multifocal_new_foci_when_existing_necrosis: false
+      necrosis_intrusion_closing_radius_px: 6
     probnet_bias:
       Dead: up
       Neoplastic: down

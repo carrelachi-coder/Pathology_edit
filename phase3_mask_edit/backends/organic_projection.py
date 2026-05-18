@@ -211,30 +211,49 @@ def apply_organic_projected_label_write(
     if necrosis_expansion_mode and raw_legal_overlap == 0:
         template_norm = np.zeros_like(template_norm)
 
+    effective_noise_weight = (
+        0.0
+        if necrosis_expansion_mode
+        else params.w_noise * params.noise_amplitude
+    )
     final_score = (
         params.w_template * template_norm
         + params.w_spatial * spatial_norm
-        + params.w_noise * params.noise_amplitude * noise_norm
+        + effective_noise_weight * noise_norm
     )
     final_score = np.asarray(final_score, dtype=float)
     final_score[~legal_domain] = -np.inf
 
-    selected, selection_log = _template_constrained_top_k_mask(
-        final_score,
-        legal_domain=legal_domain,
-        raw_template=candidate,
-        target_pixels=selected_target_pixels,
-        neighborhood_radius_px=params.template_neighborhood_radius_px,
-        spillover_fraction=(
-            1.0
-            if necrosis_expansion_mode and raw_legal_overlap == 0
-            else params.template_spillover_fraction
-        ),
+    if necrosis_expansion_mode:
+        selected, selection_log, selection_score = _necrosis_expansion_blob_mask(
+            final_score,
+            legal_domain=legal_domain,
+            raw_template=candidate,
+            existing_necrosis=_safe_label_mask(mask, schema, "Necrosis"),
+            target_pixels=selected_target_pixels,
+            anchor_radius_px=params.template_neighborhood_radius_px,
+            use_template_anchor=raw_legal_overlap > 0,
+            seed=seed,
+        )
+    else:
+        selected, selection_log = _template_constrained_top_k_mask(
+            final_score,
+            legal_domain=legal_domain,
+            raw_template=candidate,
+            target_pixels=selected_target_pixels,
+            neighborhood_radius_px=params.template_neighborhood_radius_px,
+            spillover_fraction=params.template_spillover_fraction,
+        )
+        selection_score = final_score
+    selection_policy_name = (
+        "necrosis_expansion_compact_directional_score"
+        if necrosis_expansion_mode
+        else "template_neighborhood_constrained_top_k"
     )
     selected, cleanup_log = _cleanup_and_refill_once(
         selected,
         legal_domain=legal_domain,
-        final_score=final_score,
+        final_score=selection_score,
         target_pixels=selected_target_pixels,
         min_component_fraction=params.min_component_fraction,
         fill_holes_max_area_px=params.fill_holes_max_area_px,
@@ -253,6 +272,39 @@ def apply_organic_projected_label_write(
             target_pixels=selected_target_pixels,
             primitive_config=primitive_config or {},
             seed=seed,
+        )
+    necrosis_solidify_log: dict[str, Any] = {"enabled": False}
+    if primitive_name == "necrosis_appearance":
+        selected, necrosis_solidify_log = _solidify_organic_necrosis_selection(
+            selected,
+            legal_domain=legal_domain,
+            final_score=selection_score,
+            target_pixels=selected_target_pixels,
+            primitive_config=primitive_config or {},
+            existing_necrosis=_safe_label_mask(mask, schema, "Necrosis"),
+        )
+    necrosis_shape_polish_log: dict[str, Any] = {"enabled": False}
+    if primitive_name == "necrosis_appearance":
+        selected, necrosis_shape_polish_log = _polish_organic_necrosis_shape(
+            selected,
+            legal_domain=legal_domain,
+            final_score=selection_score,
+            primitive_config=primitive_config or {},
+            existing_necrosis=_safe_label_mask(mask, schema, "Necrosis"),
+        )
+    necrosis_engulfment_log: dict[str, Any] = {"enabled": False}
+    if primitive_name == "necrosis_appearance":
+        selected, necrosis_engulfment_log = _engulf_necrosis_intrusions(
+            mask,
+            selected,
+            raw_template=(
+                candidate
+                if raw_legal_overlap > 0
+                and raw_candidate_pixels / int(mask.size) <= 0.50
+                else None
+            ),
+            schema=schema,
+            primitive_config=primitive_config or {},
         )
     target_ids = schema.resolve_fine_ids(target_label)
     target_mask = np.array(mask, copy=True)
@@ -310,7 +362,7 @@ def apply_organic_projected_label_write(
         "selected_raw_template_union_pixels": selected_template_union,
         "selected_raw_template_iou": selected_template_iou,
         "selection_policy": {
-            "name": "template_neighborhood_constrained_top_k",
+            "name": selection_policy_name,
             **selection_log,
         },
         "area_shortfall": int(max(target_pixels - selected_pixels, 0)),
@@ -325,6 +377,8 @@ def apply_organic_projected_label_write(
             "w_template": float(params.w_template),
             "w_spatial": float(params.w_spatial),
             "w_noise": float(params.w_noise),
+            "effective_noise_weight": float(effective_noise_weight),
+            "necrosis_expansion_noise_suppressed": bool(necrosis_expansion_mode),
             "template_sigma": float(params.template_sigma),
             "noise_sigma": float(params.noise_sigma),
             "noise_amplitude": float(params.noise_amplitude),
@@ -357,6 +411,9 @@ def apply_organic_projected_label_write(
         "cleanup_single_pass": True,
         "cleanup_iteration_limit": 1,
         "spot_policy": spot_policy_log,
+        "necrosis_solidify": necrosis_solidify_log,
+        "necrosis_shape_polish": necrosis_shape_polish_log,
+        "necrosis_intrusion_engulfment": necrosis_engulfment_log,
     }
     if primitive_name == "tumor_burden_increase":
         ops_log["source_label_contributions"] = _source_label_contributions(
@@ -2324,6 +2381,161 @@ def _template_constrained_top_k_mask(
     }
 
 
+def _necrosis_expansion_blob_mask(
+    score: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    raw_template: np.ndarray,
+    existing_necrosis: np.ndarray,
+    target_pixels: int,
+    anchor_radius_px: float,
+    use_template_anchor: bool,
+    seed: int,
+) -> tuple[np.ndarray, dict[str, int | float | bool], np.ndarray]:
+    anchor_domain = legal_domain.copy()
+    template_dist = ndimage.distance_transform_edt(~np.asarray(raw_template, dtype=bool))
+    if use_template_anchor:
+        template_zone = legal_domain & (template_dist <= float(anchor_radius_px))
+        if np.any(template_zone):
+            anchor_domain = template_zone
+
+    anchor = _top_k_mask_for_refill(score, legal_domain=anchor_domain, k=1)
+    if not np.any(anchor):
+        return np.zeros(score.shape, dtype=bool), {
+            "template_neighborhood_radius_px": float(anchor_radius_px),
+            "template_anchor_used": bool(use_template_anchor),
+            "anchor_pixels": 0,
+            "compact_refill_pixels": 0,
+        }, np.asarray(score, dtype=float)
+
+    existing = np.asarray(existing_necrosis, dtype=bool)
+    compact_score = np.asarray(score, dtype=float).copy()
+    compact_radius = max(float(anchor_radius_px) * 0.5, 8.0)
+    if np.any(existing):
+        front_score, directional_log = _necrosis_front_expansion_score(
+            existing,
+            legal_domain,
+            seed=seed,
+            base_radius_px=compact_radius,
+        )
+    else:
+        front_score = _compactness_score(
+            anchor,
+            score.shape,
+            radius_px=compact_radius,
+        )
+        directional_score, directional_log = _necrosis_directional_compactness_score(
+            anchor,
+            score.shape,
+            seed=seed,
+            base_radius_px=compact_radius,
+        )
+        front_score += 0.40 * directional_score
+    compact_score[legal_domain] += 0.85 * front_score[legal_domain]
+    selected = _top_k_mask_for_refill(
+        compact_score,
+        legal_domain=legal_domain,
+        k=target_pixels,
+    )
+    return selected, {
+        "template_neighborhood_radius_px": float(anchor_radius_px),
+        "template_anchor_used": bool(use_template_anchor),
+        "anchor_domain_pixels": int(np.count_nonzero(anchor_domain)),
+        "anchor_pixels": int(np.count_nonzero(anchor)),
+        "compact_refill_pixels": int(np.count_nonzero(selected)),
+        "front_expansion_weight": 0.85,
+        **directional_log,
+    }, compact_score
+
+
+def _necrosis_front_expansion_score(
+    existing_necrosis: np.ndarray,
+    legal_domain: np.ndarray,
+    *,
+    seed: int,
+    base_radius_px: float,
+) -> tuple[np.ndarray, dict[str, float | bool]]:
+    rng = np.random.default_rng(int(seed) + 9173)
+    shape = legal_domain.shape
+    dist_to_necrosis = ndimage.distance_transform_edt(~np.asarray(existing_necrosis, dtype=bool))
+    rows, cols = np.indices(shape)
+    center = ndimage.center_of_mass(existing_necrosis)
+    if center is None or not np.all(np.isfinite(center)):
+        center = ndimage.center_of_mass(legal_domain)
+    if center is None or not np.all(np.isfinite(center)):
+        return np.zeros(shape, dtype=float), {
+            "front_expansion_used_existing_necrosis": False,
+            "front_expansion_base_radius_px": 0.0,
+            "front_expansion_anisotropy": 0.0,
+            "front_expansion_angle_rad": 0.0,
+        }
+    dy = rows - float(center[0])
+    dx = cols - float(center[1])
+    angle_rad = float(rng.uniform(0.0, np.pi))
+    anisotropy = float(rng.uniform(0.25, 0.45))
+    directional = 1.0 + anisotropy * np.cos(np.arctan2(dy, dx) - angle_rad)
+    local_radius = max(float(base_radius_px), 1.0) * np.clip(directional, 0.62, 1.48)
+    front_score = np.exp(-dist_to_necrosis / local_radius)
+    front_score *= 1.0 - 0.10 * np.clip(dist_to_necrosis / max(float(base_radius_px), 1.0), 0.0, 1.0)
+    front_score[~legal_domain] = 0.0
+    return front_score.astype(float), {
+        "front_expansion_used_existing_necrosis": True,
+        "front_expansion_base_radius_px": float(base_radius_px),
+        "front_expansion_anisotropy": float(anisotropy),
+        "front_expansion_angle_rad": float(angle_rad),
+    }
+
+
+def _necrosis_directional_compactness_score(
+    anchor: np.ndarray,
+    shape: tuple[int, int],
+    *,
+    seed: int,
+    base_radius_px: float,
+) -> tuple[np.ndarray, dict[str, float]]:
+    rng = np.random.default_rng(int(seed) + 9173)
+    center = ndimage.center_of_mass(anchor)
+    if center is None or not np.all(np.isfinite(center)):
+        return np.zeros(shape, dtype=float), {
+            "directional_compactness_base_radius_px": 0.0,
+            "directional_compactness_anisotropy": 0.0,
+            "directional_compactness_angle_rad": 0.0,
+        }
+    return _anisotropic_compactness_score(
+        shape,
+        center=(float(center[0]), float(center[1])),
+        base_radius_px=base_radius_px,
+        anisotropy=float(rng.uniform(0.25, 0.45)),
+        angle_rad=float(rng.uniform(0.0, np.pi)),
+    )
+
+
+def _anisotropic_compactness_score(
+    shape: tuple[int, int],
+    *,
+    center: tuple[float, float],
+    base_radius_px: float,
+    anisotropy: float,
+    angle_rad: float,
+) -> tuple[np.ndarray, dict[str, float]]:
+    row_grid, col_grid = np.indices(shape)
+    dy = row_grid - float(center[0])
+    dx = col_grid - float(center[1])
+    cos_a = float(np.cos(angle_rad))
+    sin_a = float(np.sin(angle_rad))
+    major = dx * cos_a + dy * sin_a
+    minor = -dx * sin_a + dy * cos_a
+    major_scale = max(float(base_radius_px) * (1.0 + float(anisotropy)), 1.0)
+    minor_scale = max(float(base_radius_px) * (1.0 - float(anisotropy) * 0.5), 1.0)
+    dist = np.sqrt((major / major_scale) ** 2 + (minor / minor_scale) ** 2)
+    score = np.exp(-dist)
+    return score.astype(float), {
+        "directional_compactness_base_radius_px": float(base_radius_px),
+        "directional_compactness_anisotropy": float(anisotropy),
+        "directional_compactness_angle_rad": float(angle_rad),
+    }
+
+
 def _cleanup_and_refill_once(
     selected: np.ndarray,
     *,
@@ -3119,6 +3331,323 @@ def _fill_small_holes_once(
     return filled, added
 
 
+def _solidify_organic_necrosis_selection(
+    selected: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    final_score: np.ndarray,
+    target_pixels: int,
+    primitive_config: Mapping[str, Any],
+    existing_necrosis: np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    if not np.any(selected):
+        return selected, {
+            "enabled": True,
+            "hole_fill_pixels": 0,
+            "closing_added_pixels": 0,
+            "trimmed_pixels": 0,
+            "refill_pixels": 0,
+        }
+
+    ranges = primitive_config.get("parameter_ranges", {})
+    closing_radius = _nonnegative_float(
+        None,
+        ranges.get("necrosis_solidify_closing_radius_px", 4.0),
+    )
+    existing = (
+        np.asarray(existing_necrosis, dtype=bool)
+        if existing_necrosis is not None
+        else np.zeros(selected.shape, dtype=bool)
+    )
+    filled_body = ndimage.binary_fill_holes(selected | existing)
+    filled = selected | (filled_body & ~existing & legal_domain)
+    hole_fill_pixels = int(np.count_nonzero(filled & ~selected))
+    if closing_radius > 0:
+        closed_body = ndimage.binary_closing(
+            filled | existing,
+            structure=_disk_structure(closing_radius),
+            border_value=0,
+        )
+        closed = filled | (closed_body & ~existing & legal_domain)
+    else:
+        closed = filled
+    closing_added_pixels = int(np.count_nonzero(closed & ~filled))
+
+    solid = closed
+    trimmed_pixels = 0
+    if int(np.count_nonzero(solid)) > target_pixels:
+        before = int(np.count_nonzero(solid))
+        solid = _limit_region_by_boundary_distance(
+            solid,
+            final_score,
+            legal_domain=legal_domain,
+            max_pixels=target_pixels,
+        )
+        trimmed_pixels = before - int(np.count_nonzero(solid))
+
+    refill_pixels = 0
+    if int(np.count_nonzero(solid)) < target_pixels:
+        refill = _top_k_mask_for_refill(
+            final_score,
+            legal_domain=legal_domain & ~solid,
+            k=target_pixels - int(np.count_nonzero(solid)),
+        )
+        refill_pixels = int(np.count_nonzero(refill))
+        solid |= refill
+        filled_body = ndimage.binary_fill_holes(solid | existing)
+        solid |= filled_body & ~existing & legal_domain
+
+    return solid, {
+        "enabled": True,
+        "closing_radius_px": float(closing_radius),
+        "uses_existing_necrosis_body": bool(np.any(existing)),
+        "hole_fill_pixels": hole_fill_pixels,
+        "closing_added_pixels": closing_added_pixels,
+        "trimmed_pixels": int(trimmed_pixels),
+        "refill_pixels": int(refill_pixels),
+    }
+
+
+def _polish_organic_necrosis_shape(
+    selected: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    final_score: np.ndarray,
+    primitive_config: Mapping[str, Any],
+    existing_necrosis: np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    selected = np.asarray(selected, dtype=bool) & legal_domain
+    target_pixels = int(np.count_nonzero(selected))
+    if target_pixels <= 0:
+        return selected, {
+            "enabled": False,
+            "reason": "empty_region",
+            "pixels_before": 0,
+            "pixels_after": 0,
+        }
+
+    ranges = primitive_config.get("parameter_ranges", {})
+    sigma = _nonnegative_float(
+        None,
+        ranges.get("necrosis_shape_polish_sigma_px", 1.6),
+    )
+    if sigma <= 0:
+        return selected, {
+            "enabled": False,
+            "reason": "sigma_zero",
+            "pixels_before": target_pixels,
+            "pixels_after": target_pixels,
+        }
+
+    existing = (
+        np.asarray(existing_necrosis, dtype=bool)
+        if existing_necrosis is not None
+        else np.zeros(selected.shape, dtype=bool)
+    )
+    body = selected | existing
+    polish_radius = max(1.0, float(sigma))
+    rounded_body = ndimage.binary_closing(
+        body,
+        structure=_disk_structure(polish_radius * 1.5),
+        border_value=0,
+    )
+    rounded_body = ndimage.binary_opening(
+        rounded_body,
+        structure=_disk_structure(polish_radius),
+        border_value=0,
+    ) | existing
+    rounded_body = ndimage.binary_fill_holes(rounded_body)
+    signed = (
+        ndimage.distance_transform_edt(rounded_body)
+        - ndimage.distance_transform_edt(~rounded_body)
+    )
+    smoothed_signed = ndimage.gaussian_filter(signed.astype(float), sigma=float(sigma))
+    local_radius = max(3.0, float(sigma) * 5.0)
+    local_domain = (
+        ndimage.binary_dilation(body, structure=_disk_structure(local_radius))
+        | body
+    ) & (legal_domain | existing)
+    shape_score = np.asarray(smoothed_signed, dtype=float).copy()
+    shape_score[legal_domain] += 0.05 * _normalize_on_domain(final_score, legal_domain)[legal_domain]
+    matched = _top_k_mask_for_refill(
+        shape_score,
+        legal_domain=legal_domain & local_domain,
+        k=target_pixels,
+    )
+
+    filled_body = ndimage.binary_fill_holes(matched | existing)
+    matched |= filled_body & ~existing & legal_domain
+    if int(np.count_nonzero(matched)) != target_pixels:
+        matched = _top_k_mask_for_refill(
+            shape_score,
+            legal_domain=legal_domain & local_domain,
+            k=target_pixels,
+        )
+
+    pixels_after = int(np.count_nonzero(matched))
+    return matched & legal_domain, {
+        "enabled": True,
+        "sigma_px": float(sigma),
+        "local_radius_px": float(local_radius),
+        "pixels_before": target_pixels,
+        "pixels_after": pixels_after,
+        "area_matched_to_input": bool(pixels_after == target_pixels),
+    }
+
+
+def _limit_region_by_boundary_distance(
+    region: np.ndarray,
+    score: np.ndarray,
+    *,
+    legal_domain: np.ndarray,
+    max_pixels: int,
+) -> np.ndarray:
+    limited = np.asarray(region, dtype=bool).copy() & legal_domain
+    if max_pixels < 1:
+        return np.zeros_like(limited, dtype=bool)
+    structure = np.ones((3, 3), dtype=bool)
+    while int(np.count_nonzero(limited)) > max_pixels:
+        eroded = ndimage.binary_erosion(limited, structure=structure, border_value=0)
+        boundary = limited & ~eroded
+        if not np.any(boundary):
+            break
+        removable = int(np.count_nonzero(limited)) - int(max_pixels)
+        coords = np.argwhere(boundary)
+        values = np.asarray(score, dtype=float)[coords[:, 0], coords[:, 1]]
+        order = np.argsort(values, kind="stable")
+        remove = coords[order[: min(removable, coords.shape[0])]]
+        limited[remove[:, 0], remove[:, 1]] = False
+    return limited & legal_domain
+
+
+def _engulf_necrosis_intrusions(
+    mask: np.ndarray,
+    selected: np.ndarray,
+    *,
+    raw_template: np.ndarray | None = None,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    engulfable = _necrosis_engulfable_intrusion_domain(
+        mask,
+        schema=schema,
+        primitive_config=primitive_config,
+    )
+    if not np.any(selected) or not np.any(engulfable):
+        return selected, {
+            "enabled": True,
+            "engulfed_pixels": 0,
+            "engulfed_components": 0,
+            "engulfed_label_pixels": {},
+        }
+
+    ranges = primitive_config.get("parameter_ranges", {})
+    closing_radius = _nonnegative_float(
+        None,
+        ranges.get("necrosis_intrusion_closing_radius_px", 6.0),
+    )
+    necrosis = _safe_label_mask(mask, schema, "Necrosis")
+    necrosis_body = selected | necrosis
+    if closing_radius <= 0:
+        engulfed = np.zeros(mask.shape, dtype=bool)
+    else:
+        closed = ndimage.binary_closing(
+            necrosis_body,
+            structure=_disk_structure(closing_radius),
+            border_value=0,
+        )
+        pinched = _pinched_by_necrosis_body(
+            necrosis_body,
+            radius_px=closing_radius,
+        )
+        template_intrusion = (
+            np.asarray(raw_template, dtype=bool)
+            if raw_template is not None
+            else np.zeros(mask.shape, dtype=bool)
+        )
+        tumor = np.isin(mask, schema.tumor_fine_ids)
+        dist_to_body = ndimage.distance_transform_edt(~necrosis_body)
+        template_intrusion &= ~tumor
+        if raw_template is None:
+            template_intrusion &= dist_to_body <= closing_radius
+        engulfed = (closed | pinched | template_intrusion) & ~necrosis_body & engulfable
+        engulfed &= ~tumor
+        enclosed = ndimage.binary_fill_holes(necrosis_body | engulfed)
+        engulfed |= enclosed & ~(necrosis_body | engulfed) & engulfable
+        engulfed &= ~tumor
+    labeled, count = ndimage.label(engulfed, structure=np.ones((3, 3), dtype=bool))
+    kept = np.zeros(mask.shape, dtype=bool)
+    engulfed_components = 0
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        if np.any(component & ~engulfable):
+            continue
+        kept |= component
+        engulfed_components += 1
+
+    updated = selected | kept
+    return updated, {
+        "enabled": True,
+        "closing_radius_px": float(closing_radius),
+        "engulfed_pixels": int(np.count_nonzero(kept)),
+        "engulfed_components": int(engulfed_components),
+        "engulfed_label_pixels": _label_pixel_counts(
+            mask,
+            kept,
+            schema=schema,
+            labels=("Tumor", "Immune infiltrate", "Stroma", "Other tissue", "Normal epithelium"),
+        ),
+    }
+
+
+def _pinched_by_necrosis_body(necrosis_body: np.ndarray, *, radius_px: float) -> np.ndarray:
+    radius = max(1, int(round(float(radius_px))))
+    left = np.zeros(necrosis_body.shape, dtype=bool)
+    right = np.zeros(necrosis_body.shape, dtype=bool)
+    up = np.zeros(necrosis_body.shape, dtype=bool)
+    down = np.zeros(necrosis_body.shape, dtype=bool)
+    for offset in range(1, radius + 1):
+        left[:, offset:] |= necrosis_body[:, :-offset]
+        right[:, :-offset] |= necrosis_body[:, offset:]
+        up[offset:, :] |= necrosis_body[:-offset, :]
+        down[:-offset, :] |= necrosis_body[offset:, :]
+    return (left & right) | (up & down)
+
+
+def _necrosis_engulfable_intrusion_domain(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+) -> np.ndarray:
+    spatial = primitive_config.get("spatial_pattern", {})
+    labels = (
+        spatial.get("necrosis_engulf_intrusion_labels")
+        if isinstance(spatial, Mapping)
+        else None
+    )
+    if labels is None:
+        labels = primitive_config.get("mask_operation", {}).get(
+            "necrosis_engulf_intrusion_labels"
+        ) if isinstance(primitive_config.get("mask_operation", {}), Mapping) else None
+    if labels is None:
+        labels = [
+            "Tumor",
+            "Immune infiltrate",
+            "Stroma",
+            "Other tissue",
+            "Normal epithelium",
+        ]
+    if not isinstance(labels, list):
+        labels = ["Tumor", "Immune infiltrate", "Stroma", "Other tissue", "Normal epithelium"]
+    domain = np.zeros(mask.shape, dtype=bool)
+    for label in labels:
+        if isinstance(label, str) and label in schema.readable_labels:
+            domain |= _safe_label_mask(mask, schema, label)
+    domain &= ~np.isin(mask, tuple(schema.skip_fine_ids))
+    return domain
+
+
 def _cleanup_tiny_remaining_tumor_components(
     original_mask: np.ndarray,
     target_mask: np.ndarray,
@@ -3707,6 +4236,23 @@ def _source_label_contributions(
             np.count_nonzero(selected & _safe_label_mask(mask, schema, label))
         )
     return contributions
+
+
+def _label_pixel_counts(
+    mask: np.ndarray,
+    region: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    labels: Sequence[str],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for label in labels:
+        if label not in schema.readable_labels:
+            continue
+        count = int(np.count_nonzero(region & _safe_label_mask(mask, schema, label)))
+        if count:
+            counts[str(label)] = count
+    return counts
 
 
 def _positive_config_float(

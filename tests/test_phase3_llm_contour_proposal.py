@@ -1143,11 +1143,255 @@ class LLMContourProposalTests(unittest.TestCase):
             result.ops_log["raw_candidate_legal_overlap_pixels"],
             0,
         )
-        self.assertEqual(result.selected_pixels, 80)
+        self.assertGreaterEqual(result.selected_pixels, 80)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
         dist_to_necrosis = ndimage.distance_transform_edt(old_mask != 3)
-        self.assertLessEqual(float(dist_to_necrosis[result.change_region].max()), 12.0)
+        expansion_only = result.change_region & (old_mask == 1)
+        self.assertLessEqual(float(dist_to_necrosis[expansion_only].max()), 12.0)
         self.assertFalse(np.any(result.change_region & raw_candidate))
+
+    def test_necrosis_expansion_uses_contiguous_front_not_thin_fragmented_strip(self):
+        old_mask = np.zeros((128, 128), dtype=np.int64)
+        old_mask[8:120, 8:120] = 2
+        yy, xx = np.mgrid[:128, :128]
+        tumor = (yy - 64) ** 2 + (xx - 64) ** 2 <= 44**2
+        old_mask[tumor] = 1
+        old_mask[(yy - 64) ** 2 + (xx - 48) ** 2 <= 10**2] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[46:82, 48:84] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 32,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_neighbor_radius_px": 24,
+                },
+            },
+            seed=2,
+            target_pixels=220,
+        )
+
+        new_necrosis = result.change_region & (old_mask == 1)
+        rows, cols = np.where(new_necrosis)
+        self.assertGreaterEqual(rows.max() - rows.min() + 1, 10)
+        self.assertGreaterEqual(cols.max() - cols.min() + 1, 10)
+        _, component_count = ndimage.label(
+            new_necrosis | (old_mask == 3),
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        self.assertEqual(component_count, 1)
+        self.assertGreater(float(ndimage.distance_transform_edt(new_necrosis)[new_necrosis].mean()), 1.25)
+        self.assertTrue(
+            result.ops_log["selection_policy"]["front_expansion_used_existing_necrosis"]
+        )
+
+    def test_necrosis_expansion_has_variable_width(self):
+        old_mask = np.zeros((160, 160), dtype=np.int64)
+        old_mask[8:152, 8:152] = 2
+        yy, xx = np.mgrid[:160, :160]
+        tumor = (yy - 80) ** 2 + (xx - 80) ** 2 <= 56**2
+        old_mask[tumor] = 1
+        old_mask[(yy - 80) ** 2 + (xx - 58) ** 2 <= 12**2] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[54:106, 58:112] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 40,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_neighbor_radius_px": 30,
+                },
+            },
+            seed=11,
+            target_pixels=460,
+        )
+
+        new_necrosis = result.change_region & (old_mask == 1)
+        center = np.array(ndimage.center_of_mass(old_mask == 3))
+        coords = np.argwhere(new_necrosis)
+        vectors = coords - center
+        angles = np.arctan2(vectors[:, 0], vectors[:, 1])
+        radii = np.sqrt(np.sum(vectors * vectors, axis=1))
+        max_radii = []
+        for start in np.linspace(-np.pi, np.pi, 8, endpoint=False):
+            end = start + np.pi / 4
+            if end <= np.pi:
+                in_bin = (angles >= start) & (angles < end)
+            else:
+                in_bin = (angles >= start) | (angles < end - 2 * np.pi)
+            if np.any(in_bin):
+                max_radii.append(float(radii[in_bin].max()))
+        self.assertGreater(max(max_radii) - min(max_radii), 4.0)
+        self.assertTrue(
+            result.ops_log["selection_policy"]["front_expansion_used_existing_necrosis"]
+        )
+
+    def test_necrosis_selection_solidifies_internal_tumor_holes(self):
+        old_mask = np.zeros((128, 128), dtype=np.int64)
+        old_mask[8:120, 8:120] = 2
+        yy, xx = np.mgrid[:128, :128]
+        tumor = (yy - 64) ** 2 + (xx - 64) ** 2 <= 42**2
+        old_mask[tumor] = 1
+        old_mask[(yy - 64) ** 2 + (xx - 48) ** 2 <= 9**2] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[42:88, 42:88] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 32,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_neighbor_radius_px": 24,
+                    "necrosis_solidify_closing_radius_px": 5,
+                },
+            },
+            seed=8,
+            target_pixels=260,
+        )
+
+        new_necrosis = result.change_region & (old_mask == 1)
+        holes = ndimage.binary_fill_holes(new_necrosis) & ~new_necrosis & (old_mask == 1)
+        self.assertEqual(int(np.count_nonzero(holes)), 0)
+        self.assertTrue(result.ops_log["necrosis_solidify"]["enabled"])
+
+    def test_necrosis_expansion_fills_tumor_islands_against_existing_necrosis(self):
+        old_mask = np.zeros((128, 128), dtype=np.int64)
+        old_mask[8:120, 8:120] = 2
+        yy, xx = np.mgrid[:128, :128]
+        tumor = (yy - 64) ** 2 + (xx - 64) ** 2 <= 44**2
+        old_mask[tumor] = 1
+        old_mask[(yy - 64) ** 2 + (xx - 48) ** 2 <= 12**2] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[38:90, 42:96] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 36,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_neighbor_radius_px": 28,
+                    "necrosis_solidify_closing_radius_px": 5,
+                },
+            },
+            seed=5,
+            target_pixels=360,
+        )
+
+        necrosis_body = (old_mask == 3) | result.change_region
+        holes = ndimage.binary_fill_holes(necrosis_body) & ~necrosis_body & (old_mask == 1)
+        self.assertEqual(int(np.count_nonzero(holes)), 0)
+        self.assertTrue(
+            result.ops_log["necrosis_solidify"]["uses_existing_necrosis_body"]
+        )
+
+    def test_necrosis_expansion_uses_existing_necrosis_front_score(self):
+        old_mask = np.zeros((144, 144), dtype=np.int64)
+        old_mask[8:136, 8:136] = 2
+        yy, xx = np.mgrid[:144, :144]
+        tumor = (yy - 72) ** 2 + (xx - 72) ** 2 <= 48**2
+        old_mask[tumor] = 1
+        old_mask[(yy - 72) ** 2 + (xx - 50) ** 2 <= 11**2] = 3
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[42:96, 46:108] = True
+
+        base_config = {
+            "name": "necrosis_appearance",
+            "parameter_ranges": {
+                "organic_min_template_legal_overlap_fraction": 0.0,
+                "organic_min_component_fraction": 0.0,
+                "organic_template_neighborhood_radius_px": 36,
+                "organic_template_spillover_fraction": 0.0,
+                "necrosis_neighbor_radius_px": 30,
+                "necrosis_solidify_closing_radius_px": 4,
+            },
+        }
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config=base_config,
+            seed=9,
+            target_pixels=380,
+        )
+
+        selection_policy = result.ops_log["selection_policy"]
+        self.assertTrue(selection_policy["front_expansion_used_existing_necrosis"])
+        self.assertTrue(result.ops_log["necrosis_shape_polish"]["enabled"])
+        dist_to_necrosis = ndimage.distance_transform_edt(old_mask != 3)
+        self.assertLessEqual(
+            float(dist_to_necrosis[result.change_region & (old_mask == 1)].max()),
+            30.0,
+        )
+
+    def test_necrosis_engulfs_thin_stroma_intrusion_without_consuming_external_stroma(self):
+        old_mask = np.zeros((96, 96), dtype=np.int64)
+        old_mask[8:88, 8:88] = 2
+        old_mask[20:76, 20:76] = 1
+        old_mask[44:52, 20:50] = 2
+        raw_candidate = np.zeros_like(old_mask, dtype=bool)
+        raw_candidate[32:64, 32:64] = True
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 32,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_intrusion_closing_radius_px": 6,
+                },
+            },
+            seed=3,
+            target_pixels=850,
+        )
+
+        engulfment = result.ops_log["necrosis_intrusion_engulfment"]
+        self.assertGreater(engulfment["engulfed_pixels"], 0)
+        self.assertIn("Stroma", engulfment["engulfed_label_pixels"])
+        self.assertTrue(np.all(result.target_mask[44:52, 32:50] == 3))
+        self.assertTrue(np.all(result.target_mask[44:52, 20:26] == 2))
 
     def test_necrosis_policy_avoids_blood_vessel_neighborhood(self):
         old_mask = np.zeros((72, 72), dtype=np.int64)

@@ -1163,11 +1163,17 @@ def _guard_new_necrosis_must_be_inside_original_tumor(
     nec_ids = schema.resolve_fine_ids("Necrosis")
     new_nec = np.isin(target_mask, nec_ids) & change_region & ~np.isin(src_mask, nec_ids)
     outside_tumor = new_nec & ~src_tumor
+    outside_tumor = _exclude_small_necrosis_intrusion_engulfment(
+        src_mask,
+        target_mask,
+        outside_tumor,
+        schema=schema,
+    )
     leaked = int(np.count_nonzero(outside_tumor))
     if leaked == 0:
         return ValidationCheck(
             "new_necrosis_must_be_inside_original_tumor", True,
-            "new necrosis inside original tumor.",
+            "new necrosis inside original tumor or locally engulfed non-background intrusions.",
         )
     return ValidationCheck(
         "new_necrosis_must_be_inside_original_tumor", False,
@@ -1178,6 +1184,43 @@ def _guard_new_necrosis_must_be_inside_original_tumor(
 _PRIMITIVE_GUARDS["new_necrosis_must_be_inside_original_tumor"] = (
     _guard_new_necrosis_must_be_inside_original_tumor
 )
+
+
+def _exclude_small_necrosis_intrusion_engulfment(
+    src_mask: np.ndarray,
+    target_mask: np.ndarray,
+    outside_tumor: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+) -> np.ndarray:
+    if not np.any(outside_tumor):
+        return outside_tumor
+    necrosis = np.isin(target_mask, schema.resolve_fine_ids("Necrosis"))
+    closed = ndimage.binary_closing(
+        necrosis,
+        structure=_disk_structure(6),
+        border_value=0,
+    )
+    engulfed = outside_tumor & closed
+    if not np.any(engulfed):
+        return outside_tumor
+
+    background = np.isin(src_mask, tuple(schema.skip_fine_ids))
+    labeled, count = ndimage.label(engulfed, structure=np.ones((3, 3), dtype=bool))
+    allowed = np.zeros_like(outside_tumor, dtype=bool)
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        if np.any(component & background):
+            continue
+        allowed |= component
+    return outside_tumor & ~allowed
+
+
+def _disk_structure(radius: int) -> np.ndarray:
+    if radius <= 0:
+        return np.ones((1, 1), dtype=bool)
+    yy, xx = np.mgrid[-radius : radius + 1, -radius : radius + 1]
+    return (yy * yy + xx * xx) <= radius * radius
 
 
 def _guard_immune_area_must_increase(

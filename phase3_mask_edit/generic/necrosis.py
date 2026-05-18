@@ -128,7 +128,12 @@ def apply_necrosis_appearance(
         min_component_area=min_component_area,
         max_components=max_components,
     )
-    change_region = selection.change_region
+    change_region, engulfment_log = _engulf_necrosis_intrusions(
+        normalized,
+        selection.change_region,
+        schema=schema,
+        primitive_config=primitive_config,
+    )
     selected_pixels = int(np.count_nonzero(change_region))
     if selected_pixels == 0:
         raise PrimitiveExecutionError("no_high_probability_hypoxic_candidate_region")
@@ -188,6 +193,7 @@ def apply_necrosis_appearance(
             "morphology_cleanup_applied": selection.morphology_cleanup_applied,
             "min_component_area_px": min_component_area,
             "max_components": max_components,
+            "intrusion_engulfment": engulfment_log,
         },
     }
 
@@ -983,6 +989,141 @@ def _solidify_necrosis_region(
     }
 
 
+def _engulf_necrosis_intrusions(
+    mask: np.ndarray,
+    selected: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    engulfable = _necrosis_engulfable_intrusion_domain(
+        mask,
+        schema=schema,
+        primitive_config=primitive_config,
+    )
+    if not np.any(selected) or not np.any(engulfable):
+        return selected, {
+            "enabled": True,
+            "engulfed_pixels": 0,
+            "engulfed_components": 0,
+            "engulfed_label_pixels": {},
+        }
+
+    ranges = primitive_config.get("parameter_ranges", {})
+    closing_radius = _nonnegative_float_parameter_from_config(
+        ranges.get("necrosis_intrusion_closing_radius_px", 6.0),
+        "necrosis_intrusion_closing_radius_px",
+    )
+    necrosis = np.isin(mask, schema.resolve_fine_ids("Necrosis"))
+    necrosis_body = selected | necrosis
+    if closing_radius <= 0:
+        engulfed = np.zeros(mask.shape, dtype=bool)
+    else:
+        closed = _edge_aware_binary_closing(
+            necrosis_body,
+            structure=_disk_structure(int(round(closing_radius))),
+        )
+        pinched = _pinched_by_necrosis_body(
+            necrosis_body,
+            radius_px=closing_radius,
+        )
+        engulfed = (closed | pinched) & ~necrosis_body & engulfable
+        engulfed &= ~np.isin(mask, schema.tumor_fine_ids)
+    labeled, count = ndimage.label(engulfed, structure=_four_neighbor_structure())
+    kept = np.zeros(mask.shape, dtype=bool)
+    engulfed_components = 0
+    for component_id in range(1, count + 1):
+        component = labeled == component_id
+        if np.any(component & ~engulfable):
+            continue
+        kept |= component
+        engulfed_components += 1
+
+    updated = selected | kept
+    return updated, {
+        "enabled": True,
+        "closing_radius_px": float(closing_radius),
+        "engulfed_pixels": int(np.count_nonzero(kept)),
+        "engulfed_components": int(engulfed_components),
+        "engulfed_label_pixels": _label_pixel_counts(
+            mask,
+            kept,
+            schema=schema,
+            labels=("Tumor", "Immune infiltrate", "Stroma", "Other tissue", "Normal epithelium"),
+        ),
+    }
+
+
+def _pinched_by_necrosis_body(necrosis_body: np.ndarray, *, radius_px: float) -> np.ndarray:
+    radius = max(1, int(round(float(radius_px))))
+    left = np.zeros(necrosis_body.shape, dtype=bool)
+    right = np.zeros(necrosis_body.shape, dtype=bool)
+    up = np.zeros(necrosis_body.shape, dtype=bool)
+    down = np.zeros(necrosis_body.shape, dtype=bool)
+    for offset in range(1, radius + 1):
+        left[:, offset:] |= necrosis_body[:, :-offset]
+        right[:, :-offset] |= necrosis_body[:, offset:]
+        up[offset:, :] |= necrosis_body[:-offset, :]
+        down[:-offset, :] |= necrosis_body[offset:, :]
+    return (left & right) | (up & down)
+
+
+def _necrosis_engulfable_intrusion_domain(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+) -> np.ndarray:
+    spatial = primitive_config.get("spatial_pattern", {})
+    labels = (
+        spatial.get("necrosis_engulf_intrusion_labels")
+        if isinstance(spatial, Mapping)
+        else None
+    )
+    if labels is None:
+        mask_operation = primitive_config.get("mask_operation", {})
+        labels = (
+            mask_operation.get("necrosis_engulf_intrusion_labels")
+            if isinstance(mask_operation, Mapping)
+            else None
+        )
+    if labels is None:
+        labels = [
+            "Tumor",
+            "Immune infiltrate",
+            "Stroma",
+            "Other tissue",
+            "Normal epithelium",
+        ]
+    if not isinstance(labels, list):
+        labels = ["Tumor", "Immune infiltrate", "Stroma", "Other tissue", "Normal epithelium"]
+    domain = np.zeros(mask.shape, dtype=bool)
+    for label in labels:
+        if isinstance(label, str) and label in schema.readable_labels:
+            domain |= np.isin(mask, schema.resolve_fine_ids(label))
+    domain &= ~np.isin(mask, tuple(schema.skip_fine_ids))
+    return domain
+
+
+def _label_pixel_counts(
+    mask: np.ndarray,
+    region: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    labels: tuple[str, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for label in labels:
+        if label not in schema.readable_labels:
+            continue
+        count = int(
+            np.count_nonzero(region & np.isin(mask, schema.resolve_fine_ids(label)))
+        )
+        if count:
+            counts[label] = count
+    return counts
+
+
 def _smooth_necrosis_boundary(
     region: np.ndarray,
     candidate_base: np.ndarray,
@@ -1102,6 +1243,12 @@ def _nonnegative_float_parameter(
     value = intent.parameters.get(key, default)
     if not isinstance(value, (int, float)) or float(value) < 0:
         raise PrimitiveExecutionError(f"parameters.{key} must be a non-negative number.")
+    return float(value)
+
+
+def _nonnegative_float_parameter_from_config(value: Any, key: str) -> float:
+    if not isinstance(value, (int, float)) or float(value) < 0:
+        raise PrimitiveExecutionError(f"parameter_ranges.{key} must be a non-negative number.")
     return float(value)
 
 

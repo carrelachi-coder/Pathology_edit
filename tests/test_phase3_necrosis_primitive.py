@@ -254,6 +254,41 @@ class Phase3NecrosisPrimitiveTests(unittest.TestCase):
             "tumor_near_existing_necrosis_expansion_band",
         )
 
+    def test_necrosis_appearance_does_not_chase_connected_immune_intrusion(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        old_mask = np.full((160, 160), 2, dtype=np.int64)
+        old_mask[28:132, 28:132] = 1
+        old_mask[74:82, 28:86] = 4
+        context = MaskEditContext.from_mask(old_mask, schema)
+        intent = EditIntent.from_mapping(
+            {
+                "primitive": "necrosis_appearance",
+                "reference_profile": "BCSS",
+                "target_change_fraction": 0.12,
+                "parameters": {
+                    "necrosis_score_noise_weight": 0.0,
+                    "min_necrosis_component_area_px": 4,
+                },
+                "seed": 31,
+            }
+        )
+
+        result = apply_necrosis_appearance(
+            old_mask,
+            schema,
+            context,
+            self.primitive,
+            intent,
+        )
+
+        self.assertTrue(np.all(result.target_mask[old_mask == 4] == 4))
+        self.assertEqual(
+            result.ops_log["spatial"]["intrusion_engulfment"][
+                "engulfed_label_pixels"
+            ].get("Immune infiltrate", 0),
+            0,
+        )
+
     def test_necrosis_appearance_can_touch_patch_edge(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = np.full((160, 160), 2, dtype=np.int64)

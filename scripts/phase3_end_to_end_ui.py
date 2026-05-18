@@ -1430,6 +1430,7 @@ def run_tissue_stage(
     api_base_url: str,
     api_key_env: str,
     api_model: str,
+    parser_api_model: str,
     qwen_model_path: str,
     qwen_device: str,
     no_few_shot: bool,
@@ -1438,6 +1439,7 @@ def run_tissue_stage(
     provider: str,
     contour_api_base_url: str,
     contour_api_key_env: str,
+    contour_api_model: str,
     api_image_detail: str,
     fixture_file,
     max_attempts: int,
@@ -1477,7 +1479,7 @@ def run_tissue_stage(
                 provider=provider,
                 api_base_url=contour_api_base_url,
                 api_key_env=contour_api_key_env,
-                api_model=api_model,
+                api_model=contour_api_model,
                 api_image_detail=api_image_detail,
                 fixture_file=fixture_file,
                 max_attempts=max_attempts,
@@ -1491,7 +1493,7 @@ def run_tissue_stage(
                 parser=instruction_parser,
                 api_base_url=api_base_url,
                 api_key_env=api_key_env,
-                api_model=api_model,
+                api_model=parser_api_model,
                 output_dir=output_dir,
             )
             plan = plan_edit_intents(
@@ -1512,7 +1514,7 @@ def run_tissue_stage(
                 provider=provider,
                 api_base_url=contour_api_base_url,
                 api_key_env=contour_api_key_env,
-                api_model=api_model,
+                api_model=contour_api_model,
                 api_image_detail=api_image_detail,
                 fixture_file=fixture_file,
                 max_attempts=max_attempts,
@@ -1528,7 +1530,7 @@ def run_tissue_stage(
                 parser=parser,
                 api_base_url=api_base_url,
                 api_key_env=api_key_env,
-                api_model=api_model,
+                api_model=parser_api_model,
                 qwen_model_path=qwen_model_path,
                 qwen_device=qwen_device,
                 no_few_shot=no_few_shot,
@@ -1553,7 +1555,7 @@ def run_tissue_stage(
                 provider=provider,
                 api_base_url=contour_api_base_url,
                 api_key_env=contour_api_key_env,
-                api_model=api_model,
+                api_model=contour_api_model,
                 api_image_detail=api_image_detail,
                 fixture_file=fixture_file,
                 max_attempts=max_attempts,
@@ -3109,6 +3111,9 @@ def build_ui() -> gr.Blocks:
                 provider = gr.Radio(["api-text", "api-multimodal", "fixture"], value="api-multimodal", label="contour provider")
                 api_image_detail = gr.Radio(["low", "high", "auto"], value="high", label="image detail")
             with gr.Row():
+                parser_api_model = gr.Textbox(value=DEFAULT_API_MODEL, label="parser api model")
+                contour_api_model = gr.Textbox(value=DEFAULT_API_MODEL, label="contour api model")
+            with gr.Row():
                 contour_api_base_url = gr.Textbox(value=DEFAULT_API_BASE_URL, label="contour api base url")
                 contour_api_key_env = gr.Textbox(value=DEFAULT_API_KEY_ENV, label="contour api key env")
             with gr.Row():
@@ -3280,6 +3285,7 @@ def build_ui() -> gr.Blocks:
                 api_base_url,
                 api_key_env,
                 api_model,
+                parser_api_model,
                 qwen_model_path,
                 qwen_device,
                 no_few_shot,
@@ -3288,6 +3294,7 @@ def build_ui() -> gr.Blocks:
                 provider,
                 contour_api_base_url,
                 contour_api_key_env,
+                contour_api_model,
                 api_image_detail,
                 fixture_file,
                 max_attempts,
@@ -3325,7 +3332,7 @@ def build_ui() -> gr.Blocks:
                 provider,
                 contour_api_base_url,
                 contour_api_key_env,
-                api_model,
+                contour_api_model,
                 api_image_detail,
                 fixture_file,
                 max_attempts,
@@ -3394,7 +3401,7 @@ def _run_auto_selected_from_ui(
     provider: str,
     api_base_url: str,
     api_key_env: str,
-    api_model: str,
+    contour_api_model: str,
     api_image_detail: str,
     fixture_file,
     max_attempts: int,
@@ -3419,7 +3426,7 @@ def _run_auto_selected_from_ui(
         provider=provider,
         api_base_url=api_base_url,
         api_key_env=api_key_env,
-        api_model=api_model,
+        api_model=contour_api_model,
         api_image_detail=api_image_detail,
         fixture_file=fixture_file,
         max_attempts=max_attempts,
