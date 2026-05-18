@@ -1,15 +1,120 @@
 {
-  "schema_version": "0.1",
-  "description": "Phase 3 UI mask-edit hard debug manifest selected from real patch images and ID tissue masks under D:\\WQX\\datasets. Cases intentionally favor boundary-rich, fragmented, background-heavy, or label-mixed masks rather than clean showcase patches.",
+  "schema_version": "0.2",
+  "description": "Phase 3 UI mask-edit hard debug manifest for batch prompt-vs-instruction testing. Paths default to /data/wqx/flowedit/data/<dataset> and can be overridden by the batch runner.",
   "created_date": "2026-05-15",
-  "datasets": ["BCSS", "GlaS", "IGNITE", "ORCA", "PANDA", "PUMA"],
+  "datasets": [
+    "BCSS",
+    "GlaS",
+    "IGNITE",
+    "ORCA",
+    "PANDA",
+    "PUMA"
+  ],
   "defaults": {
     "prompt_source": "manual_from_mask_and_metadata",
     "parser_provider": "api",
     "contour_provider": "openai_compatible_multimodal",
     "projection_mode": "organic_v2",
     "organic_seed": 0,
-    "status": "todo"
+    "status": "todo",
+    "edit_variants": [
+      "prompt",
+      "instruction"
+    ]
+  },
+  "runtime": {
+    "data_roots": {
+      "BCSS": "/data/wqx/flowedit/data",
+      "GlaS": "/data/wqx/flowedit/data",
+      "IGNITE": "/data/wqx/flowedit/data",
+      "ORCA": "/data/wqx/flowedit/data",
+      "PANDA": "/data/wqx/flowedit/data",
+      "PUMA": "/data/wqx/flowedit/data"
+    },
+    "edit_variants": [
+      {
+        "variant_id": "prompt",
+        "edit_mode": "prompt"
+      },
+      {
+        "variant_id": "instruction",
+        "edit_mode": "instruction"
+      }
+    ],
+    "parser": {
+      "prompt_parser": "api",
+      "instruction_parser": "api",
+      "api_base_url": "https://api.cursorai.art/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "api_model": "gpt-4o-all",
+      "qwen_model_path": "",
+      "qwen_device": "cuda:0",
+      "no_few_shot": false
+    },
+    "contour": {
+      "provider": "api-multimodal",
+      "api_base_url": "https://api.cursorai.art/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "api_model": "gpt-4o-all",
+      "api_image_detail": "high",
+      "max_attempts": 4,
+      "max_regions": 8,
+      "max_points_per_region": 64
+    },
+    "cell": {
+      "cell_fill_mode": "preserve",
+      "crossing_cell_policy": "delete",
+      "probnet_device": "auto",
+      "probnet_gamma_values": "1.0"
+    },
+    "generation": {
+      "generation_mode": "dry-run",
+      "cross_backend": "cross-v1",
+      "route_threshold": 0.35,
+      "device": "cuda",
+      "torch_dtype": "bf16",
+      "num_inference_steps": 28,
+      "guidance_scale": 3.5,
+      "controlnet_conditioning_scale": 1.0,
+      "color_match": "lab"
+    },
+    "model_paths": {
+      "cellvit_script": "scripts/run_cellvit_single_patch.py",
+      "cellvit_model": "",
+      "cellvit_root": "",
+      "probnet_ckpt": "",
+      "nuclei_library_template": "",
+      "density_scale_json_template": "",
+      "pretrained_model_name_or_path": "",
+      "inpaint_checkpoint": "",
+      "cross_checkpoint": "",
+      "cross_v1_checkpoint": "",
+      "uni_checkpoint": "",
+      "probnet_ckpt_by_dataset": {
+        "BCSS": "",
+        "GlaS": "",
+        "IGNITE": "",
+        "ORCA": "",
+        "PANDA": "",
+        "PUMA": ""
+      },
+      "nuclei_library_by_dataset": {
+        "BCSS": "",
+        "GlaS": "",
+        "IGNITE": "",
+        "ORCA": "",
+        "PANDA": "",
+        "PUMA": ""
+      },
+      "density_scale_json_by_dataset": {
+        "BCSS": "",
+        "GlaS": "",
+        "IGNITE": "",
+        "ORCA": "",
+        "PANDA": "",
+        "PUMA": ""
+      }
+    }
   },
   "cases": [
     {
@@ -18,10 +123,12 @@
       "profile": "BCSS",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_increase",
-      "expected_primitives": ["tumor_burden_increase"],
-      "source_image": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\images\\TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\nuclei_masks\\TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
+      "expected_primitives": [
+        "tumor_burden_increase"
+      ],
+      "source_image": "/data/wqx/flowedit/data/BCSS_PATCHES/images/TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/tissue_masks/TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/nuclei_masks/TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
       "old_prompt": "H&E stained breast cancer histopathology showing scattered invasive tumor nests in abundant stroma with small necrotic/debris foci and mild lymphocytic infiltrate; tumor burden is low.",
       "new_prompt": "Increase the invasive tumor burden moderately by expanding irregular tumor nests into adjacent stromal tissue while preserving the existing necrotic foci and lymphocytic infiltrate.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -29,10 +136,26 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 0,
-      "tags": ["hard", "fragmented_tumor", "boundary_rich", "necrosis_present", "immune_present"],
-      "selection_metrics": {"tumor_fraction": 0.124, "stroma_fraction": 0.842, "necrosis_fraction": 0.013, "immune_fraction": 0.017, "tumor_components": 29},
+      "tags": [
+        "hard",
+        "fragmented_tumor",
+        "boundary_rich",
+        "necrosis_present",
+        "immune_present"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.124,
+        "stroma_fraction": 0.842,
+        "necrosis_fraction": 0.013,
+        "immune_fraction": 0.017,
+        "tumor_components": 29
+      },
       "status": "todo",
-      "notes": "Many small tumor components make contour placement and projection selection intentionally difficult."
+      "notes": "Many small tumor components make contour placement and projection selection intentionally difficult.",
+      "instruction": "Moderately increase invasive tumor burden by expanding irregular tumor nests into adjacent stroma; preserve necrosis/debris and lymphocytic infiltrate.",
+      "source_image_relative": "BCSS_PATCHES/images/TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
+      "source_tissue_mask_relative": "BCSS_PATCHES/tissue_masks/TCGA-E2-A1LL_x5783_y22777_py512_px0.png",
+      "source_nuclei_mask_relative": "BCSS_PATCHES/nuclei_masks/TCGA-E2-A1LL_x5783_y22777_py512_px0.png"
     },
     {
       "case_id": "BCSS_necrosis_res_hard_001",
@@ -40,10 +163,12 @@
       "profile": "BCSS",
       "primitive_group": "necrosis",
       "primitive": "necrosis_resolution",
-      "expected_primitives": ["necrosis_resolution"],
-      "source_image": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\images\\TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\nuclei_masks\\TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+      "expected_primitives": [
+        "necrosis_resolution"
+      ],
+      "source_image": "/data/wqx/flowedit/data/BCSS_PATCHES/images/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/tissue_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/nuclei_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
       "old_prompt": "H&E stained breast cancer histopathology with sparse tumor islands embedded in extensive necrosis/debris and only a small amount of stroma.",
       "new_prompt": "Resolve most of the necrosis/debris and replace it with viable stromal tissue, without increasing the tumor burden.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -51,10 +176,24 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 1,
-      "tags": ["hard", "extensive_necrosis", "low_stroma", "area_control"],
-      "selection_metrics": {"tumor_fraction": 0.096, "stroma_fraction": 0.047, "necrosis_fraction": 0.803, "tumor_components": 19},
+      "tags": [
+        "hard",
+        "extensive_necrosis",
+        "low_stroma",
+        "area_control"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.096,
+        "stroma_fraction": 0.047,
+        "necrosis_fraction": 0.803,
+        "tumor_components": 19
+      },
       "status": "todo",
-      "notes": "Large necrosis-to-stroma rewrite should expose backfill and area-control failures."
+      "notes": "Large necrosis-to-stroma rewrite should expose backfill and area-control failures.",
+      "instruction": "Resolve most necrosis/debris and replace it with viable stroma; keep tumor burden unchanged.",
+      "source_image_relative": "BCSS_PATCHES/images/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+      "source_tissue_mask_relative": "BCSS_PATCHES/tissue_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+      "source_nuclei_mask_relative": "BCSS_PATCHES/nuclei_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png"
     },
     {
       "case_id": "BCSS_immune_dec_hard_001",
@@ -62,10 +201,12 @@
       "profile": "BCSS",
       "primitive_group": "immune",
       "primitive": "immune_infiltration_decrease",
-      "expected_primitives": ["immune_infiltration_decrease"],
-      "source_image": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\images\\TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\nuclei_masks\\TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+      "expected_primitives": [
+        "immune_infiltration_decrease"
+      ],
+      "source_image": "/data/wqx/flowedit/data/BCSS_PATCHES/images/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/tissue_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/nuclei_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
       "old_prompt": "H&E stained breast cancer histopathology with tumor nests surrounded by dense lymphocytic immune infiltrate, sparse stroma, and visible blood vessel tissue.",
       "new_prompt": "Decrease the lymphocytic immune infiltrate substantially and replace it with stromal tissue, keeping tumor burden approximately unchanged.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -73,9 +214,23 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 2,
-      "tags": ["hard", "immune_dominant", "blood_vessel_present", "replacement"],
-      "selection_metrics": {"tumor_fraction": 0.116, "stroma_fraction": 0.118, "immune_fraction": 0.646, "tumor_components": 14},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "immune_dominant",
+        "blood_vessel_present",
+        "replacement"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.116,
+        "stroma_fraction": 0.118,
+        "immune_fraction": 0.646,
+        "tumor_components": 14
+      },
+      "status": "todo",
+      "instruction": "Substantially decrease lymphocytic immune infiltrate and replace it with stroma; keep tumor burden stable.",
+      "source_image_relative": "BCSS_PATCHES/images/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+      "source_tissue_mask_relative": "BCSS_PATCHES/tissue_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+      "source_nuclei_mask_relative": "BCSS_PATCHES/nuclei_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png"
     },
     {
       "case_id": "BCSS_stroma_inc_hard_001",
@@ -83,10 +238,12 @@
       "profile": "BCSS",
       "primitive_group": "stroma",
       "primitive": "stromal_desmoplasia",
-      "expected_primitives": ["stromal_desmoplasia"],
-      "source_image": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\images\\TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\tissue_masks\\TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES\\nuclei_masks\\TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
+      "expected_primitives": [
+        "stromal_desmoplasia"
+      ],
+      "source_image": "/data/wqx/flowedit/data/BCSS_PATCHES/images/TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/tissue_masks/TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/nuclei_masks/TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
       "old_prompt": "H&E stained breast cancer histopathology with fragmented tumor, stromal tissue, focal necrosis/debris, and prominent lymphocytic infiltrate.",
       "new_prompt": "Increase desmoplastic stromal response around the tumor nests while keeping the tumor burden and necrosis approximately stable.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -94,9 +251,25 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 3,
-      "tags": ["hard", "mixed_labels", "immune_present", "necrosis_present", "peritumoral"],
-      "selection_metrics": {"tumor_fraction": 0.173, "stroma_fraction": 0.644, "necrosis_fraction": 0.005, "immune_fraction": 0.17, "tumor_components": 21},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "mixed_labels",
+        "immune_present",
+        "necrosis_present",
+        "peritumoral"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.173,
+        "stroma_fraction": 0.644,
+        "necrosis_fraction": 0.005,
+        "immune_fraction": 0.17,
+        "tumor_components": 21
+      },
+      "status": "todo",
+      "instruction": "Increase desmoplastic stromal response around the tumor nests; keep tumor burden and necrosis stable.",
+      "source_image_relative": "BCSS_PATCHES/images/TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
+      "source_tissue_mask_relative": "BCSS_PATCHES/tissue_masks/TCGA-E2-A1LL_x5783_y22777_py768_px512.png",
+      "source_nuclei_mask_relative": "BCSS_PATCHES/nuclei_masks/TCGA-E2-A1LL_x5783_y22777_py768_px512.png"
     },
     {
       "case_id": "GLAS_fine_upgrade_hard_001",
@@ -104,10 +277,12 @@
       "profile": "GlaS",
       "primitive_group": "fine_transition",
       "primitive": "grade_upgrade",
-      "expected_primitives": ["grade_upgrade"],
-      "source_image": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\images\\train_19_py512_px0.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\tissue_masks\\train_19_py512_px0.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\nuclei_masks\\train_19_py512_px0.png",
+      "expected_primitives": [
+        "grade_upgrade"
+      ],
+      "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_19_py512_px0.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_19_py512_px0.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_19_py512_px0.png",
       "old_prompt": "H&E stained colorectal histopathology showing moderately differentiated malignant glands scattered in abundant stroma.",
       "new_prompt": "Upgrade the malignant glands to poorly differentiated high grade carcinoma in-place, without changing the total gland area.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -115,10 +290,23 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 4,
-      "tags": ["hard", "fine_transition", "small_gland_area", "in_place"],
-      "selection_metrics": {"tumor_fraction": 0.125, "stroma_fraction": 0.875, "tumor_components": 4},
+      "tags": [
+        "hard",
+        "fine_transition",
+        "small_gland_area",
+        "in_place"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.125,
+        "stroma_fraction": 0.875,
+        "tumor_components": 4
+      },
       "status": "todo",
-      "notes": "Tests grade upgrade versus generic tumor burden increase confusion."
+      "notes": "Tests grade upgrade versus generic tumor burden increase confusion.",
+      "instruction": "Upgrade the malignant glands from moderately differentiated to poorly differentiated high grade carcinoma in-place; do not change total gland area.",
+      "source_image_relative": "GlaS_PATCHES/images/train_19_py512_px0.png",
+      "source_tissue_mask_relative": "GlaS_PATCHES/tissue_masks/train_19_py512_px0.png",
+      "source_nuclei_mask_relative": "GlaS_PATCHES/nuclei_masks/train_19_py512_px0.png"
     },
     {
       "case_id": "GLAS_adenoma_to_carcinoma_hard_001",
@@ -126,10 +314,12 @@
       "profile": "GlaS",
       "primitive_group": "fine_transition",
       "primitive": "adenoma_to_carcinoma",
-      "expected_primitives": ["adenoma_to_carcinoma"],
-      "source_image": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\images\\train_52_py256_px0.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\tissue_masks\\train_52_py256_px0.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\nuclei_masks\\train_52_py256_px0.png",
+      "expected_primitives": [
+        "adenoma_to_carcinoma"
+      ],
+      "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_52_py256_px0.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_52_py256_px0.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_52_py256_px0.png",
       "old_prompt": "H&E stained colorectal histopathology with adenomatous glands occupying a small fraction of the patch and surrounded by stroma.",
       "new_prompt": "Transform the adenomatous glands into moderately differentiated carcinoma in-place, preserving the gland boundaries.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -137,9 +327,22 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 5,
-      "tags": ["hard", "fine_transition", "adenomatous", "boundary_preservation"],
-      "selection_metrics": {"tumor_fraction": 0.188, "stroma_fraction": 0.812, "tumor_components": 4},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "fine_transition",
+        "adenomatous",
+        "boundary_preservation"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.188,
+        "stroma_fraction": 0.812,
+        "tumor_components": 4
+      },
+      "status": "todo",
+      "instruction": "Transform adenomatous glands into moderately differentiated carcinoma in-place while preserving the gland boundaries.",
+      "source_image_relative": "GlaS_PATCHES/images/train_52_py256_px0.png",
+      "source_tissue_mask_relative": "GlaS_PATCHES/tissue_masks/train_52_py256_px0.png",
+      "source_nuclei_mask_relative": "GlaS_PATCHES/nuclei_masks/train_52_py256_px0.png"
     },
     {
       "case_id": "GLAS_tb_inc_hard_001",
@@ -147,10 +350,12 @@
       "profile": "GlaS",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_increase",
-      "expected_primitives": ["tumor_burden_increase"],
-      "source_image": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\images\\train_68_py256_px256.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\tissue_masks\\train_68_py256_px256.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\nuclei_masks\\train_68_py256_px256.png",
+      "expected_primitives": [
+        "tumor_burden_increase"
+      ],
+      "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_68_py256_px256.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_68_py256_px256.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_68_py256_px256.png",
       "old_prompt": "H&E stained colorectal histopathology with multiple fragmented poorly differentiated glands in abundant stroma.",
       "new_prompt": "Increase the poorly differentiated tumor gland burden moderately by expanding the existing irregular glands into adjacent stroma.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -158,9 +363,21 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 6,
-      "tags": ["hard", "fragmented_glands", "boundary_rich"],
-      "selection_metrics": {"tumor_fraction": 0.191, "stroma_fraction": 0.809, "tumor_components": 6},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "fragmented_glands",
+        "boundary_rich"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.191,
+        "stroma_fraction": 0.809,
+        "tumor_components": 6
+      },
+      "status": "todo",
+      "instruction": "Moderately increase poorly differentiated tumor gland burden by expanding existing irregular glands into adjacent stroma.",
+      "source_image_relative": "GlaS_PATCHES/images/train_68_py256_px256.png",
+      "source_tissue_mask_relative": "GlaS_PATCHES/tissue_masks/train_68_py256_px256.png",
+      "source_nuclei_mask_relative": "GlaS_PATCHES/nuclei_masks/train_68_py256_px256.png"
     },
     {
       "case_id": "GLAS_tb_dec_hard_001",
@@ -168,10 +385,12 @@
       "profile": "GlaS",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_decrease",
-      "expected_primitives": ["tumor_burden_decrease"],
-      "source_image": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\images\\testB_19_py256_px1024.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\tissue_masks\\testB_19_py256_px1024.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES\\nuclei_masks\\testB_19_py256_px1024.png",
+      "expected_primitives": [
+        "tumor_burden_decrease"
+      ],
+      "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_19_py256_px1024.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_19_py256_px1024.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_19_py256_px1024.png",
       "old_prompt": "H&E stained colorectal histopathology with scattered poorly differentiated glands in stroma.",
       "new_prompt": "Decrease the poorly differentiated tumor gland burden by replacing a portion of the gland area with stroma.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -179,9 +398,21 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 7,
-      "tags": ["hard", "small_components", "tumor_regression"],
-      "selection_metrics": {"tumor_fraction": 0.119, "stroma_fraction": 0.881, "tumor_components": 3},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "small_components",
+        "tumor_regression"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.119,
+        "stroma_fraction": 0.881,
+        "tumor_components": 3
+      },
+      "status": "todo",
+      "instruction": "Decrease poorly differentiated tumor gland burden by replacing part of the gland area with stroma.",
+      "source_image_relative": "GlaS_PATCHES/images/testB_19_py256_px1024.png",
+      "source_tissue_mask_relative": "GlaS_PATCHES/tissue_masks/testB_19_py256_px1024.png",
+      "source_nuclei_mask_relative": "GlaS_PATCHES/nuclei_masks/testB_19_py256_px1024.png"
     },
     {
       "case_id": "IGNITE_necrosis_app_hard_001",
@@ -189,10 +420,12 @@
       "profile": "IGNITE",
       "primitive_group": "necrosis",
       "primitive": "necrosis_appearance",
-      "expected_primitives": ["necrosis_appearance"],
-      "source_image": "D:\\WQX\\datasets\\IGNITE_PATCHES\\images\\patient80_he_roi1_py1792_px2816.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\tissue_masks\\patient80_he_roi1_py1792_px2816.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\nuclei_masks\\patient80_he_roi1_py1792_px2816.png",
+      "expected_primitives": [
+        "necrosis_appearance"
+      ],
+      "source_image": "/data/wqx/flowedit/data/IGNITE_PATCHES/images/patient80_he_roi1_py1792_px2816.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/tissue_masks/patient80_he_roi1_py1792_px2816.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/nuclei_masks/patient80_he_roi1_py1792_px2816.png",
       "old_prompt": "H&E stained lung squamous cell carcinoma with low tumor burden, abundant stroma, focal necrosis, mild immune infiltrate, normal epithelium, and patch-edge background.",
       "new_prompt": "Add moderate intratumoral necrosis within the existing tumor while preserving surrounding stroma and immune infiltrate.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -200,9 +433,25 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 8,
-      "tags": ["hard", "background_heavy", "mixed_labels", "low_tumor", "necrosis_present"],
-      "selection_metrics": {"tumor_fraction": 0.112, "stroma_fraction": 0.668, "necrosis_fraction": 0.04, "immune_fraction": 0.029, "background_fraction": 0.124},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "background_heavy",
+        "mixed_labels",
+        "low_tumor",
+        "necrosis_present"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.112,
+        "stroma_fraction": 0.668,
+        "necrosis_fraction": 0.04,
+        "immune_fraction": 0.029,
+        "background_fraction": 0.124
+      },
+      "status": "todo",
+      "instruction": "Add moderate intratumoral necrosis within the existing tumor; preserve surrounding stroma and immune infiltrate.",
+      "source_image_relative": "IGNITE_PATCHES/images/patient80_he_roi1_py1792_px2816.png",
+      "source_tissue_mask_relative": "IGNITE_PATCHES/tissue_masks/patient80_he_roi1_py1792_px2816.png",
+      "source_nuclei_mask_relative": "IGNITE_PATCHES/nuclei_masks/patient80_he_roi1_py1792_px2816.png"
     },
     {
       "case_id": "IGNITE_immune_inc_hard_001",
@@ -210,10 +459,12 @@
       "profile": "IGNITE",
       "primitive_group": "immune",
       "primitive": "stromal_immune_infiltration",
-      "expected_primitives": ["stromal_immune_infiltration"],
-      "source_image": "D:\\WQX\\datasets\\IGNITE_PATCHES\\images\\patient42_he_roi3_py2304_px2048.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\tissue_masks\\patient42_he_roi3_py2304_px2048.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\nuclei_masks\\patient42_he_roi3_py2304_px2048.png",
+      "expected_primitives": [
+        "stromal_immune_infiltration"
+      ],
+      "source_image": "/data/wqx/flowedit/data/IGNITE_PATCHES/images/patient42_he_roi3_py2304_px2048.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/tissue_masks/patient42_he_roi3_py2304_px2048.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/nuclei_masks/patient42_he_roi3_py2304_px2048.png",
       "old_prompt": "H&E stained lung adenocarcinoma biopsy with tumor, stroma, necrosis, immune infiltrate, other tissue, and substantial background at the patch edge.",
       "new_prompt": "Increase stromal immune infiltration around the tumor and necrotic regions while keeping tumor burden stable.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -221,9 +472,25 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 9,
-      "tags": ["hard", "background_heavy", "immune_present", "necrosis_present", "biopsy"],
-      "selection_metrics": {"tumor_fraction": 0.204, "stroma_fraction": 0.141, "necrosis_fraction": 0.152, "immune_fraction": 0.148, "background_fraction": 0.332},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "background_heavy",
+        "immune_present",
+        "necrosis_present",
+        "biopsy"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.204,
+        "stroma_fraction": 0.141,
+        "necrosis_fraction": 0.152,
+        "immune_fraction": 0.148,
+        "background_fraction": 0.332
+      },
+      "status": "todo",
+      "instruction": "Increase stromal immune infiltration around tumor and necrotic regions; keep tumor burden stable.",
+      "source_image_relative": "IGNITE_PATCHES/images/patient42_he_roi3_py2304_px2048.png",
+      "source_tissue_mask_relative": "IGNITE_PATCHES/tissue_masks/patient42_he_roi3_py2304_px2048.png",
+      "source_nuclei_mask_relative": "IGNITE_PATCHES/nuclei_masks/patient42_he_roi3_py2304_px2048.png"
     },
     {
       "case_id": "IGNITE_tb_dec_hard_001",
@@ -231,10 +498,12 @@
       "profile": "IGNITE",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_decrease",
-      "expected_primitives": ["tumor_burden_decrease"],
-      "source_image": "D:\\WQX\\datasets\\IGNITE_PATCHES\\images\\patient3_he_roi2_py1792_px1280.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\tissue_masks\\patient3_he_roi2_py1792_px1280.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\nuclei_masks\\patient3_he_roi2_py1792_px1280.png",
+      "expected_primitives": [
+        "tumor_burden_decrease"
+      ],
+      "source_image": "/data/wqx/flowedit/data/IGNITE_PATCHES/images/patient3_he_roi2_py1792_px1280.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/tissue_masks/patient3_he_roi2_py1792_px1280.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/nuclei_masks/patient3_he_roi2_py1792_px1280.png",
       "old_prompt": "H&E stained lung adenocarcinoma with high tumor burden, stromal tissue, focal necrosis, immune infiltrate, and background near the patch margin.",
       "new_prompt": "Decrease tumor burden moderately by replacing selected peripheral tumor regions with stroma, while preserving necrosis and immune infiltrate.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -242,9 +511,25 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 10,
-      "tags": ["hard", "large_tumor", "background_heavy", "mixed_labels", "tumor_regression"],
-      "selection_metrics": {"tumor_fraction": 0.456, "stroma_fraction": 0.217, "necrosis_fraction": 0.027, "immune_fraction": 0.066, "background_fraction": 0.23},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "large_tumor",
+        "background_heavy",
+        "mixed_labels",
+        "tumor_regression"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.456,
+        "stroma_fraction": 0.217,
+        "necrosis_fraction": 0.027,
+        "immune_fraction": 0.066,
+        "background_fraction": 0.23
+      },
+      "status": "todo",
+      "instruction": "Moderately decrease tumor burden by replacing selected peripheral tumor regions with stroma; preserve necrosis and immune infiltrate.",
+      "source_image_relative": "IGNITE_PATCHES/images/patient3_he_roi2_py1792_px1280.png",
+      "source_tissue_mask_relative": "IGNITE_PATCHES/tissue_masks/patient3_he_roi2_py1792_px1280.png",
+      "source_nuclei_mask_relative": "IGNITE_PATCHES/nuclei_masks/patient3_he_roi2_py1792_px1280.png"
     },
     {
       "case_id": "IGNITE_multi_hard_001",
@@ -252,10 +537,13 @@
       "profile": "IGNITE",
       "primitive_group": "multi_primitive",
       "primitive": "tumor_burden_increase",
-      "expected_primitives": ["tumor_burden_increase", "immune_infiltration_decrease"],
-      "source_image": "D:\\WQX\\datasets\\IGNITE_PATCHES\\images\\patient11_he_roi3_py768_px1280.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\tissue_masks\\patient11_he_roi3_py768_px1280.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\IGNITE_PATCHES\\nuclei_masks\\patient11_he_roi3_py768_px1280.png",
+      "expected_primitives": [
+        "tumor_burden_increase",
+        "immune_infiltration_decrease"
+      ],
+      "source_image": "/data/wqx/flowedit/data/IGNITE_PATCHES/images/patient11_he_roi3_py768_px1280.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/tissue_masks/patient11_he_roi3_py768_px1280.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/nuclei_masks/patient11_he_roi3_py768_px1280.png",
       "old_prompt": "H&E stained lung adenocarcinoma with moderate tumor burden, necrosis, dense immune infiltrate, sparse stroma, and background near the edge.",
       "new_prompt": "Increase tumor burden into the immune-rich stroma and decrease the immune infiltrate, while leaving the existing necrosis approximately unchanged.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -263,10 +551,26 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 11,
-      "tags": ["hard", "multi_primitive", "immune_rich", "background_heavy", "unsupported_defer_possible"],
-      "selection_metrics": {"tumor_fraction": 0.3, "stroma_fraction": 0.09, "necrosis_fraction": 0.032, "immune_fraction": 0.242, "background_fraction": 0.335},
+      "tags": [
+        "hard",
+        "multi_primitive",
+        "immune_rich",
+        "background_heavy",
+        "unsupported_defer_possible"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.3,
+        "stroma_fraction": 0.09,
+        "necrosis_fraction": 0.032,
+        "immune_fraction": 0.242,
+        "background_fraction": 0.335
+      },
       "status": "todo",
-      "notes": "Planner may defer immune decrease when tumor increase is present; keep expected list to catch ordering/defer behavior."
+      "notes": "Planner may defer immune decrease when tumor increase is present; keep expected list to catch ordering/defer behavior.",
+      "instruction": "Increase tumor burden into immune-rich stroma and decrease immune infiltrate; leave existing necrosis unchanged.",
+      "source_image_relative": "IGNITE_PATCHES/images/patient11_he_roi3_py768_px1280.png",
+      "source_tissue_mask_relative": "IGNITE_PATCHES/tissue_masks/patient11_he_roi3_py768_px1280.png",
+      "source_nuclei_mask_relative": "IGNITE_PATCHES/nuclei_masks/patient11_he_roi3_py768_px1280.png"
     },
     {
       "case_id": "ORCA_tb_dec_hard_001",
@@ -274,10 +578,12 @@
       "profile": "ORCA",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_decrease",
-      "expected_primitives": ["tumor_burden_decrease"],
-      "source_image": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\images\\TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\tissue_masks\\TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\nuclei_masks\\TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
+      "expected_primitives": [
+        "tumor_burden_decrease"
+      ],
+      "source_image": "/data/wqx/flowedit/data/ORCA_PATCHES/images/TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/tissue_masks/TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/nuclei_masks/TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
       "old_prompt": "H&E stained oral squamous cell carcinoma with carcinoma occupying much of the tissue region, mixed with non-carcinoma tissue and substantial non-tissue background.",
       "new_prompt": "Decrease carcinoma burden by replacing peripheral carcinoma with non-carcinoma tissue, without writing into the background.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -285,9 +591,24 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 12,
-      "tags": ["hard", "coarse_labels", "background_heavy", "boundary_rich", "label_safety"],
-      "selection_metrics": {"tumor_fraction": 0.599, "other_tissue_fraction": 0.105, "background_fraction": 0.297, "tumor_boundary": 20076},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "coarse_labels",
+        "background_heavy",
+        "boundary_rich",
+        "label_safety"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.599,
+        "other_tissue_fraction": 0.105,
+        "background_fraction": 0.297,
+        "tumor_boundary": 20076
+      },
+      "status": "todo",
+      "instruction": "Decrease carcinoma burden by replacing peripheral carcinoma with non-carcinoma tissue; avoid background.",
+      "source_image_relative": "ORCA_PATCHES/images/TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
+      "source_tissue_mask_relative": "ORCA_PATCHES/tissue_masks/TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png",
+      "source_nuclei_mask_relative": "ORCA_PATCHES/nuclei_masks/TCGA-CN-6011-01Z-00-DX1.a3a73ffe-06b8-42ea-820b-9c2824d96585_1_py512_px1792.png"
     },
     {
       "case_id": "ORCA_tb_inc_hard_001",
@@ -295,10 +616,12 @@
       "profile": "ORCA",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_increase",
-      "expected_primitives": ["tumor_burden_increase"],
-      "source_image": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\images\\TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\tissue_masks\\TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\nuclei_masks\\TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
+      "expected_primitives": [
+        "tumor_burden_increase"
+      ],
+      "source_image": "/data/wqx/flowedit/data/ORCA_PATCHES/images/TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/tissue_masks/TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/nuclei_masks/TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
       "old_prompt": "H&E stained oral squamous cell carcinoma with carcinoma and a large amount of non-carcinoma tissue plus background at the patch margin.",
       "new_prompt": "Increase carcinoma burden moderately by expanding carcinoma into adjacent non-carcinoma tissue, avoiding the background.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -306,9 +629,24 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 13,
-      "tags": ["hard", "coarse_labels", "large_other_tissue", "background_heavy", "label_safety"],
-      "selection_metrics": {"tumor_fraction": 0.403, "other_tissue_fraction": 0.387, "background_fraction": 0.21, "tumor_boundary": 11963},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "coarse_labels",
+        "large_other_tissue",
+        "background_heavy",
+        "label_safety"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.403,
+        "other_tissue_fraction": 0.387,
+        "background_fraction": 0.21,
+        "tumor_boundary": 11963
+      },
+      "status": "todo",
+      "instruction": "Moderately increase carcinoma burden by expanding carcinoma into adjacent non-carcinoma tissue; avoid background.",
+      "source_image_relative": "ORCA_PATCHES/images/TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
+      "source_tissue_mask_relative": "ORCA_PATCHES/tissue_masks/TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png",
+      "source_nuclei_mask_relative": "ORCA_PATCHES/nuclei_masks/TCGA-CN-4731-01Z-00-DX1.07b0bf3b-77f3-4471-a63c-1afc54714a60_1_py1536_px2560.png"
     },
     {
       "case_id": "ORCA_tb_dec_hard_002",
@@ -316,10 +654,12 @@
       "profile": "ORCA",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_decrease",
-      "expected_primitives": ["tumor_burden_decrease"],
-      "source_image": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\images\\TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\tissue_masks\\TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\nuclei_masks\\TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
+      "expected_primitives": [
+        "tumor_burden_decrease"
+      ],
+      "source_image": "/data/wqx/flowedit/data/ORCA_PATCHES/images/TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/tissue_masks/TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/nuclei_masks/TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
       "old_prompt": "H&E stained oral squamous cell carcinoma with carcinoma, non-carcinoma tissue, and a large background portion.",
       "new_prompt": "Decrease carcinoma burden mildly by converting a boundary-rich portion of carcinoma to non-carcinoma tissue.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -327,9 +667,23 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 14,
-      "tags": ["hard", "coarse_labels", "background_heavy", "mild_decrease"],
-      "selection_metrics": {"tumor_fraction": 0.458, "other_tissue_fraction": 0.249, "background_fraction": 0.293, "tumor_boundary": 14342},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "coarse_labels",
+        "background_heavy",
+        "mild_decrease"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.458,
+        "other_tissue_fraction": 0.249,
+        "background_fraction": 0.293,
+        "tumor_boundary": 14342
+      },
+      "status": "todo",
+      "instruction": "Mildly decrease carcinoma burden by converting a boundary-rich portion of carcinoma to non-carcinoma tissue.",
+      "source_image_relative": "ORCA_PATCHES/images/TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
+      "source_tissue_mask_relative": "ORCA_PATCHES/tissue_masks/TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png",
+      "source_nuclei_mask_relative": "ORCA_PATCHES/nuclei_masks/TCGA-CN-4739-01Z-00-DX1.e50266c3-606e-4103-a029-021246d4d1df_0_py1280_px3328.png"
     },
     {
       "case_id": "ORCA_noop_hard_001",
@@ -338,9 +692,9 @@
       "primitive_group": "no_op",
       "primitive": "no_op",
       "expected_primitives": [],
-      "source_image": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\images\\TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\tissue_masks\\TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\ORCA\\ORCA_PATCHES\\nuclei_masks\\TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
+      "source_image": "/data/wqx/flowedit/data/ORCA_PATCHES/images/TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/tissue_masks/TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/ORCA_PATCHES/nuclei_masks/TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
       "old_prompt": "H&E stained oral squamous cell carcinoma with carcinoma and non-carcinoma tissue at 40x magnification.",
       "new_prompt": "H&E stained oral squamous cell carcinoma with carcinoma and non-carcinoma tissue at 40x magnification, described with slightly clearer wording.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -348,9 +702,23 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 15,
-      "tags": ["hard", "no_op", "parser_false_positive_check", "coarse_labels"],
-      "selection_metrics": {"tumor_fraction": 0.48, "other_tissue_fraction": 0.258, "background_fraction": 0.262, "tumor_boundary": 11330},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "no_op",
+        "parser_false_positive_check",
+        "coarse_labels"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.48,
+        "other_tissue_fraction": 0.258,
+        "background_fraction": 0.262,
+        "tumor_boundary": 11330
+      },
+      "status": "todo",
+      "instruction": "Do not change any tissue labels; keep carcinoma and non-carcinoma tissue unchanged.",
+      "source_image_relative": "ORCA_PATCHES/images/TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
+      "source_tissue_mask_relative": "ORCA_PATCHES/tissue_masks/TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png",
+      "source_nuclei_mask_relative": "ORCA_PATCHES/nuclei_masks/TCGA-CN-6016-01Z-00-DX1.737054ae-50f4-42c4-b79c-c462220b12f3_0_py512_px1536.png"
     },
     {
       "case_id": "PANDA_gleason_3to4_hard_001",
@@ -358,10 +726,12 @@
       "profile": "PANDA",
       "primitive_group": "fine_transition",
       "primitive": "gleason_upgrade_3to4",
-      "expected_primitives": ["gleason_upgrade_3to4"],
-      "source_image": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\images\\0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\tissue_masks\\0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\nuclei_masks\\0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
+      "expected_primitives": [
+        "gleason_upgrade_3to4"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
       "old_prompt": "H&E stained prostate biopsy with Gleason pattern 3 dominant tumor and a small Gleason pattern 4 component in abundant stroma.",
       "new_prompt": "Upgrade the Gleason pattern 3 tumor areas to Gleason pattern 4 in-place, without increasing total tumor burden.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -369,9 +739,25 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 16,
-      "tags": ["hard", "fine_transition", "mixed_gleason", "in_place", "grade_vs_burden"],
-      "selection_metrics": {"tumor_fraction": 0.157, "stroma_fraction": 0.843, "gleason3_fraction": 0.138, "gleason4_fraction": 0.019, "tumor_components": 12},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "fine_transition",
+        "mixed_gleason",
+        "in_place",
+        "grade_vs_burden"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.157,
+        "stroma_fraction": 0.843,
+        "gleason3_fraction": 0.138,
+        "gleason4_fraction": 0.019,
+        "tumor_components": 12
+      },
+      "status": "todo",
+      "instruction": "Upgrade prostate tumor from Gleason pattern 3 to Gleason pattern 4 in-place; keep total tumor burden unchanged.",
+      "source_image_relative": "PANDA_PATCHES/images/0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
+      "source_tissue_mask_relative": "PANDA_PATCHES/tissue_masks/0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png",
+      "source_nuclei_mask_relative": "PANDA_PATCHES/nuclei_masks/0c6c14ee4d822472a576f1f6650d79f0_y19200_x2816_py256_px512.png"
     },
     {
       "case_id": "PANDA_gleason_4to5_hard_001",
@@ -379,10 +765,12 @@
       "profile": "PANDA",
       "primitive_group": "fine_transition",
       "primitive": "gleason_upgrade_4to5",
-      "expected_primitives": ["gleason_upgrade_4to5"],
-      "source_image": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\images\\09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\tissue_masks\\09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\nuclei_masks\\09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+      "expected_primitives": [
+        "gleason_upgrade_4to5"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
       "old_prompt": "H&E stained prostate biopsy with mixed Gleason pattern 4 and Gleason pattern 5 tumor in abundant stroma.",
       "new_prompt": "Upgrade the Gleason pattern 4 tumor component to Gleason pattern 5 in-place while preserving overall tumor area.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -390,9 +778,25 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 17,
-      "tags": ["hard", "fine_transition", "mixed_gleason", "high_grade", "in_place"],
-      "selection_metrics": {"tumor_fraction": 0.169, "stroma_fraction": 0.831, "gleason4_fraction": 0.03, "gleason5_fraction": 0.14, "tumor_components": 14},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "fine_transition",
+        "mixed_gleason",
+        "high_grade",
+        "in_place"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.169,
+        "stroma_fraction": 0.831,
+        "gleason4_fraction": 0.03,
+        "gleason5_fraction": 0.14,
+        "tumor_components": 14
+      },
+      "status": "todo",
+      "instruction": "Upgrade prostate tumor from Gleason pattern 4 to Gleason pattern 5 in-place; preserve overall tumor area.",
+      "source_image_relative": "PANDA_PATCHES/images/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+      "source_tissue_mask_relative": "PANDA_PATCHES/tissue_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+      "source_nuclei_mask_relative": "PANDA_PATCHES/nuclei_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png"
     },
     {
       "case_id": "PANDA_tb_inc_hard_001",
@@ -400,10 +804,12 @@
       "profile": "PANDA",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_increase",
-      "expected_primitives": ["tumor_burden_increase"],
-      "source_image": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\images\\10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\tissue_masks\\10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\nuclei_masks\\10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
+      "expected_primitives": [
+        "tumor_burden_increase"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
       "old_prompt": "H&E stained prostate biopsy with fragmented Gleason pattern 4 tumor occupying a modest fraction of the patch and abundant stroma.",
       "new_prompt": "Increase Gleason pattern 4 tumor burden moderately by expanding tumor into adjacent stroma, without changing the Gleason grade.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -411,9 +817,22 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 18,
-      "tags": ["hard", "fragmented_tumor", "grade_stable", "boundary_rich"],
-      "selection_metrics": {"tumor_fraction": 0.181, "stroma_fraction": 0.819, "tumor_components": 17},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "fragmented_tumor",
+        "grade_stable",
+        "boundary_rich"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.181,
+        "stroma_fraction": 0.819,
+        "tumor_components": 17
+      },
+      "status": "todo",
+      "instruction": "Moderately increase Gleason pattern 4 tumor burden by expanding tumor into adjacent stroma; keep Gleason grade unchanged.",
+      "source_image_relative": "PANDA_PATCHES/images/10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
+      "source_tissue_mask_relative": "PANDA_PATCHES/tissue_masks/10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png",
+      "source_nuclei_mask_relative": "PANDA_PATCHES/nuclei_masks/10dd67ea8e8fe3edbceeabfff19d1934_y1792_x10752_py2304_px1280.png"
     },
     {
       "case_id": "PANDA_benign_to_gleason3_hard_001",
@@ -421,10 +840,12 @@
       "profile": "PANDA",
       "primitive_group": "fine_transition",
       "primitive": "benign_to_gleason3",
-      "expected_primitives": ["benign_to_gleason3"],
-      "source_image": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\images\\10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\tissue_masks\\10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PANDA\\PANDA_PATCHES\\nuclei_masks\\10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
+      "expected_primitives": [
+        "benign_to_gleason3"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
       "old_prompt": "H&E stained prostate biopsy with benign normal epithelium, stroma, and a small amount of Gleason pattern 3 and 4 tumor.",
       "new_prompt": "Transform a focal benign normal epithelial region into low grade malignant Gleason pattern 3 tumor.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -432,9 +853,24 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 19,
-      "tags": ["hard", "fine_transition", "benign_epithelium_present", "source_fine_id_specific"],
-      "selection_metrics": {"tumor_fraction": 0.12, "stroma_fraction": 0.615, "normal_epithelium_fraction": 0.263, "gleason3_fraction": 0.017, "gleason4_fraction": 0.103},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "fine_transition",
+        "benign_epithelium_present",
+        "source_fine_id_specific"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.12,
+        "stroma_fraction": 0.615,
+        "normal_epithelium_fraction": 0.263,
+        "gleason3_fraction": 0.017,
+        "gleason4_fraction": 0.103
+      },
+      "status": "todo",
+      "instruction": "Transform focal benign normal epithelium into Gleason pattern 3 low-grade malignant tumor.",
+      "source_image_relative": "PANDA_PATCHES/images/10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
+      "source_tissue_mask_relative": "PANDA_PATCHES/tissue_masks/10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png",
+      "source_nuclei_mask_relative": "PANDA_PATCHES/nuclei_masks/10bf7780fc6540d6f79eae2aa2e5d4b9_y512_x9728_py2304_px2048.png"
     },
     {
       "case_id": "PUMA_tb_inc_hard_001",
@@ -442,10 +878,12 @@
       "profile": "PUMA",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_increase",
-      "expected_primitives": ["tumor_burden_increase"],
-      "source_image": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\images\\training_set_metastatic_roi_047_py512_px512.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\tissue_masks\\training_set_metastatic_roi_047_py512_px512.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\nuclei_masks\\training_set_metastatic_roi_047_py512_px512.png",
+      "expected_primitives": [
+        "tumor_burden_increase"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PUMA_PATCHES/images/training_set_metastatic_roi_047_py512_px512.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/tissue_masks/training_set_metastatic_roi_047_py512_px512.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/nuclei_masks/training_set_metastatic_roi_047_py512_px512.png",
       "old_prompt": "H&E stained metastatic melanoma with many fragmented tumor nests in abundant stroma.",
       "new_prompt": "Increase melanoma tumor burden moderately by expanding the fragmented tumor nests into adjacent stroma.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -453,9 +891,22 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 20,
-      "tags": ["hard", "fragmented_tumor", "boundary_rich", "metastatic"],
-      "selection_metrics": {"tumor_fraction": 0.184, "stroma_fraction": 0.816, "tumor_components": 16},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "fragmented_tumor",
+        "boundary_rich",
+        "metastatic"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.184,
+        "stroma_fraction": 0.816,
+        "tumor_components": 16
+      },
+      "status": "todo",
+      "instruction": "Moderately increase melanoma tumor burden by expanding fragmented tumor nests into adjacent stroma.",
+      "source_image_relative": "PUMA_PATCHES/images/training_set_metastatic_roi_047_py512_px512.png",
+      "source_tissue_mask_relative": "PUMA_PATCHES/tissue_masks/training_set_metastatic_roi_047_py512_px512.png",
+      "source_nuclei_mask_relative": "PUMA_PATCHES/nuclei_masks/training_set_metastatic_roi_047_py512_px512.png"
     },
     {
       "case_id": "PUMA_necrosis_app_hard_001",
@@ -463,10 +914,12 @@
       "profile": "PUMA",
       "primitive_group": "necrosis",
       "primitive": "necrosis_appearance",
-      "expected_primitives": ["necrosis_appearance"],
-      "source_image": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\images\\training_set_primary_roi_052_py512_px256.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\tissue_masks\\training_set_primary_roi_052_py512_px256.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\nuclei_masks\\training_set_primary_roi_052_py512_px256.png",
+      "expected_primitives": [
+        "necrosis_appearance"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PUMA_PATCHES/images/training_set_primary_roi_052_py512_px256.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/tissue_masks/training_set_primary_roi_052_py512_px256.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/nuclei_masks/training_set_primary_roi_052_py512_px256.png",
       "old_prompt": "H&E stained primary melanoma with tumor, stroma, focal necrosis, and blood vessel tissue.",
       "new_prompt": "Add focal intratumoral necrosis within the melanoma tumor while preserving nearby stroma and blood vessels.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -474,9 +927,24 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 21,
-      "tags": ["hard", "necrosis_present", "blood_vessel_present", "primary", "label_safety"],
-      "selection_metrics": {"tumor_fraction": 0.281, "stroma_fraction": 0.638, "necrosis_fraction": 0.035, "blood_vessel_fraction": 0.046},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "necrosis_present",
+        "blood_vessel_present",
+        "primary",
+        "label_safety"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.281,
+        "stroma_fraction": 0.638,
+        "necrosis_fraction": 0.035,
+        "blood_vessel_fraction": 0.046
+      },
+      "status": "todo",
+      "instruction": "Add focal intratumoral necrosis within the melanoma tumor; preserve nearby stroma and blood vessels.",
+      "source_image_relative": "PUMA_PATCHES/images/training_set_primary_roi_052_py512_px256.png",
+      "source_tissue_mask_relative": "PUMA_PATCHES/tissue_masks/training_set_primary_roi_052_py512_px256.png",
+      "source_nuclei_mask_relative": "PUMA_PATCHES/nuclei_masks/training_set_primary_roi_052_py512_px256.png"
     },
     {
       "case_id": "PUMA_tb_dec_hard_001",
@@ -484,10 +952,12 @@
       "profile": "PUMA",
       "primitive_group": "tumor_burden",
       "primitive": "tumor_burden_decrease",
-      "expected_primitives": ["tumor_burden_decrease"],
-      "source_image": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\images\\training_set_metastatic_roi_008_py0_px256.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\tissue_masks\\training_set_metastatic_roi_008_py0_px256.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\nuclei_masks\\training_set_metastatic_roi_008_py0_px256.png",
+      "expected_primitives": [
+        "tumor_burden_decrease"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PUMA_PATCHES/images/training_set_metastatic_roi_008_py0_px256.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/tissue_masks/training_set_metastatic_roi_008_py0_px256.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/nuclei_masks/training_set_metastatic_roi_008_py0_px256.png",
       "old_prompt": "H&E stained metastatic melanoma with high tumor burden, necrosis, and substantial background at the patch edge.",
       "new_prompt": "Decrease melanoma tumor burden significantly by replacing peripheral tumor with stroma-like tissue, preserving the existing necrosis and avoiding background.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -495,10 +965,24 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 22,
-      "tags": ["hard", "high_tumor", "necrosis_present", "background_heavy", "possible_applicability_edge"],
-      "selection_metrics": {"tumor_fraction": 0.537, "necrosis_fraction": 0.206, "background_fraction": 0.257},
+      "tags": [
+        "hard",
+        "high_tumor",
+        "necrosis_present",
+        "background_heavy",
+        "possible_applicability_edge"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.537,
+        "necrosis_fraction": 0.206,
+        "background_fraction": 0.257
+      },
       "status": "todo",
-      "notes": "Selected to stress tumor decrease when stroma is absent or very limited in the visible mask."
+      "notes": "Selected to stress tumor decrease when stroma is absent or very limited in the visible mask.",
+      "instruction": "Significantly decrease melanoma tumor burden by replacing peripheral tumor with stroma-like tissue; preserve necrosis and avoid background.",
+      "source_image_relative": "PUMA_PATCHES/images/training_set_metastatic_roi_008_py0_px256.png",
+      "source_tissue_mask_relative": "PUMA_PATCHES/tissue_masks/training_set_metastatic_roi_008_py0_px256.png",
+      "source_nuclei_mask_relative": "PUMA_PATCHES/nuclei_masks/training_set_metastatic_roi_008_py0_px256.png"
     },
     {
       "case_id": "PUMA_stroma_inc_hard_001",
@@ -506,10 +990,12 @@
       "profile": "PUMA",
       "primitive_group": "stroma",
       "primitive": "stromal_desmoplasia",
-      "expected_primitives": ["stromal_desmoplasia"],
-      "source_image": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\images\\training_set_primary_roi_011_py0_px0.png",
-      "source_tissue_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\tissue_masks\\training_set_primary_roi_011_py0_px0.png",
-      "source_nuclei_mask": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES\\nuclei_masks\\training_set_primary_roi_011_py0_px0.png",
+      "expected_primitives": [
+        "stromal_desmoplasia"
+      ],
+      "source_image": "/data/wqx/flowedit/data/PUMA_PATCHES/images/training_set_primary_roi_011_py0_px0.png",
+      "source_tissue_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/tissue_masks/training_set_primary_roi_011_py0_px0.png",
+      "source_nuclei_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/nuclei_masks/training_set_primary_roi_011_py0_px0.png",
       "old_prompt": "H&E stained primary melanoma with tumor, stroma, epidermis, and blood vessel tissue.",
       "new_prompt": "Increase desmoplastic stroma around the melanoma tumor while preserving epidermis and blood vessel tissue.",
       "prompt_source": "manual_from_mask_and_metadata",
@@ -517,9 +1003,25 @@
       "contour_provider": "openai_compatible_multimodal",
       "projection_mode": "organic_v2",
       "organic_seed": 23,
-      "tags": ["hard", "epidermis_present", "blood_vessel_present", "stroma_change", "label_safety"],
-      "selection_metrics": {"tumor_fraction": 0.137, "stroma_fraction": 0.522, "normal_epithelium_fraction": 0.309, "blood_vessel_fraction": 0.031, "tumor_components": 4},
-      "status": "todo"
+      "tags": [
+        "hard",
+        "epidermis_present",
+        "blood_vessel_present",
+        "stroma_change",
+        "label_safety"
+      ],
+      "selection_metrics": {
+        "tumor_fraction": 0.137,
+        "stroma_fraction": 0.522,
+        "normal_epithelium_fraction": 0.309,
+        "blood_vessel_fraction": 0.031,
+        "tumor_components": 4
+      },
+      "status": "todo",
+      "instruction": "Increase desmoplastic stroma around the melanoma tumor; preserve epidermis and blood vessel tissue.",
+      "source_image_relative": "PUMA_PATCHES/images/training_set_primary_roi_011_py0_px0.png",
+      "source_tissue_mask_relative": "PUMA_PATCHES/tissue_masks/training_set_primary_roi_011_py0_px0.png",
+      "source_nuclei_mask_relative": "PUMA_PATCHES/nuclei_masks/training_set_primary_roi_011_py0_px0.png"
     }
   ]
 }
