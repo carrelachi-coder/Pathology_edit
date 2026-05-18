@@ -18,6 +18,7 @@ from phase3_mask_edit.parser.semantic_diff import validate_semantic_diff
 PlanItemStatus = Literal[
     "planned",
     "degraded_planned",
+    "fallback_planned",
     "rejected_by_applicability",
     "unsupported",
 ]
@@ -67,6 +68,10 @@ class IntentPlanItem:
     reasons: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     fallback_actions: tuple[str, ...] = ()
+    execution_group: str | None = None
+    role: str = "primary"
+    fallback_for: str | None = None
+    planning_note: str | None = None
 
     def to_metadata(self) -> dict[str, Any]:
         metadata = {
@@ -77,6 +82,10 @@ class IntentPlanItem:
             "reasons": list(self.reasons),
             "warnings": list(self.warnings),
             "fallback_actions": list(self.fallback_actions),
+            "execution_group": self.execution_group,
+            "role": self.role,
+            "fallback_for": self.fallback_for,
+            "planning_note": self.planning_note,
         }
         if self.intent is not None:
             metadata["intent"] = self.intent.to_metadata()
@@ -95,7 +104,11 @@ class IntentPlanningResult:
 
     @property
     def intents(self) -> tuple[EditIntent, ...]:
-        return tuple(item.intent for item in self.items if item.intent is not None)
+        return tuple(
+            item.intent
+            for item in self.items
+            if item.intent is not None and item.role != "fallback"
+        )
 
     def to_metadata(self) -> dict[str, Any]:
         return {
@@ -162,8 +175,12 @@ def plan_edit_intents(
             IntentPlanItem(
                 primitive=payload["primitive"],
                 strength=payload["strength"],
-                status="planned",
+                status=_planned_status_for_payload(payload, degraded=False),
                 intent=EditIntent.from_mapping(payload),
+                execution_group=_payload_text(payload, "_execution_group"),
+                role=_payload_text(payload, "_role") or "primary",
+                fallback_for=_payload_text(payload, "_fallback_for"),
+                planning_note=_payload_text(payload, "_planning_note"),
             )
             for payload in raw_items
         )
@@ -189,11 +206,11 @@ def plan_edit_intents(
         if decision.status == "rejected":
             status: PlanItemStatus = "rejected_by_applicability"
             item_intent = None
-        elif decision.status == "degraded":
-            status = "degraded_planned"
-            item_intent = intent
         else:
-            status = "planned"
+            status = _planned_status_for_payload(
+                payload,
+                degraded=decision.status == "degraded",
+            )
             item_intent = intent
         gated_items.append(
             IntentPlanItem(
@@ -205,6 +222,10 @@ def plan_edit_intents(
                 reasons=decision.reasons,
                 warnings=decision.warnings,
                 fallback_actions=decision.fallback_actions,
+                execution_group=_payload_text(payload, "_execution_group"),
+                role=_payload_text(payload, "_role") or "primary",
+                fallback_for=_payload_text(payload, "_fallback_for"),
+                planning_note=_payload_text(payload, "_planning_note"),
             )
         )
 
@@ -391,16 +412,49 @@ def _raw_intent_specs(
 
     stroma_change = semantic_diff["stroma_change"]
     if stroma_change["density"] == "increase":
-        raw_items.append(
-            _intent_payload(
-                "stromal_desmoplasia",
-                _strength_from_degree(stroma_change["degree"]),
-                reference_profile,
-                old_prompt,
-                new_prompt,
-                prompt_diff,
-            )
+        payload = _intent_payload(
+            "stromal_desmoplasia",
+            _strength_from_degree(stroma_change["degree"]),
+            reference_profile,
+            old_prompt,
+            new_prompt,
+            prompt_diff,
         )
+        if _stroma_increase_is_immune_replacement_fallback(
+            semantic_diff,
+            old_prompt=old_prompt,
+            new_prompt=new_prompt,
+        ):
+            payload = _fallback_payload(
+                payload,
+                group="immune_decrease_stroma_replacement",
+                fallback_for="immune_infiltration_decrease",
+                note=(
+                    "Stroma increase was interpreted as the replacement/backfill "
+                    "target for immune decrease, not a separate desmoplasia edit."
+                ),
+            )
+            _mark_primary_payload(
+                raw_items,
+                primitive="immune_infiltration_decrease",
+                group="immune_decrease_stroma_replacement",
+                note=(
+                    "Primary realization for immune decrease with stromal "
+                    "replacement/backfill."
+                ),
+            )
+            unsupported.append(
+                PlanningWarning(
+                    field="stroma_change.density",
+                    value="increase",
+                    reason=(
+                        "Treated as a fallback for immune_infiltration_decrease "
+                        "because the text describes stromal replacement/backfill "
+                        "for the same immune-decrease request."
+                    ),
+                )
+            )
+        raw_items.append(payload)
     elif stroma_change["density"] != "none":
         raw_items.append(
             _intent_payload(
@@ -488,6 +542,133 @@ def _intent_payload(
         "new_prompt": new_prompt,
         "prompt_diff": dict(prompt_diff),
     }
+
+
+def _fallback_payload(
+    payload: Mapping[str, Any],
+    *,
+    group: str,
+    fallback_for: str,
+    note: str,
+) -> dict[str, Any]:
+    updated = dict(payload)
+    updated["_execution_group"] = group
+    updated["_role"] = "fallback"
+    updated["_fallback_for"] = fallback_for
+    updated["_planning_note"] = note
+    return updated
+
+
+def _mark_primary_payload(
+    raw_items: list[dict[str, Any]],
+    *,
+    primitive: str,
+    group: str,
+    note: str,
+) -> None:
+    for item in reversed(raw_items):
+        if item.get("primitive") != primitive:
+            continue
+        item.setdefault("_execution_group", group)
+        item.setdefault("_role", "primary")
+        item.setdefault("_planning_note", note)
+        return
+
+
+def _planned_status_for_payload(
+    payload: Mapping[str, Any],
+    *,
+    degraded: bool,
+) -> PlanItemStatus:
+    if payload.get("_role") == "fallback":
+        return "fallback_planned"
+    if degraded:
+        return "degraded_planned"
+    return "planned"
+
+
+def _payload_text(payload: Mapping[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _stroma_increase_is_immune_replacement_fallback(
+    semantic_diff: Mapping[str, Any],
+    *,
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> bool:
+    lymphocyte_change = semantic_diff.get("lymphocyte_change", {})
+    stroma_change = semantic_diff.get("stroma_change", {})
+    if not isinstance(lymphocyte_change, Mapping) or not isinstance(
+        stroma_change, Mapping
+    ):
+        return False
+    if lymphocyte_change.get("infiltration") != "decrease":
+        return False
+    if stroma_change.get("density") != "increase":
+        return False
+
+    text = _normalize_text(new_prompt) or _normalize_text(
+        f"{old_prompt or ''} {new_prompt or ''}"
+    )
+    if not text:
+        return False
+    if _contains_independent_stroma_edit(text):
+        return False
+    return (
+        _contains_any(text, _IMMUNE_REPLACEMENT_TERMS)
+        and _contains_any(text, _IMMUNE_TERMS)
+        and _contains_any(text, _STROMA_TERMS)
+    )
+
+
+_IMMUNE_TERMS = (
+    "immune",
+    "lymphocyte",
+    "lymphocytic",
+    "til",
+    "inflammatory",
+    "inflammation",
+)
+
+_STROMA_TERMS = (
+    "stroma",
+    "stromal",
+    "connective",
+    "fibrous tissue",
+)
+
+_IMMUNE_REPLACEMENT_TERMS = (
+    "replace",
+    "replaced",
+    "replacement",
+    "backfill",
+    "backfilled",
+    "fill with",
+    "filled with",
+    "convert",
+    "converted",
+    "conversion",
+    "turn into",
+    "turned into",
+)
+
+_INDEPENDENT_STROMA_EDIT_TERMS = (
+    "desmoplasia",
+    "desmoplastic",
+    "stromal response",
+    "stromal reaction",
+    "fibrosis",
+    "fibrotic",
+    "collagenous",
+    "dense stroma",
+    "peritumoral stroma",
+)
+
+
+def _contains_independent_stroma_edit(text: str) -> bool:
+    return _contains_any(text, _INDEPENDENT_STROMA_EDIT_TERMS)
 
 
 def _specialized_grade_payload(

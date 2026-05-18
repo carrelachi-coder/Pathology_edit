@@ -94,6 +94,66 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(intents[0].primitive, "immune_infiltration_decrease")
         self.assertEqual(intents[0].strength, "moderate")
 
+    def test_immune_decrease_with_stroma_replacement_plans_desmoplasia_as_fallback(self):
+        diff = semantic_diff_with(
+            lymphocyte_change={
+                "infiltration": "decrease",
+                "degree": "significant",
+            },
+            stroma_change={"density": "increase", "degree": "significant"},
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            old_prompt=(
+                "H&E stained breast cancer histopathology with dense lymphocytic "
+                "immune infiltrate and sparse stroma."
+            ),
+            new_prompt=(
+                "Decrease the lymphocytic immune infiltrate substantially and "
+                "replace it with stromal tissue, keeping tumor burden stable."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["immune_infiltration_decrease"],
+        )
+        self.assertEqual([item.primitive for item in plan.items], [
+            "immune_infiltration_decrease",
+            "stromal_desmoplasia",
+        ])
+        self.assertEqual(plan.items[0].role, "primary")
+        self.assertEqual(plan.items[1].role, "fallback")
+        self.assertEqual(plan.items[1].fallback_for, "immune_infiltration_decrease")
+        self.assertEqual(plan.items[1].status, "fallback_planned")
+        self.assertEqual(
+            plan.items[0].execution_group,
+            "immune_decrease_stroma_replacement",
+        )
+
+    def test_independent_desmoplasia_remains_separate_after_immune_decrease(self):
+        diff = semantic_diff_with(
+            lymphocyte_change={"infiltration": "decrease", "degree": "moderate"},
+            stroma_change={"density": "increase", "degree": "moderate"},
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            new_prompt=(
+                "Decrease immune infiltrate and also increase the desmoplastic "
+                "stromal reaction around tumor nests."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["immune_infiltration_decrease", "stromal_desmoplasia"],
+        )
+        self.assertTrue(all(item.role == "primary" for item in plan.items))
+
     def test_tumor_increase_and_decrease_map_to_tumor_primitives(self):
         increase = semantic_diff_with(
             tumor_change={"growth": "increase", "degree": "moderate"}

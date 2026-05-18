@@ -429,31 +429,41 @@ def _run_cell_stage(
     model_paths = _mapping(runtime.get("model_paths"))
     profile = str(case.get("profile") or case.get("dataset") or state.get("profile", "BCSS"))
     dataset = str(case.get("dataset") or profile)
+    cell_fill_mode = _option(args.cell_fill_mode, cell_cfg.get("cell_fill_mode"), "preserve")
+    probnet_ckpt = _resolve_model_path(
+        model_paths,
+        "probnet_ckpt",
+        args.probnet_ckpt,
+        profile,
+        dataset,
+    )
+    nuclei_library = _resolve_model_path(
+        model_paths,
+        "nuclei_library_template",
+        args.nuclei_library_template,
+        profile,
+        dataset,
+    )
+    density_scale_json = _resolve_model_path(
+        model_paths,
+        "density_scale_json_template",
+        args.density_scale_json_template,
+        profile,
+        dataset,
+    )
+    _validate_probnet_inputs_if_needed(
+        cell_fill_mode=cell_fill_mode,
+        probnet_ckpt=probnet_ckpt,
+        nuclei_library=nuclei_library,
+        density_scale_json=density_scale_json,
+    )
     state, cell_log, *_ = ui.run_cell_stage(
         state,
-        _option(args.cell_fill_mode, cell_cfg.get("cell_fill_mode"), "preserve"),
+        cell_fill_mode,
         _option(args.crossing_cell_policy, cell_cfg.get("crossing_cell_policy"), "delete"),
-        _resolve_model_path(
-            model_paths,
-            "probnet_ckpt",
-            args.probnet_ckpt,
-            profile,
-            dataset,
-        ),
-        _resolve_model_path(
-            model_paths,
-            "nuclei_library_template",
-            args.nuclei_library_template,
-            profile,
-            dataset,
-        ),
-        _resolve_model_path(
-            model_paths,
-            "density_scale_json_template",
-            args.density_scale_json_template,
-            profile,
-            dataset,
-        ),
+        probnet_ckpt,
+        nuclei_library,
+        density_scale_json,
         _option(args.probnet_device, cell_cfg.get("probnet_device"), "auto"),
         str(_option(args.probnet_gamma_values, cell_cfg.get("probnet_gamma_values"), "1.0")),
     )
@@ -551,22 +561,33 @@ def _case_path_candidates(
     if rel:
         if root is None:
             raise KeyError(f"No data root configured for dataset {dataset!r}")
-        candidates.append(_join_manifest_path(root, rel))
+        candidates.extend(
+            _join_relative_candidates_for_dataset(root, dataset, rel)
+        )
 
     if raw:
         if _looks_windows_absolute(raw):
             derived = _derive_relative_from_path(raw, dataset)
             if derived and root is not None:
-                candidates.append(_join_manifest_path(root, derived))
+                candidates.extend(
+                    _join_relative_candidates_for_dataset(root, dataset, derived)
+                )
             candidates.append(Path(PureWindowsPath(raw)))
         elif _looks_posix_absolute(raw):
+            derived = _derive_relative_from_path(raw, dataset)
+            if derived and root is not None:
+                candidates.extend(
+                    _join_relative_candidates_for_dataset(root, dataset, derived)
+                )
             candidates.append(Path(PurePosixPath(raw)))
         else:
             path = Path(raw)
             if path.is_absolute():
                 candidates.append(path)
             elif root is not None:
-                candidates.append(_join_manifest_path(root, raw))
+                candidates.extend(
+                    _join_relative_candidates_for_dataset(root, dataset, raw)
+                )
             else:
                 raise KeyError(
                     f"No data root configured for relative {field} in dataset {dataset!r}"
@@ -580,8 +601,36 @@ def _case_path_candidates(
             candidates.append(_join_manifest_path(root, f"{subdir}/{basename}"))
             if patch_dir:
                 candidates.append(_join_manifest_path(root, f"{patch_dir}/{subdir}/{basename}"))
+                if _path_name_matches(root, dataset):
+                    candidates.append(
+                        _join_manifest_path(
+                            root.parent,
+                            f"{patch_dir}/{subdir}/{basename}",
+                        )
+                    )
 
     return _dedupe_paths(candidates)
+
+
+def _join_relative_candidates_for_dataset(
+    root: Path,
+    dataset: str,
+    relative: str,
+) -> list[Path]:
+    candidates = [_join_manifest_path(root, relative)]
+    patch_dir = PATCH_DIR_BY_DATASET.get(dataset)
+    if patch_dir and _relative_starts_with(relative, patch_dir) and _path_name_matches(root, dataset):
+        candidates.append(_join_manifest_path(root.parent, relative))
+    return candidates
+
+
+def _relative_starts_with(relative: str, dirname: str) -> bool:
+    first = PurePosixPath(relative.replace("\\", "/")).parts[:1]
+    return bool(first) and first[0].lower() == dirname.lower()
+
+
+def _path_name_matches(path: Path, name: str) -> bool:
+    return PurePosixPath(str(path).replace("\\", "/")).name.lower() == name.lower()
 
 
 def _case_path_basename(raw: str, rel: str) -> str:
@@ -614,9 +663,9 @@ def _missing_input_message(case: dict[str, Any], field: str, candidates: list[Pa
         f"field={field}.\n"
         f"Tried:\n{tried}\n"
         "If this case belongs to a different dataset, edit its `dataset` and "
-        "`source_*_relative` fields in the manifest. If your data layout omits "
-        "the *_PATCHES directory, set runtime.data_roots[dataset] to the directory "
-        "that contains images/tissue_masks/nuclei_masks."
+        "`source_*_relative` fields in the manifest. For your current layout, "
+        "runtime.data_roots entries should usually be `/data/wqx/flowedit/data`, "
+        "the directory that directly contains BCSS_PATCHES, GlaS_PATCHES, etc."
     )
 
 
@@ -729,7 +778,11 @@ def _resolve_model_path(
     dataset: str,
 ) -> str:
     if override:
-        return _format_profile_path(override, profile)
+        return _normalize_model_path_key(
+            key,
+            _format_profile_path(override, profile),
+            profile,
+        )
 
     by_dataset_keys = []
     if key.endswith("_template"):
@@ -759,11 +812,46 @@ def _normalize_model_path_key(key: str, value: str, profile: str) -> str:
         return ""
     path = value.rstrip("/\\")
     if key == "nuclei_library_template" and "{" not in value:
-        if Path(path).name != profile:
-            return f"{path}/{profile}"
+        if _has_statistics_json(path):
+            return path
+        dataset_path = f"{path}/{profile}"
+        if _has_statistics_json(dataset_path):
+            return dataset_path
+        return path
     if key == "density_scale_json_template" and not path.lower().endswith(".json"):
         return f"{path}/density_scale_{profile.lower()}.json"
     return value
+
+
+def _validate_probnet_inputs_if_needed(
+    *,
+    cell_fill_mode: str,
+    probnet_ckpt: str,
+    nuclei_library: str,
+    density_scale_json: str,
+) -> None:
+    if cell_fill_mode != "probnet":
+        return
+    missing: list[str] = []
+    if probnet_ckpt and not Path(probnet_ckpt).exists():
+        missing.append(f"probnet_ckpt missing: {probnet_ckpt}")
+    if nuclei_library and not _has_statistics_json(nuclei_library):
+        missing.append(f"nuclei_library missing statistics.json: {nuclei_library}")
+    if density_scale_json and not Path(density_scale_json).exists():
+        missing.append(f"density_scale_json missing: {density_scale_json}")
+    if missing:
+        detail = "\n".join(f"- {item}" for item in missing)
+        raise FileNotFoundError(
+            "ProbNet input validation failed before running generate.py:\n"
+            f"{detail}\n"
+            "Set runtime.model_paths.nuclei_library_template to the exact "
+            "directory containing statistics.json, or use "
+            "nuclei_library_by_dataset for per-dataset library directories."
+        )
+
+
+def _has_statistics_json(path: str | Path) -> bool:
+    return (Path(path) / "statistics.json").exists()
 
 
 def _profile_lookup_keys(profile: str, dataset: str) -> tuple[str, ...]:

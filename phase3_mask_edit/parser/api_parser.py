@@ -29,9 +29,10 @@ CRITICAL RULES:
 2. If a feature (necrosis, lymphocytes, stroma, etc.) is described THE SAME WAY in both reports, or is NOT MENTIONED in the edited report, set it to "none".
 3. If necrosis is mentioned identically in both reports (e.g., both say "extensive necrosis"), necrosis_change.action = "none".
 4. If stroma is not explicitly discussed as changing, stroma_change.density = "none". Stroma being consumed by tumor expansion is NOT a stroma density change.
-5. When in doubt, output "none". It is much better to miss a subtle change than to hallucinate one.
-6. grade_change refers to histological grade / differentiation ONLY, not tumor size. If grade or differentiation changes but tumor extent does not, set growth = "none".
-7. If the report describes treatment effect (tumor regression, residual tumor, therapy response), set growth = "decrease".
+5. Replacement/backfill targets are not separate edits. If the edited report says immune/lymphocytic infiltrate decreases and is replaced/backfilled/converted into stroma, set lymphocyte_change.infiltration = "decrease" and stroma_change.density = "none" unless it separately requests desmoplasia/fibrosis/stromal reaction.
+6. When in doubt, output "none". It is much better to miss a subtle change than to hallucinate one.
+7. grade_change refers to histological grade / differentiation ONLY, not tumor size. If grade or differentiation changes but tumor extent does not, set growth = "none".
+8. If the report describes treatment effect (tumor regression, residual tumor, therapy response), set growth = "decrease".
 
 Output ONLY this JSON schema:
 {
@@ -76,7 +77,7 @@ NECROSIS_CHANGE:
 - If necrosis is described the same way in both reports, action MUST be "none".
 
 STROMA_CHANGE:
-- density: ONLY if stromal density/desmoplasia/fibrosis is explicitly described as changing. "fibrous stroma" -> "dense desmoplastic stroma" = increase. Almost always "none".
+- density: ONLY if stromal density/desmoplasia/fibrosis/stromal reaction is explicitly described as changing as its own edit. "fibrous stroma" -> "dense desmoplastic stroma" = increase. "immune infiltrate is replaced with stroma" = none because stroma is just the backfill target for immune decrease. Almost always "none".
 - degree: mild/moderate/significant, only meaningful when density != "none".
 
 Output JSON only. No markdown. No explanation."""
@@ -129,6 +130,42 @@ FEW_SHOT_EXAMPLES: tuple[tuple[str, str, Mapping[str, Any]], ...] = (
             "lymphocyte_change": {
                 "infiltration": "increase",
                 "degree": "significant",
+            },
+            "necrosis_change": {"action": "none", "extent": "focal"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
+        "H&E stained breast cancer histopathology with tumor nests surrounded by dense lymphocytic immune infiltrate, sparse stroma, and visible blood vessel tissue.",
+        "Decrease the lymphocytic immune infiltrate substantially and replace it with stromal tissue, keeping tumor burden approximately unchanged.",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "none",
+                "degree": "mild",
+                "grade_change": "none",
+            },
+            "lymphocyte_change": {
+                "infiltration": "decrease",
+                "degree": "significant",
+            },
+            "necrosis_change": {"action": "none", "extent": "focal"},
+            "stroma_change": {"density": "none", "degree": "moderate"},
+        },
+    ),
+    (
+        "Invasive carcinoma with dense lymphocytic infiltrate and sparse connective tissue.",
+        "Reduce the lymphocytic infiltrate and backfill the removed immune regions with stroma; leave tumor unchanged.",
+        {
+            "schema_version": "0.1",
+            "tumor_change": {
+                "growth": "none",
+                "degree": "mild",
+                "grade_change": "none",
+            },
+            "lymphocyte_change": {
+                "infiltration": "decrease",
+                "degree": "moderate",
             },
             "necrosis_change": {"action": "none", "extent": "focal"},
             "stroma_change": {"density": "none", "degree": "moderate"},

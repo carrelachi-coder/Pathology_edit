@@ -1764,7 +1764,40 @@ def _execute_planned_intents(
     last_result = None
     last_edit_result = None
     attempt_logs: list[dict[str, Any]] = []
-    for intent in plan.intents:
+    plan_items = _executable_plan_items(plan)
+    successful_groups: set[str] = set()
+    failed_groups: set[str] = set()
+    for item_index, plan_item in enumerate(plan_items):
+        intent = plan_item.intent
+        if intent is None:
+            continue
+        item_role = getattr(plan_item, "role", "primary") or "primary"
+        execution_group = getattr(plan_item, "execution_group", None)
+        fallback_for = getattr(plan_item, "fallback_for", None)
+        planning_note = getattr(plan_item, "planning_note", None)
+        if (
+            item_role == "fallback"
+            and execution_group
+            and execution_group in successful_groups
+        ):
+            attempt_logs.append(
+                {
+                    "primitive": intent.primitive,
+                    "strength": intent.strength,
+                    "status": "skipped_fallback_primary_succeeded",
+                    "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                    "execution_group": execution_group,
+                    "role": item_role,
+                    "fallback_for": fallback_for,
+                    "planning_note": planning_note,
+                    "error": (
+                        "Skipped fallback because the primary primitive in "
+                        f"group {execution_group!r} already succeeded."
+                    ),
+                    "artifact_paths": {},
+                }
+            )
+            continue
         primitive_config = _primitive_config(recipe, intent.primitive)
         intent = _with_default_contour_labels(intent, primitive_config, schema)
         source_summary = _source_region_summary(
@@ -1774,11 +1807,18 @@ def _execute_planned_intents(
             primitive_config,
         )
         if source_summary["source_pixels"] == 0:
+            if execution_group:
+                failed_groups.add(execution_group)
             attempt_logs.append(
                 {
                     "primitive": intent.primitive,
+                    "strength": intent.strength,
                     "status": "skipped_no_source_region",
                     "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                    "execution_group": execution_group,
+                    "role": item_role,
+                    "fallback_for": fallback_for,
+                    "planning_note": planning_note,
                     "source_labels": source_summary["source_labels"],
                     "missing_source_labels": source_summary.get(
                         "missing_source_labels",
@@ -1793,6 +1833,11 @@ def _execute_planned_intents(
                 }
             )
             continue
+        if item_role == "fallback" and execution_group and execution_group not in failed_groups:
+            # Fallbacks are ordered after their primary. Reaching one without a
+            # recorded failure means its primary was rejected before execution;
+            # in that case running the fallback is still the useful behavior.
+            failed_groups.add(execution_group)
         result = execute_llm_contour_agent(
             old_mask=current_mask,
             schema=schema,
@@ -1817,11 +1862,31 @@ def _execute_planned_intents(
                 "strength": intent.strength,
                 "status": result.status,
                 "projection_mode": PROJECTION_MODE_ORGANIC_V2,
+                "execution_group": execution_group,
+                "role": item_role,
+                "fallback_for": fallback_for,
+                "planning_note": planning_note,
                 "error": result.error,
                 "artifact_paths": result.artifact_paths,
             }
         )
         last_result = result
+        result_succeeded = result.status == "validated" and result.edit_result is not None
+        has_pending_fallback = _has_pending_fallback(
+            plan_items,
+            item_index=item_index,
+            execution_group=execution_group,
+        )
+        if result_succeeded:
+            last_edit_result = result.edit_result
+            current_mask = np.array(result.edit_result.target_mask, copy=True)
+            if execution_group:
+                successful_groups.add(execution_group)
+            continue
+        if execution_group:
+            failed_groups.add(execution_group)
+        if has_pending_fallback:
+            continue
         if result.edit_result is None:
             if not continue_on_failure:
                 break
@@ -1867,6 +1932,38 @@ def _execute_planned_intents(
         "projection_mode": PROJECTION_MODE_ORGANIC_V2,
     }
     return last_result, phase3_info
+
+
+def _executable_plan_items(plan) -> tuple[Any, ...]:
+    items = getattr(plan, "items", None)
+    if items is None:
+        return tuple(
+            SimpleNamespace(
+                intent=intent,
+                role="primary",
+                execution_group=None,
+                fallback_for=None,
+                planning_note=None,
+            )
+            for intent in getattr(plan, "intents", ())
+        )
+    return tuple(item for item in items if getattr(item, "intent", None) is not None)
+
+
+def _has_pending_fallback(
+    plan_items: tuple[Any, ...],
+    *,
+    item_index: int,
+    execution_group: str | None,
+) -> bool:
+    if not execution_group:
+        return False
+    for later_item in plan_items[item_index + 1 :]:
+        if getattr(later_item, "execution_group", None) != execution_group:
+            continue
+        if getattr(later_item, "role", "primary") == "fallback":
+            return True
+    return False
 
 
 def _save_manual_current_label(

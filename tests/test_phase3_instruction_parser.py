@@ -55,12 +55,31 @@ class Phase3InstructionParserTests(unittest.TestCase):
         self.assertEqual(semantic_diff["necrosis_change"]["action"], "increase")
         self.assertEqual(semantic_diff["necrosis_change"]["extent"], "focal")
 
+    def test_immune_decrease_stroma_replacement_does_not_parse_as_stroma_increase(self):
+        semantic_diff = parse_instruction_rule_based(
+            "decrease the lymphocytic immune infiltrate and replace it with stromal tissue"
+        )
+
+        self.assertEqual(
+            semantic_diff["lymphocyte_change"]["infiltration"],
+            "decrease",
+        )
+        self.assertEqual(semantic_diff["stroma_change"]["density"], "none")
+
+    def test_independent_desmoplasia_still_parses_as_stroma_increase(self):
+        semantic_diff = parse_instruction_rule_based(
+            "increase the desmoplastic stromal reaction around tumor nests"
+        )
+
+        self.assertEqual(semantic_diff["stroma_change"]["density"], "increase")
+
     def test_api_instruction_prompt_mentions_special_fine_edits_without_chinese(self):
         self.assertFalse(any(ord(char) > 127 for char in INSTRUCTION_SYSTEM_PROMPT))
         self.assertIn("PANDA special edits", INSTRUCTION_SYSTEM_PROMPT)
         self.assertIn("GlaS special edits", INSTRUCTION_SYSTEM_PROMPT)
         self.assertIn("Gleason pattern 3 to 4", INSTRUCTION_SYSTEM_PROMPT)
         self.assertIn("normal gland becoming adenomatous", INSTRUCTION_SYSTEM_PROMPT)
+        self.assertIn("Replacement/backfill targets are not separate edits", INSTRUCTION_SYSTEM_PROMPT)
 
     def test_unrecognized_instruction_raises(self):
         with self.assertRaises(InstructionParserError):

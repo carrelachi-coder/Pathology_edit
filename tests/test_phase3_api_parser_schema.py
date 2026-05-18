@@ -116,7 +116,9 @@ class Phase3SemanticDiffSchemaTests(unittest.TestCase):
     def test_phase3_prompt_keeps_legacy_few_shot_coverage(self):
         self.assertIn("CRITICAL RULES", SYSTEM_PROMPT)
         self.assertIn("Stroma being consumed by tumor expansion", SYSTEM_PROMPT)
+        self.assertIn("Replacement/backfill targets are not separate edits", SYSTEM_PROMPT)
         self.assertGreaterEqual(len(FEW_SHOT_EXAMPLES), 9)
+        self.assertGreaterEqual(len(FEW_SHOT_EXAMPLES), 11)
 
         outputs = [example[2] for example in FEW_SHOT_EXAMPLES]
         self.assertTrue(
@@ -139,6 +141,14 @@ class Phase3SemanticDiffSchemaTests(unittest.TestCase):
         )
         self.assertTrue(
             all(output["schema_version"] == "0.1" for output in outputs)
+        )
+        self.assertTrue(
+            any(
+                "replace it with stromal tissue" in example[1]
+                and example[2]["lymphocyte_change"]["infiltration"] == "decrease"
+                and example[2]["stroma_change"]["density"] == "none"
+                for example in FEW_SHOT_EXAMPLES
+            )
         )
 
 

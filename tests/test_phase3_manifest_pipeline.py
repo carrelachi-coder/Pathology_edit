@@ -1,4 +1,5 @@
 import json
+import shutil
 import types
 import unittest
 from pathlib import Path
@@ -7,6 +8,7 @@ from scripts.run_phase3_manifest_pipeline import (
     REPO_DEFAULT_MANIFEST,
     _case_path_candidates,
     _dataset_roots,
+    _normalize_model_path_key,
     _resolve_case_paths,
     _resolve_model_path,
     _selected_variants,
@@ -118,6 +120,25 @@ class Phase3ManifestPipelineTests(unittest.TestCase):
             candidate_text,
         )
 
+    def test_case_path_candidates_try_parent_when_root_includes_dataset_name(self):
+        case = {
+            "dataset": "BCSS",
+            "source_image_relative": "BCSS_PATCHES/images/a.png",
+            "source_image": "/data/wqx/flowedit/data/BCSS/BCSS_PATCHES/images/a.png",
+        }
+
+        candidates = _case_path_candidates(
+            case,
+            "source_image",
+            {"BCSS": Path("/data/wqx/flowedit/data/BCSS")},
+        )
+        candidate_text = [path.as_posix() for path in candidates]
+
+        self.assertIn(
+            "/data/wqx/flowedit/data/BCSS_PATCHES/images/a.png",
+            candidate_text,
+        )
+
     def test_selected_variants_support_filtering(self):
         runtime = {
             "edit_variants": [
@@ -164,7 +185,7 @@ class Phase3ManifestPipelineTests(unittest.TestCase):
 
         self.assertEqual(path, "/configs/density_scale_panda.json")
 
-    def test_nuclei_library_template_directory_expands_to_profile_dir(self):
+    def test_nuclei_library_template_keeps_root_without_statistics_check(self):
         model_paths = {
             "nuclei_library_template": "/libraries",
         }
@@ -177,7 +198,28 @@ class Phase3ManifestPipelineTests(unittest.TestCase):
             "BCSS",
         )
 
-        self.assertEqual(path, "/libraries/BCSS")
+        self.assertEqual(path, "/libraries")
+
+    def test_nuclei_library_template_uses_dataset_subdir_when_statistics_exists(self):
+        tmp = Path(".tmp_phase3_manifest_pipeline_tests")
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        try:
+            root = tmp / "libraries"
+            dataset_dir = root / "BCSS"
+            dataset_dir.mkdir(parents=True)
+            (dataset_dir / "statistics.json").write_text("{}", encoding="utf-8")
+
+            path = _normalize_model_path_key(
+                "nuclei_library_template",
+                str(root),
+                "BCSS",
+            )
+        finally:
+            if tmp.exists():
+                shutil.rmtree(tmp)
+
+        self.assertEqual(Path(path).name, "BCSS")
 
 
 if __name__ == "__main__":

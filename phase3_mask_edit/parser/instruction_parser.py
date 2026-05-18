@@ -58,6 +58,11 @@ Interpretation rules:
   immune presence, immune cells, or intratumoral immune infiltration.
 - Stroma change is about stroma, stromal reaction, desmoplasia, fibrosis,
   fibrous tissue, or connective tissue density.
+- Replacement/backfill targets are not separate edits. If the instruction says
+  immune infiltrate decreases and is replaced/backfilled/converted into stroma,
+  set lymphocyte_change.infiltration = "decrease" and stroma_change.density =
+  "none" unless it separately asks for desmoplasia, fibrosis, or stromal
+  reaction.
 - Dataset-specialized fine-ID edits are represented through
   tumor_change.grade_change. The schema has no direct primitive-name field, so
   do not invent one. Use grade_change = "upgrade" or "downgrade" and keep tumor
@@ -104,6 +109,11 @@ User: "stronger intratumoral immune presence"
 Note: Immune presence refers to lymphocyte/TIL infiltration.
 JSON:
 {"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"increase","degree":"significant"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
+
+User: "decrease the lymphocytic immune infiltrate and replace it with stromal tissue"
+Note: Stroma is the backfill target for the immune decrease, not a separate stromal desmoplasia edit.
+JSON:
+{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"decrease","degree":"moderate"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
 
 User: "make the fibrous background lighter"
 Note: Fibrous background refers to stromal/fibrotic density decrease.
@@ -184,7 +194,16 @@ def parse_instruction_rule_based(instruction: str) -> dict[str, Any]:
             semantic_diff["lymphocyte_change"]["degree"] = strength
 
     if _mentions_any(text, _STROMA_TERMS):
-        if _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(text, _INCREASE_TERMS):
+        stroma_is_immune_backfill = (
+            semantic_diff["lymphocyte_change"]["infiltration"] == "decrease"
+            and _mentions_any(text, _REPLACEMENT_TERMS)
+            and _mentions_any(text, _IMMUNE_TERMS)
+            and _mentions_any(text, _STROMA_TERMS)
+            and not _mentions_any(text, _INDEPENDENT_STROMA_TERMS)
+        )
+        if stroma_is_immune_backfill:
+            pass
+        elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(text, _INCREASE_TERMS):
             semantic_diff["stroma_change"]["density"] = "decrease"
             semantic_diff["stroma_change"]["degree"] = strength
         elif _mentions_any(text, _INCREASE_TERMS) or _mentions_any(text, _ADD_TERMS):
@@ -391,8 +410,31 @@ _STROMA_TERMS = (
     "desmoplasia",
     "fibrosis",
     "fibrotic",
+    "connective",
     "间质",
     "纤维",
+)
+_REPLACEMENT_TERMS = (
+    "replace",
+    "replaced",
+    "replacement",
+    "backfill",
+    "backfilled",
+    "fill with",
+    "filled with",
+    "convert",
+    "converted",
+    "turn into",
+    "turned into",
+)
+_INDEPENDENT_STROMA_TERMS = (
+    "desmoplasia",
+    "desmoplastic",
+    "stromal reaction",
+    "stromal response",
+    "fibrosis",
+    "fibrotic",
+    "collagenous",
 )
 _INCREASE_TERMS = (
     "increase",
