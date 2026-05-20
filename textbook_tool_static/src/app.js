@@ -373,9 +373,9 @@ function drawTissueOverlay(offset) {
     if (value === 0) continue;
     const [r, g, b] = hexToRgb(colorForTissue(value));
     const idx = i * 4;
-    imageData.data[idx] = Math.round(imageData.data[idx] * 0.55 + r * 0.45);
-    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.55 + g * 0.45);
-    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.55 + b * 0.45);
+    imageData.data[idx] = Math.round(imageData.data[idx] * 0.7 + r * 0.3);
+    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.7 + g * 0.3);
+    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.7 + b * 0.3);
   }
   ctx.putImageData(imageData, offset.x, offset.y);
 }
