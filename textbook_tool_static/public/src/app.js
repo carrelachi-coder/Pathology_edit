@@ -1,4 +1,5 @@
 import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
+import { buildZip } from "./zip.js";
 
 const tissueLabels = [
   ["background", 0, "#000000"],
@@ -12,6 +13,9 @@ const tissueLabels = [
 ];
 
 const state = {
+  batchFiles: [],
+  completedMasks: new Map(),
+  currentIndex: -1,
   image: null,
   imageBitmap: null,
   imageName: "",
@@ -24,14 +28,15 @@ const state = {
   tissueLabel: 1,
   zoomEnabled: false,
   viewZoom: 1,
-  canvasPadding: 0,
-  serialized: null
+  canvasPadding: 0
 };
 
 const els = {};
 for (const id of [
   "downloadZip",
   "imageInput",
+  "folderInput",
+  "imageSelector",
   "imageId",
   "baseLabel",
   "tissueSection",
@@ -42,23 +47,28 @@ for (const id of [
   "zoomMode",
   "status",
   "mainCanvas",
+  "previewCanvas",
   "canvasWrap"
 ]) {
   els[id] = document.getElementById(id);
 }
 
 const ctx = els.mainCanvas.getContext("2d", { willReadFrequently: true });
+const previewCtx = els.previewCanvas.getContext("2d", { willReadFrequently: true });
 
 init();
 
 function init() {
   renderLabelButtons();
   bindEvents();
-  setStatus("Load an image to begin.");
+  refreshImageSelector();
+  setStatus("Load a batch folder or single image to begin.");
 }
 
 function bindEvents() {
-  els.imageInput.addEventListener("change", handleImageInput);
+  els.imageInput.addEventListener("change", handleSingleImageInput);
+  els.folderInput.addEventListener("change", handleFolderInput);
+  els.imageSelector.addEventListener("change", handleImageSelectionChange);
   els.imageId.addEventListener("input", () => {
     state.imageId = sanitize(els.imageId.value);
   });
@@ -100,9 +110,39 @@ function renderLabelButtons() {
   }
 }
 
-async function handleImageInput(event) {
+async function handleSingleImageInput(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  await loadImageFile(file);
+  state.batchFiles = [file];
+  refreshImageSelector();
+}
+
+async function handleFolderInput(event) {
+  const files = [...(event.target.files || [])].filter((file) => file.type.startsWith("image/"));
+  if (!files.length) return;
+  state.batchFiles = sortFiles(files);
+  state.completedMasks.clear();
+  refreshImageSelector();
+  await loadBatchIndex(0);
+  setStatus(`Loaded batch with ${state.batchFiles.length} images. Recommended batch size: up to 50 images to keep browser memory and review flow comfortable.`);
+}
+
+function handleImageSelectionChange() {
+  const index = Number(els.imageSelector.value);
+  if (Number.isNaN(index) || index < 0 || index >= state.batchFiles.length) return;
+  loadBatchIndex(index);
+}
+
+async function loadBatchIndex(index) {
+  if (index < 0 || index >= state.batchFiles.length) return;
+  state.currentIndex = index;
+  await loadImageFile(state.batchFiles[index], { keepBatch: true });
+  els.imageSelector.value = String(index);
+  updateImageSelectorOptions();
+}
+
+async function loadImageFile(file, options = {}) {
   state.imageName = file.name;
   state.imageId = file.name.replace(/\.[^.]+$/, "");
   state.imageBitmap = await createImageBitmap(file);
@@ -112,16 +152,65 @@ async function handleImageInput(event) {
   state.tissuePolygons = [];
   state.currentPolygon = [];
   state.tissueLocked = false;
-  state.serialized = null;
   state.viewZoom = 1;
   els.imageId.value = state.imageId;
-  resizeCanvas(state.image.width, state.image.height, 96);
   els.baseLabel.value = String(state.baseLabel);
-  els.downloadZip.disabled = false;
+  resizeCanvas(state.image.width, state.image.height, 96);
+  resizePreviewCanvas(state.image.width, state.image.height);
+  els.downloadZip.disabled = state.batchFiles.length === 0;
   updateTissueLockUI();
   setMode("tissue");
   drawMainCanvas();
+  if (!options.keepBatch) {
+    refreshImageSelector();
+  }
   setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}). Base tissue is ${currentLabelName(state.baseLabel)}.`);
+}
+
+function refreshImageSelector() {
+  els.imageSelector.replaceChildren();
+  if (!state.batchFiles.length) {
+    const option = document.createElement("option");
+    option.value = "-1";
+    option.textContent = "No batch loaded";
+    els.imageSelector.appendChild(option);
+    els.imageSelector.disabled = true;
+    els.downloadZip.disabled = true;
+    return;
+  }
+
+  els.imageSelector.disabled = false;
+  updateImageSelectorOptions();
+}
+
+function updateImageSelectorOptions() {
+  if (!state.batchFiles.length) return;
+  els.imageSelector.replaceChildren();
+  const pending = [];
+  const done = [];
+  state.batchFiles.forEach((file, index) => {
+    const bucket = state.completedMasks.has(file.name) ? done : pending;
+    bucket.push({ file, index });
+  });
+  const groups = [
+    ["Pending", pending],
+    ["Completed", done]
+  ];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = `${label} (${items.length})`;
+    for (const { file, index } of items) {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = file.name;
+      group.appendChild(option);
+    }
+    els.imageSelector.appendChild(group);
+  }
+  if (state.currentIndex >= 0) {
+    els.imageSelector.value = String(state.currentIndex);
+  }
 }
 
 function handlePointerDown(event) {
@@ -173,16 +262,23 @@ function clearLastTissuePolygon() {
   state.tissuePolygons = removeLastPolygonForLabel(state.tissuePolygons, state.tissueLabel);
   rebuildTissueMask();
   drawMainCanvas();
-  setStatus(`Removed last ${tissueLabels.find((item) => item[1] === state.tissueLabel)?.[0] || "tissue"} polygon.`);
+  setStatus(`Removed last ${currentLabelName(state.tissueLabel)} polygon.`);
 }
 
 function confirmTissue() {
   if (!state.imageBitmap || state.tissueLocked) return;
   completeCurrentPolygon();
   state.tissueLocked = true;
-  els.downloadZip.disabled = false;
+  if (state.currentIndex >= 0) {
+    state.completedMasks.set(state.imageName, cloneMask(state.tissueMask));
+  }
   updateTissueLockUI();
-  setStatus("Tissue annotation locked. You can now download the mask PNG.");
+  setStatus(`Tissue annotation confirmed for ${state.imageName}.`);
+  if (state.currentIndex + 1 < state.batchFiles.length) {
+    loadBatchIndex(state.currentIndex + 1);
+  } else {
+    setStatus(`Tissue annotation confirmed for ${state.imageName}. Batch complete.`);
+  }
 }
 
 function rebuildTissueMask() {
@@ -243,6 +339,7 @@ function updateTissueLockUI() {
   els.confirmTissue.disabled = state.tissueLocked;
   els.tissueMode.disabled = state.tissueLocked;
   renderLabelButtons();
+  updateImageSelectorOptions();
 }
 
 function drawMainCanvas() {
@@ -259,6 +356,7 @@ function drawMainCanvas() {
   ctx.drawImage(state.imageBitmap, offset.x, offset.y);
   drawTissueOverlay(offset);
   drawCurrentPolygon(offset);
+  drawPreview();
 }
 
 function drawTissueOverlay(offset) {
@@ -271,9 +369,9 @@ function drawTissueOverlay(offset) {
     if (value === 0) continue;
     const [r, g, b] = hexToRgb(colorForTissue(value));
     const idx = i * 4;
-    imageData.data[idx] = Math.round(imageData.data[idx] * 0.35 + r * 0.65);
-    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.35 + g * 0.65);
-    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.35 + b * 0.65);
+    imageData.data[idx] = Math.round(imageData.data[idx] * 0.28 + r * 0.72);
+    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.28 + g * 0.72);
+    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.28 + b * 0.72);
   }
   ctx.putImageData(imageData, offset.x, offset.y);
 }
@@ -327,14 +425,43 @@ function applyCanvasZoom() {
   els.mainCanvas.style.height = `${els.mainCanvas.height * state.viewZoom}px`;
 }
 
+function resizePreviewCanvas(width, height) {
+  els.previewCanvas.width = width;
+  els.previewCanvas.height = height;
+}
+
+function drawPreview() {
+  if (!state.imageBitmap) {
+    previewCtx.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+    return;
+  }
+  previewCtx.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+  previewCtx.drawImage(state.imageBitmap, 0, 0, els.previewCanvas.width, els.previewCanvas.height);
+}
+
 async function downloadZip() {
-  if (!state.imageBitmap || !state.tissueMask) return;
-  completeCurrentPolygon();
-  const imageId = sanitize(state.imageId);
-  const tissueBlob = await canvasToBlob(maskToCanvas(state.tissueMask, state.image.width, state.image.height));
+  if (!state.batchFiles.length) return;
+  if (state.imageBitmap && !state.tissueLocked) {
+    completeCurrentPolygon();
+  }
+  const files = [];
+  for (const file of state.batchFiles) {
+    const mask = state.completedMasks.get(file.name);
+    if (!mask) continue;
+    const imageId = sanitize(file.name.replace(/\.[^.]+$/, ""));
+    files.push({
+      name: `masks/${imageId}_mask.png`,
+      data: new Uint8Array(await canvasToBlob(maskToCanvas(mask, mask.width, mask.height)).then((blob) => blob.arrayBuffer()))
+    });
+  }
+  if (!files.length) {
+    setStatus("No completed masks to download yet.");
+    return;
+  }
+  const zip = await buildZip(files);
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(tissueBlob);
-  link.download = `${imageId}_mask.png`;
+  link.href = URL.createObjectURL(zip);
+  link.download = `tissue_masks_batch.zip`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -360,6 +487,12 @@ function canvasToBlob(canvas) {
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
 }
 
+function cloneMask(mask) {
+  const copy = new Uint8Array(mask.length);
+  copy.set(mask);
+  return copy;
+}
+
 function colorForTissue(value) {
   return tissueLabels.find((item) => item[1] === value)?.[2] || "#000000";
 }
@@ -371,6 +504,10 @@ function currentLabelName(value) {
 function hexToRgb(hex) {
   const value = hex.replace("#", "");
   return [0, 2, 4].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
+}
+
+function sortFiles(files) {
+  return [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
 }
 
 function clamp(value, min, max) {

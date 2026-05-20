@@ -24,6 +24,14 @@
             <input id="imageInput" type="file" accept="image/*" />
           </label>
           <label class="field">
+            <span>Batch folder</span>
+            <input id="folderInput" type="file" webkitdirectory directory multiple />
+          </label>
+          <label class="field">
+            <span>Image in batch</span>
+            <select id="imageSelector" disabled></select>
+          </label>
+          <label class="field">
             <span>Image ID</span>
             <input id="imageId" value="textbook_image" />
           </label>
@@ -46,6 +54,7 @@
           <h2>2. Tissue</h2>
           <div class="segmented" id="tissueLabels"></div>
           <p class="hint">Click to place polygon points. Double-click or press Enter to close the polygon. Backspace/Delete removes the last point; Esc clears the current polygon.</p>
+          <p class="hint">Confirmed masks stay in memory and can be downloaded anytime as one batch zip. A practical batch size is up to 50 images.</p>
           <div class="buttonRow">
             <button id="clearTissue">Clear last polygon</button>
             <button id="confirmTissue" class="primary">Confirm tissue</button>
@@ -59,8 +68,16 @@
           <button id="zoomMode">Zoom</button>
           <span id="status" class="status">Load an image to begin.</span>
         </div>
-        <div id="canvasWrap" class="canvasWrap">
-          <canvas id="mainCanvas"></canvas>
+        <div class="canvasGrid">
+          <div id="canvasWrap" class="canvasWrap">
+            <canvas id="mainCanvas"></canvas>
+          </div>
+          <div class="previewPane">
+            <h2>Original</h2>
+            <div class="previewFrame">
+              <canvas id="previewCanvas"></canvas>
+            </div>
+          </div>
         </div>
       </section>
     </main>

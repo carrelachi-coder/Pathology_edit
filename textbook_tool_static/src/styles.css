@@ -124,6 +124,13 @@ button:disabled {
   border-bottom: 1px solid var(--line);
 }
 
+.canvasGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 12px;
+  padding: 12px;
+}
+
 .status {
   margin-left: auto;
   color: var(--muted);
@@ -131,7 +138,7 @@ button:disabled {
 }
 
 .canvasWrap {
-  height: 58vh;
+  height: 62vh;
   overflow: auto;
   background: #e9edf2;
   display: grid;
@@ -154,12 +161,36 @@ button:disabled {
   cursor: crosshair;
 }
 
+.previewPane {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.previewFrame {
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+#previewCanvas {
+  width: 100%;
+  display: block;
+}
+
 .hint {
   font-size: 12px;
 }
 
 @media (max-width: 900px) {
   .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .canvasGrid {
     grid-template-columns: 1fr;
   }
 
