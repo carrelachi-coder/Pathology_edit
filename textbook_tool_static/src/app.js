@@ -270,7 +270,11 @@ function confirmTissue() {
   if (!state.imageBitmap || state.tissueLocked) return;
   completeCurrentPolygon();
   state.tissueLocked = true;
-  state.completedMasks.set(state.imageName, cloneMask(state.tissueMask));
+  state.completedMasks.set(state.imageName, {
+    mask: cloneMask(state.tissueMask),
+    width: state.image.width,
+    height: state.image.height
+  });
   updateTissueLockUI();
   setStatus(`Tissue annotation confirmed for ${state.imageName}.`);
   if (state.currentIndex + 1 < state.batchFiles.length) {
@@ -368,9 +372,9 @@ function drawTissueOverlay(offset) {
     if (value === 0) continue;
     const [r, g, b] = hexToRgb(colorForTissue(value));
     const idx = i * 4;
-    imageData.data[idx] = Math.round(imageData.data[idx] * 0.28 + r * 0.72);
-    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.28 + g * 0.72);
-    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.28 + b * 0.72);
+    imageData.data[idx] = Math.round(imageData.data[idx] * 0.42 + r * 0.58);
+    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.42 + g * 0.58);
+    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.42 + b * 0.58);
   }
   ctx.putImageData(imageData, offset.x, offset.y);
 }
@@ -442,16 +446,20 @@ async function downloadZip() {
   if (!state.batchFiles.length) return;
   if (state.imageBitmap && !state.tissueLocked) {
     completeCurrentPolygon();
-    state.completedMasks.set(state.imageName, cloneMask(state.tissueMask));
+    state.completedMasks.set(state.imageName, {
+      mask: cloneMask(state.tissueMask),
+      width: state.image.width,
+      height: state.image.height
+    });
   }
   const files = [];
   for (const file of state.batchFiles) {
-    const mask = state.completedMasks.get(file.name);
-    if (!mask) continue;
+    const entry = state.completedMasks.get(file.name);
+    if (!entry) continue;
     const imageId = sanitize(file.name.replace(/\.[^.]+$/, ""));
     files.push({
       name: `masks/${imageId}_mask.png`,
-      data: new Uint8Array(await canvasToBlob(maskToCanvas(mask, mask.width, mask.height)).then((blob) => blob.arrayBuffer()))
+      data: new Uint8Array(await canvasToBlob(maskToCanvas(entry.mask, entry.width, entry.height)).then((blob) => blob.arrayBuffer()))
     });
   }
   if (!files.length) {
