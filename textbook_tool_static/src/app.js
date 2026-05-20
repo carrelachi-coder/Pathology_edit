@@ -1,5 +1,4 @@
 import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
-import { buildZip } from "./zip.js";
 
 const tissueLabels = [
   ["background", 0, "#000000"],
@@ -321,32 +320,11 @@ async function downloadZip() {
   completeCurrentPolygon();
   const imageId = sanitize(state.imageId);
   const tissueBlob = await canvasToBlob(maskToCanvas(state.tissueMask, state.image.width, state.image.height));
-  const files = [
-    { name: `images/${imageId}.png`, data: new Uint8Array(await canvasToBlob(cropImageCanvas(state.imageBitmap, { x: 0, y: 0, width: state.image.width, height: state.image.height })).arrayBuffer()) },
-    { name: `tissue_masks/${imageId}.png`, data: new Uint8Array(await tissueBlob.arrayBuffer()) },
-    {
-      name: "manifest.json",
-      data: `${JSON.stringify({
-        app_version: "0.1.0",
-        exported_at: new Date().toISOString(),
-        source_image: state.imageName
-      }, null, 2)}\n`
-    }
-  ];
-  const zip = await buildZip(files);
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(zip);
-  link.download = `${imageId}.zip`;
+  link.href = URL.createObjectURL(tissueBlob);
+  link.download = `${imageId}_mask.png`;
   link.click();
   URL.revokeObjectURL(link.href);
-}
-
-function cropImageCanvas(source, patch) {
-  const canvas = document.createElement("canvas");
-  canvas.width = patch.width;
-  canvas.height = patch.height;
-  canvas.getContext("2d").drawImage(source, patch.x, patch.y, patch.width, patch.height, 0, 0, patch.width, patch.height);
-  return canvas;
 }
 
 function maskToCanvas(mask, width, height) {
