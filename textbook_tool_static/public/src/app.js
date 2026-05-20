@@ -113,9 +113,10 @@ function renderLabelButtons() {
 async function handleSingleImageInput(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  await loadImageFile(file);
   state.batchFiles = [file];
+  state.completedMasks.clear();
   refreshImageSelector();
+  await loadBatchIndex(0);
 }
 
 async function handleFolderInput(event) {
@@ -269,9 +270,7 @@ function confirmTissue() {
   if (!state.imageBitmap || state.tissueLocked) return;
   completeCurrentPolygon();
   state.tissueLocked = true;
-  if (state.currentIndex >= 0) {
-    state.completedMasks.set(state.imageName, cloneMask(state.tissueMask));
-  }
+  state.completedMasks.set(state.imageName, cloneMask(state.tissueMask));
   updateTissueLockUI();
   setStatus(`Tissue annotation confirmed for ${state.imageName}.`);
   if (state.currentIndex + 1 < state.batchFiles.length) {
@@ -443,6 +442,7 @@ async function downloadZip() {
   if (!state.batchFiles.length) return;
   if (state.imageBitmap && !state.tissueLocked) {
     completeCurrentPolygon();
+    state.completedMasks.set(state.imageName, cloneMask(state.tissueMask));
   }
   const files = [];
   for (const file of state.batchFiles) {
