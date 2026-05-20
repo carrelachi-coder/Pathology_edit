@@ -20,6 +20,7 @@ const state = {
   tissuePolygons: [],
   currentPolygon: [],
   tissueLocked: false,
+  baseLabel: 0,
   tissueLabel: 1,
   zoomEnabled: false,
   viewZoom: 1,
@@ -32,6 +33,7 @@ for (const id of [
   "downloadZip",
   "imageInput",
   "imageId",
+  "baseLabel",
   "tissueSection",
   "tissueLabels",
   "clearTissue",
@@ -59,6 +61,14 @@ function bindEvents() {
   els.imageInput.addEventListener("change", handleImageInput);
   els.imageId.addEventListener("input", () => {
     state.imageId = sanitize(els.imageId.value);
+  });
+  els.baseLabel.addEventListener("change", () => {
+    state.baseLabel = Number(els.baseLabel.value);
+    if (state.imageBitmap) {
+      rebuildTissueMask();
+      drawMainCanvas();
+      setStatus(`Base tissue set to ${currentLabelName(state.baseLabel)}.`);
+    }
   });
   els.clearTissue.addEventListener("click", clearLastTissuePolygon);
   els.confirmTissue.addEventListener("click", confirmTissue);
@@ -98,6 +108,7 @@ async function handleImageInput(event) {
   state.imageBitmap = await createImageBitmap(file);
   state.image = state.imageBitmap;
   state.tissueMask = new Uint8Array(state.image.width * state.image.height);
+  state.tissueMask.fill(state.baseLabel);
   state.tissuePolygons = [];
   state.currentPolygon = [];
   state.tissueLocked = false;
@@ -105,11 +116,12 @@ async function handleImageInput(event) {
   state.viewZoom = 1;
   els.imageId.value = state.imageId;
   resizeCanvas(state.image.width, state.image.height, 96);
+  els.baseLabel.value = String(state.baseLabel);
   els.downloadZip.disabled = false;
   updateTissueLockUI();
   setMode("tissue");
   drawMainCanvas();
-  setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}). Draw tissue polygons point by point.`);
+  setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}). Base tissue is ${currentLabelName(state.baseLabel)}.`);
 }
 
 function handlePointerDown(event) {
@@ -170,12 +182,12 @@ function confirmTissue() {
   state.tissueLocked = true;
   els.downloadZip.disabled = false;
   updateTissueLockUI();
-  setStatus("Tissue annotation locked. You can now download the zip.");
+  setStatus("Tissue annotation locked. You can now download the mask PNG.");
 }
 
 function rebuildTissueMask() {
   if (!state.imageBitmap) return;
-  state.tissueMask = buildMaskFromPolygons(state.image.width, state.image.height, state.tissuePolygons);
+  state.tissueMask = buildMaskFromPolygons(state.image.width, state.image.height, state.tissuePolygons, state.baseLabel);
 }
 
 function handleKeyDown(event) {
@@ -350,6 +362,10 @@ function canvasToBlob(canvas) {
 
 function colorForTissue(value) {
   return tissueLabels.find((item) => item[1] === value)?.[2] || "#000000";
+}
+
+function currentLabelName(value) {
+  return tissueLabels.find((item) => item[1] === value)?.[0] || "background";
 }
 
 function hexToRgb(hex) {
