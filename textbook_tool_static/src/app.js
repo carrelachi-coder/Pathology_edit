@@ -132,6 +132,7 @@ function handleCanvasDoubleClick(event) {
 function addTissuePolygonPoint(point) {
   state.currentPolygon.push(point);
   drawMainCanvas();
+  setStatus(`Tissue points: ${state.currentPolygon.length}. Double-click or press Enter to close.`);
 }
 
 function completeCurrentPolygon() {
@@ -147,6 +148,7 @@ function completeCurrentPolygon() {
   state.currentPolygon = [];
   rebuildTissueMask();
   drawMainCanvas();
+  setStatus(`Closed tissue polygon #${state.tissuePolygons.length}.`);
 }
 
 function clearLastTissuePolygon() {
@@ -154,11 +156,13 @@ function clearLastTissuePolygon() {
   if (state.currentPolygon.length > 0) {
     state.currentPolygon = [];
     drawMainCanvas();
+    setStatus("Cleared current tissue polygon.");
     return;
   }
   state.tissuePolygons = removeLastPolygonForLabel(state.tissuePolygons, state.tissueLabel);
   rebuildTissueMask();
   drawMainCanvas();
+  setStatus(`Removed last ${tissueLabels.find((item) => item[1] === state.tissueLabel)?.[0] || "tissue"} polygon.`);
 }
 
 function confirmTissue() {
@@ -185,10 +189,12 @@ function handleKeyDown(event) {
     event.preventDefault();
     state.currentPolygon.pop();
     drawMainCanvas();
+    setStatus(`Tissue points: ${state.currentPolygon.length}.`);
   }
   if (event.key === "Escape") {
     state.currentPolygon = [];
     drawMainCanvas();
+    setStatus("Cleared current tissue polygon.");
   }
 }
 
@@ -265,7 +271,7 @@ function drawCurrentPolygon(offset) {
   if (state.currentPolygon.length === 0) return;
   ctx.save();
   ctx.strokeStyle = colorForTissue(state.tissueLabel);
-  ctx.fillStyle = "rgba(15, 118, 110, 0.10)";
+  ctx.fillStyle = "rgba(15, 118, 110, 0.95)";
   ctx.lineWidth = 2;
   ctx.beginPath();
   for (const [index, point] of state.currentPolygon.entries()) {
@@ -273,13 +279,15 @@ function drawCurrentPolygon(offset) {
     const y = point.y + offset.y;
     if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x, y);
   }
   ctx.stroke();
+  for (const point of state.currentPolygon) {
+    const x = point.x + offset.x;
+    const y = point.y + offset.y;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
