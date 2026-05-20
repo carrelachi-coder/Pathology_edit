@@ -343,6 +343,7 @@ function updateTissueLockUI() {
   els.tissueMode.disabled = state.tissueLocked;
   renderLabelButtons();
   updateImageSelectorOptions();
+  els.downloadZip.disabled = state.completedMasks.size === 0;
 }
 
 function drawMainCanvas() {
@@ -372,9 +373,9 @@ function drawTissueOverlay(offset) {
     if (value === 0) continue;
     const [r, g, b] = hexToRgb(colorForTissue(value));
     const idx = i * 4;
-    imageData.data[idx] = Math.round(imageData.data[idx] * 0.42 + r * 0.58);
-    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.42 + g * 0.58);
-    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.42 + b * 0.58);
+    imageData.data[idx] = Math.round(imageData.data[idx] * 0.55 + r * 0.45);
+    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.55 + g * 0.45);
+    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.55 + b * 0.45);
   }
   ctx.putImageData(imageData, offset.x, offset.y);
 }
@@ -444,14 +445,6 @@ function drawPreview() {
 
 async function downloadZip() {
   if (!state.batchFiles.length) return;
-  if (state.imageBitmap && !state.tissueLocked) {
-    completeCurrentPolygon();
-    state.completedMasks.set(state.imageName, {
-      mask: cloneMask(state.tissueMask),
-      width: state.image.width,
-      height: state.image.height
-    });
-  }
   const files = [];
   for (const file of state.batchFiles) {
     const entry = state.completedMasks.get(file.name);
@@ -463,7 +456,7 @@ async function downloadZip() {
     });
   }
   if (!files.length) {
-    setStatus("No completed masks to download yet.");
+    setStatus("No confirmed masks to download yet.");
     return;
   }
   const zip = await buildZip(files);
