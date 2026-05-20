@@ -6,12 +6,9 @@
   --muted: #667085;
   --line: #d7dce3;
   --accent: #0f766e;
-  --danger: #b42318;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -30,27 +27,14 @@ body {
   background: var(--panel);
 }
 
-h1, h2 {
-  margin: 0;
-}
-
-h1 {
-  font-size: 22px;
-}
-
-h2 {
-  font-size: 15px;
-  margin-bottom: 10px;
-}
-
-p {
-  margin: 6px 0 0;
-  color: var(--muted);
-}
+h1, h2 { margin: 0; }
+h1 { font-size: 22px; }
+h2 { font-size: 15px; margin-bottom: 10px; }
+p { margin: 6px 0 0; color: var(--muted); }
 
 .layout {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 16px;
   padding: 16px;
 }
@@ -81,15 +65,7 @@ p {
   font-size: 13px;
 }
 
-.field.inline {
-  grid-template-columns: 90px 1fr;
-  align-items: center;
-}
-
-input, select, textarea, button {
-  font: inherit;
-}
-
+input, select, textarea, button { font: inherit; }
 input, select, textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -125,11 +101,6 @@ button:disabled {
   margin-top: 10px;
 }
 
-.locked {
-  opacity: 0.42;
-  pointer-events: none;
-}
-
 .segmented {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -138,6 +109,11 @@ button:disabled {
 
 .segmented button {
   text-align: left;
+}
+
+.locked {
+  opacity: 0.42;
+  pointer-events: none;
 }
 
 .toolbar {
@@ -176,60 +152,6 @@ button:disabled {
 
 #mainCanvas.polygonMode {
   cursor: crosshair;
-}
-
-#mainCanvas.cellPolygonMode {
-  cursor: cell;
-}
-
-.patches {
-  padding: 12px;
-}
-
-.patchGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
-}
-
-.patchCard {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
-  background: #fff;
-}
-
-.patchCard canvas {
-  width: 100%;
-  aspect-ratio: 1;
-  border: 1px solid var(--line);
-  background: #f8fafc;
-}
-
-.patchCard .meta {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 6px 0;
-}
-
-.patchCard.rejected {
-  opacity: 0.55;
-}
-
-.patchCard.current {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.16);
-}
-
-.patchCard.confirmed {
-  opacity: 0.42;
-}
-
-.patchCard .state {
-  display: inline-block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 6px;
 }
 
 .hint {

@@ -24,76 +24,19 @@
             <input id="imageInput" type="file" accept="image/*" />
           </label>
           <label class="field">
-            <span>Metadata JSON</span>
-            <input id="metadataInput" type="file" accept=".json,application/json" />
-          </label>
-          <label class="field">
             <span>Image ID</span>
             <input id="imageId" value="textbook_image" />
-          </label>
-          <label class="field">
-            <span>Organ</span>
-            <input id="organ" value="lung" />
-          </label>
-          <label class="field">
-            <span>Cancer type</span>
-            <input id="cancerType" value="lung adenocarcinoma in situ" />
-          </label>
-          <label class="field">
-            <span>Nuclei library</span>
-            <select id="libraryKey">
-              <option value="lung">lung</option>
-              <option value="breast">breast</option>
-              <option value="prostate">prostate</option>
-              <option value="colorectal">colorectal</option>
-              <option value="melanoma">melanoma</option>
-              <option value="oral">oral</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Global description</span>
-            <textarea id="globalDescription" rows="5"></textarea>
           </label>
         </section>
 
         <section id="tissueSection">
           <h2>2. Tissue</h2>
           <div class="segmented" id="tissueLabels"></div>
-          <p class="hint">Default mask is background. Gray overlay means unassigned/background; polygons can extend outside the image, and outside pixels are ignored.</p>
+          <p class="hint">Click to place polygon points. Double-click or press Enter to close the polygon. Backspace/Delete removes the last point; Esc clears the current polygon.</p>
           <div class="buttonRow">
             <button id="clearTissue">Clear last polygon</button>
             <button id="confirmTissue" class="primary">Confirm tissue</button>
           </div>
-        </section>
-
-        <section>
-          <h2>3. Scale</h2>
-          <label class="field">
-            <span>Calibration cell type</span>
-            <select id="scaleCellType">
-              <option value="101">tumor / neoplastic (preferred)</option>
-            </select>
-          </label>
-          <p class="hint">Prefer tumor/neoplastic cells because the library is richer. If tumor cells are sparse, choose one backup cell type and use only that type for all 10 cells.</p>
-          <button id="cellMode">Mark scale cells</button>
-          <button id="clearCells">Clear last cell</button>
-          <p id="scaleStatus" class="hint">Mark 10 representative cells of one selected type.</p>
-          <button id="normalizeAndSelect">Normalize + select patches</button>
-        </section>
-
-        <section>
-          <h2>4. Patch Nuclei</h2>
-          <div class="segmented" id="nucleiLabels"></div>
-          <p id="patchQueueStatus" class="hint">Normalize and select patches first.</p>
-          <div class="buttonRow">
-            <button id="acceptPatch">Accept patch</button>
-            <button id="rejectPatch">Reject patch</button>
-          </div>
-          <div class="buttonRow">
-            <button id="annotatePatchNuclei">Annotate nuclei</button>
-            <button id="clearPatchNucleus">Clear last cell</button>
-          </div>
-          <button id="confirmPatch" class="primary">Confirm patch</button>
         </section>
       </aside>
 
@@ -101,18 +44,11 @@
         <div class="toolbar">
           <button id="tissueMode" class="active">Tissue polygon</button>
           <button id="zoomMode">Zoom</button>
-          <button id="cellToolbarMode">Mark scale cells</button>
-          <button id="reviewMode">Patch review</button>
-          <button id="nucleiMode">Patch nuclei</button>
           <span id="status" class="status">Load an image to begin.</span>
         </div>
         <div id="canvasWrap" class="canvasWrap">
           <canvas id="mainCanvas"></canvas>
         </div>
-        <section class="patches">
-          <h2>Recommended boundary patches</h2>
-          <div id="patchGrid" class="patchGrid"></div>
-        </section>
       </section>
     </main>
 
