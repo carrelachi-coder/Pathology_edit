@@ -1,0 +1,26 @@
+{
+  "status": "validation_failed",
+  "attempt": 4,
+  "failed_checks": [
+    {
+      "name": "fine_transition_source_relative_change_area",
+      "detail": "source_relative_fraction=0.0556 outside [0.20, 0.40]"
+    }
+  ],
+  "projection": {
+    "candidate_pixels": 5203,
+    "projected_pixels": 434,
+    "selected_pixels": 434,
+    "projection_retained_fraction": 0.0834134153373054,
+    "projection_mode": "organic_v2",
+    "projection_backend": "fine_transition_source_fine_id_projection",
+    "legal_domain_pixels": 7802,
+    "target_pixels": 2341,
+    "area_shortfall": 1907,
+    "template_overlap_with_legal_domain": null,
+    "top_failed_reason": "fine_transition_source_relative_change_area"
+  },
+  "warnings": [
+    "fine_transition_area_shortfall"
+  ]
+}

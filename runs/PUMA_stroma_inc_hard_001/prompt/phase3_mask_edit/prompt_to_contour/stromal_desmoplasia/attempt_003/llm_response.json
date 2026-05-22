@@ -1,0 +1,144 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "PUMA",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "peritumoral_desmoplastic_stroma_expansion",
+  "shape_hints": [
+    "peritumoral",
+    "stromal_reinforcement",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Normal epithelium"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "peritumoral_desmoplastic_stroma_expansion",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "peritumoral",
+        "stromal_reinforcement",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          320,
+          190
+        ],
+        [
+          340,
+          200
+        ],
+        [
+          360,
+          210
+        ],
+        [
+          370,
+          230
+        ],
+        [
+          365,
+          250
+        ],
+        [
+          350,
+          270
+        ],
+        [
+          330,
+          280
+        ],
+        [
+          310,
+          270
+        ],
+        [
+          300,
+          250
+        ],
+        [
+          305,
+          230
+        ],
+        [
+          315,
+          210
+        ]
+      ],
+      "confidence": 0.8
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Normal epithelium"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "peritumoral_desmoplastic_stroma_expansion",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "peritumoral",
+        "stromal_reinforcement",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          180,
+          140
+        ],
+        [
+          195,
+          150
+        ],
+        [
+          210,
+          160
+        ],
+        [
+          220,
+          180
+        ],
+        [
+          215,
+          200
+        ],
+        [
+          200,
+          210
+        ],
+        [
+          185,
+          205
+        ],
+        [
+          175,
+          190
+        ],
+        [
+          170,
+          170
+        ]
+      ],
+      "confidence": 0.75
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "passed": false,
+  "primitive": "necrosis_appearance",
+  "checks": [
+    {
+      "name": "change_area_nonempty",
+      "passed": false,
+      "detail": "no pixels changed."
+    },
+    {
+      "name": "change_area_within_range",
+      "passed": false,
+      "detail": "changed_tumor_fraction=0.0000 below 0.08"
+    },
+    {
+      "name": "label_legality",
+      "passed": true,
+      "detail": "all labels in schema."
+    },
+    {
+      "name": "no_background_leakage",
+      "passed": true,
+      "detail": "no background leakage."
+    },
+    {
+      "name": "required_labels_present",
+      "passed": true,
+      "detail": "all required labels present in src mask."
+    },
+    {
+      "name": "necrosis_area_must_increase",
+      "passed": false,
+      "detail": "necrosis did not increase: 9227 -> 9227 pixels."
+    },
+    {
+      "name": "new_necrosis_must_be_inside_original_tumor",
+      "passed": true,
+      "detail": "new necrosis inside original tumor or locally engulfed non-background intrusions."
+    },
+    {
+      "name": "candidate_region_must_have_high_necrosis_probability",
+      "passed": true,
+      "detail": "no guard implemented; skipped."
+    },
+    {
+      "name": "new_region_must_not_be_too_small_or_fragmented",
+      "passed": true,
+      "detail": "no guard implemented; skipped."
+    }
+  ],
+  "warnings": [
+    "change_area_nonempty: no pixels changed.",
+    "change_area_within_range: changed_tumor_fraction=0.0000 below 0.08",
+    "necrosis_area_must_increase: necrosis did not increase: 9227 -> 9227 pixels."
+  ]
+}

@@ -1,0 +1,174 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "peritumoral_desmoplastic_stroma_expansion",
+  "shape_hints": [
+    "peritumoral",
+    "stromal_reinforcement",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2",
+        "source_4"
+      ],
+      "adjacency_side": "peritumoral_desmoplastic_stroma_expansion",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "peritumoral",
+        "stromal_reinforcement",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          250,
+          35
+        ],
+        [
+          260,
+          40
+        ],
+        [
+          270,
+          45
+        ],
+        [
+          280,
+          50
+        ],
+        [
+          285,
+          55
+        ],
+        [
+          290,
+          60
+        ],
+        [
+          288,
+          65
+        ],
+        [
+          282,
+          70
+        ],
+        [
+          275,
+          72
+        ],
+        [
+          265,
+          70
+        ],
+        [
+          255,
+          65
+        ],
+        [
+          245,
+          60
+        ],
+        [
+          240,
+          55
+        ],
+        [
+          238,
+          50
+        ],
+        [
+          240,
+          45
+        ],
+        [
+          245,
+          40
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "peritumoral_desmoplastic_stroma_expansion",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "peritumoral",
+        "stromal_reinforcement",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          320,
+          320
+        ],
+        [
+          340,
+          330
+        ],
+        [
+          360,
+          340
+        ],
+        [
+          370,
+          360
+        ],
+        [
+          365,
+          380
+        ],
+        [
+          350,
+          390
+        ],
+        [
+          330,
+          400
+        ],
+        [
+          310,
+          395
+        ],
+        [
+          300,
+          380
+        ],
+        [
+          305,
+          360
+        ],
+        [
+          315,
+          340
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

@@ -329,6 +329,7 @@ def execute_llm_contour_agent(
 
     attempts: list[LLMContourAttempt] = []
     repair_feedback: dict[str, Any] | None = None
+    next_repair_profile: str | None = None
     final_attempt: LLMContourAttempt | None = None
     context_mode = "full"
     compact_context_enabled = False
@@ -382,6 +383,15 @@ def execute_llm_contour_agent(
             final_attempt = attempt
             break
         repair_feedback = attempt.repair_feedback
+        if repair_feedback is not None:
+            next_repair_profile = str(repair_feedback.get("repair_profile") or "") or None
+            repair_feedback = _with_task_specific_repair_feedback(
+                repair_feedback,
+                primitive_name=str(primitive_config.get("name", "")),
+                repair_profile=next_repair_profile,
+                target_label=target_label,
+                allowed_source_labels=resolved_sources,
+            )
         if (
             attempt.status == STATUS_PROVIDER_ERROR
             and _is_message_length_exceeded(attempt.error)
@@ -816,6 +826,52 @@ def _with_compact_context_feedback(
         "tiles, contour points, and adjacency segments."
     )
     updated["context_mode_next_attempt"] = "compact"
+    return updated
+
+
+def _with_task_specific_repair_feedback(
+    repair_feedback: dict[str, Any] | None,
+    *,
+    primitive_name: str,
+    repair_profile: str | None,
+    target_label: str,
+    allowed_source_labels: Sequence[str],
+) -> dict[str, Any] | None:
+    if repair_feedback is None:
+        return None
+    updated = dict(repair_feedback)
+    instruction_parts: list[str] = []
+    if primitive_name in {"stromal_desmoplasia", "stroma_decrease", "stromal_reduction"}:
+        instruction_parts.append(
+            f"Focus on {target_label} with broad enough coverage to satisfy the stroma area guard."
+        )
+        if repair_profile == "stroma_immune_balance":
+            instruction_parts.append(
+                "Reduce immune conversion inside the proposed region and keep the write centered on Stroma."
+            )
+    elif primitive_name == "necrosis_appearance":
+        instruction_parts.append(
+            "Push the next proposal deeper into Tumor and make the changed area larger."
+        )
+        if repair_profile == "necrosis_growth":
+            instruction_parts.append("Anchor the coarse template on tumor interior components, not the outer edge.")
+    elif primitive_name == "tumor_burden_increase":
+        instruction_parts.append(
+            "Expand the editable region so the deterministic projection can reach the target area."
+        )
+    elif primitive_name == "tumor_burden_decrease":
+        instruction_parts.append(
+            "Increase the regression footprint and avoid tiny isolated polygons."
+        )
+    elif "fine_label_transition" in primitive_name or repair_profile == "fine_transition_area":
+        instruction_parts.append(
+            "Select a larger connected source component group so the final relative change is within range."
+        )
+    if instruction_parts:
+        updated["repair_instruction"] = " ".join(instruction_parts)
+    if allowed_source_labels:
+        updated["allowed_source_labels_next_attempt"] = list(allowed_source_labels)
+    updated["repair_profile_next_attempt"] = repair_profile
     return updated
 
 

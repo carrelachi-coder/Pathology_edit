@@ -1,0 +1,182 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "gleason_upgrade_4to5",
+  "reference_profile": "PANDA",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_11"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          260,
+          480
+        ],
+        [
+          270,
+          470
+        ],
+        [
+          280,
+          460
+        ],
+        [
+          290,
+          455
+        ],
+        [
+          300,
+          460
+        ],
+        [
+          310,
+          470
+        ],
+        [
+          320,
+          480
+        ],
+        [
+          330,
+          490
+        ],
+        [
+          335,
+          500
+        ],
+        [
+          335,
+          510
+        ],
+        [
+          325,
+          510
+        ],
+        [
+          315,
+          505
+        ],
+        [
+          305,
+          500
+        ],
+        [
+          295,
+          495
+        ],
+        [
+          285,
+          495
+        ],
+        [
+          275,
+          500
+        ],
+        [
+          265,
+          505
+        ],
+        [
+          255,
+          505
+        ]
+      ],
+      "confidence": 0.8
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_7"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          140,
+          280
+        ],
+        [
+          150,
+          275
+        ],
+        [
+          160,
+          270
+        ],
+        [
+          170,
+          270
+        ],
+        [
+          180,
+          275
+        ],
+        [
+          190,
+          280
+        ],
+        [
+          200,
+          290
+        ],
+        [
+          195,
+          300
+        ],
+        [
+          185,
+          310
+        ],
+        [
+          175,
+          315
+        ],
+        [
+          165,
+          315
+        ],
+        [
+          155,
+          310
+        ],
+        [
+          145,
+          300
+        ]
+      ],
+      "confidence": 0.75
+    }
+  ]
+}

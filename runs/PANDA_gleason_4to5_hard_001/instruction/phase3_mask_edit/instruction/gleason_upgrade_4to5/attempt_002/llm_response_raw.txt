@@ -1,0 +1,190 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "gleason_upgrade_4to5",
+  "reference_profile": "PANDA",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_11"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          230,
+          480
+        ],
+        [
+          240,
+          470
+        ],
+        [
+          250,
+          460
+        ],
+        [
+          260,
+          455
+        ],
+        [
+          270,
+          450
+        ],
+        [
+          280,
+          450
+        ],
+        [
+          290,
+          455
+        ],
+        [
+          300,
+          460
+        ],
+        [
+          310,
+          470
+        ],
+        [
+          320,
+          480
+        ],
+        [
+          320,
+          490
+        ],
+        [
+          310,
+          500
+        ],
+        [
+          300,
+          505
+        ],
+        [
+          290,
+          510
+        ],
+        [
+          280,
+          510
+        ],
+        [
+          270,
+          505
+        ],
+        [
+          260,
+          500
+        ],
+        [
+          250,
+          495
+        ],
+        [
+          240,
+          490
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_7"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          140,
+          280
+        ],
+        [
+          150,
+          275
+        ],
+        [
+          160,
+          270
+        ],
+        [
+          170,
+          270
+        ],
+        [
+          180,
+          275
+        ],
+        [
+          190,
+          280
+        ],
+        [
+          195,
+          290
+        ],
+        [
+          190,
+          300
+        ],
+        [
+          180,
+          310
+        ],
+        [
+          170,
+          315
+        ],
+        [
+          160,
+          315
+        ],
+        [
+          150,
+          310
+        ],
+        [
+          140,
+          300
+        ],
+        [
+          135,
+          290
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

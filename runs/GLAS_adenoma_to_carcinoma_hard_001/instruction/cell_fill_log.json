@@ -1,0 +1,19 @@
+{
+  "mode": "probnet",
+  "status": "probnet_generated",
+  "changed_pixels": 12238,
+  "source_cell_integrity": {
+    "policy": "delete",
+    "source_components": 240,
+    "kept_components": 223,
+    "deleted_components": 17,
+    "crossing_components": 5,
+    "inside_change_components": 12,
+    "outside_change_components": 223,
+    "requested_policy": "delete"
+  },
+  "retained_nuclei_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/retained_nuclei_mask.png",
+  "new_nuclei_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/new_nuclei_mask.png",
+  "target_combined_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/target_combined_mask.png",
+  "target_nuclei_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/target_nuclei_mask.png"
+}

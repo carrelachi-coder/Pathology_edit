@@ -43,6 +43,8 @@ class OrganicProjectionParams:
     min_selected_template_iou: float
     template_neighborhood_radius_px: float
     template_spillover_fraction: float
+    min_fallback_overlap_fraction: float
+    allow_fallback_when_empty: bool
 
 
 def apply_organic_projected_label_write(
@@ -65,6 +67,8 @@ def apply_organic_projected_label_write(
     w_spatial: float | None = None,
     w_noise: float | None = None,
     decay_px: float | None = None,
+    allow_fallback_when_empty: bool | None = None,
+    min_fallback_overlap_fraction: float | None = None,
 ) -> PrimitiveEditResult:
     """Project a rough LLM template to legal pixels with organic area control."""
 
@@ -89,6 +93,8 @@ def apply_organic_projected_label_write(
         w_spatial=w_spatial,
         w_noise=w_noise,
         decay_px=decay_px,
+        allow_fallback_when_empty=allow_fallback_when_empty,
+        min_fallback_overlap_fraction=min_fallback_overlap_fraction,
     )
     legal_domain = _legal_domain(
         mask,
@@ -135,6 +141,25 @@ def apply_organic_projected_label_write(
     selected_target_pixels = min(target_pixels, legal_pixels)
 
     if legal_pixels == 0 or selected_target_pixels == 0:
+        if params.allow_fallback_when_empty and raw_candidate_pixels > 0:
+            return _fallback_projection_result(
+                mask,
+                schema=schema,
+                target_label=target_label,
+                source_labels=source_labels,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                primitive_name=primitive_name,
+                raw_candidate=raw_candidate,
+                raw_candidate_pixels=raw_candidate_pixels,
+                legal_pixels=legal_pixels,
+                target_pixels=target_pixels,
+                seed=seed,
+                component_policy=policy,
+                raw_legal_overlap=raw_legal_overlap,
+                min_overlap_fraction=params.min_fallback_overlap_fraction,
+                reason="empty_legal_domain_fallback",
+            )
         return _empty_result(
             mask,
             schema=schema,
@@ -151,6 +176,25 @@ def apply_organic_projected_label_write(
             raw_legal_overlap=raw_legal_overlap,
         )
     if raw_legal_overlap == 0 and not necrosis_expansion_mode:
+        if params.allow_fallback_when_empty and raw_candidate_pixels > 0:
+            return _fallback_projection_result(
+                mask,
+                schema=schema,
+                target_label=target_label,
+                source_labels=source_labels,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                primitive_name=primitive_name,
+                raw_candidate=raw_candidate,
+                raw_candidate_pixels=raw_candidate_pixels,
+                legal_pixels=legal_pixels,
+                target_pixels=target_pixels,
+                seed=seed,
+                component_policy=policy,
+                raw_legal_overlap=raw_legal_overlap,
+                min_overlap_fraction=params.min_fallback_overlap_fraction,
+                reason="no_legal_overlap_fallback",
+            )
         return _empty_result(
             mask,
             schema=schema,
@@ -174,6 +218,25 @@ def apply_organic_projected_label_write(
         template_overlap_fraction < params.min_template_legal_overlap_fraction
         and not necrosis_expansion_mode
     ):
+        if params.allow_fallback_when_empty and raw_candidate_pixels > 0:
+            return _fallback_projection_result(
+                mask,
+                schema=schema,
+                target_label=target_label,
+                source_labels=source_labels,
+                preserve_labels=preserve_labels,
+                forbidden_labels=forbidden_labels,
+                primitive_name=primitive_name,
+                raw_candidate=raw_candidate,
+                raw_candidate_pixels=raw_candidate_pixels,
+                legal_pixels=legal_pixels,
+                target_pixels=target_pixels,
+                seed=seed,
+                component_policy=policy,
+                raw_legal_overlap=raw_legal_overlap,
+                min_overlap_fraction=params.min_fallback_overlap_fraction,
+                reason="template_overlap_too_low_fallback",
+            )
         return _empty_result(
             mask,
             schema=schema,

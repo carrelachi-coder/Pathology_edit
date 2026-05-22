@@ -1,0 +1,50 @@
+{
+  "case": {
+    "case_id": "PANDA_gleason_4to5_hard_001",
+    "dataset": "PANDA",
+    "profile": "PANDA",
+    "primitive_group": "fine_transition",
+    "primitive": "gleason_upgrade_4to5",
+    "expected_primitives": [
+      "gleason_upgrade_4to5"
+    ],
+    "source_image": "/data/wqx/flowedit/data/PANDA/PANDA_PATCHES/images/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/PANDA/PANDA_PATCHES/tissue_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA/PANDA_PATCHES/nuclei_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+    "old_prompt": "H&E stained prostate biopsy with mixed Gleason pattern 4 and Gleason pattern 5 tumor in abundant stroma.",
+    "new_prompt": "Upgrade the Gleason pattern 4 tumor component to Gleason pattern 5 in-place while preserving overall tumor area.",
+    "prompt_source": "manual_from_mask_and_metadata",
+    "parser_provider": "api",
+    "contour_provider": "openai_compatible_multimodal",
+    "projection_mode": "organic_v2",
+    "organic_seed": 17,
+    "tags": [
+      "hard",
+      "fine_transition",
+      "mixed_gleason",
+      "high_grade",
+      "in_place"
+    ],
+    "selection_metrics": {
+      "tumor_fraction": 0.169,
+      "stroma_fraction": 0.831,
+      "gleason4_fraction": 0.03,
+      "gleason5_fraction": 0.14,
+      "tumor_components": 14
+    },
+    "status": "todo",
+    "instruction": "Upgrade prostate tumor from Gleason pattern 4 to Gleason pattern 5 in-place; preserve overall tumor area.",
+    "source_image_relative": "PANDA_PATCHES/images/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+    "source_tissue_mask_relative": "PANDA_PATCHES/tissue_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+    "source_nuclei_mask_relative": "PANDA_PATCHES/nuclei_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png"
+  },
+  "variant": {
+    "variant_id": "prompt",
+    "edit_mode": "prompt"
+  },
+  "paths": {
+    "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/09471c7d6b4a7b117f7ab3a52d7828c4_y3072_x7424_py1792_px1280.png"
+  }
+}

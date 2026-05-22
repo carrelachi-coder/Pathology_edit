@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "necrosis_appearance",
+  "reference_profile": "PUMA",
+  "target_label": "Necrosis",
+  "template_role": "coarse_template",
+  "placement_relation": "tumor_interior",
+  "shape_hints": [
+    "patchy",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "tumor_interior",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "patchy",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          370,
+          70
+        ],
+        [
+          380,
+          90
+        ],
+        [
+          395,
+          110
+        ],
+        [
+          410,
+          130
+        ],
+        [
+          420,
+          150
+        ],
+        [
+          425,
+          170
+        ],
+        [
+          420,
+          190
+        ],
+        [
+          410,
+          210
+        ],
+        [
+          395,
+          220
+        ],
+        [
+          380,
+          215
+        ],
+        [
+          370,
+          200
+        ],
+        [
+          365,
+          180
+        ],
+        [
+          360,
+          160
+        ],
+        [
+          365,
+          140
+        ],
+        [
+          370,
+          120
+        ],
+        [
+          365,
+          100
+        ]
+      ],
+      "confidence": 0.85
+    }
+  ]
+}

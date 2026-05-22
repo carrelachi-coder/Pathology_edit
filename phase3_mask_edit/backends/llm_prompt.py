@@ -222,6 +222,9 @@ def build_contour_prompt(
         json.dumps(skeleton, indent=2, ensure_ascii=False),
     ]
     if repair_feedback:
+        repair_instruction = _repair_instruction_text(repair_feedback)
+        if repair_instruction:
+            parts.extend(["", "Repair instruction:", repair_instruction])
         parts.extend(
             [
                 "",
@@ -239,6 +242,7 @@ def build_repair_feedback(
     error: str | None = None,
     validation: ValidationResult | None = None,
     edit_result: PrimitiveEditResult | None = None,
+    repair_profile: str | None = None,
 ) -> dict[str, Any]:
     """Build compact structured feedback for the next attempt."""
 
@@ -256,6 +260,9 @@ def build_repair_feedback(
             }
             for check in validation.failed_checks
         ]
+        profile = repair_profile or _infer_repair_profile(validation.failed_checks)
+        if profile is not None:
+            feedback["repair_profile"] = profile
     if edit_result is not None:
         ops_log = edit_result.ops_log
         feedback["projection"] = {
@@ -280,6 +287,65 @@ def build_repair_feedback(
         }
         feedback["warnings"] = list(edit_result.warnings)
     return feedback
+
+
+def _infer_repair_profile(failed_checks: Sequence[Any]) -> str | None:
+    names = {
+        getattr(check, "name", None)
+        for check in failed_checks
+    }
+    if any(name and "fine_transition" in name for name in names):
+        return "fine_transition_area"
+    if "immune_to_stroma_fraction_within_limit" in names:
+        return "stroma_immune_balance"
+    if "necrosis_area_must_increase" in names:
+        return "necrosis_growth"
+    if "stroma_area_or_generation_region_must_increase" in names:
+        return "stroma_growth"
+    if "change_area_nonempty" in names or "change_area_within_range" in names:
+        return "area_expansion"
+    return None
+
+
+def _repair_instruction_text(repair_feedback: Mapping[str, Any]) -> str | None:
+    profile = repair_feedback.get("repair_profile")
+    projection = repair_feedback.get("projection")
+    failed_checks = repair_feedback.get("failed_checks")
+    lines: list[str] = []
+    if profile == "fine_transition_area":
+        lines.append(
+            "Make the new region substantially larger relative to the source fine-ID area."
+        )
+        lines.append(
+            "Prefer whole connected components, and use the feedback area shortfall if present."
+        )
+    elif profile == "stroma_immune_balance":
+        lines.append(
+            "Keep the change broad enough to satisfy stroma expansion, but reduce immune-to-stroma conversion."
+        )
+    elif profile == "necrosis_growth":
+        lines.append(
+            "Push the proposal deeper into tumor interior and increase necrosis area."
+        )
+    elif profile == "stroma_growth":
+        lines.append(
+            "Increase stroma area or generation region instead of returning a near-empty proposal."
+        )
+    elif profile == "area_expansion":
+        lines.append("Increase the changed area materially; avoid tiny templates.")
+    if isinstance(projection, Mapping):
+        shortfall = projection.get("area_shortfall")
+        if isinstance(shortfall, int) and shortfall > 0:
+            lines.append(f"Current area shortfall is {shortfall} pixels; repair toward that gap.")
+        target = projection.get("target_pixels")
+        selected = projection.get("selected_pixels")
+        if isinstance(target, int) and isinstance(selected, int) and target > selected:
+            lines.append(f"Selected pixels {selected} are below target {target}.")
+    if failed_checks:
+        names = [item.get("name") for item in failed_checks if isinstance(item, Mapping)]
+        if names:
+            lines.append("Failed checks: " + ", ".join(str(name) for name in names if name))
+    return " ".join(lines) if lines else None
 
 
 def _top_projection_failed_reason(

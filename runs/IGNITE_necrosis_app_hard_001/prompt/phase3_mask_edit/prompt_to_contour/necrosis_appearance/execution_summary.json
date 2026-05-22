@@ -1,0 +1,2428 @@
+{
+  "status": "proposal_failed",
+  "backend": "llm_contour_proposal",
+  "projection_mode": "organic_v2",
+  "error": null,
+  "context": {
+    "mask_shape": [
+      512,
+      512
+    ],
+    "reference_profile": "IGNITE",
+    "primitive": "necrosis_appearance",
+    "strength": "moderate",
+    "target_label": "Necrosis",
+    "allowed_source_labels": [
+      "Tumor"
+    ],
+    "label_areas": {
+      "Blood vessel": 0,
+      "Immune infiltrate": 7520,
+      "Necrosis": 10400,
+      "Normal epithelium": 6252,
+      "Other tissue": 1188,
+      "Stroma": 175040,
+      "Tumor": 29248
+    },
+    "label_palette_rgb": {
+      "Background": [
+        30,
+        30,
+        30
+      ],
+      "Tumor": [
+        180,
+        60,
+        60
+      ],
+      "Stroma": [
+        60,
+        150,
+        60
+      ],
+      "Necrosis": [
+        60,
+        60,
+        180
+      ],
+      "Immune infiltrate": [
+        140,
+        60,
+        180
+      ],
+      "Normal epithelium": [
+        180,
+        180,
+        80
+      ],
+      "Blood vessel": [
+        60,
+        140,
+        100
+      ],
+      "Other tissue": [
+        170,
+        170,
+        170
+      ]
+    },
+    "visual_label_legend": {
+      "Background": "dark gray / nearly black",
+      "Tumor": "red",
+      "Stroma": "green",
+      "Necrosis": "blue",
+      "Immune infiltrate": "purple",
+      "Normal epithelium": "yellow",
+      "Blood vessel": "teal",
+      "Other tissue": "gray"
+    },
+    "proposal_policy": {
+      "backend": "llm_contour_proposal",
+      "schema_version": "0.1",
+      "max_regions": 8,
+      "max_points_per_region": 64,
+      "template_role": "coarse_template",
+      "known_optional_v2_fields": [
+        "source_component_ids",
+        "adjacency_side",
+        "placement_relation",
+        "template_role",
+        "shape_hints"
+      ],
+      "executor_contract": "LLM polygons are approximate organic intent templates. Deterministic code projects them to legal source labels, controls final area, and writes final pixels."
+    },
+    "target_area_hint": {
+      "area_semantics": "projection_after_legal_source_label_filtering",
+      "reference_area_label": "Tumor",
+      "reference_pixels": 29248,
+      "strength": "moderate",
+      "target_fraction_min": 0.14,
+      "target_fraction_max": 0.24,
+      "target_changed_pixels_min": 4095,
+      "target_changed_pixels_max": 7019,
+      "raw_polygon_margin_guidance": "Raw polygons are coarse organic templates. They may be broader than the projected target range because Phase 3 will select final legal source-label pixels deterministically."
+    },
+    "llm_task_requirements": {
+      "pathology_goal": "Add ischemic tumor necrosis.",
+      "mask_edit": "Convert Tumor pixels to Necrosis pixels.",
+      "source_label": "Tumor",
+      "target_label": "Necrosis",
+      "where_to_draw": [
+        "Draw inside red Tumor.",
+        "Prefer tumor interior, away from non-tumor tissue.",
+        "Do not draw mainly on Stroma or Background."
+      ],
+      "shape_style": [
+        "Irregular blob or fissure-like region.",
+        "Natural uneven necrotic boundary.",
+        "Avoid regular geometric shapes."
+      ],
+      "area_requirement": "After Phase 3 deterministically projects the coarse template to legal source-label pixels, the changed area should be about 4095 to 7019 pixels (0.14-0.24 of Tumor). The raw polygon is only a coarse template; deterministic projection controls final area.",
+      "recipe_constraints": {
+        "spatial_pattern": {
+          "candidate_map": "necrosis_probability",
+          "candidate_weights": {
+            "existing_necrosis_neighborhood": 0.45,
+            "tumor_interior_far_from_outer_boundary": 0.35,
+            "tumor_region_far_from_blood_vessel": 0.2
+          },
+          "candidate_weights_no_existing_necrosis": {
+            "tumor_interior_far_from_outer_boundary": 0.6,
+            "tumor_region_far_from_blood_vessel": 0.4
+          },
+          "forbid_targets": [
+            "Background",
+            "Stroma"
+          ],
+          "shape_mode": [
+            "irregular_blob",
+            "fissure_like_region"
+          ],
+          "necrosis_engulf_intrusion_labels": [
+            "Tumor",
+            "Immune infiltrate",
+            "Stroma",
+            "Other tissue",
+            "Normal epithelium"
+          ]
+        },
+        "parameter_ranges": {
+          "target_changed_area_fraction": {
+            "mild": [
+              0.08,
+              0.14
+            ],
+            "moderate": [
+              0.14,
+              0.24
+            ],
+            "significant": [
+              0.24,
+              0.4
+            ],
+            "xlarge_deid": [
+              0.4,
+              0.6
+            ]
+          },
+          "organic_template_sigma_px": 3.0,
+          "organic_noise_sigma_px": 18.0,
+          "organic_noise_amplitude": 0.18,
+          "organic_score_weights": {
+            "template": 0.6,
+            "spatial": 0.3,
+            "noise": 0.1
+          },
+          "organic_min_template_legal_overlap_fraction": 0.05,
+          "organic_min_selected_template_iou": 0.08,
+          "organic_template_neighborhood_radius_px": 48,
+          "organic_template_spillover_fraction": 0.15,
+          "organic_min_component_fraction": 0.01,
+          "organic_fill_holes_max_area_px": 0,
+          "tumor_boundary_margin_radius_px": 64,
+          "necrosis_neighbor_radius_px": 48,
+          "vessel_avoidance_radius_px": 96,
+          "vessel_avoidance_weight": 0.2,
+          "allow_multifocal_new_foci_when_existing_necrosis": false,
+          "necrosis_intrusion_closing_radius_px": 6
+        },
+        "validation_rules": [
+          "necrosis_area_must_increase",
+          "new_necrosis_must_be_inside_original_tumor",
+          "candidate_region_must_have_high_necrosis_probability",
+          "new_region_must_not_be_too_small_or_fragmented"
+        ]
+      }
+    },
+    "contour_style_hint": {
+      "recommended_region_count_range": [
+        1,
+        2
+      ],
+      "points_per_region_range": [
+        16,
+        34
+      ],
+      "boundary_style": "irregular necrotic blob or fissure-like contour",
+      "region_variation_requirement": "If multiple foci are used, make them visibly different; do not duplicate shapes.",
+      "connectivity_guidance": "Prefer one connected intratumoral necrosis region unless multiple foci are needed."
+    },
+    "source_spatial_hints": {
+      "Tumor": {
+        "total_pixels": 29248,
+        "components": [
+          {
+            "component_id": "c3",
+            "area_px": 18890,
+            "bbox": [
+              138,
+              288,
+              369,
+              401
+            ],
+            "centroid": [
+              251.4,
+              344.8
+            ]
+          },
+          {
+            "component_id": "c2",
+            "area_px": 5850,
+            "bbox": [
+              0,
+              142,
+              103,
+              236
+            ],
+            "centroid": [
+              38.7,
+              191.7
+            ]
+          },
+          {
+            "component_id": "c1",
+            "area_px": 4508,
+            "bbox": [
+              0,
+              42,
+              83,
+              143
+            ],
+            "centroid": [
+              32.2,
+              102.7
+            ]
+          }
+        ],
+        "high_purity_grid_tiles": [
+          {
+            "bbox": [
+              192,
+              320,
+              255,
+              383
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              256,
+              320,
+              319,
+              383
+            ],
+            "source_pixels": 4096,
+            "source_fraction": 1.0
+          },
+          {
+            "bbox": [
+              0,
+              64,
+              63,
+              127
+            ],
+            "source_pixels": 3364,
+            "source_fraction": 0.821
+          },
+          {
+            "bbox": [
+              0,
+              128,
+              63,
+              191
+            ],
+            "source_pixels": 2744,
+            "source_fraction": 0.67
+          },
+          {
+            "bbox": [
+              320,
+              320,
+              383,
+              383
+            ],
+            "source_pixels": 2572,
+            "source_fraction": 0.628
+          },
+          {
+            "bbox": [
+              128,
+              320,
+              191,
+              383
+            ],
+            "source_pixels": 2426,
+            "source_fraction": 0.592
+          }
+        ],
+        "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+      }
+    },
+    "source_contour_context": {
+      "Tumor": {
+        "coordinate_system": "original_mask_xy",
+        "contour_point_format": "[x, y]",
+        "components": [
+          {
+            "component_id": "source_3",
+            "area_px": 18890,
+            "bbox": [
+              138,
+              288,
+              369,
+              401
+            ],
+            "centroid": [
+              251.4,
+              344.8
+            ],
+            "contour_simplified": [
+              [
+                217,
+                402
+              ],
+              [
+                200,
+                397
+              ],
+              [
+                188,
+                387
+              ],
+              [
+                176,
+                377
+              ],
+              [
+                162,
+                368
+              ],
+              [
+                150,
+                358
+              ],
+              [
+                146,
+                340
+              ],
+              [
+                140,
+                323
+              ],
+              [
+                144,
+                310
+              ],
+              [
+                162,
+                305
+              ],
+              [
+                180,
+                300
+              ],
+              [
+                198,
+                296
+              ],
+              [
+                216,
+                292
+              ],
+              [
+                234,
+                288
+              ],
+              [
+                254,
+                290
+              ],
+              [
+                271,
+                294
+              ],
+              [
+                289,
+                300
+              ],
+              [
+                307,
+                304
+              ],
+              [
+                325,
+                308
+              ],
+              [
+                340,
+                316
+              ],
+              [
+                350,
+                328
+              ],
+              [
+                360,
+                340
+              ],
+              [
+                364,
+                359
+              ],
+              [
+                368,
+                377
+              ],
+              [
+                356,
+                384
+              ],
+              [
+                335,
+                386
+              ],
+              [
+                315,
+                388
+              ],
+              [
+                296,
+                390
+              ],
+              [
+                276,
+                394
+              ],
+              [
+                256,
+                396
+              ],
+              [
+                236,
+                398
+              ],
+              [
+                217,
+                402
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 696
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    191
+                  ],
+                  "points": [
+                    [
+                      232,
+                      288
+                    ],
+                    [
+                      197,
+                      297
+                    ],
+                    [
+                      314,
+                      306
+                    ],
+                    [
+                      347,
+                      327
+                    ],
+                    [
+                      158,
+                      361
+                    ],
+                    [
+                      353,
+                      383
+                    ],
+                    [
+                      280,
+                      392
+                    ],
+                    [
+                      217,
+                      401
+                    ]
+                  ],
+                  "bbox": [
+                    138,
+                    288,
+                    367,
+                    401
+                  ],
+                  "point_count": 192,
+                  "points_shown": 8
+                }
+              ]
+            }
+          },
+          {
+            "component_id": "source_2",
+            "area_px": 5850,
+            "bbox": [
+              0,
+              142,
+              103,
+              236
+            ],
+            "centroid": [
+              38.7,
+              191.7
+            ],
+            "contour_simplified": [
+              [
+                0,
+                142
+              ],
+              [
+                6,
+                144
+              ],
+              [
+                13,
+                146
+              ],
+              [
+                20,
+                150
+              ],
+              [
+                27,
+                152
+              ],
+              [
+                33,
+                156
+              ],
+              [
+                40,
+                159
+              ],
+              [
+                47,
+                162
+              ],
+              [
+                54,
+                165
+              ],
+              [
+                60,
+                168
+              ],
+              [
+                66,
+                172
+              ],
+              [
+                74,
+                174
+              ],
+              [
+                80,
+                178
+              ],
+              [
+                87,
+                180
+              ],
+              [
+                93,
+                184
+              ],
+              [
+                98,
+                189
+              ],
+              [
+                101,
+                196
+              ],
+              [
+                104,
+                203
+              ],
+              [
+                98,
+                206
+              ],
+              [
+                91,
+                210
+              ],
+              [
+                83,
+                212
+              ],
+              [
+                75,
+                214
+              ],
+              [
+                68,
+                216
+              ],
+              [
+                61,
+                218
+              ],
+              [
+                53,
+                220
+              ],
+              [
+                46,
+                223
+              ],
+              [
+                38,
+                226
+              ],
+              [
+                31,
+                228
+              ],
+              [
+                23,
+                230
+              ],
+              [
+                16,
+                232
+              ],
+              [
+                8,
+                234
+              ],
+              [
+                0,
+                236
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 306
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    142
+                  ],
+                  "points": [
+                    [
+                      2,
+                      142
+                    ],
+                    [
+                      31,
+                      155
+                    ],
+                    [
+                      61,
+                      169
+                    ],
+                    [
+                      88,
+                      182
+                    ],
+                    [
+                      102,
+                      204
+                    ],
+                    [
+                      73,
+                      214
+                    ],
+                    [
+                      37,
+                      225
+                    ],
+                    [
+                      6,
+                      235
+                    ]
+                  ],
+                  "bbox": [
+                    2,
+                    142,
+                    102,
+                    235
+                  ],
+                  "point_count": 143,
+                  "points_shown": 8
+                }
+              ]
+            }
+          },
+          {
+            "component_id": "source_1",
+            "area_px": 4508,
+            "bbox": [
+              0,
+              42,
+              83,
+              143
+            ],
+            "centroid": [
+              32.2,
+              102.7
+            ],
+            "contour_simplified": [
+              [
+                0,
+                42
+              ],
+              [
+                5,
+                46
+              ],
+              [
+                10,
+                50
+              ],
+              [
+                14,
+                55
+              ],
+              [
+                20,
+                59
+              ],
+              [
+                24,
+                64
+              ],
+              [
+                29,
+                68
+              ],
+              [
+                34,
+                73
+              ],
+              [
+                38,
+                78
+              ],
+              [
+                44,
+                81
+              ],
+              [
+                49,
+                86
+              ],
+              [
+                54,
+                90
+              ],
+              [
+                58,
+                95
+              ],
+              [
+                63,
+                100
+              ],
+              [
+                66,
+                106
+              ],
+              [
+                70,
+                111
+              ],
+              [
+                73,
+                118
+              ],
+              [
+                76,
+                124
+              ],
+              [
+                79,
+                130
+              ],
+              [
+                82,
+                137
+              ],
+              [
+                82,
+                142
+              ],
+              [
+                74,
+                144
+              ],
+              [
+                66,
+                142
+              ],
+              [
+                59,
+                140
+              ],
+              [
+                52,
+                138
+              ],
+              [
+                44,
+                136
+              ],
+              [
+                36,
+                135
+              ],
+              [
+                28,
+                134
+              ],
+              [
+                20,
+                132
+              ],
+              [
+                13,
+                130
+              ],
+              [
+                6,
+                128
+              ],
+              [
+                0,
+                124
+              ]
+            ],
+            "adjacent_tissue": [
+              {
+                "label": "Stroma",
+                "fine_id": 2,
+                "boundary_neighbor_pixels": 292
+              }
+            ],
+            "contour_adjacency_segments": {
+              "Stroma": [
+                {
+                  "point_index_range": [
+                    0,
+                    147
+                  ],
+                  "points": [
+                    [
+                      3,
+                      44
+                    ],
+                    [
+                      23,
+                      62
+                    ],
+                    [
+                      41,
+                      81
+                    ],
+                    [
+                      64,
+                      102
+                    ],
+                    [
+                      75,
+                      125
+                    ],
+                    [
+                      26,
+                      133
+                    ],
+                    [
+                      54,
+                      138
+                    ],
+                    [
+                      81,
+                      143
+                    ]
+                  ],
+                  "bbox": [
+                    2,
+                    44,
+                    83,
+                    143
+                  ],
+                  "point_count": 148,
+                  "points_shown": 8
+                }
+              ]
+            }
+          }
+        ],
+        "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+      }
+    },
+    "primitive_policy": {
+      "name": "necrosis_appearance",
+      "pathology_meaning": "ischemic tumor necrosis",
+      "mask_operation": {
+        "type": "intratumoral_replacement",
+        "source": "Tumor",
+        "target": "Necrosis"
+      },
+      "spatial_policy": {},
+      "parameter_ranges": {
+        "target_changed_area_fraction": {
+          "mild": [
+            0.08,
+            0.14
+          ],
+          "moderate": [
+            0.14,
+            0.24
+          ],
+          "significant": [
+            0.24,
+            0.4
+          ],
+          "xlarge_deid": [
+            0.4,
+            0.6
+          ]
+        },
+        "organic_template_sigma_px": 3.0,
+        "organic_noise_sigma_px": 18.0,
+        "organic_noise_amplitude": 0.18,
+        "organic_score_weights": {
+          "template": 0.6,
+          "spatial": 0.3,
+          "noise": 0.1
+        },
+        "organic_min_template_legal_overlap_fraction": 0.05,
+        "organic_min_selected_template_iou": 0.08,
+        "organic_template_neighborhood_radius_px": 48,
+        "organic_template_spillover_fraction": 0.15,
+        "organic_min_component_fraction": 0.01,
+        "organic_fill_holes_max_area_px": 0,
+        "tumor_boundary_margin_radius_px": 64,
+        "necrosis_neighbor_radius_px": 48,
+        "vessel_avoidance_radius_px": 96,
+        "vessel_avoidance_weight": 0.2,
+        "allow_multifocal_new_foci_when_existing_necrosis": false,
+        "necrosis_intrusion_closing_radius_px": 6
+      },
+      "validation_rules": [
+        "necrosis_area_must_increase",
+        "new_necrosis_must_be_inside_original_tumor",
+        "candidate_region_must_have_high_necrosis_probability",
+        "new_region_must_not_be_too_small_or_fragmented"
+      ]
+    },
+    "preview": {
+      "coordinate_system": "original_mask_xy",
+      "origin": "top_left",
+      "point_format": "[x, y]",
+      "x_axis": "horizontal_column_right",
+      "y_axis": "vertical_row_down",
+      "width": 512,
+      "height": 512,
+      "grid_spacing_px": 64
+    }
+  },
+  "artifact_paths": {
+    "source_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/source_mask.png",
+    "source_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/source_mask_rgb.png",
+    "source_mask_llm_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/source_mask_llm_rgb.png",
+    "source_mask_llm_rgb_grid": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/source_mask_llm_rgb_grid.png",
+    "mask_context": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/mask_context.json"
+  },
+  "attempts": [
+    {
+      "attempt_index": 1,
+      "status": "validation_failed",
+      "error": null,
+      "artifact_paths": {
+        "prompt": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/prompt.txt",
+        "llm_request": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/llm_request.json",
+        "llm_response": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/llm_response.json",
+        "llm_response_raw": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/llm_response_raw.txt",
+        "validated_proposal": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/validated_proposal.json",
+        "rasterized_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/rasterized_region.png",
+        "projected_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/projected_region.png",
+        "change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/change_region.png",
+        "target_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/target_mask.png",
+        "target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/target_mask_rgb.png",
+        "visual_qa_source_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/source_mask_rgb.png",
+        "visual_qa_source_mask_rgb_grid": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/source_mask_rgb_grid.png",
+        "visual_qa_raw_template_overlay": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/raw_template_overlay.png",
+        "visual_qa_legal_domain": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/legal_domain.png",
+        "visual_qa_template_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/template_score_heatmap.png",
+        "visual_qa_spatial_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/spatial_score_heatmap.png",
+        "visual_qa_noise_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/noise_heatmap.png",
+        "visual_qa_final_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/final_score_heatmap.png",
+        "visual_qa_selected_change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/selected_change_region.png",
+        "visual_qa_target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/target_mask_rgb.png",
+        "visual_qa_organic_projection_panel": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/organic_projection_panel.png",
+        "visual_qa_v1_v2_side_by_side": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/v1_v2_side_by_side.png",
+        "visual_qa_visual_qa_manifest": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/visual_qa/visual_qa_manifest.json",
+        "validation": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/validation.json",
+        "repair_feedback": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/repair_feedback.json",
+        "attempt_summary": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_001/attempt_summary.json"
+      },
+      "proposal": {
+        "primitive": "necrosis_appearance",
+        "reference_profile": "IGNITE",
+        "target_label": "Necrosis",
+        "regions": [
+          {
+            "region_id": "r1",
+            "source_labels": [
+              "Tumor"
+            ],
+            "points": [
+              [
+                220.0,
+                350.0
+              ],
+              [
+                230.0,
+                340.0
+              ],
+              [
+                245.0,
+                335.0
+              ],
+              [
+                260.0,
+                335.0
+              ],
+              [
+                275.0,
+                340.0
+              ],
+              [
+                285.0,
+                350.0
+              ],
+              [
+                290.0,
+                365.0
+              ],
+              [
+                285.0,
+                380.0
+              ],
+              [
+                270.0,
+                390.0
+              ],
+              [
+                255.0,
+                395.0
+              ],
+              [
+                240.0,
+                390.0
+              ],
+              [
+                230.0,
+                380.0
+              ],
+              [
+                225.0,
+                370.0
+              ],
+              [
+                220.0,
+                360.0
+              ]
+            ],
+            "confidence": 0.85
+          }
+        ]
+      },
+      "edit_result": {
+        "selected_pixels": 0,
+        "changed_area_fraction": 0.0,
+        "warnings": [
+          "proposal_projected_region_empty"
+        ],
+        "ops_log": {
+          "backend": "organic_score_projection_v2",
+          "method": "organic_score_projection_and_deterministic_write",
+          "primitive": "necrosis_appearance",
+          "reference_profile": "IGNITE",
+          "source_labels": [
+            "Tumor"
+          ],
+          "target_label": "Necrosis",
+          "target_fine_id": 3,
+          "preserve_labels": [],
+          "forbidden_labels": [],
+          "raw_candidate_pixels": 3186,
+          "candidate_pixels": 3186,
+          "raw_candidate_legal_overlap_pixels": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "selected_raw_template_intersection_pixels": 0,
+          "selected_raw_template_union_pixels": 3186,
+          "selected_raw_template_iou": 0.0,
+          "area_shortfall": 0,
+          "projection_retained_fraction": 0.0,
+          "changed_area_fraction": 0.0,
+          "projection_backend": "organic_score_projection_v2",
+          "noise_seed": 8,
+          "component_policy": {
+            "policy_name": "necrosis_intratumoral_hypoxic",
+            "params": {
+              "legal_domain_policy": "tumor_near_existing_necrosis_expansion_band",
+              "tumor_pixels": 29248,
+              "existing_necrosis_pixels": 10400,
+              "necrosis_denominator_policy": "original_tumor_fine_ids_only_matches_validation",
+              "tumor_boundary_margin_radius_px": 64.0,
+              "necrosis_neighbor_radius_px": 48.0,
+              "used_existing_necrosis_neighborhood": true,
+              "allow_multifocal_new_foci_when_existing_necrosis": false,
+              "existing_necrosis_expansion_band_pixels": 0,
+              "vessel_avoidance_radius_px": 96.0,
+              "vessel_avoidance_weight": 0.2,
+              "used_vessel_avoidance": false
+            }
+          },
+          "raw_payload": {
+            "schema_version": "0.1",
+            "backend": "llm_contour_proposal",
+            "primitive": "necrosis_appearance",
+            "reference_profile": "IGNITE",
+            "target_label": "Necrosis",
+            "template_role": "coarse_template",
+            "placement_relation": "tumor_interior",
+            "shape_hints": [
+              "irregular_blob",
+              "irregular_boundary"
+            ],
+            "coordinate_system": {
+              "origin": "top_left",
+              "point_format": "[x, y]",
+              "x_axis": "horizontal_column_right",
+              "y_axis": "vertical_row_down",
+              "width": 512,
+              "height": 512
+            },
+            "regions": [
+              {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": [
+                  "Tumor"
+                ],
+                "source_component_ids": [
+                  "source_3"
+                ],
+                "adjacency_side": "tumor_interior",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_blob",
+                  "irregular_boundary"
+                ],
+                "points": [
+                  [
+                    220,
+                    350
+                  ],
+                  [
+                    230,
+                    340
+                  ],
+                  [
+                    245,
+                    335
+                  ],
+                  [
+                    260,
+                    335
+                  ],
+                  [
+                    275,
+                    340
+                  ],
+                  [
+                    285,
+                    350
+                  ],
+                  [
+                    290,
+                    365
+                  ],
+                  [
+                    285,
+                    380
+                  ],
+                  [
+                    270,
+                    390
+                  ],
+                  [
+                    255,
+                    395
+                  ],
+                  [
+                    240,
+                    390
+                  ],
+                  [
+                    230,
+                    380
+                  ],
+                  [
+                    225,
+                    370
+                  ],
+                  [
+                    220,
+                    360
+                  ]
+                ],
+                "confidence": 0.85
+              }
+            ]
+          },
+          "projection_mode": "organic_v2"
+        }
+      },
+      "validation": {
+        "passed": false,
+        "primitive": "necrosis_appearance",
+        "checks": [
+          {
+            "name": "change_area_nonempty",
+            "passed": false,
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "passed": false,
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "label_legality",
+            "passed": true,
+            "detail": "all labels in schema."
+          },
+          {
+            "name": "no_background_leakage",
+            "passed": true,
+            "detail": "no background leakage."
+          },
+          {
+            "name": "required_labels_present",
+            "passed": true,
+            "detail": "all required labels present in src mask."
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "passed": false,
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          },
+          {
+            "name": "new_necrosis_must_be_inside_original_tumor",
+            "passed": true,
+            "detail": "new necrosis inside original tumor or locally engulfed non-background intrusions."
+          },
+          {
+            "name": "candidate_region_must_have_high_necrosis_probability",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          },
+          {
+            "name": "new_region_must_not_be_too_small_or_fragmented",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          }
+        ],
+        "warnings": [
+          "change_area_nonempty: no pixels changed.",
+          "change_area_within_range: changed_tumor_fraction=0.0000 below 0.08",
+          "necrosis_area_must_increase: necrosis did not increase: 10400 -> 10400 pixels."
+        ]
+      },
+      "repair_feedback": {
+        "status": "validation_failed",
+        "attempt": 1,
+        "failed_checks": [
+          {
+            "name": "change_area_nonempty",
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          }
+        ],
+        "projection": {
+          "candidate_pixels": 3186,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "projection_retained_fraction": 0.0,
+          "projection_mode": "organic_v2",
+          "projection_backend": "organic_score_projection_v2",
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "area_shortfall": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+        },
+        "warnings": [
+          "proposal_projected_region_empty"
+        ]
+      }
+    },
+    {
+      "attempt_index": 2,
+      "status": "validation_failed",
+      "error": null,
+      "artifact_paths": {
+        "prompt": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/prompt.txt",
+        "llm_request": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/llm_request.json",
+        "llm_response": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/llm_response.json",
+        "llm_response_raw": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/llm_response_raw.txt",
+        "validated_proposal": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/validated_proposal.json",
+        "rasterized_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/rasterized_region.png",
+        "projected_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/projected_region.png",
+        "change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/change_region.png",
+        "target_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/target_mask.png",
+        "target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/target_mask_rgb.png",
+        "visual_qa_source_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/source_mask_rgb.png",
+        "visual_qa_source_mask_rgb_grid": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/source_mask_rgb_grid.png",
+        "visual_qa_raw_template_overlay": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/raw_template_overlay.png",
+        "visual_qa_legal_domain": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/legal_domain.png",
+        "visual_qa_template_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/template_score_heatmap.png",
+        "visual_qa_spatial_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/spatial_score_heatmap.png",
+        "visual_qa_noise_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/noise_heatmap.png",
+        "visual_qa_final_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/final_score_heatmap.png",
+        "visual_qa_selected_change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/selected_change_region.png",
+        "visual_qa_target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/target_mask_rgb.png",
+        "visual_qa_organic_projection_panel": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/organic_projection_panel.png",
+        "visual_qa_v1_v2_side_by_side": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/v1_v2_side_by_side.png",
+        "visual_qa_visual_qa_manifest": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/visual_qa/visual_qa_manifest.json",
+        "validation": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/validation.json",
+        "repair_feedback": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/repair_feedback.json",
+        "attempt_summary": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_002/attempt_summary.json"
+      },
+      "proposal": {
+        "primitive": "necrosis_appearance",
+        "reference_profile": "IGNITE",
+        "target_label": "Necrosis",
+        "regions": [
+          {
+            "region_id": "r1",
+            "source_labels": [
+              "Tumor"
+            ],
+            "points": [
+              [
+                230.0,
+                330.0
+              ],
+              [
+                240.0,
+                320.0
+              ],
+              [
+                255.0,
+                315.0
+              ],
+              [
+                270.0,
+                320.0
+              ],
+              [
+                280.0,
+                335.0
+              ],
+              [
+                285.0,
+                350.0
+              ],
+              [
+                280.0,
+                365.0
+              ],
+              [
+                270.0,
+                375.0
+              ],
+              [
+                255.0,
+                380.0
+              ],
+              [
+                240.0,
+                375.0
+              ],
+              [
+                230.0,
+                365.0
+              ],
+              [
+                225.0,
+                350.0
+              ]
+            ],
+            "confidence": 0.85
+          }
+        ]
+      },
+      "edit_result": {
+        "selected_pixels": 0,
+        "changed_area_fraction": 0.0,
+        "warnings": [
+          "proposal_projected_region_empty"
+        ],
+        "ops_log": {
+          "backend": "organic_score_projection_v2",
+          "method": "organic_score_projection_and_deterministic_write",
+          "primitive": "necrosis_appearance",
+          "reference_profile": "IGNITE",
+          "source_labels": [
+            "Tumor"
+          ],
+          "target_label": "Necrosis",
+          "target_fine_id": 3,
+          "preserve_labels": [],
+          "forbidden_labels": [],
+          "raw_candidate_pixels": 2901,
+          "candidate_pixels": 2901,
+          "raw_candidate_legal_overlap_pixels": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "selected_raw_template_intersection_pixels": 0,
+          "selected_raw_template_union_pixels": 2901,
+          "selected_raw_template_iou": 0.0,
+          "area_shortfall": 0,
+          "projection_retained_fraction": 0.0,
+          "changed_area_fraction": 0.0,
+          "projection_backend": "organic_score_projection_v2",
+          "noise_seed": 8,
+          "component_policy": {
+            "policy_name": "necrosis_intratumoral_hypoxic",
+            "params": {
+              "legal_domain_policy": "tumor_near_existing_necrosis_expansion_band",
+              "tumor_pixels": 29248,
+              "existing_necrosis_pixels": 10400,
+              "necrosis_denominator_policy": "original_tumor_fine_ids_only_matches_validation",
+              "tumor_boundary_margin_radius_px": 64.0,
+              "necrosis_neighbor_radius_px": 48.0,
+              "used_existing_necrosis_neighborhood": true,
+              "allow_multifocal_new_foci_when_existing_necrosis": false,
+              "existing_necrosis_expansion_band_pixels": 0,
+              "vessel_avoidance_radius_px": 96.0,
+              "vessel_avoidance_weight": 0.2,
+              "used_vessel_avoidance": false
+            }
+          },
+          "raw_payload": {
+            "schema_version": "0.1",
+            "backend": "llm_contour_proposal",
+            "primitive": "necrosis_appearance",
+            "reference_profile": "IGNITE",
+            "target_label": "Necrosis",
+            "template_role": "coarse_template",
+            "placement_relation": "tumor_interior",
+            "shape_hints": [
+              "irregular_blob",
+              "uneven_boundary"
+            ],
+            "coordinate_system": {
+              "origin": "top_left",
+              "point_format": "[x, y]",
+              "x_axis": "horizontal_column_right",
+              "y_axis": "vertical_row_down",
+              "width": 512,
+              "height": 512
+            },
+            "regions": [
+              {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": [
+                  "Tumor"
+                ],
+                "source_component_ids": [
+                  "source_3"
+                ],
+                "adjacency_side": "tumor_interior",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_blob",
+                  "uneven_boundary"
+                ],
+                "points": [
+                  [
+                    230,
+                    330
+                  ],
+                  [
+                    240,
+                    320
+                  ],
+                  [
+                    255,
+                    315
+                  ],
+                  [
+                    270,
+                    320
+                  ],
+                  [
+                    280,
+                    335
+                  ],
+                  [
+                    285,
+                    350
+                  ],
+                  [
+                    280,
+                    365
+                  ],
+                  [
+                    270,
+                    375
+                  ],
+                  [
+                    255,
+                    380
+                  ],
+                  [
+                    240,
+                    375
+                  ],
+                  [
+                    230,
+                    365
+                  ],
+                  [
+                    225,
+                    350
+                  ]
+                ],
+                "confidence": 0.85
+              }
+            ]
+          },
+          "projection_mode": "organic_v2"
+        }
+      },
+      "validation": {
+        "passed": false,
+        "primitive": "necrosis_appearance",
+        "checks": [
+          {
+            "name": "change_area_nonempty",
+            "passed": false,
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "passed": false,
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "label_legality",
+            "passed": true,
+            "detail": "all labels in schema."
+          },
+          {
+            "name": "no_background_leakage",
+            "passed": true,
+            "detail": "no background leakage."
+          },
+          {
+            "name": "required_labels_present",
+            "passed": true,
+            "detail": "all required labels present in src mask."
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "passed": false,
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          },
+          {
+            "name": "new_necrosis_must_be_inside_original_tumor",
+            "passed": true,
+            "detail": "new necrosis inside original tumor or locally engulfed non-background intrusions."
+          },
+          {
+            "name": "candidate_region_must_have_high_necrosis_probability",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          },
+          {
+            "name": "new_region_must_not_be_too_small_or_fragmented",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          }
+        ],
+        "warnings": [
+          "change_area_nonempty: no pixels changed.",
+          "change_area_within_range: changed_tumor_fraction=0.0000 below 0.08",
+          "necrosis_area_must_increase: necrosis did not increase: 10400 -> 10400 pixels."
+        ]
+      },
+      "repair_feedback": {
+        "status": "validation_failed",
+        "attempt": 2,
+        "failed_checks": [
+          {
+            "name": "change_area_nonempty",
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          }
+        ],
+        "projection": {
+          "candidate_pixels": 2901,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "projection_retained_fraction": 0.0,
+          "projection_mode": "organic_v2",
+          "projection_backend": "organic_score_projection_v2",
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "area_shortfall": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+        },
+        "warnings": [
+          "proposal_projected_region_empty"
+        ]
+      }
+    },
+    {
+      "attempt_index": 3,
+      "status": "validation_failed",
+      "error": null,
+      "artifact_paths": {
+        "prompt": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/prompt.txt",
+        "llm_request": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/llm_request.json",
+        "llm_response": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/llm_response.json",
+        "llm_response_raw": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/llm_response_raw.txt",
+        "validated_proposal": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/validated_proposal.json",
+        "rasterized_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/rasterized_region.png",
+        "projected_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/projected_region.png",
+        "change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/change_region.png",
+        "target_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/target_mask.png",
+        "target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/target_mask_rgb.png",
+        "visual_qa_source_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/source_mask_rgb.png",
+        "visual_qa_source_mask_rgb_grid": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/source_mask_rgb_grid.png",
+        "visual_qa_raw_template_overlay": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/raw_template_overlay.png",
+        "visual_qa_legal_domain": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/legal_domain.png",
+        "visual_qa_template_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/template_score_heatmap.png",
+        "visual_qa_spatial_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/spatial_score_heatmap.png",
+        "visual_qa_noise_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/noise_heatmap.png",
+        "visual_qa_final_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/final_score_heatmap.png",
+        "visual_qa_selected_change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/selected_change_region.png",
+        "visual_qa_target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/target_mask_rgb.png",
+        "visual_qa_organic_projection_panel": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/organic_projection_panel.png",
+        "visual_qa_v1_v2_side_by_side": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/v1_v2_side_by_side.png",
+        "visual_qa_visual_qa_manifest": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/visual_qa/visual_qa_manifest.json",
+        "validation": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/validation.json",
+        "repair_feedback": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/repair_feedback.json",
+        "attempt_summary": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_003/attempt_summary.json"
+      },
+      "proposal": {
+        "primitive": "necrosis_appearance",
+        "reference_profile": "IGNITE",
+        "target_label": "Necrosis",
+        "regions": [
+          {
+            "region_id": "r1",
+            "source_labels": [
+              "Tumor"
+            ],
+            "points": [
+              [
+                230.0,
+                330.0
+              ],
+              [
+                240.0,
+                335.0
+              ],
+              [
+                255.0,
+                340.0
+              ],
+              [
+                270.0,
+                345.0
+              ],
+              [
+                280.0,
+                350.0
+              ],
+              [
+                290.0,
+                355.0
+              ],
+              [
+                300.0,
+                360.0
+              ],
+              [
+                310.0,
+                365.0
+              ],
+              [
+                320.0,
+                370.0
+              ],
+              [
+                315.0,
+                380.0
+              ],
+              [
+                305.0,
+                385.0
+              ],
+              [
+                295.0,
+                390.0
+              ],
+              [
+                285.0,
+                395.0
+              ],
+              [
+                275.0,
+                395.0
+              ],
+              [
+                265.0,
+                390.0
+              ],
+              [
+                255.0,
+                385.0
+              ],
+              [
+                245.0,
+                375.0
+              ],
+              [
+                235.0,
+                365.0
+              ],
+              [
+                230.0,
+                355.0
+              ],
+              [
+                230.0,
+                345.0
+              ],
+              [
+                230.0,
+                335.0
+              ]
+            ],
+            "confidence": 0.85
+          }
+        ]
+      },
+      "edit_result": {
+        "selected_pixels": 0,
+        "changed_area_fraction": 0.0,
+        "warnings": [
+          "proposal_projected_region_empty"
+        ],
+        "ops_log": {
+          "backend": "organic_score_projection_v2",
+          "method": "organic_score_projection_and_deterministic_write",
+          "primitive": "necrosis_appearance",
+          "reference_profile": "IGNITE",
+          "source_labels": [
+            "Tumor"
+          ],
+          "target_label": "Necrosis",
+          "target_fine_id": 3,
+          "preserve_labels": [],
+          "forbidden_labels": [],
+          "raw_candidate_pixels": 3216,
+          "candidate_pixels": 3216,
+          "raw_candidate_legal_overlap_pixels": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "selected_raw_template_intersection_pixels": 0,
+          "selected_raw_template_union_pixels": 3216,
+          "selected_raw_template_iou": 0.0,
+          "area_shortfall": 0,
+          "projection_retained_fraction": 0.0,
+          "changed_area_fraction": 0.0,
+          "projection_backend": "organic_score_projection_v2",
+          "noise_seed": 8,
+          "component_policy": {
+            "policy_name": "necrosis_intratumoral_hypoxic",
+            "params": {
+              "legal_domain_policy": "tumor_near_existing_necrosis_expansion_band",
+              "tumor_pixels": 29248,
+              "existing_necrosis_pixels": 10400,
+              "necrosis_denominator_policy": "original_tumor_fine_ids_only_matches_validation",
+              "tumor_boundary_margin_radius_px": 64.0,
+              "necrosis_neighbor_radius_px": 48.0,
+              "used_existing_necrosis_neighborhood": true,
+              "allow_multifocal_new_foci_when_existing_necrosis": false,
+              "existing_necrosis_expansion_band_pixels": 0,
+              "vessel_avoidance_radius_px": 96.0,
+              "vessel_avoidance_weight": 0.2,
+              "used_vessel_avoidance": false
+            }
+          },
+          "raw_payload": {
+            "schema_version": "0.1",
+            "backend": "llm_contour_proposal",
+            "primitive": "necrosis_appearance",
+            "reference_profile": "IGNITE",
+            "target_label": "Necrosis",
+            "template_role": "coarse_template",
+            "placement_relation": "tumor_interior",
+            "shape_hints": [
+              "irregular_blob",
+              "uneven_boundary"
+            ],
+            "coordinate_system": {
+              "origin": "top_left",
+              "point_format": "[x, y]",
+              "x_axis": "horizontal_column_right",
+              "y_axis": "vertical_row_down",
+              "width": 512,
+              "height": 512
+            },
+            "regions": [
+              {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": [
+                  "Tumor"
+                ],
+                "source_component_ids": [
+                  "source_3"
+                ],
+                "adjacency_side": "tumor_interior",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_blob",
+                  "uneven_boundary"
+                ],
+                "points": [
+                  [
+                    230,
+                    330
+                  ],
+                  [
+                    240,
+                    335
+                  ],
+                  [
+                    255,
+                    340
+                  ],
+                  [
+                    270,
+                    345
+                  ],
+                  [
+                    280,
+                    350
+                  ],
+                  [
+                    290,
+                    355
+                  ],
+                  [
+                    300,
+                    360
+                  ],
+                  [
+                    310,
+                    365
+                  ],
+                  [
+                    320,
+                    370
+                  ],
+                  [
+                    315,
+                    380
+                  ],
+                  [
+                    305,
+                    385
+                  ],
+                  [
+                    295,
+                    390
+                  ],
+                  [
+                    285,
+                    395
+                  ],
+                  [
+                    275,
+                    395
+                  ],
+                  [
+                    265,
+                    390
+                  ],
+                  [
+                    255,
+                    385
+                  ],
+                  [
+                    245,
+                    375
+                  ],
+                  [
+                    235,
+                    365
+                  ],
+                  [
+                    230,
+                    355
+                  ],
+                  [
+                    230,
+                    345
+                  ],
+                  [
+                    230,
+                    335
+                  ]
+                ],
+                "confidence": 0.85
+              }
+            ]
+          },
+          "projection_mode": "organic_v2"
+        }
+      },
+      "validation": {
+        "passed": false,
+        "primitive": "necrosis_appearance",
+        "checks": [
+          {
+            "name": "change_area_nonempty",
+            "passed": false,
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "passed": false,
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "label_legality",
+            "passed": true,
+            "detail": "all labels in schema."
+          },
+          {
+            "name": "no_background_leakage",
+            "passed": true,
+            "detail": "no background leakage."
+          },
+          {
+            "name": "required_labels_present",
+            "passed": true,
+            "detail": "all required labels present in src mask."
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "passed": false,
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          },
+          {
+            "name": "new_necrosis_must_be_inside_original_tumor",
+            "passed": true,
+            "detail": "new necrosis inside original tumor or locally engulfed non-background intrusions."
+          },
+          {
+            "name": "candidate_region_must_have_high_necrosis_probability",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          },
+          {
+            "name": "new_region_must_not_be_too_small_or_fragmented",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          }
+        ],
+        "warnings": [
+          "change_area_nonempty: no pixels changed.",
+          "change_area_within_range: changed_tumor_fraction=0.0000 below 0.08",
+          "necrosis_area_must_increase: necrosis did not increase: 10400 -> 10400 pixels."
+        ]
+      },
+      "repair_feedback": {
+        "status": "validation_failed",
+        "attempt": 3,
+        "failed_checks": [
+          {
+            "name": "change_area_nonempty",
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          }
+        ],
+        "projection": {
+          "candidate_pixels": 3216,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "projection_retained_fraction": 0.0,
+          "projection_mode": "organic_v2",
+          "projection_backend": "organic_score_projection_v2",
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "area_shortfall": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+        },
+        "warnings": [
+          "proposal_projected_region_empty"
+        ]
+      }
+    },
+    {
+      "attempt_index": 4,
+      "status": "validation_failed",
+      "error": null,
+      "artifact_paths": {
+        "prompt": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/prompt.txt",
+        "llm_request": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/llm_request.json",
+        "llm_response": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/llm_response.json",
+        "llm_response_raw": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/llm_response_raw.txt",
+        "validated_proposal": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/validated_proposal.json",
+        "rasterized_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/rasterized_region.png",
+        "projected_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/projected_region.png",
+        "change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/change_region.png",
+        "target_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/target_mask.png",
+        "target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/target_mask_rgb.png",
+        "visual_qa_source_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/source_mask_rgb.png",
+        "visual_qa_source_mask_rgb_grid": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/source_mask_rgb_grid.png",
+        "visual_qa_raw_template_overlay": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/raw_template_overlay.png",
+        "visual_qa_legal_domain": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/legal_domain.png",
+        "visual_qa_template_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/template_score_heatmap.png",
+        "visual_qa_spatial_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/spatial_score_heatmap.png",
+        "visual_qa_noise_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/noise_heatmap.png",
+        "visual_qa_final_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/final_score_heatmap.png",
+        "visual_qa_selected_change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/selected_change_region.png",
+        "visual_qa_target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/target_mask_rgb.png",
+        "visual_qa_organic_projection_panel": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/organic_projection_panel.png",
+        "visual_qa_v1_v2_side_by_side": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/v1_v2_side_by_side.png",
+        "visual_qa_visual_qa_manifest": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/visual_qa/visual_qa_manifest.json",
+        "validation": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/validation.json",
+        "repair_feedback": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/repair_feedback.json",
+        "attempt_summary": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/IGNITE_necrosis_app_hard_001/prompt/phase3_mask_edit/prompt_to_contour/necrosis_appearance/attempt_004/attempt_summary.json"
+      },
+      "proposal": {
+        "primitive": "necrosis_appearance",
+        "reference_profile": "IGNITE",
+        "target_label": "Necrosis",
+        "regions": [
+          {
+            "region_id": "r1",
+            "source_labels": [
+              "Tumor"
+            ],
+            "points": [
+              [
+                230.0,
+                340.0
+              ],
+              [
+                240.0,
+                335.0
+              ],
+              [
+                255.0,
+                330.0
+              ],
+              [
+                270.0,
+                335.0
+              ],
+              [
+                280.0,
+                345.0
+              ],
+              [
+                285.0,
+                360.0
+              ],
+              [
+                280.0,
+                375.0
+              ],
+              [
+                270.0,
+                385.0
+              ],
+              [
+                255.0,
+                390.0
+              ],
+              [
+                240.0,
+                385.0
+              ],
+              [
+                230.0,
+                375.0
+              ],
+              [
+                225.0,
+                360.0
+              ]
+            ],
+            "confidence": 0.85
+          }
+        ]
+      },
+      "edit_result": {
+        "selected_pixels": 0,
+        "changed_area_fraction": 0.0,
+        "warnings": [
+          "proposal_projected_region_empty"
+        ],
+        "ops_log": {
+          "backend": "organic_score_projection_v2",
+          "method": "organic_score_projection_and_deterministic_write",
+          "primitive": "necrosis_appearance",
+          "reference_profile": "IGNITE",
+          "source_labels": [
+            "Tumor"
+          ],
+          "target_label": "Necrosis",
+          "target_fine_id": 3,
+          "preserve_labels": [],
+          "forbidden_labels": [],
+          "raw_candidate_pixels": 2696,
+          "candidate_pixels": 2696,
+          "raw_candidate_legal_overlap_pixels": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "selected_raw_template_intersection_pixels": 0,
+          "selected_raw_template_union_pixels": 2696,
+          "selected_raw_template_iou": 0.0,
+          "area_shortfall": 0,
+          "projection_retained_fraction": 0.0,
+          "changed_area_fraction": 0.0,
+          "projection_backend": "organic_score_projection_v2",
+          "noise_seed": 8,
+          "component_policy": {
+            "policy_name": "necrosis_intratumoral_hypoxic",
+            "params": {
+              "legal_domain_policy": "tumor_near_existing_necrosis_expansion_band",
+              "tumor_pixels": 29248,
+              "existing_necrosis_pixels": 10400,
+              "necrosis_denominator_policy": "original_tumor_fine_ids_only_matches_validation",
+              "tumor_boundary_margin_radius_px": 64.0,
+              "necrosis_neighbor_radius_px": 48.0,
+              "used_existing_necrosis_neighborhood": true,
+              "allow_multifocal_new_foci_when_existing_necrosis": false,
+              "existing_necrosis_expansion_band_pixels": 0,
+              "vessel_avoidance_radius_px": 96.0,
+              "vessel_avoidance_weight": 0.2,
+              "used_vessel_avoidance": false
+            }
+          },
+          "raw_payload": {
+            "schema_version": "0.1",
+            "backend": "llm_contour_proposal",
+            "primitive": "necrosis_appearance",
+            "reference_profile": "IGNITE",
+            "target_label": "Necrosis",
+            "template_role": "coarse_template",
+            "placement_relation": "tumor_interior",
+            "shape_hints": [
+              "irregular_blob",
+              "uneven_boundary"
+            ],
+            "coordinate_system": {
+              "origin": "top_left",
+              "point_format": "[x, y]",
+              "x_axis": "horizontal_column_right",
+              "y_axis": "vertical_row_down",
+              "width": 512,
+              "height": 512
+            },
+            "regions": [
+              {
+                "region_id": "r1",
+                "type": "polygon",
+                "source_labels": [
+                  "Tumor"
+                ],
+                "source_component_ids": [
+                  "source_3"
+                ],
+                "adjacency_side": "tumor_interior",
+                "template_role": "coarse_template",
+                "shape_hints": [
+                  "irregular_blob",
+                  "uneven_boundary"
+                ],
+                "points": [
+                  [
+                    230,
+                    340
+                  ],
+                  [
+                    240,
+                    335
+                  ],
+                  [
+                    255,
+                    330
+                  ],
+                  [
+                    270,
+                    335
+                  ],
+                  [
+                    280,
+                    345
+                  ],
+                  [
+                    285,
+                    360
+                  ],
+                  [
+                    280,
+                    375
+                  ],
+                  [
+                    270,
+                    385
+                  ],
+                  [
+                    255,
+                    390
+                  ],
+                  [
+                    240,
+                    385
+                  ],
+                  [
+                    230,
+                    375
+                  ],
+                  [
+                    225,
+                    360
+                  ]
+                ],
+                "confidence": 0.85
+              }
+            ]
+          },
+          "projection_mode": "organic_v2"
+        }
+      },
+      "validation": {
+        "passed": false,
+        "primitive": "necrosis_appearance",
+        "checks": [
+          {
+            "name": "change_area_nonempty",
+            "passed": false,
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "passed": false,
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "label_legality",
+            "passed": true,
+            "detail": "all labels in schema."
+          },
+          {
+            "name": "no_background_leakage",
+            "passed": true,
+            "detail": "no background leakage."
+          },
+          {
+            "name": "required_labels_present",
+            "passed": true,
+            "detail": "all required labels present in src mask."
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "passed": false,
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          },
+          {
+            "name": "new_necrosis_must_be_inside_original_tumor",
+            "passed": true,
+            "detail": "new necrosis inside original tumor or locally engulfed non-background intrusions."
+          },
+          {
+            "name": "candidate_region_must_have_high_necrosis_probability",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          },
+          {
+            "name": "new_region_must_not_be_too_small_or_fragmented",
+            "passed": true,
+            "detail": "no guard implemented; skipped."
+          }
+        ],
+        "warnings": [
+          "change_area_nonempty: no pixels changed.",
+          "change_area_within_range: changed_tumor_fraction=0.0000 below 0.08",
+          "necrosis_area_must_increase: necrosis did not increase: 10400 -> 10400 pixels."
+        ]
+      },
+      "repair_feedback": {
+        "status": "validation_failed",
+        "attempt": 4,
+        "failed_checks": [
+          {
+            "name": "change_area_nonempty",
+            "detail": "no pixels changed."
+          },
+          {
+            "name": "change_area_within_range",
+            "detail": "changed_tumor_fraction=0.0000 below 0.08"
+          },
+          {
+            "name": "necrosis_area_must_increase",
+            "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+          }
+        ],
+        "projection": {
+          "candidate_pixels": 2696,
+          "projected_pixels": 0,
+          "selected_pixels": 0,
+          "projection_retained_fraction": 0.0,
+          "projection_mode": "organic_v2",
+          "projection_backend": "organic_score_projection_v2",
+          "legal_domain_pixels": 0,
+          "target_pixels": 0,
+          "area_shortfall": 0,
+          "template_overlap_with_legal_domain": 0.0,
+          "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+        },
+        "warnings": [
+          "proposal_projected_region_empty"
+        ]
+      }
+    }
+  ]
+}

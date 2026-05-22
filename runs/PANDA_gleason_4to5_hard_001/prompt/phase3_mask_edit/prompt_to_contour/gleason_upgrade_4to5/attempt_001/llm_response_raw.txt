@@ -1,0 +1,160 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "gleason_upgrade_4to5",
+  "reference_profile": "PANDA",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_11"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          260,
+          370
+        ],
+        [
+          270,
+          375
+        ],
+        [
+          280,
+          380
+        ],
+        [
+          290,
+          390
+        ],
+        [
+          300,
+          400
+        ],
+        [
+          310,
+          410
+        ],
+        [
+          320,
+          420
+        ],
+        [
+          330,
+          430
+        ],
+        [
+          335,
+          440
+        ],
+        [
+          340,
+          450
+        ],
+        [
+          340,
+          460
+        ],
+        [
+          335,
+          470
+        ],
+        [
+          330,
+          480
+        ],
+        [
+          320,
+          485
+        ],
+        [
+          310,
+          490
+        ],
+        [
+          300,
+          495
+        ],
+        [
+          290,
+          500
+        ],
+        [
+          280,
+          505
+        ],
+        [
+          270,
+          510
+        ],
+        [
+          260,
+          510
+        ],
+        [
+          255,
+          500
+        ],
+        [
+          255,
+          490
+        ],
+        [
+          255,
+          480
+        ],
+        [
+          255,
+          470
+        ],
+        [
+          255,
+          460
+        ],
+        [
+          255,
+          450
+        ],
+        [
+          255,
+          440
+        ],
+        [
+          255,
+          430
+        ],
+        [
+          255,
+          420
+        ],
+        [
+          255,
+          410
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

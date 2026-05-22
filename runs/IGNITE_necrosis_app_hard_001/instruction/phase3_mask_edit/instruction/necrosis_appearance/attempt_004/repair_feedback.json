@@ -1,0 +1,34 @@
+{
+  "status": "validation_failed",
+  "attempt": 4,
+  "failed_checks": [
+    {
+      "name": "change_area_nonempty",
+      "detail": "no pixels changed."
+    },
+    {
+      "name": "change_area_within_range",
+      "detail": "changed_tumor_fraction=0.0000 below 0.08"
+    },
+    {
+      "name": "necrosis_area_must_increase",
+      "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+    }
+  ],
+  "projection": {
+    "candidate_pixels": 2866,
+    "projected_pixels": 0,
+    "selected_pixels": 0,
+    "projection_retained_fraction": 0.0,
+    "projection_mode": "organic_v2",
+    "projection_backend": "organic_score_projection_v2",
+    "legal_domain_pixels": 0,
+    "target_pixels": 0,
+    "area_shortfall": 0,
+    "template_overlap_with_legal_domain": 0.0,
+    "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+  },
+  "warnings": [
+    "proposal_projected_region_empty"
+  ]
+}

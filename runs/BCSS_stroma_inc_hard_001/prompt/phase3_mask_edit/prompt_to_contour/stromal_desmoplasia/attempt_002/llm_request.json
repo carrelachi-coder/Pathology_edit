@@ -1,0 +1,45 @@
+{
+  "attempt_index": 2,
+  "image_paths": [
+    "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/BCSS_stroma_inc_hard_001/prompt/phase3_mask_edit/prompt_to_contour/stromal_desmoplasia/source_mask_llm_rgb_grid.png",
+    "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/BCSS_stroma_inc_hard_001/prompt/phase3_mask_edit/prompt_to_contour/stromal_desmoplasia/source_mask_llm_rgb.png"
+  ],
+  "provider_metadata": {
+    "provider_name": "openai_compatible_multimodal",
+    "provider_class": "OpenAICompatibleMultimodalContourProvider",
+    "request_mode": "multimodal",
+    "image_paths_available": 2,
+    "image_parts_expected": 1,
+    "image_policy": "send first image path only as data:image/png;base64 image_url",
+    "context_mode": "full",
+    "compact_context_enabled": false
+  },
+  "repair_feedback": {
+    "status": "validation_failed",
+    "attempt": 1,
+    "failed_checks": [
+      {
+        "name": "change_area_within_range",
+        "detail": "changed_stroma_fraction=0.0218 outside [0.12, 0.55] or changed_pixels=3687 < 20000"
+      },
+      {
+        "name": "immune_to_stroma_fraction_within_limit",
+        "detail": "immune_to_stroma_fraction=0.4321 > 0.30."
+      }
+    ],
+    "projection": {
+      "candidate_pixels": 2534,
+      "projected_pixels": 3687,
+      "selected_pixels": 3687,
+      "projection_retained_fraction": 1.4550118389897395,
+      "projection_mode": "organic_v2",
+      "projection_backend": "organic_score_projection_v2",
+      "legal_domain_pixels": 3687,
+      "target_pixels": 3687,
+      "area_shortfall": 0,
+      "template_overlap_with_legal_domain": 0.27071823204419887,
+      "top_failed_reason": "change_area_within_range"
+    },
+    "warnings": []
+  }
+}

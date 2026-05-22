@@ -1,0 +1,50 @@
+{
+  "case": {
+    "case_id": "IGNITE_necrosis_app_hard_001",
+    "dataset": "IGNITE",
+    "profile": "IGNITE",
+    "primitive_group": "necrosis",
+    "primitive": "necrosis_appearance",
+    "expected_primitives": [
+      "necrosis_appearance"
+    ],
+    "source_image": "/data/wqx/flowedit/data/IGNITE/IGNITE_PATCHES/images/patient80_he_roi1_py1792_px2816.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/IGNITE/IGNITE_PATCHES/tissue_masks/patient80_he_roi1_py1792_px2816.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/IGNITE/IGNITE_PATCHES/nuclei_masks/patient80_he_roi1_py1792_px2816.png",
+    "old_prompt": "H&E stained lung squamous cell carcinoma with low tumor burden, abundant stroma, focal necrosis, mild immune infiltrate, normal epithelium, and patch-edge background.",
+    "new_prompt": "Add moderate intratumoral necrosis within the existing tumor while preserving surrounding stroma and immune infiltrate.",
+    "prompt_source": "manual_from_mask_and_metadata",
+    "parser_provider": "api",
+    "contour_provider": "openai_compatible_multimodal",
+    "projection_mode": "organic_v2",
+    "organic_seed": 8,
+    "tags": [
+      "hard",
+      "background_heavy",
+      "mixed_labels",
+      "low_tumor",
+      "necrosis_present"
+    ],
+    "selection_metrics": {
+      "tumor_fraction": 0.112,
+      "stroma_fraction": 0.668,
+      "necrosis_fraction": 0.04,
+      "immune_fraction": 0.029,
+      "background_fraction": 0.124
+    },
+    "status": "todo",
+    "instruction": "Add moderate intratumoral necrosis within the existing tumor; preserve surrounding stroma and immune infiltrate.",
+    "source_image_relative": "IGNITE_PATCHES/images/patient80_he_roi1_py1792_px2816.png",
+    "source_tissue_mask_relative": "IGNITE_PATCHES/tissue_masks/patient80_he_roi1_py1792_px2816.png",
+    "source_nuclei_mask_relative": "IGNITE_PATCHES/nuclei_masks/patient80_he_roi1_py1792_px2816.png"
+  },
+  "variant": {
+    "variant_id": "prompt",
+    "edit_mode": "prompt"
+  },
+  "paths": {
+    "source_image": "/data/wqx/flowedit/data/IGNITE_PATCHES/images/patient80_he_roi1_py1792_px2816.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/tissue_masks/patient80_he_roi1_py1792_px2816.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/IGNITE_PATCHES/nuclei_masks/patient80_he_roi1_py1792_px2816.png"
+  }
+}

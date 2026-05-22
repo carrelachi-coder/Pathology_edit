@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "necrosis_appearance",
+  "reference_profile": "IGNITE",
+  "target_label": "Necrosis",
+  "template_role": "coarse_template",
+  "placement_relation": "tumor_interior",
+  "shape_hints": [
+    "irregular_blob",
+    "uneven_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_3"
+      ],
+      "adjacency_side": "tumor_interior",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_blob",
+        "uneven_boundary"
+      ],
+      "points": [
+        [
+          230,
+          340
+        ],
+        [
+          240,
+          335
+        ],
+        [
+          255,
+          330
+        ],
+        [
+          270,
+          335
+        ],
+        [
+          280,
+          345
+        ],
+        [
+          285,
+          360
+        ],
+        [
+          280,
+          375
+        ],
+        [
+          270,
+          385
+        ],
+        [
+          255,
+          390
+        ],
+        [
+          240,
+          385
+        ],
+        [
+          230,
+          375
+        ],
+        [
+          225,
+          360
+        ]
+      ],
+      "confidence": 0.85
+    }
+  ]
+}

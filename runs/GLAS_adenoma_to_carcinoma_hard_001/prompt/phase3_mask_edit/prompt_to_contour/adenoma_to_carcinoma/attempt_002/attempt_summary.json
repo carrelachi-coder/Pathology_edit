@@ -1,0 +1,316 @@
+{
+  "attempt_index": 2,
+  "status": "validation_failed",
+  "error": null,
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "adenoma_to_carcinoma",
+    "reference_profile": "GlaS",
+    "target_label": "Tumor",
+    "regions": [
+      {
+        "region_id": "r1",
+        "source_labels": [
+          "Tumor"
+        ],
+        "points": [
+          [
+            280.0,
+            370.0
+          ],
+          [
+            295.0,
+            365.0
+          ],
+          [
+            310.0,
+            360.0
+          ],
+          [
+            330.0,
+            362.0
+          ],
+          [
+            345.0,
+            370.0
+          ],
+          [
+            355.0,
+            385.0
+          ],
+          [
+            360.0,
+            400.0
+          ],
+          [
+            355.0,
+            420.0
+          ],
+          [
+            345.0,
+            435.0
+          ],
+          [
+            330.0,
+            445.0
+          ],
+          [
+            310.0,
+            450.0
+          ],
+          [
+            295.0,
+            445.0
+          ],
+          [
+            285.0,
+            435.0
+          ],
+          [
+            280.0,
+            420.0
+          ],
+          [
+            275.0,
+            400.0
+          ],
+          [
+            275.0,
+            385.0
+          ]
+        ],
+        "confidence": 0.85
+      }
+    ]
+  },
+  "edit_result": {
+    "selected_pixels": 1112,
+    "changed_area_fraction": 0.004241943359375,
+    "warnings": [
+      "fine_transition_area_shortfall"
+    ],
+    "ops_log": {
+      "backend": "llm_contour_proposal",
+      "projection_backend": "fine_transition_source_fine_id_projection",
+      "method": "fine_transition_source_fine_id_template_projection",
+      "primitive": "adenoma_to_carcinoma",
+      "operation_type": "fine_label_transition",
+      "target_change_fraction_semantics": "source_fine_id_relative_relabel_fraction",
+      "target_change_fraction_denominator": "source_fine_id_pixels",
+      "source_fine_ids": [
+        11
+      ],
+      "target_fine_id": 12,
+      "target_label_write_source": "fine_label_transition.target_fine_id",
+      "raw_candidate_pixels": 5973,
+      "candidate_pixels": 5973,
+      "raw_candidate_legal_overlap_pixels": 5973,
+      "legal_domain_pixels": 49302,
+      "target_pixels": 6902,
+      "projected_pixels": 1112,
+      "selected_pixels": 1112,
+      "source_relative_fraction": 0.022554865928359903,
+      "changed_area_fraction": 0.004241943359375,
+      "projection_retained_fraction": 0.18617110329817513,
+      "area_shortfall": 5790,
+      "selection_unit": "connected_component",
+      "selection_policy": "whole_source_components_template_prioritized",
+      "area_budget_policy": "whole_components_no_partial_split",
+      "source_component_count": 4,
+      "selected_component_ids": [
+        1,
+        4
+      ],
+      "selected_component_areas": [
+        598,
+        514
+      ],
+      "selected_component_template_overlap_pixels": [
+        0,
+        0
+      ],
+      "area_budget_delta_pixels": -5790,
+      "skipped_components_due_to_area_budget": 2,
+      "raw_payload": {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "adenoma_to_carcinoma",
+        "reference_profile": "GlaS",
+        "target_label": "Tumor",
+        "template_role": "coarse_template",
+        "placement_relation": "generic_label_safe",
+        "shape_hints": [
+          "irregular_boundary"
+        ],
+        "coordinate_system": {
+          "origin": "top_left",
+          "point_format": "[x, y]",
+          "x_axis": "horizontal_column_right",
+          "y_axis": "vertical_row_down",
+          "width": 512,
+          "height": 512
+        },
+        "regions": [
+          {
+            "region_id": "r1",
+            "type": "polygon",
+            "source_labels": [
+              "Tumor"
+            ],
+            "source_component_ids": [
+              "source_3"
+            ],
+            "adjacency_side": "generic_label_safe",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "irregular_boundary"
+            ],
+            "points": [
+              [
+                280,
+                370
+              ],
+              [
+                295,
+                365
+              ],
+              [
+                310,
+                360
+              ],
+              [
+                330,
+                362
+              ],
+              [
+                345,
+                370
+              ],
+              [
+                355,
+                385
+              ],
+              [
+                360,
+                400
+              ],
+              [
+                355,
+                420
+              ],
+              [
+                345,
+                435
+              ],
+              [
+                330,
+                445
+              ],
+              [
+                310,
+                450
+              ],
+              [
+                295,
+                445
+              ],
+              [
+                285,
+                435
+              ],
+              [
+                280,
+                420
+              ],
+              [
+                275,
+                400
+              ],
+              [
+                275,
+                385
+              ]
+            ],
+            "confidence": 0.85
+          }
+        ]
+      },
+      "projection_mode": "organic_v2"
+    }
+  },
+  "validation": {
+    "passed": false,
+    "primitive": "adenoma_to_carcinoma",
+    "checks": [
+      {
+        "name": "change_area_nonempty",
+        "passed": true,
+        "detail": "1112 pixels changed."
+      },
+      {
+        "name": "fine_transition_source_relative_change_area",
+        "passed": false,
+        "detail": "source_relative_fraction=0.0226 outside [0.08, 0.20]"
+      },
+      {
+        "name": "label_legality",
+        "passed": true,
+        "detail": "all labels in schema."
+      },
+      {
+        "name": "no_background_leakage",
+        "passed": true,
+        "detail": "no background leakage."
+      },
+      {
+        "name": "required_labels_present",
+        "passed": true,
+        "detail": "all required labels present in src mask."
+      },
+      {
+        "name": "fine_transition_source_must_decrease",
+        "passed": true,
+        "detail": "source fine IDs [11] 49302 -> 48190 pixels."
+      },
+      {
+        "name": "fine_transition_target_must_increase",
+        "passed": true,
+        "detail": "target fine ID 12 0 -> 1112 pixels."
+      },
+      {
+        "name": "change_region_must_match_source_fine_ids",
+        "passed": true,
+        "detail": "all changed pixels came from source fine IDs [11]."
+      }
+    ],
+    "warnings": [
+      "fine_transition_source_relative_change_area: source_relative_fraction=0.0226 outside [0.08, 0.20]"
+    ]
+  },
+  "repair_feedback": {
+    "status": "validation_failed",
+    "attempt": 2,
+    "failed_checks": [
+      {
+        "name": "fine_transition_source_relative_change_area",
+        "detail": "source_relative_fraction=0.0226 outside [0.08, 0.20]"
+      }
+    ],
+    "projection": {
+      "candidate_pixels": 5973,
+      "projected_pixels": 1112,
+      "selected_pixels": 1112,
+      "projection_retained_fraction": 0.18617110329817513,
+      "projection_mode": "organic_v2",
+      "projection_backend": "fine_transition_source_fine_id_projection",
+      "legal_domain_pixels": 49302,
+      "target_pixels": 6902,
+      "area_shortfall": 5790,
+      "template_overlap_with_legal_domain": null,
+      "top_failed_reason": "fine_transition_source_relative_change_area"
+    },
+    "warnings": [
+      "fine_transition_area_shortfall"
+    ]
+  }
+}

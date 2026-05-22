@@ -1,0 +1,16 @@
+{
+  "selected_mode": "cross",
+  "change_ratio": 0.04668426513671875,
+  "prompt": "H&E stained colorectal cancer histopathology at 40x magnification",
+  "reference_image": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/inputs/source_image.png",
+  "reference_tissue_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/inputs/source_tissue_mask.png",
+  "reference_nuclei_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/inputs/source_cell_mask.png",
+  "target_tissue_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/target_mask.png",
+  "target_nuclei_mask": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/GLAS_adenoma_to_carcinoma_hard_001/instruction/target_nuclei_mask.png",
+  "changed_tissue_ids_from": [
+    11
+  ],
+  "changed_tissue_ids_to": [
+    12
+  ]
+}

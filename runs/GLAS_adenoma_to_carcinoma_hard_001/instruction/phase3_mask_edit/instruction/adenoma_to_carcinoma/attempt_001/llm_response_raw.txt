@@ -1,0 +1,88 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "adenoma_to_carcinoma",
+  "reference_profile": "GlaS",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_3"
+      ],
+      "adjacency_side": "generic_label_safe",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          280,
+          370
+        ],
+        [
+          300,
+          365
+        ],
+        [
+          320,
+          360
+        ],
+        [
+          340,
+          365
+        ],
+        [
+          360,
+          375
+        ],
+        [
+          370,
+          390
+        ],
+        [
+          365,
+          410
+        ],
+        [
+          350,
+          430
+        ],
+        [
+          330,
+          440
+        ],
+        [
+          310,
+          435
+        ],
+        [
+          295,
+          420
+        ],
+        [
+          285,
+          400
+        ]
+      ],
+      "confidence": 0.85
+    }
+  ]
+}

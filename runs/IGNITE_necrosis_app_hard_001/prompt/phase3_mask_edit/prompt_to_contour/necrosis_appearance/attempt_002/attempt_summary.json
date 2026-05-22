@@ -1,0 +1,304 @@
+{
+  "attempt_index": 2,
+  "status": "validation_failed",
+  "error": null,
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "necrosis_appearance",
+    "reference_profile": "IGNITE",
+    "target_label": "Necrosis",
+    "regions": [
+      {
+        "region_id": "r1",
+        "source_labels": [
+          "Tumor"
+        ],
+        "points": [
+          [
+            230.0,
+            330.0
+          ],
+          [
+            240.0,
+            320.0
+          ],
+          [
+            255.0,
+            315.0
+          ],
+          [
+            270.0,
+            320.0
+          ],
+          [
+            280.0,
+            335.0
+          ],
+          [
+            285.0,
+            350.0
+          ],
+          [
+            280.0,
+            365.0
+          ],
+          [
+            270.0,
+            375.0
+          ],
+          [
+            255.0,
+            380.0
+          ],
+          [
+            240.0,
+            375.0
+          ],
+          [
+            230.0,
+            365.0
+          ],
+          [
+            225.0,
+            350.0
+          ]
+        ],
+        "confidence": 0.85
+      }
+    ]
+  },
+  "edit_result": {
+    "selected_pixels": 0,
+    "changed_area_fraction": 0.0,
+    "warnings": [
+      "proposal_projected_region_empty"
+    ],
+    "ops_log": {
+      "backend": "organic_score_projection_v2",
+      "method": "organic_score_projection_and_deterministic_write",
+      "primitive": "necrosis_appearance",
+      "reference_profile": "IGNITE",
+      "source_labels": [
+        "Tumor"
+      ],
+      "target_label": "Necrosis",
+      "target_fine_id": 3,
+      "preserve_labels": [],
+      "forbidden_labels": [],
+      "raw_candidate_pixels": 2901,
+      "candidate_pixels": 2901,
+      "raw_candidate_legal_overlap_pixels": 0,
+      "template_overlap_with_legal_domain": 0.0,
+      "legal_domain_pixels": 0,
+      "target_pixels": 0,
+      "projected_pixels": 0,
+      "selected_pixels": 0,
+      "selected_raw_template_intersection_pixels": 0,
+      "selected_raw_template_union_pixels": 2901,
+      "selected_raw_template_iou": 0.0,
+      "area_shortfall": 0,
+      "projection_retained_fraction": 0.0,
+      "changed_area_fraction": 0.0,
+      "projection_backend": "organic_score_projection_v2",
+      "noise_seed": 8,
+      "component_policy": {
+        "policy_name": "necrosis_intratumoral_hypoxic",
+        "params": {
+          "legal_domain_policy": "tumor_near_existing_necrosis_expansion_band",
+          "tumor_pixels": 29248,
+          "existing_necrosis_pixels": 10400,
+          "necrosis_denominator_policy": "original_tumor_fine_ids_only_matches_validation",
+          "tumor_boundary_margin_radius_px": 64.0,
+          "necrosis_neighbor_radius_px": 48.0,
+          "used_existing_necrosis_neighborhood": true,
+          "allow_multifocal_new_foci_when_existing_necrosis": false,
+          "existing_necrosis_expansion_band_pixels": 0,
+          "vessel_avoidance_radius_px": 96.0,
+          "vessel_avoidance_weight": 0.2,
+          "used_vessel_avoidance": false
+        }
+      },
+      "raw_payload": {
+        "schema_version": "0.1",
+        "backend": "llm_contour_proposal",
+        "primitive": "necrosis_appearance",
+        "reference_profile": "IGNITE",
+        "target_label": "Necrosis",
+        "template_role": "coarse_template",
+        "placement_relation": "tumor_interior",
+        "shape_hints": [
+          "irregular_blob",
+          "uneven_boundary"
+        ],
+        "coordinate_system": {
+          "origin": "top_left",
+          "point_format": "[x, y]",
+          "x_axis": "horizontal_column_right",
+          "y_axis": "vertical_row_down",
+          "width": 512,
+          "height": 512
+        },
+        "regions": [
+          {
+            "region_id": "r1",
+            "type": "polygon",
+            "source_labels": [
+              "Tumor"
+            ],
+            "source_component_ids": [
+              "source_3"
+            ],
+            "adjacency_side": "tumor_interior",
+            "template_role": "coarse_template",
+            "shape_hints": [
+              "irregular_blob",
+              "uneven_boundary"
+            ],
+            "points": [
+              [
+                230,
+                330
+              ],
+              [
+                240,
+                320
+              ],
+              [
+                255,
+                315
+              ],
+              [
+                270,
+                320
+              ],
+              [
+                280,
+                335
+              ],
+              [
+                285,
+                350
+              ],
+              [
+                280,
+                365
+              ],
+              [
+                270,
+                375
+              ],
+              [
+                255,
+                380
+              ],
+              [
+                240,
+                375
+              ],
+              [
+                230,
+                365
+              ],
+              [
+                225,
+                350
+              ]
+            ],
+            "confidence": 0.85
+          }
+        ]
+      },
+      "projection_mode": "organic_v2"
+    }
+  },
+  "validation": {
+    "passed": false,
+    "primitive": "necrosis_appearance",
+    "checks": [
+      {
+        "name": "change_area_nonempty",
+        "passed": false,
+        "detail": "no pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "passed": false,
+        "detail": "changed_tumor_fraction=0.0000 below 0.08"
+      },
+      {
+        "name": "label_legality",
+        "passed": true,
+        "detail": "all labels in schema."
+      },
+      {
+        "name": "no_background_leakage",
+        "passed": true,
+        "detail": "no background leakage."
+      },
+      {
+        "name": "required_labels_present",
+        "passed": true,
+        "detail": "all required labels present in src mask."
+      },
+      {
+        "name": "necrosis_area_must_increase",
+        "passed": false,
+        "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+      },
+      {
+        "name": "new_necrosis_must_be_inside_original_tumor",
+        "passed": true,
+        "detail": "new necrosis inside original tumor or locally engulfed non-background intrusions."
+      },
+      {
+        "name": "candidate_region_must_have_high_necrosis_probability",
+        "passed": true,
+        "detail": "no guard implemented; skipped."
+      },
+      {
+        "name": "new_region_must_not_be_too_small_or_fragmented",
+        "passed": true,
+        "detail": "no guard implemented; skipped."
+      }
+    ],
+    "warnings": [
+      "change_area_nonempty: no pixels changed.",
+      "change_area_within_range: changed_tumor_fraction=0.0000 below 0.08",
+      "necrosis_area_must_increase: necrosis did not increase: 10400 -> 10400 pixels."
+    ]
+  },
+  "repair_feedback": {
+    "status": "validation_failed",
+    "attempt": 2,
+    "failed_checks": [
+      {
+        "name": "change_area_nonempty",
+        "detail": "no pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "detail": "changed_tumor_fraction=0.0000 below 0.08"
+      },
+      {
+        "name": "necrosis_area_must_increase",
+        "detail": "necrosis did not increase: 10400 -> 10400 pixels."
+      }
+    ],
+    "projection": {
+      "candidate_pixels": 2901,
+      "projected_pixels": 0,
+      "selected_pixels": 0,
+      "projection_retained_fraction": 0.0,
+      "projection_mode": "organic_v2",
+      "projection_backend": "organic_score_projection_v2",
+      "legal_domain_pixels": 0,
+      "target_pixels": 0,
+      "area_shortfall": 0,
+      "template_overlap_with_legal_domain": 0.0,
+      "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+    },
+    "warnings": [
+      "proposal_projected_region_empty"
+    ]
+  }
+}

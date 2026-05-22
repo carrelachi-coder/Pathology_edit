@@ -1,0 +1,158 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "stromal_desmoplasia",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "peritumoral_desmoplastic_stroma_expansion",
+  "shape_hints": [
+    "peritumoral",
+    "stromal_reinforcement",
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Other tissue",
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2",
+        "source_4"
+      ],
+      "adjacency_side": "peritumoral_desmoplastic_stroma_expansion",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "peritumoral",
+        "stromal_reinforcement",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          250,
+          40
+        ],
+        [
+          260,
+          35
+        ],
+        [
+          270,
+          38
+        ],
+        [
+          280,
+          45
+        ],
+        [
+          285,
+          55
+        ],
+        [
+          290,
+          65
+        ],
+        [
+          288,
+          70
+        ],
+        [
+          280,
+          72
+        ],
+        [
+          270,
+          70
+        ],
+        [
+          260,
+          65
+        ],
+        [
+          255,
+          60
+        ],
+        [
+          250,
+          55
+        ],
+        [
+          245,
+          50
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Immune infiltrate"
+      ],
+      "source_component_ids": [
+        "source_2"
+      ],
+      "adjacency_side": "peritumoral_desmoplastic_stroma_expansion",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "peritumoral",
+        "stromal_reinforcement",
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          320,
+          320
+        ],
+        [
+          340,
+          330
+        ],
+        [
+          360,
+          350
+        ],
+        [
+          370,
+          370
+        ],
+        [
+          365,
+          390
+        ],
+        [
+          350,
+          400
+        ],
+        [
+          330,
+          395
+        ],
+        [
+          315,
+          380
+        ],
+        [
+          310,
+          360
+        ],
+        [
+          315,
+          340
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

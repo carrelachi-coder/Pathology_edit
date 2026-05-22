@@ -1,0 +1,134 @@
+{
+  "semantic_diff": {
+    "schema_version": "0.1",
+    "tumor_change": {
+      "growth": "none",
+      "degree": "moderate",
+      "grade_change": "upgrade"
+    },
+    "lymphocyte_change": {
+      "infiltration": "none",
+      "degree": "mild"
+    },
+    "necrosis_change": {
+      "action": "none",
+      "extent": "focal"
+    },
+    "stroma_change": {
+      "density": "none",
+      "degree": "moderate"
+    }
+  },
+  "reference_profile": "PANDA",
+  "intents": [
+    {
+      "primitive": "gleason_upgrade_4to5",
+      "strength": "moderate",
+      "reference_profile": "PANDA",
+      "organ": null,
+      "cancer_type": null,
+      "site": null,
+      "diagnosis": null,
+      "target_change_fraction": null,
+      "source_labels": [],
+      "target_label": null,
+      "region_hint": {},
+      "parameters": {},
+      "preserve_labels": [],
+      "forbidden_labels": [],
+      "old_prompt": null,
+      "new_prompt": "Upgrade prostate tumor from Gleason pattern 4 to Gleason pattern 5 in-place; preserve overall tumor area.",
+      "prompt_diff": {
+        "semantic_diff": {
+          "schema_version": "0.1",
+          "tumor_change": {
+            "growth": "none",
+            "degree": "moderate",
+            "grade_change": "upgrade"
+          },
+          "lymphocyte_change": {
+            "infiltration": "none",
+            "degree": "mild"
+          },
+          "necrosis_change": {
+            "action": "none",
+            "extent": "focal"
+          },
+          "stroma_change": {
+            "density": "none",
+            "degree": "moderate"
+          }
+        }
+      },
+      "seed": null
+    }
+  ],
+  "items": [
+    {
+      "primitive": "gleason_upgrade_4to5",
+      "strength": "moderate",
+      "status": "planned",
+      "applicability": "executable",
+      "reasons": [],
+      "warnings": [],
+      "fallback_actions": [],
+      "execution_group": null,
+      "role": "primary",
+      "fallback_for": null,
+      "planning_note": null,
+      "intent": {
+        "primitive": "gleason_upgrade_4to5",
+        "strength": "moderate",
+        "reference_profile": "PANDA",
+        "organ": null,
+        "cancer_type": null,
+        "site": null,
+        "diagnosis": null,
+        "target_change_fraction": null,
+        "source_labels": [],
+        "target_label": null,
+        "region_hint": {},
+        "parameters": {},
+        "preserve_labels": [],
+        "forbidden_labels": [],
+        "old_prompt": null,
+        "new_prompt": "Upgrade prostate tumor from Gleason pattern 4 to Gleason pattern 5 in-place; preserve overall tumor area.",
+        "prompt_diff": {
+          "semantic_diff": {
+            "schema_version": "0.1",
+            "tumor_change": {
+              "growth": "none",
+              "degree": "moderate",
+              "grade_change": "upgrade"
+            },
+            "lymphocyte_change": {
+              "infiltration": "none",
+              "degree": "mild"
+            },
+            "necrosis_change": {
+              "action": "none",
+              "extent": "focal"
+            },
+            "stroma_change": {
+              "density": "none",
+              "degree": "moderate"
+            }
+          }
+        },
+        "seed": null
+      }
+    }
+  ],
+  "unsupported_changes": [],
+  "metadata": {
+    "applicability_checked": true,
+    "intent_order": [
+      "gleason_upgrade_4to5"
+    ],
+    "present_labels": [
+      "Stroma",
+      "Tumor"
+    ],
+    "risk_flags": []
+  }
+}

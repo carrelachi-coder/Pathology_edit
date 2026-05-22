@@ -1,0 +1,56 @@
+{
+  "projection_mode": "organic_v2",
+  "projection_backend": "fine_transition_source_fine_id_projection",
+  "primitive": "gleason_upgrade_4to5",
+  "target_pixels": 2341,
+  "selected_pixels": 434,
+  "target_selected_ratio": 0.18539085860743273,
+  "legal_domain_pixels": 44400,
+  "raw_template_pixels": 3403,
+  "intersection_pixels": 0,
+  "union_pixels": 3837,
+  "selected_raw_template_iou": 0.0,
+  "selected_raw_template_intersection_pixels": 0,
+  "selected_raw_template_union_pixels": 3837,
+  "ops_log_selected_raw_template_iou": null,
+  "component_count": 1,
+  "cleanup_removed_pixels": null,
+  "cleanup_refill_pixels": null,
+  "post_cleanup_pixels": null,
+  "policy_name": null,
+  "noise_seed": null,
+  "area_shortfall": 1907,
+  "label_safety_visible": null,
+  "pathology_placement": null,
+  "boundary_naturalness": null,
+  "area_plausibility": null,
+  "template_respect": null,
+  "fragmentation": null,
+  "artifact_explainability": null,
+  "reviewer_notes": "",
+  "validation_passed": false,
+  "validation_failed_checks": [
+    "fine_transition_source_relative_change_area"
+  ],
+  "warnings": [
+    "fine_transition_area_shortfall"
+  ],
+  "artifact_paths": {
+    "source_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/source_mask_rgb.png",
+    "source_mask_rgb_grid": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/source_mask_rgb_grid.png",
+    "raw_template_overlay": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/raw_template_overlay.png",
+    "legal_domain": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/legal_domain.png",
+    "template_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/template_score_heatmap.png",
+    "spatial_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/spatial_score_heatmap.png",
+    "noise_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/noise_heatmap.png",
+    "final_score_heatmap": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/final_score_heatmap.png",
+    "selected_change_region": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/selected_change_region.png",
+    "target_mask_rgb": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/target_mask_rgb.png",
+    "organic_projection_panel": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/organic_projection_panel.png",
+    "v1_v2_side_by_side": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PANDA_gleason_4to5_hard_001/prompt/phase3_mask_edit/prompt_to_contour/gleason_upgrade_4to5/attempt_003/visual_qa/v1_v2_side_by_side.png"
+  },
+  "source_shape": [
+    512,
+    512
+  ]
+}

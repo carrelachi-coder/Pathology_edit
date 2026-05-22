@@ -1,0 +1,987 @@
+{
+  "mask_shape": [
+    512,
+    512
+  ],
+  "reference_profile": "PANDA",
+  "primitive": "gleason_upgrade_4to5",
+  "strength": "moderate",
+  "target_label": "Tumor",
+  "allowed_source_labels": [
+    "Tumor"
+  ],
+  "label_areas": {
+    "Normal epithelium": 0,
+    "Stroma": 217744,
+    "Tumor": 44400
+  },
+  "label_palette_rgb": {
+    "Background": [
+      30,
+      30,
+      30
+    ],
+    "Tumor": [
+      180,
+      60,
+      60
+    ],
+    "Stroma": [
+      60,
+      150,
+      60
+    ],
+    "Necrosis": [
+      60,
+      60,
+      180
+    ],
+    "Immune infiltrate": [
+      140,
+      60,
+      180
+    ],
+    "Normal epithelium": [
+      180,
+      180,
+      80
+    ],
+    "Blood vessel": [
+      60,
+      140,
+      100
+    ],
+    "Other tissue": [
+      170,
+      170,
+      170
+    ]
+  },
+  "visual_label_legend": {
+    "Background": "dark gray / nearly black",
+    "Tumor": "red",
+    "Stroma": "green",
+    "Necrosis": "blue",
+    "Immune infiltrate": "purple",
+    "Normal epithelium": "yellow",
+    "Blood vessel": "teal",
+    "Other tissue": "gray"
+  },
+  "proposal_policy": {
+    "backend": "llm_contour_proposal",
+    "schema_version": "0.1",
+    "max_regions": 8,
+    "max_points_per_region": 64,
+    "template_role": "coarse_template",
+    "known_optional_v2_fields": [
+      "source_component_ids",
+      "adjacency_side",
+      "placement_relation",
+      "template_role",
+      "shape_hints"
+    ],
+    "executor_contract": "LLM polygons are approximate organic intent templates. Deterministic code projects them to legal source labels, controls final area, and writes final pixels."
+  },
+  "target_area_hint": null,
+  "llm_task_requirements": {
+    "pathology_goal": "Gleason pattern 4 upgrades to pattern 5",
+    "mask_operation": {
+      "type": "fine_label_transition",
+      "source": "Tumor",
+      "target": "Tumor",
+      "source_fine_ids": [
+        9
+      ],
+      "target_fine_id": 10,
+      "source_description": "Gleason 4",
+      "target_description": "Gleason 5"
+    },
+    "area_requirement": "Follow the strength bucket from the recipe if present.",
+    "recipe_constraints": {
+      "spatial_pattern": {
+        "region": "in_place_source_fine_id_pixels",
+        "geometry_policy": "preserve_existing_region_footprint"
+      },
+      "parameter_ranges": {
+        "source_area_transition_fraction": {
+          "mild": [
+            0.08,
+            0.2
+          ],
+          "moderate": [
+            0.2,
+            0.4
+          ],
+          "significant": [
+            0.4,
+            0.7
+          ]
+        }
+      },
+      "validation_rules": [
+        "fine_transition_source_must_decrease",
+        "fine_transition_target_must_increase",
+        "change_region_must_match_source_fine_ids"
+      ]
+    }
+  },
+  "contour_style_hint": {
+    "recommended_region_count_range": [
+      1,
+      3
+    ],
+    "points_per_region_range": [
+      16,
+      32
+    ],
+    "boundary_style": "irregular organic boundary",
+    "region_variation_requirement": "Do not duplicate shapes across regions."
+  },
+  "source_spatial_hints": {
+    "Tumor": {
+      "total_pixels": 44400,
+      "components": [
+        {
+          "component_id": "c11",
+          "area_px": 13278,
+          "bbox": [
+            224,
+            368,
+            343,
+            511
+          ],
+          "centroid": [
+            283.7,
+            446.0
+          ]
+        },
+        {
+          "component_id": "c7",
+          "area_px": 9662,
+          "bbox": [
+            96,
+            196,
+            239,
+            321
+          ],
+          "centroid": [
+            172.2,
+            263.5
+          ]
+        },
+        {
+          "component_id": "c4",
+          "area_px": 7368,
+          "bbox": [
+            124,
+            76,
+            255,
+            165
+          ],
+          "centroid": [
+            192.4,
+            120.4
+          ]
+        },
+        {
+          "component_id": "c9",
+          "area_px": 2390,
+          "bbox": [
+            48,
+            284,
+            107,
+            363
+          ],
+          "centroid": [
+            79.7,
+            321.8
+          ]
+        },
+        {
+          "component_id": "c8",
+          "area_px": 2218,
+          "bbox": [
+            476,
+            259,
+            511,
+            335
+          ],
+          "centroid": [
+            495.6,
+            300.2
+          ]
+        },
+        {
+          "component_id": "c6",
+          "area_px": 2052,
+          "bbox": [
+            0,
+            183,
+            35,
+            260
+          ],
+          "centroid": [
+            14.5,
+            225.5
+          ]
+        },
+        {
+          "component_id": "c3",
+          "area_px": 1592,
+          "bbox": [
+            336,
+            56,
+            403,
+            107
+          ],
+          "centroid": [
+            368.2,
+            78.6
+          ]
+        },
+        {
+          "component_id": "c1",
+          "area_px": 1392,
+          "bbox": [
+            0,
+            0,
+            23,
+            76
+          ],
+          "centroid": [
+            9.4,
+            38.1
+          ]
+        }
+      ],
+      "high_purity_grid_tiles": [
+        {
+          "bbox": [
+            256,
+            384,
+            319,
+            447
+          ],
+          "source_pixels": 4006,
+          "source_fraction": 0.978
+        },
+        {
+          "bbox": [
+            256,
+            448,
+            319,
+            511
+          ],
+          "source_pixels": 3888,
+          "source_fraction": 0.949
+        },
+        {
+          "bbox": [
+            128,
+            256,
+            191,
+            319
+          ],
+          "source_pixels": 3482,
+          "source_fraction": 0.85
+        },
+        {
+          "bbox": [
+            128,
+            64,
+            191,
+            127
+          ],
+          "source_pixels": 2468,
+          "source_fraction": 0.603
+        },
+        {
+          "bbox": [
+            128,
+            192,
+            191,
+            255
+          ],
+          "source_pixels": 2090,
+          "source_fraction": 0.51
+        },
+        {
+          "bbox": [
+            192,
+            128,
+            255,
+            191
+          ],
+          "source_pixels": 2028,
+          "source_fraction": 0.495
+        }
+      ],
+      "tile_note": "Each tile is [x0, y0, x1, y1] in original coordinates; source_fraction is the fraction of pixels in that tile with this source label."
+    }
+  },
+  "source_contour_context": {
+    "Tumor": {
+      "coordinate_system": "original_mask_xy",
+      "contour_point_format": "[x, y]",
+      "components": [
+        {
+          "component_id": "source_11",
+          "area_px": 13278,
+          "bbox": [
+            224,
+            368,
+            343,
+            511
+          ],
+          "centroid": [
+            283.7,
+            446.0
+          ],
+          "contour_simplified": [
+            [
+              276,
+              511
+            ],
+            [
+              268,
+              504
+            ],
+            [
+              260,
+              496
+            ],
+            [
+              250,
+              492
+            ],
+            [
+              238,
+              496
+            ],
+            [
+              230,
+              488
+            ],
+            [
+              224,
+              479
+            ],
+            [
+              224,
+              463
+            ],
+            [
+              224,
+              447
+            ],
+            [
+              224,
+              432
+            ],
+            [
+              231,
+              424
+            ],
+            [
+              238,
+              414
+            ],
+            [
+              244,
+              404
+            ],
+            [
+              246,
+              390
+            ],
+            [
+              248,
+              381
+            ],
+            [
+              254,
+              371
+            ],
+            [
+              266,
+              368
+            ],
+            [
+              282,
+              368
+            ],
+            [
+              292,
+              373
+            ],
+            [
+              301,
+              380
+            ],
+            [
+              310,
+              387
+            ],
+            [
+              318,
+              395
+            ],
+            [
+              324,
+              405
+            ],
+            [
+              328,
+              416
+            ],
+            [
+              333,
+              426
+            ],
+            [
+              337,
+              438
+            ],
+            [
+              341,
+              450
+            ],
+            [
+              344,
+              463
+            ],
+            [
+              340,
+              475
+            ],
+            [
+              339,
+              484
+            ],
+            [
+              344,
+              495
+            ],
+            [
+              344,
+              511
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Stroma",
+              "fine_id": 2,
+              "boundary_neighbor_pixels": 492
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Stroma": [
+              {
+                "point_index_range": [
+                  0,
+                  167
+                ],
+                "points": [
+                  [
+                    258,
+                    368
+                  ],
+                  [
+                    248,
+                    378
+                  ],
+                  [
+                    244,
+                    397
+                  ],
+                  [
+                    331,
+                    421
+                  ],
+                  [
+                    339,
+                    446
+                  ],
+                  [
+                    224,
+                    476
+                  ],
+                  [
+                    252,
+                    493
+                  ],
+                  [
+                    343,
+                    509
+                  ]
+                ],
+                "bbox": [
+                  224,
+                  368,
+                  343,
+                  509
+                ],
+                "point_count": 168,
+                "points_shown": 8
+              }
+            ]
+          }
+        },
+        {
+          "component_id": "source_7",
+          "area_px": 9662,
+          "bbox": [
+            96,
+            196,
+            239,
+            321
+          ],
+          "centroid": [
+            172.2,
+            263.5
+          ],
+          "contour_simplified": [
+            [
+              167,
+              322
+            ],
+            [
+              152,
+              317
+            ],
+            [
+              144,
+              305
+            ],
+            [
+              129,
+              300
+            ],
+            [
+              111,
+              296
+            ],
+            [
+              102,
+              290
+            ],
+            [
+              96,
+              276
+            ],
+            [
+              108,
+              268
+            ],
+            [
+              120,
+              260
+            ],
+            [
+              131,
+              250
+            ],
+            [
+              140,
+              238
+            ],
+            [
+              148,
+              226
+            ],
+            [
+              157,
+              216
+            ],
+            [
+              178,
+              216
+            ],
+            [
+              194,
+              212
+            ],
+            [
+              204,
+              201
+            ],
+            [
+              218,
+              196
+            ],
+            [
+              228,
+              205
+            ],
+            [
+              226,
+              224
+            ],
+            [
+              216,
+              234
+            ],
+            [
+              210,
+              248
+            ],
+            [
+              204,
+              262
+            ],
+            [
+              219,
+              268
+            ],
+            [
+              232,
+              265
+            ],
+            [
+              236,
+              273
+            ],
+            [
+              230,
+              288
+            ],
+            [
+              219,
+              296
+            ],
+            [
+              208,
+              304
+            ],
+            [
+              194,
+              312
+            ],
+            [
+              181,
+              306
+            ],
+            [
+              166,
+              311
+            ],
+            [
+              167,
+              322
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Stroma",
+              "fine_id": 2,
+              "boundary_neighbor_pixels": 652
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Stroma": [
+              {
+                "point_index_range": [
+                  0,
+                  191
+                ],
+                "points": [
+                  [
+                    210,
+                    196
+                  ],
+                  [
+                    164,
+                    216
+                  ],
+                  [
+                    140,
+                    238
+                  ],
+                  [
+                    112,
+                    264
+                  ],
+                  [
+                    235,
+                    278
+                  ],
+                  [
+                    107,
+                    295
+                  ],
+                  [
+                    173,
+                    307
+                  ],
+                  [
+                    167,
+                    321
+                  ]
+                ],
+                "bbox": [
+                  96,
+                  196,
+                  238,
+                  321
+                ],
+                "point_count": 192,
+                "points_shown": 8
+              }
+            ]
+          }
+        },
+        {
+          "component_id": "source_4",
+          "area_px": 7368,
+          "bbox": [
+            124,
+            76,
+            255,
+            165
+          ],
+          "centroid": [
+            192.4,
+            120.4
+          ],
+          "contour_simplified": [
+            [
+              235,
+              166
+            ],
+            [
+              222,
+              164
+            ],
+            [
+              210,
+              163
+            ],
+            [
+              198,
+              160
+            ],
+            [
+              192,
+              150
+            ],
+            [
+              187,
+              140
+            ],
+            [
+              175,
+              136
+            ],
+            [
+              167,
+              140
+            ],
+            [
+              160,
+              146
+            ],
+            [
+              146,
+              148
+            ],
+            [
+              135,
+              144
+            ],
+            [
+              130,
+              132
+            ],
+            [
+              124,
+              124
+            ],
+            [
+              132,
+              117
+            ],
+            [
+              136,
+              105
+            ],
+            [
+              145,
+              100
+            ],
+            [
+              152,
+              91
+            ],
+            [
+              160,
+              84
+            ],
+            [
+              171,
+              80
+            ],
+            [
+              182,
+              76
+            ],
+            [
+              197,
+              76
+            ],
+            [
+              210,
+              79
+            ],
+            [
+              217,
+              86
+            ],
+            [
+              224,
+              94
+            ],
+            [
+              230,
+              104
+            ],
+            [
+              236,
+              114
+            ],
+            [
+              246,
+              119
+            ],
+            [
+              248,
+              132
+            ],
+            [
+              255,
+              140
+            ],
+            [
+              252,
+              151
+            ],
+            [
+              246,
+              160
+            ],
+            [
+              235,
+              166
+            ]
+          ],
+          "adjacent_tissue": [
+            {
+              "label": "Stroma",
+              "fine_id": 2,
+              "boundary_neighbor_pixels": 478
+            }
+          ],
+          "contour_adjacency_segments": {
+            "Stroma": [
+              {
+                "point_index_range": [
+                  0,
+                  191
+                ],
+                "points": [
+                  [
+                    178,
+                    76
+                  ],
+                  [
+                    212,
+                    83
+                  ],
+                  [
+                    150,
+                    100
+                  ],
+                  [
+                    132,
+                    119
+                  ],
+                  [
+                    165,
+                    137
+                  ],
+                  [
+                    165,
+                    143
+                  ],
+                  [
+                    196,
+                    157
+                  ],
+                  [
+                    235,
+                    165
+                  ]
+                ],
+                "bbox": [
+                  124,
+                  76,
+                  255,
+                  165
+                ],
+                "point_count": 192,
+                "points_shown": 8
+              }
+            ]
+          }
+        }
+      ],
+      "usage_note": "Use these source-label contours as geometry references. Adjacent tissue tells what lies just outside the source boundary."
+    }
+  },
+  "primitive_policy": {
+    "name": "gleason_upgrade_4to5",
+    "pathology_meaning": "Gleason pattern 4 upgrades to pattern 5",
+    "mask_operation": {
+      "type": "fine_label_transition",
+      "source": "Tumor",
+      "target": "Tumor",
+      "source_fine_ids": [
+        9
+      ],
+      "target_fine_id": 10,
+      "source_description": "Gleason 4",
+      "target_description": "Gleason 5"
+    },
+    "spatial_policy": {},
+    "parameter_ranges": {
+      "source_area_transition_fraction": {
+        "mild": [
+          0.08,
+          0.2
+        ],
+        "moderate": [
+          0.2,
+          0.4
+        ],
+        "significant": [
+          0.4,
+          0.7
+        ]
+      }
+    },
+    "validation_rules": [
+      "fine_transition_source_must_decrease",
+      "fine_transition_target_must_increase",
+      "change_region_must_match_source_fine_ids"
+    ]
+  },
+  "preview": {
+    "coordinate_system": "original_mask_xy",
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512,
+    "grid_spacing_px": 64
+  }
+}

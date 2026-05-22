@@ -1,0 +1,51 @@
+{
+  "attempt_index": 2,
+  "image_paths": [
+    "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PUMA_stroma_inc_hard_001/prompt/phase3_mask_edit/prompt_to_contour/stromal_desmoplasia/source_mask_llm_rgb_grid.png",
+    "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix/PUMA_stroma_inc_hard_001/prompt/phase3_mask_edit/prompt_to_contour/stromal_desmoplasia/source_mask_llm_rgb.png"
+  ],
+  "provider_metadata": {
+    "provider_name": "openai_compatible_multimodal",
+    "provider_class": "OpenAICompatibleMultimodalContourProvider",
+    "request_mode": "multimodal",
+    "image_paths_available": 2,
+    "image_parts_expected": 1,
+    "image_policy": "send first image path only as data:image/png;base64 image_url",
+    "context_mode": "full",
+    "compact_context_enabled": false
+  },
+  "repair_feedback": {
+    "status": "validation_failed",
+    "attempt": 1,
+    "failed_checks": [
+      {
+        "name": "change_area_nonempty",
+        "detail": "no pixels changed."
+      },
+      {
+        "name": "change_area_within_range",
+        "detail": "changed_stroma_fraction=0.0000 outside [0.11, 0.55] or changed_pixels=0 < 15000"
+      },
+      {
+        "name": "stroma_area_or_generation_region_must_increase",
+        "detail": "stroma did not increase: 136862 -> 136862 pixels."
+      }
+    ],
+    "projection": {
+      "candidate_pixels": 3641,
+      "projected_pixels": 0,
+      "selected_pixels": 0,
+      "projection_retained_fraction": 0.0,
+      "projection_mode": "organic_v2",
+      "projection_backend": "organic_score_projection_v2",
+      "legal_domain_pixels": 0,
+      "target_pixels": 0,
+      "area_shortfall": 0,
+      "template_overlap_with_legal_domain": 0.0,
+      "top_failed_reason": "template_overlap_with_legal_domain_too_low"
+    },
+    "warnings": [
+      "proposal_projected_region_empty"
+    ]
+  }
+}

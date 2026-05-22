@@ -1,0 +1,50 @@
+{
+  "case": {
+    "case_id": "PUMA_stroma_inc_hard_001",
+    "dataset": "PUMA",
+    "profile": "PUMA",
+    "primitive_group": "stroma",
+    "primitive": "stromal_desmoplasia",
+    "expected_primitives": [
+      "stromal_desmoplasia"
+    ],
+    "source_image": "/data/wqx/flowedit/data/PUMA/PUMA_PATCHES/images/training_set_primary_roi_011_py0_px0.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/PUMA/PUMA_PATCHES/tissue_masks/training_set_primary_roi_011_py0_px0.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/PUMA/PUMA_PATCHES/nuclei_masks/training_set_primary_roi_011_py0_px0.png",
+    "old_prompt": "H&E stained primary melanoma with tumor, stroma, epidermis, and blood vessel tissue.",
+    "new_prompt": "Increase desmoplastic stroma around the melanoma tumor while preserving epidermis and blood vessel tissue.",
+    "prompt_source": "manual_from_mask_and_metadata",
+    "parser_provider": "api",
+    "contour_provider": "openai_compatible_multimodal",
+    "projection_mode": "organic_v2",
+    "organic_seed": 23,
+    "tags": [
+      "hard",
+      "epidermis_present",
+      "blood_vessel_present",
+      "stroma_change",
+      "label_safety"
+    ],
+    "selection_metrics": {
+      "tumor_fraction": 0.137,
+      "stroma_fraction": 0.522,
+      "normal_epithelium_fraction": 0.309,
+      "blood_vessel_fraction": 0.031,
+      "tumor_components": 4
+    },
+    "status": "todo",
+    "instruction": "Increase desmoplastic stroma around the melanoma tumor; preserve epidermis and blood vessel tissue.",
+    "source_image_relative": "PUMA_PATCHES/images/training_set_primary_roi_011_py0_px0.png",
+    "source_tissue_mask_relative": "PUMA_PATCHES/tissue_masks/training_set_primary_roi_011_py0_px0.png",
+    "source_nuclei_mask_relative": "PUMA_PATCHES/nuclei_masks/training_set_primary_roi_011_py0_px0.png"
+  },
+  "variant": {
+    "variant_id": "prompt",
+    "edit_mode": "prompt"
+  },
+  "paths": {
+    "source_image": "/data/wqx/flowedit/data/PUMA_PATCHES/images/training_set_primary_roi_011_py0_px0.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/tissue_masks/training_set_primary_roi_011_py0_px0.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/PUMA_PATCHES/nuclei_masks/training_set_primary_roi_011_py0_px0.png"
+  }
+}

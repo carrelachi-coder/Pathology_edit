@@ -1,0 +1,186 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "gleason_upgrade_4to5",
+  "reference_profile": "PANDA",
+  "target_label": "Tumor",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_11"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          260,
+          370
+        ],
+        [
+          250,
+          380
+        ],
+        [
+          245,
+          395
+        ],
+        [
+          250,
+          410
+        ],
+        [
+          260,
+          420
+        ],
+        [
+          275,
+          425
+        ],
+        [
+          290,
+          420
+        ],
+        [
+          305,
+          410
+        ],
+        [
+          320,
+          400
+        ],
+        [
+          330,
+          390
+        ],
+        [
+          335,
+          375
+        ],
+        [
+          330,
+          365
+        ],
+        [
+          320,
+          360
+        ],
+        [
+          305,
+          365
+        ],
+        [
+          290,
+          370
+        ],
+        [
+          275,
+          375
+        ]
+      ],
+      "confidence": 0.85
+    },
+    {
+      "region_id": "r2",
+      "type": "polygon",
+      "source_labels": [
+        "Tumor"
+      ],
+      "source_component_ids": [
+        "source_7"
+      ],
+      "adjacency_side": "Stroma",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          130,
+          210
+        ],
+        [
+          140,
+          220
+        ],
+        [
+          150,
+          230
+        ],
+        [
+          160,
+          240
+        ],
+        [
+          170,
+          250
+        ],
+        [
+          180,
+          260
+        ],
+        [
+          190,
+          270
+        ],
+        [
+          200,
+          280
+        ],
+        [
+          210,
+          290
+        ],
+        [
+          215,
+          280
+        ],
+        [
+          210,
+          270
+        ],
+        [
+          200,
+          260
+        ],
+        [
+          190,
+          250
+        ],
+        [
+          180,
+          240
+        ],
+        [
+          170,
+          230
+        ],
+        [
+          160,
+          220
+        ]
+      ],
+      "confidence": 0.8
+    }
+  ]
+}
