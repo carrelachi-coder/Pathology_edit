@@ -128,6 +128,70 @@ class UPerLikeDecoder(nn.Module):
         return self.fuse(torch.cat(fused, dim=1))
 
 
+class Mask2FormerLikeDecoder(nn.Module):
+    """Lightweight Mask2Former-style semantic decoder for architecture ablation."""
+
+    def __init__(
+        self,
+        feature_channels: tuple[int, int, int, int],
+        num_classes: int,
+        hidden_dim: int = 256,
+        num_queries: int = 100,
+        num_heads: int = 8,
+        num_layers: int = 3,
+    ) -> None:
+        super().__init__()
+        self.num_classes = num_classes
+        self.num_queries = num_queries
+        self.norms = nn.ModuleList(nn.LayerNorm(c) for c in feature_channels)
+        self.lateral = nn.ModuleList(nn.Conv2d(c, hidden_dim, 1) for c in feature_channels)
+        self.fuse = nn.Sequential(
+            ConvBlock(hidden_dim * 4, hidden_dim),
+            nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU(inplace=True),
+        )
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=hidden_dim,
+            nhead=num_heads,
+            dim_feedforward=hidden_dim * 4,
+            dropout=0.0,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
+        )
+        self.query_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+        self.query_embed = nn.Embedding(num_queries, hidden_dim)
+        self.mask_embed = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+        self.class_embed = nn.Linear(hidden_dim, num_classes)
+        self.pixel_proj = nn.Conv2d(hidden_dim, hidden_dim, 1)
+
+    def forward(self, feats: list[torch.Tensor]) -> torch.Tensor:
+        target_size = feats[0].shape[-2:]
+        fused = []
+        for feat, norm, proj in zip(feats, self.norms, self.lateral):
+            feat = norm(feat.permute(0, 2, 3, 1)).permute(0, 3, 1, 2).contiguous()
+            x = proj(feat)
+            if x.shape[-2:] != target_size:
+                x = F.interpolate(x, size=target_size, mode="bilinear", align_corners=False)
+            fused.append(x)
+
+        pixel_features = self.fuse(torch.cat(fused, dim=1))
+        pixel_features = self.pixel_proj(pixel_features)
+        batch_size = pixel_features.shape[0]
+        memory = pixel_features.flatten(2).transpose(1, 2).contiguous()
+        queries = self.query_embed.weight.unsqueeze(0).expand(batch_size, -1, -1)
+        queries = self.query_decoder(queries, memory)
+        class_logits = self.class_embed(queries).softmax(dim=-1)
+        mask_embed = self.mask_embed(queries)
+        mask_logits = torch.einsum("bqc,bchw->bqhw", mask_embed, pixel_features)
+        return torch.einsum("bqk,bqhw->bkhw", class_logits, mask_logits)
+
+
 @dataclass(frozen=True)
 class Uni2hConfig:
     local_repo: str | Path = "UNI-2h"
@@ -137,10 +201,26 @@ class Uni2hConfig:
 
 
 class BaselineSegmenter(nn.Module):
-    def __init__(self, num_classes: int = 8, freeze_encoder: bool = True, local_repo: str | Path = "UNI-2h") -> None:
+    def __init__(
+        self,
+        num_classes: int = 8,
+        freeze_encoder: bool = True,
+        local_repo: str | Path = "UNI-2h",
+        decoder: str = "upernet",
+        mask2former_queries: int = 100,
+    ) -> None:
         super().__init__()
         self.encoder = Uni2hFeatureEncoder(local_repo=local_repo, freeze=freeze_encoder)
-        self.decoder = UPerLikeDecoder((1536, 1536, 1536, 1536), num_classes)
+        if decoder == "upernet":
+            self.decoder = UPerLikeDecoder((1536, 1536, 1536, 1536), num_classes)
+        elif decoder == "mask2former":
+            self.decoder = Mask2FormerLikeDecoder(
+                (1536, 1536, 1536, 1536),
+                num_classes,
+                num_queries=mask2former_queries,
+            )
+        else:
+            raise ValueError(f"unsupported decoder: {decoder}")
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         input_size = x.shape[-2:]

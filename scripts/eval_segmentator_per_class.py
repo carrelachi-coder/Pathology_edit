@@ -44,6 +44,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--num-classes", type=int, default=8)
+    parser.add_argument("--decoder", choices=["upernet", "mask2former"], default="upernet")
+    parser.add_argument("--mask2former-queries", type=int, default=100)
     parser.add_argument("--remap-invalid-to", type=int, default=7)
     parser.add_argument("--boundary-width", type=int, default=2)
     parser.add_argument("--disable-cudnn", action="store_true")
@@ -79,6 +81,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         num_classes=args.num_classes,
         freeze_encoder=True,
         local_repo=args.uni2h_repo,
+        decoder=args.decoder,
+        mask2former_queries=args.mask2former_queries,
     ).to(device)
     state = torch.load(Path(args.checkpoint), map_location="cpu")
     model.load_state_dict(state, strict=True)
@@ -114,6 +118,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         "train_count": args.train_count,
         "val_count": args.val_count,
         "manifest": str(args.manifest) if args.manifest is not None else None,
+        "decoder": args.decoder,
+        "mask2former_queries": args.mask2former_queries,
         "seed": args.seed,
         "metrics": metrics,
         "confusion_matrix": mat.tolist(),

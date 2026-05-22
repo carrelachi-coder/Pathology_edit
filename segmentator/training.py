@@ -125,6 +125,8 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         num_classes=config.num_classes,
         freeze_encoder=config.freeze_encoder,
         local_repo=uni2h_repo,
+        decoder=config.decoder,
+        mask2former_queries=config.mask2former_queries,
     ).to(device)
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=config.lr, weight_decay=config.weight_decay)
     use_amp = config.amp and device.type == "cuda"
@@ -147,6 +149,8 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 "amp_enabled_runtime": use_amp,
                 "disable_cudnn": config.disable_cudnn,
                 "freeze_encoder": config.freeze_encoder,
+                "decoder": config.decoder,
+                "mask2former_queries": config.mask2former_queries,
                 "class_weighting": config.class_weighting,
                 "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
                 "export_val_predictions": config.export_val_predictions,
@@ -161,6 +165,8 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     (output_dir / "class_weights.json").write_text(json.dumps(class_weight_metadata, indent=2), encoding="utf-8")
 
     history: list[dict[str, float]] = []
+    best_miou = float("-inf")
+    best_core5_miou = float("-inf")
     for epoch in range(config.epochs):
         epoch_start = time.time()
         model.train()
@@ -227,6 +233,13 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             boundary_width=config.boundary_width,
         )
         history.append({k: v for k, v in metrics.items() if isinstance(v, float)})
+        if float(metrics["mIoU"]) > best_miou:
+            best_miou = float(metrics["mIoU"])
+            torch.save(model.state_dict(), output_dir / "best_mIoU.pt")
+        core5 = metrics.get("groups", {}).get("core_5_classes", {}) if isinstance(metrics.get("groups"), dict) else {}
+        if isinstance(core5, dict) and float(core5.get("mean_iou", float("-inf"))) > best_core5_miou:
+            best_core5_miou = float(core5["mean_iou"])
+            torch.save(model.state_dict(), output_dir / "best_core5.pt")
         (output_dir / "metrics.json").write_text(json.dumps({"history": history, "final": metrics}, indent=2), encoding="utf-8")
         elapsed = time.time() - epoch_start
         print(
@@ -247,6 +260,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             _export_val_outputs(output_dir, sample_ids, preds, probs, entropy, logits, export_tensors=config.export_val_tensors)
 
     torch.save(model.state_dict(), output_dir / "stage4_baseline.pt")
+    torch.save(model.state_dict(), output_dir / f"stage4_{config.decoder}.pt")
     (output_dir / "manifest.json").write_text(
         json.dumps(
             {

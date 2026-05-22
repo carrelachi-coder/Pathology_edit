@@ -41,6 +41,8 @@ class BaselineConfig:
     val_split: int = 200
     manifest_path: Path | None = None
     freeze_encoder: bool = True
+    decoder: str = "upernet"
+    mask2former_queries: int = 100
     amp: bool = True
     disable_cudnn: bool = False
     class_weighting: str = "none"

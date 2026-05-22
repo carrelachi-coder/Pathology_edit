@@ -9,8 +9,19 @@ import torch
 from .model import BaselineSegmenter
 
 
-def load_checkpoint(checkpoint_path: str | Path, num_classes: int = 8, freeze_encoder: bool = True) -> BaselineSegmenter:
-    model = BaselineSegmenter(num_classes=num_classes, freeze_encoder=freeze_encoder)
+def load_checkpoint(
+    checkpoint_path: str | Path,
+    num_classes: int = 8,
+    freeze_encoder: bool = True,
+    decoder: str = "upernet",
+    mask2former_queries: int = 100,
+) -> BaselineSegmenter:
+    model = BaselineSegmenter(
+        num_classes=num_classes,
+        freeze_encoder=freeze_encoder,
+        decoder=decoder,
+        mask2former_queries=mask2former_queries,
+    )
     state = torch.load(Path(checkpoint_path), map_location="cpu")
     model.load_state_dict(state, strict=True)
     model.eval()
