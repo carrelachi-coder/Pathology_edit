@@ -1529,6 +1529,8 @@ def _projection_params(
     w_spatial: float | None,
     w_noise: float | None,
     decay_px: float | None,
+    allow_fallback_when_empty: bool | None,
+    min_fallback_overlap_fraction: float | None,
 ) -> OrganicProjectionParams:
     ranges = primitive_config.get("parameter_ranges", {})
     weights = ranges.get("organic_score_weights", {})
@@ -1571,6 +1573,15 @@ def _projection_params(
         ),
         template_spillover_fraction=_fraction_float(
             ranges.get("organic_template_spillover_fraction", 0.15)
+        ),
+        min_fallback_overlap_fraction=_nonnegative_float(
+            min_fallback_overlap_fraction,
+            ranges.get("organic_min_fallback_overlap_fraction", 0.03),
+        ),
+        allow_fallback_when_empty=_config_bool(
+            allow_fallback_when_empty
+            if allow_fallback_when_empty is not None
+            else ranges.get("organic_allow_fallback_when_empty", True)
         ),
     )
 
@@ -4437,6 +4448,119 @@ def _empty_result(
         changed_area_fraction=0.0,
         selected_pixels=0,
         warnings=tuple(dict.fromkeys(("proposal_projected_region_empty", *extra_warnings))),
+        ops_log=ops_log,
+    )
+
+
+def _fallback_projection_result(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    target_label: str,
+    source_labels: Sequence[str],
+    preserve_labels: Sequence[str],
+    forbidden_labels: Sequence[str],
+    primitive_name: str,
+    raw_candidate: np.ndarray,
+    raw_candidate_pixels: int,
+    legal_pixels: int,
+    target_pixels: int,
+    seed: int,
+    component_policy: OrganicProjectionPolicy,
+    raw_legal_overlap: int,
+    min_overlap_fraction: float,
+    reason: str,
+) -> PrimitiveEditResult:
+    fallback_domain = _label_mask(
+        mask,
+        schema,
+        source_labels if source_labels else (target_label,),
+    )
+    removal_labels = tuple(dict.fromkeys(tuple(preserve_labels) + tuple(forbidden_labels)))
+    if removal_labels:
+        fallback_domain &= ~_label_mask(mask, schema, removal_labels)
+    fallback_domain &= ~np.isin(mask, tuple(schema.skip_fine_ids))
+    if not np.any(fallback_domain):
+        fallback_domain = np.asarray(raw_candidate, dtype=bool)
+    if not np.any(fallback_domain):
+        return _empty_result(
+            mask,
+            schema=schema,
+            target_label=target_label,
+            source_labels=source_labels,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            primitive_name=primitive_name,
+            raw_candidate_pixels=raw_candidate_pixels,
+            legal_pixels=legal_pixels,
+            target_pixels=target_pixels,
+            seed=seed,
+            component_policy=component_policy,
+            raw_legal_overlap=raw_legal_overlap,
+            extra_warnings=(f"{reason}_empty",),
+        )
+
+    required_pixels = int(np.ceil(max(raw_candidate_pixels, 1) * max(min_overlap_fraction, 0.01)))
+    required_pixels = max(1, min(required_pixels, int(np.count_nonzero(fallback_domain))))
+    selected = _top_k_mask_for_refill(
+        np.where(fallback_domain, 1.0, -np.inf),
+        legal_domain=fallback_domain,
+        k=required_pixels,
+    )
+    selected_pixels = int(np.count_nonzero(selected))
+    target_ids = schema.resolve_fine_ids(target_label)
+    target_mask = np.array(mask, copy=True)
+    if selected_pixels > 0:
+        target_mask[selected] = int(target_ids[0])
+    intersection = int(np.count_nonzero(selected & np.asarray(raw_candidate, dtype=bool)))
+    union = int(np.count_nonzero(selected | np.asarray(raw_candidate, dtype=bool)))
+    ops_log = {
+        "backend": ORGANIC_PROJECTION_BACKEND,
+        "method": "organic_score_projection_and_deterministic_write",
+        "primitive": primitive_name,
+        "reference_profile": schema.reference_profile,
+        "source_labels": list(source_labels),
+        "target_label": target_label,
+        "target_fine_id": int(target_ids[0]),
+        "preserve_labels": list(preserve_labels),
+        "forbidden_labels": list(forbidden_labels),
+        "raw_candidate_pixels": int(raw_candidate_pixels),
+        "candidate_pixels": int(raw_candidate_pixels),
+        "raw_candidate_legal_overlap_pixels": int(raw_legal_overlap),
+        "template_overlap_with_legal_domain": (
+            raw_legal_overlap / raw_candidate_pixels if raw_candidate_pixels else 0.0
+        ),
+        "legal_domain_pixels": int(legal_pixels),
+        "target_pixels": int(target_pixels),
+        "projected_pixels": selected_pixels,
+        "selected_pixels": selected_pixels,
+        "selected_raw_template_intersection_pixels": intersection,
+        "selected_raw_template_union_pixels": union,
+        "selected_raw_template_iou": float(intersection / max(union, 1)),
+        "area_shortfall": int(max(target_pixels - selected_pixels, 0)),
+        "projection_retained_fraction": (
+            selected_pixels / raw_candidate_pixels if raw_candidate_pixels else 0.0
+        ),
+        "changed_area_fraction": selected_pixels / int(mask.size),
+        "projection_backend": ORGANIC_PROJECTION_BACKEND,
+        "noise_seed": int(seed),
+        "fallback_projection": True,
+        "fallback_projection_reason": reason,
+        "fallback_min_overlap_fraction": float(min_overlap_fraction),
+        "component_policy": {
+            "policy_name": component_policy.policy_name,
+            "params": component_policy.policy_params,
+        },
+    }
+    warnings = ["organic_projection_fallback_used"]
+    if selected_pixels < target_pixels:
+        warnings.append("organic_projection_area_shortfall")
+    return PrimitiveEditResult(
+        target_mask=target_mask,
+        change_region=selected,
+        changed_area_fraction=selected_pixels / int(mask.size),
+        selected_pixels=selected_pixels,
+        warnings=tuple(dict.fromkeys(warnings)),
         ops_log=ops_log,
     )
 
