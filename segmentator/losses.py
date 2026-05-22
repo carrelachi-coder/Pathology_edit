@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+import torch
+import torch.nn.functional as F
+
+
+def sanitize_target(target: torch.Tensor, num_classes: int, invalid_to: int = 7) -> torch.Tensor:
+    if invalid_to < 0 or invalid_to >= num_classes:
+        raise ValueError(f"invalid_to must be in [0, {num_classes - 1}], got {invalid_to}")
+    target = target.long()
+    invalid = (target < 0) | (target >= num_classes)
+    if invalid.any():
+        target = target.clone()
+        target[invalid] = invalid_to
+    return target
+
+
+def dice_loss(
+    logits: torch.Tensor,
+    target: torch.Tensor,
+    num_classes: int,
+    class_weights: torch.Tensor | None = None,
+    invalid_to: int = 7,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    probs = logits.softmax(dim=1)
+    target = sanitize_target(target, num_classes=num_classes, invalid_to=invalid_to)
+    target_1h = F.one_hot(target.long(), num_classes=num_classes).permute(0, 3, 1, 2).float()
+    dims = (0, 2, 3)
+    intersect = (probs * target_1h).sum(dims)
+    denom = probs.sum(dims) + target_1h.sum(dims)
+    dice = (2 * intersect + eps) / (denom + eps)
+    loss = 1.0 - dice
+    if class_weights is not None:
+        weights = class_weights.to(loss.device, dtype=loss.dtype)
+        return (loss * weights).sum() / weights.sum().clamp_min(eps)
+    return loss.mean()
+
+
+def segmentation_loss(
+    logits: torch.Tensor,
+    target: torch.Tensor,
+    num_classes: int,
+    class_weights: torch.Tensor | None = None,
+    invalid_to: int = 7,
+) -> dict[str, torch.Tensor]:
+    target = sanitize_target(target, num_classes=num_classes, invalid_to=invalid_to)
+    ce = F.cross_entropy(logits, target.long(), weight=class_weights)
+    dice = dice_loss(logits, target, num_classes=num_classes, class_weights=class_weights, invalid_to=invalid_to)
+    total = ce + dice
+    return {"total": total, "ce": ce, "dice": dice}

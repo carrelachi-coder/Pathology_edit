@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import torch
+from PIL import Image
+import torchvision.transforms.functional as TF
+
+from .config import BaselineConfig
+from .data import normalize_image_tensor
+from .inference import load_checkpoint, save_prediction
+from .training import run_stage4_baseline
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Stage 4 tissue segmentation baseline.")
+    parser.add_argument("--dataset-root", required=True, help="Root containing patches/images and patches/tissue_masks.")
+    parser.add_argument("--uni2h-repo", default="UNI-2h", help="Local UNI2-h repository path.")
+    parser.add_argument("--output-dir", default="segmentator_runs/stage4_baseline")
+    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--grad-accum-steps", type=int, default=1)
+    parser.add_argument("--image-size", type=int, default=512)
+    parser.add_argument("--remap-invalid-to", type=int, default=7)
+    parser.add_argument("--train-split", type=int, default=1000)
+    parser.add_argument("--val-split", type=int, default=200)
+    parser.add_argument("--manifest", type=Path, default=None, help="Optional fixed split manifest JSON.")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--class-weighting", choices=["none", "inverse_sqrt"], default="none")
+    parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--disable-cudnn", action="store_true")
+    parser.add_argument("--export-val-predictions", action="store_true")
+    parser.add_argument("--export-val-tensors", action="store_true")
+    parser.add_argument("--boundary-width", type=int, default=2)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    config = BaselineConfig(
+        image_size=args.image_size,
+        remap_invalid_to=args.remap_invalid_to,
+        batch_size=args.batch_size,
+        grad_accum_steps=args.grad_accum_steps,
+        epochs=args.epochs,
+        seed=args.seed,
+        train_split=args.train_split,
+        val_split=args.val_split,
+        manifest_path=args.manifest,
+        amp=args.amp,
+        disable_cudnn=args.disable_cudnn,
+        class_weighting=args.class_weighting,
+        export_val_predictions=args.export_val_predictions or args.export_val_tensors,
+        export_val_tensors=args.export_val_tensors,
+        boundary_width=args.boundary_width,
+        output_dir=Path(args.output_dir),
+    )
+    metrics = run_stage4_baseline(args.dataset_root, config, uni2h_repo=args.uni2h_repo)
+    print(metrics)
+    return 0
+
+
+def main_predict(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run Stage 4 tissue segmentation inference.")
+    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--num-classes", type=int, default=8)
+    args = parser.parse_args(argv)
+
+    model = load_checkpoint(args.checkpoint, num_classes=args.num_classes)
+    image = normalize_image_tensor(TF.to_tensor(Image.open(args.input).convert("RGB")))
+    outputs = model(image.unsqueeze(0) if image.ndim == 3 else image)
+    save_prediction(outputs["pred"][0], args.output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
