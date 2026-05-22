@@ -1,0 +1,305 @@
+{
+  "manifest": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/dubug/phase3_ui_mask_edit_debug_manifest.json",
+  "output_root": "runs/phase3_manifest_pipeline/debug_all_phase3_tissue_rerun_fix",
+  "case_count": 24,
+  "variant_count": 2,
+  "run_count": 48,
+  "dataset_roots": {
+    "BCSS": "/data/wqx/flowedit/data/BCSS",
+    "GlaS": "/data/wqx/flowedit/data/GlaS",
+    "IGNITE": "/data/wqx/flowedit/data/IGNITE",
+    "ORCA": "/data/wqx/flowedit/data/ORCA",
+    "PANDA": "/data/wqx/flowedit/data/PANDA",
+    "PUMA": "/data/wqx/flowedit/data/PUMA"
+  },
+  "runs": [
+    {
+      "case_id": "BCSS_tb_inc_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "BCSS_tb_inc_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "BCSS_necrosis_res_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "BCSS_necrosis_res_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "BCSS_immune_dec_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "BCSS_immune_dec_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "BCSS_stroma_inc_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "BCSS_stroma_inc_hard_001",
+      "dataset": "BCSS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "GLAS_fine_upgrade_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "GLAS_fine_upgrade_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "GLAS_adenoma_to_carcinoma_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "GLAS_adenoma_to_carcinoma_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "GLAS_tb_inc_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "GLAS_tb_inc_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "GLAS_tb_dec_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "GLAS_tb_dec_hard_001",
+      "dataset": "GlaS",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "IGNITE_necrosis_app_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "IGNITE_necrosis_app_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "IGNITE_immune_inc_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "IGNITE_immune_inc_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "IGNITE_tb_dec_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "IGNITE_tb_dec_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "IGNITE_multi_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "IGNITE_multi_hard_001",
+      "dataset": "IGNITE",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "ORCA_tb_dec_hard_001",
+      "dataset": "ORCA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "ORCA_tb_dec_hard_001",
+      "dataset": "ORCA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "ORCA_tb_inc_hard_001",
+      "dataset": "ORCA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "ORCA_tb_inc_hard_001",
+      "dataset": "ORCA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "ORCA_tb_dec_hard_002",
+      "dataset": "ORCA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "ORCA_tb_dec_hard_002",
+      "dataset": "ORCA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "ORCA_noop_hard_001",
+      "dataset": "ORCA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "ORCA_noop_hard_001",
+      "dataset": "ORCA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PANDA_gleason_3to4_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PANDA_gleason_3to4_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PANDA_gleason_4to5_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PANDA_gleason_4to5_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PANDA_tb_inc_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PANDA_tb_inc_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PANDA_benign_to_gleason3_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PANDA_benign_to_gleason3_hard_001",
+      "dataset": "PANDA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PUMA_tb_inc_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PUMA_tb_inc_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PUMA_necrosis_app_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PUMA_necrosis_app_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PUMA_tb_dec_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PUMA_tb_dec_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    },
+    {
+      "case_id": "PUMA_stroma_inc_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "prompt",
+      "edit_mode": "prompt"
+    },
+    {
+      "case_id": "PUMA_stroma_inc_hard_001",
+      "dataset": "PUMA",
+      "variant_id": "instruction",
+      "edit_mode": "instruction"
+    }
+  ]
+}

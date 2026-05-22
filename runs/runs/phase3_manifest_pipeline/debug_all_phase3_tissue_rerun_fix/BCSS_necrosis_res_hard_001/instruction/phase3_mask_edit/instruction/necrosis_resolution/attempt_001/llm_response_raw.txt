@@ -1,0 +1,92 @@
+{
+  "schema_version": "0.1",
+  "backend": "llm_contour_proposal",
+  "primitive": "necrosis_resolution",
+  "reference_profile": "BCSS",
+  "target_label": "Stroma",
+  "template_role": "coarse_template",
+  "placement_relation": "generic_label_safe",
+  "shape_hints": [
+    "irregular_boundary"
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "point_format": "[x, y]",
+    "x_axis": "horizontal_column_right",
+    "y_axis": "vertical_row_down",
+    "width": 512,
+    "height": 512
+  },
+  "regions": [
+    {
+      "region_id": "r1",
+      "type": "polygon",
+      "source_labels": [
+        "Necrosis"
+      ],
+      "source_component_ids": [
+        "source_1"
+      ],
+      "adjacency_side": "generic_label_safe",
+      "template_role": "coarse_template",
+      "shape_hints": [
+        "irregular_boundary"
+      ],
+      "points": [
+        [
+          200,
+          320
+        ],
+        [
+          210,
+          335
+        ],
+        [
+          220,
+          350
+        ],
+        [
+          230,
+          360
+        ],
+        [
+          240,
+          365
+        ],
+        [
+          250,
+          360
+        ],
+        [
+          260,
+          350
+        ],
+        [
+          265,
+          340
+        ],
+        [
+          260,
+          330
+        ],
+        [
+          250,
+          320
+        ],
+        [
+          240,
+          315
+        ],
+        [
+          230,
+          315
+        ],
+        [
+          220,
+          315
+        ]
+      ],
+      "confidence": 0.85
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "case": {
+    "case_id": "BCSS_immune_dec_hard_001",
+    "dataset": "BCSS",
+    "profile": "BCSS",
+    "primitive_group": "immune",
+    "primitive": "immune_infiltration_decrease",
+    "expected_primitives": [
+      "immune_infiltration_decrease"
+    ],
+    "source_image": "/data/wqx/flowedit/data/BCSS/BCSS_PATCHES/images/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/BCSS/BCSS_PATCHES/tissue_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS/BCSS_PATCHES/nuclei_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+    "old_prompt": "H&E stained breast cancer histopathology with tumor nests surrounded by dense lymphocytic immune infiltrate, sparse stroma, and visible blood vessel tissue.",
+    "new_prompt": "Decrease the lymphocytic immune infiltrate substantially and replace it with stromal tissue, keeping tumor burden approximately unchanged.",
+    "prompt_source": "manual_from_mask_and_metadata",
+    "parser_provider": "api",
+    "contour_provider": "openai_compatible_multimodal",
+    "projection_mode": "organic_v2",
+    "organic_seed": 2,
+    "tags": [
+      "hard",
+      "immune_dominant",
+      "blood_vessel_present",
+      "replacement"
+    ],
+    "selection_metrics": {
+      "tumor_fraction": 0.116,
+      "stroma_fraction": 0.118,
+      "immune_fraction": 0.646,
+      "tumor_components": 14
+    },
+    "status": "todo",
+    "instruction": "Substantially decrease lymphocytic immune infiltrate and replace it with stroma; keep tumor burden stable.",
+    "source_image_relative": "BCSS_PATCHES/images/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+    "source_tissue_mask_relative": "BCSS_PATCHES/tissue_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+    "source_nuclei_mask_relative": "BCSS_PATCHES/nuclei_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png"
+  },
+  "variant": {
+    "variant_id": "prompt",
+    "edit_mode": "prompt"
+  },
+  "paths": {
+    "source_image": "/data/wqx/flowedit/data/BCSS_PATCHES/images/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/tissue_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/nuclei_masks/TCGA-AR-A5QQ_x107130_y49863_py1792_px768.png"
+  }
+}

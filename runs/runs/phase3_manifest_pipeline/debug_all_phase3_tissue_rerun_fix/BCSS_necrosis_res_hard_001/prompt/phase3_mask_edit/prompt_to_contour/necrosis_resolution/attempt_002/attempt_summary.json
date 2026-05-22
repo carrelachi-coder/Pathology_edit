@@ -1,0 +1,75 @@
+{
+  "attempt_index": 2,
+  "status": "execution_error",
+  "error": "_projection_params() missing 2 required keyword-only arguments: 'allow_fallback_when_empty' and 'min_fallback_overlap_fraction'",
+  "artifact_paths": {},
+  "proposal": {
+    "primitive": "necrosis_resolution",
+    "reference_profile": "BCSS",
+    "target_label": "Stroma",
+    "regions": [
+      {
+        "region_id": "r1",
+        "source_labels": [
+          "Necrosis"
+        ],
+        "points": [
+          [
+            200.0,
+            50.0
+          ],
+          [
+            220.0,
+            60.0
+          ],
+          [
+            240.0,
+            80.0
+          ],
+          [
+            260.0,
+            110.0
+          ],
+          [
+            270.0,
+            140.0
+          ],
+          [
+            265.0,
+            170.0
+          ],
+          [
+            250.0,
+            190.0
+          ],
+          [
+            230.0,
+            180.0
+          ],
+          [
+            210.0,
+            160.0
+          ],
+          [
+            195.0,
+            130.0
+          ],
+          [
+            190.0,
+            100.0
+          ],
+          [
+            195.0,
+            70.0
+          ]
+        ],
+        "confidence": 0.85
+      }
+    ]
+  },
+  "repair_feedback": {
+    "status": "execution_error",
+    "attempt": 2,
+    "error": "_projection_params() missing 2 required keyword-only arguments: 'allow_fallback_when_empty' and 'min_fallback_overlap_fraction'"
+  }
+}

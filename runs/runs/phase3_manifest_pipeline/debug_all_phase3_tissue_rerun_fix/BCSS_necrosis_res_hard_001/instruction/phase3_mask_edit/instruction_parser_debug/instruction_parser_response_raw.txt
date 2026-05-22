@@ -1,0 +1,11 @@
+{"id":"chatcmpl-DiGSiYqnqZbZ2MdlDR2uNgZkcuLao","object":"chat.completion","created":1779442084,"model":"gpt-4.1-mini","choices":[{"index":0,"message":{"role":"assistant","content":"{\"schema_version\":\"0.1\",\"tumor_change\":{\"growth\":\"none\",\"degree\":\"mild\",\"grade_change\":\"none\"},\"lymphocyte_change\":{\"infiltration\":\"none\",\"degree\":\"mild\"},\"necrosis_change\":{\"action\":\"remove\",\"extent\":\"extensive\"},\"stroma_change\":{\"density\":\"none\",\"degree\":\"moderate\"}}","refusal":null,"annotations":[]},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":2231,"completion_tokens":72,"total_tokens":2303,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0},"latency_checkpoint":{
+      "service_ttft_ms": 275,
+      "user_visible_ttft_ms": 146,
+      "total_duration_ms": 999,
+      "pre_inference_ms": 129,
+      "service_tbt_ms": 12,
+      "service_ttlt_ms": 1119,
+      "engine_ttft_ms": 78,
+      "engine_ttlt_ms": 924,
+      "engine_tbt_ms": 12
+    }},"system_fingerprint":"fp_b6f445fc1c","service_tier":"default"}
