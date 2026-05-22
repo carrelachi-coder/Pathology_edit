@@ -424,22 +424,48 @@ def _raw_intent_specs(
             semantic_diff,
             old_prompt=old_prompt,
             new_prompt=new_prompt,
+        ) or _stroma_increase_is_necrosis_replacement_fallback(
+            semantic_diff,
+            old_prompt=old_prompt,
+            new_prompt=new_prompt,
+        ) or _stroma_increase_is_tumor_replacement_fallback(
+            semantic_diff,
+            old_prompt=old_prompt,
+            new_prompt=new_prompt,
         ):
+            primary_primitive = (
+                "immune_infiltration_decrease"
+                if semantic_diff["lymphocyte_change"]["infiltration"] == "decrease"
+                else (
+                    "necrosis_resolution"
+                    if semantic_diff["necrosis_change"]["action"] in {"decrease", "remove"}
+                    else "tumor_burden_decrease"
+                )
+            )
+            group = (
+                "immune_decrease_stroma_replacement"
+                if primary_primitive == "immune_infiltration_decrease"
+                else (
+                    "necrosis_resolution_stroma_replacement"
+                    if primary_primitive == "necrosis_resolution"
+                    else "tumor_decrease_stroma_replacement"
+                )
+            )
             payload = _fallback_payload(
                 payload,
-                group="immune_decrease_stroma_replacement",
-                fallback_for="immune_infiltration_decrease",
+                group=group,
+                fallback_for=primary_primitive,
                 note=(
                     "Stroma increase was interpreted as the replacement/backfill "
-                    "target for immune decrease, not a separate desmoplasia edit."
+                    f"target for {primary_primitive}, not a separate desmoplasia edit."
                 ),
             )
             _mark_primary_payload(
                 raw_items,
-                primitive="immune_infiltration_decrease",
-                group="immune_decrease_stroma_replacement",
+                primitive=primary_primitive,
+                group=group,
                 note=(
-                    "Primary realization for immune decrease with stromal "
+                    f"Primary realization for {primary_primitive} with stromal "
                     "replacement/backfill."
                 ),
             )
@@ -448,9 +474,9 @@ def _raw_intent_specs(
                     field="stroma_change.density",
                     value="increase",
                     reason=(
-                        "Treated as a fallback for immune_infiltration_decrease "
+                        f"Treated as a fallback for {primary_primitive} "
                         "because the text describes stromal replacement/backfill "
-                        "for the same immune-decrease request."
+                        "for the same source-tissue replacement request."
                     ),
                 )
             )
@@ -623,6 +649,68 @@ def _stroma_increase_is_immune_replacement_fallback(
     )
 
 
+def _stroma_increase_is_necrosis_replacement_fallback(
+    semantic_diff: Mapping[str, Any],
+    *,
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> bool:
+    necrosis_change = semantic_diff.get("necrosis_change", {})
+    stroma_change = semantic_diff.get("stroma_change", {})
+    if not isinstance(necrosis_change, Mapping) or not isinstance(
+        stroma_change, Mapping
+    ):
+        return False
+    if necrosis_change.get("action") not in {"decrease", "remove"}:
+        return False
+    if stroma_change.get("density") != "increase":
+        return False
+
+    text = _normalize_text(new_prompt) or _normalize_text(
+        f"{old_prompt or ''} {new_prompt or ''}"
+    )
+    if not text:
+        return False
+    if _contains_independent_stroma_edit(text):
+        return False
+    return (
+        _contains_any(text, _NECROSIS_REPLACEMENT_TERMS)
+        and _contains_any(text, _NECROSIS_TERMS)
+        and _contains_any(text, _STROMA_TERMS)
+    )
+
+
+def _stroma_increase_is_tumor_replacement_fallback(
+    semantic_diff: Mapping[str, Any],
+    *,
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> bool:
+    tumor_change = semantic_diff.get("tumor_change", {})
+    stroma_change = semantic_diff.get("stroma_change", {})
+    if not isinstance(tumor_change, Mapping) or not isinstance(
+        stroma_change, Mapping
+    ):
+        return False
+    if tumor_change.get("growth") != "decrease":
+        return False
+    if stroma_change.get("density") != "increase":
+        return False
+
+    text = _normalize_text(new_prompt) or _normalize_text(
+        f"{old_prompt or ''} {new_prompt or ''}"
+    )
+    if not text:
+        return False
+    if _contains_independent_stroma_edit(text):
+        return False
+    return (
+        _contains_any(text, _TUMOR_REPLACEMENT_TERMS)
+        and _contains_any(text, _TUMOR_TERMS)
+        and _contains_any(text, _STROMA_TERMS)
+    )
+
+
 _IMMUNE_TERMS = (
     "immune",
     "lymphocyte",
@@ -630,6 +718,26 @@ _IMMUNE_TERMS = (
     "til",
     "inflammatory",
     "inflammation",
+)
+
+_NECROSIS_TERMS = (
+    "necrosis",
+    "necrotic",
+    "debris",
+    "dead tissue",
+    "dead-looking",
+    "dead looking",
+)
+
+_TUMOR_TERMS = (
+    "tumor",
+    "tumour",
+    "cancer",
+    "carcinoma",
+    "neoplasm",
+    "malignant tissue",
+    "tumor burden",
+    "tumour burden",
 )
 
 _STROMA_TERMS = (
@@ -652,6 +760,23 @@ _IMMUNE_REPLACEMENT_TERMS = (
     "conversion",
     "turn into",
     "turned into",
+)
+
+_NECROSIS_REPLACEMENT_TERMS = _IMMUNE_REPLACEMENT_TERMS + (
+    "resolve",
+    "resolved",
+    "resolution",
+)
+
+_TUMOR_REPLACEMENT_TERMS = _IMMUNE_REPLACEMENT_TERMS + (
+    "decrease",
+    "decreased",
+    "reduce",
+    "reduced",
+    "regress",
+    "regression",
+    "shrink",
+    "shrunk",
 )
 
 _INDEPENDENT_STROMA_EDIT_TERMS = (

@@ -1,0 +1,49 @@
+{
+  "case": {
+    "case_id": "BCSS_necrosis_res_hard_001",
+    "dataset": "BCSS",
+    "profile": "BCSS",
+    "primitive_group": "necrosis",
+    "primitive": "necrosis_resolution",
+    "expected_primitives": [
+      "necrosis_resolution"
+    ],
+    "source_image": "/data/wqx/flowedit/data/BCSS/BCSS_PATCHES/images/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/BCSS/BCSS_PATCHES/tissue_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS/BCSS_PATCHES/nuclei_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+    "old_prompt": "H&E stained breast cancer histopathology with sparse tumor islands embedded in extensive necrosis/debris and only a small amount of stroma.",
+    "new_prompt": "Resolve most of the necrosis/debris and replace it with viable stromal tissue, without increasing the tumor burden.",
+    "prompt_source": "manual_from_mask_and_metadata",
+    "parser_provider": "api",
+    "contour_provider": "openai_compatible_multimodal",
+    "projection_mode": "organic_v2",
+    "organic_seed": 1,
+    "tags": [
+      "hard",
+      "extensive_necrosis",
+      "low_stroma",
+      "area_control"
+    ],
+    "selection_metrics": {
+      "tumor_fraction": 0.096,
+      "stroma_fraction": 0.047,
+      "necrosis_fraction": 0.803,
+      "tumor_components": 19
+    },
+    "status": "todo",
+    "notes": "Large necrosis-to-stroma rewrite should expose backfill and area-control failures.",
+    "instruction": "Resolve most necrosis/debris and replace it with viable stroma; keep tumor burden unchanged.",
+    "source_image_relative": "BCSS_PATCHES/images/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+    "source_tissue_mask_relative": "BCSS_PATCHES/tissue_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+    "source_nuclei_mask_relative": "BCSS_PATCHES/nuclei_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png"
+  },
+  "variant": {
+    "variant_id": "prompt",
+    "edit_mode": "prompt"
+  },
+  "paths": {
+    "source_image": "/data/wqx/flowedit/data/BCSS_PATCHES/images/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+    "source_tissue_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/tissue_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png",
+    "source_nuclei_mask": "/data/wqx/flowedit/data/BCSS_PATCHES/nuclei_masks/TCGA-D8-A143_x52429_y19478_py3840_px4864.png"
+  }
+}

@@ -62,7 +62,11 @@ Interpretation rules:
   immune infiltrate decreases and is replaced/backfilled/converted into stroma,
   set lymphocyte_change.infiltration = "decrease" and stroma_change.density =
   "none" unless it separately asks for desmoplasia, fibrosis, or stromal
-  reaction.
+  reaction. Apply the same rule to necrosis/debris: if necrosis resolves and is
+  replaced/backfilled/converted into viable stroma, set necrosis_change.action
+  to "decrease" or "remove" and stroma_change.density = "none" unless there is
+  a separate request for desmoplasia, fibrosis, or stromal reaction. Apply the
+  same rule to tumor decrease/regression replaced by stroma.
 - Dataset-specialized fine-ID edits are represented through
   tumor_change.grade_change. The schema has no direct primitive-name field, so
   do not invent one. Use grade_change = "upgrade" or "downgrade" and keep tumor
@@ -114,6 +118,16 @@ User: "decrease the lymphocytic immune infiltrate and replace it with stromal ti
 Note: Stroma is the backfill target for the immune decrease, not a separate stromal desmoplasia edit.
 JSON:
 {"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"decrease","degree":"moderate"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
+
+User: "resolve most necrosis/debris and replace it with viable stroma; keep tumor burden unchanged"
+Note: Stroma is the replacement target for necrosis resolution, not a separate stromal desmoplasia edit.
+JSON:
+{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"remove","extent":"extensive"},"stroma_change":{"density":"none","degree":"moderate"}}
+
+User: "reduce the tumor burden and replace the removed tumor with stromal tissue"
+Note: Stroma is the backfill target for tumor decrease, not a separate stromal desmoplasia edit.
+JSON:
+{"schema_version":"0.1","tumor_change":{"growth":"decrease","degree":"moderate","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
 
 User: "make the fibrous background lighter"
 Note: Fibrous background refers to stromal/fibrotic density decrease.
@@ -201,7 +215,21 @@ def parse_instruction_rule_based(instruction: str) -> dict[str, Any]:
             and _mentions_any(text, _STROMA_TERMS)
             and not _mentions_any(text, _INDEPENDENT_STROMA_TERMS)
         )
-        if stroma_is_immune_backfill:
+        stroma_is_necrosis_backfill = (
+            semantic_diff["necrosis_change"]["action"] in {"decrease", "remove"}
+            and _mentions_any(text, _REPLACEMENT_TERMS + _NECROSIS_RESOLUTION_TERMS)
+            and _mentions_any(text, _NECROSIS_TERMS)
+            and _mentions_any(text, _STROMA_TERMS)
+            and not _mentions_any(text, _INDEPENDENT_STROMA_TERMS)
+        )
+        stroma_is_tumor_backfill = (
+            semantic_diff["tumor_change"]["growth"] == "decrease"
+            and _mentions_any(text, _REPLACEMENT_TERMS)
+            and _mentions_any(text, _TUMOR_TERMS)
+            and _mentions_any(text, _STROMA_TERMS)
+            and not _mentions_any(text, _INDEPENDENT_STROMA_TERMS)
+        )
+        if stroma_is_immune_backfill or stroma_is_necrosis_backfill or stroma_is_tumor_backfill:
             pass
         elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(text, _INCREASE_TERMS):
             semantic_diff["stroma_change"]["density"] = "decrease"
@@ -391,7 +419,15 @@ _TUMOR_TERMS = (
     "癌",
     "癌巢",
 )
-_NECROSIS_TERMS = ("necrosis", "necrotic", "坏死")
+_NECROSIS_TERMS = (
+    "necrosis",
+    "necrotic",
+    "debris",
+    "dead tissue",
+    "dead-looking",
+    "dead looking",
+    "坏死",
+)
 _IMMUNE_TERMS = (
     "immune",
     "lymphocyte",
@@ -427,6 +463,7 @@ _REPLACEMENT_TERMS = (
     "turn into",
     "turned into",
 )
+_NECROSIS_RESOLUTION_TERMS = ("resolve", "resolved", "resolution")
 _INDEPENDENT_STROMA_TERMS = (
     "desmoplasia",
     "desmoplastic",

@@ -66,6 +66,22 @@ class Phase3InstructionParserTests(unittest.TestCase):
         )
         self.assertEqual(semantic_diff["stroma_change"]["density"], "none")
 
+    def test_necrosis_resolution_stroma_replacement_does_not_parse_as_stroma_increase(self):
+        semantic_diff = parse_instruction_rule_based(
+            "resolve most necrosis/debris and replace it with viable stroma; keep tumor burden unchanged"
+        )
+
+        self.assertIn(semantic_diff["necrosis_change"]["action"], {"decrease", "remove"})
+        self.assertEqual(semantic_diff["stroma_change"]["density"], "none")
+
+    def test_tumor_decrease_stroma_replacement_does_not_parse_as_stroma_increase(self):
+        semantic_diff = parse_instruction_rule_based(
+            "reduce the tumor burden and replace the removed tumor with stromal tissue"
+        )
+
+        self.assertEqual(semantic_diff["tumor_change"]["growth"], "decrease")
+        self.assertEqual(semantic_diff["stroma_change"]["density"], "none")
+
     def test_independent_desmoplasia_still_parses_as_stroma_increase(self):
         semantic_diff = parse_instruction_rule_based(
             "increase the desmoplastic stromal reaction around tumor nests"

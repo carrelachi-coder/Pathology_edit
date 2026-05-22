@@ -133,6 +133,76 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             "immune_decrease_stroma_replacement",
         )
 
+    def test_necrosis_resolution_with_stroma_replacement_plans_desmoplasia_as_fallback(self):
+        diff = semantic_diff_with(
+            necrosis_change={
+                "action": "remove",
+                "extent": "extensive",
+            },
+            stroma_change={"density": "increase", "degree": "significant"},
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            new_prompt=(
+                "Resolve most necrosis/debris and replace it with viable stroma; "
+                "keep tumor burden unchanged."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["necrosis_resolution"],
+        )
+        self.assertEqual(
+            [item.primitive for item in plan.items],
+            ["necrosis_resolution", "stromal_desmoplasia"],
+        )
+        self.assertEqual(plan.items[0].role, "primary")
+        self.assertEqual(plan.items[1].role, "fallback")
+        self.assertEqual(plan.items[1].fallback_for, "necrosis_resolution")
+        self.assertEqual(plan.items[1].status, "fallback_planned")
+        self.assertEqual(
+            plan.items[0].execution_group,
+            "necrosis_resolution_stroma_replacement",
+        )
+
+    def test_tumor_decrease_with_stroma_replacement_plans_desmoplasia_as_fallback(self):
+        diff = semantic_diff_with(
+            tumor_change={
+                "growth": "decrease",
+                "degree": "moderate",
+            },
+            stroma_change={"density": "increase", "degree": "moderate"},
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            new_prompt=(
+                "Reduce the tumor burden and replace the removed tumor with "
+                "stromal tissue."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["tumor_burden_decrease"],
+        )
+        self.assertEqual(
+            [item.primitive for item in plan.items],
+            ["tumor_burden_decrease", "stromal_desmoplasia"],
+        )
+        self.assertEqual(plan.items[0].role, "primary")
+        self.assertEqual(plan.items[1].role, "fallback")
+        self.assertEqual(plan.items[1].fallback_for, "tumor_burden_decrease")
+        self.assertEqual(plan.items[1].status, "fallback_planned")
+        self.assertEqual(
+            plan.items[0].execution_group,
+            "tumor_decrease_stroma_replacement",
+        )
+
     def test_independent_desmoplasia_remains_separate_after_immune_decrease(self):
         diff = semantic_diff_with(
             lymphocyte_change={"infiltration": "decrease", "degree": "moderate"},

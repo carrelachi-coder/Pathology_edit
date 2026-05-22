@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "primitive": "necrosis_resolution",
+  "checks": [
+    {
+      "name": "change_area_nonempty",
+      "passed": true,
+      "detail": "98880 pixels changed."
+    },
+    {
+      "name": "change_area_within_range",
+      "passed": true,
+      "detail": "changed_necrosis_fraction=0.4700 in [0.08, 0.70]"
+    },
+    {
+      "name": "label_legality",
+      "passed": true,
+      "detail": "all labels in schema."
+    },
+    {
+      "name": "no_background_leakage",
+      "passed": true,
+      "detail": "no background leakage."
+    },
+    {
+      "name": "required_labels_present",
+      "passed": true,
+      "detail": "all required labels present in src mask."
+    },
+    {
+      "name": "necrosis_area_must_decrease",
+      "passed": true,
+      "detail": "necrosis 210382 -> 111502 pixels."
+    },
+    {
+      "name": "resolved_necrosis_must_be_original_necrosis",
+      "passed": true,
+      "detail": "all changed pixels came from original Necrosis."
+    },
+    {
+      "name": "backfill_must_be_legal_tissue",
+      "passed": true,
+      "detail": "no Background used as backfill."
+    },
+    {
+      "name": "no_background_holes",
+      "passed": true,
+      "detail": "no background holes created."
+    }
+  ],
+  "warnings": []
+}
