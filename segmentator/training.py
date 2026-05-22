@@ -127,6 +127,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         local_repo=uni2h_repo,
         decoder=config.decoder,
         mask2former_queries=config.mask2former_queries,
+        mask2former_ignore_index=config.mask2former_ignore_index,
     ).to(device)
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=config.lr, weight_decay=config.weight_decay)
     use_amp = config.amp and device.type == "cuda"
@@ -151,6 +152,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 "freeze_encoder": config.freeze_encoder,
                 "decoder": config.decoder,
                 "mask2former_queries": config.mask2former_queries,
+                "mask2former_ignore_index": config.mask2former_ignore_index,
                 "class_weighting": config.class_weighting,
                 "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
                 "export_val_predictions": config.export_val_predictions,
@@ -181,14 +183,17 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             image = batch["image"].to(device)
             mask = batch["mask"].to(device)
             with torch.cuda.amp.autocast(enabled=use_amp):
-                outputs = model(image)
-                losses = segmentation_loss(
-                    outputs["logits"],
-                    mask,
-                    config.num_classes,
-                    class_weights=class_weights_device,
-                    invalid_to=config.remap_invalid_to,
-                )
+                if config.decoder == "mask2former":
+                    losses = model.loss(image, mask)
+                else:
+                    outputs = model(image)
+                    losses = segmentation_loss(
+                        outputs["logits"],
+                        mask,
+                        config.num_classes,
+                        class_weights=class_weights_device,
+                        invalid_to=config.remap_invalid_to,
+                    )
                 loss = losses["total"] / config.grad_accum_steps
             scaler.scale(loss).backward()
             if step % config.grad_accum_steps == 0 or step == len(train_loader):

@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--decoder", choices=["upernet", "mask2former"], default="upernet")
     parser.add_argument("--mask2former-queries", type=int, default=100)
+    parser.add_argument("--mask2former-ignore-index", type=int, default=255)
     parser.add_argument("--class-weighting", choices=["none", "inverse_sqrt"], default="none")
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--disable-cudnn", action="store_true")
@@ -52,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest_path=args.manifest,
         decoder=args.decoder,
         mask2former_queries=args.mask2former_queries,
+        mask2former_ignore_index=args.mask2former_ignore_index,
         amp=args.amp,
         disable_cudnn=args.disable_cudnn,
         class_weighting=args.class_weighting,
@@ -73,6 +75,7 @@ def main_predict(argv: list[str] | None = None) -> int:
     parser.add_argument("--num-classes", type=int, default=8)
     parser.add_argument("--decoder", choices=["upernet", "mask2former"], default="upernet")
     parser.add_argument("--mask2former-queries", type=int, default=100)
+    parser.add_argument("--mask2former-ignore-index", type=int, default=255)
     args = parser.parse_args(argv)
 
     model = load_checkpoint(
@@ -80,6 +83,7 @@ def main_predict(argv: list[str] | None = None) -> int:
         num_classes=args.num_classes,
         decoder=args.decoder,
         mask2former_queries=args.mask2former_queries,
+        mask2former_ignore_index=args.mask2former_ignore_index,
     )
     image = normalize_image_tensor(TF.to_tensor(Image.open(args.input).convert("RGB")))
     outputs = model(image.unsqueeze(0) if image.ndim == 3 else image)

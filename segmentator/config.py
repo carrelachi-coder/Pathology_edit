@@ -43,6 +43,7 @@ class BaselineConfig:
     freeze_encoder: bool = True
     decoder: str = "upernet"
     mask2former_queries: int = 100
+    mask2former_ignore_index: int = 255
     amp: bool = True
     disable_cudnn: bool = False
     class_weighting: str = "none"

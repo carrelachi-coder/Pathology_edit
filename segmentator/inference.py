@@ -15,12 +15,14 @@ def load_checkpoint(
     freeze_encoder: bool = True,
     decoder: str = "upernet",
     mask2former_queries: int = 100,
+    mask2former_ignore_index: int = 255,
 ) -> BaselineSegmenter:
     model = BaselineSegmenter(
         num_classes=num_classes,
         freeze_encoder=freeze_encoder,
         decoder=decoder,
         mask2former_queries=mask2former_queries,
+        mask2former_ignore_index=mask2former_ignore_index,
     )
     state = torch.load(Path(checkpoint_path), map_location="cpu")
     model.load_state_dict(state, strict=True)

@@ -4,3 +4,7 @@ timm
 pillow
 numpy
 tqdm
+mmengine
+mmcv
+mmsegmentation
+mmdet

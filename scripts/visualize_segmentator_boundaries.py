@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-classes", type=int, default=8)
     parser.add_argument("--decoder", choices=["upernet", "mask2former"], default="upernet")
     parser.add_argument("--mask2former-queries", type=int, default=100)
+    parser.add_argument("--mask2former-ignore-index", type=int, default=255)
     parser.add_argument("--boundary-width", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--disable-cudnn", action="store_true")
@@ -101,6 +102,7 @@ def main() -> int:
         local_repo=args.uni2h_repo,
         decoder=args.decoder,
         mask2former_queries=args.mask2former_queries,
+        mask2former_ignore_index=args.mask2former_ignore_index,
     ).to(device)
     state = torch.load(Path(args.checkpoint), map_location="cpu")
     model.load_state_dict(state, strict=True)

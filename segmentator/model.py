@@ -128,68 +128,195 @@ class UPerLikeDecoder(nn.Module):
         return self.fuse(torch.cat(fused, dim=1))
 
 
-class Mask2FormerLikeDecoder(nn.Module):
-    """Lightweight Mask2Former-style semantic decoder for architecture ablation."""
+class OfficialMask2FormerDecoder(nn.Module):
+    """Thin wrapper around MMSegmentation's official Mask2FormerHead."""
 
     def __init__(
         self,
         feature_channels: tuple[int, int, int, int],
         num_classes: int,
-        hidden_dim: int = 256,
         num_queries: int = 100,
-        num_heads: int = 8,
-        num_layers: int = 3,
+        feature_strides: tuple[int, int, int, int] = (14, 14, 14, 14),
+        ignore_index: int = 255,
     ) -> None:
         super().__init__()
+        try:
+            from mmseg.registry import MODELS
+        except ImportError as exc:
+            raise ImportError(
+                "decoder='mask2former' requires MMSegmentation. Install mmsegmentation "
+                "and compatible mmcv/mmengine/mmdet packages in the training environment."
+            ) from exc
+
         self.num_classes = num_classes
         self.num_queries = num_queries
-        self.norms = nn.ModuleList(nn.LayerNorm(c) for c in feature_channels)
-        self.lateral = nn.ModuleList(nn.Conv2d(c, hidden_dim, 1) for c in feature_channels)
-        self.fuse = nn.Sequential(
-            ConvBlock(hidden_dim * 4, hidden_dim),
-            nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, bias=False),
-            nn.BatchNorm2d(hidden_dim),
-            nn.ReLU(inplace=True),
+        self.ignore_index = ignore_index
+        self.head = MODELS.build(
+            dict(
+                type="Mask2FormerHead",
+                in_channels=list(feature_channels),
+                strides=list(feature_strides),
+                feat_channels=256,
+                out_channels=256,
+                num_classes=num_classes,
+                num_queries=num_queries,
+                ignore_index=ignore_index,
+                num_transformer_feat_level=3,
+                align_corners=False,
+                pixel_decoder=dict(
+                    type="mmdet.MSDeformAttnPixelDecoder",
+                    num_outs=3,
+                    norm_cfg=dict(type="GN", num_groups=32),
+                    act_cfg=dict(type="ReLU"),
+                    encoder=dict(
+                        num_layers=6,
+                        layer_cfg=dict(
+                            self_attn_cfg=dict(
+                                embed_dims=256,
+                                num_heads=8,
+                                num_levels=3,
+                                num_points=4,
+                                im2col_step=64,
+                                dropout=0.0,
+                                batch_first=True,
+                                norm_cfg=None,
+                                init_cfg=None,
+                            ),
+                            ffn_cfg=dict(
+                                embed_dims=256,
+                                feedforward_channels=1024,
+                                num_fcs=2,
+                                ffn_drop=0.0,
+                                act_cfg=dict(type="ReLU", inplace=True),
+                            ),
+                        ),
+                        init_cfg=None,
+                    ),
+                    positional_encoding=dict(num_feats=128, normalize=True),
+                    init_cfg=None,
+                ),
+                enforce_decoder_input_project=False,
+                positional_encoding=dict(num_feats=128, normalize=True),
+                transformer_decoder=dict(
+                    return_intermediate=True,
+                    num_layers=9,
+                    layer_cfg=dict(
+                        self_attn_cfg=dict(
+                            embed_dims=256,
+                            num_heads=8,
+                            attn_drop=0.0,
+                            proj_drop=0.0,
+                            dropout_layer=None,
+                            batch_first=True,
+                        ),
+                        cross_attn_cfg=dict(
+                            embed_dims=256,
+                            num_heads=8,
+                            attn_drop=0.0,
+                            proj_drop=0.0,
+                            dropout_layer=None,
+                            batch_first=True,
+                        ),
+                        ffn_cfg=dict(
+                            embed_dims=256,
+                            feedforward_channels=2048,
+                            num_fcs=2,
+                            act_cfg=dict(type="ReLU", inplace=True),
+                            ffn_drop=0.0,
+                            dropout_layer=None,
+                            add_identity=True,
+                        ),
+                    ),
+                    init_cfg=None,
+                ),
+                loss_cls=dict(
+                    type="mmdet.CrossEntropyLoss",
+                    use_sigmoid=False,
+                    loss_weight=2.0,
+                    reduction="mean",
+                    class_weight=[1.0] * num_classes + [0.1],
+                ),
+                loss_mask=dict(
+                    type="mmdet.CrossEntropyLoss",
+                    use_sigmoid=True,
+                    reduction="mean",
+                    loss_weight=5.0,
+                ),
+                loss_dice=dict(
+                    type="mmdet.DiceLoss",
+                    use_sigmoid=True,
+                    activate=True,
+                    reduction="mean",
+                    naive_dice=True,
+                    eps=1.0,
+                    loss_weight=5.0,
+                ),
+                train_cfg=dict(
+                    num_points=12544,
+                    oversample_ratio=3.0,
+                    importance_sample_ratio=0.75,
+                    assigner=dict(
+                        type="mmdet.HungarianAssigner",
+                        match_costs=[
+                            dict(type="mmdet.ClassificationCost", weight=2.0),
+                            dict(type="mmdet.CrossEntropyLossCost", weight=5.0, use_sigmoid=True),
+                            dict(type="mmdet.DiceCost", weight=5.0, pred_act=True, eps=1.0),
+                        ],
+                    ),
+                    sampler=dict(type="mmdet.MaskPseudoSampler"),
+                ),
+            )
         )
-        decoder_layer = nn.TransformerDecoderLayer(
-            d_model=hidden_dim,
-            nhead=num_heads,
-            dim_feedforward=hidden_dim * 4,
-            dropout=0.0,
-            activation="gelu",
-            batch_first=True,
-            norm_first=True,
-        )
-        self.query_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
-        self.query_embed = nn.Embedding(num_queries, hidden_dim)
-        self.mask_embed = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, hidden_dim),
-        )
-        self.class_embed = nn.Linear(hidden_dim, num_classes)
-        self.pixel_proj = nn.Conv2d(hidden_dim, hidden_dim, 1)
 
-    def forward(self, feats: list[torch.Tensor]) -> torch.Tensor:
-        target_size = feats[0].shape[-2:]
-        fused = []
-        for feat, norm, proj in zip(feats, self.norms, self.lateral):
-            feat = norm(feat.permute(0, 2, 3, 1)).permute(0, 3, 1, 2).contiguous()
-            x = proj(feat)
-            if x.shape[-2:] != target_size:
-                x = F.interpolate(x, size=target_size, mode="bilinear", align_corners=False)
-            fused.append(x)
+    def forward(self, feats: list[torch.Tensor], image_shape: tuple[int, int]) -> torch.Tensor:
+        batch_size = feats[0].shape[0]
+        batch_img_metas = [
+            {
+                "batch_input_shape": image_shape,
+                "img_shape": image_shape,
+                "ori_shape": image_shape,
+                "pad_shape": image_shape,
+            }
+            for _ in range(batch_size)
+        ]
+        results = self.head.predict(tuple(feats), batch_img_metas, test_cfg=dict())
+        if torch.is_tensor(results):
+            return results
+        logits = []
+        for result in results:
+            if hasattr(result, "seg_logits"):
+                logits.append(result.seg_logits.data)
+            elif isinstance(result, dict) and "seg_logits" in result:
+                seg_logits = result["seg_logits"]
+                logits.append(seg_logits.data if hasattr(seg_logits, "data") else seg_logits)
+            else:
+                raise TypeError(
+                    "Mask2FormerHead.predict returned an unsupported result type. "
+                    f"Expected SegDataSample with seg_logits, got {type(result)!r}."
+                )
+        return torch.stack(logits, dim=0)
 
-        pixel_features = self.fuse(torch.cat(fused, dim=1))
-        pixel_features = self.pixel_proj(pixel_features)
-        batch_size = pixel_features.shape[0]
-        memory = pixel_features.flatten(2).transpose(1, 2).contiguous()
-        queries = self.query_embed.weight.unsqueeze(0).expand(batch_size, -1, -1)
-        queries = self.query_decoder(queries, memory)
-        class_logits = self.class_embed(queries).softmax(dim=-1)
-        mask_embed = self.mask_embed(queries)
-        mask_logits = torch.einsum("bqc,bchw->bqhw", mask_embed, pixel_features)
-        return torch.einsum("bqk,bqhw->bkhw", class_logits, mask_logits)
+    def loss(self, feats: list[torch.Tensor], target: torch.Tensor, image_shape: tuple[int, int]) -> dict[str, torch.Tensor]:
+        try:
+            from mmengine.structures import PixelData
+            from mmseg.structures import SegDataSample
+        except ImportError as exc:
+            raise ImportError("Mask2Former loss requires mmengine and mmsegmentation.") from exc
+
+        batch_samples = []
+        for idx in range(target.shape[0]):
+            sample = SegDataSample()
+            sample.gt_sem_seg = PixelData(data=target[idx : idx + 1].long())
+            sample.set_metainfo(
+                {
+                    "batch_input_shape": image_shape,
+                    "img_shape": image_shape,
+                    "ori_shape": image_shape,
+                    "pad_shape": image_shape,
+                }
+            )
+            batch_samples.append(sample)
+        return self.head.loss(tuple(feats), batch_samples, train_cfg=self.head.train_cfg)
 
 
 @dataclass(frozen=True)
@@ -208,16 +335,20 @@ class BaselineSegmenter(nn.Module):
         local_repo: str | Path = "UNI-2h",
         decoder: str = "upernet",
         mask2former_queries: int = 100,
+        mask2former_ignore_index: int = 255,
     ) -> None:
         super().__init__()
+        self.num_classes = num_classes
+        self.decoder_name = decoder
         self.encoder = Uni2hFeatureEncoder(local_repo=local_repo, freeze=freeze_encoder)
         if decoder == "upernet":
             self.decoder = UPerLikeDecoder((1536, 1536, 1536, 1536), num_classes)
         elif decoder == "mask2former":
-            self.decoder = Mask2FormerLikeDecoder(
+            self.decoder = OfficialMask2FormerDecoder(
                 (1536, 1536, 1536, 1536),
                 num_classes,
                 num_queries=mask2former_queries,
+                ignore_index=mask2former_ignore_index,
             )
         else:
             raise ValueError(f"unsupported decoder: {decoder}")
@@ -234,10 +365,37 @@ class BaselineSegmenter(nn.Module):
         for feat in feats:
             if feat.shape[1] != 1536:
                 raise RuntimeError(f"expected UNI2-h channel dimension 1536, got {feat.shape[1]}")
-        logits = self.decoder(feats)
-        logits = F.interpolate(logits, size=x.shape[-2:], mode="bilinear", align_corners=False)
+        if isinstance(self.decoder, OfficialMask2FormerDecoder):
+            logits = self.decoder(feats, x.shape[-2:])
+        else:
+            logits = self.decoder(feats)
+        if logits.shape[-2:] != x.shape[-2:]:
+            logits = F.interpolate(logits, size=x.shape[-2:], mode="bilinear", align_corners=False)
         logits = logits[..., : input_size[0], : input_size[1]]
         probs = logits.softmax(dim=1)
         entropy = -(probs.clamp_min(1e-8) * probs.clamp_min(1e-8).log()).sum(dim=1)
         pred = probs.argmax(dim=1)
         return {"logits": logits, "probs": probs, "entropy": entropy, "pred": pred}
+
+    def loss(self, x: torch.Tensor, target: torch.Tensor) -> dict[str, torch.Tensor]:
+        input_size = x.shape[-2:]
+        pad_h = (14 - x.shape[-2] % 14) % 14
+        pad_w = (14 - x.shape[-1] % 14) % 14
+        if pad_h or pad_w:
+            x = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
+            pad_value = self.decoder.ignore_index if isinstance(self.decoder, OfficialMask2FormerDecoder) else 0
+            target = F.pad(target[:, None].float(), (0, pad_w, 0, pad_h), mode="constant", value=pad_value).squeeze(1).long()
+        feats = self.encoder(x)
+        if hasattr(self.decoder, "loss"):
+            target = target.clone()
+            invalid = (target < 0) | (target >= self.num_classes)
+            target[invalid] = self.decoder.ignore_index
+            losses = self.decoder.loss(feats, target, x.shape[-2:])
+            total = sum(value for value in losses.values() if torch.is_tensor(value))
+            losses = dict(losses)
+            losses["total"] = total
+            return losses
+        outputs = self.forward(x[..., : input_size[0], : input_size[1]])
+        from .losses import segmentation_loss
+
+        return segmentation_loss(outputs["logits"], target[..., : input_size[0], : input_size[1]], self.num_classes)
