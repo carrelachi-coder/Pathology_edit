@@ -189,6 +189,7 @@ class OfficialMask2FormerDecoder(nn.Module):
     ) -> None:
         super().__init__()
         try:
+            from mmengine.config import ConfigDict
             from mmseg.registry import MODELS
         except ImportError as exc:
             raise ImportError(
@@ -200,7 +201,7 @@ class OfficialMask2FormerDecoder(nn.Module):
         self.num_queries = num_queries
         self.ignore_index = ignore_index
         self.head = MODELS.build(
-            dict(
+            ConfigDict(
                 type="Mask2FormerHead",
                 in_channels=list(feature_channels),
                 strides=list(feature_strides),
