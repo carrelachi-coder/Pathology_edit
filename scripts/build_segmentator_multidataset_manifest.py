@@ -8,12 +8,12 @@ import random
 
 
 DATASETS = {
-    "bcss": ("BCSS/BCSS_PATCHES", "images", "tissue_masks"),
-    "ignite": ("IGNITE_PATCHES", "images", "tissue_masks"),
-    "orca": ("ORCA/ORCA_PATCHES", "images", "tissue_masks"),
-    "panda": ("PANDA/PANDA_PATCHES", "images", "tissue_masks"),
-    "glas": ("GLAS/GlaS_PATCHES", "images", "tissue_masks"),
-    "puma": ("PUMA/PUMA_PATCHES", "images", "tissue_masks"),
+    "bcss": (("BCSS_PATCHES", "BCSS/BCSS_PATCHES"), "images", "tissue_masks"),
+    "ignite": (("IGNITE_PATCHES",), "images", "tissue_masks"),
+    "orca": (("ORCA_PATCHES", "ORCA/ORCA_PATCHES"), "images", "tissue_masks"),
+    "panda": (("PANDA_PATCHES", "PANDA/PANDA_PATCHES"), "images", "tissue_masks"),
+    "glas": (("GlaS_PATCHES", "GLAS/GlaS_PATCHES", "GLAS_PATCHES"), "images", "tissue_masks"),
+    "puma": (("PUMA_PATCHES", "PUMA/PUMA_PATCHES"), "images", "tissue_masks"),
 }
 
 
@@ -21,9 +21,19 @@ def _sorted_pngs(path: Path) -> list[Path]:
     return sorted(p for p in path.iterdir() if p.suffix.lower() == ".png")
 
 
+def _resolve_dataset_root(datasets_root: Path, dataset_id: str) -> Path:
+    root_candidates, _, _ = DATASETS[dataset_id]
+    for root_rel in root_candidates:
+        dataset_root = datasets_root / root_rel
+        if dataset_root.exists():
+            return dataset_root
+    searched = [str(datasets_root / root_rel) for root_rel in root_candidates]
+    raise FileNotFoundError(f"could not find dataset '{dataset_id}'. Searched: {searched}")
+
+
 def _records_for_dataset(datasets_root: Path, dataset_id: str, limit: int | None) -> list[dict[str, str]]:
-    root_rel, images_rel, masks_rel = DATASETS[dataset_id]
-    dataset_root = datasets_root / root_rel
+    _, images_rel, masks_rel = DATASETS[dataset_id]
+    dataset_root = _resolve_dataset_root(datasets_root, dataset_id)
     images_dir = dataset_root / images_rel
     masks_dir = dataset_root / masks_rel
     if not images_dir.exists():
@@ -59,7 +69,11 @@ def _split_records(records: list[dict[str, str]], val_fraction: float, rng: rand
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build a multi-dataset segmentator manifest.")
-    parser.add_argument("--datasets-root", default="D:/WQX/datasets")
+    parser.add_argument(
+        "--datasets-root",
+        default="/data/wqx/flowedit/data",
+        help="Directory containing BCSS_PATCHES, GlaS_PATCHES, IGNITE_PATCHES, ORCA_PATCHES, PANDA_PATCHES, and PUMA_PATCHES.",
+    )
     parser.add_argument("--datasets", nargs="+", default=list(DATASETS))
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--val-fraction", type=float, default=0.1)
