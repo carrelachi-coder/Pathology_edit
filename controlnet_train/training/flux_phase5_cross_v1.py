@@ -15,7 +15,9 @@ wrapper nn.Modules and passed through accelerator.prepare() independently.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
+import json
 import logging
 import math
 import os
@@ -442,8 +444,106 @@ def _save_ip_adapter_modules(
         for name, mod in unwrapped.named_modules()
         if name  # skip root module
     }
-    state["scale"] = 0.1
+    state["scale"] = 1.0
     torch.save(state, os.path.join(output_dir, "phase5_ip_adapter.pt"))
+
+
+def _load_cross_v1_controlnet_checkpoint(
+    checkpoint_path: str | Path,
+    packed_channels: int,
+) -> FluxControlNetModel:
+    checkpoint = Path(checkpoint_path)
+    if not checkpoint.exists():
+        return FluxControlNetModel.from_pretrained(str(checkpoint_path))
+
+    controlnet_config = FluxControlNetModel.load_config(checkpoint)
+    controlnet = FluxControlNetModel.from_config(controlnet_config)
+    patch_controlnet_x_embedder(controlnet, packed_channels)
+    controlnet.load_state_dict(_load_diffusers_model_state_dict(checkpoint), strict=True)
+    return controlnet
+
+
+def _load_diffusers_model_state_dict(checkpoint_path: Path) -> dict[str, torch.Tensor]:
+    safetensors_index = checkpoint_path / "diffusion_pytorch_model.safetensors.index.json"
+    bin_index = checkpoint_path / "diffusion_pytorch_model.bin.index.json"
+
+    if safetensors_index.exists():
+        return _load_sharded_diffusers_state_dict(safetensors_index)
+    if bin_index.exists():
+        return _load_sharded_diffusers_state_dict(bin_index)
+
+    for filename in (
+        "diffusion_pytorch_model.safetensors",
+        "diffusion_pytorch_model.bin",
+        "pytorch_model.bin",
+        "model.safetensors",
+    ):
+        weight_path = checkpoint_path / filename
+        if weight_path.exists():
+            return _load_single_diffusers_weight_file(weight_path)
+
+    raise FileNotFoundError(f"No diffusers ControlNet weights found under: {checkpoint_path}")
+
+
+def _load_sharded_diffusers_state_dict(index_path: Path) -> dict[str, torch.Tensor]:
+    payload = json.loads(index_path.read_text(encoding="utf8"))
+    weight_map = payload.get("weight_map")
+    if not isinstance(weight_map, dict) or not weight_map:
+        raise ValueError(f"Invalid diffusers weight index file: {index_path}")
+    state_dict: dict[str, torch.Tensor] = {}
+    for filename in sorted(set(weight_map.values())):
+        state_dict.update(_load_single_diffusers_weight_file(index_path.parent / filename))
+    return state_dict
+
+
+def _load_single_diffusers_weight_file(weight_path: Path) -> dict[str, torch.Tensor]:
+    if weight_path.suffix == ".safetensors":
+        from safetensors.torch import load_file
+
+        return load_file(weight_path)
+    return _torch_load_weights(weight_path)
+
+
+def _torch_load_weights(weight_path: Path) -> dict[str, torch.Tensor]:
+    try:
+        return torch.load(weight_path, map_location="cpu", weights_only=True)
+    except TypeError:
+        return torch.load(weight_path, map_location="cpu")
+
+
+def _resolve_conditioning_checkpoint_path(args: argparse.Namespace) -> Path | None:
+    path = getattr(args, "a1_lite_conditioning_checkpoint", None)
+    if path:
+        return Path(path)
+    controlnet_path = getattr(args, "controlnet_model_name_or_path", None)
+    return Path(controlnet_path) if controlnet_path else None
+
+
+def _load_condition_modules_from_checkpoint(
+    modules: dict[str, nn.Module],
+    checkpoint_path: str | Path,
+    *,
+    load_ref_encoder: bool = False,
+) -> None:
+    checkpoint = Path(checkpoint_path)
+    state_path = checkpoint / "phase5_conditioning.pt" if checkpoint.is_dir() else checkpoint
+    if not state_path.exists():
+        raise FileNotFoundError(f"Missing phase5_conditioning.pt for A1-lite: {state_path}")
+
+    state = _torch_load_weights(state_path)
+    for name in ("hte", "tissue_downsampler", "nuclei_encoder"):
+        if name not in state:
+            raise KeyError(f"Missing {name!r} in conditioning checkpoint: {state_path}")
+        modules[name].load_state_dict(state[name])
+
+    if load_ref_encoder:
+        ref_encoder = modules["ref_encoder"]
+        ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
+        ref_encoder.perceiver_layers.load_state_dict(state["ref_encoder_perceiver_layers"])
+        ref_encoder.latent_queries.data.copy_(
+            state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+        )
+        ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +555,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         raise NotImplementedError("This module implements only cross V1.")
     if args.uni_checkpoint_path is None:
         raise ValueError("--uni-checkpoint-path is required for cross V1")
+    a1_lite = bool(getattr(args, "a1_lite", False))
+    if a1_lite and not args.controlnet_model_name_or_path:
+        raise ValueError("--a1-lite requires --controlnet_model_name_or_path with an existing Cross V1 checkpoint.")
 
     dataset = CrossReconstructionDataset(args.train_metadata)
     if args.max_train_samples is not None:
@@ -481,6 +584,15 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         ),
         "ref_encoder": ref_encoder,
     }
+    if a1_lite:
+        conditioning_checkpoint = _resolve_conditioning_checkpoint_path(args)
+        if conditioning_checkpoint is None:
+            raise ValueError("--a1-lite requires a conditioning checkpoint.")
+        _load_condition_modules_from_checkpoint(
+            modules,
+            conditioning_checkpoint,
+            load_ref_encoder=bool(getattr(args, "a1_lite_load_ref_encoder", False)),
+        )
 
     # ---- accelerator setup ----
     logging_out_dir = Path(args.output_dir, args.logging_dir)
@@ -545,7 +657,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     )
 
     if args.controlnet_model_name_or_path:
-        flux_controlnet = FluxControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
+        flux_controlnet = _load_cross_v1_controlnet_checkpoint(
+            args.controlnet_model_name_or_path,
+            packed_channels=control_spec.packed_channels,
+        )
     else:
         flux_controlnet = FluxControlNetModel.from_transformer(
             flux_transformer,
@@ -599,9 +714,21 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     vae.to(accelerator.device, dtype=weight_dtype)
     vae.eval()
     vae.requires_grad_(False)
-    flux_controlnet.train()
-    for module in modules.values():
-        module.train()
+    flux_controlnet.to(accelerator.device, dtype=weight_dtype)
+    if a1_lite:
+        flux_controlnet.eval()
+        flux_controlnet.requires_grad_(False)
+        for name, module in modules.items():
+            module.to(accelerator.device, dtype=weight_dtype)
+            if name == "ref_encoder":
+                module.train()
+            else:
+                module.eval()
+                module.requires_grad_(False)
+    else:
+        flux_controlnet.train()
+        for module in modules.values():
+            module.train()
     # UNI2-h backbone inside ref_encoder stays frozen
     modules["ref_encoder"].uni.requires_grad_(False)
     modules["ref_encoder"].uni.eval()
@@ -614,7 +741,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     if args.enable_xformers_memory_efficient_attention and is_xformers_available():
         flux_transformer.enable_xformers_memory_efficient_attention()
         flux_controlnet.enable_xformers_memory_efficient_attention()
-    if args.gradient_checkpointing:
+    if args.gradient_checkpointing and not a1_lite:
         flux_controlnet.enable_gradient_checkpointing()
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -652,6 +779,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         ref_trainable_wrapper,         # ref_encoder 可训练部分
         ip_trainable_wrapper,          # IP-Adapter 可训练部分
     ]
+    if a1_lite:
+        trainable_modules_list = [
+            ref_trainable_wrapper,
+            ip_trainable_wrapper,
+        ]
     optimizer = optimizer_class(
         [p for m in trainable_modules_list for p in m.parameters() if p.requires_grad],
         lr=args.learning_rate,
@@ -769,10 +901,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     # ---- training loop ----
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(flux_controlnet):
-                pixel_latents, control_tensor = _build_cross_v1_control_batch(
-                    batch=batch, modules=modules, vae=vae, weight_dtype=weight_dtype,
-                )
+            accumulate_model = ip_trainable_wrapper if a1_lite else flux_controlnet
+            with accelerator.accumulate(accumulate_model):
+                with torch.no_grad() if a1_lite else contextlib.nullcontext():
+                    pixel_latents, control_tensor = _build_cross_v1_control_batch(
+                        batch=batch, modules=modules, vae=vae, weight_dtype=weight_dtype,
+                    )
                 bsz = pixel_latents.shape[0]
 
                 packed_pixel_latents = FluxControlNetPipeline._pack_latents(
@@ -820,17 +954,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         f"unpacked_latents={tuple(pixel_latents.shape)}"
                     )
 
-                controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
-                    hidden_states=noisy_model_input,
-                    controlnet_cond=control_image,
-                    timestep=timesteps / 1000,
-                    guidance=guidance_vec,
-                    pooled_projections=batch_pooled,
-                    encoder_hidden_states=batch_prompt,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                    return_dict=False,
-                )
+                with torch.no_grad() if a1_lite else contextlib.nullcontext():
+                    controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
+                        hidden_states=noisy_model_input,
+                        controlnet_cond=control_image,
+                        timestep=timesteps / 1000,
+                        guidance=guidance_vec,
+                        pooled_projections=batch_pooled,
+                        encoder_hidden_states=batch_prompt,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                        return_dict=False,
+                    )
 
                 joint_attention_kwargs = _build_ip_adapter_kwargs(
                     batch, modules, accelerator, weight_dtype, flux_transformer,
@@ -862,12 +997,15 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     # ★ 梯度裁剪也要包含 wrapper 里的参数
-                    all_trainable = [
-                        flux_controlnet,
-                        *modules.values(),
-                        ref_trainable_wrapper,
-                        ip_trainable_wrapper,
-                    ]
+                    if a1_lite:
+                        all_trainable = [ref_trainable_wrapper, ip_trainable_wrapper]
+                    else:
+                        all_trainable = [
+                            flux_controlnet,
+                            *modules.values(),
+                            ref_trainable_wrapper,
+                            ip_trainable_wrapper,
+                        ]
                     accelerator.clip_grad_norm_(
                         [p for m in all_trainable for p in m.parameters() if p.requires_grad],
                         args.max_grad_norm,

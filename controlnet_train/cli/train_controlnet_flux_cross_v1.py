@@ -16,6 +16,28 @@ def parse_args(input_args=None) -> argparse.Namespace:
     )
     parser.add_argument("--pretrained_model_name_or_path", type=str, required=True)
     parser.add_argument("--controlnet_model_name_or_path", type=str, default=None)
+    parser.add_argument(
+        "--a1-lite",
+        action="store_true",
+        help=(
+            "Freeze an existing Cross V1 ControlNet and spatial conditioning modules; "
+            "train only freshly initialized A1 IP-Adapter modules plus ref_encoder."
+        ),
+    )
+    parser.add_argument(
+        "--a1-lite-conditioning-checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Checkpoint directory containing phase5_conditioning.pt for A1-lite. "
+            "Defaults to --controlnet_model_name_or_path."
+        ),
+    )
+    parser.add_argument(
+        "--a1-lite-load-ref-encoder",
+        action="store_true",
+        help="Also initialize ref_encoder trainable parts from the A1-lite conditioning checkpoint.",
+    )
     parser.add_argument("--train-metadata", type=str, required=True)
     parser.add_argument(
         "--uni-checkpoint-path", type=str, required=True,
