@@ -4,15 +4,15 @@ import json
 from pathlib import Path
 import random
 import time
+import warnings
 
 import numpy as np
-from PIL import Image
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm.auto import tqdm
 
 from .config import BaselineConfig
-from .data import TissueSegmentationDataset, build_manifest, dataset_balanced_weights, load_manifest, remap_mask_to_coarse, coarse_remap_table
+from .data import TissueSegmentationDataset, build_manifest, dataset_balanced_weights, load_manifest, load_mask, remap_mask_to_coarse, coarse_remap_table
 from .losses import segmentation_loss
 from .metrics import segmentation_metrics
 from .model import BaselineSegmenter
@@ -50,8 +50,18 @@ def compute_class_weights(dataset: TissueSegmentationDataset, num_classes: int, 
     ignored_pixels = 0
     invalid_values: dict[int, int] = {}
     table = coarse_remap_table(dataset.mask_remap, num_classes=num_classes, ignore_index=dataset.ignore_index)
+    skipped_samples: list[str] = []
     for record in dataset.records:
-        mask = np.array(Image.open(record.mask_path).convert("L"), dtype=np.int64)
+        try:
+            mask = load_mask(record.mask_path).numpy()
+        except OSError as exc:
+            skipped_samples.append(record.sample_id)
+            warnings.warn(
+                f"Skipping unreadable segmentator mask {record.sample_id}: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            continue
         valid_raw = (mask >= 0) & (mask < table.numel())
         invalid_raw = ~valid_raw
         for value, count in zip(*np.unique(mask[invalid_raw], return_counts=True)):
@@ -71,6 +81,7 @@ def compute_class_weights(dataset: TissueSegmentationDataset, num_classes: int, 
         "ignore_index": dataset.ignore_index,
         "ignored_pixels": ignored_pixels,
         "invalid_values": invalid_values,
+        "skipped_unreadable_samples": skipped_samples,
     }
     if mode == "none":
         metadata["weights"] = None

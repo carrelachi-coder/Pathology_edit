@@ -13,6 +13,7 @@ from segmentator.data import IMAGENET_MEAN, IMAGENET_STD, TissueSegmentationData
 from segmentator.losses import segmentation_loss
 from segmentator.metrics import segmentation_metrics
 from segmentator.model import SimpleFeaturePyramid, UPerLikeDecoder, Uni2hFeatureEncoder
+from segmentator.training import compute_class_weights
 
 
 class SegmentatorDataTests(unittest.TestCase):
@@ -58,6 +59,56 @@ class SegmentatorDataTests(unittest.TestCase):
             mask = dataset[0]["mask"]
 
             self.assertEqual(mask.tolist(), [[1, 1, 255]])
+
+    def test_dataset_skips_unreadable_samples(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bad_image_path = root / "bad.png"
+            bad_mask_path = root / "bad_mask.png"
+            good_image_path = root / "good.png"
+            good_mask_path = root / "good_mask.png"
+            bad_image_path.write_bytes(b"not-a-real-png")
+            Image.new("L", (4, 4), 1).save(bad_mask_path)
+            Image.new("RGB", (4, 4), (255, 255, 255)).save(good_image_path)
+            Image.new("L", (4, 4), 2).save(good_mask_path)
+            dataset = TissueSegmentationDataset(
+                [
+                    SampleRecord(bad_image_path, bad_mask_path, "bad"),
+                    SampleRecord(good_image_path, good_mask_path, "good"),
+                ],
+                image_size=4,
+            )
+
+            with self.assertWarns(RuntimeWarning):
+                item = dataset[0]
+
+            self.assertEqual(item["sample_id"], "good")
+            self.assertEqual(tuple(item["image"].shape), (3, 4, 4))
+
+    def test_class_weights_skip_unreadable_masks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image_path = root / "sample.png"
+            bad_mask_path = root / "bad_mask.png"
+            good_mask_path = root / "good_mask.png"
+            Image.new("RGB", (2, 2), (255, 255, 255)).save(image_path)
+            bad_mask_path.write_bytes(b"not-a-real-png")
+            Image.new("L", (2, 2), 1).save(good_mask_path)
+            dataset = TissueSegmentationDataset(
+                [
+                    SampleRecord(image_path, bad_mask_path, "bad"),
+                    SampleRecord(image_path, good_mask_path, "good"),
+                ],
+                image_size=2,
+                num_classes=3,
+                mask_remap="coarse",
+            )
+
+            with self.assertWarns(RuntimeWarning):
+                _, metadata = compute_class_weights(dataset, num_classes=3, mode="none", remap_invalid_to=255)
+
+            self.assertEqual(metadata["pixel_counts"], [0, 4, 0])
+            self.assertEqual(metadata["skipped_unreadable_samples"], ["bad"])
 
     def test_losses_and_metrics_ignore_partial_label_pixels(self):
         logits = torch.zeros(1, 2, 1, 2)

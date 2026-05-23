@@ -88,7 +88,7 @@ def install_flux_ip_adapter_attention(
     hidden_dim: int = 3072,
     cross_attention_dim: int = 3072,
     num_tokens: int = 16,
-    scale: float = 0.1,
+    scale: float = 1.0,
 ) -> None:
     """Install IP-Adapter attention processors on all double-stream blocks."""
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
@@ -98,12 +98,6 @@ def install_flux_ip_adapter_attention(
         image_embed_dim=cross_attention_dim,
         cross_attention_dim=cross_attention_dim,
     )
-    with torch.no_grad():
-        ff_net = raw_proj.ff.net
-        linear2 = ff_net[-1]
-        linear2.weight.zero_()
-        if linear2.bias is not None:
-            linear2.bias.zero_()
     transformer.encoder_hid_proj = IPAdapterListProjection(raw_proj)
 
     for block in transformer.transformer_blocks:
@@ -113,16 +107,18 @@ def install_flux_ip_adapter_attention(
             num_tokens=(num_tokens,),
             scale=[scale],
         )
-        with torch.no_grad():
-            for linear in processor.to_k_ip:
-                linear.weight.zero_()
-                if linear.bias is not None:
-                    linear.bias.zero_()
-            for linear in processor.to_v_ip:
-                linear.weight.zero_()
-                if linear.bias is not None:
-                    linear.bias.zero_()
+        for linear in processor.to_k_ip:
+            _init_ip_adapter_linear(linear)
+        for linear in processor.to_v_ip:
+            _init_ip_adapter_linear(linear)
         block.attn.set_processor(processor)
+
+
+def _init_ip_adapter_linear(linear: nn.Linear) -> None:
+    """Initialize IP K/V projections so reference content can affect attention from step 0."""
+    nn.init.xavier_uniform_(linear.weight)
+    if linear.bias is not None:
+        nn.init.zeros_(linear.bias)
 
 
 def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str, nn.Module]:

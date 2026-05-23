@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 import random
 from collections import Counter
+import warnings
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -24,8 +25,18 @@ def normalize_image_tensor(image: torch.Tensor) -> torch.Tensor:
     return TF.normalize(image, IMAGENET_MEAN, IMAGENET_STD)
 
 
+def _open_image(path: Path, mode: str) -> Image.Image:
+    try:
+        with Image.open(path) as image:
+            loaded = image.convert(mode)
+            loaded.load()
+            return loaded
+    except (OSError, UnidentifiedImageError) as exc:
+        raise OSError(f"failed to load image file {path}: {exc}") from exc
+
+
 def load_mask(path: Path) -> torch.Tensor:
-    mask = Image.open(path).convert("L")
+    mask = _open_image(path, "L")
     return torch.from_numpy(np.array(mask, dtype=np.int64))
 
 
@@ -97,9 +108,27 @@ class TissueSegmentationDataset(Dataset):
         return len(self.records)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor | str]:
-        record = self.records[idx]
-        image = Image.open(record.image_path).convert("RGB")
-        mask = Image.open(record.mask_path).convert("L")
+        if not self.records:
+            raise IndexError("TissueSegmentationDataset is empty")
+
+        start_idx = idx % len(self.records)
+        last_error: Exception | None = None
+        for offset in range(len(self.records)):
+            record = self.records[(start_idx + offset) % len(self.records)]
+            try:
+                return self._load_item(record)
+            except OSError as exc:
+                last_error = exc
+                warnings.warn(
+                    f"Skipping unreadable segmentator sample {record.sample_id}: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+        raise RuntimeError("no readable segmentator samples remain") from last_error
+
+    def _load_item(self, record: SampleRecord) -> dict[str, torch.Tensor | str]:
+        image = _open_image(record.image_path, "RGB")
+        mask = _open_image(record.mask_path, "L")
 
         if self.augment and random.random() < 0.5:
             image = TF.hflip(image)
