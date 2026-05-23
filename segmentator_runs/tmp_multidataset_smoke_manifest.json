@@ -1,0 +1,231 @@
+{
+  "dataset_root": "D:\\WQX\\datasets",
+  "seed": 42,
+  "strategy": "per-dataset split; use --balanced-datasets during training for equal dataset sampling",
+  "datasets": [
+    "bcss",
+    "ignite",
+    "glas",
+    "puma"
+  ],
+  "val_fraction": 0.1,
+  "max_per_dataset": 5,
+  "summary": {
+    "bcss": {
+      "total": 5,
+      "train": 4,
+      "val": 1
+    },
+    "ignite": {
+      "total": 5,
+      "train": 4,
+      "val": 1
+    },
+    "glas": {
+      "total": 5,
+      "train": 4,
+      "val": 1
+    },
+    "puma": {
+      "total": 5,
+      "train": 4,
+      "val": 1
+    }
+  },
+  "train_counts": {
+    "bcss": 4,
+    "glas": 4,
+    "ignite": 4,
+    "puma": 4
+  },
+  "val_counts": {
+    "bcss": 1,
+    "glas": 1,
+    "ignite": 1,
+    "puma": 1
+  },
+  "train": [
+    {
+      "dataset_id": "ignite",
+      "dataset_root": "D:\\WQX\\datasets\\IGNITE_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "patient10_he_roi1_py1024_px1024.png",
+      "mask": "patient10_he_roi1_py1024_px1024.png",
+      "sample_id": "ignite:patient10_he_roi1_py1024_px1024"
+    },
+    {
+      "dataset_id": "bcss",
+      "dataset_root": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "TCGA-A1-A0SK_x45749_y25055_py0_px1280.png",
+      "mask": "TCGA-A1-A0SK_x45749_y25055_py0_px1280.png",
+      "sample_id": "bcss:TCGA-A1-A0SK_x45749_y25055_py0_px1280"
+    },
+    {
+      "dataset_id": "puma",
+      "dataset_root": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "training_set_metastatic_roi_001_py256_px0.png",
+      "mask": "training_set_metastatic_roi_001_py256_px0.png",
+      "sample_id": "puma:training_set_metastatic_roi_001_py256_px0"
+    },
+    {
+      "dataset_id": "puma",
+      "dataset_root": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "training_set_metastatic_roi_001_py0_px512.png",
+      "mask": "training_set_metastatic_roi_001_py0_px512.png",
+      "sample_id": "puma:training_set_metastatic_roi_001_py0_px512"
+    },
+    {
+      "dataset_id": "bcss",
+      "dataset_root": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "TCGA-A1-A0SK_x45749_y25055_py0_px1792.png",
+      "mask": "TCGA-A1-A0SK_x45749_y25055_py0_px1792.png",
+      "sample_id": "bcss:TCGA-A1-A0SK_x45749_y25055_py0_px1792"
+    },
+    {
+      "dataset_id": "ignite",
+      "dataset_root": "D:\\WQX\\datasets\\IGNITE_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "patient10_he_roi1_py1024_px1536.png",
+      "mask": "patient10_he_roi1_py1024_px1536.png",
+      "sample_id": "ignite:patient10_he_roi1_py1024_px1536"
+    },
+    {
+      "dataset_id": "puma",
+      "dataset_root": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "training_set_metastatic_roi_001_py0_px0.png",
+      "mask": "training_set_metastatic_roi_001_py0_px0.png",
+      "sample_id": "puma:training_set_metastatic_roi_001_py0_px0"
+    },
+    {
+      "dataset_id": "glas",
+      "dataset_root": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "testA_10_py0_px0.png",
+      "mask": "testA_10_py0_px0.png",
+      "sample_id": "glas:testA_10_py0_px0"
+    },
+    {
+      "dataset_id": "ignite",
+      "dataset_root": "D:\\WQX\\datasets\\IGNITE_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "patient10_he_roi1_py1024_px2048.png",
+      "mask": "patient10_he_roi1_py1024_px2048.png",
+      "sample_id": "ignite:patient10_he_roi1_py1024_px2048"
+    },
+    {
+      "dataset_id": "glas",
+      "dataset_root": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "testA_10_py0_px768.png",
+      "mask": "testA_10_py0_px768.png",
+      "sample_id": "glas:testA_10_py0_px768"
+    },
+    {
+      "dataset_id": "bcss",
+      "dataset_root": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "TCGA-A1-A0SK_x45749_y25055_py0_px0.png",
+      "mask": "TCGA-A1-A0SK_x45749_y25055_py0_px0.png",
+      "sample_id": "bcss:TCGA-A1-A0SK_x45749_y25055_py0_px0"
+    },
+    {
+      "dataset_id": "puma",
+      "dataset_root": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "training_set_metastatic_roi_001_py256_px256.png",
+      "mask": "training_set_metastatic_roi_001_py256_px256.png",
+      "sample_id": "puma:training_set_metastatic_roi_001_py256_px256"
+    },
+    {
+      "dataset_id": "bcss",
+      "dataset_root": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "TCGA-A1-A0SK_x45749_y25055_py0_px1024.png",
+      "mask": "TCGA-A1-A0SK_x45749_y25055_py0_px1024.png",
+      "sample_id": "bcss:TCGA-A1-A0SK_x45749_y25055_py0_px1024"
+    },
+    {
+      "dataset_id": "glas",
+      "dataset_root": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "testA_10_py0_px256.png",
+      "mask": "testA_10_py0_px256.png",
+      "sample_id": "glas:testA_10_py0_px256"
+    },
+    {
+      "dataset_id": "glas",
+      "dataset_root": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "testA_10_py0_px1024.png",
+      "mask": "testA_10_py0_px1024.png",
+      "sample_id": "glas:testA_10_py0_px1024"
+    },
+    {
+      "dataset_id": "ignite",
+      "dataset_root": "D:\\WQX\\datasets\\IGNITE_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "patient10_he_roi1_py1024_px1280.png",
+      "mask": "patient10_he_roi1_py1024_px1280.png",
+      "sample_id": "ignite:patient10_he_roi1_py1024_px1280"
+    }
+  ],
+  "val": [
+    {
+      "dataset_id": "puma",
+      "dataset_root": "D:\\WQX\\datasets\\PUMA\\PUMA_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "training_set_metastatic_roi_001_py0_px256.png",
+      "mask": "training_set_metastatic_roi_001_py0_px256.png",
+      "sample_id": "puma:training_set_metastatic_roi_001_py0_px256"
+    },
+    {
+      "dataset_id": "bcss",
+      "dataset_root": "D:\\WQX\\datasets\\BCSS\\BCSS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "TCGA-A1-A0SK_x45749_y25055_py0_px1536.png",
+      "mask": "TCGA-A1-A0SK_x45749_y25055_py0_px1536.png",
+      "sample_id": "bcss:TCGA-A1-A0SK_x45749_y25055_py0_px1536"
+    },
+    {
+      "dataset_id": "ignite",
+      "dataset_root": "D:\\WQX\\datasets\\IGNITE_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "patient10_he_roi1_py1024_px1792.png",
+      "mask": "patient10_he_roi1_py1024_px1792.png",
+      "sample_id": "ignite:patient10_he_roi1_py1024_px1792"
+    },
+    {
+      "dataset_id": "glas",
+      "dataset_root": "D:\\WQX\\datasets\\GLAS\\GlaS_PATCHES",
+      "images_dir": "images",
+      "masks_dir": "tissue_masks",
+      "image": "testA_10_py0_px512.png",
+      "mask": "testA_10_py0_px512.png",
+      "sample_id": "glas:testA_10_py0_px512"
+    }
+  ]
+}

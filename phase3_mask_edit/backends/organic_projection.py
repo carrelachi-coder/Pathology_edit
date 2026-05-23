@@ -138,6 +138,19 @@ def apply_organic_projected_label_write(
             )
         )
         target_pixels = min(target_pixels, max(remaining_allowed, 0))
+    if primitive_name == "stromal_desmoplasia":
+        target_pixels = min(
+            target_pixels,
+            _stromal_desmoplasia_feasible_target_pixels(
+                mask,
+                schema=schema,
+                legal_domain=legal_domain,
+                max_immune_fraction=float(
+                    policy.policy_params.get("max_immune_fraction_of_delta", 0.30)
+                ),
+            ),
+        )
+        target_pixels = min(target_pixels, legal_pixels)
     selected_target_pixels = min(target_pixels, legal_pixels)
 
     if legal_pixels == 0 or selected_target_pixels == 0:
@@ -2291,6 +2304,24 @@ def _stromal_desmoplasia_policy(
         },
         legal_domain=legal,
     )
+
+
+def _stromal_desmoplasia_feasible_target_pixels(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    legal_domain: np.ndarray,
+    max_immune_fraction: float,
+) -> int:
+    immune = _safe_label_mask(mask, schema, "Immune infiltrate") & legal_domain
+    immune_pixels = int(np.count_nonzero(immune))
+    non_immune_pixels = int(np.count_nonzero(legal_domain & ~immune))
+    if max_immune_fraction <= 0:
+        return non_immune_pixels
+    if max_immune_fraction >= 1:
+        return non_immune_pixels + immune_pixels
+    feasible_total_by_ratio = int(np.floor(non_immune_pixels / (1.0 - max_immune_fraction)))
+    return max(0, min(non_immune_pixels + immune_pixels, feasible_total_by_ratio))
 
 
 def _generic_policy(

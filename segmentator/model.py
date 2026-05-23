@@ -128,6 +128,36 @@ class UPerLikeDecoder(nn.Module):
         return self.fuse(torch.cat(fused, dim=1))
 
 
+class SimpleFeaturePyramid(nn.Module):
+    """Build ViTDet-style multi-scale features from a single patch-token map."""
+
+    def __init__(self, in_channels: int = 1536, out_channels: int = 1536) -> None:
+        super().__init__()
+        self.out_channels = (out_channels, out_channels, out_channels, out_channels)
+        self.stages = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=4),
+                    nn.GroupNorm(32, out_channels),
+                    nn.GELU(),
+                ),
+                nn.Sequential(
+                    nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2),
+                    nn.GroupNorm(32, out_channels),
+                    nn.GELU(),
+                ),
+                nn.Identity(),
+                nn.MaxPool2d(kernel_size=2, stride=2),
+            ]
+        )
+
+    def forward(self, feats: list[torch.Tensor]) -> list[torch.Tensor]:
+        if not feats:
+            raise RuntimeError("SimpleFeaturePyramid requires at least one feature map")
+        base = feats[-1]
+        return [stage(base) for stage in self.stages]
+
+
 class OfficialMask2FormerDecoder(nn.Module):
     """Thin wrapper around MMSegmentation's official Mask2FormerHead."""
 
@@ -136,7 +166,7 @@ class OfficialMask2FormerDecoder(nn.Module):
         feature_channels: tuple[int, int, int, int],
         num_classes: int,
         num_queries: int = 100,
-        feature_strides: tuple[int, int, int, int] = (14, 14, 14, 14),
+        feature_strides: tuple[int, int, int, int] = (4, 8, 16, 32),
         ignore_index: int = 255,
     ) -> None:
         super().__init__()
@@ -195,7 +225,7 @@ class OfficialMask2FormerDecoder(nn.Module):
                     positional_encoding=dict(num_feats=128, normalize=True),
                     init_cfg=None,
                 ),
-                enforce_decoder_input_project=False,
+                enforce_decoder_input_project=True,
                 positional_encoding=dict(num_feats=128, normalize=True),
                 transformer_decoder=dict(
                     return_intermediate=True,
@@ -279,7 +309,7 @@ class OfficialMask2FormerDecoder(nn.Module):
             }
             for _ in range(batch_size)
         ]
-        results = self.head.predict(tuple(feats), batch_img_metas, test_cfg=dict())
+        results = self.head.predict(tuple(feats), batch_img_metas, test_cfg=dict(mode="whole"))
         if torch.is_tensor(results):
             return results
         logits = []
@@ -342,10 +372,12 @@ class BaselineSegmenter(nn.Module):
         self.decoder_name = decoder
         self.encoder = Uni2hFeatureEncoder(local_repo=local_repo, freeze=freeze_encoder)
         if decoder == "upernet":
+            self.feature_pyramid = None
             self.decoder = UPerLikeDecoder((1536, 1536, 1536, 1536), num_classes)
         elif decoder == "mask2former":
+            self.feature_pyramid = SimpleFeaturePyramid(1536, 1536)
             self.decoder = OfficialMask2FormerDecoder(
-                (1536, 1536, 1536, 1536),
+                self.feature_pyramid.out_channels,
                 num_classes,
                 num_queries=mask2former_queries,
                 ignore_index=mask2former_ignore_index,
@@ -360,6 +392,8 @@ class BaselineSegmenter(nn.Module):
         if pad_h or pad_w:
             x = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
         feats = self.encoder(x)
+        if self.feature_pyramid is not None:
+            feats = self.feature_pyramid(feats)
         if len(feats) != 4:
             raise RuntimeError(f"expected 4 feature maps from UNI2-h, got {len(feats)}")
         for feat in feats:
@@ -381,21 +415,26 @@ class BaselineSegmenter(nn.Module):
         input_size = x.shape[-2:]
         pad_h = (14 - x.shape[-2] % 14) % 14
         pad_w = (14 - x.shape[-1] % 14) % 14
+        ignore_index = self.decoder.ignore_index if isinstance(self.decoder, OfficialMask2FormerDecoder) else 255
         if pad_h or pad_w:
             x = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
-            pad_value = self.decoder.ignore_index if isinstance(self.decoder, OfficialMask2FormerDecoder) else 0
-            target = F.pad(target[:, None].float(), (0, pad_w, 0, pad_h), mode="constant", value=pad_value).squeeze(1).long()
+            target = F.pad(target[:, None].long(), (0, pad_w, 0, pad_h), mode="constant", value=ignore_index).squeeze(1)
         feats = self.encoder(x)
+        if self.feature_pyramid is not None:
+            feats = self.feature_pyramid(feats)
         if hasattr(self.decoder, "loss"):
             target = target.clone()
-            invalid = (target < 0) | (target >= self.num_classes)
+            invalid = ((target < 0) | (target >= self.num_classes)) & (target != ignore_index)
             target[invalid] = self.decoder.ignore_index
             losses = self.decoder.loss(feats, target, x.shape[-2:])
             total = sum(value for value in losses.values() if torch.is_tensor(value))
             losses = dict(losses)
             losses["total"] = total
             return losses
-        outputs = self.forward(x[..., : input_size[0], : input_size[1]])
+        logits = self.decoder(feats)
+        if logits.shape[-2:] != x.shape[-2:]:
+            logits = F.interpolate(logits, size=x.shape[-2:], mode="bilinear", align_corners=False)
+        logits = logits[..., : input_size[0], : input_size[1]]
         from .losses import segmentation_loss
 
-        return segmentation_loss(outputs["logits"], target[..., : input_size[0], : input_size[1]], self.num_classes)
+        return segmentation_loss(logits, target[..., : input_size[0], : input_size[1]], self.num_classes, invalid_to=ignore_index)

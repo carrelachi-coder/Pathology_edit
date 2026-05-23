@@ -8,11 +8,11 @@ import time
 import numpy as np
 from PIL import Image
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm.auto import tqdm
 
 from .config import BaselineConfig
-from .data import TissueSegmentationDataset, build_manifest, load_manifest
+from .data import TissueSegmentationDataset, build_manifest, dataset_balanced_weights, load_manifest, remap_mask_to_coarse, coarse_remap_table
 from .losses import segmentation_loss
 from .metrics import segmentation_metrics
 from .model import BaselineSegmenter
@@ -26,18 +26,19 @@ def set_seed(seed: int) -> None:
 
 def compute_class_weights(dataset: TissueSegmentationDataset, num_classes: int, mode: str, remap_invalid_to: int) -> tuple[torch.Tensor | None, dict[str, object]]:
     counts = torch.zeros(num_classes, dtype=torch.float64)
-    remapped_pixels = 0
+    ignored_pixels = 0
     invalid_values: dict[int, int] = {}
+    table = coarse_remap_table(dataset.mask_remap, num_classes=num_classes, ignore_index=dataset.ignore_index)
     for record in dataset.records:
         mask = np.array(Image.open(record.mask_path).convert("L"), dtype=np.int64)
-        valid = (mask >= 0) & (mask < num_classes)
-        invalid_count = int((~valid).sum())
-        remapped_pixels += invalid_count
-        for value, count in zip(*np.unique(mask[~valid], return_counts=True)):
+        valid_raw = (mask >= 0) & (mask < table.numel())
+        invalid_raw = ~valid_raw
+        for value, count in zip(*np.unique(mask[invalid_raw], return_counts=True)):
             invalid_values[int(value)] = invalid_values.get(int(value), 0) + int(count)
-        mask = mask.copy()
-        mask[~valid] = remap_invalid_to
-        bincount = np.bincount(mask.reshape(-1), minlength=num_classes)
+        remapped = remap_mask_to_coarse(torch.from_numpy(mask), table, ignore_index=dataset.ignore_index).numpy()
+        valid = (remapped >= 0) & (remapped < num_classes)
+        ignored_pixels += int((~valid).sum())
+        bincount = np.bincount(remapped[valid].reshape(-1), minlength=num_classes)
         counts += torch.from_numpy(bincount).double()
 
     frequencies = counts / counts.sum().clamp_min(1.0)
@@ -46,7 +47,8 @@ def compute_class_weights(dataset: TissueSegmentationDataset, num_classes: int, 
         "pixel_counts": [int(v) for v in counts.tolist()],
         "frequencies": [float(v) for v in frequencies.tolist()],
         "remap_invalid_to": remap_invalid_to,
-        "remapped_pixels": remapped_pixels,
+        "ignore_index": dataset.ignore_index,
+        "ignored_pixels": ignored_pixels,
         "invalid_values": invalid_values,
     }
     if mode == "none":
@@ -102,6 +104,8 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         augment=True,
         num_classes=config.num_classes,
         remap_invalid_to=config.remap_invalid_to,
+        ignore_index=config.ignore_index,
+        mask_remap=config.mask_remap,
     )
     val_ds = TissueSegmentationDataset(
         list(manifest.val),
@@ -109,6 +113,8 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         augment=False,
         num_classes=config.num_classes,
         remap_invalid_to=config.remap_invalid_to,
+        ignore_index=config.ignore_index,
+        mask_remap=config.mask_remap,
     )
     class_weights, class_weight_metadata = compute_class_weights(
         train_ds,
@@ -116,7 +122,19 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         config.class_weighting,
         config.remap_invalid_to,
     )
-    train_loader = DataLoader(train_ds, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)
+    if config.decoder == "mask2former":
+        class_weight_metadata["effective_invalid_target"] = config.mask2former_ignore_index
+        class_weight_metadata["note"] = "Mask2Former masks invalid labels with ignore_index during target assignment; no-object query weight is separate."
+    train_sampler = None
+    train_shuffle = True
+    if config.balanced_datasets:
+        train_sampler = WeightedRandomSampler(
+            dataset_balanced_weights(train_ds.records),
+            num_samples=config.samples_per_epoch or len(train_ds),
+            replacement=True,
+        )
+        train_shuffle = False
+    train_loader = DataLoader(train_ds, batch_size=config.batch_size, shuffle=train_shuffle, sampler=train_sampler, num_workers=config.num_workers)
     val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -140,6 +158,10 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             {
                 "image_size": config.image_size,
                 "remap_invalid_to": config.remap_invalid_to,
+                "ignore_index": config.ignore_index,
+                "mask_remap": config.mask_remap,
+                "balanced_datasets": config.balanced_datasets,
+                "samples_per_epoch": config.samples_per_epoch,
                 "batch_size": config.batch_size,
                 "grad_accum_steps": config.grad_accum_steps,
                 "effective_batch_size": config.batch_size * config.grad_accum_steps,
@@ -153,6 +175,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 "decoder": config.decoder,
                 "mask2former_queries": config.mask2former_queries,
                 "mask2former_ignore_index": config.mask2former_ignore_index,
+                "effective_invalid_target": config.mask2former_ignore_index if config.decoder == "mask2former" else config.ignore_index,
                 "class_weighting": config.class_weighting,
                 "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
                 "export_val_predictions": config.export_val_predictions,
@@ -192,7 +215,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                         mask,
                         config.num_classes,
                         class_weights=class_weights_device,
-                        invalid_to=config.remap_invalid_to,
+                        invalid_to=config.ignore_index,
                     )
                 loss = losses["total"] / config.grad_accum_steps
             scaler.scale(loss).backward()
@@ -236,6 +259,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             config.num_classes,
             class_names=manifest.classes,
             boundary_width=config.boundary_width,
+            ignore_index=config.ignore_index,
         )
         history.append({k: v for k, v in metrics.items() if isinstance(v, float)})
         if float(metrics["mIoU"]) > best_miou:

@@ -9,8 +9,10 @@ import torch
 from torch import nn
 
 from segmentator.config import SEGMENTATOR_CLASSES, SampleRecord
-from segmentator.data import IMAGENET_MEAN, IMAGENET_STD, TissueSegmentationDataset
-from segmentator.model import UPerLikeDecoder, Uni2hFeatureEncoder
+from segmentator.data import IMAGENET_MEAN, IMAGENET_STD, TissueSegmentationDataset, dataset_balanced_weights
+from segmentator.losses import segmentation_loss
+from segmentator.metrics import segmentation_metrics
+from segmentator.model import SimpleFeaturePyramid, UPerLikeDecoder, Uni2hFeatureEncoder
 
 
 class SegmentatorDataTests(unittest.TestCase):
@@ -38,6 +40,46 @@ class SegmentatorDataTests(unittest.TestCase):
             self.assertIsInstance(image, torch.Tensor)
             self.assertTrue(torch.allclose(image[:, 0, 0], torch.tensor([(1.0 - m) / s for m, s in zip(IMAGENET_MEAN, IMAGENET_STD)])))
             self.assertFalse(math.isclose(float(image.max()), 1.0))
+
+    def test_dataset_remaps_fine_labels_to_coarse_and_ignores_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image_path = root / "sample.png"
+            mask_path = root / "sample_mask.png"
+            Image.new("RGB", (3, 1), (255, 255, 255)).save(image_path)
+            Image.fromarray(torch.tensor([[8, 14, 99]], dtype=torch.uint8).numpy(), mode="L").save(mask_path)
+
+            dataset = TissueSegmentationDataset(
+                [SampleRecord(image_path=image_path, mask_path=mask_path, sample_id="sample", dataset_id="panda")],
+                image_size=3,
+                ignore_index=255,
+            )
+
+            mask = dataset[0]["mask"]
+
+            self.assertEqual(mask.tolist(), [[1, 1, 255]])
+
+    def test_losses_and_metrics_ignore_partial_label_pixels(self):
+        logits = torch.zeros(1, 2, 1, 2)
+        target = torch.tensor([[[1, 255]]])
+
+        losses = segmentation_loss(logits, target, num_classes=2, invalid_to=255)
+        metrics = segmentation_metrics(torch.tensor([[[1, 0]]]), target, num_classes=2, ignore_index=255)
+
+        self.assertTrue(torch.isfinite(losses["total"]))
+        self.assertEqual(metrics["per_class"]["class_1"]["support_pixels"], 1)
+
+    def test_dataset_balanced_weights_equalize_dataset_sampling(self):
+        root = Path("unused")
+        records = [
+            SampleRecord(root / "a.png", root / "a.png", "a", dataset_id="big"),
+            SampleRecord(root / "b.png", root / "b.png", "b", dataset_id="big"),
+            SampleRecord(root / "c.png", root / "c.png", "c", dataset_id="small"),
+        ]
+
+        weights = dataset_balanced_weights(records)
+
+        self.assertEqual(weights.tolist(), [0.5, 0.5, 1.0])
 
 
 class _FakeUniBackbone(nn.Module):
@@ -77,6 +119,17 @@ class SegmentatorModelTests(unittest.TestCase):
             logits = decoder(feats)
 
         self.assertEqual(tuple(logits.shape), (2, 3, 8, 8))
+
+    def test_simple_feature_pyramid_builds_multiscale_vit_features(self):
+        pyramid = SimpleFeaturePyramid(in_channels=32, out_channels=32)
+        pyramid.eval()
+        feats = [torch.randn(2, 32, 16, 16) for _ in range(4)]
+
+        with torch.no_grad():
+            outputs = pyramid(feats)
+
+        self.assertEqual([tuple(x.shape[-2:]) for x in outputs], [(64, 64), (32, 32), (16, 16), (8, 8)])
+        self.assertEqual([x.shape[1] for x in outputs], [32, 32, 32, 32])
 
 
 if __name__ == "__main__":

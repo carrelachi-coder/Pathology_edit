@@ -15,6 +15,7 @@ class SampleRecord:
     image_path: Path
     mask_path: Path
     sample_id: str
+    dataset_id: str = "default"
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,10 @@ class BaselineConfig:
     image_size: int = 512
     num_classes: int = 8
     remap_invalid_to: int = 7
+    ignore_index: int = 255
+    mask_remap: str = "auto"
+    balanced_datasets: bool = False
+    samples_per_epoch: int | None = None
     batch_size: int = 2
     grad_accum_steps: int = 1
     num_workers: int = 0

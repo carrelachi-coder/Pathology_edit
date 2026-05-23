@@ -23,6 +23,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--grad-accum-steps", type=int, default=1)
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--remap-invalid-to", type=int, default=7)
+    parser.add_argument("--ignore-index", type=int, default=255)
+    parser.add_argument("--mask-remap", choices=["auto", "fine_to_coarse", "coarse", "ignore_invalid"], default="auto")
+    parser.add_argument("--balanced-datasets", action="store_true")
+    parser.add_argument("--samples-per-epoch", type=int, default=None)
     parser.add_argument("--train-split", type=int, default=1000)
     parser.add_argument("--val-split", type=int, default=200)
     parser.add_argument("--manifest", type=Path, default=None, help="Optional fixed split manifest JSON.")
@@ -44,6 +48,10 @@ def main(argv: list[str] | None = None) -> int:
     config = BaselineConfig(
         image_size=args.image_size,
         remap_invalid_to=args.remap_invalid_to,
+        ignore_index=args.ignore_index,
+        mask_remap=args.mask_remap,
+        balanced_datasets=args.balanced_datasets,
+        samples_per_epoch=args.samples_per_epoch,
         batch_size=args.batch_size,
         grad_accum_steps=args.grad_accum_steps,
         epochs=args.epochs,

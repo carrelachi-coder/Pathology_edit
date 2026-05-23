@@ -194,7 +194,12 @@ def _check_change_area_range(
         and schema is not None
     ):
         return _check_stromal_desmoplasia_stroma_relative_change_area(
-            src_mask, change_region, schema, ranges, strength=strength
+            src_mask,
+            change_region,
+            schema,
+            ranges,
+            strength=strength,
+            execution_log=execution_log,
         )
     if (
         primitive_config.get("name") in {"stroma_decrease", "stromal_reduction"}
@@ -540,6 +545,7 @@ def _check_stromal_desmoplasia_stroma_relative_change_area(
     ranges: Mapping[str, Any],
     *,
     strength: str = "mild",
+    execution_log: Mapping[str, Any] | None = None,
 ) -> ValidationCheck:
     if "Stroma" not in schema.readable_labels:
         return ValidationCheck(
@@ -576,6 +582,22 @@ def _check_stromal_desmoplasia_stroma_relative_change_area(
     effective_min_pixels = max(int(np.ceil(stroma_pixels * min_fraction)), min_pixels)
     effective_min_fraction = effective_min_pixels / stroma_pixels
     effective_max_fraction = max(max_fraction, effective_min_fraction)
+    if isinstance(execution_log, Mapping):
+        legal_pixels = execution_log.get("legal_domain_pixels")
+        projected_pixels = execution_log.get("projected_pixels")
+        if (
+            isinstance(legal_pixels, int)
+            and isinstance(projected_pixels, int)
+            and 0 < legal_pixels < effective_min_pixels
+            and changed_pixels >= max(1, int(0.90 * legal_pixels))
+        ):
+            return ValidationCheck(
+                "change_area_within_range",
+                True,
+                "accepted source-limited desmoplasia edit: "
+                f"changed_pixels={changed_pixels}, legal_domain_pixels={legal_pixels}, "
+                f"configured_min_pixels={effective_min_pixels}.",
+            )
 
     if effective_min_fraction <= changed_stroma_fraction <= effective_max_fraction:
         return ValidationCheck(

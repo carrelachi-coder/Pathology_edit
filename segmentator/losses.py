@@ -4,9 +4,7 @@ import torch
 import torch.nn.functional as F
 
 
-def sanitize_target(target: torch.Tensor, num_classes: int, invalid_to: int = 7) -> torch.Tensor:
-    if invalid_to < 0 or invalid_to >= num_classes:
-        raise ValueError(f"invalid_to must be in [0, {num_classes - 1}], got {invalid_to}")
+def sanitize_target(target: torch.Tensor, num_classes: int, invalid_to: int = 255) -> torch.Tensor:
     target = target.long()
     invalid = (target < 0) | (target >= num_classes)
     if invalid.any():
@@ -25,7 +23,12 @@ def dice_loss(
 ) -> torch.Tensor:
     probs = logits.softmax(dim=1)
     target = sanitize_target(target, num_classes=num_classes, invalid_to=invalid_to)
-    target_1h = F.one_hot(target.long(), num_classes=num_classes).permute(0, 3, 1, 2).float()
+    valid = (target >= 0) & (target < num_classes)
+    safe_target = target.clamp(0, num_classes - 1)
+    target_1h = F.one_hot(safe_target.long(), num_classes=num_classes).permute(0, 3, 1, 2).float()
+    valid_f = valid.unsqueeze(1).to(dtype=target_1h.dtype)
+    probs = probs * valid_f
+    target_1h = target_1h * valid_f
     dims = (0, 2, 3)
     intersect = (probs * target_1h).sum(dims)
     denom = probs.sum(dims) + target_1h.sum(dims)
@@ -45,7 +48,7 @@ def segmentation_loss(
     invalid_to: int = 7,
 ) -> dict[str, torch.Tensor]:
     target = sanitize_target(target, num_classes=num_classes, invalid_to=invalid_to)
-    ce = F.cross_entropy(logits, target.long(), weight=class_weights)
+    ce = F.cross_entropy(logits, target.long(), weight=class_weights, ignore_index=invalid_to)
     dice = dice_loss(logits, target, num_classes=num_classes, class_weights=class_weights, invalid_to=invalid_to)
     total = ce + dice
     return {"total": total, "ce": ce, "dice": dice}
