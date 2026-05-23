@@ -90,7 +90,7 @@ class _FakeUniBackbone(nn.Module):
     def get_intermediate_layers(self, x, *, n, reshape):
         self.requested_n = n
         self.requested_reshape = reshape
-        return [torch.zeros(x.shape[0], 1536, 2, 2) for _ in range(4)]
+        return [torch.zeros(x.shape[0], 1536, 2, 2) for _ in n]
 
 
 class SegmentatorModelTests(unittest.TestCase):
@@ -104,6 +104,16 @@ class SegmentatorModelTests(unittest.TestCase):
         self.assertEqual(fake_backbone.requested_n, [5, 11, 17, 23])
         self.assertTrue(fake_backbone.requested_reshape)
         self.assertEqual(len(features), 4)
+
+    def test_uni2h_encoder_can_request_single_intermediate_layer(self):
+        fake_backbone = _FakeUniBackbone()
+        with patch("segmentator.model._load_uni2h_model", return_value=fake_backbone):
+            encoder = Uni2hFeatureEncoder(local_repo="unused", intermediate_layers=(23,))
+
+        features = encoder(torch.zeros(1, 3, 28, 28))
+
+        self.assertEqual(fake_backbone.requested_n, [23])
+        self.assertEqual(len(features), 1)
 
     def test_uper_decoder_normalizes_channel_last_features(self):
         decoder = UPerLikeDecoder((4, 4, 4, 4), num_classes=3)
@@ -120,7 +130,7 @@ class SegmentatorModelTests(unittest.TestCase):
 
         self.assertEqual(tuple(logits.shape), (2, 3, 8, 8))
 
-    def test_simple_feature_pyramid_builds_multiscale_vit_features(self):
+    def test_simple_feature_pyramid_builds_patch14_compatible_features(self):
         pyramid = SimpleFeaturePyramid(in_channels=32, out_channels=32)
         pyramid.eval()
         feats = [torch.randn(2, 32, 16, 16) for _ in range(4)]
@@ -128,7 +138,8 @@ class SegmentatorModelTests(unittest.TestCase):
         with torch.no_grad():
             outputs = pyramid(feats)
 
-        self.assertEqual([tuple(x.shape[-2:]) for x in outputs], [(64, 64), (32, 32), (16, 16), (8, 8)])
+        self.assertEqual(pyramid.strides, (7, 14, 28, 56))
+        self.assertEqual([tuple(x.shape[-2:]) for x in outputs], [(32, 32), (16, 16), (8, 8), (4, 4)])
         self.assertEqual([x.shape[1] for x in outputs], [32, 32, 32, 32])
 
 

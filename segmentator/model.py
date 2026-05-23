@@ -59,18 +59,25 @@ def _load_uni2h_model(local_repo: str | Path, checkpoint_name: str = "pytorch_mo
 
 
 class Uni2hFeatureEncoder(nn.Module):
-    def __init__(self, local_repo: str | Path, checkpoint_name: str = "pytorch_model.bin", freeze: bool = True) -> None:
+    def __init__(
+        self,
+        local_repo: str | Path,
+        checkpoint_name: str = "pytorch_model.bin",
+        freeze: bool = True,
+        intermediate_layers: tuple[int, ...] = (5, 11, 17, 23),
+    ) -> None:
         super().__init__()
         self.backbone = _load_uni2h_model(local_repo, checkpoint_name=checkpoint_name)
         self.freeze = freeze
+        self.intermediate_layers = intermediate_layers
         if freeze:
             for p in self.backbone.parameters():
                 p.requires_grad = False
-        self.feature_channels = (1536, 1536, 1536, 1536)
+        self.feature_channels = tuple(1536 for _ in intermediate_layers)
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
         if hasattr(self.backbone, "get_intermediate_layers"):
-            kwargs: dict[str, Any] = {"n": [5, 11, 17, 23], "reshape": True}
+            kwargs: dict[str, Any] = {"n": list(self.intermediate_layers), "reshape": True}
             signature = inspect.signature(self.backbone.get_intermediate_layers)
             if "return_class_token" in signature.parameters:
                 kwargs["return_class_token"] = False
@@ -79,14 +86,14 @@ class Uni2hFeatureEncoder(nn.Module):
             features = self.backbone.get_intermediate_layers(x, **kwargs)
             if isinstance(features, tuple):
                 features = list(features)
-            if len(features) == 4:
+            if len(features) == len(self.intermediate_layers):
                 return list(features)
 
         if hasattr(self.backbone, "forward_features"):
             features = self.backbone.forward_features(x)
-            if isinstance(features, (list, tuple)) and len(features) == 4:
+            if isinstance(features, (list, tuple)) and len(features) >= len(self.intermediate_layers):
                 maps: list[torch.Tensor] = []
-                for feat in features:
+                for feat in features[-len(self.intermediate_layers) :]:
                     if feat.ndim == 3:
                         feat = feat[:, 1:, :]
                         b, n, c = feat.shape
@@ -100,7 +107,7 @@ class Uni2hFeatureEncoder(nn.Module):
         feat = self.backbone(x)
         if feat.ndim == 2:
             feat = feat[:, :, None, None]
-        return [feat, feat, feat, feat]
+        return [feat for _ in self.intermediate_layers]
 
 
 class UPerLikeDecoder(nn.Module):
@@ -129,25 +136,36 @@ class UPerLikeDecoder(nn.Module):
 
 
 class SimpleFeaturePyramid(nn.Module):
-    """Build ViTDet-style multi-scale features from a single patch-token map."""
+    """Build patch14-compatible multi-scale features from a single ViT map."""
 
-    def __init__(self, in_channels: int = 1536, out_channels: int = 1536) -> None:
+    def __init__(self, in_channels: int = 1536, out_channels: int = 256) -> None:
         super().__init__()
         self.out_channels = (out_channels, out_channels, out_channels, out_channels)
+        self.strides = (7, 14, 28, 56)
         self.stages = nn.ModuleList(
             [
-                nn.Sequential(
-                    nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=4),
-                    nn.GroupNorm(32, out_channels),
-                    nn.GELU(),
-                ),
                 nn.Sequential(
                     nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2),
                     nn.GroupNorm(32, out_channels),
                     nn.GELU(),
                 ),
-                nn.Identity(),
-                nn.MaxPool2d(kernel_size=2, stride=2),
+                nn.Sequential(
+                    nn.Conv2d(in_channels, out_channels, kernel_size=1),
+                    nn.GroupNorm(32, out_channels),
+                    nn.GELU(),
+                ),
+                nn.Sequential(
+                    nn.MaxPool2d(kernel_size=2, stride=2),
+                    nn.Conv2d(in_channels, out_channels, kernel_size=1),
+                    nn.GroupNorm(32, out_channels),
+                    nn.GELU(),
+                ),
+                nn.Sequential(
+                    nn.MaxPool2d(kernel_size=4, stride=4),
+                    nn.Conv2d(in_channels, out_channels, kernel_size=1),
+                    nn.GroupNorm(32, out_channels),
+                    nn.GELU(),
+                ),
             ]
         )
 
@@ -166,7 +184,7 @@ class OfficialMask2FormerDecoder(nn.Module):
         feature_channels: tuple[int, int, int, int],
         num_classes: int,
         num_queries: int = 100,
-        feature_strides: tuple[int, int, int, int] = (4, 8, 16, 32),
+        feature_strides: tuple[int, int, int, int] = (7, 14, 28, 56),
         ignore_index: int = 255,
     ) -> None:
         super().__init__()
@@ -225,7 +243,7 @@ class OfficialMask2FormerDecoder(nn.Module):
                     positional_encoding=dict(num_feats=128, normalize=True),
                     init_cfg=None,
                 ),
-                enforce_decoder_input_project=True,
+                enforce_decoder_input_project=False,
                 positional_encoding=dict(num_feats=128, normalize=True),
                 transformer_decoder=dict(
                     return_intermediate=True,
@@ -370,25 +388,31 @@ class BaselineSegmenter(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.decoder_name = decoder
-        self.encoder = Uni2hFeatureEncoder(local_repo=local_repo, freeze=freeze_encoder)
+        encoder_layers = (23,) if decoder == "mask2former" else (5, 11, 17, 23)
+        self.encoder = Uni2hFeatureEncoder(local_repo=local_repo, freeze=freeze_encoder, intermediate_layers=encoder_layers)
         if decoder == "upernet":
             self.feature_pyramid = None
             self.decoder = UPerLikeDecoder((1536, 1536, 1536, 1536), num_classes)
         elif decoder == "mask2former":
-            self.feature_pyramid = SimpleFeaturePyramid(1536, 1536)
+            self.feature_pyramid = SimpleFeaturePyramid(1536, 256)
             self.decoder = OfficialMask2FormerDecoder(
                 self.feature_pyramid.out_channels,
                 num_classes,
                 num_queries=mask2former_queries,
+                feature_strides=self.feature_pyramid.strides,
                 ignore_index=mask2former_ignore_index,
             )
         else:
             raise ValueError(f"unsupported decoder: {decoder}")
 
+    def _input_alignment(self) -> int:
+        return 56 if isinstance(self.decoder, OfficialMask2FormerDecoder) else 14
+
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         input_size = x.shape[-2:]
-        pad_h = (14 - x.shape[-2] % 14) % 14
-        pad_w = (14 - x.shape[-1] % 14) % 14
+        align = self._input_alignment()
+        pad_h = (align - x.shape[-2] % align) % align
+        pad_w = (align - x.shape[-1] % align) % align
         if pad_h or pad_w:
             x = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
         feats = self.encoder(x)
@@ -397,8 +421,9 @@ class BaselineSegmenter(nn.Module):
         if len(feats) != 4:
             raise RuntimeError(f"expected 4 feature maps from UNI2-h, got {len(feats)}")
         for feat in feats:
-            if feat.shape[1] != 1536:
-                raise RuntimeError(f"expected UNI2-h channel dimension 1536, got {feat.shape[1]}")
+            expected_channels = 256 if isinstance(self.decoder, OfficialMask2FormerDecoder) else 1536
+            if feat.shape[1] != expected_channels:
+                raise RuntimeError(f"expected decoder feature channel dimension {expected_channels}, got {feat.shape[1]}")
         if isinstance(self.decoder, OfficialMask2FormerDecoder):
             logits = self.decoder(feats, x.shape[-2:])
         else:
@@ -413,8 +438,9 @@ class BaselineSegmenter(nn.Module):
 
     def loss(self, x: torch.Tensor, target: torch.Tensor) -> dict[str, torch.Tensor]:
         input_size = x.shape[-2:]
-        pad_h = (14 - x.shape[-2] % 14) % 14
-        pad_w = (14 - x.shape[-1] % 14) % 14
+        align = self._input_alignment()
+        pad_h = (align - x.shape[-2] % align) % align
+        pad_w = (align - x.shape[-1] % align) % align
         ignore_index = self.decoder.ignore_index if isinstance(self.decoder, OfficialMask2FormerDecoder) else 255
         if pad_h or pad_w:
             x = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")

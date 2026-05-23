@@ -18,6 +18,27 @@ from .metrics import segmentation_metrics
 from .model import BaselineSegmenter
 
 
+def _run_mask2former_sanity_check(model: BaselineSegmenter, image_size: int, num_classes: int, device: torch.device) -> None:
+    was_training = model.training
+    model.train()
+    dummy_img = torch.zeros(1, 3, image_size, image_size, device=device)
+    dummy_mask = torch.zeros(1, image_size, image_size, dtype=torch.long, device=device)
+    try:
+        losses = model.loss(dummy_img, dummy_mask)
+        total = losses.get("total")
+        if not torch.is_tensor(total) or not torch.isfinite(total.detach()).all():
+            raise RuntimeError(f"non-finite sanity loss: {total}")
+    except Exception as exc:
+        raise RuntimeError(
+            "Mask2Former sanity check failed. This usually means the installed mmseg/mmcv/mmdet "
+            "versions do not support the configured 4-input/3-transformer-level pixel decoder, "
+            "or MSDeformAttn is unavailable on the selected device."
+        ) from exc
+    finally:
+        model.zero_grad(set_to_none=True)
+        model.train(was_training)
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -147,8 +168,12 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         mask2former_queries=config.mask2former_queries,
         mask2former_ignore_index=config.mask2former_ignore_index,
     ).to(device)
+    sanity_check_passed = False
+    if config.decoder == "mask2former":
+        _run_mask2former_sanity_check(model, config.image_size, config.num_classes, device)
+        sanity_check_passed = True
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=config.lr, weight_decay=config.weight_decay)
-    use_amp = config.amp and device.type == "cuda"
+    use_amp = config.amp and device.type == "cuda" and config.decoder != "mask2former"
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     output_dir = config.resolve_output_dir()
@@ -170,11 +195,13 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 "weight_decay": config.weight_decay,
                 "amp": config.amp,
                 "amp_enabled_runtime": use_amp,
+                "amp_disabled_reason": "mask2former_msdeformattn_stability" if config.amp and config.decoder == "mask2former" else None,
                 "disable_cudnn": config.disable_cudnn,
                 "freeze_encoder": config.freeze_encoder,
                 "decoder": config.decoder,
                 "mask2former_queries": config.mask2former_queries,
                 "mask2former_ignore_index": config.mask2former_ignore_index,
+                "mask2former_sanity_check_passed": sanity_check_passed,
                 "effective_invalid_target": config.mask2former_ignore_index if config.decoder == "mask2former" else config.ignore_index,
                 "class_weighting": config.class_weighting,
                 "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
