@@ -93,6 +93,15 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--report-to", type=str, default="tensorboard")
     parser.add_argument("--tracker-project-name", type=str, default="flux_controlnet_phase5_cross_v1")
     parser.add_argument("--prompt-batch-size", type=int, default=8)
+    parser.add_argument("--reference-num-tokens", type=int, default=16)
+    parser.add_argument("--reference-num-perceiver-layers", type=int, default=2)
+    parser.add_argument("--reference-perceiver-heads", type=int, default=8)
+    parser.add_argument(
+        "--ip-init-gain",
+        type=float,
+        default=0.02,
+        help="Xavier gain for freshly initialized IP-Adapter K/V projections.",
+    )
     parser.add_argument("--tissue-embedding-dim", type=int, default=64)
     parser.add_argument("--tissue-out-channels", type=int, default=64)
     parser.add_argument("--nuclei-embedding-dim", type=int, default=16)

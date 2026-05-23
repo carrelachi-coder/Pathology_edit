@@ -46,6 +46,11 @@ class ReferenceImageEncoder(nn.Module):
         perceiver_heads: int = 8,
     ):
         super().__init__()
+        self.uni_embed_dim = int(uni_embed_dim)
+        self.hidden_dim = int(hidden_dim)
+        self.num_tokens = int(num_tokens)
+        self.num_perceiver_layers = int(num_perceiver_layers)
+        self.perceiver_heads = int(perceiver_heads)
         self.uni = self._load_uni(uni_checkpoint_path)
         self.uni.requires_grad_(False)
         self.uni.eval()

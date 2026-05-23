@@ -64,6 +64,7 @@ def load_cross_v1_bundle(
     device = _resolve_device(device)
     dtype = _resolve_torch_dtype(torch_dtype, device)
     checkpoint = _validate_checkpoint_dir(checkpoint_path)
+    ref_encoder_config = _load_ref_encoder_config(checkpoint)
 
     # Load Flux ControlNet pipeline with V1 packed channels (640)
     pipe, controlnet = _load_flux_controlnet_pipeline(
@@ -75,7 +76,10 @@ def load_cross_v1_bundle(
     )
 
     # Install IP-Adapter attention on transformer
-    install_flux_ip_adapter_attention(pipe.transformer)
+    install_flux_ip_adapter_attention(
+        pipe.transformer,
+        num_tokens=ref_encoder_config["num_tokens"],
+    )
 
     # Load IP-Adapter weights from checkpoint
     ip_state = _torch_load_weights(checkpoint / "phase5_ip_adapter.pt")
@@ -93,6 +97,7 @@ def load_cross_v1_bundle(
         uni_checkpoint_path=uni_checkpoint_path,
         device=device,
         torch_dtype=dtype,
+        ref_encoder_config=ref_encoder_config,
     )
 
     return CrossV1InferenceBundle(
@@ -311,12 +316,45 @@ def _torch_load_weights(weight_path: Path) -> dict[str, torch.Tensor]:
         return torch.load(weight_path, map_location="cpu")
 
 
+def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, int]:
+    state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
+    config = dict(state.get("ref_encoder_config") or {})
+    if "num_tokens" not in config:
+        config["num_tokens"] = int(state["ref_encoder_latent_queries"].shape[1])
+    if "num_perceiver_layers" not in config:
+        config["num_perceiver_layers"] = _count_ref_perceiver_layers(
+            state["ref_encoder_perceiver_layers"]
+        )
+    config.setdefault("uni_embed_dim", 1536)
+    config.setdefault("hidden_dim", 3072)
+    config.setdefault("perceiver_heads", 8)
+    return {
+        "uni_embed_dim": int(config["uni_embed_dim"]),
+        "hidden_dim": int(config["hidden_dim"]),
+        "num_tokens": int(config["num_tokens"]),
+        "num_perceiver_layers": int(config["num_perceiver_layers"]),
+        "perceiver_heads": int(config["perceiver_heads"]),
+    }
+
+
+def _count_ref_perceiver_layers(state_dict: dict[str, torch.Tensor]) -> int:
+    layer_indices = {
+        int(key.split(".", 1)[0])
+        for key in state_dict
+        if key.split(".", 1)[0].isdigit()
+    }
+    if not layer_indices:
+        return 2
+    return max(layer_indices) + 1
+
+
 def _load_condition_modules(
     *,
     checkpoint_path: Path,
     uni_checkpoint_path: str | Path,
     device: str,
     torch_dtype: torch.dtype,
+    ref_encoder_config: dict[str, int] | None = None,
 ) -> dict[str, nn.Module]:
     state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
     hte_state = state["hte"]
@@ -352,7 +390,15 @@ def _load_condition_modules(
         module.eval()
 
     # Load ref_encoder
-    ref_encoder = ReferenceImageEncoder(uni_checkpoint_path=uni_checkpoint_path)
+    ref_config = ref_encoder_config or _load_ref_encoder_config(checkpoint_path)
+    ref_encoder = ReferenceImageEncoder(
+        uni_checkpoint_path=uni_checkpoint_path,
+        uni_embed_dim=ref_config["uni_embed_dim"],
+        hidden_dim=ref_config["hidden_dim"],
+        num_tokens=ref_config["num_tokens"],
+        num_perceiver_layers=ref_config["num_perceiver_layers"],
+        perceiver_heads=ref_config["perceiver_heads"],
+    )
     ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
     ref_encoder.perceiver_layers.load_state_dict(state["ref_encoder_perceiver_layers"])
     ref_encoder.latent_queries.data.copy_(

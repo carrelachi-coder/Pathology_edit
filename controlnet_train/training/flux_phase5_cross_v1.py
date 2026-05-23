@@ -91,6 +91,7 @@ def install_flux_ip_adapter_attention(
     cross_attention_dim: int = 3072,
     num_tokens: int = 16,
     scale: float = 1.0,
+    ip_init_gain: float = 0.02,
 ) -> None:
     """Install IP-Adapter attention processors on all double-stream blocks."""
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
@@ -110,15 +111,15 @@ def install_flux_ip_adapter_attention(
             scale=[scale],
         )
         for linear in processor.to_k_ip:
-            _init_ip_adapter_linear(linear)
+            _init_ip_adapter_linear(linear, gain=ip_init_gain)
         for linear in processor.to_v_ip:
-            _init_ip_adapter_linear(linear)
+            _init_ip_adapter_linear(linear, gain=ip_init_gain)
         block.attn.set_processor(processor)
 
 
-def _init_ip_adapter_linear(linear: nn.Linear) -> None:
+def _init_ip_adapter_linear(linear: nn.Linear, *, gain: float) -> None:
     """Initialize IP K/V projections so reference content can affect attention from step 0."""
-    nn.init.xavier_uniform_(linear.weight)
+    nn.init.xavier_uniform_(linear.weight, gain=gain)
     if linear.bias is not None:
         nn.init.zeros_(linear.bias)
 
@@ -314,6 +315,7 @@ def _build_prompt_cache(
     prompts: list[str],
     weight_dtype: torch.dtype,
     batch_size: int,
+    device: torch.device,
 ) -> tuple[dict[str, tuple[torch.Tensor, torch.Tensor]], tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
     unique_prompts = sorted(set(prompts))
     logger.info("Encoding %s unique prompt(s) from %s training records", len(unique_prompts), len(prompts))
@@ -323,14 +325,16 @@ def _build_prompt_cache(
         for start in range(0, len(unique_prompts), batch_size):
             prompt_batch = unique_prompts[start : start + batch_size]
             prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
-                prompt_batch, prompt_2=prompt_batch,
+                prompt_batch, prompt_2=prompt_batch, device=device,
             )
             for index, prompt in enumerate(prompt_batch):
                 prompt_cache[prompt] = (
                     prompt_embeds[index].to(dtype=weight_dtype, device="cpu"),
                     pooled_prompt_embeds[index].to(dtype=weight_dtype, device="cpu"),
                 )
-        empty_prompt_embeds, empty_pooled, text_ids = pipeline.encode_prompt([""], prompt_2=[""])
+        empty_prompt_embeds, empty_pooled, text_ids = pipeline.encode_prompt(
+            [""], prompt_2=[""], device=device,
+        )
     if text_ids.dim() == 3:
         text_ids = text_ids[0]
     empty_prompt = (
@@ -415,6 +419,15 @@ def _save_condition_modules(
         unwrapped = unwrap_model(module)
         if name == "ref_encoder":
             # Only save trainable parts, skip frozen UNI2-h backbone (~4GB)
+            state["ref_encoder_config"] = {
+                "uni_embed_dim": int(getattr(unwrapped, "uni_embed_dim", 1536)),
+                "hidden_dim": int(getattr(unwrapped, "hidden_dim", 3072)),
+                "num_tokens": int(getattr(unwrapped, "num_tokens", unwrapped.latent_queries.shape[1])),
+                "num_perceiver_layers": int(
+                    getattr(unwrapped, "num_perceiver_layers", len(unwrapped.perceiver_layers))
+                ),
+                "perceiver_heads": int(getattr(unwrapped, "perceiver_heads", 8)),
+            }
             state["ref_encoder_proj_mlp"] = {
                 k: v.to(save_dtype) for k, v in unwrapped.proj_mlp.state_dict().items()
             }
@@ -437,6 +450,9 @@ def _save_ip_adapter_modules(
     ip_wrapper: nn.Module,
     unwrap_model: Callable,
     save_dtype: torch.dtype,
+    *,
+    num_tokens: int,
+    ip_init_gain: float,
 ) -> None:
     unwrapped = unwrap_model(ip_wrapper)
     state = {
@@ -445,6 +461,8 @@ def _save_ip_adapter_modules(
         if name  # skip root module
     }
     state["scale"] = 1.0
+    state["num_tokens"] = int(num_tokens)
+    state["ip_init_gain"] = float(ip_init_gain)
     torch.save(state, os.path.join(output_dir, "phase5_ip_adapter.pt"))
 
 
@@ -568,7 +586,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         nuclei_channels=args.nuclei_out_channels,
     )
 
-    ref_encoder = ReferenceImageEncoder(uni_checkpoint_path=args.uni_checkpoint_path)
+    ref_encoder = ReferenceImageEncoder(
+        uni_checkpoint_path=args.uni_checkpoint_path,
+        num_tokens=args.reference_num_tokens,
+        num_perceiver_layers=args.reference_num_perceiver_layers,
+        perceiver_heads=args.reference_perceiver_heads,
+    )
 
     modules = {
         "hte": HierarchicalTissueEmbedding(embedding_dim=args.tissue_embedding_dim),
@@ -674,7 +697,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     logger.info("Patched controlnet_x_embedder to packed width %s for cross-v1", control_spec.packed_channels)
 
     # V1: install IP-Adapter attention on transformer
-    install_flux_ip_adapter_attention(flux_transformer)
+    install_flux_ip_adapter_attention(
+        flux_transformer,
+        num_tokens=args.reference_num_tokens,
+        ip_init_gain=args.ip_init_gain,
+    )
     ip_adapter_modules = _collect_ip_adapter_modules(flux_transformer)
     logger.info("Installed IP-Adapter attention (%s modules)", len(ip_adapter_modules))
 
@@ -685,7 +712,6 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         text_encoder_2=text_encoder_two, tokenizer_2=tokenizer_two,
         transformer=flux_transformer, controlnet=flux_controlnet,
     )
-    tmp_pipeline.to(accelerator.device)
 
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -698,6 +724,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         prompts=[record["prompt"] for record in dataset.records],
         weight_dtype=weight_dtype,
         batch_size=args.prompt_batch_size,
+        device=accelerator.device,
     )
 
     del tmp_pipeline, text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
@@ -1042,7 +1069,14 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         else:
             unwrapped_controlnet.save_pretrained(args.output_dir)
         _save_condition_modules(args.output_dir, modules, unwrap_model, save_dtype)
-        _save_ip_adapter_modules(args.output_dir, ip_trainable_wrapper, unwrap_model, save_dtype)
+        _save_ip_adapter_modules(
+            args.output_dir,
+            ip_trainable_wrapper,
+            unwrap_model,
+            save_dtype,
+            num_tokens=args.reference_num_tokens,
+            ip_init_gain=args.ip_init_gain,
+        )
         logger.info("Saved Phase 5.3 cross-v1 artifacts to %s", args.output_dir)
 
     accelerator.end_training()
