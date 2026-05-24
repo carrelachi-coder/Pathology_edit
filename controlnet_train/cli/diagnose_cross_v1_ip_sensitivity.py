@@ -203,6 +203,7 @@ def main(argv=None) -> int:
     summary["scales"] = scales
     summary["reference_variants"] = variants
     summary["replace_reference_masks"] = bool(args.replace_reference_masks)
+    summary["cross_v1_spatial_mode"] = getattr(bundle.control_spec, "spatial_mode", "reference_target")
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=True),
         encoding="utf8",

@@ -57,7 +57,13 @@ from controlnet_train.modules import (
     NucleiConditionEncoder,
     TissueConditionDownsampler,
 )
-from controlnet_train.modules.cross_v1_conditioning import CrossV1ControlSpec, build_cross_v1_condition
+from controlnet_train.modules.cross_v1_conditioning import (
+    CROSS_V1_SPATIAL_REFERENCE_TARGET,
+    CROSS_V1_SPATIAL_TARGET_ONLY,
+    CrossV1ControlSpec,
+    build_cross_v1_condition,
+    normalize_cross_v1_spatial_mode,
+)
 from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
 
@@ -219,28 +225,33 @@ def _build_cross_v1_control_batch(
     modules: dict[str, torch.nn.Module],
     vae: AutoencoderKL,
     weight_dtype: torch.dtype,
+    spatial_mode: str = CROSS_V1_SPATIAL_REFERENCE_TARGET,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     device = next(vae.parameters()).device
     target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
 
-    reference_tissue_feat = modules["tissue_downsampler"](
-        modules["hte"](batch["reference_tissue_mask"].to(device=device))
-    ).to(dtype=weight_dtype)
-    reference_nuclei_feat = modules["nuclei_encoder"](
-        batch["reference_nuclei_mask"].to(device=device)
-    ).to(dtype=weight_dtype)
     target_tissue_feat = modules["tissue_downsampler"](
         modules["hte"](batch["target_tissue_mask"].to(device=device))
     ).to(dtype=weight_dtype)
     target_nuclei_feat = modules["nuclei_encoder"](
         batch["target_nuclei_mask"].to(device=device)
     ).to(dtype=weight_dtype)
+    reference_tissue_feat = None
+    reference_nuclei_feat = None
+    if normalize_cross_v1_spatial_mode(spatial_mode) == CROSS_V1_SPATIAL_REFERENCE_TARGET:
+        reference_tissue_feat = modules["tissue_downsampler"](
+            modules["hte"](batch["reference_tissue_mask"].to(device=device))
+        ).to(dtype=weight_dtype)
+        reference_nuclei_feat = modules["nuclei_encoder"](
+            batch["reference_nuclei_mask"].to(device=device)
+        ).to(dtype=weight_dtype)
 
     control_tensor = build_cross_v1_condition(
         reference_tissue_feat=reference_tissue_feat,
         reference_nuclei_feat=reference_nuclei_feat,
         target_tissue_feat=target_tissue_feat,
         target_nuclei_feat=target_nuclei_feat,
+        spatial_mode=spatial_mode,
     )
     return target_image_latent, control_tensor
 
@@ -261,6 +272,15 @@ def _build_ip_adapter_kwargs(
     ip_hidden_states = transformer.encoder_hid_proj([ref_ip_features])
     ip_hidden_states = [hs.to(dtype=weight_dtype) for hs in ip_hidden_states]
     return {"ip_hidden_states": ip_hidden_states}
+
+
+def _use_self_reconstruction_reference(batch: dict) -> dict:
+    """Use the target patch as the reference patch for same-patch warmup."""
+    warmup_batch = dict(batch)
+    warmup_batch["reference_image"] = batch["target_image"]
+    warmup_batch["reference_tissue_mask"] = batch["target_tissue_mask"]
+    warmup_batch["reference_nuclei_mask"] = batch["target_nuclei_mask"]
+    return warmup_batch
 
 
 # ---------------------------------------------------------------------------
@@ -413,8 +433,19 @@ def _save_condition_modules(
     modules: dict[str, nn.Module],
     unwrap_model: Callable,
     save_dtype: torch.dtype,
+    *,
+    control_spec: CrossV1ControlSpec,
 ) -> None:
-    state = {}
+    state = {
+        "cross_v1_spatial_mode": control_spec.spatial_mode,
+        "cross_v1_control_spec": {
+            "tissue_channels": int(control_spec.tissue_channels),
+            "nuclei_channels": int(control_spec.nuclei_channels),
+            "spatial_mode": control_spec.spatial_mode,
+            "raw_channels": int(control_spec.raw_channels),
+            "packed_channels": int(control_spec.packed_channels),
+        },
+    }
     for name, module in modules.items():
         unwrapped = unwrap_model(module)
         if name == "ref_encoder":
@@ -468,7 +499,7 @@ def _save_ip_adapter_modules(
 
 def _load_cross_v1_controlnet_checkpoint(
     checkpoint_path: str | Path,
-    packed_channels: int,
+    control_spec: CrossV1ControlSpec,
 ) -> FluxControlNetModel:
     checkpoint = Path(checkpoint_path)
     if not checkpoint.exists():
@@ -476,9 +507,84 @@ def _load_cross_v1_controlnet_checkpoint(
 
     controlnet_config = FluxControlNetModel.load_config(checkpoint)
     controlnet = FluxControlNetModel.from_config(controlnet_config)
-    patch_controlnet_x_embedder(controlnet, packed_channels)
-    controlnet.load_state_dict(_load_diffusers_model_state_dict(checkpoint), strict=True)
+    patch_controlnet_x_embedder(controlnet, control_spec.packed_channels)
+    state_dict = _load_diffusers_model_state_dict(checkpoint)
+    source_spec = _load_saved_cross_v1_control_spec(checkpoint)
+    state_dict = _remap_cross_v1_x_embedder_state_dict(
+        state_dict,
+        source_spec=source_spec,
+        target_spec=control_spec,
+    )
+    controlnet.load_state_dict(state_dict, strict=True)
     return controlnet
+
+
+def _load_saved_cross_v1_control_spec(checkpoint: Path) -> CrossV1ControlSpec:
+    state_path = checkpoint / "phase5_conditioning.pt"
+    if not state_path.exists():
+        return CrossV1ControlSpec()
+    state = _torch_load_weights(state_path)
+    saved_spec = state.get("cross_v1_control_spec") or {}
+    return CrossV1ControlSpec(
+        tissue_channels=int(saved_spec.get("tissue_channels", 64)),
+        nuclei_channels=int(saved_spec.get("nuclei_channels", 16)),
+        spatial_mode=str(
+            saved_spec.get(
+                "spatial_mode",
+                state.get("cross_v1_spatial_mode", CROSS_V1_SPATIAL_REFERENCE_TARGET),
+            )
+        ),
+    )
+
+
+def _remap_cross_v1_x_embedder_state_dict(
+    state_dict: dict[str, torch.Tensor],
+    *,
+    source_spec: CrossV1ControlSpec,
+    target_spec: CrossV1ControlSpec,
+) -> dict[str, torch.Tensor]:
+    weight_key = "controlnet_x_embedder.weight"
+    if weight_key not in state_dict:
+        return state_dict
+
+    old_weight = state_dict[weight_key]
+    new_in_features = target_spec.packed_channels
+    if old_weight.shape[1] == new_in_features:
+        return state_dict
+
+    remapped = dict(state_dict)
+    new_weight = old_weight.new_zeros((old_weight.shape[0], new_in_features))
+    if (
+        source_spec.spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET
+        and target_spec.spatial_mode == CROSS_V1_SPATIAL_TARGET_ONLY
+    ):
+        old_start = source_spec.packed_target_start
+        copy_width = min(
+            source_spec.packed_target_channels,
+            target_spec.packed_target_channels,
+            max(0, old_weight.shape[1] - old_start),
+            new_in_features,
+        )
+        if copy_width > 0:
+            new_weight[:, :copy_width] = old_weight[:, old_start : old_start + copy_width]
+    elif (
+        source_spec.spatial_mode == CROSS_V1_SPATIAL_TARGET_ONLY
+        and target_spec.spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET
+    ):
+        new_start = target_spec.packed_target_start
+        copy_width = min(
+            source_spec.packed_target_channels,
+            target_spec.packed_target_channels,
+            old_weight.shape[1],
+            max(0, new_in_features - new_start),
+        )
+        if copy_width > 0:
+            new_weight[:, new_start : new_start + copy_width] = old_weight[:, :copy_width]
+    else:
+        copy_width = min(old_weight.shape[1], new_in_features)
+        new_weight[:, :copy_width] = old_weight[:, :copy_width]
+    remapped[weight_key] = new_weight
+    return remapped
 
 
 def _load_diffusers_model_state_dict(checkpoint_path: Path) -> dict[str, torch.Tensor]:
@@ -530,6 +636,9 @@ def _torch_load_weights(weight_path: Path) -> dict[str, torch.Tensor]:
 
 
 def _resolve_conditioning_checkpoint_path(args: argparse.Namespace) -> Path | None:
+    path = getattr(args, "conditioning_checkpoint", None)
+    if path:
+        return Path(path)
     path = getattr(args, "a1_lite_conditioning_checkpoint", None)
     if path:
         return Path(path)
@@ -584,7 +693,23 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     control_spec = CrossV1ControlSpec(
         tissue_channels=args.tissue_out_channels,
         nuclei_channels=args.nuclei_out_channels,
+        spatial_mode=getattr(args, "cross_v1_spatial_mode", CROSS_V1_SPATIAL_REFERENCE_TARGET),
     )
+    logger.info(
+        "Using Cross V1 spatial mode %s: raw_channels=%s packed_channels=%s",
+        control_spec.spatial_mode,
+        control_spec.raw_channels,
+        control_spec.packed_channels,
+    )
+    self_reconstruction_warmup_steps = max(
+        0,
+        int(getattr(args, "self_reconstruction_warmup_steps", 0) or 0),
+    )
+    if self_reconstruction_warmup_steps:
+        logger.info(
+            "Using same-patch self-reconstruction warmup for the first %s optimizer steps",
+            self_reconstruction_warmup_steps,
+        )
 
     ref_encoder = ReferenceImageEncoder(
         uni_checkpoint_path=args.uni_checkpoint_path,
@@ -607,10 +732,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         ),
         "ref_encoder": ref_encoder,
     }
-    if a1_lite:
+    should_load_conditioning = bool(
+        a1_lite or getattr(args, "load_conditioning_from_checkpoint", False)
+    )
+    if should_load_conditioning:
         conditioning_checkpoint = _resolve_conditioning_checkpoint_path(args)
         if conditioning_checkpoint is None:
-            raise ValueError("--a1-lite requires a conditioning checkpoint.")
+            raise ValueError("Loading conditioning modules requires a conditioning checkpoint.")
         _load_condition_modules_from_checkpoint(
             modules,
             conditioning_checkpoint,
@@ -682,7 +810,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     if args.controlnet_model_name_or_path:
         flux_controlnet = _load_cross_v1_controlnet_checkpoint(
             args.controlnet_model_name_or_path,
-            packed_channels=control_spec.packed_channels,
+            control_spec=control_spec,
         )
     else:
         flux_controlnet = FluxControlNetModel.from_transformer(
@@ -930,9 +1058,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         for step, batch in enumerate(train_dataloader):
             accumulate_model = ip_trainable_wrapper if a1_lite else flux_controlnet
             with accelerator.accumulate(accumulate_model):
+                training_batch = (
+                    _use_self_reconstruction_reference(batch)
+                    if global_step < self_reconstruction_warmup_steps
+                    else batch
+                )
                 with torch.no_grad() if a1_lite else contextlib.nullcontext():
                     pixel_latents, control_tensor = _build_cross_v1_control_batch(
-                        batch=batch, modules=modules, vae=vae, weight_dtype=weight_dtype,
+                        batch=training_batch,
+                        modules=modules,
+                        vae=vae,
+                        weight_dtype=weight_dtype,
+                        spatial_mode=control_spec.spatial_mode,
                     )
                 bsz = pixel_latents.shape[0]
 
@@ -992,10 +1129,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         txt_ids=text_ids,
                         img_ids=latent_image_ids,
                         return_dict=False,
-                    )
+                )
 
                 joint_attention_kwargs = _build_ip_adapter_kwargs(
-                    batch, modules, accelerator, weight_dtype, flux_transformer,
+                    training_batch, modules, accelerator, weight_dtype, flux_transformer,
                 )
 
                 noise_pred = flux_transformer(
@@ -1068,7 +1205,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             unwrapped_controlnet.save_pretrained(args.output_dir, variant=args.save_weight_dtype)
         else:
             unwrapped_controlnet.save_pretrained(args.output_dir)
-        _save_condition_modules(args.output_dir, modules, unwrap_model, save_dtype)
+        _save_condition_modules(
+            args.output_dir,
+            modules,
+            unwrap_model,
+            save_dtype,
+            control_spec=control_spec,
+        )
         _save_ip_adapter_modules(
             args.output_dir,
             ip_trainable_wrapper,

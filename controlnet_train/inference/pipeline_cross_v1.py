@@ -22,7 +22,11 @@ from controlnet_train.modules import (
     NucleiConditionEncoder,
     TissueConditionDownsampler,
 )
-from controlnet_train.modules.cross_v1_conditioning import CrossV1ControlSpec, build_cross_v1_condition
+from controlnet_train.modules.cross_v1_conditioning import (
+    CROSS_V1_SPATIAL_REFERENCE_TARGET,
+    CrossV1ControlSpec,
+    build_cross_v1_condition,
+)
 from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
 from controlnet_train.training.flux_phase5_cross_v1 import (
@@ -64,13 +68,14 @@ def load_cross_v1_bundle(
     device = _resolve_device(device)
     dtype = _resolve_torch_dtype(torch_dtype, device)
     checkpoint = _validate_checkpoint_dir(checkpoint_path)
+    control_spec = _load_cross_v1_control_spec(checkpoint)
     ref_encoder_config = _load_ref_encoder_config(checkpoint)
 
-    # Load Flux ControlNet pipeline with V1 packed channels (640)
+    # Load Flux ControlNet pipeline with the checkpoint's V1 spatial layout.
     pipe, controlnet = _load_flux_controlnet_pipeline(
         pretrained_model_name_or_path=pretrained_model_name_or_path,
         checkpoint_path=checkpoint,
-        packed_channels=CrossV1ControlSpec().packed_channels,
+        packed_channels=control_spec.packed_channels,
         device=device,
         torch_dtype=dtype,
     )
@@ -112,6 +117,7 @@ def load_cross_v1_bundle(
         flux_pipeline=pipe,
         controlnet=controlnet,
         condition_modules=modules,
+        control_spec=control_spec,
         ip_adapter_modules=ip_adapter_modules,
         ref_encoder=modules["ref_encoder"],
     )
@@ -138,14 +144,6 @@ def run_cross_v1_bundle(
     ]
 
     # Build spatial control tensor (no reference_image_latent)
-    reference_tissue_feat = bundle.condition_modules["tissue_downsampler"](
-        bundle.condition_modules["hte"](
-            reference_tissue_mask.unsqueeze(0).to(device=bundle.device)
-        )
-    ).to(dtype=bundle.torch_dtype)
-    reference_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
-        reference_nuclei_mask.unsqueeze(0).to(device=bundle.device)
-    ).to(dtype=bundle.torch_dtype)
     target_tissue_feat = bundle.condition_modules["tissue_downsampler"](
         bundle.condition_modules["hte"](
             target_tissue_mask.unsqueeze(0).to(device=bundle.device)
@@ -154,12 +152,24 @@ def run_cross_v1_bundle(
     target_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
         target_nuclei_mask.unsqueeze(0).to(device=bundle.device)
     ).to(dtype=bundle.torch_dtype)
+    reference_tissue_feat = None
+    reference_nuclei_feat = None
+    if bundle.control_spec.spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET:
+        reference_tissue_feat = bundle.condition_modules["tissue_downsampler"](
+            bundle.condition_modules["hte"](
+                reference_tissue_mask.unsqueeze(0).to(device=bundle.device)
+            )
+        ).to(dtype=bundle.torch_dtype)
+        reference_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
+            reference_nuclei_mask.unsqueeze(0).to(device=bundle.device)
+        ).to(dtype=bundle.torch_dtype)
 
     control_tensor = build_cross_v1_condition(
         reference_tissue_feat=reference_tissue_feat,
         reference_nuclei_feat=reference_nuclei_feat,
         target_tissue_feat=target_tissue_feat,
         target_nuclei_feat=target_nuclei_feat,
+        spatial_mode=bundle.control_spec.spatial_mode,
     )
 
     output_size = tuple(int(v) for v in reference_image.shape[1:])
@@ -335,6 +345,21 @@ def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, int]:
         "num_perceiver_layers": int(config["num_perceiver_layers"]),
         "perceiver_heads": int(config["perceiver_heads"]),
     }
+
+
+def _load_cross_v1_control_spec(checkpoint_path: Path) -> CrossV1ControlSpec:
+    state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
+    saved_spec = state.get("cross_v1_control_spec") or {}
+    return CrossV1ControlSpec(
+        tissue_channels=int(saved_spec.get("tissue_channels", 64)),
+        nuclei_channels=int(saved_spec.get("nuclei_channels", 16)),
+        spatial_mode=str(
+            saved_spec.get(
+                "spatial_mode",
+                state.get("cross_v1_spatial_mode", "reference_target"),
+            )
+        ),
+    )
 
 
 def _count_ref_perceiver_layers(state_dict: dict[str, torch.Tensor]) -> int:

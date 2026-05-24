@@ -34,6 +34,24 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--conditioning-checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Checkpoint directory containing phase5_conditioning.pt for initializing "
+            "spatial conditioning modules. Defaults to --controlnet_model_name_or_path."
+        ),
+    )
+    parser.add_argument(
+        "--load-conditioning-from-checkpoint",
+        action="store_true",
+        help=(
+            "Initialize HTE/tissue/nuclei conditioning modules from --conditioning-checkpoint "
+            "or --controlnet_model_name_or_path. Useful for A3 target-only probes from an "
+            "existing Cross V1 checkpoint."
+        ),
+    )
+    parser.add_argument(
         "--a1-lite-load-ref-encoder",
         action="store_true",
         help="Also initialize ref_encoder trainable parts from the A1-lite conditioning checkpoint.",
@@ -96,6 +114,25 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--reference-num-tokens", type=int, default=16)
     parser.add_argument("--reference-num-perceiver-layers", type=int, default=2)
     parser.add_argument("--reference-perceiver-heads", type=int, default=8)
+    parser.add_argument(
+        "--self-reconstruction-warmup-steps",
+        type=int,
+        default=0,
+        help=(
+            "For the first N optimizer steps, replace reference image/masks with the target "
+            "image/masks so the IP-Adapter gets a direct same-patch reconstruction signal."
+        ),
+    )
+    parser.add_argument(
+        "--cross-v1-spatial-mode",
+        type=str,
+        default="reference_target",
+        choices=["reference_target", "target_only"],
+        help=(
+            "Spatial ControlNet conditioning mode. 'reference_target' is the original Cross V1 "
+            "layout; 'target_only' is the A3 probe that removes reference masks from ControlNet."
+        ),
+    )
     parser.add_argument(
         "--ip-init-gain",
         type=float,
