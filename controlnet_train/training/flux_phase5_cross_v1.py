@@ -695,21 +695,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         nuclei_channels=args.nuclei_out_channels,
         spatial_mode=getattr(args, "cross_v1_spatial_mode", CROSS_V1_SPATIAL_REFERENCE_TARGET),
     )
-    logger.info(
-        "Using Cross V1 spatial mode %s: raw_channels=%s packed_channels=%s",
-        control_spec.spatial_mode,
-        control_spec.raw_channels,
-        control_spec.packed_channels,
-    )
     self_reconstruction_warmup_steps = max(
         0,
         int(getattr(args, "self_reconstruction_warmup_steps", 0) or 0),
     )
-    if self_reconstruction_warmup_steps:
-        logger.info(
-            "Using same-patch self-reconstruction warmup for the first %s optimizer steps",
-            self_reconstruction_warmup_steps,
-        )
 
     ref_encoder = ReferenceImageEncoder(
         uni_checkpoint_path=args.uni_checkpoint_path,
@@ -767,6 +756,17 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO,
     )
     logger.info(accelerator.state, main_process_only=False)
+    logger.info(
+        "Using Cross V1 spatial mode %s: raw_channels=%s packed_channels=%s",
+        control_spec.spatial_mode,
+        control_spec.raw_channels,
+        control_spec.packed_channels,
+    )
+    if self_reconstruction_warmup_steps:
+        logger.info(
+            "Using same-patch self-reconstruction warmup for the first %s optimizer steps",
+            self_reconstruction_warmup_steps,
+        )
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()
     else:
