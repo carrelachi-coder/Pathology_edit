@@ -97,7 +97,7 @@ def install_flux_ip_adapter_attention(
     cross_attention_dim: int = 3072,
     num_tokens: int = 16,
     scale: float = 1.0,
-    ip_init_gain: float = 0.02,
+    ip_init_gain: float = 0.1,
 ) -> None:
     """Install IP-Adapter attention processors on all double-stream blocks."""
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
@@ -128,6 +128,81 @@ def _init_ip_adapter_linear(linear: nn.Linear, *, gain: float) -> None:
     nn.init.xavier_uniform_(linear.weight, gain=gain)
     if linear.bias is not None:
         nn.init.zeros_(linear.bias)
+
+
+def _linear_init_stats(linear: nn.Linear) -> dict[str, float]:
+    weight = linear.weight.detach().float()
+    bias = linear.bias.detach().float() if linear.bias is not None else None
+    return {
+        "weight_l2": float(torch.linalg.vector_norm(weight).item()),
+        "weight_max_abs": float(weight.abs().max().item()),
+        "bias_max_abs": 0.0 if bias is None else float(bias.abs().max().item()),
+    }
+
+
+def _log_ip_adapter_initialization_stats(
+    transformer: FluxTransformer2DModel,
+    *,
+    ip_init_gain: float,
+) -> None:
+    """Log initialization magnitudes for the IP projection and K/V branches."""
+    encoder_hid_proj = getattr(transformer, "encoder_hid_proj", None)
+    if encoder_hid_proj is None:
+        logger.warning("IP init check: transformer has no encoder_hid_proj.")
+    else:
+        encoder_linears = [
+            (name, module)
+            for name, module in encoder_hid_proj.named_modules()
+            if isinstance(module, nn.Linear)
+        ]
+        if not encoder_linears:
+            logger.warning("IP init check: encoder_hid_proj has no Linear layers.")
+        for name, linear in encoder_linears:
+            stats = _linear_init_stats(linear)
+            logger.info(
+                "IP init check encoder_hid_proj.%s: weight_l2=%.6f "
+                "weight_max_abs=%.6f bias_max_abs=%.6f",
+                name or "<root>",
+                stats["weight_l2"],
+                stats["weight_max_abs"],
+                stats["bias_max_abs"],
+            )
+            if stats["weight_max_abs"] == 0.0:
+                logger.warning("IP init check encoder_hid_proj.%s appears zero-initialized.", name)
+
+    kv_linears: list[tuple[str, nn.Linear]] = []
+    for block_index, block in enumerate(transformer.transformer_blocks):
+        processor = getattr(block.attn, "processor", None)
+        for branch_name in ("to_k_ip", "to_v_ip"):
+            branch = getattr(processor, branch_name, None)
+            if branch is None:
+                continue
+            for index, linear in enumerate(branch):
+                kv_linears.append((f"block_{block_index}.{branch_name}.{index}", linear))
+
+    if not kv_linears:
+        logger.warning("IP init check: no to_k_ip/to_v_ip Linear layers found.")
+        return
+
+    max_abs_values = []
+    l2_values = []
+    for _, linear in kv_linears:
+        stats = _linear_init_stats(linear)
+        max_abs_values.append(stats["weight_max_abs"])
+        l2_values.append(stats["weight_l2"])
+    logger.info(
+        "IP init check to_k_ip/to_v_ip: gain=%.4f linears=%s "
+        "weight_max_abs[min/mean/max]=%.6f/%.6f/%.6f "
+        "weight_l2[min/mean/max]=%.6f/%.6f/%.6f",
+        ip_init_gain,
+        len(kv_linears),
+        min(max_abs_values),
+        sum(max_abs_values) / len(max_abs_values),
+        max(max_abs_values),
+        min(l2_values),
+        sum(l2_values) / len(l2_values),
+        max(l2_values),
+    )
 
 
 def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str, nn.Module]:
@@ -847,6 +922,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     install_flux_ip_adapter_attention(
         flux_transformer,
         num_tokens=args.reference_num_tokens,
+        ip_init_gain=args.ip_init_gain,
+    )
+    _log_ip_adapter_initialization_stats(
+        flux_transformer,
         ip_init_gain=args.ip_init_gain,
     )
     ip_adapter_modules = _collect_ip_adapter_modules(flux_transformer)
