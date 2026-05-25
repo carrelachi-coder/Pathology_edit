@@ -93,6 +93,12 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--adam-epsilon", type=float, default=1e-8)
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--dataloader-num-workers", type=int, default=0)
+    parser.add_argument(
+        "--dataloader-prefetch-factor",
+        type=int,
+        default=2,
+        help="Number of batches each DataLoader worker prefetches when workers are enabled.",
+    )
     parser.add_argument("--checkpointing-steps", type=int, default=500)
     parser.add_argument("--checkpoints-total-limit", type=int, default=None)
     parser.add_argument("--resume-from-checkpoint", type=str, default=None)
@@ -175,6 +181,15 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--reference-style-loss-interval",
+        type=int,
+        default=1,
+        help=(
+            "Compute reference style loss every N optimizer steps. Use 1 for every step; "
+            "use 0 to disable the style loss without changing its configured weight."
+        ),
+    )
+    parser.add_argument(
         "--reference-style-tissue-weight",
         type=float,
         default=1.0,
@@ -223,6 +238,15 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help=(
             "Weight for reference-swap sensitivity loss. It compares normal-reference denoising "
             "loss against zero/random-reference denoising losses with a margin."
+        ),
+    )
+    parser.add_argument(
+        "--ref-swap-loss-interval",
+        type=int,
+        default=1,
+        help=(
+            "Compute reference-swap sensitivity loss every N optimizer steps. Use 1 for every step; "
+            "use 0 to disable the swap loss without changing its configured weight."
         ),
     )
     parser.add_argument(

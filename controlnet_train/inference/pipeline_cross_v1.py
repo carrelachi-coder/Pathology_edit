@@ -239,7 +239,13 @@ def _validate_checkpoint_dir(checkpoint_path: str | Path) -> Path:
     if not checkpoint.exists():
         raise FileNotFoundError(f"Checkpoint path not found: {checkpoint}")
     if not (checkpoint / "config.json").exists():
-        raise FileNotFoundError(f"Missing ControlNet config.json under checkpoint path: {checkpoint}")
+        raise FileNotFoundError(
+            "Missing ControlNet config.json under checkpoint path: "
+            f"{checkpoint}. This usually means the directory is an older "
+            "accelerate resume-only checkpoint. Run diagnose/eval against the "
+            "final output directory, or a newly saved checkpoint that includes "
+            "eval-ready Cross V1 artifacts."
+        )
     if not (checkpoint / "phase5_conditioning.pt").exists():
         raise FileNotFoundError(f"Missing phase5_conditioning.pt under checkpoint path: {checkpoint}")
     return checkpoint
@@ -281,21 +287,21 @@ def _load_flux_controlnet_pipeline(
 
 
 def _load_diffusers_model_state_dict(checkpoint_path: Path) -> dict[str, torch.Tensor]:
-    safetensors_index = checkpoint_path / "diffusion_pytorch_model.safetensors.index.json"
-    bin_index = checkpoint_path / "diffusion_pytorch_model.bin.index.json"
+    safetensors_indexes = sorted(checkpoint_path.glob("diffusion_pytorch_model*.safetensors.index.json"))
+    bin_indexes = sorted(checkpoint_path.glob("diffusion_pytorch_model*.bin.index.json"))
 
-    if safetensors_index.exists():
-        return _load_sharded_diffusers_state_dict(safetensors_index)
-    if bin_index.exists():
-        return _load_sharded_diffusers_state_dict(bin_index)
+    if safetensors_indexes:
+        return _load_sharded_diffusers_state_dict(safetensors_indexes[0])
+    if bin_indexes:
+        return _load_sharded_diffusers_state_dict(bin_indexes[0])
 
-    for filename in (
-        "diffusion_pytorch_model.safetensors",
-        "diffusion_pytorch_model.bin",
-        "pytorch_model.bin",
-        "model.safetensors",
-    ):
-        weight_path = checkpoint_path / filename
+    weight_candidates = [
+        *sorted(checkpoint_path.glob("diffusion_pytorch_model*.safetensors")),
+        *sorted(checkpoint_path.glob("diffusion_pytorch_model*.bin")),
+        checkpoint_path / "pytorch_model.bin",
+        checkpoint_path / "model.safetensors",
+    ]
+    for weight_path in weight_candidates:
         if weight_path.exists():
             return _load_single_diffusers_weight_file(weight_path)
 

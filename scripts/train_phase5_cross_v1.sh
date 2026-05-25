@@ -27,12 +27,57 @@ MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
 IFS=',' read -r -a GPU_ID_ARRAY <<< "${GPU_IDS}"
 NUM_PROCESSES="${NUM_PROCESSES:-${#GPU_ID_ARRAY[@]}}"
 USE_8BIT_ADAM="${USE_8BIT_ADAM:-1}"
+GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
+
+# Reference-aware auxiliary losses. Keep these modest at first; the denoising
+# objective is still the anchor, while these terms force the IP path to care
+# about the actual reference patch.
+REFERENCE_STYLE_LOSS_WEIGHT="${REFERENCE_STYLE_LOSS_WEIGHT:-10}"
+REFERENCE_STYLE_TISSUE_WEIGHT="${REFERENCE_STYLE_TISSUE_WEIGHT:-1.0}"
+REFERENCE_STYLE_NUCLEI_WEIGHT="${REFERENCE_STYLE_NUCLEI_WEIGHT:-1.0}"
+REFERENCE_STYLE_MEAN_WEIGHT="${REFERENCE_STYLE_MEAN_WEIGHT:-1.0}"
+REFERENCE_STYLE_STD_WEIGHT="${REFERENCE_STYLE_STD_WEIGHT:-1.0}"
+REFERENCE_STYLE_COV_WEIGHT="${REFERENCE_STYLE_COV_WEIGHT:-0.25}"
+REFERENCE_STYLE_MIN_PIXELS="${REFERENCE_STYLE_MIN_PIXELS:-32}"
+REFERENCE_STYLE_LOSS_INTERVAL="${REFERENCE_STYLE_LOSS_INTERVAL:-4}"
+REF_SWAP_LOSS_WEIGHT="${REF_SWAP_LOSS_WEIGHT:-0.1}"
+REF_SWAP_MARGIN="${REF_SWAP_MARGIN:-0.2}"
+REF_SWAP_VARIANTS="${REF_SWAP_VARIANTS:-random}"
+REF_SWAP_LOSS_INTERVAL="${REF_SWAP_LOSS_INTERVAL:-16}"
+DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
+DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-4}"
 
 cd "${PROJECT_ROOT}"
 
 TRAIN_OPTIMIZER_ARGS=()
 if [[ "${USE_8BIT_ADAM}" == "1" ]]; then
   TRAIN_OPTIMIZER_ARGS+=(--use-8bit-adam)
+fi
+
+TRAIN_MEMORY_ARGS=()
+if [[ "${GRADIENT_CHECKPOINTING}" == "1" ]]; then
+  TRAIN_MEMORY_ARGS+=(--gradient-checkpointing)
+fi
+
+CLI_HELP="$("${PYTHON_BIN}" controlnet_train/cli/train_controlnet_flux_cross_v1.py --help 2>&1 || true)"
+
+TRAIN_DATALOADER_ARGS=(--dataloader-num-workers "${DATALOADER_NUM_WORKERS}")
+if grep -q -- "--dataloader-prefetch-factor" <<< "${CLI_HELP}"; then
+  TRAIN_DATALOADER_ARGS+=(--dataloader-prefetch-factor "${DATALOADER_PREFETCH_FACTOR}")
+else
+  echo "Warning: CLI does not support --dataloader-prefetch-factor; skipping it." >&2
+fi
+
+TRAIN_AUX_INTERVAL_ARGS=()
+if grep -q -- "--reference-style-loss-interval" <<< "${CLI_HELP}"; then
+  TRAIN_AUX_INTERVAL_ARGS+=(--reference-style-loss-interval "${REFERENCE_STYLE_LOSS_INTERVAL}")
+else
+  echo "Warning: CLI does not support --reference-style-loss-interval; style loss will run every step." >&2
+fi
+if grep -q -- "--ref-swap-loss-interval" <<< "${CLI_HELP}"; then
+  TRAIN_AUX_INTERVAL_ARGS+=(--ref-swap-loss-interval "${REF_SWAP_LOSS_INTERVAL}")
+else
+  echo "Warning: CLI does not support --ref-swap-loss-interval; ref-swap loss will run every step." >&2
 fi
 
 accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GPU_IDS}" \
@@ -55,15 +100,27 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --checkpointing-steps 2000 \
   --checkpoints-total-limit 3 \
   --mixed-precision "${MIXED_PRECISION}" \
-  --gradient-checkpointing \
   "${TRAIN_OPTIMIZER_ARGS[@]}" \
+  "${TRAIN_MEMORY_ARGS[@]}" \
   --allow-tf32 \
-  --dataloader-num-workers 8 \
+  "${TRAIN_DATALOADER_ARGS[@]}" \
   --num-double-layers 4 \
   --num-single-layers 4 \
   --ip-init-gain 0.1 \
   --cross-v1-spatial-mode target_only \
   --disable-reference-perceiver-self-attn \
+  --reference-perceiver-cross-gate-init -2.0 \
+  --reference-style-loss-weight "${REFERENCE_STYLE_LOSS_WEIGHT}" \
+  --reference-style-tissue-weight "${REFERENCE_STYLE_TISSUE_WEIGHT}" \
+  --reference-style-nuclei-weight "${REFERENCE_STYLE_NUCLEI_WEIGHT}" \
+  --reference-style-mean-weight "${REFERENCE_STYLE_MEAN_WEIGHT}" \
+  --reference-style-std-weight "${REFERENCE_STYLE_STD_WEIGHT}" \
+  --reference-style-cov-weight "${REFERENCE_STYLE_COV_WEIGHT}" \
+  --reference-style-min-pixels "${REFERENCE_STYLE_MIN_PIXELS}" \
+  --ref-swap-loss-weight "${REF_SWAP_LOSS_WEIGHT}" \
+  --ref-swap-margin "${REF_SWAP_MARGIN}" \
+  --ref-swap-variants "${REF_SWAP_VARIANTS}" \
+  "${TRAIN_AUX_INTERVAL_ARGS[@]}" \
   --guidance-scale 3.5 \
   --report-to tensorboard \
   --tracker-project-name flux_controlnet_phase5_cross_v1 \

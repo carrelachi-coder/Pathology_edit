@@ -50,7 +50,12 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
 from controlnet_train.data import CrossReconstructionDataset
-from controlnet_train.data.common import default_prompt_for_dataset
+from controlnet_train.data.common import (
+    default_prompt_for_dataset,
+    load_image_tensor,
+    load_nuclei_mask,
+    load_tissue_mask,
+)
 from controlnet_train.modules import (
     HierarchicalTissueEmbedding,
     NucleiConditionEncoder,
@@ -409,12 +414,26 @@ def _use_zero_reference(batch: dict) -> dict:
     return swapped
 
 
-def _use_random_reference(batch: dict) -> dict:
+def _use_random_reference(batch: dict, random_batch: dict | None = None) -> dict:
     swapped = dict(batch)
     bsz = int(batch["reference_image"].shape[0])
-    if bsz <= 1:
-        swapped["reference_image"] = torch.flip(batch["reference_image"], dims=[-1])
+    if random_batch is not None:
+        for key in ("reference_image", "reference_tissue_mask", "reference_nuclei_mask"):
+            if key not in random_batch:
+                raise KeyError(f"random reference batch is missing {key!r}")
+            value = random_batch[key]
+            if value.shape[0] != bsz:
+                raise ValueError(
+                    f"random reference batch size {value.shape[0]} does not match current batch size {bsz}"
+                )
+            swapped[key] = value.to(device=batch[key].device)
         return swapped
+    if bsz <= 1:
+        raise ValueError(
+            "random ref-swap requires train-batch-size > 1 because it uses another "
+            "sample in the same batch as the negative reference. Provide a dataset-level "
+            "random_batch for batch size 1."
+        )
     order = torch.arange(bsz, device=batch["reference_image"].device).roll(1)
     swapped["reference_image"] = batch["reference_image"].index_select(0, order)
     swapped["reference_tissue_mask"] = batch["reference_tissue_mask"].index_select(0, order)
@@ -437,12 +456,50 @@ def _parse_ref_swap_variants(value: str | None) -> list[str]:
     return variants
 
 
+class RandomReferenceSampler:
+    """Sample real reference patches from metadata for ref-swap negatives."""
+
+    def __init__(self, records: list[dict], *, seed: int | None = None) -> None:
+        self.records = list(records)
+        if not self.records:
+            raise ValueError("RandomReferenceSampler requires at least one metadata record.")
+        self.rng = random.Random(seed)
+
+    def sample_for_batch(self, batch: dict, *, device: torch.device | str) -> dict:
+        current_ids = set(str(sample_id) for sample_id in batch.get("reference_sample_ids", []))
+        current_ids.update(str(sample_id) for sample_id in batch.get("sample_ids", []))
+        references = []
+        tissue_masks = []
+        nuclei_masks = []
+        for _ in range(int(batch["reference_image"].shape[0])):
+            record = self._choose_record(exclude_sample_ids=current_ids)
+            references.append(load_image_tensor(record["reference_image"]))
+            tissue_masks.append(load_tissue_mask(record["reference_tissue_mask"]))
+            nuclei_masks.append(load_nuclei_mask(record["reference_nuclei_mask"], remap=True))
+            current_ids.add(str(record.get("reference_sample_id") or ""))
+            current_ids.add(str(record.get("sample_id") or ""))
+        return {
+            "reference_image": torch.stack(references).to(device=device),
+            "reference_tissue_mask": torch.stack(tissue_masks).to(device=device),
+            "reference_nuclei_mask": torch.stack(nuclei_masks).to(device=device),
+        }
+
+    def _choose_record(self, *, exclude_sample_ids: set[str]) -> dict:
+        for _ in range(16):
+            record = self.rng.choice(self.records)
+            if str(record.get("reference_sample_id") or "") not in exclude_sample_ids:
+                return record
+        return self.rng.choice(self.records)
+
+
 # ---------------------------------------------------------------------------
 # Collation
 # ---------------------------------------------------------------------------
 
 def collate_cross_batch(examples: list[dict]) -> dict:
     return {
+        "sample_ids": [item["sample_id"] for item in examples],
+        "reference_sample_ids": [item["reference_sample_id"] for item in examples],
         "target_image": torch.stack([item["target_image"] for item in examples]),
         "reference_image": torch.stack([item["reference_image"] for item in examples]),
         "target_tissue_mask": torch.stack([item["target_tissue_mask"] for item in examples]),
@@ -567,7 +624,7 @@ def _latest_checkpoint(output_dir: str) -> str | None:
     return os.path.join(output_dir, latest)
 
 
-def _save_checkpoint(accelerator: Accelerator, args: argparse.Namespace, global_step: int) -> None:
+def _save_checkpoint(accelerator: Accelerator, args: argparse.Namespace, global_step: int) -> str:
     if args.checkpoints_total_limit is not None:
         checkpoints = [
             directory for directory in os.listdir(args.output_dir) if directory.startswith("checkpoint-")
@@ -579,6 +636,7 @@ def _save_checkpoint(accelerator: Accelerator, args: argparse.Namespace, global_
     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
     accelerator.save_state(save_path)
     logger.info("Saved state to %s", save_path)
+    return save_path
 
 
 # ★ FIX 3: 保存时不再原地改 dtype，而是拷贝 state_dict 后转换
@@ -655,6 +713,41 @@ def _save_ip_adapter_modules(
     state["num_tokens"] = int(num_tokens)
     state["ip_init_gain"] = float(ip_init_gain)
     torch.save(state, os.path.join(output_dir, "phase5_ip_adapter.pt"))
+
+
+def _save_cross_v1_artifacts(
+    output_dir: str,
+    args: argparse.Namespace,
+    *,
+    flux_controlnet: nn.Module,
+    modules: dict[str, nn.Module],
+    ip_trainable_wrapper: nn.Module,
+    unwrap_model: Callable,
+    control_spec: CrossV1ControlSpec,
+) -> None:
+    save_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(
+        args.save_weight_dtype, torch.float32,
+    )
+    unwrapped_controlnet = unwrap_model(flux_controlnet)
+    if args.save_weight_dtype != "fp32":
+        unwrapped_controlnet.save_pretrained(output_dir, variant=args.save_weight_dtype)
+    else:
+        unwrapped_controlnet.save_pretrained(output_dir)
+    _save_condition_modules(
+        output_dir,
+        modules,
+        unwrap_model,
+        save_dtype,
+        control_spec=control_spec,
+    )
+    _save_ip_adapter_modules(
+        output_dir,
+        ip_trainable_wrapper,
+        unwrap_model,
+        save_dtype,
+        num_tokens=args.reference_num_tokens,
+        ip_init_gain=args.ip_init_gain,
+    )
 
 
 def _load_cross_v1_controlnet_checkpoint(
@@ -863,6 +956,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         0.0,
         float(getattr(args, "reference_style_loss_weight", 0.0) or 0.0),
     )
+    reference_style_loss_interval = int(
+        getattr(args, "reference_style_loss_interval", 1) or 0
+    )
     reference_style_loss_config = RegionalStainStyleLossConfig(
         tissue_weight=float(getattr(args, "reference_style_tissue_weight", 1.0) or 0.0),
         nuclei_weight=float(getattr(args, "reference_style_nuclei_weight", 1.0) or 0.0),
@@ -873,8 +969,14 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         max_regions_per_sample=getattr(args, "reference_style_max_regions_per_sample", None),
     )
     ref_swap_loss_weight = max(0.0, float(getattr(args, "ref_swap_loss_weight", 0.0) or 0.0))
+    ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
     ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.02) or 0.0)
     ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero,random"))
+    random_reference_sampler = (
+        RandomReferenceSampler(dataset.records, seed=args.seed)
+        if "random" in ref_swap_variants and args.train_batch_size <= 1
+        else None
+    )
 
     ref_encoder = ReferenceImageEncoder(
         uni_checkpoint_path=args.uni_checkpoint_path,
@@ -949,8 +1051,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         )
     if reference_style_loss_weight > 0.0:
         logger.info(
-            "Using reference region stain/style loss: weight=%s tissue=%s nuclei=%s mean/std/cov=%s/%s/%s",
+            "Using reference region stain/style loss: weight=%s interval=%s tissue=%s nuclei=%s mean/std/cov=%s/%s/%s",
             reference_style_loss_weight,
+            reference_style_loss_interval,
             reference_style_loss_config.tissue_weight,
             reference_style_loss_config.nuclei_weight,
             reference_style_loss_config.mean_weight,
@@ -959,8 +1062,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         )
     if ref_swap_loss_weight > 0.0:
         logger.info(
-            "Using ref-swap sensitivity loss: weight=%s margin=%s variants=%s",
+            "Using ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
             ref_swap_loss_weight,
+            ref_swap_loss_interval,
             ref_swap_margin,
             ",".join(ref_swap_variants),
         )
@@ -1179,11 +1283,20 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         eps=args.adam_epsilon,
     )
 
-    train_dataloader = torch.utils.data.DataLoader(
-        dataset, shuffle=True, collate_fn=collate_cross_batch,
-        batch_size=args.train_batch_size,
-        num_workers=args.dataloader_num_workers, pin_memory=True,
-    )
+    dataloader_kwargs = {
+        "shuffle": True,
+        "collate_fn": collate_cross_batch,
+        "batch_size": args.train_batch_size,
+        "num_workers": args.dataloader_num_workers,
+        "pin_memory": True,
+    }
+    if args.dataloader_num_workers > 0:
+        dataloader_kwargs["persistent_workers"] = True
+        dataloader_kwargs["prefetch_factor"] = max(
+            1,
+            int(getattr(args, "dataloader_prefetch_factor", 2) or 2),
+        )
+    train_dataloader = torch.utils.data.DataLoader(dataset, **dataloader_kwargs)
 
     num_update_steps_per_epoch = math.ceil(
         len(train_dataloader) / args.gradient_accumulation_steps
@@ -1397,7 +1510,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 style_nuclei_loss = noise_pred.new_zeros(())
                 style_tissue_regions = 0
                 style_nuclei_regions = 0
-                if reference_style_loss_weight > 0.0:
+                should_compute_style_loss = (
+                    reference_style_loss_weight > 0.0
+                    and reference_style_loss_interval > 0
+                    and global_step % reference_style_loss_interval == 0
+                )
+                if should_compute_style_loss:
                     prediction_rgb = _decode_packed_model_prediction(
                         vae=vae,
                         packed_noisy_latents=noisy_model_input,
@@ -1428,13 +1546,31 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
                 swap_loss = noise_pred.new_zeros(())
                 ref_variant_loss_logs: dict[str, float] = {}
-                if ref_swap_loss_weight > 0.0 and ref_swap_variants:
+                should_compute_swap_loss = (
+                    ref_swap_loss_weight > 0.0
+                    and ref_swap_loss_interval > 0
+                    and global_step % ref_swap_loss_interval == 0
+                    and bool(ref_swap_variants)
+                )
+                if should_compute_swap_loss:
                     swapped_per_sample_losses = []
                     for variant in ref_swap_variants:
                         if variant == "zero":
                             swapped_batch = _use_zero_reference(training_batch)
                         elif variant == "random":
-                            swapped_batch = _use_random_reference(training_batch)
+                            random_batch = (
+                                random_reference_sampler.sample_for_batch(
+                                    training_batch,
+                                    device=accelerator.device,
+                                )
+                                if random_reference_sampler is not None
+                                and int(training_batch["reference_image"].shape[0]) <= 1
+                                else None
+                            )
+                            swapped_batch = _use_random_reference(
+                                training_batch,
+                                random_batch=random_batch,
+                            )
                         else:
                             continue
                         swapped_kwargs = _build_ip_adapter_kwargs(
@@ -1494,7 +1630,17 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 progress_bar.update(1)
                 global_step += 1
                 if accelerator.is_main_process and global_step % args.checkpointing_steps == 0:
-                    _save_checkpoint(accelerator, args, global_step)
+                    save_path = _save_checkpoint(accelerator, args, global_step)
+                    _save_cross_v1_artifacts(
+                        save_path,
+                        args,
+                        flux_controlnet=flux_controlnet,
+                        modules=modules,
+                        ip_trainable_wrapper=ip_trainable_wrapper,
+                        unwrap_model=unwrap_model,
+                        control_spec=control_spec,
+                    )
+                    logger.info("Saved eval-ready Phase 5.3 cross-v1 artifacts to %s", save_path)
 
             logs = {
                 "loss": loss.detach().item(),

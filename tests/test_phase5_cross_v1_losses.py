@@ -13,6 +13,7 @@ if torch is not None:
         regional_stain_style_loss,
         unpack_flux_packed_latents,
     )
+    from controlnet_train.training.flux_phase5_cross_v1 import _use_random_reference
 
 
 @unittest.skipIf(torch is None, "torch is required for Cross V1 loss tests")
@@ -79,6 +80,34 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         unpacked = unpack_flux_packed_latents(packed, channels=1, height=4, width=4)
 
         self.assertTrue(torch.equal(unpacked, latents))
+
+    def test_random_reference_swap_rejects_batch_size_one(self):
+        batch = {
+            "reference_image": torch.zeros(1, 3, 4, 4),
+            "reference_tissue_mask": torch.zeros(1, 4, 4, dtype=torch.long),
+            "reference_nuclei_mask": torch.zeros(1, 4, 4, dtype=torch.long),
+        }
+
+        with self.assertRaisesRegex(ValueError, "train-batch-size > 1"):
+            _use_random_reference(batch)
+
+    def test_random_reference_swap_accepts_dataset_random_batch_for_batch_size_one(self):
+        batch = {
+            "reference_image": torch.zeros(1, 3, 4, 4),
+            "reference_tissue_mask": torch.zeros(1, 4, 4, dtype=torch.long),
+            "reference_nuclei_mask": torch.zeros(1, 4, 4, dtype=torch.long),
+        }
+        random_batch = {
+            "reference_image": torch.ones(1, 3, 4, 4),
+            "reference_tissue_mask": torch.ones(1, 4, 4, dtype=torch.long),
+            "reference_nuclei_mask": torch.full((1, 4, 4), 2, dtype=torch.long),
+        }
+
+        swapped = _use_random_reference(batch, random_batch=random_batch)
+
+        self.assertTrue(torch.equal(swapped["reference_image"], random_batch["reference_image"]))
+        self.assertTrue(torch.equal(swapped["reference_tissue_mask"], random_batch["reference_tissue_mask"]))
+        self.assertTrue(torch.equal(swapped["reference_nuclei_mask"], random_batch["reference_nuclei_mask"]))
 
 
 if __name__ == "__main__":
