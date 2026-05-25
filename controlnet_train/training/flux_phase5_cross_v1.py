@@ -1003,6 +1003,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         args.learning_rate *= (
             args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+    ip_ref_learning_rate = float(
+        getattr(args, "ip_ref_learning_rate", None) or (args.learning_rate * 10.0)
+    )
 
     if args.use_8bit_adam:
         import bitsandbytes as bnb
