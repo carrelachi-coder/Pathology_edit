@@ -10,6 +10,7 @@ from controlnet_train.training.conditioning import (
     patch_controlnet_x_embedder,
 )
 from controlnet_train.cli.train_controlnet_flux_cross import parse_args as parse_cross_args
+from controlnet_train.cli.train_controlnet_flux_cross_v1 import parse_args as parse_cross_v1_args
 from controlnet_train.cli.train_controlnet_flux_inpaint import parse_args as parse_inpaint_args
 
 
@@ -105,6 +106,37 @@ class TrainingCliTests(unittest.TestCase):
 
         self.assertEqual(args.prompt_source, "metadata")
         self.assertEqual(args.prompt, "H&E stained pathology")
+
+    def test_cross_v1_cli_accepts_reference_style_and_swap_loss_arguments(self):
+        args = parse_cross_v1_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--uni-checkpoint-path",
+                "UNI-2h/pytorch_model.bin",
+                "--reference-style-loss-weight",
+                "0.2",
+                "--reference-style-tissue-weight",
+                "2.0",
+                "--reference-style-nuclei-weight",
+                "1.5",
+                "--ref-swap-loss-weight",
+                "0.3",
+                "--ref-swap-margin",
+                "0.04",
+                "--ref-swap-variants",
+                "zero,random",
+            ]
+        )
+
+        self.assertEqual(args.reference_style_loss_weight, 0.2)
+        self.assertEqual(args.reference_style_tissue_weight, 2.0)
+        self.assertEqual(args.reference_style_nuclei_weight, 1.5)
+        self.assertEqual(args.ref_swap_loss_weight, 0.3)
+        self.assertEqual(args.ref_swap_margin, 0.04)
+        self.assertEqual(args.ref_swap_variants, "zero,random")
 
 
 if __name__ == "__main__":

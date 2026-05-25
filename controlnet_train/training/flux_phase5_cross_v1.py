@@ -29,7 +29,6 @@ from typing import Callable
 import accelerate
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -66,6 +65,13 @@ from controlnet_train.modules.cross_v1_conditioning import (
 )
 from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
+from controlnet_train.training.cross_v1_losses import (
+    RegionalStainStyleLossConfig,
+    per_sample_mse,
+    ref_swap_sensitivity_loss,
+    regional_stain_style_loss,
+    unpack_flux_packed_latents,
+)
 
 if is_wandb_available():
     import wandb  # noqa: F401
@@ -294,6 +300,45 @@ def _encode_images_to_latents(vae: AutoencoderKL, images: torch.Tensor, dtype: t
     return (latents - vae.config.shift_factor) * vae.config.scaling_factor
 
 
+def _decode_packed_model_prediction(
+    *,
+    vae: AutoencoderKL,
+    packed_noisy_latents: torch.Tensor,
+    noise_pred: torch.Tensor,
+    sigmas: torch.Tensor,
+    latent_channels: int,
+    latent_height: int,
+    latent_width: int,
+    weight_dtype: torch.dtype,
+) -> torch.Tensor:
+    """Decode one-step denoised model output to RGB in [0, 1] for style losses."""
+    pred_original = packed_noisy_latents - sigmas * noise_pred
+    pred_latents = _unpack_flux_packed_latents(
+        pred_original,
+        channels=latent_channels,
+        height=latent_height,
+        width=latent_width,
+    )
+    pred_latents = (pred_latents / vae.config.scaling_factor) + vae.config.shift_factor
+    decoded = vae.decode(pred_latents.to(device=next(vae.parameters()).device, dtype=weight_dtype), return_dict=False)[0]
+    return ((decoded.float() / 2.0) + 0.5).clamp(0.0, 1.0)
+
+
+def _unpack_flux_packed_latents(
+    packed_latents: torch.Tensor,
+    *,
+    channels: int,
+    height: int,
+    width: int,
+) -> torch.Tensor:
+    return unpack_flux_packed_latents(
+        packed_latents,
+        channels=channels,
+        height=height,
+        width=width,
+    )
+
+
 def _build_cross_v1_control_batch(
     *,
     batch: dict,
@@ -356,6 +401,40 @@ def _use_self_reconstruction_reference(batch: dict) -> dict:
     warmup_batch["reference_tissue_mask"] = batch["target_tissue_mask"]
     warmup_batch["reference_nuclei_mask"] = batch["target_nuclei_mask"]
     return warmup_batch
+
+
+def _use_zero_reference(batch: dict) -> dict:
+    swapped = dict(batch)
+    swapped["reference_image"] = torch.zeros_like(batch["reference_image"])
+    return swapped
+
+
+def _use_random_reference(batch: dict) -> dict:
+    swapped = dict(batch)
+    bsz = int(batch["reference_image"].shape[0])
+    if bsz <= 1:
+        swapped["reference_image"] = torch.flip(batch["reference_image"], dims=[-1])
+        return swapped
+    order = torch.arange(bsz, device=batch["reference_image"].device).roll(1)
+    swapped["reference_image"] = batch["reference_image"].index_select(0, order)
+    swapped["reference_tissue_mask"] = batch["reference_tissue_mask"].index_select(0, order)
+    swapped["reference_nuclei_mask"] = batch["reference_nuclei_mask"].index_select(0, order)
+    return swapped
+
+
+def _parse_ref_swap_variants(value: str | None) -> list[str]:
+    variants: list[str] = []
+    for raw_part in str(value or "").split(","):
+        variant = raw_part.strip().lower()
+        if not variant:
+            continue
+        if variant not in {"zero", "random"}:
+            raise ValueError(
+                f"Unsupported ref-swap variant {variant!r}; choose zero and/or random."
+            )
+        if variant not in variants:
+            variants.append(variant)
+    return variants
 
 
 # ---------------------------------------------------------------------------
@@ -780,6 +859,22 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         0,
         int(getattr(args, "self_reconstruction_warmup_steps", 0) or 0),
     )
+    reference_style_loss_weight = max(
+        0.0,
+        float(getattr(args, "reference_style_loss_weight", 0.0) or 0.0),
+    )
+    reference_style_loss_config = RegionalStainStyleLossConfig(
+        tissue_weight=float(getattr(args, "reference_style_tissue_weight", 1.0) or 0.0),
+        nuclei_weight=float(getattr(args, "reference_style_nuclei_weight", 1.0) or 0.0),
+        mean_weight=float(getattr(args, "reference_style_mean_weight", 1.0) or 0.0),
+        std_weight=float(getattr(args, "reference_style_std_weight", 1.0) or 0.0),
+        covariance_weight=float(getattr(args, "reference_style_cov_weight", 0.25) or 0.0),
+        min_pixels=max(1, int(getattr(args, "reference_style_min_pixels", 32) or 1)),
+        max_regions_per_sample=getattr(args, "reference_style_max_regions_per_sample", None),
+    )
+    ref_swap_loss_weight = max(0.0, float(getattr(args, "ref_swap_loss_weight", 0.0) or 0.0))
+    ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.02) or 0.0)
+    ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero,random"))
 
     ref_encoder = ReferenceImageEncoder(
         uni_checkpoint_path=args.uni_checkpoint_path,
@@ -851,6 +946,23 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         logger.info(
             "Using same-patch self-reconstruction warmup for the first %s optimizer steps",
             self_reconstruction_warmup_steps,
+        )
+    if reference_style_loss_weight > 0.0:
+        logger.info(
+            "Using reference region stain/style loss: weight=%s tissue=%s nuclei=%s mean/std/cov=%s/%s/%s",
+            reference_style_loss_weight,
+            reference_style_loss_config.tissue_weight,
+            reference_style_loss_config.nuclei_weight,
+            reference_style_loss_config.mean_weight,
+            reference_style_loss_config.std_weight,
+            reference_style_loss_config.covariance_weight,
+        )
+    if ref_swap_loss_weight > 0.0:
+        logger.info(
+            "Using ref-swap sensitivity loss: weight=%s margin=%s variants=%s",
+            ref_swap_loss_weight,
+            ref_swap_margin,
+            ",".join(ref_swap_variants),
         )
     if not ref_encoder.use_perceiver_self_attn:
         logger.info("Reference Perceiver self-attention is disabled.")
@@ -1254,6 +1366,14 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 joint_attention_kwargs = _build_ip_adapter_kwargs(
                     training_batch, modules, accelerator, weight_dtype, flux_transformer,
                 )
+                transformer_controlnet_block_samples = (
+                    [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
+                    if controlnet_block_samples is not None else None
+                )
+                transformer_controlnet_single_block_samples = (
+                    [sample.to(dtype=weight_dtype) for sample in controlnet_single_block_samples]
+                    if controlnet_single_block_samples is not None else None
+                )
 
                 noise_pred = flux_transformer(
                     hidden_states=noisy_model_input,
@@ -1261,22 +1381,94 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     guidance=guidance_vec,
                     pooled_projections=batch_pooled,
                     encoder_hidden_states=batch_prompt,
-                    controlnet_block_samples=(
-                        [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
-                        if controlnet_block_samples is not None else None
-                    ),
-                    controlnet_single_block_samples=(
-                        [sample.to(dtype=weight_dtype) for sample in controlnet_single_block_samples]
-                        if controlnet_single_block_samples is not None else None
-                    ),
+                    controlnet_block_samples=transformer_controlnet_block_samples,
+                    controlnet_single_block_samples=transformer_controlnet_single_block_samples,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=dict(joint_attention_kwargs),
                     return_dict=False,
                 )[0]
 
-                loss = F.mse_loss(
-                    noise_pred.float(), (noise - packed_pixel_latents).float(), reduction="mean",
+                target_velocity = noise - packed_pixel_latents
+                normal_per_sample_loss = per_sample_mse(noise_pred, target_velocity)
+                denoising_loss = normal_per_sample_loss.mean()
+                style_loss = noise_pred.new_zeros(())
+                style_tissue_loss = noise_pred.new_zeros(())
+                style_nuclei_loss = noise_pred.new_zeros(())
+                style_tissue_regions = 0
+                style_nuclei_regions = 0
+                if reference_style_loss_weight > 0.0:
+                    prediction_rgb = _decode_packed_model_prediction(
+                        vae=vae,
+                        packed_noisy_latents=noisy_model_input,
+                        noise_pred=noise_pred,
+                        sigmas=sigmas,
+                        latent_channels=pixel_latents.shape[1],
+                        latent_height=pixel_latents.shape[2],
+                        latent_width=pixel_latents.shape[3],
+                        weight_dtype=weight_dtype,
+                    )
+                    style_terms = regional_stain_style_loss(
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                        reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                        config=reference_style_loss_config,
+                    )
+                    style_loss = style_terms["total"].to(dtype=denoising_loss.dtype)
+                    style_tissue_loss = style_terms["tissue"].to(dtype=denoising_loss.dtype)
+                    style_nuclei_loss = style_terms["nuclei"].to(dtype=denoising_loss.dtype)
+                    style_tissue_regions = int(style_terms["tissue_regions"])
+                    style_nuclei_regions = int(style_terms["nuclei_regions"])
+
+                swap_loss = noise_pred.new_zeros(())
+                ref_variant_loss_logs: dict[str, float] = {}
+                if ref_swap_loss_weight > 0.0 and ref_swap_variants:
+                    swapped_per_sample_losses = []
+                    for variant in ref_swap_variants:
+                        if variant == "zero":
+                            swapped_batch = _use_zero_reference(training_batch)
+                        elif variant == "random":
+                            swapped_batch = _use_random_reference(training_batch)
+                        else:
+                            continue
+                        swapped_kwargs = _build_ip_adapter_kwargs(
+                            swapped_batch, modules, accelerator, weight_dtype, flux_transformer,
+                        )
+                        swapped_noise_pred = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=batch_prompt,
+                            controlnet_block_samples=transformer_controlnet_block_samples,
+                            controlnet_single_block_samples=transformer_controlnet_single_block_samples,
+                            txt_ids=text_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=dict(swapped_kwargs),
+                            return_dict=False,
+                        )[0]
+                        swapped_per_sample_losses.append(
+                            per_sample_mse(swapped_noise_pred, target_velocity)
+                        )
+                        ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = (
+                            swapped_per_sample_losses[-1].mean().detach().item()
+                        )
+                    swap_loss = ref_swap_sensitivity_loss(
+                        normal_per_sample_loss,
+                        swapped_per_sample_losses,
+                        margin=ref_swap_margin,
+                    ).to(dtype=denoising_loss.dtype)
+
+                loss = (
+                    denoising_loss
+                    + reference_style_loss_weight * style_loss
+                    + ref_swap_loss_weight * swap_loss
                 )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -1304,7 +1496,19 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 if accelerator.is_main_process and global_step % args.checkpointing_steps == 0:
                     _save_checkpoint(accelerator, args, global_step)
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {
+                "loss": loss.detach().item(),
+                "denoise_loss": denoising_loss.detach().item(),
+                "style_loss": style_loss.detach().item(),
+                "style_tissue_loss": style_tissue_loss.detach().item(),
+                "style_nuclei_loss": style_nuclei_loss.detach().item(),
+                "ref_swap_loss": swap_loss.detach().item(),
+                "ref_normal_denoise_loss": denoising_loss.detach().item(),
+                "style_tissue_regions": style_tissue_regions,
+                "style_nuclei_regions": style_nuclei_regions,
+                "lr": lr_scheduler.get_last_lr()[0],
+            }
+            logs.update(ref_variant_loss_logs)
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 

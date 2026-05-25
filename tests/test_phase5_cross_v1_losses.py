@@ -1,0 +1,85 @@
+import unittest
+
+try:
+    import torch
+except ModuleNotFoundError:
+    torch = None
+
+if torch is not None:
+    from controlnet_train.training.cross_v1_losses import (
+        RegionalStainStyleLossConfig,
+        per_sample_mse,
+        ref_swap_sensitivity_loss,
+        regional_stain_style_loss,
+        unpack_flux_packed_latents,
+    )
+
+
+@unittest.skipIf(torch is None, "torch is required for Cross V1 loss tests")
+class CrossV1AuxiliaryLossTests(unittest.TestCase):
+    def test_regional_stain_style_loss_matches_shared_tissue_and_nuclei_regions(self):
+        prediction = torch.zeros(1, 3, 4, 4)
+        reference = torch.zeros(1, 3, 4, 4)
+        prediction[:, :, :2, :] = 0.25
+        reference[:, :, :2, :] = 0.75
+        prediction[:, :, 2:, :] = 0.1
+        reference[:, :, 2:, :] = 0.9
+        tissue_target = torch.tensor(
+            [[[1, 1, 1, 1], [1, 1, 1, 1], [2, 2, 2, 2], [2, 2, 2, 2]]]
+        )
+        tissue_reference = tissue_target.clone()
+        nuclei_target = torch.tensor(
+            [[[0, 0, 3, 3], [0, 0, 3, 3], [0, 0, 4, 4], [0, 0, 4, 4]]]
+        )
+        nuclei_reference = nuclei_target.clone()
+
+        result = regional_stain_style_loss(
+            prediction=prediction,
+            reference=reference,
+            target_tissue_mask=tissue_target,
+            reference_tissue_mask=tissue_reference,
+            target_nuclei_mask=nuclei_target,
+            reference_nuclei_mask=nuclei_reference,
+            config=RegionalStainStyleLossConfig(
+                mean_weight=1.0,
+                std_weight=0.0,
+                covariance_weight=0.0,
+                min_pixels=2,
+            ),
+        )
+
+        self.assertEqual(result["tissue_regions"], 2)
+        self.assertEqual(result["nuclei_regions"], 2)
+        self.assertGreater(result["total"].item(), 0.0)
+
+    def test_ref_swap_sensitivity_loss_penalizes_swapped_loss_inside_margin(self):
+        normal = torch.tensor([0.10, 0.20])
+        zero = torch.tensor([0.11, 0.40])
+        random = torch.tensor([0.08, 0.21])
+
+        loss = ref_swap_sensitivity_loss(normal, [zero, random], margin=0.05)
+
+        expected_zero = torch.relu(torch.tensor([0.05 + 0.10 - 0.11, 0.05 + 0.20 - 0.40])).mean()
+        expected_random = torch.relu(torch.tensor([0.05 + 0.10 - 0.08, 0.05 + 0.20 - 0.21])).mean()
+        self.assertTrue(torch.allclose(loss, torch.stack([expected_zero, expected_random]).mean()))
+
+    def test_per_sample_mse_returns_batch_values(self):
+        prediction = torch.tensor([[[1.0, 3.0]], [[2.0, 4.0]]])
+        target = torch.tensor([[[0.0, 1.0]], [[2.0, 1.0]]])
+
+        values = per_sample_mse(prediction, target)
+
+        self.assertTrue(torch.allclose(values, torch.tensor([2.5, 4.5])))
+
+    def test_unpack_flux_packed_latents_inverts_two_by_two_packing_order(self):
+        latents = torch.arange(1 * 1 * 4 * 4, dtype=torch.float32).reshape(1, 1, 4, 4)
+        packed = latents.reshape(1, 1, 2, 2, 2, 2)
+        packed = packed.permute(0, 2, 4, 1, 3, 5).reshape(1, 4, 4)
+
+        unpacked = unpack_flux_packed_latents(packed, channels=1, height=4, width=4)
+
+        self.assertTrue(torch.equal(unpacked, latents))
+
+
+if __name__ == "__main__":
+    unittest.main()
