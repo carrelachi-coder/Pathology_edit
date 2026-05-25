@@ -44,6 +44,8 @@ class ReferenceImageEncoder(nn.Module):
         num_tokens: int = 16,
         num_perceiver_layers: int = 2,
         perceiver_heads: int = 8,
+        use_perceiver_self_attn: bool = True,
+        perceiver_cross_gate_init: float | None = None,
     ):
         super().__init__()
         self.uni_embed_dim = int(uni_embed_dim)
@@ -51,6 +53,10 @@ class ReferenceImageEncoder(nn.Module):
         self.num_tokens = int(num_tokens)
         self.num_perceiver_layers = int(num_perceiver_layers)
         self.perceiver_heads = int(perceiver_heads)
+        self.use_perceiver_self_attn = bool(use_perceiver_self_attn)
+        self.perceiver_cross_gate_init = (
+            None if perceiver_cross_gate_init is None else float(perceiver_cross_gate_init)
+        )
         self.uni = self._load_uni(uni_checkpoint_path)
         self.uni.requires_grad_(False)
         self.uni.eval()
@@ -74,6 +80,8 @@ class ReferenceImageEncoder(nn.Module):
                 latent_dim=hidden_dim,
                 input_dim=hidden_dim,
                 num_heads=perceiver_heads,
+                use_self_attn=self.use_perceiver_self_attn,
+                cross_gate_init=self.perceiver_cross_gate_init,
             )
             for _ in range(num_perceiver_layers)
         ])
@@ -101,14 +109,14 @@ class ReferenceImageEncoder(nn.Module):
 
     @torch.no_grad()
     def extract_uni_features(self, images: torch.Tensor) -> torch.Tensor:
-        x = F.interpolate(images, size=(224, 224), mode="bilinear", align_corners=False)
+        x = F.interpolate(images, size=(224, 224), mode="bicubic", align_corners=False)
         x = (x - self.mean) / self.std
         features = self.uni.forward_features(x)
-        if features.ndim == 3 and features.shape[1] > 1:
-            # Strip CLS token if present (forward_features may prepend one)
-            # With no_embed_class=True + reg_tokens=8, shape is (B, 1+256+8, 1536)
-            # We keep all tokens — Perceiver resampler handles the spatial structure
-            pass
+        if features.ndim == 3:
+            patch_size = int(UNI2H_KWARGS["patch_size"])
+            num_patch_tokens = (x.shape[-2] // patch_size) * (x.shape[-1] // patch_size)
+            if features.shape[1] > num_patch_tokens:
+                features = features[:, -num_patch_tokens:, :]
         return features
 
     def _resample(self, projected: torch.Tensor) -> torch.Tensor:
@@ -117,6 +125,24 @@ class ReferenceImageEncoder(nn.Module):
         for layer in self.perceiver_layers:
             latents = layer(latents, projected)
         return self.perceiver_norm(latents)
+
+    def load_perceiver_layers_state_dict(
+        self, state_dict: dict[str, torch.Tensor]
+    ) -> None:
+        incompatible = self.perceiver_layers.load_state_dict(state_dict, strict=False)
+        allowed_missing = set()
+        if self.perceiver_cross_gate_init is not None:
+            allowed_missing = {
+                f"{index}.cross_gate" for index in range(len(self.perceiver_layers))
+            }
+        missing = [
+            key for key in incompatible.missing_keys if key not in allowed_missing
+        ]
+        if missing or incompatible.unexpected_keys:
+            raise RuntimeError(
+                "Reference Perceiver checkpoint mismatch: "
+                f"missing={missing}, unexpected={incompatible.unexpected_keys}"
+            )
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         uni_features = self.extract_uni_features(images)
@@ -128,12 +154,25 @@ class ReferenceImageEncoder(nn.Module):
 class PerceiverCrossAttentionLayer(nn.Module):
     """Single Perceiver cross-attention layer: latent queries attend to input tokens."""
 
-    def __init__(self, latent_dim: int, input_dim: int, num_heads: int):
+    def __init__(
+        self,
+        latent_dim: int,
+        input_dim: int,
+        num_heads: int,
+        use_self_attn: bool = True,
+        cross_gate_init: float | None = None,
+    ):
         super().__init__()
+        self.use_self_attn = bool(use_self_attn)
+        if cross_gate_init is None:
+            self.register_parameter("cross_gate", None)
+        else:
+            self.cross_gate = nn.Parameter(torch.tensor(float(cross_gate_init)))
         self.cross_attn = nn.MultiheadAttention(
             embed_dim=latent_dim, num_heads=num_heads, batch_first=True,
             kdim=input_dim, vdim=input_dim,
         )
+        # Keep these modules even when disabled so old/new checkpoints share keys.
         self.self_attn = nn.MultiheadAttention(
             embed_dim=latent_dim, num_heads=num_heads, batch_first=True,
         )
@@ -153,11 +192,16 @@ class PerceiverCrossAttentionLayer(nn.Module):
         cross_out, _ = self.cross_attn(
             query=normed_latents, key=normed_inputs, value=normed_inputs,
         )
-        latents = latents + cross_out
-        normed_latents2 = self.self_attn_norm(latents)
-        self_out, _ = self.self_attn(
-            query=normed_latents2, key=normed_latents2, value=normed_latents2,
-        )
-        latents = latents + self_out
+        if self.cross_gate is None:
+            latents = latents + cross_out
+        else:
+            gate = torch.sigmoid(self.cross_gate).to(dtype=latents.dtype)
+            latents = gate * latents + (1.0 - gate) * cross_out
+        if self.use_self_attn:
+            normed_latents2 = self.self_attn_norm(latents)
+            self_out, _ = self.self_attn(
+                query=normed_latents2, key=normed_latents2, value=normed_latents2,
+            )
+            latents = latents + self_out
         latents = latents + self.ff(self.ff_norm(latents))
         return latents

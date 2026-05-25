@@ -281,6 +281,15 @@ def run_sample_grid(
     rows: list[dict[str, Any]] = []
 
     with torch.no_grad():
+        feature_diagnostics = collect_reference_feature_diagnostics(
+            bundle=bundle,
+            variant_inputs=variant_inputs,
+            variants=variants,
+        )
+        (sample_dir / "reference_feature_diagnostics.json").write_text(
+            json.dumps(feature_diagnostics, indent=2, ensure_ascii=False, allow_nan=True),
+            encoding="utf8",
+        )
         for variant_name in variants:
             variant = variant_inputs[variant_name]
             for scale in scales:
@@ -312,6 +321,7 @@ def run_sample_grid(
                         "path": str(prediction_path),
                         "l1_to_target": image_l1(output_arrays[key], target_array),
                         "mse_to_target": image_mse(output_arrays[key], target_array),
+                        **feature_diagnostics.get(variant_name, {}),
                     }
                 )
 
@@ -352,6 +362,101 @@ def run_sample_grid(
     panel_path = sample_dir / "sensitivity_grid.png"
     panel.save(panel_path)
     return rows, panel_path
+
+
+def collect_reference_feature_diagnostics(
+    *,
+    bundle,
+    variant_inputs: dict[str, dict[str, Any]],
+    variants: list[str],
+) -> dict[str, dict[str, float | int | str | None]]:
+    import torch
+
+    encoded: dict[str, dict[str, torch.Tensor]] = {}
+    ref_encoder = bundle.ref_encoder
+    transformer = bundle.flux_pipeline.transformer
+    for variant_name in variants:
+        image = variant_inputs[variant_name]["image"]
+        uni_dtype = next(ref_encoder.uni.parameters()).dtype
+        ref_features = ref_encoder(
+            image.unsqueeze(0).to(device=bundle.device, dtype=uni_dtype)
+        ).to(device=bundle.device, dtype=bundle.torch_dtype)
+        ip_hidden_states = transformer.encoder_hid_proj([ref_features])
+        encoded[variant_name] = {
+            "ref_features": flatten_tensors_for_stats([ref_features]),
+            "ip_hidden_states": flatten_tensors_for_stats(ip_hidden_states),
+        }
+
+    normal = encoded.get("normal")
+    diagnostics: dict[str, dict[str, float | int | str | None]] = {}
+    for variant_name in variants:
+        current = encoded[variant_name]
+        row: dict[str, float | int | str | None] = {
+            "feature_variant": variant_name,
+            "ref_features_numel": int(current["ref_features"].numel()),
+            "ip_hidden_states_numel": int(current["ip_hidden_states"].numel()),
+            "ref_features_norm": tensor_l2_norm(current["ref_features"]),
+            "ip_hidden_states_norm": tensor_l2_norm(current["ip_hidden_states"]),
+        }
+        if normal is not None:
+            row.update(
+                prefix_tensor_pair_stats(
+                    "ref_features_vs_normal",
+                    current["ref_features"],
+                    normal["ref_features"],
+                )
+            )
+            row.update(
+                prefix_tensor_pair_stats(
+                    "ip_hidden_states_vs_normal",
+                    current["ip_hidden_states"],
+                    normal["ip_hidden_states"],
+                )
+            )
+        diagnostics[variant_name] = row
+    return diagnostics
+
+
+def flatten_tensors_for_stats(tensors) -> "torch.Tensor":
+    import torch
+
+    if torch.is_tensor(tensors):
+        values = [tensors]
+    else:
+        values = list(tensors)
+    if not values:
+        return torch.empty(0, dtype=torch.float32)
+    return torch.cat([value.detach().float().reshape(-1).cpu() for value in values], dim=0)
+
+
+def tensor_l2_norm(tensor) -> float:
+    import torch
+
+    if tensor.numel() == 0:
+        return math.nan
+    return float(torch.linalg.vector_norm(tensor.float()).item())
+
+
+def prefix_tensor_pair_stats(prefix: str, left, right) -> dict[str, float]:
+    import torch
+    import torch.nn.functional as F
+
+    if left.numel() == 0 or right.numel() == 0 or left.numel() != right.numel():
+        return {
+            f"{prefix}_cosine": math.nan,
+            f"{prefix}_l1": math.nan,
+            f"{prefix}_rmse": math.nan,
+            f"{prefix}_l2": math.nan,
+        }
+    left = left.float()
+    right = right.float()
+    diff = left - right
+    return {
+        f"{prefix}_cosine": float(F.cosine_similarity(left.unsqueeze(0), right.unsqueeze(0)).item()),
+        f"{prefix}_l1": float(diff.abs().mean().item()),
+        f"{prefix}_rmse": float(torch.sqrt(torch.mean(diff * diff)).item()),
+        f"{prefix}_l2": float(torch.linalg.vector_norm(diff).item()),
+    }
 
 
 def build_reference_variants(
@@ -583,6 +688,16 @@ def aggregate_diagnostic_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "mse_vs_normal_same_scale",
         "l1_vs_normal_scale0",
         "mse_vs_normal_scale0",
+        "ref_features_norm",
+        "ip_hidden_states_norm",
+        "ref_features_vs_normal_cosine",
+        "ref_features_vs_normal_l1",
+        "ref_features_vs_normal_rmse",
+        "ref_features_vs_normal_l2",
+        "ip_hidden_states_vs_normal_cosine",
+        "ip_hidden_states_vs_normal_l1",
+        "ip_hidden_states_vs_normal_rmse",
+        "ip_hidden_states_vs_normal_l2",
     ]
     for (variant, scale), group_rows in sorted(grouped.items(), key=lambda item: (item[0][0], item[0][1])):
         key = f"{variant}@{format_scale(scale)}"

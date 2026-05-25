@@ -458,6 +458,12 @@ def _save_condition_modules(
                     getattr(unwrapped, "num_perceiver_layers", len(unwrapped.perceiver_layers))
                 ),
                 "perceiver_heads": int(getattr(unwrapped, "perceiver_heads", 8)),
+                "use_perceiver_self_attn": bool(
+                    getattr(unwrapped, "use_perceiver_self_attn", True)
+                ),
+                "perceiver_cross_gate_init": getattr(
+                    unwrapped, "perceiver_cross_gate_init", None
+                ),
             }
             state["ref_encoder_proj_mlp"] = {
                 k: v.to(save_dtype) for k, v in unwrapped.proj_mlp.state_dict().items()
@@ -666,7 +672,7 @@ def _load_condition_modules_from_checkpoint(
     if load_ref_encoder:
         ref_encoder = modules["ref_encoder"]
         ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
-        ref_encoder.perceiver_layers.load_state_dict(state["ref_encoder_perceiver_layers"])
+        ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
         ref_encoder.latent_queries.data.copy_(
             state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
         )
@@ -705,6 +711,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         num_tokens=args.reference_num_tokens,
         num_perceiver_layers=args.reference_num_perceiver_layers,
         perceiver_heads=args.reference_perceiver_heads,
+        use_perceiver_self_attn=not bool(
+            getattr(args, "disable_reference_perceiver_self_attn", False)
+        ),
+        perceiver_cross_gate_init=getattr(args, "reference_perceiver_cross_gate_init", None),
     )
 
     modules = {
@@ -766,6 +776,15 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         logger.info(
             "Using same-patch self-reconstruction warmup for the first %s optimizer steps",
             self_reconstruction_warmup_steps,
+        )
+    if not ref_encoder.use_perceiver_self_attn:
+        logger.info("Reference Perceiver self-attention is disabled.")
+    if ref_encoder.perceiver_cross_gate_init is not None:
+        logger.info(
+            "Reference Perceiver cross-attention gate enabled with init=%s "
+            "(sigmoid=%s)",
+            ref_encoder.perceiver_cross_gate_init,
+            torch.sigmoid(torch.tensor(ref_encoder.perceiver_cross_gate_init)).item(),
         )
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()

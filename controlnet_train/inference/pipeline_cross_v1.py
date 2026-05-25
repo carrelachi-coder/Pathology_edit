@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from typing import Any
 from pathlib import Path
 
 import numpy as np
@@ -326,7 +327,7 @@ def _torch_load_weights(weight_path: Path) -> dict[str, torch.Tensor]:
         return torch.load(weight_path, map_location="cpu")
 
 
-def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, int]:
+def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, Any]:
     state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
     config = dict(state.get("ref_encoder_config") or {})
     if "num_tokens" not in config:
@@ -338,12 +339,20 @@ def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, int]:
     config.setdefault("uni_embed_dim", 1536)
     config.setdefault("hidden_dim", 3072)
     config.setdefault("perceiver_heads", 8)
+    config.setdefault("use_perceiver_self_attn", True)
+    config.setdefault("perceiver_cross_gate_init", None)
     return {
         "uni_embed_dim": int(config["uni_embed_dim"]),
         "hidden_dim": int(config["hidden_dim"]),
         "num_tokens": int(config["num_tokens"]),
         "num_perceiver_layers": int(config["num_perceiver_layers"]),
         "perceiver_heads": int(config["perceiver_heads"]),
+        "use_perceiver_self_attn": bool(config["use_perceiver_self_attn"]),
+        "perceiver_cross_gate_init": (
+            None
+            if config["perceiver_cross_gate_init"] is None
+            else float(config["perceiver_cross_gate_init"])
+        ),
     }
 
 
@@ -379,7 +388,7 @@ def _load_condition_modules(
     uni_checkpoint_path: str | Path,
     device: str,
     torch_dtype: torch.dtype,
-    ref_encoder_config: dict[str, int] | None = None,
+    ref_encoder_config: dict[str, Any] | None = None,
 ) -> dict[str, nn.Module]:
     state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
     hte_state = state["hte"]
@@ -423,9 +432,11 @@ def _load_condition_modules(
         num_tokens=ref_config["num_tokens"],
         num_perceiver_layers=ref_config["num_perceiver_layers"],
         perceiver_heads=ref_config["perceiver_heads"],
+        use_perceiver_self_attn=ref_config.get("use_perceiver_self_attn", True),
+        perceiver_cross_gate_init=ref_config.get("perceiver_cross_gate_init"),
     )
     ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
-    ref_encoder.perceiver_layers.load_state_dict(state["ref_encoder_perceiver_layers"])
+    ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
     ref_encoder.latent_queries.data.copy_(
         state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
     )

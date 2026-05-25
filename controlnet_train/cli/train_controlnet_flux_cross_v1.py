@@ -115,6 +115,23 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--reference-num-perceiver-layers", type=int, default=2)
     parser.add_argument("--reference-perceiver-heads", type=int, default=8)
     parser.add_argument(
+        "--reference-perceiver-cross-gate-init",
+        type=float,
+        default=None,
+        help=(
+            "Enable gated Cross-Attn mixing in the reference Perceiver. The gate is sigmoid(init): "
+            "latents = gate * latents + (1 - gate) * cross_out. Try -2.0 to make inputs dominate."
+        ),
+    )
+    parser.add_argument(
+        "--disable-reference-perceiver-self-attn",
+        action="store_true",
+        help=(
+            "Skip the self-attention sub-block inside each reference Perceiver layer. "
+            "This keeps reference-specific UNI/proj_mlp signal from being dominated by latent queries."
+        ),
+    )
+    parser.add_argument(
         "--self-reconstruction-warmup-steps",
         type=int,
         default=0,
