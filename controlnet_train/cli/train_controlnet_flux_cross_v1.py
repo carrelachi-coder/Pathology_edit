@@ -153,8 +153,17 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument(
         "--ip-init-gain",
         type=float,
-        default=0.02,
+        default=0.1,
         help="Xavier gain for freshly initialized IP-Adapter K/V projections.",
+    )
+    parser.add_argument(
+        "--ip-ref-learning-rate",
+        type=float,
+        default=None,
+        help=(
+            "Learning rate for ref_encoder and IP-Adapter modules. "
+            "Defaults to 10x --learning-rate after optional LR scaling."
+        ),
     )
     parser.add_argument("--tissue-embedding-dim", type=int, default=64)
     parser.add_argument("--tissue-out-channels", type=int, default=64)

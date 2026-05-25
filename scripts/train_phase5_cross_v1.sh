@@ -49,6 +49,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --max-train-steps 20000 \
   --self-reconstruction-warmup-steps 500 \
   --learning-rate 1e-5 \
+  --ip-ref-learning-rate 1e-4 \
   --lr-scheduler cosine \
   --lr-warmup-steps 500 \
   --checkpointing-steps 2000 \
@@ -60,6 +61,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --dataloader-num-workers 8 \
   --num-double-layers 4 \
   --num-single-layers 4 \
+  --ip-init-gain 0.1 \
   --cross-v1-spatial-mode target_only \
   --disable-reference-perceiver-self-attn \
   --guidance-scale 3.5 \

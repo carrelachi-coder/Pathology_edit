@@ -1040,9 +1040,28 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             ref_trainable_wrapper,
             ip_trainable_wrapper,
         ]
+    base_lr_modules = [] if a1_lite else [flux_controlnet, *modules.values()]
+    ip_ref_lr_modules = [ref_trainable_wrapper, ip_trainable_wrapper]
+    base_lr_params = [
+        p for module in base_lr_modules for p in module.parameters() if p.requires_grad
+    ]
+    ip_ref_lr_params = [
+        p for module in ip_ref_lr_modules for p in module.parameters() if p.requires_grad
+    ]
+    optimizer_param_groups = []
+    if base_lr_params:
+        optimizer_param_groups.append({"params": base_lr_params, "lr": args.learning_rate})
+    if ip_ref_lr_params:
+        optimizer_param_groups.append({"params": ip_ref_lr_params, "lr": ip_ref_learning_rate})
+    logger.info(
+        "Optimizer LR groups: base_lr=%s params=%s, ip_ref_lr=%s params=%s",
+        args.learning_rate,
+        sum(p.numel() for p in base_lr_params),
+        ip_ref_learning_rate,
+        sum(p.numel() for p in ip_ref_lr_params),
+    )
     optimizer = optimizer_class(
-        [p for m in trainable_modules_list for p in m.parameters() if p.requires_grad],
-        lr=args.learning_rate,
+        optimizer_param_groups,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
