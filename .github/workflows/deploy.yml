@@ -2,11 +2,14 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]  # 你的主分支名
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: textbook_tool_static
     permissions:
       contents: read
       pages: write
@@ -20,5 +23,5 @@ jobs:
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist  # 改成你的构建输出目录
+          path: textbook_tool_static/public
       - uses: actions/deploy-pages@v4
