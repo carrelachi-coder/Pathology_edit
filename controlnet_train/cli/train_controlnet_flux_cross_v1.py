@@ -138,6 +138,14 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--skip-reference-perceiver",
+        action="store_true",
+        help=(
+            "Bypass the reference Perceiver entirely and feed projected UNI patch tokens "
+            "directly to the IP-Adapter."
+        ),
+    )
+    parser.add_argument(
         "--self-reconstruction-warmup-steps",
         type=int,
         default=0,

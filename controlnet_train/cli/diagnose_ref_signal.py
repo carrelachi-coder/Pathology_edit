@@ -57,6 +57,11 @@ def parse_args(argv=None) -> argparse.Namespace:
         default=None,
         help="Temporarily enable gated Cross-Attn mixing during this diagnosis.",
     )
+    parser.add_argument(
+        "--skip-reference-perceiver",
+        action="store_true",
+        help="Temporarily bypass the reference Perceiver during this diagnosis.",
+    )
     parser.add_argument("--output-json", type=str, default=None)
     return parser.parse_args(argv)
 
@@ -94,6 +99,7 @@ def load_ref_encoder_from_checkpoint(
     dtype: torch.dtype,
     disable_perceiver_self_attn: bool = False,
     perceiver_cross_gate_init: float | None = None,
+    skip_perceiver: bool | None = None,
 ):
     checkpoint_dir = Path(checkpoint_dir)
     state = torch_load_weights(checkpoint_dir / "phase5_conditioning.pt")
@@ -101,10 +107,16 @@ def load_ref_encoder_from_checkpoint(
 
     config.setdefault("uni_embed_dim", int(state["ref_encoder_proj_mlp"]["0.weight"].shape[1]))
     config.setdefault("hidden_dim", int(state["ref_encoder_proj_mlp"]["0.weight"].shape[0]))
-    config.setdefault("num_tokens", int(state["ref_encoder_latent_queries"].shape[1]))
+    config.setdefault("skip_perceiver", False)
+    if skip_perceiver is not None:
+        config["skip_perceiver"] = bool(skip_perceiver)
+    config.setdefault(
+        "num_tokens",
+        int(state.get("ref_encoder_latent_queries", torch.empty(1, 16)).shape[1]),
+    )
     config.setdefault(
         "num_perceiver_layers",
-        count_ref_perceiver_layers(state["ref_encoder_perceiver_layers"]),
+        count_ref_perceiver_layers(state.get("ref_encoder_perceiver_layers", {})),
     )
     config.setdefault("perceiver_heads", 8)
     config.setdefault("use_perceiver_self_attn", True)
@@ -129,13 +141,15 @@ def load_ref_encoder_from_checkpoint(
             if config["perceiver_cross_gate_init"] is None
             else float(config["perceiver_cross_gate_init"])
         ),
+        skip_perceiver=bool(config["skip_perceiver"]),
     )
     ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
-    ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
-    ref_encoder.latent_queries.data.copy_(
-        state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
-    )
-    ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
+    if not ref_encoder.skip_perceiver:
+        ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
+        ref_encoder.latent_queries.data.copy_(
+            state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+        )
+        ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
     ref_encoder.to(device=device, dtype=dtype)
     ref_encoder.eval()
     return ref_encoder, config
@@ -222,13 +236,14 @@ def encode_stages(
     projected = ref_encoder.proj_mlp(uni)
     stages["2_proj_mlp"] = projected
 
-    latents = ref_encoder.latent_queries.expand(projected.shape[0], -1, -1)
-    for index, layer in enumerate(ref_encoder.perceiver_layers, start=1):
-        latents = layer(latents, projected)
-        stages[f"3_perceiver_layer_{index}"] = latents
+    if not ref_encoder.skip_perceiver:
+        latents = ref_encoder.latent_queries.expand(projected.shape[0], -1, -1)
+        for index, layer in enumerate(ref_encoder.perceiver_layers, start=1):
+            latents = layer(latents, projected)
+            stages[f"3_perceiver_layer_{index}"] = latents
 
-    resampled = ref_encoder.perceiver_norm(latents)
-    stages["4_perceiver_norm"] = resampled
+        resampled = ref_encoder.perceiver_norm(latents)
+        stages["4_perceiver_norm"] = resampled
 
     full = ref_encoder(image)
     stages["5_full_ref_encoder"] = full
@@ -329,6 +344,7 @@ def main(argv=None) -> int:
         dtype,
         disable_perceiver_self_attn=bool(args.disable_reference_perceiver_self_attn),
         perceiver_cross_gate_init=args.reference_perceiver_cross_gate_init,
+        skip_perceiver=True if args.skip_reference_perceiver else None,
     )
     print(f"Detected ref_encoder config: {json.dumps(config, ensure_ascii=False)}")
 

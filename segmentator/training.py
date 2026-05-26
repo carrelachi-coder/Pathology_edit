@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import json
+import math
+import os
 from pathlib import Path
 import random
 import time
 import warnings
 
 import numpy as np
+from PIL import Image
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
 from .config import BaselineConfig
@@ -16,6 +22,33 @@ from .data import TissueSegmentationDataset, build_manifest, dataset_balanced_we
 from .losses import segmentation_loss
 from .metrics import segmentation_metrics
 from .model import BaselineSegmenter
+
+
+def _ddp_env() -> tuple[bool, int, int, int]:
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    return world_size > 1, rank, local_rank, world_size
+
+
+def _unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
+    return model.module if isinstance(model, DistributedDataParallel) else model
+
+
+def _gather_object_to_main(value: object, distributed: bool, dst: int = 0) -> list[object]:
+    if not distributed:
+        return [value]
+    if hasattr(dist, "gather_object"):
+        gathered: list[object | None] | None = [None for _ in range(dist.get_world_size())] if dist.get_rank() == dst else None
+        dist.gather_object(value, object_gather_list=gathered, dst=dst)
+        return list(gathered or [])
+    gathered = [None for _ in range(dist.get_world_size())]
+    dist.all_gather_object(gathered, value)
+    return list(gathered) if dist.get_rank() == dst else []
+
+
+def _save_model_state(model: torch.nn.Module, path: Path) -> None:
+    torch.save(_unwrap_model(model).state_dict(), path)
 
 
 def _run_mask2former_sanity_check(model: BaselineSegmenter, image_size: int, num_classes: int, device: torch.device) -> None:
@@ -121,6 +154,14 @@ def _export_val_outputs(
 
 def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_repo: str | Path = "UNI-2h") -> dict[str, float]:
     dataset_root = Path(dataset_root)
+    distributed, rank, local_rank, world_size = _ddp_env()
+    main_process = rank == 0
+    if distributed:
+        if not torch.cuda.is_available():
+            raise RuntimeError("Distributed segmentator training requires CUDA devices.")
+        torch.cuda.set_device(local_rank)
+        if not dist.is_initialized():
+            dist.init_process_group(backend="nccl")
     set_seed(config.seed)
     if config.disable_cudnn:
         torch.backends.cudnn.enabled = False
@@ -159,17 +200,43 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         class_weight_metadata["note"] = "Mask2Former masks invalid labels with ignore_index during target assignment; no-object query weight is separate."
     train_sampler = None
     train_shuffle = True
+    train_drop_last = False
     if config.balanced_datasets:
+        sampler_generator = torch.Generator()
+        sampler_generator.manual_seed(config.seed + rank)
         train_sampler = WeightedRandomSampler(
             dataset_balanced_weights(train_ds.records),
-            num_samples=config.samples_per_epoch or len(train_ds),
+            num_samples=int(math.ceil((config.samples_per_epoch or len(train_ds)) / world_size)) if distributed else (config.samples_per_epoch or len(train_ds)),
             replacement=True,
+            generator=sampler_generator,
         )
         train_shuffle = False
-    train_loader = DataLoader(train_ds, batch_size=config.batch_size, shuffle=train_shuffle, sampler=train_sampler, num_workers=config.num_workers)
-    val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
+    elif distributed:
+        train_sampler = DistributedSampler(
+            train_ds,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=True,
+            seed=config.seed,
+            drop_last=False,
+        )
+        train_shuffle = False
+    val_sampler = (
+        DistributedSampler(
+            val_ds,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=False,
+            seed=config.seed,
+            drop_last=False,
+        )
+        if distributed
+        else None
+    )
+    train_loader = DataLoader(train_ds, batch_size=config.batch_size, shuffle=train_shuffle, sampler=train_sampler, num_workers=config.num_workers, drop_last=train_drop_last)
+    val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, sampler=val_sampler, num_workers=config.num_workers)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(f"cuda:{local_rank}" if distributed else ("cuda" if torch.cuda.is_available() else "cpu"))
     class_weights_device = class_weights.to(device) if class_weights is not None else None
     model = BaselineSegmenter(
         num_classes=config.num_classes,
@@ -183,61 +250,81 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     if config.decoder == "mask2former":
         _run_mask2former_sanity_check(model, config.image_size, config.num_classes, device)
         sanity_check_passed = True
+    if distributed:
+        if config.decoder == "mask2former":
+            model = DistributedDataParallel(
+                model,
+                device_ids=[local_rank],
+                output_device=local_rank,
+                find_unused_parameters=True,
+            )
+        else:
+            model = DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=config.lr, weight_decay=config.weight_decay)
     use_amp = config.amp and device.type == "cuda" and config.decoder != "mask2former"
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     output_dir = config.resolve_output_dir()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "config.json").write_text(
-        json.dumps(
-            {
-                "image_size": config.image_size,
-                "remap_invalid_to": config.remap_invalid_to,
-                "ignore_index": config.ignore_index,
-                "mask_remap": config.mask_remap,
-                "balanced_datasets": config.balanced_datasets,
-                "samples_per_epoch": config.samples_per_epoch,
-                "batch_size": config.batch_size,
-                "grad_accum_steps": config.grad_accum_steps,
-                "effective_batch_size": config.batch_size * config.grad_accum_steps,
-                "epochs": config.epochs,
-                "lr": config.lr,
-                "weight_decay": config.weight_decay,
-                "amp": config.amp,
-                "amp_enabled_runtime": use_amp,
-                "amp_disabled_reason": "mask2former_msdeformattn_stability" if config.amp and config.decoder == "mask2former" else None,
-                "disable_cudnn": config.disable_cudnn,
-                "freeze_encoder": config.freeze_encoder,
-                "decoder": config.decoder,
-                "mask2former_queries": config.mask2former_queries,
-                "mask2former_ignore_index": config.mask2former_ignore_index,
-                "mask2former_sanity_check_passed": sanity_check_passed,
-                "effective_invalid_target": config.mask2former_ignore_index if config.decoder == "mask2former" else config.ignore_index,
-                "class_weighting": config.class_weighting,
-                "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
-                "export_val_predictions": config.export_val_predictions,
-                "export_val_tensors": config.export_val_tensors,
-                "uni2h_repo": str(uni2h_repo),
-                "device": str(device),
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    (output_dir / "class_weights.json").write_text(json.dumps(class_weight_metadata, indent=2), encoding="utf-8")
+    if main_process:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "image_size": config.image_size,
+                    "remap_invalid_to": config.remap_invalid_to,
+                    "ignore_index": config.ignore_index,
+                    "mask_remap": config.mask_remap,
+                    "balanced_datasets": config.balanced_datasets,
+                    "samples_per_epoch": config.samples_per_epoch,
+                    "batch_size_per_gpu": config.batch_size,
+                    "batch_size": config.batch_size,
+                    "grad_accum_steps": config.grad_accum_steps,
+                    "world_size": world_size,
+                    "distributed": distributed,
+                    "effective_batch_size": config.batch_size * config.grad_accum_steps * world_size,
+                    "epochs": config.epochs,
+                    "lr": config.lr,
+                    "weight_decay": config.weight_decay,
+                    "amp": config.amp,
+                    "amp_enabled_runtime": use_amp,
+                    "amp_disabled_reason": "mask2former_msdeformattn_stability" if config.amp and config.decoder == "mask2former" else None,
+                    "disable_cudnn": config.disable_cudnn,
+                    "freeze_encoder": config.freeze_encoder,
+                    "decoder": config.decoder,
+                    "mask2former_queries": config.mask2former_queries,
+                    "mask2former_ignore_index": config.mask2former_ignore_index,
+                    "mask2former_sanity_check_passed": sanity_check_passed,
+                    "effective_invalid_target": config.mask2former_ignore_index if config.decoder == "mask2former" else config.ignore_index,
+                    "class_weighting": config.class_weighting,
+                    "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
+                    "export_val_predictions": config.export_val_predictions,
+                    "export_val_tensors": config.export_val_tensors,
+                    "uni2h_repo": str(uni2h_repo),
+                    "device": str(device),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        (output_dir / "class_weights.json").write_text(json.dumps(class_weight_metadata, indent=2), encoding="utf-8")
+    if distributed:
+        dist.barrier()
 
     history: list[dict[str, float]] = []
     best_miou = float("-inf")
     best_core5_miou = float("-inf")
+    metrics: dict[str, object] = {}
     for epoch in range(config.epochs):
         epoch_start = time.time()
+        if isinstance(train_sampler, DistributedSampler):
+            train_sampler.set_epoch(epoch)
         model.train()
         optimizer.zero_grad(set_to_none=True)
         train_bar = tqdm(
             train_loader,
             desc=f"epoch {epoch + 1}/{config.epochs} train",
             dynamic_ncols=True,
+            disable=not main_process,
         )
         running_loss = 0.0
         for step, batch in enumerate(train_bar, start=1):
@@ -245,7 +332,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             mask = batch["mask"].to(device)
             with torch.cuda.amp.autocast(enabled=use_amp):
                 if config.decoder == "mask2former":
-                    losses = model.loss(image, mask)
+                    losses = model(image, mask)
                 else:
                     outputs = model(image)
                     losses = segmentation_loss(
@@ -261,7 +348,12 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
-            running_loss += float(losses["total"].detach().cpu().item())
+            display_loss = losses["total"].detach()
+            if distributed:
+                display_loss = display_loss.clone()
+                dist.all_reduce(display_loss, op=dist.ReduceOp.SUM)
+                display_loss = display_loss / world_size
+            running_loss += float(display_loss.cpu().item())
             train_bar.set_postfix(loss=running_loss / step)
 
         model.eval()
@@ -276,6 +368,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 val_loader,
                 desc=f"epoch {epoch + 1}/{config.epochs} val",
                 dynamic_ncols=True,
+                disable=not main_process,
             )
             for batch in val_bar:
                 image = batch["image"].to(device)
@@ -284,63 +377,118 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     outputs = model(image)
                 preds.append(outputs["pred"].cpu())
                 targets.append(mask.cpu())
-                probs.append(outputs["probs"].cpu())
-                entropy.append(outputs["entropy"].cpu())
-                logits.append(outputs["logits"].cpu())
+                if config.export_val_tensors:
+                    probs.append(outputs["probs"].cpu())
+                    entropy.append(outputs["entropy"].cpu())
+                    logits.append(outputs["logits"].cpu())
                 sample_ids.extend(str(v) for v in batch["sample_id"])
 
-        pred = torch.cat(preds, dim=0)
-        target = torch.cat(targets, dim=0)
-        metrics = segmentation_metrics(
-            pred,
-            target,
-            config.num_classes,
-            class_names=manifest.classes,
-            boundary_width=config.boundary_width,
-            ignore_index=config.ignore_index,
-        )
-        history.append({k: v for k, v in metrics.items() if isinstance(v, float)})
-        if float(metrics["mIoU"]) > best_miou:
-            best_miou = float(metrics["mIoU"])
-            torch.save(model.state_dict(), output_dir / "best_mIoU.pt")
-        core5 = metrics.get("groups", {}).get("core_5_classes", {}) if isinstance(metrics.get("groups"), dict) else {}
-        if isinstance(core5, dict) and float(core5.get("mean_iou", float("-inf"))) > best_core5_miou:
-            best_core5_miou = float(core5["mean_iou"])
-            torch.save(model.state_dict(), output_dir / "best_core5.pt")
-        (output_dir / "metrics.json").write_text(json.dumps({"history": history, "final": metrics}, indent=2), encoding="utf-8")
-        elapsed = time.time() - epoch_start
-        print(
+        local_payload = {
+            "sample_ids": sample_ids,
+            "pred": torch.cat(preds, dim=0) if preds else torch.empty(0, config.image_size, config.image_size, dtype=torch.long),
+            "target": torch.cat(targets, dim=0) if targets else torch.empty(0, config.image_size, config.image_size, dtype=torch.long),
+        }
+        if config.export_val_tensors:
+            local_payload["probs"] = torch.cat(probs, dim=0) if probs else torch.empty(0)
+            local_payload["entropy"] = torch.cat(entropy, dim=0) if entropy else torch.empty(0)
+            local_payload["logits"] = torch.cat(logits, dim=0) if logits else torch.empty(0)
+
+        gathered_payloads = _gather_object_to_main(local_payload, distributed)
+        if main_process:
+            seen_sample_ids: set[str] = set()
+            ordered_sample_ids: list[str] = []
+            gathered_preds: list[torch.Tensor] = []
+            gathered_targets: list[torch.Tensor] = []
+            gathered_probs: list[torch.Tensor] = []
+            gathered_entropy: list[torch.Tensor] = []
+            gathered_logits: list[torch.Tensor] = []
+            for payload in gathered_payloads:
+                payload_sample_ids = payload["sample_ids"]
+                payload_pred = payload["pred"]
+                payload_target = payload["target"]
+                payload_probs = payload.get("probs")
+                payload_entropy = payload.get("entropy")
+                payload_logits = payload.get("logits")
+                for idx, sample_id in enumerate(payload_sample_ids):
+                    if sample_id in seen_sample_ids:
+                        continue
+                    seen_sample_ids.add(sample_id)
+                    ordered_sample_ids.append(sample_id)
+                    gathered_preds.append(payload_pred[idx : idx + 1])
+                    gathered_targets.append(payload_target[idx : idx + 1])
+                    if config.export_val_tensors:
+                        gathered_probs.append(payload_probs[idx : idx + 1])
+                        gathered_entropy.append(payload_entropy[idx : idx + 1])
+                        gathered_logits.append(payload_logits[idx : idx + 1])
+
+            pred = torch.cat(gathered_preds, dim=0)
+            target = torch.cat(gathered_targets, dim=0)
+            metrics = segmentation_metrics(
+                pred,
+                target,
+                config.num_classes,
+                class_names=manifest.classes,
+                boundary_width=config.boundary_width,
+                ignore_index=config.ignore_index,
+            )
+            history.append({k: v for k, v in metrics.items() if isinstance(v, float)})
+            if float(metrics["mIoU"]) > best_miou:
+                best_miou = float(metrics["mIoU"])
+                _save_model_state(model, output_dir / "best_mIoU.pt")
+            core5 = metrics.get("groups", {}).get("core_5_classes", {}) if isinstance(metrics.get("groups"), dict) else {}
+            if isinstance(core5, dict) and float(core5.get("mean_iou", float("-inf"))) > best_core5_miou:
+                best_core5_miou = float(core5["mean_iou"])
+                _save_model_state(model, output_dir / "best_core5.pt")
+            (output_dir / "metrics.json").write_text(json.dumps({"history": history, "final": metrics}, indent=2), encoding="utf-8")
+            elapsed = time.time() - epoch_start
+            print(
+                json.dumps(
+                    {
+                        "epoch": epoch + 1,
+                        "elapsed_sec": round(elapsed, 2),
+                        "mIoU": metrics["mIoU"],
+                        "mDice": metrics["mDice"],
+                        "foreground_recall": metrics["foreground_recall"],
+                        "boundary_f1": metrics["boundary_f1"],
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+            if epoch == config.epochs - 1 and config.export_val_predictions:
+                _export_val_outputs(
+                    output_dir,
+                    ordered_sample_ids,
+                    [pred],
+                    [torch.cat(gathered_probs, dim=0)] if config.export_val_tensors else [],
+                    [torch.cat(gathered_entropy, dim=0)] if config.export_val_tensors else [],
+                    [torch.cat(gathered_logits, dim=0)] if config.export_val_tensors else [],
+                    export_tensors=config.export_val_tensors,
+                )
+        if distributed:
+            metric_payload = [metrics if main_process else None]
+            dist.broadcast_object_list(metric_payload, src=0)
+            metrics = metric_payload[0]
+
+    if main_process:
+        _save_model_state(model, output_dir / "stage4_baseline.pt")
+        _save_model_state(model, output_dir / f"stage4_{config.decoder}.pt")
+        (output_dir / "manifest.json").write_text(
             json.dumps(
                 {
-                    "epoch": epoch + 1,
-                    "elapsed_sec": round(elapsed, 2),
-                    "mIoU": metrics["mIoU"],
-                    "mDice": metrics["mDice"],
-                    "foreground_recall": metrics["foreground_recall"],
-                    "boundary_f1": metrics["boundary_f1"],
+                    "seed": config.seed,
+                    "train_split": config.train_split,
+                    "val_split": config.val_split,
+                    "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
+                    "train_samples": [r.sample_id for r in manifest.train],
+                    "val_samples": [r.sample_id for r in manifest.val],
                 },
-                ensure_ascii=False,
+                indent=2,
             ),
-            flush=True,
+            encoding="utf-8",
         )
-        if epoch == config.epochs - 1 and config.export_val_predictions:
-            _export_val_outputs(output_dir, sample_ids, preds, probs, entropy, logits, export_tensors=config.export_val_tensors)
-
-    torch.save(model.state_dict(), output_dir / "stage4_baseline.pt")
-    torch.save(model.state_dict(), output_dir / f"stage4_{config.decoder}.pt")
-    (output_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "seed": config.seed,
-                "train_split": config.train_split,
-                "val_split": config.val_split,
-                "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
-                "train_samples": [r.sample_id for r in manifest.train],
-                "val_samples": [r.sample_id for r in manifest.val],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    (output_dir / "metrics.json").write_text(json.dumps({"history": history, "final": metrics}, indent=2), encoding="utf-8")
+        (output_dir / "metrics.json").write_text(json.dumps({"history": history, "final": metrics}, indent=2), encoding="utf-8")
+    if distributed:
+        dist.barrier()
+        dist.destroy_process_group()
     return {k: v for k, v in metrics.items() if isinstance(v, float)}

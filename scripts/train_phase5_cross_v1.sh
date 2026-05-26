@@ -108,8 +108,8 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --num-single-layers 4 \
   --ip-init-gain 0.1 \
   --cross-v1-spatial-mode target_only \
+  --skip-reference-perceiver \
   --disable-reference-perceiver-self-attn \
-  --reference-perceiver-cross-gate-init -2.0 \
   --reference-style-loss-weight "${REFERENCE_STYLE_LOSS_WEIGHT}" \
   --reference-style-tissue-weight "${REFERENCE_STYLE_TISSUE_WEIGHT}" \
   --reference-style-nuclei-weight "${REFERENCE_STYLE_NUCLEI_WEIGHT}" \

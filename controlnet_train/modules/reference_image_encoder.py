@@ -46,6 +46,7 @@ class ReferenceImageEncoder(nn.Module):
         perceiver_heads: int = 8,
         use_perceiver_self_attn: bool = True,
         perceiver_cross_gate_init: float | None = None,
+        skip_perceiver: bool = False,
     ):
         super().__init__()
         self.uni_embed_dim = int(uni_embed_dim)
@@ -54,6 +55,7 @@ class ReferenceImageEncoder(nn.Module):
         self.num_perceiver_layers = int(num_perceiver_layers)
         self.perceiver_heads = int(perceiver_heads)
         self.use_perceiver_self_attn = bool(use_perceiver_self_attn)
+        self.skip_perceiver = bool(skip_perceiver)
         self.perceiver_cross_gate_init = (
             None if perceiver_cross_gate_init is None else float(perceiver_cross_gate_init)
         )
@@ -86,6 +88,14 @@ class ReferenceImageEncoder(nn.Module):
             for _ in range(num_perceiver_layers)
         ])
         self.perceiver_norm = nn.LayerNorm(hidden_dim)
+
+    @property
+    def num_output_tokens(self) -> int:
+        if self.skip_perceiver:
+            patch_size = int(UNI2H_KWARGS["patch_size"])
+            image_size = int(UNI2H_KWARGS["img_size"])
+            return (image_size // patch_size) * (image_size // patch_size)
+        return self.num_tokens
 
     def _load_uni(self, checkpoint_path: str | Path):
         import torch.distributed as dist
@@ -147,6 +157,8 @@ class ReferenceImageEncoder(nn.Module):
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         uni_features = self.extract_uni_features(images)
         projected = self.proj_mlp(uni_features)
+        if self.skip_perceiver:
+            return projected
         resampled = self._resample(projected)
         return resampled
 

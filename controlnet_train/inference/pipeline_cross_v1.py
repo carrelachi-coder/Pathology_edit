@@ -84,7 +84,7 @@ def load_cross_v1_bundle(
     # Install IP-Adapter attention on transformer
     install_flux_ip_adapter_attention(
         pipe.transformer,
-        num_tokens=ref_encoder_config["num_tokens"],
+        num_tokens=ref_encoder_config.get("num_output_tokens", ref_encoder_config["num_tokens"]),
     )
 
     # Load IP-Adapter weights from checkpoint
@@ -346,14 +346,17 @@ def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, Any]:
     config.setdefault("hidden_dim", 3072)
     config.setdefault("perceiver_heads", 8)
     config.setdefault("use_perceiver_self_attn", True)
+    config.setdefault("skip_perceiver", False)
     config.setdefault("perceiver_cross_gate_init", None)
     return {
         "uni_embed_dim": int(config["uni_embed_dim"]),
         "hidden_dim": int(config["hidden_dim"]),
         "num_tokens": int(config["num_tokens"]),
+        "num_output_tokens": int(config.get("num_output_tokens", config["num_tokens"])),
         "num_perceiver_layers": int(config["num_perceiver_layers"]),
         "perceiver_heads": int(config["perceiver_heads"]),
         "use_perceiver_self_attn": bool(config["use_perceiver_self_attn"]),
+        "skip_perceiver": bool(config["skip_perceiver"]),
         "perceiver_cross_gate_init": (
             None
             if config["perceiver_cross_gate_init"] is None
@@ -440,13 +443,15 @@ def _load_condition_modules(
         perceiver_heads=ref_config["perceiver_heads"],
         use_perceiver_self_attn=ref_config.get("use_perceiver_self_attn", True),
         perceiver_cross_gate_init=ref_config.get("perceiver_cross_gate_init"),
+        skip_perceiver=ref_config.get("skip_perceiver", False),
     )
     ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
-    ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
-    ref_encoder.latent_queries.data.copy_(
-        state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
-    )
-    ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
+    if not ref_encoder.skip_perceiver:
+        ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
+        ref_encoder.latent_queries.data.copy_(
+            state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+        )
+        ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
     ref_encoder.to(device=device, dtype=torch_dtype)
     ref_encoder.eval()
     modules["ref_encoder"] = ref_encoder

@@ -281,16 +281,19 @@ class RefEncoderTrainableWrapper(nn.Module):
     def __init__(self, ref_encoder: ReferenceImageEncoder):
         super().__init__()
         self.proj_mlp = ref_encoder.proj_mlp
-        self.perceiver_layers = ref_encoder.perceiver_layers
-        self.latent_queries = nn.Parameter(ref_encoder.latent_queries.data)
-        self.perceiver_norm = ref_encoder.perceiver_norm
+        self.skip_perceiver = bool(getattr(ref_encoder, "skip_perceiver", False))
+        if not self.skip_perceiver:
+            self.perceiver_layers = ref_encoder.perceiver_layers
+            self.latent_queries = nn.Parameter(ref_encoder.latent_queries.data)
+            self.perceiver_norm = ref_encoder.perceiver_norm
 
     def sync_back(self, ref_encoder: ReferenceImageEncoder) -> None:
         """After prepare(), point ref_encoder's trainable parts to our (DDP-managed) params."""
         ref_encoder.proj_mlp = self.proj_mlp
-        ref_encoder.perceiver_layers = self.perceiver_layers
-        ref_encoder.latent_queries = self.latent_queries
-        ref_encoder.perceiver_norm = self.perceiver_norm
+        if not self.skip_perceiver:
+            ref_encoder.perceiver_layers = self.perceiver_layers
+            ref_encoder.latent_queries = self.latent_queries
+            ref_encoder.perceiver_norm = self.perceiver_norm
 
 
 # ---------------------------------------------------------------------------
@@ -665,7 +668,8 @@ def _save_condition_modules(
             state["ref_encoder_config"] = {
                 "uni_embed_dim": int(getattr(unwrapped, "uni_embed_dim", 1536)),
                 "hidden_dim": int(getattr(unwrapped, "hidden_dim", 3072)),
-                "num_tokens": int(getattr(unwrapped, "num_tokens", unwrapped.latent_queries.shape[1])),
+                "num_tokens": int(getattr(unwrapped, "num_tokens", 16)),
+                "num_output_tokens": int(getattr(unwrapped, "num_output_tokens", getattr(unwrapped, "num_tokens", 16))),
                 "num_perceiver_layers": int(
                     getattr(unwrapped, "num_perceiver_layers", len(unwrapped.perceiver_layers))
                 ),
@@ -673,6 +677,7 @@ def _save_condition_modules(
                 "use_perceiver_self_attn": bool(
                     getattr(unwrapped, "use_perceiver_self_attn", True)
                 ),
+                "skip_perceiver": bool(getattr(unwrapped, "skip_perceiver", False)),
                 "perceiver_cross_gate_init": getattr(
                     unwrapped, "perceiver_cross_gate_init", None
                 ),
@@ -680,13 +685,14 @@ def _save_condition_modules(
             state["ref_encoder_proj_mlp"] = {
                 k: v.to(save_dtype) for k, v in unwrapped.proj_mlp.state_dict().items()
             }
-            state["ref_encoder_perceiver_layers"] = {
-                k: v.to(save_dtype) for k, v in unwrapped.perceiver_layers.state_dict().items()
-            }
-            state["ref_encoder_latent_queries"] = unwrapped.latent_queries.data.cpu().to(save_dtype)
-            state["ref_encoder_perceiver_norm"] = {
-                k: v.to(save_dtype) for k, v in unwrapped.perceiver_norm.state_dict().items()
-            }
+            if not bool(getattr(unwrapped, "skip_perceiver", False)):
+                state["ref_encoder_perceiver_layers"] = {
+                    k: v.to(save_dtype) for k, v in unwrapped.perceiver_layers.state_dict().items()
+                }
+                state["ref_encoder_latent_queries"] = unwrapped.latent_queries.data.cpu().to(save_dtype)
+                state["ref_encoder_perceiver_norm"] = {
+                    k: v.to(save_dtype) for k, v in unwrapped.perceiver_norm.state_dict().items()
+                }
         else:
             state[name] = {
                 k: v.to(save_dtype) for k, v in unwrapped.state_dict().items()
@@ -919,11 +925,12 @@ def _load_condition_modules_from_checkpoint(
     if load_ref_encoder:
         ref_encoder = modules["ref_encoder"]
         ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
-        ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
-        ref_encoder.latent_queries.data.copy_(
-            state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
-        )
-        ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
+        if not bool(getattr(ref_encoder, "skip_perceiver", False)):
+            ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
+            ref_encoder.latent_queries.data.copy_(
+                state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+            )
+            ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
 
 
 # ---------------------------------------------------------------------------
@@ -987,6 +994,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             getattr(args, "disable_reference_perceiver_self_attn", False)
         ),
         perceiver_cross_gate_init=getattr(args, "reference_perceiver_cross_gate_init", None),
+        skip_perceiver=bool(getattr(args, "skip_reference_perceiver", False)),
     )
 
     modules = {
@@ -1070,6 +1078,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         )
     if not ref_encoder.use_perceiver_self_attn:
         logger.info("Reference Perceiver self-attention is disabled.")
+    if ref_encoder.skip_perceiver:
+        logger.info("Reference Perceiver is skipped; projected UNI patch tokens feed IP-Adapter directly.")
     if ref_encoder.perceiver_cross_gate_init is not None:
         logger.info(
             "Reference Perceiver cross-attention gate enabled with init=%s "
@@ -1137,7 +1147,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     # V1: install IP-Adapter attention on transformer
     install_flux_ip_adapter_attention(
         flux_transformer,
-        num_tokens=args.reference_num_tokens,
+        num_tokens=ref_encoder.num_output_tokens,
         ip_init_gain=args.ip_init_gain,
     )
     _log_ip_adapter_initialization_stats(
@@ -1687,7 +1697,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             ip_trainable_wrapper,
             unwrap_model,
             save_dtype,
-            num_tokens=args.reference_num_tokens,
+            num_tokens=modules["ref_encoder"].num_output_tokens,
             ip_init_gain=args.ip_init_gain,
         )
         logger.info("Saved Phase 5.3 cross-v1 artifacts to %s", args.output_dir)

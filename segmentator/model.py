@@ -409,7 +409,10 @@ class BaselineSegmenter(nn.Module):
     def _input_alignment(self) -> int:
         return 56 if isinstance(self.decoder, OfficialMask2FormerDecoder) else 14
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor, target: torch.Tensor | None = None) -> dict[str, torch.Tensor]:
+        if target is not None:
+            return self._loss_impl(x, target)
+
         input_size = x.shape[-2:]
         align = self._input_alignment()
         pad_h = (align - x.shape[-2] % align) % align
@@ -438,6 +441,9 @@ class BaselineSegmenter(nn.Module):
         return {"logits": logits, "probs": probs, "entropy": entropy, "pred": pred}
 
     def loss(self, x: torch.Tensor, target: torch.Tensor) -> dict[str, torch.Tensor]:
+        return self._loss_impl(x, target)
+
+    def _loss_impl(self, x: torch.Tensor, target: torch.Tensor) -> dict[str, torch.Tensor]:
         input_size = x.shape[-2:]
         align = self._input_alignment()
         pad_h = (align - x.shape[-2] % align) % align
