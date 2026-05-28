@@ -1,10 +1,4 @@
 import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
-import {
-  emptySelectionManifest,
-  getSelectionMetadataForFile,
-  parseSelectionManifest,
-  pickSelectionManifestFile
-} from "./selectionManifest.js";
 import { buildZip } from "./zip.js";
 
 const tissueLabels = [
@@ -77,7 +71,9 @@ function init() {
 }
 
 function bindEvents() {
+  els.imageInput.addEventListener("click", clearFileInput);
   els.imageInput.addEventListener("change", handleSingleImageInput);
+  els.folderInput.addEventListener("click", clearFileInput);
   els.folderInput.addEventListener("change", handleFolderInput);
   els.imageSelector.addEventListener("change", handleImageSelectionChange);
   els.imageId.addEventListener("input", () => {
@@ -122,32 +118,45 @@ function renderLabelButtons() {
 }
 
 async function handleSingleImageInput(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  state.batchFiles = [file];
-  state.batchManifest = emptySelectionManifest();
-  state.completedMasks.clear();
-  refreshImageSelector();
-  await loadBatchIndex(0);
+  try {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setStatus(`Loading ${file.name}...`);
+    state.batchFiles = [file];
+    state.batchManifest = emptySelectionManifest();
+    state.completedMasks.clear();
+    refreshImageSelector();
+    await loadBatchIndex(0);
+  } catch (error) {
+    setStatus(`Could not load image: ${formatErrorMessage(error)}`);
+  }
 }
 
 async function handleFolderInput(event) {
-  const selectedFiles = [...(event.target.files || [])];
-  const files = selectedFiles.filter(isImageFile);
-  if (!files.length) return;
-  const manifestFile = pickSelectionManifestFile(selectedFiles);
-  state.batchManifest = manifestFile
-    ? parseSelectionManifest(await manifestFile.text())
-    : emptySelectionManifest();
-  state.batchFiles = sortFiles(files);
-  state.completedMasks.clear();
-  refreshImageSelector();
-  await loadBatchIndex(0);
-  const matchedRows = state.batchFiles.filter((file) => getSelectionMetadataForFile(state.batchManifest, file)).length;
-  const manifestStatus = manifestFile
-    ? ` Matched ${matchedRows}/${state.batchFiles.length} images to ${manifestFile.name}.`
-    : " No CSV manifest found in this folder.";
-  setStatus(`Loaded batch with ${state.batchFiles.length} images.${manifestStatus} Recommended batch size: up to 50 images to keep browser memory and review flow comfortable.`);
+  try {
+    const selectedFiles = [...(event.target.files || [])];
+    const files = selectedFiles.filter(isImageFile);
+    if (!files.length) {
+      setStatus("No PNG/image files were found in that folder.");
+      return;
+    }
+    setStatus(`Loading batch folder with ${files.length} images...`);
+    const manifestFile = pickSelectionManifestFile(selectedFiles);
+    state.batchManifest = manifestFile
+      ? parseSelectionManifest(await readFileAsText(manifestFile))
+      : emptySelectionManifest();
+    state.batchFiles = sortFiles(files);
+    state.completedMasks.clear();
+    refreshImageSelector();
+    await loadBatchIndex(0);
+    const matchedRows = state.batchFiles.filter((file) => getSelectionMetadataForFile(state.batchManifest, file)).length;
+    const manifestStatus = manifestFile
+      ? ` Matched ${matchedRows}/${state.batchFiles.length} images to ${manifestFile.name}.`
+      : " No CSV manifest found in this folder.";
+    setStatus(`Loaded batch with ${state.batchFiles.length} images.${manifestStatus} Recommended batch size: up to 50 images to keep browser memory and review flow comfortable.`);
+  } catch (error) {
+    setStatus(`Could not load batch folder: ${formatErrorMessage(error)}`);
+  }
 }
 
 function handleImageSelectionChange() {
@@ -168,7 +177,7 @@ async function loadImageFile(file, options = {}) {
   state.imageName = file.name;
   state.imageId = file.name.replace(/\.[^.]+$/, "");
   state.currentMetadata = getSelectionMetadataForFile(state.batchManifest, file);
-  state.imageBitmap = await createImageBitmap(file);
+  state.imageBitmap = await loadDrawableImage(file);
   state.image = state.imageBitmap;
   state.tissueMask = new Uint8Array(state.image.width * state.image.height);
   state.tissueMask.fill(state.baseLabel);
@@ -239,6 +248,7 @@ function updateImageSelectorOptions() {
 }
 
 function renderSelectionMetadata() {
+  if (!els.selectionMetadata) return;
   const metadata = state.currentMetadata;
   els.selectionMetadata.hidden = !metadata;
   els.selectionOrgan.textContent = metadata?.organZh || "";
@@ -544,6 +554,193 @@ function sortFiles(files) {
 
 function isImageFile(file) {
   return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name || "");
+}
+
+function emptySelectionManifest() {
+  return { byFileKey: new Map(), rowCount: 0 };
+}
+
+function pickSelectionManifestFile(files) {
+  const csvFiles = files.filter(isCsvFile);
+  return csvFiles.find((file) => file.name.toLowerCase() === "selection_manifest_zh.csv")
+    || csvFiles.find((file) => file.name.toLowerCase().includes("manifest"))
+    || csvFiles[0]
+    || null;
+}
+
+function parseSelectionManifest(text) {
+  const rows = parseCsvRows(String(text || ""));
+  if (rows.length === 0) return emptySelectionManifest();
+
+  const headers = rows[0].map((header) => normalizeHeader(header));
+  const byFileKey = new Map();
+  let rowCount = 0;
+
+  for (const row of rows.slice(1)) {
+    if (row.every((cell) => String(cell || "").trim() === "")) continue;
+    rowCount += 1;
+
+    const pngFile = valueFor(row, headers, "png_file");
+    const baseName = valueFor(row, headers, "base_name");
+    const metadata = {
+      pngFile,
+      baseName,
+      organZh: valueFor(row, headers, "organ_zh"),
+      captionZh: valueFor(row, headers, "caption_zh")
+    };
+
+    for (const key of manifestKeys(pngFile, baseName)) {
+      if (!byFileKey.has(key)) byFileKey.set(key, metadata);
+    }
+  }
+
+  return { byFileKey, rowCount };
+}
+
+function getSelectionMetadataForFile(manifest, file) {
+  if (!manifest?.byFileKey || !file) return null;
+  const candidates = [
+    file.name,
+    file.webkitRelativePath,
+    basename(file.webkitRelativePath || ""),
+    withoutExtension(file.name || ""),
+    withoutExtension(basename(file.webkitRelativePath || ""))
+  ];
+
+  for (const candidate of candidates) {
+    const metadata = manifest.byFileKey.get(normalizeFileKey(candidate));
+    if (metadata) return metadata;
+  }
+  return null;
+}
+
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+
+  for (; i < text.length; i += 1) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === "\"") {
+        if (text[i + 1] === "\"") {
+          cell += "\"";
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\n" || char === "\r") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      if (char === "\r" && text[i + 1] === "\n") i += 1;
+    } else {
+      cell += char;
+    }
+  }
+
+  if (cell !== "" || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function manifestKeys(pngFile, baseName) {
+  const values = [
+    pngFile,
+    basename(pngFile),
+    withoutExtension(pngFile),
+    withoutExtension(basename(pngFile)),
+    baseName,
+    baseName ? `${baseName}.png` : ""
+  ];
+  return [...new Set(values.map(normalizeFileKey).filter(Boolean))];
+}
+
+function valueFor(row, headers, name) {
+  const index = headers.indexOf(name);
+  return index >= 0 ? String(row[index] || "").trim() : "";
+}
+
+function normalizeHeader(value) {
+  return String(value || "").replace(/^\ufeff/, "").trim().toLowerCase();
+}
+
+function normalizeFileKey(value) {
+  return basename(String(value || "").trim()).toLowerCase();
+}
+
+function basename(value) {
+  return String(value || "").split(/[\\/]/).pop() || "";
+}
+
+function withoutExtension(value) {
+  return String(value || "").replace(/\.[^.\\/]+$/, "");
+}
+
+function isCsvFile(file) {
+  return /\.csv$/i.test(file.name || "") || file.type === "text/csv";
+}
+
+function clearFileInput(event) {
+  event.currentTarget.value = "";
+}
+
+async function readFileAsText(file) {
+  if (typeof file.text === "function") return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read CSV file."));
+    reader.readAsText(file);
+  });
+}
+
+async function loadDrawableImage(file) {
+  if (typeof createImageBitmap === "function") {
+    try {
+      return await createImageBitmap(file);
+    } catch {
+      // Fall back to an HTMLImageElement so the UI can show a useful status instead of silently stopping.
+    }
+  }
+  return loadImageElement(file);
+}
+
+function loadImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`The browser could not decode ${file.name}.`));
+    };
+    image.src = url;
+  });
+}
+
+function formatErrorMessage(error) {
+  return error?.message || String(error || "Unknown error");
 }
 
 function clamp(value, min, max) {
