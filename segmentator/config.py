@@ -55,6 +55,7 @@ class BaselineConfig:
     export_val_predictions: bool = False
     export_val_tensors: bool = False
     boundary_width: int = 2
+    resume_from_checkpoint: str | None = None
     output_dir: Path = field(default_factory=lambda: Path("segmentator_runs/stage4_baseline"))
 
     def resolve_output_dir(self) -> Path:

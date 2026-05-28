@@ -1393,8 +1393,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             first_epoch = global_step // num_update_steps_per_epoch
 
     progress_bar = tqdm(
-        range(global_step, args.max_train_steps),
-        initial=global_step, desc="Steps",
+        total=args.max_train_steps,
+        initial=global_step,
+        desc="Steps",
         disable=not accelerator.is_local_main_process,
     )
 

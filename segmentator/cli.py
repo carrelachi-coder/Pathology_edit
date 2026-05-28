@@ -40,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--export-val-predictions", action="store_true")
     parser.add_argument("--export-val-tensors", action="store_true")
     parser.add_argument("--boundary-width", type=int, default=2)
+    parser.add_argument("--resume-from-checkpoint", type=str, default=None, help="Resume from 'latest' or a segmentator training checkpoint path.")
     return parser
 
 
@@ -68,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         export_val_predictions=args.export_val_predictions or args.export_val_tensors,
         export_val_tensors=args.export_val_tensors,
         boundary_width=args.boundary_width,
+        resume_from_checkpoint=args.resume_from_checkpoint,
         output_dir=Path(args.output_dir),
     )
     metrics = run_stage4_baseline(args.dataset_root, config, uni2h_repo=args.uni2h_repo)

@@ -106,6 +106,10 @@ DEFAULT_INPAINT_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_ru
 DEFAULT_CROSS_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross"
 DEFAULT_CROSS_V1_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1/checkpoint-40000"
 DEFAULT_UNI_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorch_model.bin"
+DEFAULT_LARGE_BCSS_STEM = "TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500"
+DEFAULT_LARGE_BCSS_IMAGE = Path(r"D:\WQX\datasets\BCSS\rgbs") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
+DEFAULT_LARGE_BCSS_TISSUE_MASK = Path(r"D:\WQX\datasets\BCSS\masks") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
+DEFAULT_LARGE_BCSS_NUCLEI_MASK = Path(r"D:\WQX\datasets\BCSS\nuclei_masks") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
 CUDA_DEVICE_CHOICES = []
 PROBNET_DEVICE_CHOICES = ["auto", *CUDA_DEVICE_CHOICES, "cpu"]
 GENERATION_DEVICE_CHOICES = ["cuda", *CUDA_DEVICE_CHOICES, "cpu"]
@@ -198,6 +202,19 @@ def _copy_input(value: Any, output_dir: Path, filename: str) -> Path:
     source = _file_path(value)
     if source is None:
         raise gr.Error(f"Missing input: {filename}")
+    target = output_dir / "inputs" / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    return target
+
+
+def _copy_input_path(path_value: str | Path | None, output_dir: Path, filename: str) -> Path:
+    text = str(path_value or "").strip().strip('"')
+    if not text:
+        raise gr.Error(f"Missing input path: {filename}")
+    source = Path(text)
+    if not source.exists():
+        raise gr.Error(f"Input path not found: {source}")
     target = output_dir / "inputs" / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
@@ -1413,6 +1430,57 @@ def load_inputs(
         "target_mask_rgb": str(source_rgb),
     }
     return state, _json_text({"status": "loaded", "output_dir": str(output_dir)}), str(image_path), source_rgb
+
+
+def load_inputs_from_paths(
+    profile: str,
+    source_image_path: str,
+    source_tissue_mask_path: str,
+    source_cell_mask_path: str,
+) -> tuple[dict[str, Any], str, str | None, str | None]:
+    run_id = time.strftime("%Y%m%d_%H%M%S")
+    output_dir = DEFAULT_OUTPUT_ROOT / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    image_path = _copy_input_path(source_image_path, output_dir, "source_image.png")
+    tissue_path = _copy_input_path(source_tissue_mask_path, output_dir, "source_tissue_mask.png")
+    nuclei_path = _copy_input_path(source_cell_mask_path, output_dir, "source_cell_mask.png")
+
+    image = _load_rgb_image(image_path)
+    tissue = load_id_mask(tissue_path)
+    nuclei = _load_uint8_mask(nuclei_path)
+    _validate_same_size(image, tissue, "source_tissue_mask")
+    _validate_same_size(image, nuclei, "source_cell_mask")
+
+    source_rgb = str(
+        _save_pre_generation_artifacts(
+            output_dir=output_dir,
+            reference_image=image,
+            reference_tissue=tissue,
+            target_tissue=tissue,
+            change_region=np.zeros(tissue.shape, dtype=bool),
+        )["source_mask_rgb"]
+    )
+
+    state = {
+        "profile": profile,
+        "output_dir": str(output_dir),
+        "reference_image": str(image_path),
+        "reference_tissue_mask": str(tissue_path),
+        "reference_nuclei_mask": str(nuclei_path),
+        "source_mask_rgb": str(source_rgb),
+        "target_mask_rgb": str(source_rgb),
+        "large_patch_source": True,
+    }
+    info = {
+        "status": "loaded",
+        "output_dir": str(output_dir),
+        "source_image": str(image_path),
+        "source_tissue_mask": str(tissue_path),
+        "source_cell_mask": str(nuclei_path),
+        "shape": list(tissue.shape),
+    }
+    return state, _json_text(info), str(image_path), source_rgb
 
 
 def run_tissue_stage(
@@ -2710,6 +2778,516 @@ def run_generation_stage(
     return state, _json_text(summary), str(generated_path), str(panel_path)
 
 
+def run_large_patch_stitch_generation(
+    state: dict[str, Any],
+    generation_mode: str,
+    cross_backend: str,
+    route_threshold: float,
+    model_path: str,
+    inpaint_checkpoint: str,
+    cross_checkpoint: str,
+    cross_v1_checkpoint: str,
+    uni_checkpoint: str,
+    device: str,
+    cell_fill_mode: str,
+    crossing_cell_policy: str,
+    probnet_ckpt: str,
+    nuclei_library: str,
+    density_scale_json: str,
+    probnet_device: str,
+    gamma_values: str,
+    patch_size: int,
+    write_margin: int,
+    patch_stride: int,
+    blend_mode: str,
+    feather_px: int,
+    max_patches: int,
+) -> tuple[dict[str, Any], str, str, str]:
+    if not state or not state.get("target_tissue_mask") or not state.get("change_region"):
+        raise gr.Error("Run the tissue-stage edit first.")
+
+    patch_size = int(patch_size or 512)
+    write_margin = int(write_margin or 0)
+    patch_stride = int(patch_stride or 0)
+    feather_px = int(feather_px or 0)
+    max_patches = int(max_patches or 0)
+    if patch_size <= 0:
+        raise gr.Error("Patch size must be positive.")
+    if patch_size % 32 != 0:
+        raise gr.Error("Patch size must be divisible by 32 for the current ProbNet/FLUX stack.")
+    if write_margin < 0 or write_margin * 2 >= patch_size:
+        raise gr.Error("Write margin must be non-negative and less than half the patch size.")
+    if patch_stride <= 0:
+        patch_stride = patch_size - 2 * write_margin
+    if patch_stride <= 0:
+        raise gr.Error("Patch stride must be positive.")
+    if blend_mode not in {"hard", "patch-average", "narrow-feather"}:
+        raise gr.Error(f"Unsupported blend mode: {blend_mode}")
+
+    output_dir = Path(state["output_dir"])
+    large_dir = output_dir / "large_patch_stitch"
+    large_dir.mkdir(parents=True, exist_ok=True)
+
+    reference_image = _load_rgb_image(state["reference_image"])
+    reference_tissue = load_id_mask(state["reference_tissue_mask"])
+    target_tissue = load_id_mask(state["target_tissue_mask"])
+    reference_nuclei = _load_uint8_mask(state["reference_nuclei_mask"])
+    change_region = load_change_region(state["change_region"])
+    _validate_same_size(reference_image, reference_tissue, "reference_tissue_mask")
+    _validate_same_size(reference_image, target_tissue, "target_tissue_mask")
+    _validate_same_size(reference_image, reference_nuclei, "reference_nuclei_mask")
+    _validate_same_size(reference_image, change_region, "change_region")
+
+    profile_defaults = _profile_defaults(state.get("profile", "BCSS"))
+    base_args = _make_args(
+        state,
+        generation_mode=generation_mode,
+        cross_backend=cross_backend,
+        route_threshold=route_threshold,
+        pretrained_model_name_or_path=_defaulted_text(model_path, DEFAULT_PRETRAINED_MODEL),
+        inpaint_checkpoint=Path(_defaulted_text(inpaint_checkpoint, DEFAULT_INPAINT_CHECKPOINT)),
+        cross_checkpoint=Path(_defaulted_text(cross_checkpoint, DEFAULT_CROSS_CHECKPOINT)),
+        cross_v1_checkpoint=Path(_defaulted_text(cross_v1_checkpoint, DEFAULT_CROSS_V1_CHECKPOINT)),
+        uni_checkpoint=Path(_defaulted_text(uni_checkpoint, DEFAULT_UNI_CHECKPOINT)),
+        device=device or GENERATION_DEVICE_CHOICES[0],
+        cell_fill_mode=cell_fill_mode,
+        crossing_cell_policy=crossing_cell_policy,
+        probnet_ckpt=Path(_defaulted_text(probnet_ckpt, profile_defaults["probnet_ckpt"])),
+        nuclei_library=Path(_defaulted_text(nuclei_library, profile_defaults["nuclei_library"])),
+        density_scale_json=Path(_defaulted_text(density_scale_json, profile_defaults["density_scale_json"])),
+        probnet_device=probnet_device,
+        probnet_gamma_values=gamma_values or "1.0",
+        prompt=None,
+    )
+
+    full_h, full_w = change_region.shape
+    patch_specs = _large_patch_specs(
+        change_region=change_region,
+        patch_size=patch_size,
+        write_margin=write_margin,
+        patch_stride=patch_stride,
+    )
+    if not patch_specs:
+        raise gr.Error("No changed pixels are covered by the patch write windows.")
+    missed_pixels = _count_uncovered_changed_pixels(
+        change_region=change_region,
+        patch_specs=patch_specs,
+    )
+    if missed_pixels:
+        raise gr.Error(
+            f"Patch write windows miss {missed_pixels} changed pixels. "
+            "Reduce patch stride or write margin."
+        )
+    if max_patches > 0 and len(patch_specs) > max_patches:
+        raise gr.Error(
+            f"Large patch stitch would run {len(patch_specs)} patches. "
+            f"Increase max patches or edit a smaller region."
+        )
+
+    selected_modes = sorted(
+        {
+            _select_generation_mode(
+                generation_mode,
+                _change_area_fraction(spec["change_patch"]),
+                route_threshold,
+                cross_backend=cross_backend,
+            )
+            for spec in patch_specs
+        }
+    )
+    for selected_mode in selected_modes:
+        _validate_generation_paths(base_args, selected_mode)
+
+    stitched = np.array(reference_image, copy=True)
+    if blend_mode == "hard":
+        priority = np.zeros((full_h, full_w), dtype=np.float32)
+    else:
+        accum = np.zeros((full_h, full_w, 3), dtype=np.float32)
+        weight_sum = np.zeros((full_h, full_w), dtype=np.float32)
+        alpha_max = np.zeros((full_h, full_w), dtype=np.float32)
+
+    patch_logs: list[dict[str, Any]] = []
+    for patch_index, spec in enumerate(patch_specs):
+        patch_dir = large_dir / "patches" / f"patch_{patch_index:04d}_y{spec['y']}_x{spec['x']}"
+        patch_dir.mkdir(parents=True, exist_ok=True)
+        y = int(spec["y"])
+        x = int(spec["x"])
+        valid_h = int(spec["valid_h"])
+        valid_w = int(spec["valid_w"])
+        write_mask = spec["write_mask"]
+        change_patch = spec["change_patch"]
+        target_tissue_patch = _extract_patch_array(target_tissue, y, x, patch_size, fill_value=0)
+        reference_tissue_patch = _extract_patch_array(reference_tissue, y, x, patch_size, fill_value=0)
+        reference_nuclei_patch = _extract_patch_array(reference_nuclei, y, x, patch_size, fill_value=0)
+        reference_image_patch = _extract_patch_array(reference_image, y, x, patch_size, fill_value=255)
+
+        reference_image_path = _save_rgb_patch(reference_image_patch, patch_dir / "reference_image.png")
+        reference_tissue_path = save_id_mask(reference_tissue_patch, patch_dir / "reference_tissue_mask.png")
+        reference_nuclei_path = save_id_mask(reference_nuclei_patch, patch_dir / "reference_nuclei_mask.png")
+        target_tissue_path = save_id_mask(target_tissue_patch, patch_dir / "target_tissue_mask.png")
+        save_change_region(change_patch, patch_dir / "change_region.png")
+        save_change_region(write_mask, patch_dir / "write_mask.png")
+
+        patch_state = {
+            **state,
+            "reference_image": str(reference_image_path),
+            "reference_tissue_mask": str(reference_tissue_path),
+            "reference_nuclei_mask": str(reference_nuclei_path),
+            "target_tissue_mask": str(target_tissue_path),
+            "change_region": str(patch_dir / "change_region.png"),
+            "output_dir": str(patch_dir),
+        }
+        patch_overrides = vars(base_args).copy()
+        patch_overrides.update(
+            {
+                "reference_image": reference_image_path,
+                "reference_tissue_mask": reference_tissue_path,
+                "reference_nuclei_mask": reference_nuclei_path,
+                "target_tissue_mask": target_tissue_path,
+                "change_region": patch_dir / "change_region.png",
+                "output": patch_dir,
+            }
+        )
+        patch_args = _make_args(patch_state, **patch_overrides)
+
+        try:
+            target_nuclei_patch, cell_info = _build_target_nuclei(
+                patch_args,
+                reference_nuclei_patch,
+                target_tissue_patch,
+                change_patch,
+                patch_dir,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise gr.Error(_format_subprocess_error(exc, label="Patch ProbNet cell fill")) from exc
+        except RuntimeError as exc:
+            raise gr.Error(str(exc)) from exc
+
+        target_nuclei_path = save_id_mask(target_nuclei_patch, patch_dir / "target_nuclei_mask.png")
+        _save_target_combined_mask(
+            patch_dir / "target_combined_mask.png",
+            target_tissue=target_tissue_patch,
+            target_nuclei=target_nuclei_patch,
+        )
+
+        generated_path, generation_info = _run_generation_stage(
+            args=patch_args,
+            output_dir=patch_dir,
+            reference_image=reference_image_patch,
+            change_region=change_patch,
+            target_tissue_path=target_tissue_path,
+            target_nuclei_path=target_nuclei_path,
+        )
+        generated_patch = np.asarray(Image.open(generated_path).convert("RGB"), dtype=np.uint8)
+        _stitch_generated_patch(
+            stitched=stitched,
+            generated_patch=generated_patch,
+            original_image=reference_image,
+            y=y,
+            x=x,
+            valid_h=valid_h,
+            valid_w=valid_w,
+            write_mask=write_mask,
+            center_weight=spec["center_weight"],
+            blend_mode=blend_mode,
+            feather_px=feather_px,
+            priority=priority if blend_mode == "hard" else None,
+            accum=accum if blend_mode != "hard" else None,
+            weight_sum=weight_sum if blend_mode != "hard" else None,
+            alpha_max=alpha_max if blend_mode != "hard" else None,
+        )
+        patch_logs.append(
+            {
+                "index": patch_index,
+                "x": x,
+                "y": y,
+                "valid_size": [valid_h, valid_w],
+                "write_pixels": int(np.count_nonzero(write_mask)),
+                "change_pixels": int(np.count_nonzero(change_patch)),
+                "cell_fill": cell_info,
+                "generation": generation_info,
+                "generated_image": str(generated_path),
+            }
+        )
+
+    if blend_mode != "hard":
+        stitched = _finish_weighted_stitch(
+            original_image=reference_image,
+            accum=accum,
+            weight_sum=weight_sum,
+            alpha_max=alpha_max,
+            blend_mode=blend_mode,
+        )
+
+    stitched_path = _save_rgb_patch(stitched, large_dir / "stitched_generated_image.png")
+    panel_path = _save_large_stitch_panel(
+        large_dir / "stitched_compare_panel.png",
+        reference_image=reference_image,
+        target_tissue=target_tissue,
+        change_region=change_region,
+        stitched_image=stitched,
+    )
+    summary = {
+        "status": "completed",
+        "mode": "large_patch_stitch",
+        "output_dir": str(large_dir),
+        "patch_size": patch_size,
+        "write_margin": write_margin,
+        "patch_stride": patch_stride,
+        "blend_mode": blend_mode,
+        "feather_px": feather_px,
+        "patch_count": len(patch_logs),
+        "changed_pixels": int(np.count_nonzero(change_region)),
+        "stitched_image": str(stitched_path),
+        "compare_panel": str(panel_path),
+        "patches": patch_logs,
+    }
+    save_metadata(summary, large_dir / "large_patch_stitch_summary.json")
+    state["large_patch_stitch"] = summary
+    state["generated_image"] = str(stitched_path)
+    return state, _json_text(summary), str(stitched_path), str(panel_path)
+
+
+def _large_patch_specs(
+    *,
+    change_region: np.ndarray,
+    patch_size: int,
+    write_margin: int,
+    patch_stride: int,
+) -> list[dict[str, Any]]:
+    h, w = change_region.shape
+    specs: list[dict[str, Any]] = []
+    for y in _axis_patch_origins(h, patch_size, patch_stride):
+        for x in _axis_patch_origins(w, patch_size, patch_stride):
+            valid_h = min(patch_size, h - y)
+            valid_w = min(patch_size, w - x)
+            change_patch = _extract_patch_array(change_region, y, x, patch_size, fill_value=False).astype(bool)
+            write_window = _patch_write_window(
+                y=y,
+                x=x,
+                full_h=h,
+                full_w=w,
+                valid_h=valid_h,
+                valid_w=valid_w,
+                patch_size=patch_size,
+                write_margin=write_margin,
+            )
+            write_mask = change_patch & write_window
+            if not np.any(write_mask):
+                continue
+            specs.append(
+                {
+                    "y": y,
+                    "x": x,
+                    "valid_h": valid_h,
+                    "valid_w": valid_w,
+                    "change_patch": change_patch,
+                    "write_mask": write_mask,
+                    "center_weight": _patch_center_priority(write_window),
+                }
+            )
+    return specs
+
+
+def _count_uncovered_changed_pixels(
+    *,
+    change_region: np.ndarray,
+    patch_specs: list[dict[str, Any]],
+) -> int:
+    covered = np.zeros(change_region.shape, dtype=bool)
+    for spec in patch_specs:
+        y = int(spec["y"])
+        x = int(spec["x"])
+        valid_h = int(spec["valid_h"])
+        valid_w = int(spec["valid_w"])
+        covered[y : y + valid_h, x : x + valid_w] |= spec["write_mask"][:valid_h, :valid_w]
+    return int(np.count_nonzero(np.asarray(change_region, dtype=bool) & ~covered))
+
+
+def _axis_patch_origins(length: int, patch_size: int, stride: int) -> list[int]:
+    if length <= patch_size:
+        return [0]
+    max_start = length - patch_size
+    origins = list(range(0, max_start + 1, stride))
+    if origins[-1] != max_start:
+        origins.append(max_start)
+    return sorted(set(int(v) for v in origins))
+
+
+def _patch_write_window(
+    *,
+    y: int,
+    x: int,
+    full_h: int,
+    full_w: int,
+    valid_h: int,
+    valid_w: int,
+    patch_size: int,
+    write_margin: int,
+) -> np.ndarray:
+    y0 = 0 if y <= 0 else write_margin
+    x0 = 0 if x <= 0 else write_margin
+    y1 = valid_h if y + patch_size >= full_h else patch_size - write_margin
+    x1 = valid_w if x + patch_size >= full_w else patch_size - write_margin
+    y0 = min(max(0, y0), valid_h)
+    x0 = min(max(0, x0), valid_w)
+    y1 = min(max(y0, y1), valid_h)
+    x1 = min(max(x0, x1), valid_w)
+    window = np.zeros((patch_size, patch_size), dtype=bool)
+    window[y0:y1, x0:x1] = True
+    return window
+
+
+def _patch_center_priority(write_window: np.ndarray) -> np.ndarray:
+    from scipy import ndimage
+
+    if not np.any(write_window):
+        return np.zeros(write_window.shape, dtype=np.float32)
+    dist = ndimage.distance_transform_edt(write_window).astype(np.float32)
+    max_dist = float(dist.max())
+    if max_dist <= 0:
+        return write_window.astype(np.float32)
+    return np.where(write_window, 0.05 + 0.95 * (dist / max_dist), 0.0).astype(np.float32)
+
+
+def _extract_patch_array(
+    array: np.ndarray,
+    y: int,
+    x: int,
+    patch_size: int,
+    *,
+    fill_value: int | bool,
+) -> np.ndarray:
+    arr = np.asarray(array)
+    valid_h = min(patch_size, arr.shape[0] - y)
+    valid_w = min(patch_size, arr.shape[1] - x)
+    if arr.ndim == 2:
+        patch = np.full((patch_size, patch_size), fill_value, dtype=arr.dtype)
+        patch[:valid_h, :valid_w] = arr[y : y + valid_h, x : x + valid_w]
+    else:
+        patch = np.full((patch_size, patch_size, arr.shape[2]), fill_value, dtype=arr.dtype)
+        patch[:valid_h, :valid_w, :] = arr[y : y + valid_h, x : x + valid_w, :]
+    return patch
+
+
+def _save_rgb_patch(array: np.ndarray, path: str | Path) -> Path:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(np.asarray(array, dtype=np.uint8), mode="RGB").save(p)
+    return p
+
+
+def _stitch_generated_patch(
+    *,
+    stitched: np.ndarray,
+    generated_patch: np.ndarray,
+    original_image: np.ndarray,
+    y: int,
+    x: int,
+    valid_h: int,
+    valid_w: int,
+    write_mask: np.ndarray,
+    center_weight: np.ndarray,
+    blend_mode: str,
+    feather_px: int,
+    priority: np.ndarray | None,
+    accum: np.ndarray | None,
+    weight_sum: np.ndarray | None,
+    alpha_max: np.ndarray | None,
+) -> None:
+    local_mask = write_mask[:valid_h, :valid_w].astype(bool)
+    if not np.any(local_mask):
+        return
+    generated_valid = generated_patch[:valid_h, :valid_w]
+    full_slice = np.s_[y : y + valid_h, x : x + valid_w]
+    if blend_mode == "hard":
+        assert priority is not None
+        local_priority = center_weight[:valid_h, :valid_w]
+        target_priority = priority[full_slice]
+        update = local_mask & (local_priority >= target_priority)
+        stitched_region = stitched[full_slice]
+        stitched_region[update] = generated_valid[update]
+        target_priority[update] = local_priority[update]
+        return
+
+    assert accum is not None and weight_sum is not None and alpha_max is not None
+    local_weight = center_weight[:valid_h, :valid_w] * local_mask.astype(np.float32)
+    if blend_mode == "narrow-feather":
+        local_alpha = _narrow_boundary_alpha(local_mask, feather_px)
+        alpha_max[full_slice] = np.maximum(alpha_max[full_slice], local_alpha)
+        local_weight *= np.maximum(local_alpha, 1e-3)
+    accum[full_slice] += generated_valid.astype(np.float32) * local_weight[..., None]
+    weight_sum[full_slice] += local_weight
+
+
+def _narrow_boundary_alpha(mask: np.ndarray, feather_px: int) -> np.ndarray:
+    if feather_px <= 0:
+        return mask.astype(np.float32)
+    from scipy import ndimage
+
+    dist_inside = ndimage.distance_transform_edt(mask).astype(np.float32)
+    alpha = np.clip(dist_inside / float(feather_px + 1), 0.0, 1.0)
+    return np.where(mask, alpha, 0.0).astype(np.float32)
+
+
+def _finish_weighted_stitch(
+    *,
+    original_image: np.ndarray,
+    accum: np.ndarray,
+    weight_sum: np.ndarray,
+    alpha_max: np.ndarray,
+    blend_mode: str,
+) -> np.ndarray:
+    output = np.array(original_image, copy=True).astype(np.float32)
+    covered = weight_sum > 0
+    generated = np.zeros_like(output, dtype=np.float32)
+    generated[covered] = accum[covered] / np.maximum(weight_sum[covered, None], 1e-6)
+    if blend_mode == "narrow-feather":
+        alpha = np.clip(alpha_max, 0.0, 1.0)
+        output[covered] = output[covered] * (1.0 - alpha[covered, None]) + generated[covered] * alpha[covered, None]
+    else:
+        output[covered] = generated[covered]
+    return np.clip(output, 0, 255).round().astype(np.uint8)
+
+
+def _save_large_stitch_panel(
+    path: Path,
+    *,
+    reference_image: np.ndarray,
+    target_tissue: np.ndarray,
+    change_region: np.ndarray,
+    stitched_image: np.ndarray,
+) -> Path:
+    target_rgb = id_to_rgb(target_tissue)
+    change_overlay = np.array(reference_image, copy=True)
+    red = np.array([255, 40, 40], dtype=np.uint8)
+    change = np.asarray(change_region, dtype=bool)
+    change_overlay[change] = (
+        change_overlay[change].astype(np.float32) * 0.45 + red.astype(np.float32) * 0.55
+    ).round().astype(np.uint8)
+    panels = [
+        ("Reference", reference_image),
+        ("Target tissue", target_rgb),
+        ("Change region", change_overlay),
+        ("Stitched", stitched_image),
+    ]
+    panel_w = min(640, reference_image.shape[1])
+    panel_h = max(1, int(round(reference_image.shape[0] * panel_w / reference_image.shape[1])))
+    header_h = 34
+    gap = 4
+    out = Image.new("RGB", (panel_w * len(panels) + gap * (len(panels) - 1), panel_h + header_h), (245, 245, 245))
+    draw = ImageDraw.Draw(out)
+    for idx, (label, array) in enumerate(panels):
+        x0 = idx * (panel_w + gap)
+        resample = Image.NEAREST if label == "Target tissue" else Image.BILINEAR
+        resized = Image.fromarray(array).resize((panel_w, panel_h), resample)
+        out.paste(resized, (x0, header_h))
+        draw.text((x0 + 6, 9), label, fill=(0, 0, 0))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.save(path)
+    return path
+
+
 def _validate_generation_paths(args: SimpleNamespace, selected_mode: str) -> None:
     required_paths: dict[str, Path] = {}
     if selected_mode == "inpaint":
@@ -3114,6 +3692,11 @@ def build_ui() -> gr.Blocks:
             source_image = gr.File(label="src_image", file_types=["image"], type="filepath")
             source_tissue = gr.File(label="src_tissue_mask", file_types=["image"], type="filepath")
             source_cell = gr.File(label="src_cell_mask / CellViT output", file_types=["image"], type="filepath")
+        with gr.Accordion("Load local large patch paths", open=False):
+            local_image_path = gr.Textbox(value=str(DEFAULT_LARGE_BCSS_IMAGE), label="local src_image path")
+            local_tissue_path = gr.Textbox(value=str(DEFAULT_LARGE_BCSS_TISSUE_MASK), label="local src_tissue_mask path")
+            local_cell_path = gr.Textbox(value=str(DEFAULT_LARGE_BCSS_NUCLEI_MASK), label="local src_cell_mask path")
+            local_load_button = gr.Button("Load local paths")
         load_button = gr.Button("1. Load inputs")
         load_log = gr.Code(label="load log", language="json")
         with gr.Row():
@@ -3260,6 +3843,20 @@ def build_ui() -> gr.Blocks:
             with gr.Row():
                 uni_checkpoint = gr.Textbox(value=DEFAULT_UNI_CHECKPOINT, label="UNI checkpoint")
         generate_button = gr.Button("4. Route + generate")
+        with gr.Accordion("Large patch stitch experiment", open=False):
+            with gr.Row():
+                large_patch_size = gr.Slider(256, 1024, value=512, step=32, label="patch size")
+                large_write_margin = gr.Slider(0, 192, value=96, step=16, label="write margin")
+                large_patch_stride = gr.Slider(0, 1024, value=0, step=32, label="patch stride (0 = center stride)")
+            with gr.Row():
+                large_blend_mode = gr.Radio(
+                    ["hard", "patch-average", "narrow-feather"],
+                    value="hard",
+                    label="blend mode",
+                )
+                large_feather_px = gr.Slider(0, 32, value=0, step=1, label="narrow feather px")
+                large_max_patches = gr.Slider(0, 512, value=128, step=1, label="max patches (0 = no cap)")
+            large_generate_button = gr.Button("4b. Generate large patch stitch")
         generation_log = gr.Code(label="summary", language="json")
         with gr.Row():
             generated_preview = gr.Image(label="generated image")
@@ -3277,6 +3874,29 @@ def build_ui() -> gr.Blocks:
                 cellvit_root,
                 cellvit_device,
             ],
+            outputs=[state, load_log, src_image_preview, src_tissue_preview],
+        ).then(
+            _refresh_edit_mode_panels,
+            inputs=[state, edit_mode],
+            outputs=[
+                state,
+                prompt_panel,
+                instruction_panel,
+                manual_panel,
+                auto_panel,
+                manual_editor,
+                manual_contour_payload,
+                target_label,
+                auto_primitive,
+                auto_strength,
+                auto_summary,
+                tissue_button,
+                auto_execute_button,
+            ],
+        )
+        local_load_button.click(
+            load_inputs_from_paths,
+            inputs=[profile, local_image_path, local_tissue_path, local_cell_path],
             outputs=[state, load_log, src_image_preview, src_tissue_preview],
         ).then(
             _refresh_edit_mode_panels,
@@ -3485,6 +4105,35 @@ def build_ui() -> gr.Blocks:
                 cross_v1_checkpoint,
                 uni_checkpoint,
                 device,
+            ],
+            outputs=[state, generation_log, generated_preview, panel_preview],
+        )
+        large_generate_button.click(
+            run_large_patch_stitch_generation,
+            inputs=[
+                state,
+                generation_mode,
+                cross_backend,
+                route_threshold,
+                model_path,
+                inpaint_checkpoint,
+                cross_checkpoint,
+                cross_v1_checkpoint,
+                uni_checkpoint,
+                device,
+                cell_fill,
+                crossing_policy,
+                probnet_ckpt,
+                nuclei_library,
+                density_scale_json,
+                probnet_device,
+                gamma_values,
+                large_patch_size,
+                large_write_margin,
+                large_patch_stride,
+                large_blend_mode,
+                large_feather_px,
+                large_max_patches,
             ],
             outputs=[state, generation_log, generated_preview, panel_preview],
         )

@@ -51,6 +51,98 @@ def _save_model_state(model: torch.nn.Module, path: Path) -> None:
     torch.save(_unwrap_model(model).state_dict(), path)
 
 
+def _resolve_resume_checkpoint(resume: str | None, output_dir: Path) -> Path | None:
+    if not resume:
+        return None
+    if resume == "latest":
+        latest = output_dir / "checkpoint_last.pt"
+        if latest.exists():
+            return latest
+        warnings.warn(
+            f"No segmentator checkpoint_last.pt found under {output_dir}; training from scratch.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None
+
+    checkpoint_path = Path(resume).expanduser()
+    candidates = [checkpoint_path] if checkpoint_path.is_absolute() else [checkpoint_path, output_dir / checkpoint_path]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    warnings.warn(
+        f"Segmentator checkpoint not found: {resume}; training from scratch.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    return None
+
+
+def _load_training_state(
+    checkpoint_path: Path,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.cuda.amp.GradScaler,
+    device: torch.device,
+) -> dict[str, object]:
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    if not isinstance(checkpoint, dict):
+        raise ValueError(f"Unsupported segmentator checkpoint format: {checkpoint_path}")
+
+    if "model" not in checkpoint:
+        _unwrap_model(model).load_state_dict(checkpoint, strict=True)
+        return {
+            "start_epoch": 0,
+            "history": [],
+            "best_miou": float("-inf"),
+            "best_core5_miou": float("-inf"),
+            "metrics": {},
+            "weights_only": True,
+        }
+
+    _unwrap_model(model).load_state_dict(checkpoint["model"], strict=True)
+    if "optimizer" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer"])
+    if "scaler" in checkpoint:
+        scaler.load_state_dict(checkpoint["scaler"])
+    return {
+        "start_epoch": int(checkpoint.get("completed_epochs", checkpoint.get("epoch", 0))),
+        "history": list(checkpoint.get("history") or []),
+        "best_miou": float(checkpoint.get("best_miou", float("-inf"))),
+        "best_core5_miou": float(checkpoint.get("best_core5_miou", float("-inf"))),
+        "metrics": dict(checkpoint.get("metrics") or {}),
+        "weights_only": False,
+    }
+
+
+def _save_training_state(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.cuda.amp.GradScaler,
+    output_dir: Path,
+    completed_epochs: int,
+    history: list[dict[str, float]],
+    best_miou: float,
+    best_core5_miou: float,
+    metrics: dict[str, object],
+) -> None:
+    torch.save(
+        {
+            "format": "segmentator_training_checkpoint_v1",
+            "completed_epochs": completed_epochs,
+            "epoch": completed_epochs,
+            "model": _unwrap_model(model).state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scaler": scaler.state_dict(),
+            "history": history,
+            "best_miou": best_miou,
+            "best_core5_miou": best_core5_miou,
+            "metrics": metrics,
+        },
+        output_dir / "checkpoint_last.pt",
+    )
+
+
 def _run_mask2former_sanity_check(model: BaselineSegmenter, image_size: int, num_classes: int, device: torch.device) -> None:
     was_training = model.training
     model.train()
@@ -267,6 +359,36 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     output_dir = config.resolve_output_dir()
     if main_process:
         output_dir.mkdir(parents=True, exist_ok=True)
+    if distributed:
+        dist.barrier()
+
+    history: list[dict[str, float]] = []
+    best_miou = float("-inf")
+    best_core5_miou = float("-inf")
+    metrics: dict[str, object] = {}
+    start_epoch = 0
+    resume_path = _resolve_resume_checkpoint(config.resume_from_checkpoint, output_dir)
+    if resume_path is not None:
+        resume_state = _load_training_state(resume_path, model, optimizer, scaler, device)
+        start_epoch = int(resume_state["start_epoch"])
+        history = resume_state["history"]
+        best_miou = float(resume_state["best_miou"])
+        best_core5_miou = float(resume_state["best_core5_miou"])
+        metrics = resume_state["metrics"]
+        if main_process:
+            print(
+                json.dumps(
+                    {
+                        "resume_checkpoint": str(resume_path),
+                        "start_epoch": start_epoch,
+                        "weights_only": bool(resume_state["weights_only"]),
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+
+    if main_process:
         (output_dir / "config.json").write_text(
             json.dumps(
                 {
@@ -297,6 +419,9 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     "effective_invalid_target": config.mask2former_ignore_index if config.decoder == "mask2former" else config.ignore_index,
                     "class_weighting": config.class_weighting,
                     "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
+                    "resume_from_checkpoint": config.resume_from_checkpoint,
+                    "resume_checkpoint": str(resume_path) if resume_path is not None else None,
+                    "start_epoch": start_epoch,
                     "export_val_predictions": config.export_val_predictions,
                     "export_val_tensors": config.export_val_tensors,
                     "uni2h_repo": str(uni2h_repo),
@@ -310,11 +435,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     if distributed:
         dist.barrier()
 
-    history: list[dict[str, float]] = []
-    best_miou = float("-inf")
-    best_core5_miou = float("-inf")
-    metrics: dict[str, object] = {}
-    for epoch in range(config.epochs):
+    for epoch in range(start_epoch, config.epochs):
         epoch_start = time.time()
         if isinstance(train_sampler, DistributedSampler):
             train_sampler.set_epoch(epoch)
@@ -465,6 +586,17 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     [torch.cat(gathered_logits, dim=0)] if config.export_val_tensors else [],
                     export_tensors=config.export_val_tensors,
                 )
+            _save_training_state(
+                model,
+                optimizer,
+                scaler,
+                output_dir,
+                completed_epochs=epoch + 1,
+                history=history,
+                best_miou=best_miou,
+                best_core5_miou=best_core5_miou,
+                metrics=metrics,
+            )
         if distributed:
             metric_payload = [metrics if main_process else None]
             dist.broadcast_object_list(metric_payload, src=0)

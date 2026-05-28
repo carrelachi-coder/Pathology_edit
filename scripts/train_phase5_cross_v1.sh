@@ -22,6 +22,7 @@ UNI_CHECKPOINT="${UNI_CHECKPOINT:-${PROJECT_ROOT}/UNI-2h/pytorch_model.bin}"
 # Cross V1 training metadata (165K pairs, already built)
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/datasets/phase5_runs/cross_meta/metadata_cross_train.json}"
 CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1}"
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-latest}"
 
 MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
 IFS=',' read -r -a GPU_ID_ARRAY <<< "${GPU_IDS}"
@@ -80,12 +81,18 @@ else
   echo "Warning: CLI does not support --ref-swap-loss-interval; ref-swap loss will run every step." >&2
 fi
 
+RESUME_ARGS=()
+if [[ -n "${RESUME_FROM_CHECKPOINT}" ]]; then
+  RESUME_ARGS+=(--resume-from-checkpoint "${RESUME_FROM_CHECKPOINT}")
+fi
+
 accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GPU_IDS}" \
   controlnet_train/cli/train_controlnet_flux_cross_v1.py \
   --pretrained_model_name_or_path "${MODEL_DIR}" \
   --train-metadata "${CROSS_META}" \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
   --output-dir "${CROSS_V1_OUTPUT_DIR}" \
+  "${RESUME_ARGS[@]}" \
   --logging-dir logs \
   --seed 42 \
   --train-batch-size 2 \
