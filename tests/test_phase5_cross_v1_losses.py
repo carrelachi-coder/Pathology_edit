@@ -11,9 +11,13 @@ if torch is not None:
         per_sample_mse,
         ref_swap_sensitivity_loss,
         regional_stain_style_loss,
+        self_reconstruction_l1_loss,
         unpack_flux_packed_latents,
     )
-    from controlnet_train.training.flux_phase5_cross_v1 import _use_random_reference
+    from controlnet_train.training.flux_phase5_cross_v1 import (
+        _insert_self_reconstruction_samples,
+        _use_random_reference,
+    )
 
 
 @unittest.skipIf(torch is None, "torch is required for Cross V1 loss tests")
@@ -72,6 +76,28 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
 
         self.assertTrue(torch.allclose(values, torch.tensor([2.5, 4.5])))
 
+    def test_self_reconstruction_l1_loss_can_mask_inserted_samples(self):
+        prediction = torch.tensor(
+            [
+                [[[0.0, 0.0]]],
+                [[[0.0, 0.0]]],
+            ]
+        ).repeat(1, 3, 1, 1)
+        reference = torch.tensor(
+            [
+                [[[1.0, 1.0]]],
+                [[[3.0, 3.0]]],
+            ]
+        ).repeat(1, 3, 1, 1)
+
+        loss = self_reconstruction_l1_loss(
+            prediction=prediction,
+            reference=reference,
+            sample_mask=torch.tensor([True, False]),
+        )
+
+        self.assertTrue(torch.allclose(loss, torch.tensor(1.0)))
+
     def test_unpack_flux_packed_latents_inverts_two_by_two_packing_order(self):
         latents = torch.arange(1 * 1 * 4 * 4, dtype=torch.float32).reshape(1, 1, 4, 4)
         packed = latents.reshape(1, 1, 2, 2, 2, 2)
@@ -108,6 +134,24 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertTrue(torch.equal(swapped["reference_image"], random_batch["reference_image"]))
         self.assertTrue(torch.equal(swapped["reference_tissue_mask"], random_batch["reference_tissue_mask"]))
         self.assertTrue(torch.equal(swapped["reference_nuclei_mask"], random_batch["reference_nuclei_mask"]))
+
+    def test_insert_self_reconstruction_samples_replaces_only_selected_references(self):
+        batch = {
+            "target_image": torch.arange(2 * 3 * 2 * 2, dtype=torch.float32).reshape(2, 3, 2, 2),
+            "reference_image": torch.zeros(2, 3, 2, 2),
+            "target_tissue_mask": torch.ones(2, 2, 2, dtype=torch.long),
+            "reference_tissue_mask": torch.zeros(2, 2, 2, dtype=torch.long),
+            "target_nuclei_mask": torch.full((2, 2, 2), 2, dtype=torch.long),
+            "reference_nuclei_mask": torch.zeros(2, 2, 2, dtype=torch.long),
+        }
+
+        mixed = _insert_self_reconstruction_samples(batch, torch.tensor([True, False]))
+
+        self.assertTrue(torch.equal(mixed["reference_image"][0], batch["target_image"][0]))
+        self.assertTrue(torch.equal(mixed["reference_tissue_mask"][0], batch["target_tissue_mask"][0]))
+        self.assertTrue(torch.equal(mixed["reference_nuclei_mask"][0], batch["target_nuclei_mask"][0]))
+        self.assertTrue(torch.equal(mixed["reference_image"][1], batch["reference_image"][1]))
+        self.assertTrue(torch.equal(batch["reference_image"], torch.zeros(2, 3, 2, 2)))
 
 
 if __name__ == "__main__":

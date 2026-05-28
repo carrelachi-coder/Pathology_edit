@@ -32,6 +32,32 @@ def per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tens
     return F.mse_loss(prediction.float(), target.float(), reduction="none").flatten(1).mean(dim=1)
 
 
+def self_reconstruction_l1_loss(
+    *,
+    prediction: torch.Tensor,
+    reference: torch.Tensor,
+    sample_mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Pixel L1 loss for same-patch reference reconstruction samples."""
+    _validate_images(prediction, reference)
+    per_sample = F.l1_loss(
+        prediction.float(),
+        reference.detach().float(),
+        reduction="none",
+    ).flatten(1).mean(dim=1)
+    if sample_mask is None:
+        return per_sample.mean()
+
+    mask = sample_mask.to(device=per_sample.device, dtype=torch.bool).flatten()
+    if mask.shape != per_sample.shape:
+        raise ValueError(
+            f"sample_mask shape {tuple(mask.shape)} does not match batch shape {tuple(per_sample.shape)}"
+        )
+    if not bool(mask.any().item()):
+        return prediction.new_zeros(())
+    return per_sample[mask].mean()
+
+
 def unpack_flux_packed_latents(
     packed_latents: torch.Tensor,
     *,

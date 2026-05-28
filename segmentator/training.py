@@ -171,6 +171,15 @@ def set_seed(seed: int) -> None:
 
 
 def compute_class_weights(dataset: TissueSegmentationDataset, num_classes: int, mode: str, remap_invalid_to: int) -> tuple[torch.Tensor | None, dict[str, object]]:
+    if mode == "none":
+        return None, {
+            "mode": mode,
+            "weights": None,
+            "remap_invalid_to": remap_invalid_to,
+            "ignore_index": dataset.ignore_index,
+            "note": "Skipped pixel histogram scan because class weighting is disabled.",
+        }
+
     counts = torch.zeros(num_classes, dtype=torch.float64)
     ignored_pixels = 0
     invalid_values: dict[int, int] = {}
@@ -208,9 +217,6 @@ def compute_class_weights(dataset: TissueSegmentationDataset, num_classes: int, 
         "invalid_values": invalid_values,
         "skipped_unreadable_samples": skipped_samples,
     }
-    if mode == "none":
-        metadata["weights"] = None
-        return None, metadata
     if mode == "inverse_sqrt":
         weights = 1.0 / torch.sqrt(frequencies.clamp_min(1e-8))
         weights = weights / weights.mean().clamp_min(1e-8)
@@ -248,15 +254,23 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     dataset_root = Path(dataset_root)
     distributed, rank, local_rank, world_size = _ddp_env()
     main_process = rank == 0
+    print(
+        f"[rank {rank}] segmentator startup distributed={distributed} local_rank={local_rank} world_size={world_size}",
+        flush=True,
+    )
     if distributed:
         if not torch.cuda.is_available():
             raise RuntimeError("Distributed segmentator training requires CUDA devices.")
         torch.cuda.set_device(local_rank)
         if not dist.is_initialized():
+            print(f"[rank {rank}] initializing process group", flush=True)
             dist.init_process_group(backend="nccl")
+            print(f"[rank {rank}] process group ready", flush=True)
     set_seed(config.seed)
     if config.disable_cudnn:
         torch.backends.cudnn.enabled = False
+    if main_process:
+        print(f"[rank {rank}] loading manifest from {config.manifest_path or dataset_root}", flush=True)
     manifest = (
         load_manifest(config.manifest_path, root=dataset_root)
         if config.manifest_path is not None
@@ -281,6 +295,11 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         ignore_index=config.ignore_index,
         mask_remap=config.mask_remap,
     )
+    if main_process:
+        print(
+            f"[rank {rank}] datasets ready train={len(train_ds)} val={len(val_ds)} class_weighting={config.class_weighting}",
+            flush=True,
+        )
     class_weights, class_weight_metadata = compute_class_weights(
         train_ds,
         config.num_classes,
@@ -330,6 +349,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
 
     device = torch.device(f"cuda:{local_rank}" if distributed else ("cuda" if torch.cuda.is_available() else "cpu"))
     class_weights_device = class_weights.to(device) if class_weights is not None else None
+    print(f"[rank {rank}] building model on {device}", flush=True)
     model = BaselineSegmenter(
         num_classes=config.num_classes,
         freeze_encoder=config.freeze_encoder,
@@ -340,9 +360,12 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     ).to(device)
     sanity_check_passed = False
     if config.decoder == "mask2former":
+        print(f"[rank {rank}] running Mask2Former sanity check", flush=True)
         _run_mask2former_sanity_check(model, config.image_size, config.num_classes, device)
         sanity_check_passed = True
+        print(f"[rank {rank}] Mask2Former sanity check passed", flush=True)
     if distributed:
+        print(f"[rank {rank}] wrapping model with DDP", flush=True)
         if config.decoder == "mask2former":
             model = DistributedDataParallel(
                 model,
@@ -352,6 +375,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             )
         else:
             model = DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+        print(f"[rank {rank}] DDP ready", flush=True)
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=config.lr, weight_decay=config.weight_decay)
     use_amp = config.amp and device.type == "cuda" and config.decoder != "mask2former"
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)

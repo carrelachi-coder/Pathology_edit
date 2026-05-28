@@ -116,6 +116,10 @@ class TrainingCliTests(unittest.TestCase):
                 "phase5_runs/cross_meta/metadata_cross_train.json",
                 "--uni-checkpoint-path",
                 "UNI-2h/pytorch_model.bin",
+                "--self-reconstruction-sample-prob",
+                "0.2",
+                "--self-reconstruction-l1-weight",
+                "1.5",
                 "--reference-style-loss-weight",
                 "0.2",
                 "--reference-style-tissue-weight",
@@ -131,12 +135,29 @@ class TrainingCliTests(unittest.TestCase):
             ]
         )
 
+        self.assertEqual(args.self_reconstruction_sample_prob, 0.2)
+        self.assertEqual(args.self_reconstruction_l1_weight, 1.5)
         self.assertEqual(args.reference_style_loss_weight, 0.2)
         self.assertEqual(args.reference_style_tissue_weight, 2.0)
         self.assertEqual(args.reference_style_nuclei_weight, 1.5)
         self.assertEqual(args.ref_swap_loss_weight, 0.3)
         self.assertEqual(args.ref_swap_margin, 0.04)
         self.assertEqual(args.ref_swap_variants, "zero,random")
+
+    def test_cross_v1_cli_enables_persistent_self_reconstruction_by_default(self):
+        args = parse_cross_v1_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--uni-checkpoint-path",
+                "UNI-2h/pytorch_model.bin",
+            ]
+        )
+
+        self.assertEqual(args.self_reconstruction_sample_prob, 0.2)
+        self.assertEqual(args.self_reconstruction_l1_weight, 1.0)
 
 
 if __name__ == "__main__":

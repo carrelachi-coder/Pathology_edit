@@ -155,6 +155,24 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--self-reconstruction-sample-prob",
+        type=float,
+        default=0.2,
+        help=(
+            "After warmup, randomly convert this fraction of each batch to same-patch "
+            "self-reconstruction samples by setting reference=target."
+        ),
+    )
+    parser.add_argument(
+        "--self-reconstruction-l1-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "Weight for pixel-level L1 loss between decoded prediction and reference image "
+            "on self-reconstruction samples."
+        ),
+    )
+    parser.add_argument(
         "--cross-v1-spatial-mode",
         type=str,
         default="reference_target",

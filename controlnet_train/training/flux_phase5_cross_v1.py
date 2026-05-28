@@ -75,6 +75,7 @@ from controlnet_train.training.cross_v1_losses import (
     per_sample_mse,
     ref_swap_sensitivity_loss,
     regional_stain_style_loss,
+    self_reconstruction_l1_loss,
     unpack_flux_packed_latents,
 )
 
@@ -411,6 +412,28 @@ def _use_self_reconstruction_reference(batch: dict) -> dict:
     return warmup_batch
 
 
+def _insert_self_reconstruction_samples(batch: dict, sample_mask: torch.Tensor) -> dict:
+    """Use target patches as references for selected batch items."""
+    mask = sample_mask.to(device=batch["target_image"].device, dtype=torch.bool)
+    if mask.ndim != 1 or mask.shape[0] != batch["target_image"].shape[0]:
+        raise ValueError(
+            f"sample_mask must have shape ({batch['target_image'].shape[0]},), got {tuple(mask.shape)}"
+        )
+    if not bool(mask.any().item()):
+        return batch
+
+    mixed = dict(batch)
+    for reference_key, target_key in (
+        ("reference_image", "target_image"),
+        ("reference_tissue_mask", "target_tissue_mask"),
+        ("reference_nuclei_mask", "target_nuclei_mask"),
+    ):
+        reference = batch[reference_key].clone()
+        reference[mask] = batch[target_key][mask].to(device=reference.device, dtype=reference.dtype)
+        mixed[reference_key] = reference
+    return mixed
+
+
 def _use_zero_reference(batch: dict) -> dict:
     swapped = dict(batch)
     swapped["reference_image"] = torch.zeros_like(batch["reference_image"])
@@ -457,6 +480,20 @@ def _parse_ref_swap_variants(value: str | None) -> list[str]:
         if variant not in variants:
             variants.append(variant)
     return variants
+
+
+def _validate_self_reconstruction_loss_config(
+    *,
+    sample_prob: float,
+    l1_weight: float,
+) -> None:
+    if sample_prob > 0.0 and l1_weight <= 0.0:
+        raise ValueError(
+            "--self-reconstruction-sample-prob inserts reference=target samples, "
+            "but --self-reconstruction-l1-weight is 0. Set "
+            "--self-reconstruction-l1-weight > 0 to train with the reconstruction "
+            "loss, or set --self-reconstruction-sample-prob 0 to disable these samples."
+        )
 
 
 class RandomReferenceSampler:
@@ -959,6 +996,21 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         0,
         int(getattr(args, "self_reconstruction_warmup_steps", 0) or 0),
     )
+    self_reconstruction_sample_prob = min(
+        1.0,
+        max(0.0, float(getattr(args, "self_reconstruction_sample_prob", 0.0) or 0.0)),
+    )
+    self_reconstruction_l1_weight = max(
+        0.0,
+        float(getattr(args, "self_reconstruction_l1_weight", 0.0) or 0.0),
+    )
+    if self_reconstruction_sample_prob > 0.0 and self_reconstruction_l1_weight <= 0.0:
+        raise ValueError(
+            "--self-reconstruction-sample-prob inserts reference=target samples, "
+            "but --self-reconstruction-l1-weight is 0. Set "
+            "--self-reconstruction-l1-weight > 0 to train with the reconstruction "
+            "loss, or set --self-reconstruction-sample-prob 0 to disable these samples."
+        )
     reference_style_loss_weight = max(
         0.0,
         float(getattr(args, "reference_style_loss_weight", 0.0) or 0.0),
@@ -1056,6 +1108,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         logger.info(
             "Using same-patch self-reconstruction warmup for the first %s optimizer steps",
             self_reconstruction_warmup_steps,
+        )
+    if self_reconstruction_sample_prob > 0.0 and self_reconstruction_l1_weight > 0.0:
+        logger.info(
+            "Using persistent self-reconstruction samples: prob=%s l1_weight=%s",
+            self_reconstruction_sample_prob,
+            self_reconstruction_l1_weight,
         )
     if reference_style_loss_weight > 0.0:
         logger.info(
@@ -1414,11 +1472,28 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         for step, batch in enumerate(train_dataloader):
             accumulate_model = ip_trainable_wrapper if a1_lite else flux_controlnet
             with accelerator.accumulate(accumulate_model):
-                training_batch = (
-                    _use_self_reconstruction_reference(batch)
-                    if global_step < self_reconstruction_warmup_steps
-                    else batch
+                bsz = int(batch["target_image"].shape[0])
+                in_self_reconstruction_warmup = global_step < self_reconstruction_warmup_steps
+                self_reconstruction_sample_mask = torch.zeros(
+                    bsz,
+                    device=accelerator.device,
+                    dtype=torch.bool,
                 )
+                if in_self_reconstruction_warmup:
+                    self_reconstruction_sample_mask.fill_(True)
+                    training_batch = _use_self_reconstruction_reference(batch)
+                elif self_reconstruction_sample_prob > 0.0:
+                    self_reconstruction_sample_mask = (
+                        torch.rand(bsz, device=accelerator.device)
+                        < self_reconstruction_sample_prob
+                    )
+                    training_batch = _insert_self_reconstruction_samples(
+                        batch,
+                        self_reconstruction_sample_mask,
+                    )
+                else:
+                    training_batch = batch
+
                 with torch.no_grad() if a1_lite else contextlib.nullcontext():
                     pixel_latents, control_tensor = _build_cross_v1_control_batch(
                         batch=training_batch,
@@ -1521,12 +1596,17 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 style_nuclei_loss = noise_pred.new_zeros(())
                 style_tissue_regions = 0
                 style_nuclei_regions = 0
+                self_reconstruction_l1 = noise_pred.new_zeros(())
+                prediction_rgb = None
                 should_compute_style_loss = (
                     reference_style_loss_weight > 0.0
                     and reference_style_loss_interval > 0
                     and global_step % reference_style_loss_interval == 0
                 )
-                if should_compute_style_loss:
+                should_compute_self_reconstruction_l1 = bool(
+                    self_reconstruction_sample_mask.any().item()
+                )
+                if should_compute_style_loss or should_compute_self_reconstruction_l1:
                     prediction_rgb = _decode_packed_model_prediction(
                         vae=vae,
                         packed_noisy_latents=noisy_model_input,
@@ -1537,6 +1617,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         latent_width=pixel_latents.shape[3],
                         weight_dtype=weight_dtype,
                     )
+                if should_compute_style_loss:
                     style_terms = regional_stain_style_loss(
                         prediction=prediction_rgb,
                         reference=training_batch["reference_image"].to(
@@ -1554,6 +1635,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     style_nuclei_loss = style_terms["nuclei"].to(dtype=denoising_loss.dtype)
                     style_tissue_regions = int(style_terms["tissue_regions"])
                     style_nuclei_regions = int(style_terms["nuclei_regions"])
+                if should_compute_self_reconstruction_l1:
+                    self_reconstruction_l1 = self_reconstruction_l1_loss(
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        sample_mask=self_reconstruction_sample_mask,
+                    ).to(dtype=denoising_loss.dtype)
+                self_reconstruction_l1_weighted = (
+                    self_reconstruction_l1_weight * self_reconstruction_l1
+                )
 
                 swap_loss = noise_pred.new_zeros(())
                 ref_variant_loss_logs: dict[str, float] = {}
@@ -1616,6 +1709,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     denoising_loss
                     + reference_style_loss_weight * style_loss
                     + ref_swap_loss_weight * swap_loss
+                    + self_reconstruction_l1_weighted
                 )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -1659,6 +1753,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "style_loss": style_loss.detach().item(),
                 "style_tissue_loss": style_tissue_loss.detach().item(),
                 "style_nuclei_loss": style_nuclei_loss.detach().item(),
+                "self_reconstruction_l1": self_reconstruction_l1.detach().item(),
+                "self_reconstruction_l1_weighted": self_reconstruction_l1_weighted.detach().item(),
+                "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
                 "ref_swap_loss": swap_loss.detach().item(),
                 "ref_normal_denoise_loss": denoising_loss.detach().item(),
                 "style_tissue_regions": style_tissue_regions,
