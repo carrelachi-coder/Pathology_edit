@@ -74,6 +74,43 @@ input, select, textarea {
   background: #fff;
 }
 
+.selectionMetadata {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.selectionMetadata[hidden] {
+  display: none;
+}
+
+.metadataLine,
+.metadataBlock {
+  display: grid;
+  gap: 4px;
+}
+
+.metadataLine span,
+.metadataBlock span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metadataLine strong {
+  font-size: 15px;
+}
+
+.metadataBlock p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 button {
   border: 1px solid var(--line);
   background: #fff;

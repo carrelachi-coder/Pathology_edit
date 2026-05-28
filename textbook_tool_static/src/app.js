@@ -1,4 +1,10 @@
 import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
+import {
+  emptySelectionManifest,
+  getSelectionMetadataForFile,
+  parseSelectionManifest,
+  pickSelectionManifestFile
+} from "./selectionManifest.js";
 import { buildZip } from "./zip.js";
 
 const tissueLabels = [
@@ -14,7 +20,9 @@ const tissueLabels = [
 
 const state = {
   batchFiles: [],
+  batchManifest: emptySelectionManifest(),
   completedMasks: new Map(),
+  currentMetadata: null,
   currentIndex: -1,
   image: null,
   imageBitmap: null,
@@ -38,6 +46,9 @@ for (const id of [
   "folderInput",
   "imageSelector",
   "imageId",
+  "selectionMetadata",
+  "selectionOrgan",
+  "selectionCaption",
   "baseLabel",
   "tissueSection",
   "tissueLabels",
@@ -114,19 +125,29 @@ async function handleSingleImageInput(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   state.batchFiles = [file];
+  state.batchManifest = emptySelectionManifest();
   state.completedMasks.clear();
   refreshImageSelector();
   await loadBatchIndex(0);
 }
 
 async function handleFolderInput(event) {
-  const files = [...(event.target.files || [])].filter((file) => file.type.startsWith("image/"));
+  const selectedFiles = [...(event.target.files || [])];
+  const files = selectedFiles.filter(isImageFile);
   if (!files.length) return;
+  const manifestFile = pickSelectionManifestFile(selectedFiles);
+  state.batchManifest = manifestFile
+    ? parseSelectionManifest(await manifestFile.text())
+    : emptySelectionManifest();
   state.batchFiles = sortFiles(files);
   state.completedMasks.clear();
   refreshImageSelector();
   await loadBatchIndex(0);
-  setStatus(`Loaded batch with ${state.batchFiles.length} images. Recommended batch size: up to 50 images to keep browser memory and review flow comfortable.`);
+  const matchedRows = state.batchFiles.filter((file) => getSelectionMetadataForFile(state.batchManifest, file)).length;
+  const manifestStatus = manifestFile
+    ? ` Matched ${matchedRows}/${state.batchFiles.length} images to ${manifestFile.name}.`
+    : " No CSV manifest found in this folder.";
+  setStatus(`Loaded batch with ${state.batchFiles.length} images.${manifestStatus} Recommended batch size: up to 50 images to keep browser memory and review flow comfortable.`);
 }
 
 function handleImageSelectionChange() {
@@ -146,6 +167,7 @@ async function loadBatchIndex(index) {
 async function loadImageFile(file, options = {}) {
   state.imageName = file.name;
   state.imageId = file.name.replace(/\.[^.]+$/, "");
+  state.currentMetadata = getSelectionMetadataForFile(state.batchManifest, file);
   state.imageBitmap = await createImageBitmap(file);
   state.image = state.imageBitmap;
   state.tissueMask = new Uint8Array(state.image.width * state.image.height);
@@ -156,6 +178,7 @@ async function loadImageFile(file, options = {}) {
   state.viewZoom = 1;
   els.imageId.value = state.imageId;
   els.baseLabel.value = String(state.baseLabel);
+  renderSelectionMetadata();
   resizeCanvas(state.image.width, state.image.height, 96);
   resizePreviewCanvas(state.image.width, state.image.height);
   els.downloadZip.disabled = state.batchFiles.length === 0;
@@ -204,7 +227,8 @@ function updateImageSelectorOptions() {
     for (const { file, index } of items) {
       const option = document.createElement("option");
       option.value = String(index);
-      option.textContent = file.name;
+      const metadata = getSelectionMetadataForFile(state.batchManifest, file);
+      option.textContent = metadata?.organZh ? `${file.name} - ${metadata.organZh}` : file.name;
       group.appendChild(option);
     }
     els.imageSelector.appendChild(group);
@@ -212,6 +236,13 @@ function updateImageSelectorOptions() {
   if (state.currentIndex >= 0) {
     els.imageSelector.value = String(state.currentIndex);
   }
+}
+
+function renderSelectionMetadata() {
+  const metadata = state.currentMetadata;
+  els.selectionMetadata.hidden = !metadata;
+  els.selectionOrgan.textContent = metadata?.organZh || "";
+  els.selectionCaption.textContent = metadata?.captionZh || "";
 }
 
 function handlePointerDown(event) {
@@ -509,6 +540,10 @@ function hexToRgb(hex) {
 
 function sortFiles(files) {
   return [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function isImageFile(file) {
+  return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name || "");
 }
 
 function clamp(value, min, max) {
