@@ -135,12 +135,18 @@ async function handleSingleImageInput(event) {
 async function handleFolderInput(event) {
   try {
     const selectedFiles = [...(event.target.files || [])];
-    const files = selectedFiles.filter(isImageFile);
-    if (!files.length) {
-      setStatus("No PNG/image files were found in that folder.");
+    if (!selectedFiles.length) {
+      setStatus("No files were received from the folder picker. Try choosing the folder again, or hard-refresh this page first.");
       return;
     }
-    setStatus(`Loading batch folder with ${files.length} images...`);
+    const files = selectedFiles.filter(isImageFile);
+    const csvCount = selectedFiles.filter(isCsvFile).length;
+    if (!files.length) {
+      const sampleNames = selectedFiles.slice(0, 5).map((file) => file.name || "(unnamed)").join(", ");
+      setStatus(`Folder picker returned ${selectedFiles.length} files, but no PNG/image files were recognized. First files: ${sampleNames}`);
+      return;
+    }
+    setStatus(`Loading batch folder: ${selectedFiles.length} files selected, ${files.length} images, ${csvCount} CSV files...`);
     const manifestFile = pickSelectionManifestFile(selectedFiles);
     state.batchManifest = manifestFile
       ? parseSelectionManifest(await readFileAsText(manifestFile))
