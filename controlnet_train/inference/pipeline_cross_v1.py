@@ -25,6 +25,7 @@ from controlnet_train.modules import (
 )
 from controlnet_train.modules.cross_v1_conditioning import (
     CROSS_V1_SPATIAL_REFERENCE_TARGET,
+    CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
     CrossV1ControlSpec,
     build_cross_v1_condition,
 )
@@ -173,7 +174,10 @@ def run_cross_v1_bundle(
     ).to(dtype=bundle.torch_dtype)
     reference_tissue_feat = None
     reference_nuclei_feat = None
-    if bundle.control_spec.spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET:
+    if bundle.control_spec.spatial_mode in {
+        CROSS_V1_SPATIAL_REFERENCE_TARGET,
+        CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
+    }:
         reference_tissue_feat = bundle.condition_modules["tissue_downsampler"](
             bundle.condition_modules["hte"](
                 reference_tissue_mask.unsqueeze(0).to(device=bundle.device)

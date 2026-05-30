@@ -205,6 +205,7 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
         metadata_path: str | Path,
         *,
         stain_augmentation: str = "none",
+        stain_counterfactual_prob: float = 0.0,
         hed_sigma: float = 0.2,
         hed_beta: float = 0.02,
         hed_strong_alpha_sampling: bool = False,
@@ -222,7 +223,10 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
                 f"Unsupported stain_augmentation {stain_augmentation!r}; "
                 "choose 'none' or 'hed_aggressive'."
             )
+        if not (0.0 <= float(stain_counterfactual_prob) <= 1.0):
+            raise ValueError("stain_counterfactual_prob must be within [0, 1].")
         self.stain_augmentation = stain_augmentation
+        self.stain_counterfactual_prob = float(stain_counterfactual_prob)
         self.hed_augment = (
             HEDStainAugment(
                 sigma=hed_sigma,
@@ -246,7 +250,46 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
         reference_image = load_image_tensor(record["reference_image"])
         if self.hed_augment is not None:
             reference_image, target_image = self.hed_augment.apply_pair(reference_image, target_image)
+        item = {
+            "sample_mode": "cross",
+            "dataset": record["dataset"],
+            "sample_id": record["sample_id"],
+            "reference_sample_id": record["reference_sample_id"],
+            "case_id": record["case_id"],
+            "target_image": target_image,
+            "target_tissue_mask": load_tissue_mask(record["target_tissue_mask"]),
+            "target_nuclei_mask": load_nuclei_mask(record["target_nuclei_mask"], remap=True),
+            "reference_image": reference_image,
+            "reference_tissue_mask": load_tissue_mask(record["reference_tissue_mask"]),
+            "reference_nuclei_mask": load_nuclei_mask(record["reference_nuclei_mask"], remap=True),
+            "prompt": record["prompt"],
+            "distance": int(record["distance"]),
+            "pair_difficulty": record.get("pair_difficulty", "full"),
+            "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", 1.0)),
+            "area_coverage_ratio": float(record.get("area_coverage_ratio", 1.0)),
+            "missing_target_tissue_ids": record.get("missing_target_tissue_ids", []),
+        }
+        if (
+            self.hed_augment is not None
+            and self.stain_counterfactual_prob > 0.0
+            and random.random() < self.stain_counterfactual_prob
+        ):
+            item = {
+                "paired_counterfactual": [
+                    self._make_stain_variant(record),
+                    self._make_stain_variant(record),
+                ]
+            }
+        return item
+
+    def _make_stain_variant(self, record: dict) -> dict:
+        if self.hed_augment is None:
+            raise RuntimeError("stain counterfactual variants require HED augmentation.")
+        reference_image = load_image_tensor(record["reference_image"])
+        target_image = load_image_tensor(record["target_image"])
+        reference_image, target_image = self.hed_augment.apply_pair(reference_image, target_image)
         return {
+            "sample_mode": "counterfactual",
             "dataset": record["dataset"],
             "sample_id": record["sample_id"],
             "reference_sample_id": record["reference_sample_id"],

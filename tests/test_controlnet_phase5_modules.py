@@ -4,6 +4,11 @@ import torch
 
 from controlnet_train.modules.change_mask_encoder import ChangeMaskEncoder
 from controlnet_train.modules.conditioning import build_cross_v0_condition
+from controlnet_train.modules.cross_v1_conditioning import (
+    CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
+    CrossV1ControlSpec,
+    build_cross_v1_condition,
+)
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
 from controlnet_train.modules.tissue_condition_downsampler import TissueConditionDownsampler
@@ -90,6 +95,39 @@ class CrossV0ConditioningTests(unittest.TestCase):
         self.assertTrue(torch.equal(out[:, 80:96], ref_nuclei))
         self.assertTrue(torch.equal(out[:, 96:160], target_tissue))
         self.assertTrue(torch.equal(out[:, 160:176], target_nuclei))
+
+
+class CrossV1ConditioningTests(unittest.TestCase):
+    def test_reference_target_delta_appends_target_minus_reference_features(self):
+        ref_tissue = torch.full((1, 2, 2, 2), 1.0)
+        ref_nuclei = torch.full((1, 1, 2, 2), 2.0)
+        target_tissue = torch.full((1, 2, 2, 2), 4.0)
+        target_nuclei = torch.full((1, 1, 2, 2), 7.0)
+
+        out = build_cross_v1_condition(
+            reference_tissue_feat=ref_tissue,
+            reference_nuclei_feat=ref_nuclei,
+            target_tissue_feat=target_tissue,
+            target_nuclei_feat=target_nuclei,
+            spatial_mode=CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
+        )
+
+        self.assertEqual(out.shape, (1, 9, 2, 2))
+        self.assertTrue(torch.equal(out[:, 0:2], ref_tissue))
+        self.assertTrue(torch.equal(out[:, 2:3], ref_nuclei))
+        self.assertTrue(torch.equal(out[:, 3:5], target_tissue))
+        self.assertTrue(torch.equal(out[:, 5:6], target_nuclei))
+        self.assertTrue(torch.equal(out[:, 6:8], target_tissue - ref_tissue))
+        self.assertTrue(torch.equal(out[:, 8:9], target_nuclei - ref_nuclei))
+
+    def test_reference_target_delta_spec_counts_three_spatial_groups(self):
+        spec = CrossV1ControlSpec(
+            tissue_channels=2,
+            nuclei_channels=1,
+            spatial_mode=CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
+        )
+
+        self.assertEqual(spec.raw_channels, 9)
 
 
 if __name__ == "__main__":

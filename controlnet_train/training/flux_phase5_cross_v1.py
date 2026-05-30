@@ -63,6 +63,7 @@ from controlnet_train.modules import (
 )
 from controlnet_train.modules.cross_v1_conditioning import (
     CROSS_V1_SPATIAL_REFERENCE_TARGET,
+    CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
     CROSS_V1_SPATIAL_TARGET_ONLY,
     CrossV1ControlSpec,
     build_cross_v1_condition,
@@ -569,7 +570,10 @@ def _build_cross_v1_control_batch(
     ).to(dtype=weight_dtype)
     reference_tissue_feat = None
     reference_nuclei_feat = None
-    if normalize_cross_v1_spatial_mode(spatial_mode) == CROSS_V1_SPATIAL_REFERENCE_TARGET:
+    if normalize_cross_v1_spatial_mode(spatial_mode) in {
+        CROSS_V1_SPATIAL_REFERENCE_TARGET,
+        CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
+    }:
         reference_tissue_feat = modules["tissue_downsampler"](
             modules["hte"](batch["reference_tissue_mask"].to(device=device))
         ).to(dtype=weight_dtype)
@@ -634,6 +638,24 @@ def _insert_self_reconstruction_samples(batch: dict, sample_mask: torch.Tensor) 
         reference[mask] = batch[target_key][mask].to(device=reference.device, dtype=reference.dtype)
         mixed[reference_key] = reference
     return mixed
+
+
+def _batch_mode_mask(batch: dict, mode: str, *, device: torch.device | str) -> torch.Tensor:
+    modes = batch.get("sample_modes")
+    if modes is None:
+        return torch.zeros(
+            int(batch["target_image"].shape[0]),
+            device=device,
+            dtype=torch.bool,
+        )
+    return torch.tensor([str(value) == mode for value in modes], device=device, dtype=torch.bool)
+
+
+def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    mask = mask.to(device=values.device, dtype=torch.bool)
+    if not bool(mask.any().item()):
+        return values.new_zeros(())
+    return values[mask].mean()
 
 
 def _use_zero_reference(batch: dict) -> dict:
@@ -739,6 +761,13 @@ class RandomReferenceSampler:
 # ---------------------------------------------------------------------------
 
 def collate_cross_batch(examples: list[dict]) -> dict:
+    flattened: list[dict] = []
+    for item in examples:
+        if "paired_counterfactual" in item:
+            flattened.extend(item["paired_counterfactual"])
+        else:
+            flattened.append(item)
+    examples = flattened
     return {
         "sample_ids": [item["sample_id"] for item in examples],
         "reference_sample_ids": [item["reference_sample_id"] for item in examples],
@@ -749,6 +778,7 @@ def collate_cross_batch(examples: list[dict]) -> dict:
         "reference_tissue_mask": torch.stack([item["reference_tissue_mask"] for item in examples]),
         "reference_nuclei_mask": torch.stack([item["reference_nuclei_mask"] for item in examples]),
         "prompts": [item["prompt"] for item in examples],
+        "sample_modes": [item.get("sample_mode", "cross") for item in examples],
     }
 
 
@@ -1253,6 +1283,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     dataset = CrossReconstructionDataset(
         args.train_metadata,
         stain_augmentation=getattr(args, "stain_augmentation", "none"),
+        stain_counterfactual_prob=float(getattr(args, "stain_counterfactual_prob", 0.0) or 0.0),
         hed_sigma=float(getattr(args, "hed_sigma", 0.2) or 0.0),
         hed_beta=float(getattr(args, "hed_beta", 0.02) or 0.0),
         hed_strong_alpha_sampling=bool(getattr(args, "hed_strong_alpha_sampling", False)),
@@ -1651,6 +1682,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     ip_single_lr_params = [
         p for module in single_ip_modules for p in module.parameters() if p.requires_grad
     ]
+    if ip_single_learning_rate <= 0.0:
+        ip_single_lr_params = []
     optimizer_param_groups = []
     if base_lr_params:
         optimizer_param_groups.append({"params": base_lr_params, "lr": args.learning_rate})
@@ -1816,6 +1849,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     )
                 else:
                     training_batch = batch
+                counterfactual_sample_mask = _batch_mode_mask(
+                    training_batch,
+                    "counterfactual",
+                    device=accelerator.device,
+                )
+                cross_sample_mask = ~(counterfactual_sample_mask | self_reconstruction_sample_mask)
 
                 with torch.no_grad() if a1_lite else contextlib.nullcontext():
                     pixel_latents, control_tensor = _build_cross_v1_control_batch(
@@ -1914,6 +1953,15 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 target_velocity = noise - packed_pixel_latents
                 normal_per_sample_loss = per_sample_mse(noise_pred, target_velocity)
                 denoising_loss = normal_per_sample_loss.mean()
+                cross_denoising_loss = _masked_mean_or_zero(normal_per_sample_loss, cross_sample_mask)
+                counterfactual_denoising_loss = _masked_mean_or_zero(
+                    normal_per_sample_loss,
+                    counterfactual_sample_mask,
+                )
+                self_reconstruction_denoising_loss = _masked_mean_or_zero(
+                    normal_per_sample_loss,
+                    self_reconstruction_sample_mask,
+                )
                 style_loss = noise_pred.new_zeros(())
                 style_tissue_loss = noise_pred.new_zeros(())
                 style_nuclei_loss = noise_pred.new_zeros(())
@@ -2098,6 +2146,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             logs = {
                 "loss": loss.detach().item(),
                 "denoise_loss": denoising_loss.detach().item(),
+                "cross_denoise_loss": cross_denoising_loss.detach().item(),
+                "counterfactual_denoise_loss": counterfactual_denoising_loss.detach().item(),
+                "self_reconstruction_denoise_loss": self_reconstruction_denoising_loss.detach().item(),
                 "perceptual_loss": perceptual_loss.detach().item(),
                 "style_loss": style_loss.detach().item(),
                 "style_tissue_loss": style_tissue_loss.detach().item(),
@@ -2105,6 +2156,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "self_reconstruction_l1": self_reconstruction_l1.detach().item(),
                 "self_reconstruction_l1_weighted": self_reconstruction_l1_weighted.detach().item(),
                 "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
+                "counterfactual_samples": int(counterfactual_sample_mask.sum().detach().item()),
+                "cross_samples": int(cross_sample_mask.sum().detach().item()),
                 "ref_swap_loss": swap_loss.detach().item(),
                 "ref_normal_denoise_loss": denoising_loss.detach().item(),
                 "style_tissue_regions": style_tissue_regions,

@@ -69,6 +69,16 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--stain-counterfactual-prob",
+        type=float,
+        default=0.0,
+        help=(
+            "Probability that a metadata pair is expanded into two HED variants with "
+            "identical masks but independently sampled reference/target stain. This "
+            "forces stain differences to be explained by the reference image."
+        ),
+    )
+    parser.add_argument(
         "--hed-sigma",
         type=float,
         default=0.2,
@@ -211,10 +221,11 @@ def parse_args(input_args=None) -> argparse.Namespace:
         "--cross-v1-spatial-mode",
         type=str,
         default="reference_target",
-        choices=["reference_target", "target_only"],
+        choices=["reference_target", "reference_target_delta", "target_only"],
         help=(
             "Spatial ControlNet conditioning mode. 'reference_target' is the original Cross V1 "
-            "layout; 'target_only' is the A3 probe that removes reference masks from ControlNet."
+            "layout; 'reference_target_delta' appends target-reference feature deltas; "
+            "'target_only' is the A3 probe that removes reference masks from ControlNet."
         ),
     )
     parser.add_argument(

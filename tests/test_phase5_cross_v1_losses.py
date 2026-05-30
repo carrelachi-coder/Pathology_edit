@@ -17,10 +17,12 @@ if torch is not None:
     )
     try:
         from controlnet_train.training.flux_phase5_cross_v1 import (
+            collate_cross_batch,
             _insert_self_reconstruction_samples,
             _use_random_reference,
         )
     except ModuleNotFoundError:
+        collate_cross_batch = None
         _insert_self_reconstruction_samples = None
         _use_random_reference = None
 
@@ -174,6 +176,31 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertTrue(torch.equal(mixed["reference_nuclei_mask"][0], batch["target_nuclei_mask"][0]))
         self.assertTrue(torch.equal(mixed["reference_image"][1], batch["reference_image"][1]))
         self.assertTrue(torch.equal(batch["reference_image"], torch.zeros(2, 3, 2, 2)))
+
+    def test_collate_expands_paired_counterfactual_examples(self):
+        if collate_cross_batch is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
+
+        def make_item(value: float) -> dict:
+            return {
+                "sample_id": f"sample-{value}",
+                "reference_sample_id": f"ref-{value}",
+                "target_image": torch.full((3, 2, 2), value),
+                "reference_image": torch.full((3, 2, 2), value + 10),
+                "target_tissue_mask": torch.ones(2, 2, dtype=torch.long),
+                "target_nuclei_mask": torch.ones(2, 2, dtype=torch.long),
+                "reference_tissue_mask": torch.zeros(2, 2, dtype=torch.long),
+                "reference_nuclei_mask": torch.zeros(2, 2, dtype=torch.long),
+                "prompt": "prompt",
+            }
+
+        batch = collate_cross_batch(
+            [{"paired_counterfactual": [make_item(1.0), make_item(2.0)]}]
+        )
+
+        self.assertEqual(batch["target_image"].shape[0], 2)
+        self.assertEqual(batch["sample_ids"], ["sample-1.0", "sample-2.0"])
+        self.assertTrue(torch.equal(batch["target_tissue_mask"][0], batch["target_tissue_mask"][1]))
 
 
 if __name__ == "__main__":

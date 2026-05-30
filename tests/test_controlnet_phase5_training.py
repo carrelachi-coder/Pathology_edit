@@ -129,6 +129,10 @@ class TrainingCliTests(unittest.TestCase):
                 "--ip-adapter-checkpoint",
                 "phase5_runs/controlnet_cross_v1/checkpoint-20000",
                 "--load-single-ip-from-checkpoint",
+                "--stain-counterfactual-prob",
+                "0.5",
+                "--cross-v1-spatial-mode",
+                "reference_target_delta",
                 "--reference-style-loss-weight",
                 "0.2",
                 "--reference-style-tissue-weight",
@@ -151,6 +155,8 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.ip_single_num_layers, 10)
         self.assertEqual(args.ip_adapter_checkpoint, "phase5_runs/controlnet_cross_v1/checkpoint-20000")
         self.assertTrue(args.load_single_ip_from_checkpoint)
+        self.assertEqual(args.stain_counterfactual_prob, 0.5)
+        self.assertEqual(args.cross_v1_spatial_mode, "reference_target_delta")
         self.assertEqual(args.reference_style_loss_weight, 0.2)
         self.assertEqual(args.reference_style_tissue_weight, 2.0)
         self.assertEqual(args.reference_style_nuclei_weight, 1.5)
@@ -175,6 +181,7 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.perceptual_loss_weight, 0.5)
         self.assertEqual(args.reference_style_loss_weight, 5.0)
         self.assertEqual(args.ref_swap_loss_weight, 0.1)
+        self.assertEqual(args.stain_counterfactual_prob, 0.0)
         self.assertEqual(args.ip_single_num_layers, 10)
 
 

@@ -13,9 +13,11 @@ from controlnet_train.training.conditioning import packed_control_channels
 
 
 CROSS_V1_SPATIAL_REFERENCE_TARGET = "reference_target"
+CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA = "reference_target_delta"
 CROSS_V1_SPATIAL_TARGET_ONLY = "target_only"
 CROSS_V1_SPATIAL_MODES = (
     CROSS_V1_SPATIAL_REFERENCE_TARGET,
+    CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
     CROSS_V1_SPATIAL_TARGET_ONLY,
 )
 
@@ -50,6 +52,8 @@ class CrossV1ControlSpec:
         target_channels = self.tissue_channels + self.nuclei_channels
         if self.spatial_mode == CROSS_V1_SPATIAL_TARGET_ONLY:
             return target_channels
+        if self.spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA:
+            return target_channels * 3
         # ref_tissue + ref_nuclei + tgt_tissue + tgt_nuclei
         return target_channels * 2
 
@@ -61,6 +65,8 @@ class CrossV1ControlSpec:
     def packed_target_start(self) -> int:
         if self.spatial_mode == CROSS_V1_SPATIAL_TARGET_ONLY:
             return 0
+        if self.spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA:
+            return packed_control_channels(self.tissue_channels + self.nuclei_channels)
         return packed_control_channels(self.tissue_channels + self.nuclei_channels)
 
     @property
@@ -83,9 +89,15 @@ def build_cross_v1_condition(
         "target_tissue_feat": target_tissue_feat,
         "target_nuclei_feat": target_nuclei_feat,
     }
-    if spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET:
+    if spatial_mode in {
+        CROSS_V1_SPATIAL_REFERENCE_TARGET,
+        CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
+    }:
         if reference_tissue_feat is None or reference_nuclei_feat is None:
-            raise ValueError("reference_tissue_feat and reference_nuclei_feat are required in reference_target mode.")
+            raise ValueError(
+                "reference_tissue_feat and reference_nuclei_feat are required "
+                f"in {spatial_mode} mode."
+            )
         features["reference_tissue_feat"] = reference_tissue_feat
         features["reference_nuclei_feat"] = reference_nuclei_feat
 
@@ -106,6 +118,19 @@ def build_cross_v1_condition(
             [
                 target_tissue_feat,
                 target_nuclei_feat,
+            ],
+            dim=1,
+        )
+
+    if spatial_mode == CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA:
+        return torch.cat(
+            [
+                reference_tissue_feat,
+                reference_nuclei_feat,
+                target_tissue_feat,
+                target_nuclei_feat,
+                target_tissue_feat - reference_tissue_feat,
+                target_nuclei_feat - reference_nuclei_feat,
             ],
             dim=1,
         )

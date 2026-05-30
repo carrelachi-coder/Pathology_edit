@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-# Phase 5.3 Cross V1 HED self-supervised stain transfer.
-# Warm-start ControlNet/spatial conditioning from 20k, train ControlNet + fresh IP/ref.
+# Phase 5.3 Cross V1 Phase 1 reference-branch warmup.
+# Keep the old spatial structure, train IP/ref path with self-reconstruction + paired stain counterfactual; no swap/style.
 
 GPU_IDS="${GPU_IDS:-1,2,4}"
 export CUDA_VISIBLE_DEVICES="${GPU_IDS}"
@@ -23,8 +23,9 @@ UNI_CHECKPOINT="${UNI_CHECKPOINT:-${PROJECT_ROOT}/UNI-2h/pytorch_model.bin}"
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
 SOURCE_CROSS_V1_OUTPUT_DIR="${SOURCE_CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_skip_perceiver_20k}"
 CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/checkpoint-20000}"
-CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_hed_aggressive}"
+CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_phase1_ref_warmup}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
+LOAD_REF_ENCODER="${LOAD_REF_ENCODER:-1}"
 
 MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
 IFS=',' read -r -a GPU_ID_ARRAY <<< "${GPU_IDS}"
@@ -32,8 +33,7 @@ NUM_PROCESSES="${NUM_PROCESSES:-${#GPU_ID_ARRAY[@]}}"
 USE_8BIT_ADAM="${USE_8BIT_ADAM:-1}"
 GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
 
-# Reference-aware auxiliary losses. Perceptual UNI loss is the main appearance
-# signal; style is kept as a lower-weight stain/color auxiliary.
+# Reference-usage sanity losses. Keep style/swap off for a clean attribution test.
 PERCEPTUAL_LOSS_WEIGHT="${PERCEPTUAL_LOSS_WEIGHT:-0.5}"
 PERCEPTUAL_LOSS_INTERVAL="${PERCEPTUAL_LOSS_INTERVAL:-1}"
 REFERENCE_STYLE_LOSS_WEIGHT="${REFERENCE_STYLE_LOSS_WEIGHT:-0}"
@@ -44,17 +44,19 @@ REFERENCE_STYLE_STD_WEIGHT="${REFERENCE_STYLE_STD_WEIGHT:-1.0}"
 REFERENCE_STYLE_COV_WEIGHT="${REFERENCE_STYLE_COV_WEIGHT:-0.25}"
 REFERENCE_STYLE_MIN_PIXELS="${REFERENCE_STYLE_MIN_PIXELS:-32}"
 REFERENCE_STYLE_LOSS_INTERVAL="${REFERENCE_STYLE_LOSS_INTERVAL:-4}"
-REF_SWAP_LOSS_WEIGHT="${REF_SWAP_LOSS_WEIGHT:-0.1}"
-REF_SWAP_MARGIN="${REF_SWAP_MARGIN:-0.2}"
+REF_SWAP_LOSS_WEIGHT="${REF_SWAP_LOSS_WEIGHT:-0}"
+REF_SWAP_MARGIN="${REF_SWAP_MARGIN:-0.02}"
 REF_SWAP_VARIANTS="${REF_SWAP_VARIANTS:-random}"
 REF_SWAP_LOSS_INTERVAL="${REF_SWAP_LOSS_INTERVAL:-2}"
-SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.0}"
-SELF_RECONSTRUCTION_L1_WEIGHT="${SELF_RECONSTRUCTION_L1_WEIGHT:-0.0}"
-BASE_LEARNING_RATE="${BASE_LEARNING_RATE:-5e-6}"
-IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-1e-4}"
-IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-1e-4}"
+SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-1000}"
+SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.2}"
+SELF_RECONSTRUCTION_L1_WEIGHT="${SELF_RECONSTRUCTION_L1_WEIGHT:-0.05}"
+BASE_LEARNING_RATE="${BASE_LEARNING_RATE:-0}"
+IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-2e-5}"
+IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-0}"
 IP_SINGLE_NUM_LAYERS="${IP_SINGLE_NUM_LAYERS:-10}"
 STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-hed_aggressive}"
+STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0.5}"
 HED_SIGMA="${HED_SIGMA:-0.4}"
 HED_BETA="${HED_BETA:-0.08}"
 HED_STRONG_ALPHA_SAMPLING="${HED_STRONG_ALPHA_SAMPLING:-1}"
@@ -105,6 +107,7 @@ fi
 
 TRAIN_HED_ARGS=(
   --stain-augmentation "${STAIN_AUGMENTATION}"
+  --stain-counterfactual-prob "${STAIN_COUNTERFACTUAL_PROB}"
   --hed-sigma "${HED_SIGMA}"
   --hed-beta "${HED_BETA}"
   --hed-alpha-min "${HED_ALPHA_MIN}"
@@ -128,12 +131,16 @@ if [[ -n "${CONTROLNET_CHECKPOINT}" ]]; then
     --load-conditioning-from-checkpoint
   )
 fi
+if [[ "${LOAD_REF_ENCODER}" == "1" ]]; then
+  TRAIN_CHECKPOINT_ARGS+=(--a1-lite-load-ref-encoder)
+fi
 
 accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GPU_IDS}" \
   controlnet_train/cli/train_controlnet_flux_cross_v1.py \
   --pretrained_model_name_or_path "${MODEL_DIR}" \
   --train-metadata "${CROSS_META}" \
   "${TRAIN_HED_ARGS[@]}" \
+  --a1-lite \
   --no-load-ip-adapter-from-controlnet \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
   "${TRAIN_CHECKPOINT_ARGS[@]}" \
@@ -144,8 +151,8 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --train-batch-size 1 \
   --gradient-accumulation-steps 8 \
   --num-train-epochs 10 \
-  --max-train-steps 10000 \
-  --self-reconstruction-warmup-steps 0 \
+  --max-train-steps 5000 \
+  --self-reconstruction-warmup-steps "${SELF_RECONSTRUCTION_WARMUP_STEPS}" \
   --self-reconstruction-sample-prob "${SELF_RECONSTRUCTION_SAMPLE_PROB}" \
   --self-reconstruction-l1-weight "${SELF_RECONSTRUCTION_L1_WEIGHT}" \
   --learning-rate "${BASE_LEARNING_RATE}" \
@@ -164,7 +171,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --num-single-layers 4 \
   --ip-init-gain 0.1 \
   --ip-single-num-layers "${IP_SINGLE_NUM_LAYERS}" \
-  --cross-v1-spatial-mode target_only \
+  --cross-v1-spatial-mode reference_target \
   --skip-reference-perceiver \
   --disable-reference-perceiver-self-attn \
   --perceptual-loss-weight "${PERCEPTUAL_LOSS_WEIGHT}" \
@@ -181,5 +188,5 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   "${TRAIN_AUX_INTERVAL_ARGS[@]}" \
   --guidance-scale 3.5 \
   --report-to tensorboard \
-  --tracker-project-name flux_controlnet_phase5_cross_v1_hed_strong \
+  --tracker-project-name flux_controlnet_phase5_cross_v1_phase1_ref_warmup \
   --prompt-source dataset
