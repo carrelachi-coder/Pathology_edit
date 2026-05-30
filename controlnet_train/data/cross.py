@@ -207,6 +207,11 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
         stain_augmentation: str = "none",
         hed_sigma: float = 0.2,
         hed_beta: float = 0.02,
+        hed_strong_alpha_sampling: bool = False,
+        hed_alpha_min: float = 0.4,
+        hed_alpha_low: float = 0.75,
+        hed_alpha_high: float = 1.25,
+        hed_alpha_max: float = 1.8,
     ) -> None:
         metadata_path = Path(metadata_path)
         payload = json.loads(metadata_path.read_text(encoding="utf8"))
@@ -219,7 +224,15 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
             )
         self.stain_augmentation = stain_augmentation
         self.hed_augment = (
-            HEDStainAugment(sigma=hed_sigma, beta=hed_beta)
+            HEDStainAugment(
+                sigma=hed_sigma,
+                beta=hed_beta,
+                strong_alpha_sampling=hed_strong_alpha_sampling,
+                alpha_min=hed_alpha_min,
+                alpha_low=hed_alpha_low,
+                alpha_high=hed_alpha_high,
+                alpha_max=hed_alpha_max,
+            )
             if stain_augmentation == "hed_aggressive"
             else None
         )

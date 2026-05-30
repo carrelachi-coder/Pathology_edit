@@ -1251,6 +1251,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         stain_augmentation=getattr(args, "stain_augmentation", "none"),
         hed_sigma=float(getattr(args, "hed_sigma", 0.2) or 0.0),
         hed_beta=float(getattr(args, "hed_beta", 0.02) or 0.0),
+        hed_strong_alpha_sampling=bool(getattr(args, "hed_strong_alpha_sampling", False)),
+        hed_alpha_min=float(getattr(args, "hed_alpha_min", 0.4)),
+        hed_alpha_low=float(getattr(args, "hed_alpha_low", 0.75)),
+        hed_alpha_high=float(getattr(args, "hed_alpha_high", 1.25)),
+        hed_alpha_max=float(getattr(args, "hed_alpha_max", 1.8)),
     )
     if args.max_train_samples is not None:
         dataset.records = dataset.records[: args.max_train_samples]
@@ -1379,10 +1384,16 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     )
     if getattr(args, "stain_augmentation", "none") != "none":
         logger.info(
-            "Using stain self-supervision: augmentation=%s hed_sigma=%s hed_beta=%s",
+            "Using stain self-supervision: augmentation=%s hed_sigma=%s hed_beta=%s "
+            "strong_alpha=%s alpha_ranges=[%s,%s] U [%s,%s]",
             getattr(args, "stain_augmentation", "none"),
             getattr(args, "hed_sigma", None),
             getattr(args, "hed_beta", None),
+            bool(getattr(args, "hed_strong_alpha_sampling", False)),
+            getattr(args, "hed_alpha_min", None),
+            getattr(args, "hed_alpha_low", None),
+            getattr(args, "hed_alpha_high", None),
+            getattr(args, "hed_alpha_max", None),
         )
     if self_reconstruction_warmup_steps:
         logger.info(

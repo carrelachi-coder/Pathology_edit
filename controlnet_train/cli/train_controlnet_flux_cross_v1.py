@@ -81,6 +81,18 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help="H/E concentration additive jitter for --stain-augmentation hed_aggressive.",
     )
     parser.add_argument(
+        "--hed-strong-alpha-sampling",
+        action="store_true",
+        help=(
+            "Sample H/E alpha from two ranges away from 1 instead of uniform 1±sigma. "
+            "This prevents near-identity stain perturbations."
+        ),
+    )
+    parser.add_argument("--hed-alpha-min", type=float, default=0.4)
+    parser.add_argument("--hed-alpha-low", type=float, default=0.75)
+    parser.add_argument("--hed-alpha-high", type=float, default=1.25)
+    parser.add_argument("--hed-alpha-max", type=float, default=1.8)
+    parser.add_argument(
         "--uni-checkpoint-path", type=str, required=True,
         help="Path to UNI2-h ViT-Giant/14 checkpoint (pytorch_model.bin).",
     )

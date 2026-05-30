@@ -28,6 +28,11 @@ class HEDStainAugment:
         *,
         sigma: float = 0.2,
         beta: float = 0.02,
+        strong_alpha_sampling: bool = False,
+        alpha_min: float = 0.4,
+        alpha_low: float = 0.75,
+        alpha_high: float = 1.25,
+        alpha_max: float = 1.8,
         eps: float = 1.0 / 255.0,
         max_condition_number: float = 100.0,
     ) -> None:
@@ -35,10 +40,19 @@ class HEDStainAugment:
             raise ValueError("sigma must be non-negative.")
         if beta < 0:
             raise ValueError("beta must be non-negative.")
+        if not (0 < alpha_min <= alpha_low < 1.0 < alpha_high <= alpha_max):
+            raise ValueError(
+                "alpha bounds must satisfy 0 < alpha_min <= alpha_low < 1 < alpha_high <= alpha_max."
+            )
         if eps <= 0 or eps >= 1:
             raise ValueError("eps must be within (0, 1).")
         self.sigma = float(sigma)
         self.beta = float(beta)
+        self.strong_alpha_sampling = bool(strong_alpha_sampling)
+        self.alpha_min = float(alpha_min)
+        self.alpha_low = float(alpha_low)
+        self.alpha_high = float(alpha_high)
+        self.alpha_max = float(alpha_max)
         self.eps = float(eps)
 
         stain_rows = torch.tensor(
@@ -65,12 +79,20 @@ class HEDStainAugment:
         device = torch.device("cpu") if device is None else torch.device(device)
         alpha = torch.ones(3, device=device, dtype=torch.float32)
         beta = torch.zeros(3, device=device, dtype=torch.float32)
-        if self.sigma > 0:
+        if self.strong_alpha_sampling:
+            alpha[:2] = self._sample_strong_alpha(device=device)
+        elif self.sigma > 0:
             alpha[:2] = 1.0 + (torch.rand(2, device=device) * 2.0 - 1.0) * self.sigma
             alpha[:2] = alpha[:2].clamp_min(0.05)
         if self.beta > 0:
             beta[:2] = (torch.rand(2, device=device) * 2.0 - 1.0) * self.beta
         return HEDPerturbation(alpha=alpha, beta=beta)
+
+    def _sample_strong_alpha(self, *, device: torch.device) -> torch.Tensor:
+        side = torch.randint(0, 2, (2,), device=device, dtype=torch.int64)
+        low = self.alpha_min + torch.rand(2, device=device) * (self.alpha_low - self.alpha_min)
+        high = self.alpha_high + torch.rand(2, device=device) * (self.alpha_max - self.alpha_high)
+        return torch.where(side.bool(), high, low)
 
     def __call__(self, image: torch.Tensor, params: HEDPerturbation) -> torch.Tensor:
         if image.ndim != 3 or image.shape[0] != 3:

@@ -54,8 +54,13 @@ IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-3e-5}"
 IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-1e-4}"
 IP_SINGLE_NUM_LAYERS="${IP_SINGLE_NUM_LAYERS:-10}"
 STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-hed_aggressive}"
-HED_SIGMA="${HED_SIGMA:-0.2}"
-HED_BETA="${HED_BETA:-0.02}"
+HED_SIGMA="${HED_SIGMA:-0.4}"
+HED_BETA="${HED_BETA:-0.08}"
+HED_STRONG_ALPHA_SAMPLING="${HED_STRONG_ALPHA_SAMPLING:-1}"
+HED_ALPHA_MIN="${HED_ALPHA_MIN:-0.4}"
+HED_ALPHA_LOW="${HED_ALPHA_LOW:-0.75}"
+HED_ALPHA_HIGH="${HED_ALPHA_HIGH:-1.25}"
+HED_ALPHA_MAX="${HED_ALPHA_MAX:-1.8}"
 DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
 DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-4}"
 
@@ -97,6 +102,19 @@ else
   echo "Warning: CLI does not support --perceptual-loss-interval; perceptual loss will use its default." >&2
 fi
 
+TRAIN_HED_ARGS=(
+  --stain-augmentation "${STAIN_AUGMENTATION}"
+  --hed-sigma "${HED_SIGMA}"
+  --hed-beta "${HED_BETA}"
+  --hed-alpha-min "${HED_ALPHA_MIN}"
+  --hed-alpha-low "${HED_ALPHA_LOW}"
+  --hed-alpha-high "${HED_ALPHA_HIGH}"
+  --hed-alpha-max "${HED_ALPHA_MAX}"
+)
+if [[ "${HED_STRONG_ALPHA_SAMPLING}" == "1" ]]; then
+  TRAIN_HED_ARGS+=(--hed-strong-alpha-sampling)
+fi
+
 RESUME_ARGS=()
 if [[ -n "${RESUME_FROM_CHECKPOINT}" ]]; then
   RESUME_ARGS+=(--resume-from-checkpoint "${RESUME_FROM_CHECKPOINT}")
@@ -114,9 +132,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   controlnet_train/cli/train_controlnet_flux_cross_v1.py \
   --pretrained_model_name_or_path "${MODEL_DIR}" \
   --train-metadata "${CROSS_META}" \
-  --stain-augmentation "${STAIN_AUGMENTATION}" \
-  --hed-sigma "${HED_SIGMA}" \
-  --hed-beta "${HED_BETA}" \
+  "${TRAIN_HED_ARGS[@]}" \
   --no-load-ip-adapter-from-controlnet \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
   "${TRAIN_CHECKPOINT_ARGS[@]}" \
