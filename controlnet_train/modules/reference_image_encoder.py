@@ -117,17 +117,27 @@ class ReferenceImageEncoder(nn.Module):
         print(f"[rank {rank}] >>> UNI model loaded successfully", flush=True)
         return model
 
-    @torch.no_grad()
-    def extract_uni_features(self, images: torch.Tensor) -> torch.Tensor:
-        x = F.interpolate(images, size=(224, 224), mode="bicubic", align_corners=False)
-        x = (x - self.mean) / self.std
-        features = self.uni.forward_features(x)
-        if features.ndim == 3:
-            patch_size = int(UNI2H_KWARGS["patch_size"])
-            num_patch_tokens = (x.shape[-2] // patch_size) * (x.shape[-1] // patch_size)
-            if features.shape[1] > num_patch_tokens:
-                features = features[:, -num_patch_tokens:, :]
-        return features
+    def extract_uni_features(
+        self,
+        images: torch.Tensor,
+        *,
+        allow_input_grad: bool = False,
+    ) -> torch.Tensor:
+        def _extract() -> torch.Tensor:
+            x = F.interpolate(images, size=(224, 224), mode="bicubic", align_corners=False)
+            x = (x - self.mean) / self.std
+            features = self.uni.forward_features(x)
+            if features.ndim == 3:
+                patch_size = int(UNI2H_KWARGS["patch_size"])
+                num_patch_tokens = (x.shape[-2] // patch_size) * (x.shape[-1] // patch_size)
+                if features.shape[1] > num_patch_tokens:
+                    features = features[:, -num_patch_tokens:, :]
+            return features
+
+        if allow_input_grad:
+            return _extract()
+        with torch.no_grad():
+            return _extract()
 
     def _resample(self, projected: torch.Tensor) -> torch.Tensor:
         B = projected.shape[0]

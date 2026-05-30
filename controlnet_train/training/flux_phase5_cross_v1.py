@@ -76,6 +76,7 @@ from controlnet_train.training.cross_v1_losses import (
     ref_swap_sensitivity_loss,
     regional_stain_style_loss,
     self_reconstruction_l1_loss,
+    uni_token_cosine_perceptual_loss,
     unpack_flux_packed_latents,
 )
 
@@ -103,6 +104,116 @@ class IPAdapterListProjection(nn.Module):
         return self.proj(image_embeds).to(dtype=target_dtype)
 
 
+class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
+    """IP-Adapter processor for FLUX single-stream blocks.
+
+    The single stream contains [text_tokens, image_tokens]. Reference attention is
+    applied only to image-token queries; text-token outputs remain the native
+    self-attention outputs from the frozen FLUX block.
+    """
+
+    def __init__(
+        self,
+        *,
+        hidden_size: int,
+        cross_attention_dim: int,
+        num_tokens: int | tuple[int, ...] = (16,),
+        scale: float | list[float] = 1.0,
+    ) -> None:
+        super().__init__()
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = (int(num_tokens),)
+        self.num_tokens = tuple(int(value) for value in num_tokens)
+        if not isinstance(scale, list):
+            scale = [float(scale)] * len(self.num_tokens)
+        if len(scale) != len(self.num_tokens):
+            raise ValueError("scale must have the same length as num_tokens.")
+        self.scale = [float(value) for value in scale]
+        self.to_k_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in self.num_tokens]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in self.num_tokens]
+        )
+
+    def __call__(
+        self,
+        attn,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        ip_hidden_states: list[torch.Tensor] | tuple[torch.Tensor, ...] | None = None,
+        txt_seq_len: int | None = None,
+    ) -> torch.Tensor:
+        if encoder_hidden_states is not None:
+            raise ValueError("FluxSingleIPAdapterAttnProcessor2_0 expects pre-concatenated single-stream states.")
+        batch_size, _, _ = hidden_states.shape
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+        if image_rotary_emb is not None:
+            from diffusers.models.embeddings import apply_rotary_emb
+
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        output = torch.nn.functional.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            dropout_p=0.0,
+            is_causal=False,
+        )
+        output = output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        output = output.to(query.dtype)
+
+        if ip_hidden_states:
+            txt_seq_len = int(txt_seq_len or 0)
+            if txt_seq_len < 0 or txt_seq_len > output.shape[1]:
+                raise ValueError(
+                    f"txt_seq_len must be within [0, {output.shape[1]}], got {txt_seq_len}."
+                )
+            image_query = query[:, :, txt_seq_len:, :]
+            if image_query.shape[2] > 0:
+                image_ip_output = output.new_zeros((batch_size, image_query.shape[2], output.shape[2]))
+                for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+                    ip_hidden_states,
+                    self.scale,
+                    self.to_k_ip,
+                    self.to_v_ip,
+                ):
+                    if scale == 0:
+                        continue
+                    ip_key = to_k_ip(current_ip_hidden_states)
+                    ip_value = to_v_ip(current_ip_hidden_states)
+                    ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                    ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                    ip_attn = torch.nn.functional.scaled_dot_product_attention(
+                        image_query,
+                        ip_key,
+                        ip_value,
+                        dropout_p=0.0,
+                        is_causal=False,
+                    )
+                    ip_attn = ip_attn.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                    image_ip_output = image_ip_output + float(scale) * ip_attn.to(output.dtype)
+                output[:, txt_seq_len:, :] = output[:, txt_seq_len:, :] + image_ip_output
+
+        return output.to(hidden_states.dtype)
+
+
 def install_flux_ip_adapter_attention(
     transformer: FluxTransformer2DModel,
     hidden_dim: int = 3072,
@@ -110,10 +221,33 @@ def install_flux_ip_adapter_attention(
     num_tokens: int = 16,
     scale: float = 1.0,
     ip_init_gain: float = 0.1,
+    num_single_layers: int = 0,
 ) -> None:
-    """Install IP-Adapter attention processors on all double-stream blocks."""
+    """Install IP-Adapter attention processors on FLUX double and last-N single blocks."""
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
     from diffusers.models.embeddings import IPAdapterFullImageProjection
+
+    class FluxIPAdapterJointAttnProcessorWithTxtSeqLen(FluxIPAdapterJointAttnProcessor2_0):
+        def __call__(
+            self,
+            attn,
+            hidden_states: torch.Tensor,
+            encoder_hidden_states: torch.Tensor | None = None,
+            attention_mask: torch.Tensor | None = None,
+            image_rotary_emb: torch.Tensor | None = None,
+            ip_hidden_states: list[torch.Tensor] | None = None,
+            ip_adapter_masks: torch.Tensor | None = None,
+            txt_seq_len: int | None = None,
+        ) -> torch.Tensor:
+            return super().__call__(
+                attn,
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
+                image_rotary_emb=image_rotary_emb,
+                ip_hidden_states=ip_hidden_states,
+                ip_adapter_masks=ip_adapter_masks,
+            )
 
     raw_proj = IPAdapterFullImageProjection(
         image_embed_dim=cross_attention_dim,
@@ -122,7 +256,7 @@ def install_flux_ip_adapter_attention(
     transformer.encoder_hid_proj = IPAdapterListProjection(raw_proj)
 
     for block in transformer.transformer_blocks:
-        processor = FluxIPAdapterJointAttnProcessor2_0(
+        processor = FluxIPAdapterJointAttnProcessorWithTxtSeqLen(
             hidden_size=hidden_dim,
             cross_attention_dim=cross_attention_dim,
             num_tokens=(num_tokens,),
@@ -133,6 +267,21 @@ def install_flux_ip_adapter_attention(
         for linear in processor.to_v_ip:
             _init_ip_adapter_linear(linear, gain=ip_init_gain)
         block.attn.set_processor(processor)
+
+    single_blocks = list(getattr(transformer, "single_transformer_blocks", []))
+    if num_single_layers > 0:
+        for block in single_blocks[-int(num_single_layers):]:
+            processor = FluxSingleIPAdapterAttnProcessor2_0(
+                hidden_size=hidden_dim,
+                cross_attention_dim=cross_attention_dim,
+                num_tokens=(num_tokens,),
+                scale=[scale],
+            )
+            for linear in processor.to_k_ip:
+                _init_ip_adapter_linear(linear, gain=ip_init_gain)
+            for linear in processor.to_v_ip:
+                _init_ip_adapter_linear(linear, gain=ip_init_gain)
+            block.attn.set_processor(processor)
 
 
 def _init_ip_adapter_linear(linear: nn.Linear, *, gain: float) -> None:
@@ -183,14 +332,18 @@ def _log_ip_adapter_initialization_stats(
                 logger.warning("IP init check encoder_hid_proj.%s appears zero-initialized.", name)
 
     kv_linears: list[tuple[str, nn.Linear]] = []
-    for block_index, block in enumerate(transformer.transformer_blocks):
-        processor = getattr(block.attn, "processor", None)
-        for branch_name in ("to_k_ip", "to_v_ip"):
-            branch = getattr(processor, branch_name, None)
-            if branch is None:
-                continue
-            for index, linear in enumerate(branch):
-                kv_linears.append((f"block_{block_index}.{branch_name}.{index}", linear))
+    for prefix, blocks in (
+        ("block", getattr(transformer, "transformer_blocks", [])),
+        ("single_block", getattr(transformer, "single_transformer_blocks", [])),
+    ):
+        for block_index, block in enumerate(blocks):
+            processor = getattr(block.attn, "processor", None)
+            for branch_name in ("to_k_ip", "to_v_ip"):
+                branch = getattr(processor, branch_name, None)
+                if branch is None:
+                    continue
+                for index, linear in enumerate(branch):
+                    kv_linears.append((f"{prefix}_{block_index}.{branch_name}.{index}", linear))
 
     if not kv_linears:
         logger.warning("IP init check: no to_k_ip/to_v_ip Linear layers found.")
@@ -229,7 +382,25 @@ def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str
         if isinstance(processor, FluxIPAdapterJointAttnProcessor2_0):
             modules[f"block_{i}_to_k_ip"] = processor.to_k_ip
             modules[f"block_{i}_to_v_ip"] = processor.to_v_ip
+    for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
+        processor = block.attn.processor
+        if isinstance(processor, FluxSingleIPAdapterAttnProcessor2_0):
+            modules[f"single_block_{i}_to_k_ip"] = processor.to_k_ip
+            modules[f"single_block_{i}_to_v_ip"] = processor.to_v_ip
     return modules
+
+
+def _split_ip_adapter_module_groups(
+    ip_adapter_modules: dict[str, nn.Module],
+) -> tuple[list[nn.Module], list[nn.Module]]:
+    double_modules = []
+    single_modules = []
+    for name, module in ip_adapter_modules.items():
+        if name.startswith("single_block_"):
+            single_modules.append(module)
+        else:
+            double_modules.append(module)
+    return double_modules, single_modules
 
 
 def _sync_ip_adapter_to_transformer(
@@ -249,6 +420,33 @@ def _sync_ip_adapter_to_transformer(
         if hasattr(ip_wrapper, k_key):
             block.attn.processor.to_k_ip = getattr(ip_wrapper, k_key)
             block.attn.processor.to_v_ip = getattr(ip_wrapper, v_key)
+    for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
+        k_key = f"single_block_{i}_to_k_ip"
+        v_key = f"single_block_{i}_to_v_ip"
+        if hasattr(ip_wrapper, k_key):
+            block.attn.processor.to_k_ip = getattr(ip_wrapper, k_key)
+            block.attn.processor.to_v_ip = getattr(ip_wrapper, v_key)
+
+
+def patch_flux_single_ip_forward(transformer: FluxTransformer2DModel) -> None:
+    """Pass the text/image split index to single-stream IP processors."""
+    if getattr(transformer, "_cross_v1_single_ip_forward_patched", False):
+        return
+    original_forward = transformer.forward
+
+    def forward_with_single_ip_txt_seq_len(*args, **kwargs):
+        joint_attention_kwargs = kwargs.get("joint_attention_kwargs")
+        encoder_hidden_states = kwargs.get("encoder_hidden_states")
+        if encoder_hidden_states is None and len(args) > 1:
+            encoder_hidden_states = args[1]
+        if joint_attention_kwargs is not None and encoder_hidden_states is not None:
+            joint_attention_kwargs = dict(joint_attention_kwargs)
+            joint_attention_kwargs.setdefault("txt_seq_len", int(encoder_hidden_states.shape[1]))
+            kwargs["joint_attention_kwargs"] = joint_attention_kwargs
+        return original_forward(*args, **kwargs)
+
+    transformer.forward = forward_with_single_ip_txt_seq_len
+    transformer._cross_v1_single_ip_forward_patched = True
 
 
 # ---------------------------------------------------------------------------
@@ -755,6 +953,15 @@ def _save_ip_adapter_modules(
     state["scale"] = 1.0
     state["num_tokens"] = int(num_tokens)
     state["ip_init_gain"] = float(ip_init_gain)
+    single_block_indices = sorted(
+        {
+            int(name.split("_")[2])
+            for name in state
+            if name.startswith("single_block_") and name.endswith(("_to_k_ip", "_to_v_ip"))
+        }
+    )
+    state["single_block_indices"] = single_block_indices
+    state["num_single_layers"] = len(single_block_indices)
     torch.save(state, os.path.join(output_dir, "phase5_ip_adapter.pt"))
 
 
@@ -970,6 +1177,60 @@ def _load_condition_modules_from_checkpoint(
             ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
 
 
+def _resolve_ip_adapter_checkpoint_path(args: argparse.Namespace) -> Path | None:
+    path = getattr(args, "ip_adapter_checkpoint", None)
+    if path:
+        return Path(path)
+    controlnet_path = getattr(args, "controlnet_model_name_or_path", None)
+    if not controlnet_path:
+        return None
+    checkpoint = Path(controlnet_path)
+    state_path = checkpoint / "phase5_ip_adapter.pt" if checkpoint.is_dir() else checkpoint
+    return checkpoint if state_path.exists() else None
+
+
+def _load_ip_adapter_modules_from_checkpoint(
+    transformer: FluxTransformer2DModel,
+    checkpoint_path: str | Path,
+    *,
+    load_single_ip: bool = False,
+) -> None:
+    checkpoint = Path(checkpoint_path)
+    state_path = checkpoint / "phase5_ip_adapter.pt" if checkpoint.is_dir() else checkpoint
+    if not state_path.exists():
+        raise FileNotFoundError(f"Missing phase5_ip_adapter.pt: {state_path}")
+
+    state = _torch_load_weights(state_path)
+    transformer.encoder_hid_proj.load_state_dict(state["encoder_hid_proj"])
+    loaded_double = 0
+    for i, block in enumerate(transformer.transformer_blocks):
+        k_key = f"block_{i}_to_k_ip"
+        v_key = f"block_{i}_to_v_ip"
+        if k_key not in state or v_key not in state:
+            continue
+        block.attn.processor.to_k_ip.load_state_dict(state[k_key])
+        block.attn.processor.to_v_ip.load_state_dict(state[v_key])
+        loaded_double += 1
+
+    loaded_single = 0
+    if load_single_ip:
+        for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
+            k_key = f"single_block_{i}_to_k_ip"
+            v_key = f"single_block_{i}_to_v_ip"
+            if k_key not in state or v_key not in state:
+                continue
+            block.attn.processor.to_k_ip.load_state_dict(state[k_key])
+            block.attn.processor.to_v_ip.load_state_dict(state[v_key])
+            loaded_single += 1
+
+    logger.info(
+        "Loaded IP-Adapter checkpoint %s: double_blocks=%s single_blocks=%s",
+        state_path,
+        loaded_double,
+        loaded_single,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main training entry point
 # ---------------------------------------------------------------------------
@@ -1015,6 +1276,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         0.0,
         float(getattr(args, "reference_style_loss_weight", 0.0) or 0.0),
     )
+    perceptual_loss_weight = max(
+        0.0,
+        float(getattr(args, "perceptual_loss_weight", 0.0) or 0.0),
+    )
+    perceptual_loss_interval = int(getattr(args, "perceptual_loss_interval", 1) or 0)
     reference_style_loss_interval = int(
         getattr(args, "reference_style_loss_interval", 1) or 0
     )
@@ -1126,6 +1392,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             reference_style_loss_config.std_weight,
             reference_style_loss_config.covariance_weight,
         )
+    if perceptual_loss_weight > 0.0:
+        logger.info(
+            "Using frozen UNI perceptual loss against target image: weight=%s interval=%s",
+            perceptual_loss_weight,
+            perceptual_loss_interval,
+        )
     if ref_swap_loss_weight > 0.0:
         logger.info(
             "Using ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
@@ -1207,7 +1479,16 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         flux_transformer,
         num_tokens=ref_encoder.num_output_tokens,
         ip_init_gain=args.ip_init_gain,
+        num_single_layers=max(0, int(getattr(args, "ip_single_num_layers", 0) or 0)),
     )
+    patch_flux_single_ip_forward(flux_transformer)
+    ip_adapter_checkpoint = _resolve_ip_adapter_checkpoint_path(args)
+    if ip_adapter_checkpoint is not None:
+        _load_ip_adapter_modules_from_checkpoint(
+            flux_transformer,
+            ip_adapter_checkpoint,
+            load_single_ip=bool(getattr(args, "load_single_ip_from_checkpoint", False)),
+        )
     _log_ip_adapter_initialization_stats(
         flux_transformer,
         ip_init_gain=args.ip_init_gain,
@@ -1290,6 +1571,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     ip_ref_learning_rate = float(
         getattr(args, "ip_ref_learning_rate", None) or (args.learning_rate * 10.0)
     )
+    ip_single_learning_rate = float(
+        getattr(args, "ip_single_learning_rate", None) or ip_ref_learning_rate
+    )
 
     if args.use_8bit_adam:
         import bitsandbytes as bnb
@@ -1325,24 +1609,34 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             ip_trainable_wrapper,
         ]
     base_lr_modules = [] if a1_lite else [flux_controlnet, *modules.values()]
-    ip_ref_lr_modules = [ref_trainable_wrapper, ip_trainable_wrapper]
+    double_ip_modules, single_ip_modules = _split_ip_adapter_module_groups(ip_adapter_modules)
     base_lr_params = [
         p for module in base_lr_modules for p in module.parameters() if p.requires_grad
     ]
     ip_ref_lr_params = [
-        p for module in ip_ref_lr_modules for p in module.parameters() if p.requires_grad
+        p
+        for module in [ref_trainable_wrapper, *double_ip_modules]
+        for p in module.parameters()
+        if p.requires_grad
+    ]
+    ip_single_lr_params = [
+        p for module in single_ip_modules for p in module.parameters() if p.requires_grad
     ]
     optimizer_param_groups = []
     if base_lr_params:
         optimizer_param_groups.append({"params": base_lr_params, "lr": args.learning_rate})
     if ip_ref_lr_params:
         optimizer_param_groups.append({"params": ip_ref_lr_params, "lr": ip_ref_learning_rate})
+    if ip_single_lr_params:
+        optimizer_param_groups.append({"params": ip_single_lr_params, "lr": ip_single_learning_rate})
     logger.info(
-        "Optimizer LR groups: base_lr=%s params=%s, ip_ref_lr=%s params=%s",
+        "Optimizer LR groups: base_lr=%s params=%s, ip_ref_lr=%s params=%s, ip_single_lr=%s params=%s",
         args.learning_rate,
         sum(p.numel() for p in base_lr_params),
         ip_ref_learning_rate,
         sum(p.numel() for p in ip_ref_lr_params),
+        ip_single_learning_rate,
+        sum(p.numel() for p in ip_single_lr_params),
     )
     optimizer = optimizer_class(
         optimizer_param_groups,
@@ -1596,6 +1890,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 style_nuclei_loss = noise_pred.new_zeros(())
                 style_tissue_regions = 0
                 style_nuclei_regions = 0
+                perceptual_loss = noise_pred.new_zeros(())
                 self_reconstruction_l1 = noise_pred.new_zeros(())
                 prediction_rgb = None
                 should_compute_style_loss = (
@@ -1603,10 +1898,19 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     and reference_style_loss_interval > 0
                     and global_step % reference_style_loss_interval == 0
                 )
+                should_compute_perceptual_loss = (
+                    perceptual_loss_weight > 0.0
+                    and perceptual_loss_interval > 0
+                    and global_step % perceptual_loss_interval == 0
+                )
                 should_compute_self_reconstruction_l1 = bool(
                     self_reconstruction_sample_mask.any().item()
                 )
-                if should_compute_style_loss or should_compute_self_reconstruction_l1:
+                if (
+                    should_compute_style_loss
+                    or should_compute_perceptual_loss
+                    or should_compute_self_reconstruction_l1
+                ):
                     prediction_rgb = _decode_packed_model_prediction(
                         vae=vae,
                         packed_noisy_latents=noisy_model_input,
@@ -1617,6 +1921,20 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         latent_width=pixel_latents.shape[3],
                         weight_dtype=weight_dtype,
                     )
+                if should_compute_perceptual_loss:
+                    ref_encoder = modules["ref_encoder"]
+                    uni_dtype = next(ref_encoder.uni.parameters()).dtype
+                    prediction_features = ref_encoder.extract_uni_features(
+                        prediction_rgb.to(device=accelerator.device, dtype=uni_dtype),
+                        allow_input_grad=True,
+                    )
+                    target_features = ref_encoder.extract_uni_features(
+                        batch["target_image"].to(device=accelerator.device, dtype=uni_dtype),
+                    )
+                    perceptual_loss = uni_token_cosine_perceptual_loss(
+                        prediction_features=prediction_features,
+                        target_features=target_features,
+                    ).to(dtype=denoising_loss.dtype)
                 if should_compute_style_loss:
                     style_terms = regional_stain_style_loss(
                         prediction=prediction_rgb,
@@ -1707,6 +2025,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
                 loss = (
                     denoising_loss
+                    + perceptual_loss_weight * perceptual_loss
                     + reference_style_loss_weight * style_loss
                     + ref_swap_loss_weight * swap_loss
                     + self_reconstruction_l1_weighted
@@ -1750,6 +2069,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             logs = {
                 "loss": loss.detach().item(),
                 "denoise_loss": denoising_loss.detach().item(),
+                "perceptual_loss": perceptual_loss.detach().item(),
                 "style_loss": style_loss.detach().item(),
                 "style_tissue_loss": style_tissue_loss.detach().item(),
                 "style_nuclei_loss": style_nuclei_loss.detach().item(),

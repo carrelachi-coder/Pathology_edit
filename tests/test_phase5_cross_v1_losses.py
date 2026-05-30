@@ -12,12 +12,17 @@ if torch is not None:
         ref_swap_sensitivity_loss,
         regional_stain_style_loss,
         self_reconstruction_l1_loss,
+        uni_token_cosine_perceptual_loss,
         unpack_flux_packed_latents,
     )
-    from controlnet_train.training.flux_phase5_cross_v1 import (
-        _insert_self_reconstruction_samples,
-        _use_random_reference,
-    )
+    try:
+        from controlnet_train.training.flux_phase5_cross_v1 import (
+            _insert_self_reconstruction_samples,
+            _use_random_reference,
+        )
+    except ModuleNotFoundError:
+        _insert_self_reconstruction_samples = None
+        _use_random_reference = None
 
 
 @unittest.skipIf(torch is None, "torch is required for Cross V1 loss tests")
@@ -98,6 +103,17 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
 
         self.assertTrue(torch.allclose(loss, torch.tensor(1.0)))
 
+    def test_uni_token_cosine_perceptual_loss_uses_cosine_distance(self):
+        prediction = torch.tensor([[[1.0, 0.0], [0.0, 1.0]]])
+        target = torch.tensor([[[1.0, 0.0], [1.0, 0.0]]])
+
+        loss = uni_token_cosine_perceptual_loss(
+            prediction_features=prediction,
+            target_features=target,
+        )
+
+        self.assertTrue(torch.allclose(loss, torch.tensor(0.5)))
+
     def test_unpack_flux_packed_latents_inverts_two_by_two_packing_order(self):
         latents = torch.arange(1 * 1 * 4 * 4, dtype=torch.float32).reshape(1, 1, 4, 4)
         packed = latents.reshape(1, 1, 2, 2, 2, 2)
@@ -108,6 +124,8 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertTrue(torch.equal(unpacked, latents))
 
     def test_random_reference_swap_rejects_batch_size_one(self):
+        if _use_random_reference is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
         batch = {
             "reference_image": torch.zeros(1, 3, 4, 4),
             "reference_tissue_mask": torch.zeros(1, 4, 4, dtype=torch.long),
@@ -118,6 +136,8 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
             _use_random_reference(batch)
 
     def test_random_reference_swap_accepts_dataset_random_batch_for_batch_size_one(self):
+        if _use_random_reference is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
         batch = {
             "reference_image": torch.zeros(1, 3, 4, 4),
             "reference_tissue_mask": torch.zeros(1, 4, 4, dtype=torch.long),
@@ -136,6 +156,8 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertTrue(torch.equal(swapped["reference_nuclei_mask"], random_batch["reference_nuclei_mask"]))
 
     def test_insert_self_reconstruction_samples_replaces_only_selected_references(self):
+        if _insert_self_reconstruction_samples is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
         batch = {
             "target_image": torch.arange(2 * 3 * 2 * 2, dtype=torch.float32).reshape(2, 3, 2, 2),
             "reference_image": torch.zeros(2, 3, 2, 2),

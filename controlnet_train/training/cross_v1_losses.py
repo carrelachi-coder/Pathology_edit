@@ -58,6 +58,26 @@ def self_reconstruction_l1_loss(
     return per_sample[mask].mean()
 
 
+def uni_token_cosine_perceptual_loss(
+    *,
+    prediction_features: torch.Tensor,
+    target_features: torch.Tensor,
+) -> torch.Tensor:
+    """Cosine distance over frozen UNI patch tokens."""
+    if prediction_features.shape != target_features.shape:
+        raise ValueError(
+            "prediction_features and target_features shapes differ: "
+            f"{tuple(prediction_features.shape)} vs {tuple(target_features.shape)}"
+        )
+    cosine = F.cosine_similarity(
+        prediction_features.float(),
+        target_features.detach().float(),
+        dim=-1,
+        eps=1e-6,
+    )
+    return (1.0 - cosine).mean()
+
+
 def unpack_flux_packed_latents(
     packed_latents: torch.Tensor,
     *,

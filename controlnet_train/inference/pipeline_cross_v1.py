@@ -32,6 +32,7 @@ from controlnet_train.modules.reference_image_encoder import ReferenceImageEncod
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
 from controlnet_train.training.flux_phase5_cross_v1 import (
     install_flux_ip_adapter_attention,
+    patch_flux_single_ip_forward,
     _collect_ip_adapter_modules,
     _sync_ip_adapter_to_transformer,
 )
@@ -81,18 +82,24 @@ def load_cross_v1_bundle(
         torch_dtype=dtype,
     )
 
-    # Install IP-Adapter attention on transformer
+    # Load IP-Adapter weights from checkpoint
+    ip_state = _torch_load_weights(checkpoint / "phase5_ip_adapter.pt")
     install_flux_ip_adapter_attention(
         pipe.transformer,
         num_tokens=ref_encoder_config.get("num_output_tokens", ref_encoder_config["num_tokens"]),
+        num_single_layers=_resolve_saved_single_ip_layer_count(ip_state),
     )
-
-    # Load IP-Adapter weights from checkpoint
-    ip_state = _torch_load_weights(checkpoint / "phase5_ip_adapter.pt")
+    patch_flux_single_ip_forward(pipe.transformer)
     pipe.transformer.encoder_hid_proj.load_state_dict(ip_state["encoder_hid_proj"])
     for i, block in enumerate(pipe.transformer.transformer_blocks):
         block.attn.processor.to_k_ip.load_state_dict(ip_state[f"block_{i}_to_k_ip"])
         block.attn.processor.to_v_ip.load_state_dict(ip_state[f"block_{i}_to_v_ip"])
+    for i, block in enumerate(getattr(pipe.transformer, "single_transformer_blocks", [])):
+        k_key = f"single_block_{i}_to_k_ip"
+        v_key = f"single_block_{i}_to_v_ip"
+        if k_key in ip_state and v_key in ip_state:
+            block.attn.processor.to_k_ip.load_state_dict(ip_state[k_key])
+            block.attn.processor.to_v_ip.load_state_dict(ip_state[v_key])
     _move_ip_adapter_modules(pipe.transformer, device=device, torch_dtype=dtype)
 
     ip_adapter_modules = _collect_ip_adapter_modules(pipe.transformer)
@@ -122,6 +129,17 @@ def load_cross_v1_bundle(
         ip_adapter_modules=ip_adapter_modules,
         ref_encoder=modules["ref_encoder"],
     )
+
+
+def _resolve_saved_single_ip_layer_count(ip_state: dict[str, Any]) -> int:
+    if "num_single_layers" in ip_state:
+        return int(ip_state["num_single_layers"])
+    indices = {
+        int(key.split("_")[2])
+        for key in ip_state
+        if key.startswith("single_block_") and key.endswith(("_to_k_ip", "_to_v_ip"))
+    }
+    return len(indices)
 
 
 def run_cross_v1_bundle(
@@ -254,12 +272,16 @@ def _validate_checkpoint_dir(checkpoint_path: str | Path) -> Path:
 def _move_ip_adapter_modules(transformer: nn.Module, *, device: str, torch_dtype: torch.dtype) -> None:
     if hasattr(transformer, "encoder_hid_proj"):
         transformer.encoder_hid_proj.to(device=device, dtype=torch_dtype)
-    for block in getattr(transformer, "transformer_blocks", []):
-        processor = getattr(getattr(block, "attn", None), "processor", None)
-        for name in ("to_k_ip", "to_v_ip"):
-            module = getattr(processor, name, None)
-            if module is not None:
-                module.to(device=device, dtype=torch_dtype)
+    for blocks in (
+        getattr(transformer, "transformer_blocks", []),
+        getattr(transformer, "single_transformer_blocks", []),
+    ):
+        for block in blocks:
+            processor = getattr(getattr(block, "attn", None), "processor", None)
+            for name in ("to_k_ip", "to_v_ip"):
+                module = getattr(processor, name, None)
+                if module is not None:
+                    module.to(device=device, dtype=torch_dtype)
 
 
 def _load_flux_controlnet_pipeline(

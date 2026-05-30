@@ -157,7 +157,7 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument(
         "--self-reconstruction-sample-prob",
         type=float,
-        default=0.2,
+        default=0.0,
         help=(
             "After warmup, randomly convert this fraction of each batch to same-patch "
             "self-reconstruction samples by setting reference=target."
@@ -166,7 +166,7 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument(
         "--self-reconstruction-l1-weight",
         type=float,
-        default=1.0,
+        default=0.0,
         help=(
             "Weight for pixel-level L1 loss between decoded prediction and reference image "
             "on self-reconstruction samples."
@@ -193,14 +193,59 @@ def parse_args(input_args=None) -> argparse.Namespace:
         type=float,
         default=None,
         help=(
-            "Learning rate for ref_encoder and IP-Adapter modules. "
+            "Learning rate for ref_encoder and double-stream IP-Adapter modules. "
             "Defaults to 10x --learning-rate after optional LR scaling."
         ),
     )
     parser.add_argument(
+        "--ip-adapter-checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Checkpoint directory or phase5_ip_adapter.pt used to initialize shared projection "
+            "and double-stream IP modules. Defaults to --controlnet_model_name_or_path when "
+            "that directory contains phase5_ip_adapter.pt."
+        ),
+    )
+    parser.add_argument(
+        "--load-single-ip-from-checkpoint",
+        action="store_true",
+        help=(
+            "Also load saved single-stream IP modules from --ip-adapter-checkpoint. By default "
+            "single-stream IP modules are freshly initialized."
+        ),
+    )
+    parser.add_argument(
+        "--ip-single-learning-rate",
+        type=float,
+        default=None,
+        help=(
+            "Learning rate for single-stream IP-Adapter modules. Defaults to "
+            "--ip-ref-learning-rate."
+        ),
+    )
+    parser.add_argument(
+        "--ip-single-num-layers",
+        type=int,
+        default=10,
+        help="Install single-stream IP-Adapter processors on the last N FLUX single blocks.",
+    )
+    parser.add_argument(
+        "--perceptual-loss-weight",
+        type=float,
+        default=0.5,
+        help="Weight for frozen UNI token cosine perceptual loss against the target image.",
+    )
+    parser.add_argument(
+        "--perceptual-loss-interval",
+        type=int,
+        default=1,
+        help="Compute perceptual loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
         "--reference-style-loss-weight",
         type=float,
-        default=0.0,
+        default=5.0,
         help=(
             "Weight for region-level reference stain/style loss. The loss matches RGB "
             "mean/std/covariance on target/reference regions that share tissue or nuclei labels."
@@ -260,7 +305,7 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument(
         "--ref-swap-loss-weight",
         type=float,
-        default=0.0,
+        default=0.1,
         help=(
             "Weight for reference-swap sensitivity loss. It compares normal-reference denoising "
             "loss against zero/random-reference denoising losses with a margin."
