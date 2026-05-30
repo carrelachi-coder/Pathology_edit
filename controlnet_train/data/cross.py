@@ -13,6 +13,7 @@ import torch
 
 from dataset_config import get_config
 
+from .hed_stain_augment import HEDStainAugment
 from .common import (
     LayeredSample,
     load_image_tensor,
@@ -199,25 +200,48 @@ def build_cross_metadata(
 class CrossReconstructionDataset(torch.utils.data.Dataset):
     """Load normalized cross-reconstruction metadata and paired conditions."""
 
-    def __init__(self, metadata_path: str | Path) -> None:
+    def __init__(
+        self,
+        metadata_path: str | Path,
+        *,
+        stain_augmentation: str = "none",
+        hed_sigma: float = 0.2,
+        hed_beta: float = 0.02,
+    ) -> None:
         metadata_path = Path(metadata_path)
         payload = json.loads(metadata_path.read_text(encoding="utf8"))
         self.records = payload["pairs"] if isinstance(payload, dict) else payload
+        stain_augmentation = stain_augmentation.lower()
+        if stain_augmentation not in {"none", "hed_aggressive"}:
+            raise ValueError(
+                f"Unsupported stain_augmentation {stain_augmentation!r}; "
+                "choose 'none' or 'hed_aggressive'."
+            )
+        self.stain_augmentation = stain_augmentation
+        self.hed_augment = (
+            HEDStainAugment(sigma=hed_sigma, beta=hed_beta)
+            if stain_augmentation == "hed_aggressive"
+            else None
+        )
 
     def __len__(self) -> int:
         return len(self.records)
 
     def __getitem__(self, index: int) -> dict:
         record = self.records[index]
+        target_image = load_image_tensor(record["target_image"])
+        reference_image = load_image_tensor(record["reference_image"])
+        if self.hed_augment is not None:
+            reference_image, target_image = self.hed_augment.apply_pair(reference_image, target_image)
         return {
             "dataset": record["dataset"],
             "sample_id": record["sample_id"],
             "reference_sample_id": record["reference_sample_id"],
             "case_id": record["case_id"],
-            "target_image": load_image_tensor(record["target_image"]),
+            "target_image": target_image,
             "target_tissue_mask": load_tissue_mask(record["target_tissue_mask"]),
             "target_nuclei_mask": load_nuclei_mask(record["target_nuclei_mask"], remap=True),
-            "reference_image": load_image_tensor(record["reference_image"]),
+            "reference_image": reference_image,
             "reference_tissue_mask": load_tissue_mask(record["reference_tissue_mask"]),
             "reference_nuclei_mask": load_nuclei_mask(record["reference_nuclei_mask"], remap=True),
             "prompt": record["prompt"],

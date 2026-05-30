@@ -1181,6 +1181,8 @@ def _resolve_ip_adapter_checkpoint_path(args: argparse.Namespace) -> Path | None
     path = getattr(args, "ip_adapter_checkpoint", None)
     if path:
         return Path(path)
+    if bool(getattr(args, "no_load_ip_adapter_from_controlnet", False)):
+        return None
     controlnet_path = getattr(args, "controlnet_model_name_or_path", None)
     if not controlnet_path:
         return None
@@ -1244,7 +1246,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     if a1_lite and not args.controlnet_model_name_or_path:
         raise ValueError("--a1-lite requires --controlnet_model_name_or_path with an existing Cross V1 checkpoint.")
 
-    dataset = CrossReconstructionDataset(args.train_metadata)
+    dataset = CrossReconstructionDataset(
+        args.train_metadata,
+        stain_augmentation=getattr(args, "stain_augmentation", "none"),
+        hed_sigma=float(getattr(args, "hed_sigma", 0.2) or 0.0),
+        hed_beta=float(getattr(args, "hed_beta", 0.02) or 0.0),
+    )
     if args.max_train_samples is not None:
         dataset.records = dataset.records[: args.max_train_samples]
 
@@ -1370,6 +1377,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         control_spec.raw_channels,
         control_spec.packed_channels,
     )
+    if getattr(args, "stain_augmentation", "none") != "none":
+        logger.info(
+            "Using stain self-supervision: augmentation=%s hed_sigma=%s hed_beta=%s",
+            getattr(args, "stain_augmentation", "none"),
+            getattr(args, "hed_sigma", None),
+            getattr(args, "hed_beta", None),
+        )
     if self_reconstruction_warmup_steps:
         logger.info(
             "Using same-patch self-reconstruction warmup for the first %s optimizer steps",
@@ -1929,7 +1943,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         allow_input_grad=True,
                     )
                     target_features = ref_encoder.extract_uni_features(
-                        batch["target_image"].to(device=accelerator.device, dtype=uni_dtype),
+                        training_batch["target_image"].to(device=accelerator.device, dtype=uni_dtype),
                     )
                     perceptual_loss = uni_token_cosine_perceptual_loss(
                         prediction_features=prediction_features,

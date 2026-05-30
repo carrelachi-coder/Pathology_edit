@@ -58,6 +58,29 @@ def parse_args(input_args=None) -> argparse.Namespace:
     )
     parser.add_argument("--train-metadata", type=str, required=True)
     parser.add_argument(
+        "--stain-augmentation",
+        type=str,
+        default="none",
+        choices=["none", "hed_aggressive"],
+        help=(
+            "Self-supervised stain perturbation applied in the dataloader. "
+            "'hed_aggressive' applies the same sampled HED perturbation to "
+            "reference and target images."
+        ),
+    )
+    parser.add_argument(
+        "--hed-sigma",
+        type=float,
+        default=0.2,
+        help="H/E concentration scale jitter for --stain-augmentation hed_aggressive.",
+    )
+    parser.add_argument(
+        "--hed-beta",
+        type=float,
+        default=0.02,
+        help="H/E concentration additive jitter for --stain-augmentation hed_aggressive.",
+    )
+    parser.add_argument(
         "--uni-checkpoint-path", type=str, required=True,
         help="Path to UNI2-h ViT-Giant/14 checkpoint (pytorch_model.bin).",
     )
@@ -205,6 +228,15 @@ def parse_args(input_args=None) -> argparse.Namespace:
             "Checkpoint directory or phase5_ip_adapter.pt used to initialize shared projection "
             "and double-stream IP modules. Defaults to --controlnet_model_name_or_path when "
             "that directory contains phase5_ip_adapter.pt."
+        ),
+    )
+    parser.add_argument(
+        "--no-load-ip-adapter-from-controlnet",
+        action="store_true",
+        help=(
+            "Do not auto-initialize IP-Adapter modules from --controlnet_model_name_or_path. "
+            "Use this when the ControlNet should be warm-started but IP/ref modules should "
+            "train from scratch."
         ),
     )
     parser.add_argument(

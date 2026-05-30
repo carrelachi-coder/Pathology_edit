@@ -23,7 +23,7 @@ UNI_CHECKPOINT="${UNI_CHECKPOINT:-${PROJECT_ROOT}/UNI-2h/pytorch_model.bin}"
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/datasets/phase5_runs/cross_meta/metadata_cross_train.json}"
 SOURCE_CROSS_V1_OUTPUT_DIR="${SOURCE_CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1}"
 CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/checkpoint-20000}"
-CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_single10_uni}"
+CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_hed_aggressive}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
 
 MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
@@ -36,7 +36,7 @@ GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
 # signal; style is kept as a lower-weight stain/color auxiliary.
 PERCEPTUAL_LOSS_WEIGHT="${PERCEPTUAL_LOSS_WEIGHT:-0.5}"
 PERCEPTUAL_LOSS_INTERVAL="${PERCEPTUAL_LOSS_INTERVAL:-1}"
-REFERENCE_STYLE_LOSS_WEIGHT="${REFERENCE_STYLE_LOSS_WEIGHT:-5}"
+REFERENCE_STYLE_LOSS_WEIGHT="${REFERENCE_STYLE_LOSS_WEIGHT:-2}"
 REFERENCE_STYLE_TISSUE_WEIGHT="${REFERENCE_STYLE_TISSUE_WEIGHT:-1.0}"
 REFERENCE_STYLE_NUCLEI_WEIGHT="${REFERENCE_STYLE_NUCLEI_WEIGHT:-1.0}"
 REFERENCE_STYLE_MEAN_WEIGHT="${REFERENCE_STYLE_MEAN_WEIGHT:-1.0}"
@@ -53,6 +53,9 @@ SELF_RECONSTRUCTION_L1_WEIGHT="${SELF_RECONSTRUCTION_L1_WEIGHT:-0.0}"
 IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-3e-5}"
 IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-1e-4}"
 IP_SINGLE_NUM_LAYERS="${IP_SINGLE_NUM_LAYERS:-10}"
+STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-hed_aggressive}"
+HED_SIGMA="${HED_SIGMA:-0.2}"
+HED_BETA="${HED_BETA:-0.02}"
 DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
 DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-4}"
 
@@ -103,9 +106,7 @@ TRAIN_CHECKPOINT_ARGS=()
 if [[ -n "${CONTROLNET_CHECKPOINT}" ]]; then
   TRAIN_CHECKPOINT_ARGS+=(
     --controlnet_model_name_or_path "${CONTROLNET_CHECKPOINT}"
-    --ip-adapter-checkpoint "${CONTROLNET_CHECKPOINT}"
-    --a1-lite
-    --a1-lite-load-ref-encoder
+    --load-conditioning-from-checkpoint
   )
 fi
 
@@ -113,6 +114,10 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   controlnet_train/cli/train_controlnet_flux_cross_v1.py \
   --pretrained_model_name_or_path "${MODEL_DIR}" \
   --train-metadata "${CROSS_META}" \
+  --stain-augmentation "${STAIN_AUGMENTATION}" \
+  --hed-sigma "${HED_SIGMA}" \
+  --hed-beta "${HED_BETA}" \
+  --no-load-ip-adapter-from-controlnet \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
   "${TRAIN_CHECKPOINT_ARGS[@]}" \
   --output-dir "${CROSS_V1_OUTPUT_DIR}" \
