@@ -1628,6 +1628,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         args.learning_rate *= (
             args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+    conditioning_learning_rate = float(
+        getattr(args, "conditioning_learning_rate", None)
+        if getattr(args, "conditioning_learning_rate", None) is not None
+        else args.learning_rate
+    )
     ip_ref_learning_rate = float(
         getattr(args, "ip_ref_learning_rate", None) or (args.learning_rate * 10.0)
     )
@@ -1668,10 +1673,14 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             ref_trainable_wrapper,
             ip_trainable_wrapper,
         ]
-    base_lr_modules = [] if a1_lite else [flux_controlnet, *modules.values()]
+    controlnet_lr_modules = [] if a1_lite else [flux_controlnet]
+    conditioning_lr_modules = [] if a1_lite else list(modules.values())
     double_ip_modules, single_ip_modules = _split_ip_adapter_module_groups(ip_adapter_modules)
-    base_lr_params = [
-        p for module in base_lr_modules for p in module.parameters() if p.requires_grad
+    controlnet_lr_params = [
+        p for module in controlnet_lr_modules for p in module.parameters() if p.requires_grad
+    ]
+    conditioning_lr_params = [
+        p for module in conditioning_lr_modules for p in module.parameters() if p.requires_grad
     ]
     ip_ref_lr_params = [
         p
@@ -1685,16 +1694,24 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     if ip_single_learning_rate <= 0.0:
         ip_single_lr_params = []
     optimizer_param_groups = []
-    if base_lr_params:
-        optimizer_param_groups.append({"params": base_lr_params, "lr": args.learning_rate})
+    if controlnet_lr_params:
+        optimizer_param_groups.append({"params": controlnet_lr_params, "lr": args.learning_rate})
+    if conditioning_lr_params:
+        optimizer_param_groups.append({"params": conditioning_lr_params, "lr": conditioning_learning_rate})
     if ip_ref_lr_params:
         optimizer_param_groups.append({"params": ip_ref_lr_params, "lr": ip_ref_learning_rate})
     if ip_single_lr_params:
         optimizer_param_groups.append({"params": ip_single_lr_params, "lr": ip_single_learning_rate})
     logger.info(
-        "Optimizer LR groups: base_lr=%s params=%s, ip_ref_lr=%s params=%s, ip_single_lr=%s params=%s",
+        (
+            "Optimizer LR groups: controlnet_lr=%s params=%s, "
+            "conditioning_lr=%s params=%s, ip_ref_lr=%s params=%s, "
+            "ip_single_lr=%s params=%s"
+        ),
         args.learning_rate,
-        sum(p.numel() for p in base_lr_params),
+        sum(p.numel() for p in controlnet_lr_params),
+        conditioning_learning_rate,
+        sum(p.numel() for p in conditioning_lr_params),
         ip_ref_learning_rate,
         sum(p.numel() for p in ip_ref_lr_params),
         ip_single_learning_rate,

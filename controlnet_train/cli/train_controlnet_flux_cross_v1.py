@@ -56,6 +56,14 @@ def parse_args(input_args=None) -> argparse.Namespace:
         action="store_true",
         help="Also initialize ref_encoder trainable parts from the A1-lite conditioning checkpoint.",
     )
+    parser.add_argument(
+        "--load-ref-encoder-from-checkpoint",
+        action="store_true",
+        help=(
+            "Initialize ref_encoder trainable parts from the conditioning checkpoint "
+            "without enabling A1-lite freezing."
+        ),
+    )
     parser.add_argument("--train-metadata", type=str, required=True)
     parser.add_argument(
         "--stain-augmentation",
@@ -131,6 +139,15 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--lr-num-cycles", type=int, default=1)
     parser.add_argument("--lr-power", type=float, default=1.0)
     parser.add_argument("--scale-lr", action="store_true", default=False)
+    parser.add_argument(
+        "--conditioning-learning-rate",
+        type=float,
+        default=None,
+        help=(
+            "Learning rate for HTE, tissue downsampler, and nuclei conditioning modules. "
+            "Defaults to --learning-rate."
+        ),
+    )
     parser.add_argument("--use-8bit-adam", action="store_true")
     parser.add_argument("--adam-beta1", type=float, default=0.9)
     parser.add_argument("--adam-beta2", type=float, default=0.999)

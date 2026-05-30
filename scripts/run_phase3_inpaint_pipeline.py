@@ -576,6 +576,7 @@ def _run_generation_stage(
             num_inference_steps=getattr(args, "num_inference_steps", 28),
             guidance_scale=getattr(args, "guidance_scale", 3.5),
             controlnet_conditioning_scale=getattr(args, "controlnet_conditioning_scale", 1.0),
+            ip_adapter_scale=getattr(args, "ip_scale", 1.0),
         )
 
     controlnet_dir = output_dir / f"controlnet_{selected_mode.replace('-', '_')}"
@@ -644,6 +645,12 @@ def _run_generation_stage(
             "applied": color_match_applied,
             "reference": str(args.reference_image),
         },
+        "cross_v1": {
+            "ip_scale": float(getattr(args, "ip_scale", 1.0)),
+            "controlnet_conditioning_scale": float(
+                getattr(args, "controlnet_conditioning_scale", 1.0)
+            ),
+        },
     }
     save_metadata(info, output_dir / "generation_info.json")
     return generated, info
@@ -699,6 +706,7 @@ def _cached_cross_v1_bundle(
     num_inference_steps: int,
     guidance_scale: float,
     controlnet_conditioning_scale: float,
+    ip_adapter_scale: float,
 ):
     key = (
         str(pretrained_model_name_or_path),
@@ -709,6 +717,7 @@ def _cached_cross_v1_bundle(
         int(num_inference_steps),
         float(guidance_scale),
         float(controlnet_conditioning_scale),
+        float(ip_adapter_scale),
     )
     if key not in _CROSS_V1_BUNDLE_CACHE:
         from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
@@ -722,6 +731,7 @@ def _cached_cross_v1_bundle(
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
+            ip_adapter_scale=ip_adapter_scale,
         )
     return _CROSS_V1_BUNDLE_CACHE[key]
 
@@ -977,6 +987,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
+    parser.add_argument("--ip-scale", type=float, default=1.0)
     parser.add_argument(
         "--color-match",
         choices=("none", "lab"),

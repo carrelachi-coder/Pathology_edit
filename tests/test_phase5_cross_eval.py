@@ -11,6 +11,36 @@ _SPEC.loader.exec_module(eval_cross)
 
 
 class CrossEvalMetricTests(unittest.TestCase):
+    def test_parse_cross_v1_eval_accepts_ip_scale(self):
+        module_path = (
+            Path(__file__).resolve().parents[1]
+            / "controlnet_train"
+            / "cli"
+            / "eval_controlnet_flux_cross_v1.py"
+        )
+        spec = importlib.util.spec_from_file_location("eval_controlnet_flux_cross_v1", module_path)
+        eval_cross_v1 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(eval_cross_v1)
+
+        args = eval_cross_v1.parse_args(
+            [
+                "--pretrained-model-name-or-path",
+                "flux",
+                "--checkpoint",
+                "ckpt",
+                "--uni-checkpoint-path",
+                "uni.bin",
+                "--metadata",
+                "metadata.json",
+                "--output-dir",
+                "out",
+                "--ip-scale",
+                "2.0",
+            ]
+        )
+
+        self.assertEqual(args.ip_scale, 2.0)
+
     def test_compute_cross_metrics_reports_full_image_errors(self):
         prediction = np.array(
             [

@@ -49,6 +49,7 @@ class CrossV1InferenceBundle:
     num_inference_steps: int = 28
     guidance_scale: float = 3.5
     controlnet_conditioning_scale: float = 1.0
+    ip_adapter_scale: float = 1.0
     flux_pipeline: object | None = None
     controlnet: object | None = None
     condition_modules: dict[str, nn.Module] = field(default_factory=dict)
@@ -67,6 +68,7 @@ def load_cross_v1_bundle(
     num_inference_steps: int = 28,
     guidance_scale: float = 3.5,
     controlnet_conditioning_scale: float = 1.0,
+    ip_adapter_scale: float = 1.0,
 ) -> CrossV1InferenceBundle:
     device = _resolve_device(device)
     dtype = _resolve_torch_dtype(torch_dtype, device)
@@ -102,6 +104,7 @@ def load_cross_v1_bundle(
             block.attn.processor.to_k_ip.load_state_dict(ip_state[k_key])
             block.attn.processor.to_v_ip.load_state_dict(ip_state[v_key])
     _move_ip_adapter_modules(pipe.transformer, device=device, torch_dtype=dtype)
+    set_ip_adapter_scale(pipe.transformer, ip_adapter_scale)
 
     ip_adapter_modules = _collect_ip_adapter_modules(pipe.transformer)
 
@@ -123,6 +126,7 @@ def load_cross_v1_bundle(
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         controlnet_conditioning_scale=controlnet_conditioning_scale,
+        ip_adapter_scale=float(ip_adapter_scale),
         flux_pipeline=pipe,
         controlnet=controlnet,
         condition_modules=modules,
@@ -141,6 +145,27 @@ def _resolve_saved_single_ip_layer_count(ip_state: dict[str, Any]) -> int:
         if key.startswith("single_block_") and key.endswith(("_to_k_ip", "_to_v_ip"))
     }
     return len(indices)
+
+
+def set_ip_adapter_scale(transformer: nn.Module, scale: float) -> None:
+    """Set IP-Adapter scale on both double-stream and installed single-stream processors."""
+    for blocks in (
+        getattr(transformer, "transformer_blocks", []),
+        getattr(transformer, "single_transformer_blocks", []),
+    ):
+        for block in blocks:
+            processor = getattr(getattr(block, "attn", None), "processor", None)
+            if processor is None or not hasattr(processor, "scale"):
+                continue
+            current = processor.scale
+            if isinstance(current, list):
+                processor.scale = [float(scale) for _ in current] or [float(scale)]
+            elif isinstance(current, tuple):
+                processor.scale = tuple(float(scale) for _ in current) or (float(scale),)
+            elif torch.is_tensor(current):
+                current.fill_(float(scale))
+            else:
+                processor.scale = float(scale)
 
 
 def run_cross_v1_bundle(

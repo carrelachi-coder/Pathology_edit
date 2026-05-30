@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-# Phase 5.3 Cross V1 Phase 1 reference-branch warmup.
-# Keep the old spatial structure, train IP/ref path with self-reconstruction + paired stain counterfactual; no swap/style.
+# Phase 5.3 Cross V1 Experiment A continuation.
+# Load the 20k Cross V1 checkpoint, lightly unfreeze ControlNet/spatial
+# conditioning, and continue the reference branch with weak HED counterfactual
+# + sparse self-reconstruction. Do not add swap/style/single-stream IP.
 
 GPU_IDS="${GPU_IDS:-1,2,4}"
 export CUDA_VISIBLE_DEVICES="${GPU_IDS}"
@@ -23,10 +25,11 @@ UNI_CHECKPOINT="${UNI_CHECKPOINT:-${PROJECT_ROOT}/UNI-2h/pytorch_model.bin}"
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
 SOURCE_CROSS_V1_OUTPUT_DIR="${SOURCE_CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_skip_perceiver_20k}"
 CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/checkpoint-20000}"
-CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_phase1_ref_warmup}"
+CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_expA_small_unfreeze_weak_hed}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
 LOAD_REF_ENCODER="${LOAD_REF_ENCODER:-1}"
 LOAD_IP_ADAPTER="${LOAD_IP_ADAPTER:-1}"
+LOAD_SINGLE_IP_FROM_CHECKPOINT="${LOAD_SINGLE_IP_FROM_CHECKPOINT:-0}"
 
 MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
 IFS=',' read -r -a GPU_ID_ARRAY <<< "${GPU_IDS}"
@@ -49,26 +52,78 @@ REF_SWAP_LOSS_WEIGHT="${REF_SWAP_LOSS_WEIGHT:-0}"
 REF_SWAP_MARGIN="${REF_SWAP_MARGIN:-0.02}"
 REF_SWAP_VARIANTS="${REF_SWAP_VARIANTS:-random}"
 REF_SWAP_LOSS_INTERVAL="${REF_SWAP_LOSS_INTERVAL:-2}"
-SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-1000}"
-SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.2}"
+SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-0}"
+SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.15}"
 SELF_RECONSTRUCTION_L1_WEIGHT="${SELF_RECONSTRUCTION_L1_WEIGHT:-0.05}"
-BASE_LEARNING_RATE="${BASE_LEARNING_RATE:-0}"
-IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-2e-5}"
+CONTROLNET_LEARNING_RATE="${CONTROLNET_LEARNING_RATE:-1e-6}"
+CONDITIONING_LEARNING_RATE="${CONDITIONING_LEARNING_RATE:-5e-7}"
+IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-1e-5}"
 IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-0}"
-IP_SINGLE_NUM_LAYERS="${IP_SINGLE_NUM_LAYERS:-10}"
+IP_SINGLE_NUM_LAYERS="${IP_SINGLE_NUM_LAYERS:-0}"
 STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-hed_aggressive}"
 STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0.5}"
-HED_SIGMA="${HED_SIGMA:-0.4}"
-HED_BETA="${HED_BETA:-0.08}"
-HED_STRONG_ALPHA_SAMPLING="${HED_STRONG_ALPHA_SAMPLING:-1}"
-HED_ALPHA_MIN="${HED_ALPHA_MIN:-0.4}"
-HED_ALPHA_LOW="${HED_ALPHA_LOW:-0.75}"
-HED_ALPHA_HIGH="${HED_ALPHA_HIGH:-1.25}"
-HED_ALPHA_MAX="${HED_ALPHA_MAX:-1.8}"
+HED_SIGMA="${HED_SIGMA:-0.1}"
+HED_BETA="${HED_BETA:-0.01}"
+HED_STRONG_ALPHA_SAMPLING="${HED_STRONG_ALPHA_SAMPLING:-0}"
+HED_ALPHA_MIN="${HED_ALPHA_MIN:-0.8}"
+HED_ALPHA_LOW="${HED_ALPHA_LOW:-0.95}"
+HED_ALPHA_HIGH="${HED_ALPHA_HIGH:-1.05}"
+HED_ALPHA_MAX="${HED_ALPHA_MAX:-1.2}"
 DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
 DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-4}"
+MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-5000}"
+CHECKPOINTING_STEPS="${CHECKPOINTING_STEPS:-1000}"
 
 cd "${PROJECT_ROOT}"
+
+resolve_saved_single_ip_layers() {
+  local checkpoint_dir="$1"
+  local state_path="${checkpoint_dir}/phase5_ip_adapter.pt"
+  if [[ -z "${checkpoint_dir}" || ! -f "${state_path}" ]]; then
+    echo "0"
+    return
+  fi
+  "${PYTHON_BIN}" -c 'import sys
+from pathlib import Path
+import torch
+
+state_path = Path(sys.argv[1])
+try:
+    state = torch.load(state_path, map_location="cpu", weights_only=True)
+except TypeError:
+    state = torch.load(state_path, map_location="cpu")
+
+if "num_single_layers" in state:
+    print(int(state["num_single_layers"]))
+else:
+    indices = {
+        int(key.split("_")[2])
+        for key in state
+        if key.startswith("single_block_")
+        and key.endswith(("_to_k_ip", "_to_v_ip"))
+    }
+    print(len(indices))
+' "${state_path}" 2>/dev/null || echo "0"
+}
+
+if [[ "${IP_SINGLE_NUM_LAYERS}" == "auto" ]]; then
+  if [[ "${LOAD_IP_ADAPTER}" == "1" ]]; then
+    IP_SINGLE_NUM_LAYERS="$(resolve_saved_single_ip_layers "${CONTROLNET_CHECKPOINT}")"
+  else
+    IP_SINGLE_NUM_LAYERS=0
+  fi
+fi
+if ! [[ "${IP_SINGLE_NUM_LAYERS}" =~ ^[0-9]+$ ]]; then
+  echo "Invalid IP_SINGLE_NUM_LAYERS=${IP_SINGLE_NUM_LAYERS}; expected auto or a non-negative integer." >&2
+  exit 2
+fi
+if [[ "${LOAD_SINGLE_IP_FROM_CHECKPOINT}" == "auto" ]]; then
+  if [[ "${LOAD_IP_ADAPTER}" == "1" && "${IP_SINGLE_NUM_LAYERS}" -gt 0 ]]; then
+    LOAD_SINGLE_IP_FROM_CHECKPOINT=1
+  else
+    LOAD_SINGLE_IP_FROM_CHECKPOINT=0
+  fi
+fi
 
 TRAIN_OPTIMIZER_ARGS=()
 if [[ "${USE_8BIT_ADAM}" == "1" ]]; then
@@ -132,11 +187,11 @@ if [[ -n "${CONTROLNET_CHECKPOINT}" ]]; then
     --load-conditioning-from-checkpoint
   )
 fi
-if [[ "${LOAD_REF_ENCODER}" == "1" ]]; then
-  TRAIN_CHECKPOINT_ARGS+=(--a1-lite-load-ref-encoder)
-fi
 if [[ "${LOAD_IP_ADAPTER}" == "0" ]]; then
   TRAIN_CHECKPOINT_ARGS+=(--no-load-ip-adapter-from-controlnet)
+fi
+if [[ "${LOAD_SINGLE_IP_FROM_CHECKPOINT}" == "1" ]]; then
+  TRAIN_CHECKPOINT_ARGS+=(--load-single-ip-from-checkpoint)
 fi
 
 accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GPU_IDS}" \
@@ -144,7 +199,6 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --pretrained_model_name_or_path "${MODEL_DIR}" \
   --train-metadata "${CROSS_META}" \
   "${TRAIN_HED_ARGS[@]}" \
-  --a1-lite \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
   "${TRAIN_CHECKPOINT_ARGS[@]}" \
   --output-dir "${CROSS_V1_OUTPUT_DIR}" \
@@ -154,16 +208,17 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --train-batch-size 1 \
   --gradient-accumulation-steps 8 \
   --num-train-epochs 10 \
-  --max-train-steps 5000 \
+  --max-train-steps "${MAX_TRAIN_STEPS}" \
   --self-reconstruction-warmup-steps "${SELF_RECONSTRUCTION_WARMUP_STEPS}" \
   --self-reconstruction-sample-prob "${SELF_RECONSTRUCTION_SAMPLE_PROB}" \
   --self-reconstruction-l1-weight "${SELF_RECONSTRUCTION_L1_WEIGHT}" \
-  --learning-rate "${BASE_LEARNING_RATE}" \
+  --learning-rate "${CONTROLNET_LEARNING_RATE}" \
+  --conditioning-learning-rate "${CONDITIONING_LEARNING_RATE}" \
   --ip-ref-learning-rate "${IP_REF_LEARNING_RATE}" \
   --ip-single-learning-rate "${IP_SINGLE_LEARNING_RATE}" \
   --lr-scheduler constant_with_warmup \
   --lr-warmup-steps 500 \
-  --checkpointing-steps 1000 \
+  --checkpointing-steps "${CHECKPOINTING_STEPS}" \
   --checkpoints-total-limit 5 \
   --mixed-precision "${MIXED_PRECISION}" \
   "${TRAIN_OPTIMIZER_ARGS[@]}" \
@@ -191,5 +246,5 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   "${TRAIN_AUX_INTERVAL_ARGS[@]}" \
   --guidance-scale 3.5 \
   --report-to tensorboard \
-  --tracker-project-name flux_controlnet_phase5_cross_v1_phase1_ref_warmup \
+  --tracker-project-name flux_controlnet_phase5_cross_v1_expA_small_unfreeze_weak_hed \
   --prompt-source dataset

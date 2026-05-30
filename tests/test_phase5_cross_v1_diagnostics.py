@@ -1,4 +1,5 @@
 import importlib.util
+import types
 import unittest
 from pathlib import Path
 
@@ -67,6 +68,50 @@ class CrossV1DiagnosticsTests(unittest.TestCase):
             summary["by_variant_scale"]["zero@1"]["l1_vs_normal_same_scale_mean"],
             0.1,
         )
+
+    def test_aggregate_diagnostic_rows_separates_controlnet_scale_grid(self):
+        rows = [
+            {
+                "sample_id": "a",
+                "variant": "zero",
+                "scale": 1.0,
+                "controlnet_scale": 0.5,
+                "l1_to_target": 0.2,
+            },
+            {
+                "sample_id": "a",
+                "variant": "zero",
+                "scale": 1.0,
+                "controlnet_scale": 1.0,
+                "l1_to_target": 0.6,
+            },
+        ]
+
+        summary = diagnostics.aggregate_diagnostic_rows(rows)
+
+        self.assertAlmostEqual(
+            summary["by_variant_scale"]["zero@ip1_cn0p5"]["l1_to_target_mean"],
+            0.2,
+        )
+        self.assertAlmostEqual(
+            summary["by_variant_scale"]["zero@ip1_cn1"]["l1_to_target_mean"],
+            0.6,
+        )
+
+    def test_set_ip_adapter_scale_updates_double_and_single_processors(self):
+        double_processor = types.SimpleNamespace(scale=[1.0])
+        single_processor = types.SimpleNamespace(scale=[1.0])
+        transformer = types.SimpleNamespace(
+            transformer_blocks=[types.SimpleNamespace(attn=types.SimpleNamespace(processor=double_processor))],
+            single_transformer_blocks=[
+                types.SimpleNamespace(attn=types.SimpleNamespace(processor=single_processor))
+            ],
+        )
+
+        diagnostics.set_ip_adapter_scale(transformer, 2.5)
+
+        self.assertEqual(double_processor.scale, [2.5])
+        self.assertEqual(single_processor.scale, [2.5])
 
 
 if __name__ == "__main__":

@@ -44,6 +44,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--controlnet-conditioning-scales",
+        default=None,
+        help=(
+            "Optional comma-separated ControlNet scale sweep. If omitted, uses "
+            "--controlnet-conditioning-scale."
+        ),
+    )
     parser.add_argument("--prompt-source", choices=["metadata", "dataset"], default="dataset")
     parser.add_argument("--prompt", default=None, help="Override every sample with one prompt.")
     parser.add_argument(
@@ -136,6 +144,11 @@ def read_cross_metadata(path: str | Path) -> list[dict[str, Any]]:
 def main(argv=None) -> int:
     args = parse_args(argv)
     scales = parse_scale_values(args.scales)
+    controlnet_scales = (
+        parse_scale_values(args.controlnet_conditioning_scales)
+        if args.controlnet_conditioning_scales
+        else [float(args.controlnet_conditioning_scale)]
+    )
     variants = parse_reference_variants(args.reference_variants)
     all_records = read_cross_metadata(args.metadata)
     records = select_eval_records(all_records, num_samples=args.num_samples, seed=args.seed)
@@ -161,7 +174,8 @@ def main(argv=None) -> int:
         torch_dtype=dtype_by_name[args.torch_dtype],
         num_inference_steps=args.num_inference_steps,
         guidance_scale=args.guidance_scale,
-        controlnet_conditioning_scale=args.controlnet_conditioning_scale,
+        controlnet_conditioning_scale=controlnet_scales[0],
+        ip_adapter_scale=scales[0],
     )
 
     weight_norms = collect_ip_weight_norms(bundle.flux_pipeline.transformer)
@@ -182,6 +196,7 @@ def main(argv=None) -> int:
             sample_index=index,
             output_root=samples_dir,
             scales=scales,
+            controlnet_scales=controlnet_scales,
             variants=variants,
             rng=rng,
             prompt_override=args.prompt,
@@ -201,6 +216,8 @@ def main(argv=None) -> int:
     summary = aggregate_diagnostic_rows(rows)
     summary["ip_weight_norms"] = weight_norms["summary"]
     summary["scales"] = scales
+    summary["ip_scales"] = scales
+    summary["controlnet_conditioning_scales"] = controlnet_scales
     summary["reference_variants"] = variants
     summary["replace_reference_masks"] = bool(args.replace_reference_masks)
     summary["cross_v1_spatial_mode"] = getattr(bundle.control_spec, "spatial_mode", "reference_target")
@@ -222,6 +239,7 @@ def run_sample_grid(
     sample_index: int,
     output_root: Path,
     scales: list[float],
+    controlnet_scales: list[float],
     variants: list[str],
     rng: random.Random,
     prompt_override: str | None,
@@ -292,53 +310,66 @@ def run_sample_grid(
         )
         for variant_name in variants:
             variant = variant_inputs[variant_name]
-            for scale in scales:
-                set_ip_adapter_scale(bundle.flux_pipeline.transformer, scale)
-                prediction = run_cross_v1_bundle(
-                    bundle,
-                    reference_image=variant["image"],
-                    reference_tissue_mask=variant["tissue_mask"],
-                    reference_nuclei_mask=variant["nuclei_mask"],
-                    target_tissue_mask=target_tissue_mask,
-                    target_nuclei_mask=target_nuclei_mask,
-                    prompt=prompt,
-                )
-                key = (variant_name, scale)
-                outputs[key] = prediction
-                output_arrays[key] = pil_to_chw_float(prediction)
-                prediction_path = sample_dir / f"{variant_name}_scale_{format_scale(scale)}.png"
-                prediction.save(prediction_path)
+            for controlnet_scale in controlnet_scales:
+                bundle.controlnet_conditioning_scale = float(controlnet_scale)
+                for scale in scales:
+                    set_ip_adapter_scale(bundle.flux_pipeline.transformer, scale)
+                    prediction = run_cross_v1_bundle(
+                        bundle,
+                        reference_image=variant["image"],
+                        reference_tissue_mask=variant["tissue_mask"],
+                        reference_nuclei_mask=variant["nuclei_mask"],
+                        target_tissue_mask=target_tissue_mask,
+                        target_nuclei_mask=target_nuclei_mask,
+                        prompt=prompt,
+                    )
+                    key = (variant_name, scale, controlnet_scale)
+                    outputs[key] = prediction
+                    output_arrays[key] = pil_to_chw_float(prediction)
+                    prediction_path = (
+                        sample_dir
+                        / (
+                            f"{variant_name}_ip_scale_{format_scale(scale)}"
+                            f"_cn_scale_{format_scale(controlnet_scale)}.png"
+                        )
+                    )
+                    prediction.save(prediction_path)
 
-                target_array = pil_to_chw_float(target_pil)
-                rows.append(
-                    {
-                        "sample_index": sample_index,
-                        "sample_id": sample_id,
-                        "reference_sample_id": ref_id,
-                        "variant": variant_name,
-                        "variant_reference_sample_id": variant.get("reference_sample_id", ref_id),
-                        "scale": float(scale),
-                        "path": str(prediction_path),
-                        "l1_to_target": image_l1(output_arrays[key], target_array),
-                        "mse_to_target": image_mse(output_arrays[key], target_array),
-                        **feature_diagnostics.get(variant_name, {}),
-                    }
-                )
+                    target_array = pil_to_chw_float(target_pil)
+                    rows.append(
+                        {
+                            "sample_index": sample_index,
+                            "sample_id": sample_id,
+                            "reference_sample_id": ref_id,
+                            "variant": variant_name,
+                            "variant_reference_sample_id": variant.get("reference_sample_id", ref_id),
+                            "scale": float(scale),
+                            "ip_scale": float(scale),
+                            "controlnet_scale": float(controlnet_scale),
+                            "path": str(prediction_path),
+                            "l1_to_target": image_l1(output_arrays[key], target_array),
+                            "mse_to_target": image_mse(output_arrays[key], target_array),
+                            **feature_diagnostics.get(variant_name, {}),
+                        }
+                    )
 
     normal_by_scale = {
-        scale: output_arrays[("normal", scale)]
+        (scale, controlnet_scale): output_arrays[("normal", scale, controlnet_scale)]
+        for controlnet_scale in controlnet_scales
         for scale in scales
-        if ("normal", scale) in output_arrays
+        if ("normal", scale, controlnet_scale) in output_arrays
     }
-    normal_scale0 = normal_by_scale.get(0.0)
-    first_normal = normal_by_scale.get(scales[0])
+    first_normal = normal_by_scale.get((scales[0], controlnet_scales[0]))
     for row in rows:
-        key = (row["variant"], float(row["scale"]))
+        scale = float(row["scale"])
+        controlnet_scale = float(row["controlnet_scale"])
+        key = (row["variant"], scale, controlnet_scale)
         current = output_arrays[key]
-        normal_same_scale = normal_by_scale.get(float(row["scale"]))
+        normal_same_scale = normal_by_scale.get((scale, controlnet_scale))
         if normal_same_scale is not None:
             row["l1_vs_normal_same_scale"] = image_l1(current, normal_same_scale)
             row["mse_vs_normal_same_scale"] = image_mse(current, normal_same_scale)
+        normal_scale0 = normal_by_scale.get((0.0, controlnet_scale))
         if normal_scale0 is not None:
             row["l1_vs_normal_scale0"] = image_l1(current, normal_scale0)
             row["mse_vs_normal_scale0"] = image_mse(current, normal_scale0)
@@ -356,6 +387,7 @@ def run_sample_grid(
         outputs=outputs,
         variants=variants,
         scales=scales,
+        controlnet_scales=controlnet_scales,
         thumbnail_size=thumbnail_size,
         title=f"{sample_id} | ref={ref_id}",
     )
@@ -564,19 +596,23 @@ def resize_mask_tensor(mask: torch.Tensor, hw: tuple[int, int]) -> torch.Tensor:
 def set_ip_adapter_scale(transformer, scale: float) -> None:
     import torch
 
-    for block in getattr(transformer, "transformer_blocks", []):
-        processor = getattr(getattr(block, "attn", None), "processor", None)
-        if processor is None or not hasattr(processor, "scale"):
-            continue
-        current = processor.scale
-        if isinstance(current, list):
-            processor.scale = [float(scale) for _ in current] or [float(scale)]
-        elif isinstance(current, tuple):
-            processor.scale = tuple(float(scale) for _ in current) or (float(scale),)
-        elif torch.is_tensor(current):
-            current.fill_(float(scale))
-        else:
-            processor.scale = float(scale)
+    for blocks in (
+        getattr(transformer, "transformer_blocks", []),
+        getattr(transformer, "single_transformer_blocks", []),
+    ):
+        for block in blocks:
+            processor = getattr(getattr(block, "attn", None), "processor", None)
+            if processor is None or not hasattr(processor, "scale"):
+                continue
+            current = processor.scale
+            if isinstance(current, list):
+                processor.scale = [float(scale) for _ in current] or [float(scale)]
+            elif isinstance(current, tuple):
+                processor.scale = tuple(float(scale) for _ in current) or (float(scale),)
+            elif torch.is_tensor(current):
+                current.fill_(float(scale))
+            else:
+                processor.scale = float(scale)
 
 
 def collect_ip_weight_norms(transformer) -> dict[str, Any]:
@@ -589,6 +625,12 @@ def collect_ip_weight_norms(transformer) -> dict[str, Any]:
             module = getattr(processor, name, None)
             if module is not None:
                 modules[f"block_{index}_{name}"] = module
+    for index, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
+        processor = getattr(getattr(block, "attn", None), "processor", None)
+        for name in ("to_k_ip", "to_v_ip"):
+            module = getattr(processor, name, None)
+            if module is not None:
+                modules[f"single_block_{index}_{name}"] = module
 
     by_module = {
         name: module_weight_stats(module)
@@ -676,9 +718,11 @@ def image_mse(left: np.ndarray, right: np.ndarray) -> float:
 
 
 def aggregate_diagnostic_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    grouped: dict[tuple[str, float], list[dict[str, Any]]] = defaultdict(list)
+    has_controlnet_scale = any("controlnet_scale" in row for row in rows)
+    grouped: dict[tuple[str, float, float | None], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        grouped[(str(row["variant"]), float(row["scale"]))].append(row)
+        controlnet_scale = float(row["controlnet_scale"]) if "controlnet_scale" in row else None
+        grouped[(str(row["variant"]), float(row["scale"]), controlnet_scale)].append(row)
 
     by_variant_scale: dict[str, dict[str, float]] = {}
     metric_keys = [
@@ -699,8 +743,12 @@ def aggregate_diagnostic_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "ip_hidden_states_vs_normal_rmse",
         "ip_hidden_states_vs_normal_l2",
     ]
-    for (variant, scale), group_rows in sorted(grouped.items(), key=lambda item: (item[0][0], item[0][1])):
+    for (variant, scale, controlnet_scale), group_rows in sorted(
+        grouped.items(), key=lambda item: (item[0][0], item[0][2] or -1.0, item[0][1])
+    ):
         key = f"{variant}@{format_scale(scale)}"
+        if has_controlnet_scale and controlnet_scale is not None:
+            key = f"{variant}@ip{format_scale(scale)}_cn{format_scale(controlnet_scale)}"
         by_variant_scale[key] = {"num_samples": float(len(group_rows))}
         for metric_key in metric_keys:
             values = [
@@ -739,17 +787,23 @@ def make_sample_panel(
     *,
     reference: Image.Image,
     target: Image.Image,
-    outputs: dict[tuple[str, float], Image.Image],
+    outputs: dict[tuple, Image.Image],
     variants: list[str],
     scales: list[float],
+    controlnet_scales: list[float] | None = None,
     thumbnail_size: int,
     title: str,
 ) -> Image.Image:
+    scale_keys = [
+        (scale, controlnet_scale)
+        for controlnet_scale in (controlnet_scales or [None])
+        for scale in scales
+    ]
     label_h = 26
     title_h = 30
     left_w = thumbnail_size
     cell_w = thumbnail_size
-    columns = 2 + len(scales)
+    columns = 2 + len(scale_keys)
     rows = 1 + len(variants)
     width = columns * cell_w
     height = title_h + rows * (thumbnail_size + label_h)
@@ -763,19 +817,26 @@ def make_sample_panel(
         x = col * cell_w
         panel.paste(thumbnail(image.convert("RGB"), thumbnail_size), (x, header_y))
         draw.text((x + 6, header_y + thumbnail_size + 6), label, fill=(0, 0, 0))
-    for scale_index, scale in enumerate(scales):
+    for scale_index, (scale, controlnet_scale) in enumerate(scale_keys):
         x = (2 + scale_index) * cell_w
         draw.rectangle((x, header_y, x + cell_w - 1, header_y + thumbnail_size - 1), outline=(210, 210, 210))
-        draw.text((x + 6, header_y + thumbnail_size // 2 - 8), f"scale {format_scale(scale)}", fill=(0, 0, 0))
+        label = f"ip {format_scale(scale)}"
+        if controlnet_scale is not None:
+            label = f"{label} cn {format_scale(controlnet_scale)}"
+        draw.text((x + 6, header_y + thumbnail_size // 2 - 8), label, fill=(0, 0, 0))
 
     for row_index, variant in enumerate(variants):
         y = title_h + (row_index + 1) * (thumbnail_size + label_h)
         draw.text((8, y + thumbnail_size // 2 - 8), variant, fill=(0, 0, 0))
-        for scale_index, scale in enumerate(scales):
+        for scale_index, (scale, controlnet_scale) in enumerate(scale_keys):
             x = (2 + scale_index) * cell_w
-            image = outputs[(variant, scale)]
+            output_key = (variant, scale) if controlnet_scale is None else (variant, scale, controlnet_scale)
+            image = outputs[output_key]
             panel.paste(thumbnail(image.convert("RGB"), thumbnail_size), (x, y))
-            draw.text((x + 6, y + thumbnail_size + 6), f"{variant} {format_scale(scale)}", fill=(0, 0, 0))
+            label = f"{variant} ip {format_scale(scale)}"
+            if controlnet_scale is not None:
+                label = f"{label} cn {format_scale(controlnet_scale)}"
+            draw.text((x + 6, y + thumbnail_size + 6), label, fill=(0, 0, 0))
     return panel
 
 

@@ -32,6 +32,7 @@ from controlnet_train.cli.diagnose_cross_v1_ip_sensitivity import (
     make_overview,
     make_sample_panel,
     normalize_cross_records,
+    parse_scale_values,
     pil_to_chw_float,
     read_cross_metadata,
     resolve_eval_prompt,
@@ -60,7 +61,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--controlnet-conditioning-scales",
+        default=None,
+        help=(
+            "Optional comma-separated ControlNet scale sweep. If omitted, uses "
+            "--controlnet-conditioning-scale."
+        ),
+    )
     parser.add_argument("--ip-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--ip-scales",
+        default=None,
+        help="Optional comma-separated IP scale sweep. If omitted, uses --ip-scale.",
+    )
     parser.add_argument("--prompt-source", choices=["metadata", "dataset"], default="dataset")
     parser.add_argument("--prompt", default=None, help="Override every sample with one prompt.")
     parser.add_argument(
@@ -115,6 +129,12 @@ def parse_jitter_types(value: str) -> list[str]:
 def main(argv=None) -> int:
     args = parse_args(argv)
     jitter_types = parse_jitter_types(args.jitter_types)
+    ip_scales = parse_scale_values(args.ip_scales) if args.ip_scales else [float(args.ip_scale)]
+    controlnet_scales = (
+        parse_scale_values(args.controlnet_conditioning_scales)
+        if args.controlnet_conditioning_scales
+        else [float(args.controlnet_conditioning_scale)]
+    )
     all_records = read_cross_metadata(args.metadata)
     records = select_eval_records(all_records, num_samples=args.num_samples, seed=args.seed)
 
@@ -139,9 +159,10 @@ def main(argv=None) -> int:
         torch_dtype=dtype_by_name[args.torch_dtype],
         num_inference_steps=args.num_inference_steps,
         guidance_scale=args.guidance_scale,
-        controlnet_conditioning_scale=args.controlnet_conditioning_scale,
+        controlnet_conditioning_scale=controlnet_scales[0],
+        ip_adapter_scale=ip_scales[0],
     )
-    set_ip_adapter_scale(bundle.flux_pipeline.transformer, args.ip_scale)
+    set_ip_adapter_scale(bundle.flux_pipeline.transformer, ip_scales[0])
 
     rows: list[dict[str, Any]] = []
     panel_paths: list[Path] = []
@@ -157,7 +178,8 @@ def main(argv=None) -> int:
             rng=rng,
             prompt_override=args.prompt,
             prompt_source=args.prompt_source,
-            ip_scale=args.ip_scale,
+            ip_scales=ip_scales,
+            controlnet_scales=controlnet_scales,
             rgb_jitter_strength=args.rgb_jitter_strength,
             noise_std=args.noise_std,
             hed_config={
@@ -178,7 +200,9 @@ def main(argv=None) -> int:
 
     write_rows(output_dir, rows)
     summary = aggregate_jitter_rows(rows)
-    summary["ip_scale"] = float(args.ip_scale)
+    summary["ip_scale"] = float(ip_scales[0]) if len(ip_scales) == 1 else None
+    summary["ip_scales"] = ip_scales
+    summary["controlnet_conditioning_scales"] = controlnet_scales
     summary["jitter_types"] = jitter_types
     summary["jitters_per_type"] = int(args.jitters_per_type)
     summary["fixed_reference_masks"] = not bool(args.replace_reference_masks)
@@ -203,7 +227,8 @@ def run_sample_jitter_grid(
     rng: random.Random,
     prompt_override: str | None,
     prompt_source: str,
-    ip_scale: float,
+    ip_scales: list[float],
+    controlnet_scales: list[float],
     rgb_jitter_strength: float,
     noise_std: float,
     hed_config: dict[str, Any],
@@ -257,8 +282,8 @@ def run_sample_jitter_grid(
     )
 
     rows: list[dict[str, Any]] = []
-    outputs: dict[tuple[str, float], Image.Image] = {}
-    output_arrays: dict[str, np.ndarray] = {}
+    outputs: dict[tuple[str, float, float], Image.Image] = {}
+    output_arrays: dict[tuple[str, float, float], np.ndarray] = {}
     target_array = pil_to_chw_float(target_pil)
 
     with torch.no_grad():
@@ -274,43 +299,63 @@ def run_sample_jitter_grid(
         for variant_name, variant in variant_inputs.items():
             jitter_ref_pil = tensor_to_pil(variant["image"])
             jitter_ref_pil.save(sample_dir / f"reference_{variant_name}.png")
-            prediction = run_cross_v1_bundle(
-                bundle,
-                reference_image=variant["image"],
-                reference_tissue_mask=variant["tissue_mask"],
-                reference_nuclei_mask=variant["nuclei_mask"],
-                target_tissue_mask=target_tissue_mask,
-                target_nuclei_mask=target_nuclei_mask,
-                prompt=prompt,
-            )
-            outputs[(variant_name, ip_scale)] = prediction
-            output_arrays[variant_name] = pil_to_chw_float(prediction)
-            prediction_path = sample_dir / f"{variant_name}_ip_scale_{format_scale(ip_scale)}.png"
-            prediction.save(prediction_path)
-            rows.append(
-                {
-                    "sample_index": sample_index,
-                    "sample_id": sample_id,
-                    "reference_sample_id": ref_id,
-                    "variant": variant_name,
-                    "jitter_type": variant["jitter_type"],
-                    "jitter_seed": variant["jitter_seed"],
-                    "ip_scale": float(ip_scale),
-                    "path": str(prediction_path),
-                    "reference_jitter_path": str(sample_dir / f"reference_{variant_name}.png"),
-                    "l1_to_target": image_l1(output_arrays[variant_name], target_array),
-                    "mse_to_target": image_mse(output_arrays[variant_name], target_array),
-                    "reference_l1_vs_normal": image_l1(
-                        pil_to_chw_float(jitter_ref_pil),
-                        pil_to_chw_float(reference_pil),
-                    ),
-                    **feature_diagnostics.get(variant_name, {}),
-                }
-            )
+            for controlnet_scale in controlnet_scales:
+                bundle.controlnet_conditioning_scale = float(controlnet_scale)
+                for ip_scale in ip_scales:
+                    set_ip_adapter_scale(bundle.flux_pipeline.transformer, ip_scale)
+                    prediction = run_cross_v1_bundle(
+                        bundle,
+                        reference_image=variant["image"],
+                        reference_tissue_mask=variant["tissue_mask"],
+                        reference_nuclei_mask=variant["nuclei_mask"],
+                        target_tissue_mask=target_tissue_mask,
+                        target_nuclei_mask=target_nuclei_mask,
+                        prompt=prompt,
+                    )
+                    key = (variant_name, ip_scale, controlnet_scale)
+                    outputs[key] = prediction
+                    output_arrays[key] = pil_to_chw_float(prediction)
+                    prediction_path = (
+                        sample_dir
+                        / (
+                            f"{variant_name}_ip_scale_{format_scale(ip_scale)}"
+                            f"_cn_scale_{format_scale(controlnet_scale)}.png"
+                        )
+                    )
+                    prediction.save(prediction_path)
+                    rows.append(
+                        {
+                            "sample_index": sample_index,
+                            "sample_id": sample_id,
+                            "reference_sample_id": ref_id,
+                            "variant": variant_name,
+                            "jitter_type": variant["jitter_type"],
+                            "jitter_seed": variant["jitter_seed"],
+                            "ip_scale": float(ip_scale),
+                            "controlnet_scale": float(controlnet_scale),
+                            "path": str(prediction_path),
+                            "reference_jitter_path": str(sample_dir / f"reference_{variant_name}.png"),
+                            "l1_to_target": image_l1(output_arrays[key], target_array),
+                            "mse_to_target": image_mse(output_arrays[key], target_array),
+                            "reference_l1_vs_normal": image_l1(
+                                pil_to_chw_float(jitter_ref_pil),
+                                pil_to_chw_float(reference_pil),
+                            ),
+                            **feature_diagnostics.get(variant_name, {}),
+                        }
+                    )
 
-    normal_output = output_arrays.get("normal")
+    normal_outputs = {
+        (ip_scale, controlnet_scale): output_arrays[("normal", ip_scale, controlnet_scale)]
+        for controlnet_scale in controlnet_scales
+        for ip_scale in ip_scales
+        if ("normal", ip_scale, controlnet_scale) in output_arrays
+    }
     for row in rows:
-        current = output_arrays[str(row["variant"])]
+        ip_scale = float(row["ip_scale"])
+        controlnet_scale = float(row["controlnet_scale"])
+        current = output_arrays[(str(row["variant"]), ip_scale, controlnet_scale)]
+        normal_output = normal_outputs.get((ip_scale, controlnet_scale))
         if normal_output is not None:
             row["l1_vs_normal_output"] = image_l1(current, normal_output)
             row["mse_vs_normal_output"] = image_mse(current, normal_output)
@@ -324,7 +369,8 @@ def run_sample_jitter_grid(
         target=target_pil,
         outputs=outputs,
         variants=variants,
-        scales=[ip_scale],
+        scales=ip_scales,
+        controlnet_scales=controlnet_scales,
         thumbnail_size=thumbnail_size,
         title=f"{sample_id} | ref={ref_id} | ref jitter only",
     )
@@ -432,9 +478,12 @@ def tensor_to_pil(image) -> Image.Image:
 
 
 def aggregate_jitter_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grouped: dict[tuple[str, float | None, float | None], list[dict[str, Any]]] = defaultdict(list)
+    has_scale_grid = any("ip_scale" in row or "controlnet_scale" in row for row in rows)
     for row in rows:
-        grouped[str(row["jitter_type"])].append(row)
+        ip_scale = float(row["ip_scale"]) if "ip_scale" in row else None
+        controlnet_scale = float(row["controlnet_scale"]) if "controlnet_scale" in row else None
+        grouped[(str(row["jitter_type"]), ip_scale, controlnet_scale)].append(row)
 
     metric_keys = [
         "reference_l1_vs_normal",
@@ -450,8 +499,18 @@ def aggregate_jitter_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "ip_hidden_states_vs_normal_rmse",
     ]
     by_jitter_type: dict[str, dict[str, float]] = {}
-    for jitter_type, group_rows in sorted(grouped.items()):
-        by_jitter_type[jitter_type] = {"num_outputs": float(len(group_rows))}
+    for (jitter_type, ip_scale, controlnet_scale), group_rows in sorted(
+        grouped.items(),
+        key=lambda item: (
+            item[0][0],
+            -1.0 if item[0][1] is None else item[0][1],
+            -1.0 if item[0][2] is None else item[0][2],
+        ),
+    ):
+        key = jitter_type
+        if has_scale_grid and ip_scale is not None and controlnet_scale is not None:
+            key = f"{jitter_type}@ip{format_scale(ip_scale)}_cn{format_scale(controlnet_scale)}"
+        by_jitter_type[key] = {"num_outputs": float(len(group_rows))}
         for metric_key in metric_keys:
             values = [
                 float(row[metric_key])

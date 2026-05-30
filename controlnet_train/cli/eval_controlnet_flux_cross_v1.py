@@ -30,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
+    parser.add_argument("--ip-scale", type=float, default=1.0)
     parser.add_argument("--prompt-source", choices=["metadata", "dataset"], default="dataset")
     parser.add_argument("--prompt", default=None, help="Override every sample with one prompt.")
     parser.add_argument(
@@ -146,6 +147,7 @@ def main(argv=None) -> int:
         num_inference_steps=args.num_inference_steps,
         guidance_scale=args.guidance_scale,
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
+        ip_adapter_scale=args.ip_scale,
     )
 
     metric_rows: list[dict[str, Any]] = []
@@ -216,6 +218,8 @@ def main(argv=None) -> int:
             "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", math.nan)),
             "area_coverage_ratio": float(record.get("area_coverage_ratio", math.nan)),
             "color_match_applied": args.color_match != "none",
+            "ip_scale": float(args.ip_scale),
+            "controlnet_conditioning_scale": float(args.controlnet_conditioning_scale),
             **metrics,
         }
         metric_rows.append(metric_row)
@@ -248,6 +252,8 @@ def main(argv=None) -> int:
 
     _write_metrics(output_dir, metric_rows)
     summary = aggregate_metrics(metric_rows)
+    summary["ip_scale"] = float(args.ip_scale)
+    summary["controlnet_conditioning_scale"] = float(args.controlnet_conditioning_scale)
     (output_dir / "metrics_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=True),
         encoding="utf8",
