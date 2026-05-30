@@ -209,7 +209,11 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
                     )
                     ip_attn = ip_attn.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
                     image_ip_output = image_ip_output + float(scale) * ip_attn.to(output.dtype)
-                output[:, txt_seq_len:, :] = output[:, txt_seq_len:, :] + image_ip_output
+                image_output = output[:, txt_seq_len:, :] + image_ip_output
+                if txt_seq_len > 0:
+                    output = torch.cat([output[:, :txt_seq_len, :], image_output], dim=1)
+                else:
+                    output = image_output
 
         return output.to(hidden_states.dtype)
 
