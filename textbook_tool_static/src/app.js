@@ -497,9 +497,15 @@ async function downloadZip() {
     const entry = state.completedMasks.get(file.name);
     if (!entry) continue;
     const imageId = sanitize(file.name.replace(/\.[^.]+$/, ""));
+    const idMaskCanvas = maskToCanvas(entry.mask, entry.width, entry.height);
+    const rgbMaskCanvas = maskToRgbCanvas(entry.mask, entry.width, entry.height);
     files.push({
       name: `masks/${imageId}_mask.png`,
-      data: new Uint8Array(await canvasToBlob(maskToCanvas(entry.mask, entry.width, entry.height)).then((blob) => blob.arrayBuffer()))
+      data: await canvasToUint8Array(idMaskCanvas)
+    });
+    files.push({
+      name: `masks/${imageId}_mask_rgb.png`,
+      data: await canvasToUint8Array(rgbMaskCanvas)
     });
   }
   if (!files.length) {
@@ -529,6 +535,28 @@ function maskToCanvas(mask, width, height) {
   }
   canvas.getContext("2d").putImageData(imageData, 0, 0);
   return canvas;
+}
+
+function maskToRgbCanvas(mask, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const imageData = new ImageData(width, height);
+  for (let i = 0; i < mask.length; i += 1) {
+    const [r, g, b] = hexToRgb(colorForTissue(mask[i]));
+    const idx = i * 4;
+    imageData.data[idx] = r;
+    imageData.data[idx + 1] = g;
+    imageData.data[idx + 2] = b;
+    imageData.data[idx + 3] = 255;
+  }
+  canvas.getContext("2d").putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+async function canvasToUint8Array(canvas) {
+  const blob = await canvasToBlob(canvas);
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
 function canvasToBlob(canvas) {

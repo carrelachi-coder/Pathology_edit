@@ -26,6 +26,7 @@ CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/ch
 CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_phase1_ref_warmup}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
 LOAD_REF_ENCODER="${LOAD_REF_ENCODER:-1}"
+LOAD_IP_ADAPTER="${LOAD_IP_ADAPTER:-1}"
 
 MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
 IFS=',' read -r -a GPU_ID_ARRAY <<< "${GPU_IDS}"
@@ -134,6 +135,9 @@ fi
 if [[ "${LOAD_REF_ENCODER}" == "1" ]]; then
   TRAIN_CHECKPOINT_ARGS+=(--a1-lite-load-ref-encoder)
 fi
+if [[ "${LOAD_IP_ADAPTER}" == "0" ]]; then
+  TRAIN_CHECKPOINT_ARGS+=(--no-load-ip-adapter-from-controlnet)
+fi
 
 accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GPU_IDS}" \
   controlnet_train/cli/train_controlnet_flux_cross_v1.py \
@@ -141,7 +145,6 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --train-metadata "${CROSS_META}" \
   "${TRAIN_HED_ARGS[@]}" \
   --a1-lite \
-  --no-load-ip-adapter-from-controlnet \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
   "${TRAIN_CHECKPOINT_ARGS[@]}" \
   --output-dir "${CROSS_V1_OUTPUT_DIR}" \
