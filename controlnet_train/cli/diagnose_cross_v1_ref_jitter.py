@@ -323,6 +323,9 @@ def run_sample_jitter_grid(
                         )
                     )
                     prediction.save(prediction_path)
+                    del prediction
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                     rows.append(
                         {
                             "sample_index": sample_index,

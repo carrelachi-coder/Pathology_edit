@@ -168,6 +168,7 @@ def set_ip_adapter_scale(transformer: nn.Module, scale: float) -> None:
                 processor.scale = float(scale)
 
 
+@torch.inference_mode()
 def run_cross_v1_bundle(
     bundle: CrossV1InferenceBundle,
     reference_image: torch.Tensor,
@@ -520,6 +521,7 @@ def _count_conv_blocks(state_dict: dict[str, torch.Tensor], prefix: str) -> int:
     )
 
 
+@torch.inference_mode()
 def _sample_with_flux_controlnet(
     *,
     pipe,

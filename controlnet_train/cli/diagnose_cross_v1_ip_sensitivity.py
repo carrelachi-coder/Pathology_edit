@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 from PIL import Image, ImageDraw
 
 if __package__ in (None, ""):
@@ -396,6 +397,7 @@ def run_sample_grid(
     return rows, panel_path
 
 
+@torch.inference_mode()
 def collect_reference_feature_diagnostics(
     *,
     bundle,
