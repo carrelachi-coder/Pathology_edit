@@ -148,6 +148,39 @@ def parse_args(input_args=None) -> argparse.Namespace:
             "Defaults to --learning-rate."
         ),
     )
+    parser.add_argument(
+        "--controlnet-train-mode",
+        type=str,
+        default="all",
+        choices=["all", "outputs"],
+        help=(
+            "ControlNet unfreeze policy for non-A1-lite training. 'all' trains the whole "
+            "ControlNet; 'outputs' trains only residual output projections by default."
+        ),
+    )
+    parser.add_argument(
+        "--controlnet-train-x-embedder",
+        action="store_true",
+        help="With --controlnet-train-mode outputs, also train controlnet_x_embedder.",
+    )
+    parser.add_argument(
+        "--controlnet-train-last-n-blocks",
+        type=int,
+        default=0,
+        help=(
+            "With --controlnet-train-mode outputs, also train the last N double-stream "
+            "ControlNet transformer blocks."
+        ),
+    )
+    parser.add_argument(
+        "--controlnet-train-last-n-single-blocks",
+        type=int,
+        default=0,
+        help=(
+            "With --controlnet-train-mode outputs, also train the last N single-stream "
+            "ControlNet transformer blocks."
+        ),
+    )
     parser.add_argument("--use-8bit-adam", action="store_true")
     parser.add_argument("--adam-beta1", type=float, default=0.9)
     parser.add_argument("--adam-beta2", type=float, default=0.999)

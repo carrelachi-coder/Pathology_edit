@@ -116,6 +116,16 @@ class TrainingCliTests(unittest.TestCase):
                 "phase5_runs/cross_meta/metadata_cross_train.json",
                 "--uni-checkpoint-path",
                 "UNI-2h/pytorch_model.bin",
+                "--conditioning-learning-rate",
+                "0.0000005",
+                "--controlnet-train-mode",
+                "outputs",
+                "--controlnet-train-x-embedder",
+                "--controlnet-train-last-n-blocks",
+                "2",
+                "--controlnet-train-last-n-single-blocks",
+                "1",
+                "--load-ref-encoder-from-checkpoint",
                 "--self-reconstruction-sample-prob",
                 "0.2",
                 "--self-reconstruction-l1-weight",
@@ -148,6 +158,12 @@ class TrainingCliTests(unittest.TestCase):
             ]
         )
 
+        self.assertEqual(args.conditioning_learning_rate, 0.0000005)
+        self.assertEqual(args.controlnet_train_mode, "outputs")
+        self.assertTrue(args.controlnet_train_x_embedder)
+        self.assertEqual(args.controlnet_train_last_n_blocks, 2)
+        self.assertEqual(args.controlnet_train_last_n_single_blocks, 1)
+        self.assertTrue(args.load_ref_encoder_from_checkpoint)
         self.assertEqual(args.self_reconstruction_sample_prob, 0.2)
         self.assertEqual(args.self_reconstruction_l1_weight, 1.5)
         self.assertEqual(args.perceptual_loss_weight, 0.75)

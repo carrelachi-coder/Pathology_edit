@@ -408,6 +408,57 @@ def _split_ip_adapter_module_groups(
     return double_modules, single_modules
 
 
+def _configure_controlnet_trainable_params(
+    controlnet: nn.Module,
+    *,
+    mode: str,
+    train_x_embedder: bool = False,
+    train_last_n_blocks: int = 0,
+    train_last_n_single_blocks: int = 0,
+) -> list[str]:
+    """Apply a ControlNet unfreeze policy and return trainable parameter names."""
+    mode = str(mode or "all").strip().lower()
+    if mode not in {"all", "outputs"}:
+        raise ValueError(f"Unsupported ControlNet train mode {mode!r}; choose 'all' or 'outputs'.")
+
+    if mode == "all":
+        controlnet.requires_grad_(True)
+        return [name for name, param in controlnet.named_parameters() if param.requires_grad]
+
+    controlnet.requires_grad_(False)
+    _set_module_requires_grad(getattr(controlnet, "controlnet_blocks", None), True)
+    _set_module_requires_grad(getattr(controlnet, "controlnet_single_blocks", None), True)
+
+    if train_x_embedder:
+        _set_module_requires_grad(getattr(controlnet, "controlnet_x_embedder", None), True)
+
+    _set_last_n_modules_requires_grad(
+        getattr(controlnet, "transformer_blocks", None),
+        train_last_n_blocks,
+    )
+    _set_last_n_modules_requires_grad(
+        getattr(controlnet, "single_transformer_blocks", None),
+        train_last_n_single_blocks,
+    )
+    return [name for name, param in controlnet.named_parameters() if param.requires_grad]
+
+
+def _set_module_requires_grad(module: nn.Module | None, value: bool) -> None:
+    if module is not None:
+        module.requires_grad_(value)
+
+
+def _set_last_n_modules_requires_grad(modules: nn.Module | None, count: int) -> None:
+    if modules is None:
+        return
+    count = max(0, int(count or 0))
+    if count == 0:
+        return
+    children = list(modules)
+    for module in children[-count:]:
+        module.requires_grad_(True)
+
+
 def _sync_ip_adapter_to_transformer(
     ip_wrapper: "IPAdapterTrainableWrapper",
     transformer: FluxTransformer2DModel,
@@ -1386,7 +1437,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         _load_condition_modules_from_checkpoint(
             modules,
             conditioning_checkpoint,
-            load_ref_encoder=bool(getattr(args, "a1_lite_load_ref_encoder", False)),
+            load_ref_encoder=bool(
+                getattr(args, "a1_lite_load_ref_encoder", False)
+                or getattr(args, "load_ref_encoder_from_checkpoint", False)
+            ),
         )
 
     # ---- accelerator setup ----
@@ -1596,6 +1650,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     if a1_lite:
         flux_controlnet.eval()
         flux_controlnet.requires_grad_(False)
+        controlnet_trainable_names: list[str] = []
         for name, module in modules.items():
             module.to(accelerator.device, dtype=weight_dtype)
             if name == "ref_encoder":
@@ -1605,6 +1660,23 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 module.requires_grad_(False)
     else:
         flux_controlnet.train()
+        controlnet_trainable_names = _configure_controlnet_trainable_params(
+            flux_controlnet,
+            mode=getattr(args, "controlnet_train_mode", "all"),
+            train_x_embedder=bool(getattr(args, "controlnet_train_x_embedder", False)),
+            train_last_n_blocks=max(0, int(getattr(args, "controlnet_train_last_n_blocks", 0) or 0)),
+            train_last_n_single_blocks=max(
+                0,
+                int(getattr(args, "controlnet_train_last_n_single_blocks", 0) or 0),
+            ),
+        )
+        logger.info(
+            "ControlNet train mode=%s trainable_tensors=%s trainable_params=%s sample_names=%s",
+            getattr(args, "controlnet_train_mode", "all"),
+            len(controlnet_trainable_names),
+            sum(p.numel() for p in flux_controlnet.parameters() if p.requires_grad),
+            ", ".join(controlnet_trainable_names[:12]),
+        )
         for module in modules.values():
             module.train()
     # UNI2-h backbone inside ref_encoder stays frozen
@@ -1619,7 +1691,16 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     if args.enable_xformers_memory_efficient_attention and is_xformers_available():
         flux_transformer.enable_xformers_memory_efficient_attention()
         flux_controlnet.enable_xformers_memory_efficient_attention()
-    if args.gradient_checkpointing and not a1_lite:
+    should_checkpoint_controlnet = (
+        args.gradient_checkpointing
+        and not a1_lite
+        and (
+            getattr(args, "controlnet_train_mode", "all") == "all"
+            or int(getattr(args, "controlnet_train_last_n_blocks", 0) or 0) > 0
+            or int(getattr(args, "controlnet_train_last_n_single_blocks", 0) or 0) > 0
+        )
+    )
+    if should_checkpoint_controlnet:
         flux_controlnet.enable_gradient_checkpointing()
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -1636,8 +1717,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     ip_ref_learning_rate = float(
         getattr(args, "ip_ref_learning_rate", None) or (args.learning_rate * 10.0)
     )
-    ip_single_learning_rate = float(
-        getattr(args, "ip_single_learning_rate", None) or ip_ref_learning_rate
+    raw_ip_single_learning_rate = getattr(args, "ip_single_learning_rate", None)
+    ip_single_learning_rate = (
+        ip_ref_learning_rate
+        if raw_ip_single_learning_rate is None
+        else float(raw_ip_single_learning_rate)
     )
 
     if args.use_8bit_adam:
@@ -1676,6 +1760,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     controlnet_lr_modules = [] if a1_lite else [flux_controlnet]
     conditioning_lr_modules = [] if a1_lite else list(modules.values())
     double_ip_modules, single_ip_modules = _split_ip_adapter_module_groups(ip_adapter_modules)
+    if ip_single_learning_rate <= 0.0:
+        for module in single_ip_modules:
+            module.requires_grad_(False)
     controlnet_lr_params = [
         p for module in controlnet_lr_modules for p in module.parameters() if p.requires_grad
     ]
@@ -1691,17 +1778,27 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     ip_single_lr_params = [
         p for module in single_ip_modules for p in module.parameters() if p.requires_grad
     ]
-    if ip_single_learning_rate <= 0.0:
-        ip_single_lr_params = []
     optimizer_param_groups = []
-    if controlnet_lr_params:
-        optimizer_param_groups.append({"params": controlnet_lr_params, "lr": args.learning_rate})
-    if conditioning_lr_params:
-        optimizer_param_groups.append({"params": conditioning_lr_params, "lr": conditioning_learning_rate})
-    if ip_ref_lr_params:
-        optimizer_param_groups.append({"params": ip_ref_lr_params, "lr": ip_ref_learning_rate})
-    if ip_single_lr_params:
-        optimizer_param_groups.append({"params": ip_single_lr_params, "lr": ip_single_learning_rate})
+
+    def add_optimizer_group(name: str, params: list[torch.nn.Parameter], lr: float) -> None:
+        if not params:
+            logger.info("Optimizer group %s: lr=%s trainable_tensors=0 trainable_params=0", name, lr)
+            return
+        optimizer_param_groups.append({"params": params, "lr": lr})
+        logger.info(
+            "Optimizer group %s: lr=%s trainable_tensors=%s trainable_params=%s",
+            name,
+            lr,
+            len(params),
+            sum(p.numel() for p in params),
+        )
+
+    add_optimizer_group("controlnet", controlnet_lr_params, args.learning_rate)
+    add_optimizer_group("conditioning", conditioning_lr_params, conditioning_learning_rate)
+    add_optimizer_group("ip_ref", ip_ref_lr_params, ip_ref_learning_rate)
+    add_optimizer_group("ip_single", ip_single_lr_params, ip_single_learning_rate)
+    if not optimizer_param_groups:
+        raise ValueError("No trainable parameters were added to the optimizer.")
     logger.info(
         (
             "Optimizer LR groups: controlnet_lr=%s params=%s, "

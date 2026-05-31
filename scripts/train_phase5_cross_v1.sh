@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-# Phase 5.3 Cross V1 Experiment A continuation.
-# Load the 20k Cross V1 checkpoint, lightly unfreeze ControlNet/spatial
-# conditioning, and continue the reference branch with weak HED counterfactual
-# + sparse self-reconstruction. Do not add swap/style/single-stream IP.
+# Phase 5.3 Cross V1 Experiment B continuation.
+# Load the 20k Cross V1 checkpoint, train only ControlNet residual output
+# projections plus spatial conditioning/IP/ref, and continue with weak HED
+# counterfactual + sparse self-reconstruction. Do not add swap/style/single-stream IP.
 
 GPU_IDS="${GPU_IDS:-1,2,4}"
 export CUDA_VISIBLE_DEVICES="${GPU_IDS}"
@@ -25,7 +25,7 @@ UNI_CHECKPOINT="${UNI_CHECKPOINT:-${PROJECT_ROOT}/UNI-2h/pytorch_model.bin}"
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
 SOURCE_CROSS_V1_OUTPUT_DIR="${SOURCE_CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_skip_perceiver_20k}"
 CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/checkpoint-20000}"
-CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_expA_small_unfreeze_weak_hed}"
+CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_expB_outputs_weak_hed}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
 LOAD_REF_ENCODER="${LOAD_REF_ENCODER:-1}"
 LOAD_IP_ADAPTER="${LOAD_IP_ADAPTER:-1}"
@@ -56,6 +56,10 @@ SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-0}"
 SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.15}"
 SELF_RECONSTRUCTION_L1_WEIGHT="${SELF_RECONSTRUCTION_L1_WEIGHT:-0.05}"
 CONTROLNET_LEARNING_RATE="${CONTROLNET_LEARNING_RATE:-1e-6}"
+CONTROLNET_TRAIN_MODE="${CONTROLNET_TRAIN_MODE:-outputs}"
+CONTROLNET_TRAIN_X_EMBEDDER="${CONTROLNET_TRAIN_X_EMBEDDER:-0}"
+CONTROLNET_TRAIN_LAST_N_BLOCKS="${CONTROLNET_TRAIN_LAST_N_BLOCKS:-0}"
+CONTROLNET_TRAIN_LAST_N_SINGLE_BLOCKS="${CONTROLNET_TRAIN_LAST_N_SINGLE_BLOCKS:-0}"
 CONDITIONING_LEARNING_RATE="${CONDITIONING_LEARNING_RATE:-5e-7}"
 IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-1e-5}"
 IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-0}"
@@ -135,6 +139,15 @@ if [[ "${GRADIENT_CHECKPOINTING}" == "1" ]]; then
   TRAIN_MEMORY_ARGS+=(--gradient-checkpointing)
 fi
 
+TRAIN_CONTROLNET_ARGS=(
+  --controlnet-train-mode "${CONTROLNET_TRAIN_MODE}"
+  --controlnet-train-last-n-blocks "${CONTROLNET_TRAIN_LAST_N_BLOCKS}"
+  --controlnet-train-last-n-single-blocks "${CONTROLNET_TRAIN_LAST_N_SINGLE_BLOCKS}"
+)
+if [[ "${CONTROLNET_TRAIN_X_EMBEDDER}" == "1" ]]; then
+  TRAIN_CONTROLNET_ARGS+=(--controlnet-train-x-embedder)
+fi
+
 CLI_HELP="$("${PYTHON_BIN}" controlnet_train/cli/train_controlnet_flux_cross_v1.py --help 2>&1 || true)"
 
 TRAIN_DATALOADER_ARGS=(--dataloader-num-workers "${DATALOADER_NUM_WORKERS}")
@@ -187,6 +200,9 @@ if [[ -n "${CONTROLNET_CHECKPOINT}" ]]; then
     --load-conditioning-from-checkpoint
   )
 fi
+if [[ "${LOAD_REF_ENCODER}" == "1" ]]; then
+  TRAIN_CHECKPOINT_ARGS+=(--load-ref-encoder-from-checkpoint)
+fi
 if [[ "${LOAD_IP_ADAPTER}" == "0" ]]; then
   TRAIN_CHECKPOINT_ARGS+=(--no-load-ip-adapter-from-controlnet)
 fi
@@ -213,6 +229,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --self-reconstruction-sample-prob "${SELF_RECONSTRUCTION_SAMPLE_PROB}" \
   --self-reconstruction-l1-weight "${SELF_RECONSTRUCTION_L1_WEIGHT}" \
   --learning-rate "${CONTROLNET_LEARNING_RATE}" \
+  "${TRAIN_CONTROLNET_ARGS[@]}" \
   --conditioning-learning-rate "${CONDITIONING_LEARNING_RATE}" \
   --ip-ref-learning-rate "${IP_REF_LEARNING_RATE}" \
   --ip-single-learning-rate "${IP_SINGLE_LEARNING_RATE}" \
@@ -246,5 +263,5 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   "${TRAIN_AUX_INTERVAL_ARGS[@]}" \
   --guidance-scale 3.5 \
   --report-to tensorboard \
-  --tracker-project-name flux_controlnet_phase5_cross_v1_expA_small_unfreeze_weak_hed \
+  --tracker-project-name flux_controlnet_phase5_cross_v1_expB_outputs_weak_hed \
   --prompt-source dataset

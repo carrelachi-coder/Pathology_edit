@@ -18,11 +18,13 @@ if torch is not None:
     try:
         from controlnet_train.training.flux_phase5_cross_v1 import (
             collate_cross_batch,
+            _configure_controlnet_trainable_params,
             _insert_self_reconstruction_samples,
             _use_random_reference,
         )
     except ModuleNotFoundError:
         collate_cross_batch = None
+        _configure_controlnet_trainable_params = None
         _insert_self_reconstruction_samples = None
         _use_random_reference = None
 
@@ -201,6 +203,54 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertEqual(batch["target_image"].shape[0], 2)
         self.assertEqual(batch["sample_ids"], ["sample-1.0", "sample-2.0"])
         self.assertTrue(torch.equal(batch["target_tissue_mask"][0], batch["target_tissue_mask"][1]))
+
+    def test_controlnet_outputs_train_mode_only_unfreezes_residual_outputs_by_default(self):
+        if _configure_controlnet_trainable_params is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
+
+        class TinyControlNet(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.controlnet_x_embedder = torch.nn.Linear(2, 2)
+                self.transformer_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2), torch.nn.Linear(2, 2)])
+                self.single_transformer_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2)])
+                self.controlnet_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2), torch.nn.Linear(2, 2)])
+                self.controlnet_single_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2)])
+
+        model = TinyControlNet()
+        trainable = _configure_controlnet_trainable_params(model, mode="outputs")
+
+        self.assertTrue(trainable)
+        self.assertTrue(all(name.startswith(("controlnet_blocks", "controlnet_single_blocks")) for name in trainable))
+        self.assertFalse(any(param.requires_grad for param in model.controlnet_x_embedder.parameters()))
+        self.assertFalse(any(param.requires_grad for block in model.transformer_blocks for param in block.parameters()))
+
+    def test_controlnet_outputs_train_mode_can_unfreeze_x_embedder_and_tail_blocks(self):
+        if _configure_controlnet_trainable_params is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
+
+        class TinyControlNet(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.controlnet_x_embedder = torch.nn.Linear(2, 2)
+                self.transformer_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2), torch.nn.Linear(2, 2)])
+                self.single_transformer_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2)])
+                self.controlnet_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2), torch.nn.Linear(2, 2)])
+                self.controlnet_single_blocks = torch.nn.ModuleList([torch.nn.Linear(2, 2)])
+
+        model = TinyControlNet()
+        trainable = _configure_controlnet_trainable_params(
+            model,
+            mode="outputs",
+            train_x_embedder=True,
+            train_last_n_blocks=1,
+            train_last_n_single_blocks=1,
+        )
+
+        self.assertIn("controlnet_x_embedder.weight", trainable)
+        self.assertIn("transformer_blocks.1.weight", trainable)
+        self.assertIn("single_transformer_blocks.0.weight", trainable)
+        self.assertFalse(any(param.requires_grad for param in model.transformer_blocks[0].parameters()))
 
 
 if __name__ == "__main__":
