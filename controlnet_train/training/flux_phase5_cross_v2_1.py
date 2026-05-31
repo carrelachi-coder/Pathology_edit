@@ -1,0 +1,1094 @@
+"""Phase 5.3 Cross V2.1 training for Flux ControlNet.
+
+Cross V2.1 removes the Cross V1 IP-Adapter path. Reference appearance enters
+the ControlNet condition directly as:
+
+    [z_ref, ref_tissue_feat, ref_nuclei_feat, tar_tissue_feat, tar_nuclei_feat]
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import logging
+import math
+import os
+import random
+import shutil
+from pathlib import Path
+from typing import Callable
+
+import accelerate
+import torch
+import torch.nn as nn
+import transformers
+from accelerate import Accelerator
+from accelerate.logging import get_logger
+from accelerate.utils import ProjectConfiguration, set_seed
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    FluxControlNetModel,
+    FluxControlNetPipeline,
+    FluxTransformer2DModel,
+)
+from diffusers.optimization import get_scheduler
+from diffusers.training_utils import compute_density_for_timestep_sampling
+from diffusers.utils import is_wandb_available
+from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
+from diffusers.utils.torch_utils import is_compiled_module
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
+
+from controlnet_train.data import CrossReconstructionDataset
+from controlnet_train.data.common import default_prompt_for_dataset
+from controlnet_train.modules import (
+    HierarchicalTissueEmbedding,
+    NucleiConditionEncoder,
+    TissueConditionDownsampler,
+)
+from controlnet_train.modules.cross_v2_1_conditioning import (
+    CrossV21ControlSpec,
+    build_cross_v2_1_condition,
+    deterministic_latent_from_posterior,
+)
+from controlnet_train.training.conditioning import patch_controlnet_x_embedder
+
+if is_wandb_available():
+    import wandb  # noqa: F401
+
+logger = get_logger(__name__)
+if is_torch_npu_available():
+    torch.npu.config.allow_internal_format = False
+
+
+def collate_cross_v2_1_batch(examples: list[dict]) -> dict:
+    flattened: list[dict] = []
+    for item in examples:
+        if "paired_counterfactual" in item:
+            flattened.extend(item["paired_counterfactual"])
+        else:
+            flattened.append(item)
+    examples = flattened
+    return {
+        "sample_ids": [item["sample_id"] for item in examples],
+        "reference_sample_ids": [item["reference_sample_id"] for item in examples],
+        "target_image": torch.stack([item["target_image"] for item in examples]),
+        "reference_image": torch.stack([item["reference_image"] for item in examples]),
+        "target_tissue_mask": torch.stack([item["target_tissue_mask"] for item in examples]),
+        "target_nuclei_mask": torch.stack([item["target_nuclei_mask"] for item in examples]),
+        "reference_tissue_mask": torch.stack([item["reference_tissue_mask"] for item in examples]),
+        "reference_nuclei_mask": torch.stack([item["reference_nuclei_mask"] for item in examples]),
+        "prompts": [item["prompt"] for item in examples],
+        "sample_modes": [item.get("sample_mode", "cross") for item in examples],
+    }
+
+
+def _configure_controlnet_trainable_params(
+    controlnet: nn.Module,
+    *,
+    mode: str,
+    train_x_embedder: bool = False,
+    train_last_n_blocks: int = 0,
+    train_last_n_single_blocks: int = 0,
+) -> list[str]:
+    mode = str(mode or "all").strip().lower()
+    if mode not in {"all", "outputs"}:
+        raise ValueError(f"Unsupported ControlNet train mode {mode!r}; choose 'all' or 'outputs'.")
+
+    if mode == "all":
+        controlnet.requires_grad_(True)
+        return [name for name, param in controlnet.named_parameters() if param.requires_grad]
+
+    controlnet.requires_grad_(False)
+    _set_module_requires_grad(getattr(controlnet, "controlnet_blocks", None), True)
+    _set_module_requires_grad(getattr(controlnet, "controlnet_single_blocks", None), True)
+    if train_x_embedder:
+        _set_module_requires_grad(getattr(controlnet, "controlnet_x_embedder", None), True)
+    _set_last_n_modules_requires_grad(getattr(controlnet, "transformer_blocks", None), train_last_n_blocks)
+    _set_last_n_modules_requires_grad(
+        getattr(controlnet, "single_transformer_blocks", None),
+        train_last_n_single_blocks,
+    )
+    return [name for name, param in controlnet.named_parameters() if param.requires_grad]
+
+
+def _set_module_requires_grad(module: nn.Module | None, value: bool) -> None:
+    if module is not None:
+        module.requires_grad_(value)
+
+
+def _set_last_n_modules_requires_grad(modules: nn.Module | None, count: int) -> None:
+    if modules is None:
+        return
+    count = max(0, int(count or 0))
+    if count == 0:
+        return
+    for module in list(modules)[-count:]:
+        module.requires_grad_(True)
+
+
+def _encode_images_to_latents(vae: AutoencoderKL, images: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+    device = next(vae.parameters()).device
+    images = images.to(device=device, dtype=dtype)
+    images = images * 2.0 - 1.0
+    latents = vae.encode(images).latent_dist.sample()
+    return (latents - vae.config.shift_factor) * vae.config.scaling_factor
+
+
+def _encode_images_to_deterministic_latents(
+    vae: AutoencoderKL,
+    images: torch.Tensor,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    device = next(vae.parameters()).device
+    images = images.to(device=device, dtype=dtype)
+    images = images * 2.0 - 1.0
+    posterior = vae.encode(images).latent_dist
+    latents = deterministic_latent_from_posterior(posterior)
+    return (latents - vae.config.shift_factor) * vae.config.scaling_factor
+
+
+def _build_cross_v2_1_control_batch(
+    *,
+    batch: dict,
+    modules: dict[str, nn.Module],
+    vae: AutoencoderKL,
+    weight_dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    device = next(vae.parameters()).device
+    target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
+    reference_image_latent = _encode_images_to_deterministic_latents(
+        vae,
+        batch["reference_image"],
+        weight_dtype,
+    )
+
+    ref_tissue_feat = modules["tissue_downsampler"](
+        modules["hte"](batch["reference_tissue_mask"].to(device=device))
+    ).to(dtype=weight_dtype)
+    ref_nuclei_feat = modules["nuclei_encoder"](
+        batch["reference_nuclei_mask"].to(device=device)
+    ).to(dtype=weight_dtype)
+    tar_tissue_feat = modules["tissue_downsampler"](
+        modules["hte"](batch["target_tissue_mask"].to(device=device))
+    ).to(dtype=weight_dtype)
+    tar_nuclei_feat = modules["nuclei_encoder"](
+        batch["target_nuclei_mask"].to(device=device)
+    ).to(dtype=weight_dtype)
+
+    control_tensor = build_cross_v2_1_condition(
+        z_ref=reference_image_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        tar_tissue_feat=tar_tissue_feat,
+        tar_nuclei_feat=tar_nuclei_feat,
+    )
+    return target_image_latent, control_tensor
+
+
+def _use_self_reconstruction_reference(batch: dict) -> dict:
+    warmup_batch = dict(batch)
+    warmup_batch["reference_image"] = batch["target_image"]
+    warmup_batch["reference_tissue_mask"] = batch["target_tissue_mask"]
+    warmup_batch["reference_nuclei_mask"] = batch["target_nuclei_mask"]
+    return warmup_batch
+
+
+def _insert_self_reconstruction_samples(batch: dict, sample_mask: torch.Tensor) -> dict:
+    mask = sample_mask.to(device=batch["target_image"].device, dtype=torch.bool)
+    if mask.ndim != 1 or mask.shape[0] != batch["target_image"].shape[0]:
+        raise ValueError(
+            f"sample_mask must have shape ({batch['target_image'].shape[0]},), got {tuple(mask.shape)}"
+        )
+    if not bool(mask.any().item()):
+        return batch
+
+    mixed = dict(batch)
+    for reference_key, target_key in (
+        ("reference_image", "target_image"),
+        ("reference_tissue_mask", "target_tissue_mask"),
+        ("reference_nuclei_mask", "target_nuclei_mask"),
+    ):
+        reference = batch[reference_key].clone()
+        reference[mask] = batch[target_key][mask].to(device=reference.device, dtype=reference.dtype)
+        mixed[reference_key] = reference
+    return mixed
+
+
+def _batch_mode_mask(batch: dict, mode: str, *, device: torch.device | str) -> torch.Tensor:
+    modes = batch.get("sample_modes")
+    if modes is None:
+        return torch.zeros(int(batch["target_image"].shape[0]), device=device, dtype=torch.bool)
+    return torch.tensor([str(value) == mode for value in modes], device=device, dtype=torch.bool)
+
+
+def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    mask = mask.to(device=values.device, dtype=torch.bool)
+    if not bool(mask.any().item()):
+        return values.new_zeros(())
+    return values[mask].mean()
+
+
+def _per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    return (prediction.float() - target.float()).pow(2).flatten(1).mean(dim=1)
+
+
+def _apply_training_prompt_policy(records: list[dict], args: argparse.Namespace) -> None:
+    prompt_override = getattr(args, "prompt", None)
+    prompt_source = getattr(args, "prompt_source", "dataset")
+    if prompt_override:
+        for record in records:
+            record["prompt"] = prompt_override
+        logger.info("Using one explicit training prompt for all %s records", len(records))
+        return
+    if prompt_source == "metadata":
+        logger.info("Using prompts from training metadata")
+        return
+    if prompt_source != "dataset":
+        raise ValueError(f"Unsupported prompt source: {prompt_source}")
+    for record in records:
+        record["prompt"] = default_prompt_for_dataset(record["dataset"])
+    logger.info(
+        "Using dataset-level training prompts: %s unique prompt(s) for %s records",
+        len({record["prompt"] for record in records}),
+        len(records),
+    )
+
+
+def _build_prompt_cache(
+    *,
+    pipeline: FluxControlNetPipeline,
+    prompts: list[str],
+    weight_dtype: torch.dtype,
+    batch_size: int,
+    device: torch.device,
+) -> tuple[dict[str, tuple[torch.Tensor, torch.Tensor]], tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+    unique_prompts = sorted(set(prompts))
+    logger.info("Encoding %s unique prompt(s) from %s training records", len(unique_prompts), len(prompts))
+    prompt_cache: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+    text_ids = None
+    with torch.no_grad():
+        for start in range(0, len(unique_prompts), batch_size):
+            prompt_batch = unique_prompts[start : start + batch_size]
+            prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+                prompt_batch,
+                prompt_2=prompt_batch,
+                device=device,
+            )
+            for index, prompt in enumerate(prompt_batch):
+                prompt_cache[prompt] = (
+                    prompt_embeds[index].to(dtype=weight_dtype, device="cpu"),
+                    pooled_prompt_embeds[index].to(dtype=weight_dtype, device="cpu"),
+                )
+        empty_prompt_embeds, empty_pooled, text_ids = pipeline.encode_prompt([""], prompt_2=[""], device=device)
+    if text_ids.dim() == 3:
+        text_ids = text_ids[0]
+    empty_prompt = (
+        empty_prompt_embeds[0].to(dtype=weight_dtype, device="cpu"),
+        empty_pooled[0].to(dtype=weight_dtype, device="cpu"),
+    )
+    return prompt_cache, empty_prompt, text_ids.to(dtype=weight_dtype, device="cpu")
+
+
+def _resolve_prompt_batch(
+    *,
+    prompts: list[str],
+    prompt_cache: dict[str, tuple[torch.Tensor, torch.Tensor]],
+    empty_prompt_embeds: torch.Tensor,
+    empty_pooled: torch.Tensor,
+    proportion_empty_prompts: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    batch_prompt = []
+    batch_pooled = []
+    for prompt in prompts:
+        if random.random() < proportion_empty_prompts:
+            batch_prompt.append(empty_prompt_embeds)
+            batch_pooled.append(empty_pooled)
+        else:
+            prompt_embeds, pooled_prompt = prompt_cache[prompt]
+            batch_prompt.append(prompt_embeds)
+            batch_pooled.append(pooled_prompt)
+    return torch.stack(batch_prompt), torch.stack(batch_pooled)
+
+
+def _prepare_packed_latent_image_ids(
+    *,
+    packed_height: int,
+    packed_width: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    if packed_height <= 0 or packed_width <= 0:
+        raise ValueError(f"packed latent grid must be positive, got {packed_height}x{packed_width}.")
+    latent_image_ids = torch.zeros(packed_height, packed_width, 3)
+    latent_image_ids[..., 1] = torch.arange(packed_height)[:, None]
+    latent_image_ids[..., 2] = torch.arange(packed_width)[None, :]
+    latent_image_ids = latent_image_ids.reshape(packed_height * packed_width, 3)
+    return latent_image_ids.to(device=device, dtype=dtype)
+
+
+def _latest_checkpoint(output_dir: str) -> str | None:
+    dirs = [directory for directory in os.listdir(output_dir) if directory.startswith("checkpoint-")]
+    if not dirs:
+        return None
+    latest = sorted(dirs, key=lambda item: int(item.split("-")[1]))[-1]
+    return os.path.join(output_dir, latest)
+
+
+def _save_checkpoint(accelerator: Accelerator, args: argparse.Namespace, global_step: int) -> str:
+    if args.checkpoints_total_limit is not None:
+        checkpoints = [
+            directory for directory in os.listdir(args.output_dir) if directory.startswith("checkpoint-")
+        ]
+        checkpoints = sorted(checkpoints, key=lambda item: int(item.split("-")[1]))
+        if len(checkpoints) >= args.checkpoints_total_limit:
+            for stale_checkpoint in checkpoints[: len(checkpoints) - args.checkpoints_total_limit + 1]:
+                shutil.rmtree(os.path.join(args.output_dir, stale_checkpoint))
+    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+    accelerator.save_state(save_path)
+    logger.info("Saved state to %s", save_path)
+    return save_path
+
+
+def _save_condition_modules(
+    output_dir: str,
+    modules: dict[str, nn.Module],
+    unwrap_model: Callable[[nn.Module], nn.Module],
+    save_dtype: torch.dtype,
+    *,
+    control_spec: CrossV21ControlSpec,
+) -> None:
+    state = {
+        "cross_version": "v2.1",
+        "cross_v2_1_control_spec": {
+            "reference_latent_channels": int(control_spec.reference_latent_channels),
+            "tissue_channels": int(control_spec.tissue_channels),
+            "nuclei_channels": int(control_spec.nuclei_channels),
+            "raw_channels": int(control_spec.raw_channels),
+            "packed_channels": int(control_spec.packed_channels),
+            "condition_order": [
+                "z_ref",
+                "ref_tissue_feat",
+                "ref_nuclei_feat",
+                "tar_tissue_feat",
+                "tar_nuclei_feat",
+            ],
+        },
+    }
+    for name, module in modules.items():
+        unwrapped = unwrap_model(module)
+        state[name] = {key: value.detach().cpu().to(save_dtype) for key, value in unwrapped.state_dict().items()}
+    torch.save(state, os.path.join(output_dir, "phase5_conditioning.pt"))
+
+
+def _save_cross_v2_1_artifacts(
+    output_dir: str,
+    args: argparse.Namespace,
+    *,
+    flux_controlnet: nn.Module,
+    modules: dict[str, nn.Module],
+    unwrap_model: Callable[[nn.Module], nn.Module],
+    control_spec: CrossV21ControlSpec,
+) -> None:
+    save_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(args.save_weight_dtype, torch.float32)
+    unwrapped_controlnet = unwrap_model(flux_controlnet)
+    if args.save_weight_dtype != "fp32":
+        unwrapped_controlnet.save_pretrained(output_dir, variant=args.save_weight_dtype)
+    else:
+        unwrapped_controlnet.save_pretrained(output_dir)
+    _save_condition_modules(
+        output_dir,
+        modules,
+        unwrap_model,
+        save_dtype,
+        control_spec=control_spec,
+    )
+
+
+def _load_cross_v2_1_controlnet_checkpoint(
+    checkpoint_path: str | Path,
+    control_spec: CrossV21ControlSpec,
+) -> FluxControlNetModel:
+    checkpoint = Path(checkpoint_path)
+    if not checkpoint.exists():
+        return FluxControlNetModel.from_pretrained(str(checkpoint_path))
+
+    controlnet_config = FluxControlNetModel.load_config(checkpoint)
+    controlnet = FluxControlNetModel.from_config(controlnet_config)
+    patch_controlnet_x_embedder(controlnet, control_spec.packed_channels)
+    state_dict = _load_diffusers_model_state_dict(checkpoint)
+    source_layout = _load_source_layout(checkpoint)
+    state_dict = _remap_x_embedder_state_dict(
+        state_dict,
+        source_layout=source_layout,
+        target_spec=control_spec,
+    )
+    controlnet.load_state_dict(state_dict, strict=True)
+    return controlnet
+
+
+def _load_source_layout(checkpoint: Path) -> dict:
+    state_path = checkpoint / "phase5_conditioning.pt"
+    if not state_path.exists():
+        return {}
+    state = _torch_load_weights(state_path)
+    if "cross_v2_1_control_spec" in state:
+        return {"kind": "cross_v2_1", **dict(state["cross_v2_1_control_spec"])}
+    if "cross_v1_control_spec" in state:
+        return {"kind": "cross_v1", **dict(state["cross_v1_control_spec"])}
+    if "cross_v1_spatial_mode" in state:
+        return {"kind": "cross_v1", "spatial_mode": str(state["cross_v1_spatial_mode"])}
+    return {}
+
+
+def _remap_x_embedder_state_dict(
+    state_dict: dict[str, torch.Tensor],
+    *,
+    source_layout: dict,
+    target_spec: CrossV21ControlSpec,
+) -> dict[str, torch.Tensor]:
+    weight_key = "controlnet_x_embedder.weight"
+    if weight_key not in state_dict:
+        return state_dict
+
+    old_weight = state_dict[weight_key]
+    new_in_features = target_spec.packed_channels
+    if old_weight.shape[1] == new_in_features:
+        return state_dict
+
+    remapped = dict(state_dict)
+    new_weight = old_weight.new_zeros((old_weight.shape[0], new_in_features))
+    kind = str(source_layout.get("kind", "")).lower()
+    spatial_mode = str(source_layout.get("spatial_mode", "reference_target")).lower()
+
+    if kind == "cross_v1":
+        if spatial_mode == "target_only":
+            copy_width = min(
+                target_spec.packed_mask_channels,
+                old_weight.shape[1],
+                new_in_features - target_spec.packed_target_mask_start,
+            )
+            if copy_width > 0:
+                start = target_spec.packed_target_mask_start
+                new_weight[:, start : start + copy_width] = old_weight[:, :copy_width]
+        else:
+            copy_width = min(
+                target_spec.packed_mask_channels * 2,
+                old_weight.shape[1],
+                new_in_features - target_spec.packed_reference_mask_start,
+            )
+            if copy_width > 0:
+                start = target_spec.packed_reference_mask_start
+                new_weight[:, start : start + copy_width] = old_weight[:, :copy_width]
+    else:
+        copy_width = min(old_weight.shape[1], new_in_features)
+        if copy_width > 0:
+            new_weight[:, :copy_width] = old_weight[:, :copy_width]
+
+    if "controlnet_x_embedder.bias" in state_dict:
+        remapped["controlnet_x_embedder.bias"] = state_dict["controlnet_x_embedder.bias"]
+    remapped[weight_key] = new_weight
+    return remapped
+
+
+def _load_diffusers_model_state_dict(checkpoint_path: Path) -> dict[str, torch.Tensor]:
+    safetensors_indexes = sorted(checkpoint_path.glob("diffusion_pytorch_model*.safetensors.index.json"))
+    bin_indexes = sorted(checkpoint_path.glob("diffusion_pytorch_model*.bin.index.json"))
+    if safetensors_indexes:
+        return _load_sharded_diffusers_state_dict(safetensors_indexes[0])
+    if bin_indexes:
+        return _load_sharded_diffusers_state_dict(bin_indexes[0])
+
+    weight_candidates = [
+        *sorted(checkpoint_path.glob("diffusion_pytorch_model*.safetensors")),
+        *sorted(checkpoint_path.glob("diffusion_pytorch_model*.bin")),
+        checkpoint_path / "pytorch_model.bin",
+        checkpoint_path / "model.safetensors",
+    ]
+    for weight_path in weight_candidates:
+        if weight_path.exists():
+            return _load_single_diffusers_weight_file(weight_path)
+    raise FileNotFoundError(f"No diffusers ControlNet weights found under: {checkpoint_path}")
+
+
+def _load_sharded_diffusers_state_dict(index_path: Path) -> dict[str, torch.Tensor]:
+    payload = json.loads(index_path.read_text(encoding="utf8"))
+    weight_map = payload.get("weight_map")
+    if not isinstance(weight_map, dict) or not weight_map:
+        raise ValueError(f"Invalid diffusers weight index file: {index_path}")
+    state_dict: dict[str, torch.Tensor] = {}
+    for filename in sorted(set(weight_map.values())):
+        state_dict.update(_load_single_diffusers_weight_file(index_path.parent / filename))
+    return state_dict
+
+
+def _load_single_diffusers_weight_file(weight_path: Path) -> dict[str, torch.Tensor]:
+    if weight_path.suffix == ".safetensors":
+        from safetensors.torch import load_file
+
+        return load_file(weight_path)
+    return _torch_load_weights(weight_path)
+
+
+def _torch_load_weights(weight_path: Path) -> dict[str, torch.Tensor]:
+    try:
+        return torch.load(weight_path, map_location="cpu", weights_only=True)
+    except TypeError:
+        return torch.load(weight_path, map_location="cpu")
+
+
+def _resolve_conditioning_checkpoint_path(args: argparse.Namespace) -> Path | None:
+    path = getattr(args, "conditioning_checkpoint", None)
+    if path:
+        return Path(path)
+    path = getattr(args, "controlnet_model_name_or_path", None)
+    return Path(path) if path else None
+
+
+def _load_condition_modules_from_checkpoint(
+    modules: dict[str, nn.Module],
+    checkpoint_path: str | Path,
+) -> None:
+    checkpoint = Path(checkpoint_path)
+    state_path = checkpoint / "phase5_conditioning.pt" if checkpoint.is_dir() else checkpoint
+    if not state_path.exists():
+        raise FileNotFoundError(f"Missing phase5_conditioning.pt: {state_path}")
+
+    state = _torch_load_weights(state_path)
+    for name in ("hte", "tissue_downsampler", "nuclei_encoder"):
+        if name not in state:
+            raise KeyError(f"Missing {name!r} in conditioning checkpoint: {state_path}")
+        modules[name].load_state_dict(state[name])
+
+
+def run_cross_v2_1_training(args: argparse.Namespace) -> None:
+    cross_version = str(getattr(args, "cross_version", "v2.1")).lower().replace("_", ".").replace("-", ".")
+    if cross_version not in {"v2.1", "v21"}:
+        raise NotImplementedError("This module implements only cross V2.1.")
+
+    dataset = CrossReconstructionDataset(
+        args.train_metadata,
+        stain_augmentation=getattr(args, "stain_augmentation", "none"),
+        stain_counterfactual_prob=float(getattr(args, "stain_counterfactual_prob", 0.0) or 0.0),
+        hed_sigma=float(getattr(args, "hed_sigma", 0.2) or 0.0),
+        hed_beta=float(getattr(args, "hed_beta", 0.02) or 0.0),
+        hed_strong_alpha_sampling=bool(getattr(args, "hed_strong_alpha_sampling", False)),
+        hed_alpha_min=float(getattr(args, "hed_alpha_min", 0.4)),
+        hed_alpha_low=float(getattr(args, "hed_alpha_low", 0.75)),
+        hed_alpha_high=float(getattr(args, "hed_alpha_high", 1.25)),
+        hed_alpha_max=float(getattr(args, "hed_alpha_max", 1.8)),
+    )
+    if args.max_train_samples is not None:
+        dataset.records = dataset.records[: args.max_train_samples]
+
+    control_spec = CrossV21ControlSpec(
+        reference_latent_channels=int(getattr(args, "reference_latent_channels", 16)),
+        tissue_channels=args.tissue_out_channels,
+        nuclei_channels=args.nuclei_out_channels,
+    )
+    modules = {
+        "hte": HierarchicalTissueEmbedding(embedding_dim=args.tissue_embedding_dim),
+        "tissue_downsampler": TissueConditionDownsampler(
+            in_channels=args.tissue_embedding_dim,
+            hidden_channels=args.tissue_out_channels,
+            num_blocks=args.condition_downsample_blocks,
+        ),
+        "nuclei_encoder": NucleiConditionEncoder(
+            embedding_dim=args.nuclei_embedding_dim,
+            out_channels=args.nuclei_out_channels,
+            num_blocks=args.condition_downsample_blocks,
+        ),
+    }
+    if bool(getattr(args, "load_conditioning_from_checkpoint", False)):
+        conditioning_checkpoint = _resolve_conditioning_checkpoint_path(args)
+        if conditioning_checkpoint is None:
+            raise ValueError("Loading conditioning modules requires a conditioning checkpoint.")
+        _load_condition_modules_from_checkpoint(modules, conditioning_checkpoint)
+
+    self_reconstruction_warmup_steps = max(0, int(getattr(args, "self_reconstruction_warmup_steps", 0) or 0))
+    self_reconstruction_sample_prob = min(
+        1.0,
+        max(0.0, float(getattr(args, "self_reconstruction_sample_prob", 0.0) or 0.0)),
+    )
+
+    logging_out_dir = Path(args.output_dir, args.logging_dir)
+    accelerator_project_config = ProjectConfiguration(
+        project_dir=args.output_dir,
+        logging_dir=str(logging_out_dir),
+    )
+    from datetime import timedelta
+
+    kwargs = accelerate.InitProcessGroupKwargs(timeout=timedelta(hours=5))
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        mixed_precision=args.mixed_precision,
+        log_with=args.report_to,
+        project_config=accelerator_project_config,
+        kwargs_handlers=[kwargs],
+    )
+
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
+    logger.info(accelerator.state, main_process_only=False)
+    logger.info(
+        "Using Cross V2.1 condition order [z_ref, ref_tissue_feat, ref_nuclei_feat, "
+        "tar_tissue_feat, tar_nuclei_feat]: raw_channels=%s packed_channels=%s",
+        control_spec.raw_channels,
+        control_spec.packed_channels,
+    )
+    if accelerator.is_local_main_process:
+        transformers.utils.logging.set_verbosity_warning()
+    else:
+        transformers.utils.logging.set_verbosity_error()
+
+    if args.seed is not None:
+        set_seed(args.seed)
+    if accelerator.is_main_process:
+        os.makedirs(args.output_dir, exist_ok=True)
+    _apply_training_prompt_policy(dataset.records, args)
+
+    tokenizer_one = AutoTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+    )
+    tokenizer_two = AutoTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+    )
+    text_encoder_one = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        variant=args.variant,
+    ).to(accelerator.device)
+    text_encoder_two = T5EncoderModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder_2",
+        revision=args.revision,
+        variant=args.variant,
+    ).to(accelerator.device)
+
+    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="scheduler",
+    )
+    noise_scheduler_copy = copy.deepcopy(noise_scheduler)
+    flux_transformer = FluxTransformer2DModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        revision=args.revision,
+        variant=args.variant,
+        torch_dtype=torch.bfloat16,
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+        variant=args.variant,
+    )
+
+    if args.controlnet_model_name_or_path:
+        flux_controlnet = _load_cross_v2_1_controlnet_checkpoint(
+            args.controlnet_model_name_or_path,
+            control_spec=control_spec,
+        )
+    else:
+        flux_controlnet = FluxControlNetModel.from_transformer(
+            flux_transformer,
+            attention_head_dim=flux_transformer.config["attention_head_dim"],
+            num_attention_heads=flux_transformer.config["num_attention_heads"],
+            num_layers=args.num_double_layers,
+            num_single_layers=args.num_single_layers,
+        )
+
+    patch_controlnet_x_embedder(flux_controlnet, control_spec.packed_channels)
+    logger.info("Patched controlnet_x_embedder to packed width %s for cross-v2.1", control_spec.packed_channels)
+
+    tmp_pipeline = FluxControlNetPipeline(
+        scheduler=noise_scheduler,
+        vae=None,
+        text_encoder=text_encoder_one,
+        tokenizer=tokenizer_one,
+        text_encoder_2=text_encoder_two,
+        tokenizer_2=tokenizer_two,
+        transformer=flux_transformer,
+        controlnet=flux_controlnet,
+    )
+    tmp_pipeline.to(accelerator.device)
+
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    prompt_cache, empty_prompt, text_ids = _build_prompt_cache(
+        pipeline=tmp_pipeline,
+        prompts=[record["prompt"] for record in dataset.records],
+        weight_dtype=weight_dtype,
+        batch_size=args.prompt_batch_size,
+        device=accelerator.device,
+    )
+
+    del tmp_pipeline, text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    flux_transformer.to(accelerator.device, dtype=weight_dtype)
+    flux_transformer.requires_grad_(False)
+    vae.to(accelerator.device, dtype=weight_dtype)
+    vae.eval()
+    vae.requires_grad_(False)
+    flux_controlnet.to(accelerator.device, dtype=weight_dtype)
+    flux_controlnet.train()
+    controlnet_trainable_names = _configure_controlnet_trainable_params(
+        flux_controlnet,
+        mode=getattr(args, "controlnet_train_mode", "all"),
+        train_x_embedder=bool(getattr(args, "controlnet_train_x_embedder", False)),
+        train_last_n_blocks=max(0, int(getattr(args, "controlnet_train_last_n_blocks", 0) or 0)),
+        train_last_n_single_blocks=max(0, int(getattr(args, "controlnet_train_last_n_single_blocks", 0) or 0)),
+    )
+    logger.info(
+        "ControlNet train mode=%s trainable_tensors=%s trainable_params=%s sample_names=%s",
+        getattr(args, "controlnet_train_mode", "all"),
+        len(controlnet_trainable_names),
+        sum(param.numel() for param in flux_controlnet.parameters() if param.requires_grad),
+        ", ".join(controlnet_trainable_names[:12]),
+    )
+    for module in modules.values():
+        module.to(accelerator.device, dtype=weight_dtype)
+        module.train()
+
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        model = model._orig_mod if is_compiled_module(model) else model
+        return model
+
+    if args.enable_xformers_memory_efficient_attention and is_xformers_available():
+        flux_transformer.enable_xformers_memory_efficient_attention()
+        flux_controlnet.enable_xformers_memory_efficient_attention()
+    if args.gradient_checkpointing:
+        flux_controlnet.enable_gradient_checkpointing()
+    if args.allow_tf32:
+        torch.backends.cuda.matmul.allow_tf32 = True
+
+    if args.scale_lr:
+        args.learning_rate *= (
+            args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        )
+    conditioning_learning_rate = float(
+        getattr(args, "conditioning_learning_rate", None)
+        if getattr(args, "conditioning_learning_rate", None) is not None
+        else args.learning_rate
+    )
+
+    if args.use_8bit_adam:
+        import bitsandbytes as bnb
+
+        optimizer_class = bnb.optim.AdamW8bit
+    else:
+        optimizer_class = torch.optim.AdamW
+
+    controlnet_lr_params = [param for param in flux_controlnet.parameters() if param.requires_grad]
+    conditioning_lr_params = [
+        param for module in modules.values() for param in module.parameters() if param.requires_grad
+    ]
+    optimizer_param_groups = []
+    if controlnet_lr_params:
+        optimizer_param_groups.append({"params": controlnet_lr_params, "lr": args.learning_rate})
+    if conditioning_lr_params:
+        optimizer_param_groups.append({"params": conditioning_lr_params, "lr": conditioning_learning_rate})
+    if not optimizer_param_groups:
+        raise ValueError("No trainable parameters were added to the optimizer.")
+    logger.info(
+        "Optimizer LR groups: controlnet_lr=%s params=%s, conditioning_lr=%s params=%s",
+        args.learning_rate,
+        sum(param.numel() for param in controlnet_lr_params),
+        conditioning_learning_rate,
+        sum(param.numel() for param in conditioning_lr_params),
+    )
+    optimizer = optimizer_class(
+        optimizer_param_groups,
+        betas=(args.adam_beta1, args.adam_beta2),
+        weight_decay=args.adam_weight_decay,
+        eps=args.adam_epsilon,
+    )
+
+    dataloader_kwargs = {
+        "shuffle": True,
+        "collate_fn": collate_cross_v2_1_batch,
+        "batch_size": args.train_batch_size,
+        "num_workers": args.dataloader_num_workers,
+        "pin_memory": True,
+    }
+    if args.dataloader_num_workers > 0:
+        dataloader_kwargs["persistent_workers"] = True
+        dataloader_kwargs["prefetch_factor"] = max(1, int(getattr(args, "dataloader_prefetch_factor", 2) or 2))
+    train_dataloader = torch.utils.data.DataLoader(dataset, **dataloader_kwargs)
+
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    lr_scheduler = get_scheduler(
+        args.lr_scheduler,
+        optimizer=optimizer,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=(
+            (args.max_train_steps or args.num_train_epochs * num_update_steps_per_epoch)
+            * accelerator.num_processes
+        ),
+        num_cycles=args.lr_num_cycles,
+        power=args.lr_power,
+    )
+
+    trainable_modules = [flux_controlnet, *modules.values()]
+    prepared = accelerator.prepare(*trainable_modules, optimizer, train_dataloader, lr_scheduler)
+    prepared_models = prepared[: len(trainable_modules)]
+    flux_controlnet = prepared_models[0]
+    modules = dict(zip(modules.keys(), prepared_models[1:]))
+    optimizer = prepared[len(trainable_modules)]
+    train_dataloader = prepared[len(trainable_modules) + 1]
+    lr_scheduler = prepared[len(trainable_modules) + 2]
+
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if args.max_train_steps is None:
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+
+    if accelerator.is_main_process:
+        accelerator.init_trackers(args.tracker_project_name, config=dict(vars(args)))
+
+    prompt_cache = {
+        prompt: (embeds.to(device=accelerator.device), pooled.to(device=accelerator.device))
+        for prompt, (embeds, pooled) in prompt_cache.items()
+    }
+    empty_prompt_embeds = empty_prompt[0].to(device=accelerator.device)
+    empty_pooled = empty_prompt[1].to(device=accelerator.device)
+    text_ids = text_ids.to(device=accelerator.device)
+
+    logger.info("***** Running Phase 5.3 cross-v2.1 training *****")
+    logger.info("  Num examples = %s", len(dataset))
+    logger.info("  Num Epochs = %s", args.num_train_epochs)
+    logger.info(
+        "  Total batch size = %s",
+        args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
+    )
+    logger.info("  Total optimization steps = %s", args.max_train_steps)
+
+    global_step = 0
+    first_epoch = 0
+    if args.resume_from_checkpoint:
+        checkpoint_path = (
+            os.path.join(args.output_dir, args.resume_from_checkpoint)
+            if args.resume_from_checkpoint != "latest"
+            else _latest_checkpoint(args.output_dir)
+        )
+        if checkpoint_path is not None:
+            accelerator.load_state(checkpoint_path)
+            global_step = int(Path(checkpoint_path).name.split("-")[1])
+            first_epoch = global_step // num_update_steps_per_epoch
+
+    progress_bar = tqdm(
+        total=args.max_train_steps,
+        initial=global_step,
+        desc="Steps",
+        disable=not accelerator.is_local_main_process,
+    )
+
+    def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
+        sigmas = noise_scheduler_copy.sigmas.to(device=accelerator.device, dtype=dtype)
+        schedule_timesteps = noise_scheduler_copy.timesteps.to(accelerator.device)
+        timesteps = timesteps.to(accelerator.device)
+        step_indices = [(schedule_timesteps == timestep).nonzero().item() for timestep in timesteps]
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < n_dim:
+            sigma = sigma.unsqueeze(-1)
+        return sigma
+
+    for epoch in range(first_epoch, args.num_train_epochs):
+        for step, batch in enumerate(train_dataloader):
+            with accelerator.accumulate(flux_controlnet):
+                bsz = int(batch["target_image"].shape[0])
+                in_self_reconstruction_warmup = global_step < self_reconstruction_warmup_steps
+                self_reconstruction_sample_mask = torch.zeros(bsz, device=accelerator.device, dtype=torch.bool)
+                if in_self_reconstruction_warmup:
+                    self_reconstruction_sample_mask.fill_(True)
+                    training_batch = _use_self_reconstruction_reference(batch)
+                elif self_reconstruction_sample_prob > 0.0:
+                    self_reconstruction_sample_mask = (
+                        torch.rand(bsz, device=accelerator.device) < self_reconstruction_sample_prob
+                    )
+                    training_batch = _insert_self_reconstruction_samples(batch, self_reconstruction_sample_mask)
+                else:
+                    training_batch = batch
+
+                counterfactual_sample_mask = _batch_mode_mask(training_batch, "counterfactual", device=accelerator.device)
+                cross_sample_mask = ~(counterfactual_sample_mask | self_reconstruction_sample_mask)
+
+                pixel_latents, control_tensor = _build_cross_v2_1_control_batch(
+                    batch=training_batch,
+                    modules=modules,
+                    vae=vae,
+                    weight_dtype=weight_dtype,
+                )
+                bsz = pixel_latents.shape[0]
+
+                packed_pixel_latents = FluxControlNetPipeline._pack_latents(
+                    pixel_latents,
+                    bsz,
+                    pixel_latents.shape[1],
+                    pixel_latents.shape[2],
+                    pixel_latents.shape[3],
+                )
+                control_image = FluxControlNetPipeline._pack_latents(
+                    control_tensor,
+                    bsz,
+                    control_tensor.shape[1],
+                    control_tensor.shape[2],
+                    control_tensor.shape[3],
+                )
+                batch_prompt, batch_pooled = _resolve_prompt_batch(
+                    prompts=batch["prompts"],
+                    prompt_cache=prompt_cache,
+                    empty_prompt_embeds=empty_prompt_embeds,
+                    empty_pooled=empty_pooled,
+                    proportion_empty_prompts=args.proportion_empty_prompts,
+                )
+
+                noise = torch.randn_like(packed_pixel_latents)
+                u = compute_density_for_timestep_sampling(
+                    weighting_scheme=args.weighting_scheme,
+                    batch_size=bsz,
+                    logit_mean=args.logit_mean,
+                    logit_std=args.logit_std,
+                    mode_scale=args.mode_scale,
+                )
+                indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
+                timesteps = noise_scheduler_copy.timesteps[indices].to(device=packed_pixel_latents.device)
+                sigmas = get_sigmas(timesteps, n_dim=packed_pixel_latents.ndim, dtype=packed_pixel_latents.dtype)
+                noisy_model_input = (1.0 - sigmas) * packed_pixel_latents + sigmas * noise
+
+                guidance_vec = None
+                if flux_transformer.config.guidance_embeds:
+                    guidance_vec = torch.full((bsz,), args.guidance_scale, device=accelerator.device, dtype=weight_dtype)
+
+                latent_image_ids = _prepare_packed_latent_image_ids(
+                    packed_height=pixel_latents.shape[2] // 2,
+                    packed_width=pixel_latents.shape[3] // 2,
+                    device=accelerator.device,
+                    dtype=weight_dtype,
+                )
+                if latent_image_ids.shape[0] != noisy_model_input.shape[1]:
+                    raise ValueError(
+                        "FLUX img_ids length must match packed latent sequence length: "
+                        f"img_ids={tuple(latent_image_ids.shape)}, "
+                        f"packed_latents={tuple(noisy_model_input.shape)}, "
+                        f"unpacked_latents={tuple(pixel_latents.shape)}"
+                    )
+
+                controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
+                    hidden_states=noisy_model_input,
+                    controlnet_cond=control_image,
+                    timestep=timesteps / 1000,
+                    guidance=guidance_vec,
+                    pooled_projections=batch_pooled,
+                    encoder_hidden_states=batch_prompt,
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
+                    return_dict=False,
+                )
+
+                noise_pred = flux_transformer(
+                    hidden_states=noisy_model_input,
+                    timestep=timesteps / 1000,
+                    guidance=guidance_vec,
+                    pooled_projections=batch_pooled,
+                    encoder_hidden_states=batch_prompt,
+                    controlnet_block_samples=(
+                        [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
+                        if controlnet_block_samples is not None
+                        else None
+                    ),
+                    controlnet_single_block_samples=(
+                        [sample.to(dtype=weight_dtype) for sample in controlnet_single_block_samples]
+                        if controlnet_single_block_samples is not None
+                        else None
+                    ),
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
+                    joint_attention_kwargs=None,
+                    return_dict=False,
+                )[0]
+
+                target_velocity = noise - packed_pixel_latents
+                per_sample_loss = _per_sample_mse(noise_pred, target_velocity)
+                loss = per_sample_loss.mean()
+                cross_denoise_loss = _masked_mean_or_zero(per_sample_loss, cross_sample_mask)
+                counterfactual_denoise_loss = _masked_mean_or_zero(per_sample_loss, counterfactual_sample_mask)
+                self_reconstruction_denoise_loss = _masked_mean_or_zero(
+                    per_sample_loss,
+                    self_reconstruction_sample_mask,
+                )
+
+                accelerator.backward(loss)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(
+                        [param for model in [flux_controlnet, *modules.values()] for param in model.parameters() if param.requires_grad],
+                        args.max_grad_norm,
+                    )
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                global_step += 1
+                if accelerator.is_main_process and global_step % args.checkpointing_steps == 0:
+                    save_path = _save_checkpoint(accelerator, args, global_step)
+                    _save_cross_v2_1_artifacts(
+                        save_path,
+                        args,
+                        flux_controlnet=flux_controlnet,
+                        modules=modules,
+                        unwrap_model=unwrap_model,
+                        control_spec=control_spec,
+                    )
+                    logger.info("Saved eval-ready Phase 5.3 cross-v2.1 artifacts to %s", save_path)
+
+            logs = {
+                "loss": loss.detach().item(),
+                "denoise_loss": loss.detach().item(),
+                "cross_denoise_loss": cross_denoise_loss.detach().item(),
+                "counterfactual_denoise_loss": counterfactual_denoise_loss.detach().item(),
+                "self_reconstruction_denoise_loss": self_reconstruction_denoise_loss.detach().item(),
+                "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
+                "counterfactual_samples": int(counterfactual_sample_mask.sum().detach().item()),
+                "cross_samples": int(cross_sample_mask.sum().detach().item()),
+                "lr": lr_scheduler.get_last_lr()[0],
+            }
+            progress_bar.set_postfix(**logs)
+            accelerator.log(logs, step=global_step)
+
+            if global_step >= args.max_train_steps:
+                break
+        if global_step >= args.max_train_steps:
+            break
+
+    accelerator.wait_for_everyone()
+    if accelerator.is_main_process:
+        _save_cross_v2_1_artifacts(
+            args.output_dir,
+            args,
+            flux_controlnet=flux_controlnet,
+            modules=modules,
+            unwrap_model=unwrap_model,
+            control_spec=control_spec,
+        )
+        logger.info("Saved Phase 5.3 cross-v2.1 artifacts to %s", args.output_dir)
+
+    accelerator.end_training()

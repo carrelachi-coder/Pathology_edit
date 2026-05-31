@@ -12,6 +12,11 @@ from .pipeline import (
     run_edit_pipeline,
     run_inpaint_bundle,
 )
+from .pipeline_cross_v2_1 import (
+    CrossV21InferenceBundle,
+    load_cross_v2_1_bundle,
+    run_cross_v2_1_bundle,
+)
 from .router import (
     EditRoutingConfig,
     EditRoutingDecision,
@@ -21,6 +26,7 @@ from .router import (
 
 __all__ = [
     "CrossV0InferenceBundle",
+    "CrossV21InferenceBundle",
     "EditPipelineInputs",
     "EditPipelineResult",
     "EditRoutingConfig",
@@ -28,10 +34,12 @@ __all__ = [
     "InpaintInferenceBundle",
     "compute_change_region_mask",
     "load_cross_bundle",
+    "load_cross_v2_1_bundle",
     "load_inpaint_bundle",
     "resolve_prompt",
     "route_edit_request",
     "run_cross_v0_bundle",
+    "run_cross_v2_1_bundle",
     "run_edit_pipeline",
     "run_inpaint_bundle",
 ]

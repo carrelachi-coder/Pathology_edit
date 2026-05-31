@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 import torch
 
@@ -8,6 +9,11 @@ from controlnet_train.modules.cross_v1_conditioning import (
     CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
     CrossV1ControlSpec,
     build_cross_v1_condition,
+)
+from controlnet_train.modules.cross_v2_1_conditioning import (
+    CrossV21ControlSpec,
+    build_cross_v2_1_condition,
+    deterministic_latent_from_posterior,
 )
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
@@ -128,6 +134,63 @@ class CrossV1ConditioningTests(unittest.TestCase):
         )
 
         self.assertEqual(spec.raw_channels, 9)
+
+
+class CrossV21ConditioningTests(unittest.TestCase):
+    def test_build_cross_v2_1_condition_uses_fixed_channel_order(self):
+        z_ref = torch.full((2, 2, 3, 3), 1.0)
+        ref_tissue = torch.full((2, 3, 3, 3), 2.0)
+        ref_nuclei = torch.full((2, 1, 3, 3), 3.0)
+        tar_tissue = torch.full((2, 3, 3, 3), 4.0)
+        tar_nuclei = torch.full((2, 1, 3, 3), 5.0)
+
+        out = build_cross_v2_1_condition(
+            z_ref=z_ref,
+            ref_tissue_feat=ref_tissue,
+            ref_nuclei_feat=ref_nuclei,
+            tar_tissue_feat=tar_tissue,
+            tar_nuclei_feat=tar_nuclei,
+        )
+
+        self.assertEqual(out.shape, (2, 10, 3, 3))
+        self.assertTrue(torch.equal(out[:, 0:2], z_ref))
+        self.assertTrue(torch.equal(out[:, 2:5], ref_tissue))
+        self.assertTrue(torch.equal(out[:, 5:6], ref_nuclei))
+        self.assertTrue(torch.equal(out[:, 6:9], tar_tissue))
+        self.assertTrue(torch.equal(out[:, 9:10], tar_nuclei))
+
+    def test_cross_v2_1_spec_counts_reference_latent_and_two_mask_groups(self):
+        spec = CrossV21ControlSpec(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+        )
+
+        self.assertEqual(spec.raw_channels, 10)
+        self.assertEqual(spec.packed_channels, 40)
+        self.assertEqual(spec.packed_reference_mask_start, 8)
+        self.assertEqual(spec.packed_target_mask_start, 24)
+
+    def test_cross_v2_1_reference_latent_helper_uses_posterior_mode(self):
+        class Posterior:
+            mean = torch.full((1, 1, 2, 2), 3.0)
+
+            def sample(self):
+                return torch.full((1, 1, 2, 2), 7.0)
+
+            def mode(self):
+                return torch.full((1, 1, 2, 2), 5.0)
+
+        latents = deterministic_latent_from_posterior(Posterior())
+
+        self.assertTrue(torch.equal(latents, torch.full((1, 1, 2, 2), 5.0)))
+
+    def test_cross_v2_1_reference_latent_helper_falls_back_to_mean(self):
+        posterior = SimpleNamespace(mean=torch.full((1, 1, 2, 2), 3.0))
+
+        latents = deterministic_latent_from_posterior(posterior)
+
+        self.assertTrue(torch.equal(latents, torch.full((1, 1, 2, 2), 3.0)))
 
 
 if __name__ == "__main__":

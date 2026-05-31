@@ -11,6 +11,7 @@ from controlnet_train.training.conditioning import (
 )
 from controlnet_train.cli.train_controlnet_flux_cross import parse_args as parse_cross_args
 from controlnet_train.cli.train_controlnet_flux_cross_v1 import parse_args as parse_cross_v1_args
+from controlnet_train.cli.train_controlnet_flux_cross_v2_1 import parse_args as parse_cross_v2_1_args
 from controlnet_train.cli.train_controlnet_flux_inpaint import parse_args as parse_inpaint_args
 
 
@@ -199,6 +200,29 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.ref_swap_loss_weight, 0.1)
         self.assertEqual(args.stain_counterfactual_prob, 0.0)
         self.assertEqual(args.ip_single_num_layers, 10)
+
+    def test_cross_v2_1_cli_has_no_ip_adapter_or_uni_requirement(self):
+        args = parse_cross_v2_1_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--controlnet-train-mode",
+                "outputs",
+                "--conditioning-learning-rate",
+                "0.0000005",
+                "--stain-counterfactual-prob",
+                "0.5",
+            ]
+        )
+
+        self.assertEqual(args.cross_version, "v2.1")
+        self.assertEqual(args.controlnet_train_mode, "outputs")
+        self.assertEqual(args.conditioning_learning_rate, 0.0000005)
+        self.assertEqual(args.stain_counterfactual_prob, 0.5)
+        self.assertFalse(hasattr(args, "uni_checkpoint_path"))
+        self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
 
 
 if __name__ == "__main__":
