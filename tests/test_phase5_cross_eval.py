@@ -20,6 +20,16 @@ _V21_SPEC = importlib.util.spec_from_file_location("eval_controlnet_flux_cross_v
 eval_cross_v2_1 = importlib.util.module_from_spec(_V21_SPEC)
 _V21_SPEC.loader.exec_module(eval_cross_v2_1)
 
+_V3_MODULE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "controlnet_train"
+    / "cli"
+    / "eval_controlnet_flux_cross_v3.py"
+)
+_V3_SPEC = importlib.util.spec_from_file_location("eval_controlnet_flux_cross_v3", _V3_MODULE_PATH)
+eval_cross_v3 = importlib.util.module_from_spec(_V3_SPEC)
+_V3_SPEC.loader.exec_module(eval_cross_v3)
+
 _PLOT_LOGS_MODULE_PATH = (
     Path(__file__).resolve().parents[1]
     / "scripts"
@@ -168,6 +178,25 @@ class CrossEvalMetricTests(unittest.TestCase):
             summary["delta_zero_ref_minus_with_ref"]["fixed_t_loss_t100_delta_mean"],
             0.2,
         )
+
+    def test_parse_cross_v3_eval_uses_fixed_prompt_and_zero_ref_ablation(self):
+        args = eval_cross_v3.parse_args(
+            [
+                "--pretrained-model-name-or-path",
+                "flux",
+                "--checkpoint",
+                "ckpt",
+                "--metadata",
+                "metadata.json",
+                "--output-dir",
+                "out",
+                "--run-zero-ref-ablation",
+            ]
+        )
+
+        self.assertEqual(args.prompt_source, "fixed")
+        self.assertTrue(args.run_zero_ref_ablation)
+        self.assertEqual(eval_cross_v3._reference_variants(True), ["with_ref", "zero_ref"])
 
     def test_plot_training_logs_filters_conditional_loss_by_sample_count(self):
         rows = [

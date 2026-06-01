@@ -21,6 +21,19 @@ from controlnet_train.modules.cross_v2_1_conditioning import (
     deterministic_latent_from_posterior,
     normalize_cross_v2_1_reference_mode,
 )
+from controlnet_train.modules.cross_v3_conditioning import (
+    CROSS_V3_PROMPT,
+    CROSS_V3_REFERENCE_ZERO_REF,
+    CrossV3ControlSpec,
+    CrossV3ReferenceContextEncoder,
+    CrossV3ReferenceSpec,
+    append_cross_v3_reference_context,
+    apply_cross_v3_reference_mode,
+    apply_cross_v3_reference_token_mode,
+    build_cross_v3_control_condition,
+    normalize_cross_v3_reference_mode,
+    pack_cross_v3_reference_grid,
+)
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
 from controlnet_train.modules.tissue_condition_downsampler import TissueConditionDownsampler
@@ -233,6 +246,120 @@ class CrossV21ConditioningTests(unittest.TestCase):
         self.assertEqual(summary["groups"]["ref_masks"]["input_span"], [8, 24])
         self.assertEqual(summary["groups"]["target_masks"]["input_span"], [24, 40])
         self.assertGreater(summary["groups"]["ref_masks"]["fro_norm"], summary["groups"]["z_ref"]["fro_norm"])
+
+
+class CrossV3ConditioningTests(unittest.TestCase):
+    def test_cross_v3_control_condition_is_target_only(self):
+        tar_tissue = torch.full((2, 3, 4, 4), 4.0)
+        tar_nuclei = torch.full((2, 1, 4, 4), 5.0)
+
+        out = build_cross_v3_control_condition(
+            tar_tissue_feat=tar_tissue,
+            tar_nuclei_feat=tar_nuclei,
+        )
+
+        self.assertEqual(out.shape, (2, 4, 4, 4))
+        self.assertTrue(torch.equal(out[:, 0:3], tar_tissue))
+        self.assertTrue(torch.equal(out[:, 3:4], tar_nuclei))
+
+    def test_cross_v3_specs_separate_control_and_reference_channels(self):
+        control_spec = CrossV3ControlSpec(tissue_channels=3, nuclei_channels=1)
+        reference_spec = CrossV3ReferenceSpec(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=8,
+        )
+
+        self.assertEqual(CROSS_V3_PROMPT, "histopathology image")
+        self.assertEqual(control_spec.raw_channels, 4)
+        self.assertEqual(control_spec.packed_channels, 16)
+        self.assertEqual(reference_spec.raw_channels, 6)
+        self.assertEqual(reference_spec.packed_channels, 24)
+        self.assertEqual(reference_spec.token_dim, 8)
+
+    def test_cross_v3_reference_grid_packs_latent_and_ref_masks(self):
+        z_ref = torch.full((1, 2, 4, 4), 1.0)
+        ref_tissue = torch.full((1, 3, 4, 4), 2.0)
+        ref_nuclei = torch.full((1, 1, 4, 4), 3.0)
+
+        packed = pack_cross_v3_reference_grid(
+            z_ref=z_ref,
+            ref_tissue_feat=ref_tissue,
+            ref_nuclei_feat=ref_nuclei,
+        )
+
+        self.assertEqual(packed.shape, (1, 4, 24))
+        self.assertTrue(torch.equal(packed[:, :, :8], torch.ones(1, 4, 8)))
+        self.assertTrue(torch.equal(packed[:, :, 8:20], torch.full((1, 4, 12), 2.0)))
+        self.assertTrue(torch.equal(packed[:, :, 20:24], torch.full((1, 4, 4), 3.0)))
+
+    def test_cross_v3_reference_context_encoder_projects_tokens(self):
+        encoder = CrossV3ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=7,
+            hidden_dim=5,
+        )
+
+        tokens = encoder(
+            z_ref=torch.randn(2, 2, 4, 4),
+            ref_tissue_feat=torch.randn(2, 3, 4, 4),
+            ref_nuclei_feat=torch.randn(2, 1, 4, 4),
+        )
+
+        self.assertEqual(tokens.shape, (2, 4, 7))
+
+    def test_cross_v3_reference_context_encoder_uses_small_output_init(self):
+        encoder = CrossV3ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=512,
+            hidden_dim=256,
+            output_init_std=0.02,
+        )
+
+        self.assertAlmostEqual(float(encoder.proj_out.weight.std().item()), 0.02, delta=0.004)
+        self.assertTrue(torch.equal(encoder.proj_out.bias, torch.zeros_like(encoder.proj_out.bias)))
+
+    def test_cross_v3_appends_reference_tokens_with_zero_text_ids(self):
+        prompt_embeds = torch.randn(2, 5, 7)
+        text_ids = torch.arange(15, dtype=torch.float32).reshape(5, 3)
+        ref_tokens = torch.randn(2, 4, 7)
+
+        context, context_ids = append_cross_v3_reference_context(
+            prompt_embeds=prompt_embeds,
+            text_ids=text_ids,
+            reference_tokens=ref_tokens,
+        )
+
+        self.assertEqual(context.shape, (2, 9, 7))
+        self.assertEqual(context_ids.shape, (9, 3))
+        self.assertTrue(torch.equal(context[:, :5], prompt_embeds))
+        self.assertTrue(torch.equal(context[:, 5:], ref_tokens))
+        self.assertTrue(torch.equal(context_ids[:5], text_ids))
+        self.assertTrue(torch.equal(context_ids[5:], torch.zeros(4, 3)))
+
+    def test_cross_v3_zero_ref_modes_zero_reference_path_only(self):
+        z_ref = torch.ones(1, 2, 2, 2)
+        ref_tissue = torch.full((1, 3, 2, 2), 2.0)
+        ref_nuclei = torch.full((1, 1, 2, 2), 3.0)
+        tokens = torch.ones(1, 4, 8)
+
+        z_out, tissue_out, nuclei_out = apply_cross_v3_reference_mode(
+            z_ref=z_ref,
+            ref_tissue_feat=ref_tissue,
+            ref_nuclei_feat=ref_nuclei,
+            mode=CROSS_V3_REFERENCE_ZERO_REF,
+        )
+
+        self.assertTrue(torch.equal(z_out, torch.zeros_like(z_ref)))
+        self.assertTrue(torch.equal(tissue_out, torch.zeros_like(ref_tissue)))
+        self.assertTrue(torch.equal(nuclei_out, torch.zeros_like(ref_nuclei)))
+        self.assertTrue(torch.equal(apply_cross_v3_reference_token_mode(tokens, "zero-ref"), torch.zeros_like(tokens)))
+        self.assertEqual(normalize_cross_v3_reference_mode("zero-ref"), CROSS_V3_REFERENCE_ZERO_REF)
 
 
 if __name__ == "__main__":

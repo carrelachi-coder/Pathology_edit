@@ -12,6 +12,7 @@ from controlnet_train.training.conditioning import (
 from controlnet_train.cli.train_controlnet_flux_cross import parse_args as parse_cross_args
 from controlnet_train.cli.train_controlnet_flux_cross_v1 import parse_args as parse_cross_v1_args
 from controlnet_train.cli.train_controlnet_flux_cross_v2_1 import parse_args as parse_cross_v2_1_args
+from controlnet_train.cli.train_controlnet_flux_cross_v3 import parse_args as parse_cross_v3_args
 from controlnet_train.cli.train_controlnet_flux_inpaint import parse_args as parse_inpaint_args
 
 
@@ -221,6 +222,38 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.controlnet_train_mode, "outputs")
         self.assertEqual(args.conditioning_learning_rate, 0.0000005)
         self.assertEqual(args.stain_counterfactual_prob, 0.5)
+        self.assertFalse(hasattr(args, "uni_checkpoint_path"))
+        self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
+
+    def test_cross_v3_cli_uses_fixed_prompt_and_reference_tokens(self):
+        args = parse_cross_v3_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--controlnet-train-mode",
+                "outputs",
+                "--conditioning-learning-rate",
+                "0.0000005",
+                "--reference-token-dim",
+                "4096",
+                "--reference-token-hidden-dim",
+                "1024",
+                "--reference-token-output-init-std",
+                "0.01",
+                "--ref-check-step",
+                "10",
+            ]
+        )
+
+        self.assertEqual(args.cross_version, "v3")
+        self.assertEqual(args.prompt_source, "fixed")
+        self.assertIsNone(args.prompt)
+        self.assertEqual(args.reference_token_dim, 4096)
+        self.assertEqual(args.reference_token_hidden_dim, 1024)
+        self.assertEqual(args.reference_token_output_init_std, 0.01)
+        self.assertEqual(args.ref_check_step, 10)
         self.assertFalse(hasattr(args, "uni_checkpoint_path"))
         self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
 

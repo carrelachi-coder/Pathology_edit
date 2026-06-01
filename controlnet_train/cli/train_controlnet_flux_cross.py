@@ -15,7 +15,12 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--pretrained_model_name_or_path", type=str, required=True)
     parser.add_argument("--controlnet_model_name_or_path", type=str, default=None)
     parser.add_argument("--train-metadata", type=str, required=True)
-    parser.add_argument("--cross-version", type=str, default="v0", choices=["v0", "v1", "v2.1", "v2_1", "v21"])
+    parser.add_argument(
+        "--cross-version",
+        type=str,
+        default="v0",
+        choices=["v0", "v1", "v2.1", "v2_1", "v21", "v3"],
+    )
     parser.add_argument(
         "--prompt-source",
         type=str,
@@ -91,6 +96,57 @@ def main(input_args=None) -> None:
 
         args.cross_version = "v2.1"
         run_cross_v2_1_training(args)
+        return
+    if normalized == "v3":
+        from controlnet_train.training.flux_phase5_cross_v3 import run_cross_v3_training
+
+        args.cross_version = "v3"
+        if not hasattr(args, "reference_latent_channels"):
+            args.reference_latent_channels = 16
+        if not hasattr(args, "reference_token_dim"):
+            args.reference_token_dim = 4096
+        if not hasattr(args, "reference_token_hidden_dim"):
+            args.reference_token_hidden_dim = 4096
+        if not hasattr(args, "reference_token_output_init_std"):
+            args.reference_token_output_init_std = 0.02
+        if not hasattr(args, "ref_check_step"):
+            args.ref_check_step = 10
+        if not hasattr(args, "conditioning_checkpoint"):
+            args.conditioning_checkpoint = None
+        if not hasattr(args, "load_conditioning_from_checkpoint"):
+            args.load_conditioning_from_checkpoint = False
+        if not hasattr(args, "controlnet_train_mode"):
+            args.controlnet_train_mode = "all"
+        if not hasattr(args, "controlnet_train_x_embedder"):
+            args.controlnet_train_x_embedder = False
+        if not hasattr(args, "controlnet_train_last_n_blocks"):
+            args.controlnet_train_last_n_blocks = 0
+        if not hasattr(args, "controlnet_train_last_n_single_blocks"):
+            args.controlnet_train_last_n_single_blocks = 0
+        if not hasattr(args, "conditioning_learning_rate"):
+            args.conditioning_learning_rate = None
+        if not hasattr(args, "stain_augmentation"):
+            args.stain_augmentation = "none"
+        if not hasattr(args, "stain_counterfactual_prob"):
+            args.stain_counterfactual_prob = 0.0
+        for name, value in (
+            ("hed_sigma", 0.2),
+            ("hed_beta", 0.02),
+            ("hed_strong_alpha_sampling", False),
+            ("hed_alpha_min", 0.4),
+            ("hed_alpha_low", 0.75),
+            ("hed_alpha_high", 1.25),
+            ("hed_alpha_max", 1.8),
+        ):
+            if not hasattr(args, name):
+                setattr(args, name, value)
+        if not hasattr(args, "dataloader_prefetch_factor"):
+            args.dataloader_prefetch_factor = 2
+        if not hasattr(args, "self_reconstruction_warmup_steps"):
+            args.self_reconstruction_warmup_steps = 0
+        if not hasattr(args, "self_reconstruction_sample_prob"):
+            args.self_reconstruction_sample_prob = 0.0
+        run_cross_v3_training(args)
         return
     if normalized == "v1":
         raise NotImplementedError(
