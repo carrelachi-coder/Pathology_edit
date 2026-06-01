@@ -44,6 +44,7 @@ class CrossV3ReferenceSpec:
     tissue_channels: int = 64
     nuclei_channels: int = 16
     token_dim: int = 4096
+    output_init_std: float = 0.02
 
     @property
     def raw_channels(self) -> int:
@@ -73,6 +74,7 @@ class CrossV3ReferenceContextEncoder(nn.Module):
             tissue_channels=tissue_channels,
             nuclei_channels=nuclei_channels,
             token_dim=token_dim,
+            output_init_std=output_init_std,
         )
         hidden_dim = int(hidden_dim or token_dim)
         self.norm = nn.LayerNorm(self.spec.packed_channels)
