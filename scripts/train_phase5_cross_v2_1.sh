@@ -16,7 +16,7 @@ export HF_HOME="${HF_HOME:-/data/huggingface}"
 PROJECT_ROOT="${PROJECT_ROOT:-/home/lyw/wqx-DL/flow-edit/FlowEdit-main}"
 MODEL_DIR="${MODEL_DIR:-/data/huggingface/FLUX.1-dev}"
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
-CROSS_V2_1_OUTPUT_DIR="${CROSS_V2_1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v2_1_simple}"
+CROSS_V2_1_OUTPUT_DIR="${CROSS_V2_1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v2_1_nohed_selfrec}"
 
 # Optional warm start from Cross V1 or Cross V2.1. V1 mask weights are remapped
 # after the z_ref channels; the new z_ref projection starts at zero.
@@ -38,8 +38,8 @@ CONTROLNET_TRAIN_LAST_N_BLOCKS="${CONTROLNET_TRAIN_LAST_N_BLOCKS:-0}"
 CONTROLNET_TRAIN_LAST_N_SINGLE_BLOCKS="${CONTROLNET_TRAIN_LAST_N_SINGLE_BLOCKS:-0}"
 CONDITIONING_LEARNING_RATE="${CONDITIONING_LEARNING_RATE:-5e-7}"
 
-STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-hed_aggressive}"
-STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0.5}"
+STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-none}"
+STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0}"
 HED_SIGMA="${HED_SIGMA:-0.1}"
 HED_BETA="${HED_BETA:-0.01}"
 HED_STRONG_ALPHA_SAMPLING="${HED_STRONG_ALPHA_SAMPLING:-0}"
@@ -48,8 +48,8 @@ HED_ALPHA_LOW="${HED_ALPHA_LOW:-0.95}"
 HED_ALPHA_HIGH="${HED_ALPHA_HIGH:-1.05}"
 HED_ALPHA_MAX="${HED_ALPHA_MAX:-1.2}"
 
-SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-0}"
-SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.15}"
+SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-500}"
+SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.1}"
 DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
 DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-4}"
 MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-5000}"
@@ -136,5 +136,5 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --num-single-layers 4 \
   --guidance-scale 3.5 \
   --report-to tensorboard \
-  --tracker-project-name flux_controlnet_phase5_cross_v2_1_simple \
+  --tracker-project-name flux_controlnet_phase5_cross_v2_1_nohed_selfrec \
   --prompt-source dataset

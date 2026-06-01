@@ -9,6 +9,16 @@ _SPEC = importlib.util.spec_from_file_location("eval_controlnet_flux_cross", _MO
 eval_cross = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(eval_cross)
 
+_V21_MODULE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "controlnet_train"
+    / "cli"
+    / "eval_controlnet_flux_cross_v2_1.py"
+)
+_V21_SPEC = importlib.util.spec_from_file_location("eval_controlnet_flux_cross_v2_1", _V21_MODULE_PATH)
+eval_cross_v2_1 = importlib.util.module_from_spec(_V21_SPEC)
+_V21_SPEC.loader.exec_module(eval_cross_v2_1)
+
 
 class CrossEvalMetricTests(unittest.TestCase):
     def test_parse_cross_v1_eval_accepts_ip_scale(self):
@@ -73,6 +83,39 @@ class CrossEvalMetricTests(unittest.TestCase):
 
         self.assertEqual(eval_cross.normalize_cross_records(object_payload), [{"sample_id": "a"}])
         self.assertEqual(eval_cross.normalize_cross_records(list_payload), [{"sample_id": "b"}])
+
+    def test_parse_cross_v2_1_eval_accepts_zero_ref_ablation(self):
+        args = eval_cross_v2_1.parse_args(
+            [
+                "--pretrained-model-name-or-path",
+                "flux",
+                "--checkpoint",
+                "ckpt",
+                "--metadata",
+                "metadata.json",
+                "--output-dir",
+                "out",
+                "--run-zero-ref-ablation",
+            ]
+        )
+
+        self.assertTrue(args.run_zero_ref_ablation)
+        self.assertEqual(eval_cross_v2_1._reference_variants(True), ["with_ref", "zero_ref"])
+
+    def test_cross_v2_1_ref_ablation_delta_groups_paired_rows(self):
+        rows = [
+            {"index": 0, "reference_condition_mode": "with_ref", "full_l1": 0.2, "full_mse": 0.04, "full_psnr": 14.0},
+            {"index": 0, "reference_condition_mode": "zero_ref", "full_l1": 0.5, "full_mse": 0.25, "full_psnr": 8.0},
+            {"index": 1, "reference_condition_mode": "with_ref", "full_l1": 0.3, "full_mse": 0.09, "full_psnr": 10.0},
+            {"index": 1, "reference_condition_mode": "zero_ref", "full_l1": 0.4, "full_mse": 0.16, "full_psnr": 9.0},
+        ]
+
+        summary = eval_cross_v2_1._aggregate_ref_ablation_delta(rows)
+
+        self.assertEqual(summary["num_pairs"], 2.0)
+        self.assertAlmostEqual(summary["full_l1_delta_mean"], 0.2)
+        self.assertAlmostEqual(summary["full_mse_delta_mean"], 0.14)
+        self.assertAlmostEqual(summary["full_psnr_delta_mean"], -3.5)
 
 
 if __name__ == "__main__":

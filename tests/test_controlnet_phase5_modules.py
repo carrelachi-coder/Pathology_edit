@@ -11,9 +11,12 @@ from controlnet_train.modules.cross_v1_conditioning import (
     build_cross_v1_condition,
 )
 from controlnet_train.modules.cross_v2_1_conditioning import (
+    CROSS_V2_1_REFERENCE_ZERO_REF,
     CrossV21ControlSpec,
+    apply_cross_v2_1_reference_mode,
     build_cross_v2_1_condition,
     deterministic_latent_from_posterior,
+    normalize_cross_v2_1_reference_mode,
 )
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
@@ -191,6 +194,23 @@ class CrossV21ConditioningTests(unittest.TestCase):
         latents = deterministic_latent_from_posterior(posterior)
 
         self.assertTrue(torch.equal(latents, torch.full((1, 1, 2, 2), 3.0)))
+
+    def test_cross_v2_1_zero_ref_mode_zeros_reference_side_features(self):
+        z_ref = torch.ones(1, 2, 2, 2)
+        ref_tissue = torch.full((1, 3, 2, 2), 2.0)
+        ref_nuclei = torch.full((1, 1, 2, 2), 3.0)
+
+        z_out, tissue_out, nuclei_out = apply_cross_v2_1_reference_mode(
+            z_ref=z_ref,
+            ref_tissue_feat=ref_tissue,
+            ref_nuclei_feat=ref_nuclei,
+            mode=CROSS_V2_1_REFERENCE_ZERO_REF,
+        )
+
+        self.assertTrue(torch.equal(z_out, torch.zeros_like(z_ref)))
+        self.assertTrue(torch.equal(tissue_out, torch.zeros_like(ref_tissue)))
+        self.assertTrue(torch.equal(nuclei_out, torch.zeros_like(ref_nuclei)))
+        self.assertEqual(normalize_cross_v2_1_reference_mode("zero-ref"), CROSS_V2_1_REFERENCE_ZERO_REF)
 
 
 if __name__ == "__main__":

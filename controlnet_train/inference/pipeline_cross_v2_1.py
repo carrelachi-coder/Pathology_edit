@@ -17,7 +17,10 @@ from controlnet_train.modules import (
     TissueConditionDownsampler,
 )
 from controlnet_train.modules.cross_v2_1_conditioning import (
+    CROSS_V2_1_REFERENCE_WITH_REF,
+    CROSS_V2_1_REFERENCE_ZERO_REF,
     CrossV21ControlSpec,
+    apply_cross_v2_1_reference_mode,
     build_cross_v2_1_condition,
     deterministic_latent_from_posterior,
 )
@@ -89,6 +92,7 @@ def run_cross_v2_1_bundle(
     target_tissue_mask: torch.Tensor,
     target_nuclei_mask: torch.Tensor,
     prompt: str,
+    reference_condition_mode: str = CROSS_V2_1_REFERENCE_WITH_REF,
 ) -> Image.Image:
     reference_latent = _encode_images_to_latents(
         bundle.flux_pipeline.vae,
@@ -111,6 +115,12 @@ def run_cross_v2_1_bundle(
     tar_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
         target_nuclei_mask.unsqueeze(0).to(device=bundle.device)
     ).to(dtype=bundle.torch_dtype)
+    reference_latent, ref_tissue_feat, ref_nuclei_feat = apply_cross_v2_1_reference_mode(
+        z_ref=reference_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        mode=reference_condition_mode,
+    )
 
     control_tensor = build_cross_v2_1_condition(
         z_ref=reference_latent,

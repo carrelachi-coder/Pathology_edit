@@ -13,6 +13,10 @@ import torch
 from controlnet_train.training.conditioning import packed_control_channels
 
 
+CROSS_V2_1_REFERENCE_WITH_REF = "with_ref"
+CROSS_V2_1_REFERENCE_ZERO_REF = "zero_ref"
+
+
 @dataclass(frozen=True)
 class CrossV21ControlSpec:
     """Fixed Cross V2.1 ControlNet condition layout.
@@ -88,6 +92,43 @@ def build_cross_v2_1_condition(
             tar_nuclei_feat,
         ],
         dim=1,
+    )
+
+
+def normalize_cross_v2_1_reference_mode(mode: str) -> str:
+    value = str(mode).strip().lower().replace("-", "_")
+    aliases = {
+        "normal": CROSS_V2_1_REFERENCE_WITH_REF,
+        "ref": CROSS_V2_1_REFERENCE_WITH_REF,
+        "reference": CROSS_V2_1_REFERENCE_WITH_REF,
+        "with_ref": CROSS_V2_1_REFERENCE_WITH_REF,
+        "zero": CROSS_V2_1_REFERENCE_ZERO_REF,
+        "zero_ref": CROSS_V2_1_REFERENCE_ZERO_REF,
+    }
+    if value not in aliases:
+        raise ValueError(
+            f"Unsupported Cross V2.1 reference mode {mode!r}; "
+            f"choose {CROSS_V2_1_REFERENCE_WITH_REF!r} or {CROSS_V2_1_REFERENCE_ZERO_REF!r}."
+        )
+    return aliases[value]
+
+
+def apply_cross_v2_1_reference_mode(
+    *,
+    z_ref: torch.Tensor,
+    ref_tissue_feat: torch.Tensor,
+    ref_nuclei_feat: torch.Tensor,
+    mode: str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Optionally ablate the complete reference-side ControlNet condition."""
+
+    normalized = normalize_cross_v2_1_reference_mode(mode)
+    if normalized == CROSS_V2_1_REFERENCE_WITH_REF:
+        return z_ref, ref_tissue_feat, ref_nuclei_feat
+    return (
+        torch.zeros_like(z_ref),
+        torch.zeros_like(ref_tissue_feat),
+        torch.zeros_like(ref_nuclei_feat),
     )
 
 

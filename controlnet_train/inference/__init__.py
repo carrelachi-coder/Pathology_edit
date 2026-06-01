@@ -13,6 +13,8 @@ from .pipeline import (
     run_inpaint_bundle,
 )
 from .pipeline_cross_v2_1 import (
+    CROSS_V2_1_REFERENCE_WITH_REF,
+    CROSS_V2_1_REFERENCE_ZERO_REF,
     CrossV21InferenceBundle,
     load_cross_v2_1_bundle,
     run_cross_v2_1_bundle,
@@ -27,6 +29,8 @@ from .router import (
 __all__ = [
     "CrossV0InferenceBundle",
     "CrossV21InferenceBundle",
+    "CROSS_V2_1_REFERENCE_WITH_REF",
+    "CROSS_V2_1_REFERENCE_ZERO_REF",
     "EditPipelineInputs",
     "EditPipelineResult",
     "EditRoutingConfig",
