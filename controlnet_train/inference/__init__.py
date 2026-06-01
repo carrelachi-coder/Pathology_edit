@@ -16,6 +16,7 @@ from .pipeline_cross_v2_1 import (
     CROSS_V2_1_REFERENCE_WITH_REF,
     CROSS_V2_1_REFERENCE_ZERO_REF,
     CrossV21InferenceBundle,
+    compute_cross_v2_1_fixed_timestep_losses,
     load_cross_v2_1_bundle,
     run_cross_v2_1_bundle,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "EditRoutingDecision",
     "InpaintInferenceBundle",
     "compute_change_region_mask",
+    "compute_cross_v2_1_fixed_timestep_losses",
     "load_cross_bundle",
     "load_cross_v2_1_bundle",
     "load_inpaint_bundle",

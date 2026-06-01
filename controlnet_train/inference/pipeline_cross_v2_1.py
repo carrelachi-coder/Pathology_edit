@@ -6,6 +6,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterable
 
 import torch
 import torch.nn as nn
@@ -141,6 +142,80 @@ def run_cross_v2_1_bundle(
         num_inference_steps=bundle.num_inference_steps,
         guidance_scale=bundle.guidance_scale,
         controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
+    )
+
+
+@torch.inference_mode()
+def compute_cross_v2_1_fixed_timestep_losses(
+    bundle: CrossV21InferenceBundle,
+    reference_image: torch.Tensor,
+    reference_tissue_mask: torch.Tensor,
+    reference_nuclei_mask: torch.Tensor,
+    target_image: torch.Tensor,
+    target_tissue_mask: torch.Tensor,
+    target_nuclei_mask: torch.Tensor,
+    prompt: str,
+    timesteps: Iterable[int | float],
+    reference_condition_mode: str = CROSS_V2_1_REFERENCE_WITH_REF,
+    seed: int = 42,
+) -> dict[str, float]:
+    """Compute one-step denoising MSE at fixed training timesteps."""
+
+    timestep_values = [float(timestep) for timestep in timesteps]
+    if not timestep_values:
+        return {}
+
+    target_latent = _encode_images_to_latents(
+        bundle.flux_pipeline.vae,
+        target_image.unsqueeze(0),
+        bundle.torch_dtype,
+    )
+    reference_latent = _encode_images_to_latents(
+        bundle.flux_pipeline.vae,
+        reference_image.unsqueeze(0),
+        bundle.torch_dtype,
+    )
+    ref_tissue_feat = bundle.condition_modules["tissue_downsampler"](
+        bundle.condition_modules["hte"](
+            reference_tissue_mask.unsqueeze(0).to(device=bundle.device)
+        )
+    ).to(dtype=bundle.torch_dtype)
+    ref_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
+        reference_nuclei_mask.unsqueeze(0).to(device=bundle.device)
+    ).to(dtype=bundle.torch_dtype)
+    tar_tissue_feat = bundle.condition_modules["tissue_downsampler"](
+        bundle.condition_modules["hte"](
+            target_tissue_mask.unsqueeze(0).to(device=bundle.device)
+        )
+    ).to(dtype=bundle.torch_dtype)
+    tar_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
+        target_nuclei_mask.unsqueeze(0).to(device=bundle.device)
+    ).to(dtype=bundle.torch_dtype)
+    reference_latent, ref_tissue_feat, ref_nuclei_feat = apply_cross_v2_1_reference_mode(
+        z_ref=reference_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        mode=reference_condition_mode,
+    )
+    control_tensor = build_cross_v2_1_condition(
+        z_ref=reference_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        tar_tissue_feat=tar_tissue_feat,
+        tar_nuclei_feat=tar_nuclei_feat,
+    )
+    return _fixed_timestep_losses_with_flux_controlnet(
+        pipe=bundle.flux_pipeline,
+        controlnet=bundle.controlnet,
+        prompt=prompt,
+        pixel_latents=target_latent,
+        control_tensor=control_tensor,
+        timesteps=timestep_values,
+        device=bundle.device,
+        torch_dtype=bundle.torch_dtype,
+        guidance_scale=bundle.guidance_scale,
+        controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
+        seed=seed,
     )
 
 
@@ -337,6 +412,10 @@ def _encode_images_to_latents(vae, images: torch.Tensor, torch_dtype: torch.dtyp
     return (latents - vae.config.shift_factor) * vae.config.scaling_factor
 
 
+def _per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    return (prediction.float() - target.float()).pow(2).flatten(1).mean(dim=1)
+
+
 @torch.inference_mode()
 def _sample_with_flux_controlnet(
     *,
@@ -440,6 +519,152 @@ def _sample_with_flux_controlnet(
     latents = (latents / pipe.vae.config.scaling_factor) + pipe.vae.config.shift_factor
     image = pipe.vae.decode(latents.to(dtype=torch_dtype), return_dict=False)[0]
     return pipe.image_processor.postprocess(image, output_type="pil")[0]
+
+
+@torch.inference_mode()
+def _fixed_timestep_losses_with_flux_controlnet(
+    *,
+    pipe,
+    controlnet,
+    prompt: str,
+    pixel_latents: torch.Tensor,
+    control_tensor: torch.Tensor,
+    timesteps: list[float],
+    device: str,
+    torch_dtype: torch.dtype,
+    guidance_scale: float,
+    controlnet_conditioning_scale: float,
+    seed: int,
+) -> dict[str, float]:
+    from diffusers import FluxControlNetPipeline
+
+    torch_device = torch.device(device)
+    prompt_embeds, pooled_prompt_embeds, text_ids = pipe.encode_prompt(
+        prompt=[prompt],
+        prompt_2=[prompt],
+        device=torch_device,
+    )
+    if text_ids.dim() == 3:
+        text_ids = text_ids[0]
+
+    bsz = int(pixel_latents.shape[0])
+    packed_pixel_latents = FluxControlNetPipeline._pack_latents(
+        pixel_latents,
+        bsz,
+        pixel_latents.shape[1],
+        pixel_latents.shape[2],
+        pixel_latents.shape[3],
+    )
+    control_image = FluxControlNetPipeline._pack_latents(
+        control_tensor,
+        bsz,
+        control_tensor.shape[1],
+        control_tensor.shape[2],
+        control_tensor.shape[3],
+    )
+    latent_image_ids = _prepare_packed_latent_image_ids(
+        packed_height=pixel_latents.shape[2] // 2,
+        packed_width=pixel_latents.shape[3] // 2,
+        device=torch_device,
+        dtype=torch_dtype,
+    )
+    controlnet_blocks_repeat = False if getattr(controlnet, "input_hint_block", None) is None else True
+    generator = torch.Generator(device=torch_device).manual_seed(seed)
+    noise = torch.randn(
+        packed_pixel_latents.shape,
+        generator=generator,
+        device=packed_pixel_latents.device,
+        dtype=packed_pixel_latents.dtype,
+    )
+
+    results: dict[str, float] = {}
+    for timestep_value in timesteps:
+        timestep = torch.tensor([timestep_value], device=torch_device, dtype=torch.float32)
+        sigma = _sigma_for_timestep(pipe.scheduler, timestep, n_dim=packed_pixel_latents.ndim, dtype=packed_pixel_latents.dtype)
+        noisy_model_input = (1.0 - sigma) * packed_pixel_latents + sigma * noise
+        expanded_timestep = timestep.expand(bsz).to(dtype=packed_pixel_latents.dtype)
+
+        guidance = None
+        if controlnet.config.guidance_embeds:
+            guidance = torch.full((bsz,), guidance_scale, device=torch_device)
+        controlnet_block_samples, controlnet_single_block_samples = controlnet(
+            hidden_states=noisy_model_input,
+            controlnet_cond=control_image,
+            controlnet_mode=None,
+            conditioning_scale=controlnet_conditioning_scale,
+            timestep=expanded_timestep / 1000,
+            guidance=guidance,
+            pooled_projections=pooled_prompt_embeds,
+            encoder_hidden_states=prompt_embeds,
+            txt_ids=text_ids,
+            img_ids=latent_image_ids,
+            joint_attention_kwargs=None,
+            return_dict=False,
+        )
+        transformer_guidance = None
+        if pipe.transformer.config.guidance_embeds:
+            transformer_guidance = torch.full((bsz,), guidance_scale, device=torch_device)
+        noise_pred = pipe.transformer(
+            hidden_states=noisy_model_input,
+            timestep=expanded_timestep / 1000,
+            guidance=transformer_guidance,
+            pooled_projections=pooled_prompt_embeds,
+            encoder_hidden_states=prompt_embeds,
+            controlnet_block_samples=controlnet_block_samples,
+            controlnet_single_block_samples=controlnet_single_block_samples,
+            txt_ids=text_ids,
+            img_ids=latent_image_ids,
+            joint_attention_kwargs=None,
+            return_dict=False,
+            controlnet_blocks_repeat=controlnet_blocks_repeat,
+        )[0]
+        target_velocity = noise - packed_pixel_latents
+        loss = _per_sample_mse(noise_pred, target_velocity).mean()
+        results[_format_timestep_key(timestep_value)] = float(loss.detach().cpu().item())
+    return results
+
+
+def _sigma_for_timestep(scheduler, timestep: torch.Tensor, *, n_dim: int, dtype: torch.dtype) -> torch.Tensor:
+    sigmas = scheduler.sigmas.to(device=timestep.device, dtype=dtype)
+    schedule_timesteps = scheduler.timesteps.to(device=timestep.device, dtype=timestep.dtype)
+    step_indices = []
+    for value in timestep:
+        matches = (schedule_timesteps == value).nonzero()
+        if matches.numel() > 0:
+            step_indices.append(int(matches[0].item()))
+        else:
+            step_indices.append(int(torch.argmin(torch.abs(schedule_timesteps - value)).item()))
+    sigma = sigmas[step_indices].flatten()
+    while len(sigma.shape) < n_dim:
+        sigma = sigma.unsqueeze(-1)
+    return sigma
+
+
+def _prepare_packed_latent_image_ids(
+    *,
+    packed_height: int,
+    packed_width: int,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    latent_image_ids = torch.zeros(packed_height, packed_width, 3, device=device, dtype=dtype)
+    latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(
+        packed_height,
+        device=device,
+        dtype=dtype,
+    )[:, None]
+    latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(
+        packed_width,
+        device=device,
+        dtype=dtype,
+    )[None, :]
+    return latent_image_ids.reshape(packed_height * packed_width, 3)
+
+
+def _format_timestep_key(timestep: float) -> str:
+    if float(timestep).is_integer():
+        return f"t{int(timestep)}"
+    return f"t{str(timestep).replace('.', 'p')}"
 
 
 def _calculate_shift(

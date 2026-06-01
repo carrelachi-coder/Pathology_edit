@@ -1,4 +1,7 @@
 import unittest
+import importlib.util
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch
@@ -21,6 +24,12 @@ from controlnet_train.modules.cross_v2_1_conditioning import (
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
 from controlnet_train.modules.tissue_condition_downsampler import TissueConditionDownsampler
+
+_Z_REF_DIAG_PATH = Path(__file__).resolve().parents[1] / "scripts" / "diagnose_cross_v2_1_z_ref.py"
+_Z_REF_DIAG_SPEC = importlib.util.spec_from_file_location("diagnose_cross_v2_1_z_ref", _Z_REF_DIAG_PATH)
+z_ref_diag = importlib.util.module_from_spec(_Z_REF_DIAG_SPEC)
+sys.modules[_Z_REF_DIAG_SPEC.name] = z_ref_diag
+_Z_REF_DIAG_SPEC.loader.exec_module(z_ref_diag)
 
 
 class HierarchicalTissueEmbeddingTests(unittest.TestCase):
@@ -211,6 +220,19 @@ class CrossV21ConditioningTests(unittest.TestCase):
         self.assertTrue(torch.equal(tissue_out, torch.zeros_like(ref_tissue)))
         self.assertTrue(torch.equal(nuclei_out, torch.zeros_like(ref_nuclei)))
         self.assertEqual(normalize_cross_v2_1_reference_mode("zero-ref"), CROSS_V2_1_REFERENCE_ZERO_REF)
+
+    def test_z_ref_diagnostic_slices_packed_projection_groups(self):
+        spec = CrossV21ControlSpec(reference_latent_channels=2, tissue_channels=3, nuclei_channels=1)
+        weight = torch.zeros(5, spec.packed_channels)
+        weight[:, : spec.packed_reference_latent_channels] = 1.0
+        weight[:, spec.packed_reference_mask_start : spec.packed_target_mask_start] = 2.0
+
+        summary = z_ref_diag.summarize_x_embedder_projection(weight, spec)
+
+        self.assertEqual(summary["groups"]["z_ref"]["input_span"], [0, 8])
+        self.assertEqual(summary["groups"]["ref_masks"]["input_span"], [8, 24])
+        self.assertEqual(summary["groups"]["target_masks"]["input_span"], [24, 40])
+        self.assertGreater(summary["groups"]["ref_masks"]["fro_norm"], summary["groups"]["z_ref"]["fro_norm"])
 
 
 if __name__ == "__main__":

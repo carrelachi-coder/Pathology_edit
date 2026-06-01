@@ -47,6 +47,20 @@ def build_parser() -> argparse.ArgumentParser:
             "(reference latent, tissue features, nuclei features) zeroed."
         ),
     )
+    parser.add_argument(
+        "--fixed-t-eval-timesteps",
+        default=None,
+        help=(
+            "Optional comma-separated training timesteps for extra one-step denoising "
+            "loss diagnostics, e.g. 100,300,500,700."
+        ),
+    )
+    parser.add_argument(
+        "--fixed-t-eval-seed",
+        type=int,
+        default=42,
+        help="Noise seed for fixed timestep denoising diagnostics.",
+    )
     return parser
 
 
@@ -94,6 +108,7 @@ def main(argv=None) -> int:
     from controlnet_train.inference.pipeline_cross_v2_1 import (
         CROSS_V2_1_REFERENCE_WITH_REF,
         CROSS_V2_1_REFERENCE_ZERO_REF,
+        compute_cross_v2_1_fixed_timestep_losses,
         load_cross_v2_1_bundle,
         run_cross_v2_1_bundle,
     )
@@ -112,8 +127,10 @@ def main(argv=None) -> int:
         guidance_scale=args.guidance_scale,
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
     )
+    fixed_t_eval_timesteps = _parse_fixed_t_eval_timesteps(args.fixed_t_eval_timesteps)
 
     metric_rows: list[dict[str, Any]] = []
+    fixed_t_rows: list[dict[str, Any]] = []
     panel_paths: list[Path] = []
     for index, record in enumerate(records):
         sample_id = str(record.get("sample_id") or Path(record["target_image"]).stem)
@@ -131,6 +148,7 @@ def main(argv=None) -> int:
         reference_image_tensor = load_image_tensor(reference_image_path)
         reference_tissue_mask = load_tissue_mask(reference_tissue_mask_path)
         reference_nuclei_mask = load_nuclei_mask(reference_nuclei_mask_path)
+        target_image_tensor = load_image_tensor(target_image_path)
         target_tissue_mask = load_tissue_mask(target_tissue_mask_path)
         target_nuclei_mask = load_nuclei_mask(target_nuclei_mask_path)
         prompt = _resolve_eval_prompt(
@@ -183,8 +201,35 @@ def main(argv=None) -> int:
                 pil_to_chw_float=_pil_to_chw_float,
                 save_error_image=_save_error_image,
                 make_panel=_make_panel,
+                save_variant_artifacts=args.run_zero_ref_ablation,
             )
             variant_results.append(result)
+            fixed_t_losses = {}
+            if fixed_t_eval_timesteps:
+                with torch.no_grad():
+                    fixed_t_losses = compute_cross_v2_1_fixed_timestep_losses(
+                        bundle,
+                        reference_image=reference_image_tensor,
+                        reference_tissue_mask=reference_tissue_mask,
+                        reference_nuclei_mask=reference_nuclei_mask,
+                        target_image=target_image_tensor,
+                        target_tissue_mask=target_tissue_mask,
+                        target_nuclei_mask=target_nuclei_mask,
+                        prompt=prompt,
+                        timesteps=fixed_t_eval_timesteps,
+                        reference_condition_mode=variant,
+                        seed=args.fixed_t_eval_seed,
+                    )
+                result["fixed_t_losses"] = fixed_t_losses
+                fixed_t_row = {
+                    "index": index,
+                    "sample_id": sample_id,
+                    "reference_sample_id": ref_id,
+                    "dataset": record.get("dataset", ""),
+                    "reference_condition_mode": variant,
+                    **{f"fixed_t_loss_{key}": value for key, value in fixed_t_losses.items()},
+                }
+                fixed_t_rows.append(fixed_t_row)
 
             metric_row = {
                 "index": index,
@@ -194,27 +239,39 @@ def main(argv=None) -> int:
                 "pair_difficulty": record.get("pair_difficulty", ""),
                 "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", math.nan)),
                 "area_coverage_ratio": float(record.get("area_coverage_ratio", math.nan)),
-                "reference_condition_mode": variant,
-                "zero_ref_ablation": variant == CROSS_V2_1_REFERENCE_ZERO_REF,
                 "color_match_applied": args.color_match != "none",
                 "controlnet_conditioning_scale": float(args.controlnet_conditioning_scale),
                 **result["metrics"],
             }
+            if args.run_zero_ref_ablation:
+                metric_row["reference_condition_mode"] = variant
+                metric_row["zero_ref_ablation"] = variant == CROSS_V2_1_REFERENCE_ZERO_REF
             metric_rows.append(metric_row)
             result["metric_row"] = metric_row
-            (sample_dir / f"metrics_{variant}.json").write_text(
-                json.dumps(metric_row, indent=2, ensure_ascii=False, allow_nan=True),
-                encoding="utf8",
-            )
+            if args.run_zero_ref_ablation:
+                (sample_dir / f"metrics_{variant}.json").write_text(
+                    json.dumps(metric_row, indent=2, ensure_ascii=False, allow_nan=True),
+                    encoding="utf8",
+                )
 
         metrics_payload = {result["variant"]: result["metric_row"] for result in variant_results}
         if args.run_zero_ref_ablation:
             comparison = _build_ref_ablation_comparison(variant_results)
             metrics_payload["comparison"] = comparison
+            if fixed_t_eval_timesteps:
+                metrics_payload["fixed_t_eval"] = {
+                    result["variant"]: result.get("fixed_t_losses", {})
+                    for result in variant_results
+                }
             (sample_dir / "ref_ablation_comparison.json").write_text(
                 json.dumps(comparison, indent=2, ensure_ascii=False, allow_nan=True),
                 encoding="utf8",
             )
+        elif fixed_t_eval_timesteps:
+            metrics_payload = {
+                **variant_results[0]["metric_row"],
+                "fixed_t_eval": variant_results[0].get("fixed_t_losses", {}),
+            }
 
         primary = variant_results[0]
         prediction = primary["prediction"]
@@ -225,6 +282,11 @@ def main(argv=None) -> int:
             _save_error_image(primary["abs_error"], sample_dir / "abs_error.png")
             primary["panel"].save(sample_dir / "panel.png")
             metrics_payload = primary["metric_row"]
+            if fixed_t_eval_timesteps:
+                metrics_payload = {
+                    **metrics_payload,
+                    "fixed_t_eval": primary.get("fixed_t_losses", {}),
+                }
         (sample_dir / "metrics.json").write_text(
             json.dumps(metrics_payload, indent=2, ensure_ascii=False, allow_nan=True),
             encoding="utf8",
@@ -248,23 +310,37 @@ def main(argv=None) -> int:
         if len(panel_paths) < args.overview_max_samples:
             panel_paths.append(panel_path)
 
-        message = (
-            f"[{index + 1}/{len(records)}] {sample_id} ref={ref_id} "
-            f"with_ref_l1={metrics['full_l1']:.4f} with_ref_psnr={metrics['full_psnr']:.2f}"
-        )
         if args.run_zero_ref_ablation:
+            message = (
+                f"[{index + 1}/{len(records)}] {sample_id} ref={ref_id} "
+                f"with_ref_l1={metrics['full_l1']:.4f} with_ref_psnr={metrics['full_psnr']:.2f}"
+            )
             zero_metrics = next(
                 result["metrics"] for result in variant_results if result["variant"] == CROSS_V2_1_REFERENCE_ZERO_REF
             )
             message += f" zero_ref_l1={zero_metrics['full_l1']:.4f} zero_ref_psnr={zero_metrics['full_psnr']:.2f}"
+        else:
+            message = (
+                f"[{index + 1}/{len(records)}] {sample_id} ref={ref_id} "
+                f"full_l1={metrics['full_l1']:.4f} full_psnr={metrics['full_psnr']:.2f}"
+            )
+        fixed_t_message = _format_fixed_t_message(variant_results)
+        if fixed_t_message:
+            message += f" {fixed_t_message}"
         print(message)
 
     _write_metrics(output_dir, metric_rows)
+    if fixed_t_rows:
+        _write_fixed_t_metrics(output_dir, fixed_t_rows)
     summary = aggregate_metrics(metric_rows)
     summary["controlnet_conditioning_scale"] = float(args.controlnet_conditioning_scale)
-    summary["reference_condition_modes"] = _reference_variants(args.run_zero_ref_ablation)
-    summary["run_zero_ref_ablation"] = bool(args.run_zero_ref_ablation)
+    if fixed_t_rows:
+        summary["fixed_t_eval"] = _aggregate_fixed_t_losses(fixed_t_rows)
+        summary["fixed_t_eval_timesteps"] = fixed_t_eval_timesteps
+        summary["fixed_t_eval_seed"] = int(args.fixed_t_eval_seed)
     if args.run_zero_ref_ablation:
+        summary["reference_condition_modes"] = _reference_variants(args.run_zero_ref_ablation)
+        summary["run_zero_ref_ablation"] = True
         summary["by_reference_condition_mode"] = _aggregate_by_reference_mode(metric_rows)
         summary["ref_ablation_delta"] = _aggregate_ref_ablation_delta(metric_rows)
     (output_dir / "metrics_summary.json").write_text(
@@ -275,6 +351,23 @@ def main(argv=None) -> int:
         _make_overview(panel_paths).save(output_dir / "overview_grid.png")
     print(f"wrote eval outputs to {output_dir}")
     return 0
+
+
+def _parse_fixed_t_eval_timesteps(value: str | None) -> list[float]:
+    if value is None or not value.strip():
+        return []
+    timesteps: list[float] = []
+    for raw_part in value.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        timestep = float(part)
+        if not math.isfinite(timestep):
+            raise ValueError(f"Fixed timestep must be finite, got {part!r}.")
+        timesteps.append(timestep)
+    if not timesteps:
+        raise ValueError("--fixed-t-eval-timesteps must contain at least one value.")
+    return timesteps
 
 
 def _reference_variants(run_zero_ref_ablation: bool) -> list[str]:
@@ -307,9 +400,11 @@ def _save_variant_outputs(
     pil_to_chw_float,
     save_error_image,
     make_panel,
+    save_variant_artifacts: bool,
 ) -> dict[str, Any]:
     raw_prediction = prediction.convert("RGB")
-    raw_prediction.save(sample_dir / f"prediction_{variant}_raw.png")
+    if save_variant_artifacts:
+        raw_prediction.save(sample_dir / f"prediction_{variant}_raw.png")
     prediction = raw_prediction
     if color_match == "lab":
         prediction = match_image_color_to_reference(
@@ -317,12 +412,14 @@ def _save_variant_outputs(
             reference=reference_pil,
             method=color_match,
         )
-    prediction.save(sample_dir / f"prediction_{variant}.png")
+    if save_variant_artifacts:
+        prediction.save(sample_dir / f"prediction_{variant}.png")
 
     pred_array = pil_to_chw_float(prediction)
     metrics = compute_cross_metrics(pred_array, target_array)
     abs_error = np.abs(pred_array - target_array).mean(axis=0)
-    save_error_image(abs_error, sample_dir / f"abs_error_{variant}.png")
+    if save_variant_artifacts:
+        save_error_image(abs_error, sample_dir / f"abs_error_{variant}.png")
     panel = make_panel(
         reference=reference_pil,
         prediction=prediction,
@@ -333,7 +430,8 @@ def _save_variant_outputs(
         thumbnail_size=thumbnail_size,
         title=title,
     )
-    panel.save(sample_dir / f"panel_{variant}.png")
+    if save_variant_artifacts:
+        panel.save(sample_dir / f"panel_{variant}.png")
     return {
         "variant": variant,
         "raw_prediction": raw_prediction,
@@ -473,6 +571,85 @@ def _aggregate_ref_ablation_delta(rows: list[dict[str, Any]]) -> dict[str, float
         if values:
             summary[f"{key}_mean"] = float(np.mean(values))
             summary[f"{key}_std"] = float(np.std(values))
+    return summary
+
+
+def _format_fixed_t_message(variant_results: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for result in variant_results:
+        losses = result.get("fixed_t_losses") or {}
+        for timestep_key, value in sorted(losses.items()):
+            parts.append(f"{result['variant']}_{timestep_key}={float(value):.4f}")
+    return " ".join(parts)
+
+
+def _write_fixed_t_metrics(output_dir: Path, rows: list[dict[str, Any]]) -> None:
+    import csv
+
+    jsonl_path = output_dir / "fixed_t_metrics.jsonl"
+    with jsonl_path.open("w", encoding="utf8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, allow_nan=True) + "\n")
+
+    fieldnames = sorted({key for row in rows for key in row})
+    csv_path = output_dir / "fixed_t_metrics.csv"
+    with csv_path.open("w", encoding="utf8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _aggregate_fixed_t_losses(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row.get("reference_condition_mode", "")), []).append(row)
+
+    output: dict[str, Any] = {}
+    for mode, mode_rows in sorted(grouped.items()):
+        mode_summary: dict[str, float] = {"num_samples": float(len(mode_rows))}
+        metric_keys = sorted(
+            key
+            for row in mode_rows
+            for key in row
+            if key.startswith("fixed_t_loss_")
+        )
+        for key in metric_keys:
+            values = [float(row[key]) for row in mode_rows if key in row and math.isfinite(float(row[key]))]
+            if values:
+                mode_summary[f"{key}_mean"] = float(np.mean(values))
+                mode_summary[f"{key}_std"] = float(np.std(values))
+        output[mode] = mode_summary
+
+    if "with_ref" in grouped and "zero_ref" in grouped:
+        paired = _aggregate_fixed_t_zero_ref_delta(grouped["with_ref"], grouped["zero_ref"])
+        if paired:
+            output["delta_zero_ref_minus_with_ref"] = paired
+    return output
+
+
+def _aggregate_fixed_t_zero_ref_delta(
+    with_ref_rows: list[dict[str, Any]],
+    zero_ref_rows: list[dict[str, Any]],
+) -> dict[str, float]:
+    zero_by_index = {int(row["index"]): row for row in zero_ref_rows}
+    deltas_by_key: dict[str, list[float]] = {}
+    for with_ref in with_ref_rows:
+        zero_ref = zero_by_index.get(int(with_ref["index"]))
+        if zero_ref is None:
+            continue
+        for key, value in with_ref.items():
+            if key.startswith("fixed_t_loss_") and key in zero_ref:
+                deltas_by_key.setdefault(key, []).append(float(zero_ref[key]) - float(value))
+    summary: dict[str, float] = {}
+    for key, values in sorted(deltas_by_key.items()):
+        finite = [value for value in values if math.isfinite(value)]
+        if finite:
+            summary[f"{key}_delta_mean"] = float(np.mean(finite))
+            summary[f"{key}_delta_std"] = float(np.std(finite))
+    if summary:
+        summary["num_pairs"] = float(
+            len(set(int(row["index"]) for row in with_ref_rows) & set(int(row["index"]) for row in zero_ref_rows))
+        )
     return summary
 
 
