@@ -181,10 +181,10 @@ class SegmentatorModelTests(unittest.TestCase):
 
         self.assertEqual(tuple(logits.shape), (2, 3, 8, 8))
 
-    def test_simple_feature_pyramid_builds_patch14_compatible_features(self):
+    def test_simple_feature_pyramid_builds_patch14_compatible_features_from_distinct_depths(self):
         pyramid = SimpleFeaturePyramid(in_channels=32, out_channels=32)
         pyramid.eval()
-        feats = [torch.randn(2, 32, 16, 16) for _ in range(4)]
+        feats = [torch.full((2, 32, 16, 16), float(idx + 1)) for idx in range(4)]
 
         with torch.no_grad():
             outputs = pyramid(feats)
@@ -192,6 +192,12 @@ class SegmentatorModelTests(unittest.TestCase):
         self.assertEqual(pyramid.strides, (7, 14, 28, 56))
         self.assertEqual([tuple(x.shape[-2:]) for x in outputs], [(32, 32), (16, 16), (8, 8), (4, 4)])
         self.assertEqual([x.shape[1] for x in outputs], [32, 32, 32, 32])
+
+    def test_simple_feature_pyramid_rejects_single_feature_map(self):
+        pyramid = SimpleFeaturePyramid(in_channels=32, out_channels=32)
+
+        with self.assertRaisesRegex(RuntimeError, "requires 4 feature maps"):
+            pyramid([torch.randn(2, 32, 16, 16)])
 
 
 if __name__ == "__main__":

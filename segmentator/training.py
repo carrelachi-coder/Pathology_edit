@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -143,16 +144,46 @@ def _save_training_state(
     )
 
 
-def _run_mask2former_sanity_check(model: BaselineSegmenter, image_size: int, num_classes: int, device: torch.device) -> None:
+def _run_mask2former_sanity_check(model: BaselineSegmenter, image_size: int, num_classes: int, device: torch.device) -> dict[str, object]:
     was_training = model.training
     model.train()
     dummy_img = torch.zeros(1, 3, image_size, image_size, device=device)
     dummy_mask = torch.zeros(1, image_size, image_size, dtype=torch.long, device=device)
     try:
+        align = model._input_alignment()
+        pad_h = (align - dummy_img.shape[-2] % align) % align
+        pad_w = (align - dummy_img.shape[-1] % align) % align
+        feature_img = F.pad(dummy_img, (0, pad_w, 0, pad_h), mode="reflect") if pad_h or pad_w else dummy_img
+        model.eval()
+        with torch.no_grad():
+            encoder_feats = model.encoder(feature_img)
+            if model.feature_pyramid is None:
+                raise RuntimeError("Mask2Former sanity check expected a feature pyramid.")
+            pyramid_feats = model.feature_pyramid(encoder_feats)
+        encoder_shapes = [list(feat.shape) for feat in encoder_feats]
+        pyramid_shapes = [list(feat.shape) for feat in pyramid_feats]
+        if len(pyramid_shapes) != 4:
+            raise RuntimeError(f"expected 4 Mask2Former feature levels, got {len(pyramid_shapes)}: {pyramid_shapes}")
+        if any(shape[1] != 256 for shape in pyramid_shapes):
+            raise RuntimeError(f"expected all Mask2Former feature levels to have 256 channels, got {pyramid_shapes}")
+        base_h, base_w = encoder_shapes[1][-2:]
+        expected_hw = [(base_h * 2, base_w * 2), (base_h, base_w), (base_h // 2, base_w // 2), (base_h // 4, base_w // 4)]
+        actual_hw = [(shape[-2], shape[-1]) for shape in pyramid_shapes]
+        if actual_hw != expected_hw:
+            raise RuntimeError(f"unexpected Mask2Former feature level shapes: expected {expected_hw}, got {actual_hw}")
+
+        model.train()
         losses = model.loss(dummy_img, dummy_mask)
         total = losses.get("total")
         if not torch.is_tensor(total) or not torch.isfinite(total.detach()).all():
             raise RuntimeError(f"non-finite sanity loss: {total}")
+        return {
+            "input_shape": list(dummy_img.shape),
+            "aligned_input_shape": list(feature_img.shape),
+            "encoder_shapes": encoder_shapes,
+            "pyramid_shapes": pyramid_shapes,
+            "pyramid_strides": list(model.feature_pyramid.strides),
+        }
     except Exception as exc:
         raise RuntimeError(
             "Mask2Former sanity check failed. This usually means the installed mmseg/mmcv/mmdet "
@@ -223,6 +254,54 @@ def compute_class_weights(dataset: TissueSegmentationDataset, num_classes: int, 
         metadata["weights"] = [float(v) for v in weights.tolist()]
         return weights.float(), metadata
     raise ValueError(f"unsupported class weighting mode: {mode}")
+
+
+def summarize_mask_label_space(dataset: TissueSegmentationDataset, num_classes: int) -> dict[str, object]:
+    table = coarse_remap_table(dataset.mask_remap, num_classes=num_classes, ignore_index=dataset.ignore_index)
+    summary: dict[str, object] = {}
+    for record in dataset.records:
+        dataset_summary = summary.setdefault(
+            record.dataset_id,
+            {
+                "samples": 0,
+                "raw_values": {},
+                "remapped_values": {},
+                "ignored_pixels": 0,
+                "skipped_unreadable_samples": [],
+            },
+        )
+        dataset_summary["samples"] += 1
+        try:
+            mask = load_mask(record.mask_path)
+        except OSError as exc:
+            dataset_summary["skipped_unreadable_samples"].append(record.sample_id)
+            warnings.warn(
+                f"Skipping unreadable segmentator mask {record.sample_id}: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            continue
+
+        raw_values, raw_counts = torch.unique(mask, return_counts=True)
+        raw_hist = dataset_summary["raw_values"]
+        for value, count in zip(raw_values.tolist(), raw_counts.tolist()):
+            key = str(int(value))
+            raw_hist[key] = int(raw_hist.get(key, 0)) + int(count)
+
+        remapped = remap_mask_to_coarse(mask, table, ignore_index=dataset.ignore_index)
+        valid = (remapped >= 0) & (remapped < num_classes)
+        dataset_summary["ignored_pixels"] += int((~valid).sum().item())
+        remapped_values, remapped_counts = torch.unique(remapped[valid], return_counts=True)
+        remapped_hist = dataset_summary["remapped_values"]
+        for value, count in zip(remapped_values.tolist(), remapped_counts.tolist()):
+            key = str(int(value))
+            remapped_hist[key] = int(remapped_hist.get(key, 0)) + int(count)
+
+    for dataset_summary in summary.values():
+        if isinstance(dataset_summary, dict):
+            dataset_summary["raw_values"] = dict(sorted(dataset_summary["raw_values"].items(), key=lambda item: int(item[0])))
+            dataset_summary["remapped_values"] = dict(sorted(dataset_summary["remapped_values"].items(), key=lambda item: int(item[0])))
+    return dict(sorted(summary.items()))
 
 
 def _export_val_outputs(
@@ -306,6 +385,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         config.class_weighting,
         config.remap_invalid_to,
     )
+    label_space_summary = summarize_mask_label_space(train_ds, config.num_classes) if main_process else {}
     if config.decoder == "mask2former":
         class_weight_metadata["effective_invalid_target"] = config.mask2former_ignore_index
         class_weight_metadata["note"] = "Mask2Former masks invalid labels with ignore_index during target assignment; no-object query weight is separate."
@@ -359,10 +439,17 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         mask2former_ignore_index=config.mask2former_ignore_index,
     ).to(device)
     sanity_check_passed = False
+    mask2former_feature_shapes: dict[str, object] = {}
     if config.decoder == "mask2former":
         print(f"[rank {rank}] running Mask2Former sanity check", flush=True)
-        _run_mask2former_sanity_check(model, config.image_size, config.num_classes, device)
+        mask2former_feature_shapes = _run_mask2former_sanity_check(model, config.image_size, config.num_classes, device)
         sanity_check_passed = True
+        print(
+            f"[rank {rank}] Mask2Former feature shapes "
+            f"encoder={mask2former_feature_shapes['encoder_shapes']} "
+            f"pyramid={mask2former_feature_shapes['pyramid_shapes']}",
+            flush=True,
+        )
         print(f"[rank {rank}] Mask2Former sanity check passed", flush=True)
     if distributed:
         print(f"[rank {rank}] wrapping model with DDP", flush=True)
@@ -440,8 +527,10 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     "mask2former_queries": config.mask2former_queries,
                     "mask2former_ignore_index": config.mask2former_ignore_index,
                     "mask2former_sanity_check_passed": sanity_check_passed,
+                    "mask2former_feature_shapes": mask2former_feature_shapes,
                     "effective_invalid_target": config.mask2former_ignore_index if config.decoder == "mask2former" else config.ignore_index,
                     "class_weighting": config.class_weighting,
+                    "label_space_summary": label_space_summary,
                     "manifest_path": str(config.manifest_path) if config.manifest_path is not None else None,
                     "resume_from_checkpoint": config.resume_from_checkpoint,
                     "resume_checkpoint": str(resume_path) if resume_path is not None else None,
@@ -508,6 +597,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         entropy = []
         logits = []
         sample_ids = []
+        dataset_ids = []
         with torch.no_grad():
             val_bar = tqdm(
                 val_loader,
@@ -527,9 +617,11 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     entropy.append(outputs["entropy"].cpu())
                     logits.append(outputs["logits"].cpu())
                 sample_ids.extend(str(v) for v in batch["sample_id"])
+                dataset_ids.extend(str(v) for v in batch["dataset_id"])
 
         local_payload = {
             "sample_ids": sample_ids,
+            "dataset_ids": dataset_ids,
             "pred": torch.cat(preds, dim=0) if preds else torch.empty(0, config.image_size, config.image_size, dtype=torch.long),
             "target": torch.cat(targets, dim=0) if targets else torch.empty(0, config.image_size, config.image_size, dtype=torch.long),
         }
@@ -547,8 +639,10 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             gathered_probs: list[torch.Tensor] = []
             gathered_entropy: list[torch.Tensor] = []
             gathered_logits: list[torch.Tensor] = []
+            ordered_dataset_ids: list[str] = []
             for payload in gathered_payloads:
                 payload_sample_ids = payload["sample_ids"]
+                payload_dataset_ids = payload["dataset_ids"]
                 payload_pred = payload["pred"]
                 payload_target = payload["target"]
                 payload_probs = payload.get("probs")
@@ -559,6 +653,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                         continue
                     seen_sample_ids.add(sample_id)
                     ordered_sample_ids.append(sample_id)
+                    ordered_dataset_ids.append(str(payload_dataset_ids[idx]))
                     gathered_preds.append(payload_pred[idx : idx + 1])
                     gathered_targets.append(payload_target[idx : idx + 1])
                     if config.export_val_tensors:
@@ -576,6 +671,30 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 boundary_width=config.boundary_width,
                 ignore_index=config.ignore_index,
             )
+            per_dataset_metrics = {}
+            for dataset_id in sorted(set(ordered_dataset_ids)):
+                indices = [idx for idx, value in enumerate(ordered_dataset_ids) if value == dataset_id]
+                if not indices:
+                    continue
+                index_tensor = torch.tensor(indices, dtype=torch.long)
+                ds_metrics = segmentation_metrics(
+                    pred.index_select(0, index_tensor),
+                    target.index_select(0, index_tensor),
+                    config.num_classes,
+                    class_names=manifest.classes,
+                    boundary_width=config.boundary_width,
+                    ignore_index=config.ignore_index,
+                )
+                per_dataset_metrics[dataset_id] = {
+                    "samples": len(indices),
+                    "mIoU": ds_metrics["mIoU"],
+                    "mDice": ds_metrics["mDice"],
+                    "foreground_recall": ds_metrics["foreground_recall"],
+                    "boundary_f1": ds_metrics["boundary_f1"],
+                    "per_class": ds_metrics["per_class"],
+                    "groups": ds_metrics["groups"],
+                }
+            metrics["per_dataset"] = per_dataset_metrics
             history.append({k: v for k, v in metrics.items() if isinstance(v, float)})
             if float(metrics["mIoU"]) > best_miou:
                 best_miou = float(metrics["mIoU"])
@@ -595,6 +714,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                         "mDice": metrics["mDice"],
                         "foreground_recall": metrics["foreground_recall"],
                         "boundary_f1": metrics["boundary_f1"],
+                        "per_dataset_mIoU": {k: v["mIoU"] for k, v in per_dataset_metrics.items()},
                     },
                     ensure_ascii=False,
                 ),

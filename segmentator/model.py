@@ -136,33 +136,37 @@ class UPerLikeDecoder(nn.Module):
 
 
 class SimpleFeaturePyramid(nn.Module):
-    """Build patch14-compatible multi-scale features from a single ViT map."""
+    """Build patch14-compatible feature levels from distinct ViT depths."""
 
-    def __init__(self, in_channels: int = 1536, out_channels: int = 256) -> None:
+    def __init__(self, in_channels: int | tuple[int, int, int, int] = 1536, out_channels: int = 256) -> None:
         super().__init__()
+        if isinstance(in_channels, int):
+            in_channels = (in_channels, in_channels, in_channels, in_channels)
+        if len(in_channels) != 4:
+            raise ValueError(f"SimpleFeaturePyramid expects 4 input channel counts, got {len(in_channels)}")
         self.out_channels = (out_channels, out_channels, out_channels, out_channels)
         self.strides = (7, 14, 28, 56)
         self.stages = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2),
+                    nn.ConvTranspose2d(in_channels[0], out_channels, kernel_size=2, stride=2),
                     nn.GroupNorm(32, out_channels),
                     nn.GELU(),
                 ),
                 nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels, kernel_size=1),
+                    nn.Conv2d(in_channels[1], out_channels, kernel_size=1),
                     nn.GroupNorm(32, out_channels),
                     nn.GELU(),
                 ),
                 nn.Sequential(
                     nn.MaxPool2d(kernel_size=2, stride=2),
-                    nn.Conv2d(in_channels, out_channels, kernel_size=1),
+                    nn.Conv2d(in_channels[2], out_channels, kernel_size=1),
                     nn.GroupNorm(32, out_channels),
                     nn.GELU(),
                 ),
                 nn.Sequential(
                     nn.MaxPool2d(kernel_size=4, stride=4),
-                    nn.Conv2d(in_channels, out_channels, kernel_size=1),
+                    nn.Conv2d(in_channels[3], out_channels, kernel_size=1),
                     nn.GroupNorm(32, out_channels),
                     nn.GELU(),
                 ),
@@ -170,10 +174,9 @@ class SimpleFeaturePyramid(nn.Module):
         )
 
     def forward(self, feats: list[torch.Tensor]) -> list[torch.Tensor]:
-        if not feats:
-            raise RuntimeError("SimpleFeaturePyramid requires at least one feature map")
-        base = feats[-1]
-        return [stage(base) for stage in self.stages]
+        if len(feats) != 4:
+            raise RuntimeError(f"SimpleFeaturePyramid requires 4 feature maps from distinct depths, got {len(feats)}")
+        return [stage(feat) for stage, feat in zip(self.stages, feats)]
 
 
 class OfficialMask2FormerDecoder(nn.Module):
@@ -389,13 +392,13 @@ class BaselineSegmenter(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.decoder_name = decoder
-        encoder_layers = (23,) if decoder == "mask2former" else (5, 11, 17, 23)
+        encoder_layers = (5, 11, 17, 23)
         self.encoder = Uni2hFeatureEncoder(local_repo=local_repo, freeze=freeze_encoder, intermediate_layers=encoder_layers)
         if decoder == "upernet":
             self.feature_pyramid = None
             self.decoder = UPerLikeDecoder((1536, 1536, 1536, 1536), num_classes)
         elif decoder == "mask2former":
-            self.feature_pyramid = SimpleFeaturePyramid(1536, 256)
+            self.feature_pyramid = SimpleFeaturePyramid(self.encoder.feature_channels, 256)
             self.decoder = OfficialMask2FormerDecoder(
                 self.feature_pyramid.out_channels,
                 num_classes,

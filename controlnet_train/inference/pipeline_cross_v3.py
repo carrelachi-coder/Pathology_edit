@@ -362,6 +362,7 @@ def _load_cross_v3_reference_spec(checkpoint_path: Path) -> CrossV3ReferenceSpec
         tissue_channels=int(saved_spec.get("tissue_channels", 64)),
         nuclei_channels=int(saved_spec.get("nuclei_channels", 16)),
         token_dim=int(saved_spec.get("token_dim", 4096)),
+        output_init_std=float(saved_spec.get("output_init_std", 0.02)),
     )
 
 
@@ -405,6 +406,7 @@ def _load_condition_modules(
             nuclei_channels=reference_spec.nuclei_channels,
             token_dim=reference_spec.token_dim,
             hidden_dim=reference_state["proj_in.weight"].shape[0],
+            output_init_std=reference_spec.output_init_std,
         ),
     }
     for name, module in modules.items():

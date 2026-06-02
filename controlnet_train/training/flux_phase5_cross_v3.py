@@ -373,7 +373,7 @@ def _save_condition_modules(
             "raw_channels": int(reference_spec.raw_channels),
             "packed_channels": int(reference_spec.packed_channels),
             "token_dim": int(reference_spec.token_dim),
-            "output_init_std": float(getattr(args, "reference_token_output_init_std", 0.02)),
+            "output_init_std": float(reference_spec.output_init_std),
             "condition_order": [
                 "z_ref",
                 "ref_tissue_feat",
@@ -605,6 +605,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         tissue_channels=args.tissue_out_channels,
         nuclei_channels=args.nuclei_out_channels,
         token_dim=int(getattr(args, "reference_token_dim", 4096)),
+        output_init_std=float(getattr(args, "reference_token_output_init_std", 0.02)),
     )
     modules = {
         "hte": HierarchicalTissueEmbedding(embedding_dim=args.tissue_embedding_dim),
@@ -624,7 +625,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             nuclei_channels=reference_spec.nuclei_channels,
             token_dim=reference_spec.token_dim,
             hidden_dim=int(getattr(args, "reference_token_hidden_dim", reference_spec.token_dim)),
-            output_init_std=float(getattr(args, "reference_token_output_init_std", 0.02)),
+            output_init_std=reference_spec.output_init_std,
         ),
     }
     if bool(getattr(args, "load_conditioning_from_checkpoint", False)):
