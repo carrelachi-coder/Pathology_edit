@@ -41,8 +41,10 @@ from diffusers.utils.torch_utils import is_compiled_module
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
+from dataset_config import NUM_FINE
 from controlnet_train.data import CrossReconstructionDataset
 from controlnet_train.modules import (
+    FixedOneHotTissueEncoder,
     HierarchicalTissueEmbedding,
     NucleiConditionEncoder,
     TissueConditionDownsampler,
@@ -159,7 +161,7 @@ def _build_cross_v3_control_batch(
     modules: dict[str, nn.Module],
     vae: AutoencoderKL,
     weight_dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float]]:
     device = next(vae.parameters()).device
     target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
     reference_image_latent = _encode_images_to_deterministic_latents(
@@ -174,8 +176,8 @@ def _build_cross_v3_control_batch(
     ref_nuclei_feat = modules["nuclei_encoder"](
         batch["reference_nuclei_mask"].to(device=device)
     ).to(dtype=weight_dtype)
-    tar_tissue_feat = modules["tissue_downsampler"](
-        modules["hte"](batch["target_tissue_mask"].to(device=device))
+    tar_tissue_feat = _target_tissue_downsampler(modules)(
+        _target_hte(modules)(batch["target_tissue_mask"].to(device=device))
     ).to(dtype=weight_dtype)
     tar_nuclei_feat = modules["nuclei_encoder"](
         batch["target_nuclei_mask"].to(device=device)
@@ -190,7 +192,57 @@ def _build_cross_v3_control_batch(
         ref_tissue_feat=ref_tissue_feat,
         ref_nuclei_feat=ref_nuclei_feat,
     )
-    return target_image_latent, control_tensor, reference_tokens
+    feature_stats = _cross_v3_feature_stats(
+        tar_tissue_feat=tar_tissue_feat,
+        tar_nuclei_feat=tar_nuclei_feat,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        reference_tokens=reference_tokens,
+    )
+    return target_image_latent, control_tensor, reference_tokens, feature_stats
+
+
+def _target_hte(modules: dict[str, nn.Module]) -> nn.Module:
+    if "target_tissue_encoder" in modules:
+        return modules["target_tissue_encoder"]
+    return modules.get("target_hte") or modules["hte"]
+
+
+def _target_tissue_downsampler(modules: dict[str, nn.Module]) -> nn.Module:
+    if "target_tissue_encoder" in modules:
+        return nn.Identity()
+    return modules.get("target_tissue_downsampler") or modules["tissue_downsampler"]
+
+
+def _cross_v3_feature_stats(
+    *,
+    tar_tissue_feat: torch.Tensor,
+    tar_nuclei_feat: torch.Tensor,
+    ref_tissue_feat: torch.Tensor,
+    ref_nuclei_feat: torch.Tensor,
+    reference_tokens: torch.Tensor,
+) -> dict[str, float]:
+    target_tissue_abs_mean = float(tar_tissue_feat.detach().float().abs().mean().cpu().item())
+    reference_tissue_abs_mean = float(ref_tissue_feat.detach().float().abs().mean().cpu().item())
+    return {
+        "target_tissue_abs_mean": target_tissue_abs_mean,
+        "target_tissue_abs_max": float(tar_tissue_feat.detach().float().abs().max().cpu().item()),
+        "reference_tissue_abs_mean": reference_tissue_abs_mean,
+        "reference_tissue_abs_max": float(ref_tissue_feat.detach().float().abs().max().cpu().item()),
+        "target_to_reference_tissue_abs_mean_ratio": float(
+            target_tissue_abs_mean / max(reference_tissue_abs_mean, 1e-12)
+        ),
+        "target_nuclei_abs_mean": float(tar_nuclei_feat.detach().float().abs().mean().cpu().item()),
+        "target_nuclei_abs_max": float(tar_nuclei_feat.detach().float().abs().max().cpu().item()),
+        "reference_nuclei_abs_mean": float(ref_nuclei_feat.detach().float().abs().mean().cpu().item()),
+        "reference_nuclei_abs_max": float(ref_nuclei_feat.detach().float().abs().max().cpu().item()),
+        "reference_token_abs_mean": float(reference_tokens.detach().float().abs().mean().cpu().item()),
+        "reference_token_abs_max": float(reference_tokens.detach().float().abs().max().cpu().item()),
+        "target_feature_height": float(tar_tissue_feat.shape[2]),
+        "target_feature_width": float(tar_tissue_feat.shape[3]),
+        "reference_feature_height": float(ref_tissue_feat.shape[2]),
+        "reference_feature_width": float(ref_tissue_feat.shape[3]),
+    }
 
 
 def _use_self_reconstruction_reference(batch: dict) -> dict:
@@ -361,6 +413,18 @@ def _save_condition_modules(
             "nuclei_channels": int(control_spec.nuclei_channels),
             "raw_channels": int(control_spec.raw_channels),
             "packed_channels": int(control_spec.packed_channels),
+            "target_tissue_path": (
+                "fixed_one_hot"
+                if "target_tissue_encoder" in modules
+                else "target_hte,target_tissue_downsampler"
+                if "target_hte" in modules or "target_tissue_downsampler" in modules
+                else "shared_hte,tissue_downsampler"
+            ),
+            "target_one_hot_scale": (
+                float(getattr(modules.get("target_tissue_encoder"), "scale"))
+                if "target_tissue_encoder" in modules
+                else None
+            ),
             "condition_order": [
                 "tar_tissue_feat",
                 "tar_nuclei_feat",
@@ -570,6 +634,16 @@ def _load_condition_modules_from_checkpoint(
         if name not in state:
             raise KeyError(f"Missing {name!r} in conditioning checkpoint: {state_path}")
         modules[name].load_state_dict(state[name])
+    for name in ("target_hte", "target_tissue_downsampler"):
+        if name in modules and name in state:
+            modules[name].load_state_dict(state[name])
+        elif name in modules:
+            logger.info(
+                "Conditioning checkpoint has no %s; keeping the newly initialized target-side low-capacity module.",
+                name,
+            )
+    if "target_tissue_encoder" in modules:
+        logger.info("Using fixed one-hot target tissue encoder; no target-side tissue weights are loaded.")
     if "reference_context_encoder" in state:
         modules["reference_context_encoder"].load_state_dict(state["reference_context_encoder"])
     else:
@@ -596,8 +670,15 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     if args.max_train_samples is not None:
         dataset.records = dataset.records[: args.max_train_samples]
 
+    target_tissue_encoding = str(getattr(args, "target_tissue_encoding", "shared_hte") or "shared_hte").lower()
+    if target_tissue_encoding not in {"shared_hte", "low_capacity_hte", "one_hot"}:
+        raise ValueError(
+            f"Unsupported target_tissue_encoding {target_tissue_encoding!r}; "
+            "choose shared_hte, low_capacity_hte, or one_hot."
+        )
+    target_tissue_channels = NUM_FINE if target_tissue_encoding == "one_hot" else args.tissue_out_channels
     control_spec = CrossV3ControlSpec(
-        tissue_channels=args.tissue_out_channels,
+        tissue_channels=target_tissue_channels,
         nuclei_channels=args.nuclei_out_channels,
     )
     reference_spec = CrossV3ReferenceSpec(
@@ -606,6 +687,9 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         nuclei_channels=args.nuclei_out_channels,
         token_dim=int(getattr(args, "reference_token_dim", 4096)),
         output_init_std=float(getattr(args, "reference_token_output_init_std", 0.02)),
+    )
+    target_tissue_embedding_dim = int(
+        getattr(args, "target_tissue_embedding_dim", None) or args.tissue_embedding_dim
     )
     modules = {
         "hte": HierarchicalTissueEmbedding(embedding_dim=args.tissue_embedding_dim),
@@ -628,6 +712,19 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             output_init_std=reference_spec.output_init_std,
         ),
     }
+    if target_tissue_encoding == "one_hot":
+        modules["target_tissue_encoder"] = FixedOneHotTissueEncoder(
+            num_classes=NUM_FINE,
+            downsample_factor=2 ** int(args.condition_downsample_blocks),
+            scale=float(getattr(args, "target_one_hot_scale", 4.0)),
+        )
+    elif target_tissue_encoding == "low_capacity_hte":
+        modules["target_hte"] = HierarchicalTissueEmbedding(embedding_dim=target_tissue_embedding_dim)
+        modules["target_tissue_downsampler"] = TissueConditionDownsampler(
+            in_channels=target_tissue_embedding_dim,
+            hidden_channels=args.tissue_out_channels,
+            num_blocks=args.condition_downsample_blocks,
+        )
     if bool(getattr(args, "load_conditioning_from_checkpoint", False)):
         conditioning_checkpoint = _resolve_conditioning_checkpoint_path(args)
         if conditioning_checkpoint is None:
@@ -960,12 +1057,37 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 counterfactual_sample_mask = _batch_mode_mask(training_batch, "counterfactual", device=accelerator.device)
                 cross_sample_mask = ~(counterfactual_sample_mask | self_reconstruction_sample_mask)
 
-                pixel_latents, control_tensor, reference_tokens = _build_cross_v3_control_batch(
+                pixel_latents, control_tensor, reference_tokens, feature_stats = _build_cross_v3_control_batch(
                     batch=training_batch,
                     modules=modules,
                     vae=vae,
                     weight_dtype=weight_dtype,
                 )
+                if accelerator.is_main_process and global_step == 0:
+                    logger.info(
+                        "[SCALE-CHECK] step=%s target_tissue_abs_mean=%.8g "
+                        "reference_tissue_abs_mean=%.8g target/ref_ratio=%.8g "
+                        "target_tissue_abs_max=%.8g reference_tissue_abs_max=%.8g "
+                        "target_nuclei_abs_mean=%.8g reference_nuclei_abs_mean=%.8g "
+                        "reference_token_abs_mean=%.8g target_feature_hw=%sx%s "
+                        "reference_feature_hw=%sx%s target_tissue_encoding=%s "
+                        "target_one_hot_scale=%.8g",
+                        global_step,
+                        feature_stats["target_tissue_abs_mean"],
+                        feature_stats["reference_tissue_abs_mean"],
+                        feature_stats["target_to_reference_tissue_abs_mean_ratio"],
+                        feature_stats["target_tissue_abs_max"],
+                        feature_stats["reference_tissue_abs_max"],
+                        feature_stats["target_nuclei_abs_mean"],
+                        feature_stats["reference_nuclei_abs_mean"],
+                        feature_stats["reference_token_abs_mean"],
+                        int(feature_stats["target_feature_height"]),
+                        int(feature_stats["target_feature_width"]),
+                        int(feature_stats["reference_feature_height"]),
+                        int(feature_stats["reference_feature_width"]),
+                        target_tissue_encoding,
+                        float(getattr(args, "target_one_hot_scale", 4.0)),
+                    )
                 bsz = pixel_latents.shape[0]
 
                 packed_pixel_latents = FluxControlNetPipeline._pack_latents(
@@ -1149,6 +1271,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             }
             if ref_check_diff is not None:
                 logs["ref_check_mean_abs_noise_pred_diff"] = ref_check_diff.detach().item()
+            if global_step <= 1:
+                logs.update(feature_stats)
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 

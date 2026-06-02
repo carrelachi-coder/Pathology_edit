@@ -25,6 +25,7 @@ from .cross_v3_conditioning import (
     normalize_cross_v3_reference_mode,
     pack_cross_v3_reference_grid,
 )
+from .fixed_tissue_encoder import FixedOneHotTissueEncoder
 from .hte_embedding import HierarchicalTissueEmbedding
 from .nuclei_condition_encoder import NucleiConditionEncoder
 from .tissue_condition_downsampler import TissueConditionDownsampler
@@ -40,6 +41,7 @@ __all__ = [
     "CrossV3ControlSpec",
     "CrossV3ReferenceContextEncoder",
     "CrossV3ReferenceSpec",
+    "FixedOneHotTissueEncoder",
     "HierarchicalTissueEmbedding",
     "NucleiConditionEncoder",
     "TissueConditionDownsampler",

@@ -34,6 +34,7 @@ from controlnet_train.modules.cross_v3_conditioning import (
     normalize_cross_v3_reference_mode,
     pack_cross_v3_reference_grid,
 )
+from controlnet_train.modules.fixed_tissue_encoder import FixedOneHotTissueEncoder
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
 from controlnet_train.modules.tissue_condition_downsampler import TissueConditionDownsampler
@@ -43,6 +44,17 @@ _Z_REF_DIAG_SPEC = importlib.util.spec_from_file_location("diagnose_cross_v2_1_z
 z_ref_diag = importlib.util.module_from_spec(_Z_REF_DIAG_SPEC)
 sys.modules[_Z_REF_DIAG_SPEC.name] = z_ref_diag
 _Z_REF_DIAG_SPEC.loader.exec_module(z_ref_diag)
+
+_CROSS_V3_TRAINING_PATH = (
+    Path(__file__).resolve().parents[1] / "controlnet_train" / "training" / "flux_phase5_cross_v3.py"
+)
+_CROSS_V3_TRAINING_SPEC = importlib.util.spec_from_file_location("flux_phase5_cross_v3", _CROSS_V3_TRAINING_PATH)
+cross_v3_training = importlib.util.module_from_spec(_CROSS_V3_TRAINING_SPEC)
+try:
+    sys.modules[_CROSS_V3_TRAINING_SPEC.name] = cross_v3_training
+    _CROSS_V3_TRAINING_SPEC.loader.exec_module(cross_v3_training)
+except ModuleNotFoundError:
+    cross_v3_training = None
 
 
 class HierarchicalTissueEmbeddingTests(unittest.TestCase):
@@ -67,6 +79,85 @@ class TissueConditionDownsamplerTests(unittest.TestCase):
         out = module(x)
 
         self.assertEqual(out.shape, (2, 64, 8, 8))
+
+
+class FixedOneHotTissueEncoderTests(unittest.TestCase):
+    def test_encodes_fixed_one_hot_layout_without_trainable_parameters(self):
+        module = FixedOneHotTissueEncoder(num_classes=4, downsample_factor=2, scale=4.0)
+        tissue = torch.tensor(
+            [[
+                [1, 1, 2, 2],
+                [1, 1, 2, 2],
+                [3, 3, 0, 0],
+                [3, 3, 0, 0],
+            ]]
+        )
+
+        out = module(tissue)
+
+        self.assertEqual(out.shape, (1, 4, 2, 2))
+        self.assertEqual(sum(param.numel() for param in module.parameters()), 0)
+        self.assertTrue(torch.equal(out[0, :, 0, 0], torch.tensor([0.0, 4.0, 0.0, 0.0])))
+        self.assertTrue(torch.equal(out[0, :, 1, 1], torch.tensor([4.0, 0.0, 0.0, 0.0])))
+
+
+@unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v3 training helpers")
+class CrossV3TargetTissuePathTests(unittest.TestCase):
+    def test_target_tissue_path_defaults_to_shared_hte(self):
+        modules = {
+            "hte": torch.nn.Identity(),
+            "tissue_downsampler": torch.nn.Identity(),
+        }
+
+        self.assertIs(cross_v3_training._target_hte(modules), modules["hte"])
+        self.assertIs(cross_v3_training._target_tissue_downsampler(modules), modules["tissue_downsampler"])
+
+    def test_target_tissue_path_prefers_low_capacity_target_branch(self):
+        modules = {
+            "hte": torch.nn.Identity(),
+            "tissue_downsampler": torch.nn.Identity(),
+            "target_hte": torch.nn.Linear(2, 2),
+            "target_tissue_downsampler": torch.nn.Conv2d(2, 2, 1),
+        }
+
+        self.assertIs(cross_v3_training._target_hte(modules), modules["target_hte"])
+        self.assertIs(
+            cross_v3_training._target_tissue_downsampler(modules),
+            modules["target_tissue_downsampler"],
+        )
+
+    def test_target_tissue_path_prefers_fixed_one_hot_encoder(self):
+        modules = {
+            "hte": torch.nn.Identity(),
+            "tissue_downsampler": torch.nn.Identity(),
+            "target_tissue_encoder": FixedOneHotTissueEncoder(num_classes=4, downsample_factor=2),
+        }
+
+        self.assertIs(cross_v3_training._target_hte(modules), modules["target_tissue_encoder"])
+        self.assertIsInstance(cross_v3_training._target_tissue_downsampler(modules), torch.nn.Identity)
+
+    def test_feature_stats_split_target_tissue_and_nuclei_channels(self):
+        tar_tissue = torch.ones(1, 3, 2, 2) * 2.0
+        tar_nuclei = torch.ones(1, 2, 2, 2) * 0.5
+        ref_tissue = torch.ones(1, 3, 2, 2) * 4.0
+        ref_nuclei = torch.ones(1, 2, 2, 2) * 0.25
+        reference_tokens = torch.ones(1, 4, 6) * 0.25
+
+        stats = cross_v3_training._cross_v3_feature_stats(
+            tar_tissue_feat=tar_tissue,
+            tar_nuclei_feat=tar_nuclei,
+            ref_tissue_feat=ref_tissue,
+            ref_nuclei_feat=ref_nuclei,
+            reference_tokens=reference_tokens,
+        )
+
+        self.assertAlmostEqual(stats["target_tissue_abs_mean"], 2.0)
+        self.assertAlmostEqual(stats["reference_tissue_abs_mean"], 4.0)
+        self.assertAlmostEqual(stats["target_to_reference_tissue_abs_mean_ratio"], 0.5)
+        self.assertAlmostEqual(stats["target_nuclei_abs_mean"], 0.5)
+        self.assertAlmostEqual(stats["reference_nuclei_abs_mean"], 0.25)
+        self.assertAlmostEqual(stats["reference_token_abs_mean"], 0.25)
+        self.assertEqual(stats["target_feature_height"], 2.0)
 
 
 class ChangeMaskEncoderTests(unittest.TestCase):

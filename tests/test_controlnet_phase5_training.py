@@ -244,6 +244,12 @@ class TrainingCliTests(unittest.TestCase):
                 "0.01",
                 "--ref-check-step",
                 "10",
+                "--target-tissue-encoding",
+                "one_hot",
+                "--target-tissue-embedding-dim",
+                "8",
+                "--target-one-hot-scale",
+                "3.5",
             ]
         )
 
@@ -254,6 +260,9 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.reference_token_hidden_dim, 1024)
         self.assertEqual(args.reference_token_output_init_std, 0.01)
         self.assertEqual(args.ref_check_step, 10)
+        self.assertEqual(args.target_tissue_encoding, "one_hot")
+        self.assertEqual(args.target_tissue_embedding_dim, 8)
+        self.assertEqual(args.target_one_hot_scale, 3.5)
         self.assertFalse(hasattr(args, "uni_checkpoint_path"))
         self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
 

@@ -13,6 +13,7 @@ import torch.nn as nn
 from PIL import Image
 
 from controlnet_train.modules import (
+    FixedOneHotTissueEncoder,
     HierarchicalTissueEmbedding,
     NucleiConditionEncoder,
     TissueConditionDownsampler,
@@ -150,8 +151,8 @@ def _build_cross_v3_inference_conditions(
     ref_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
         reference_nuclei_mask.unsqueeze(0).to(device=bundle.device)
     ).to(dtype=bundle.torch_dtype)
-    tar_tissue_feat = bundle.condition_modules["tissue_downsampler"](
-        bundle.condition_modules["hte"](
+    tar_tissue_feat = _target_tissue_downsampler(bundle.condition_modules)(
+        _target_hte(bundle.condition_modules)(
             target_tissue_mask.unsqueeze(0).to(device=bundle.device)
         )
     ).to(dtype=bundle.torch_dtype)
@@ -169,6 +170,18 @@ def _build_cross_v3_inference_conditions(
     )
     reference_tokens = apply_cross_v3_reference_token_mode(reference_tokens, reference_condition_mode)
     return control_tensor, reference_tokens
+
+
+def _target_hte(modules: dict[str, nn.Module]) -> nn.Module:
+    if "target_tissue_encoder" in modules:
+        return modules["target_tissue_encoder"]
+    return modules.get("target_hte") or modules["hte"]
+
+
+def _target_tissue_downsampler(modules: dict[str, nn.Module]) -> nn.Module:
+    if "target_tissue_encoder" in modules:
+        return nn.Identity()
+    return modules.get("target_tissue_downsampler") or modules["tissue_downsampler"]
 
 
 @torch.inference_mode()
@@ -373,6 +386,7 @@ def _load_condition_modules(
     torch_dtype: torch.dtype,
 ) -> dict[str, nn.Module]:
     state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
+    control_spec = state.get("cross_v3_control_spec") or {}
     hte_state = state["hte"]
     tissue_state = state["tissue_downsampler"]
     nuclei_state = state["nuclei_encoder"]
@@ -409,8 +423,36 @@ def _load_condition_modules(
             output_init_std=reference_spec.output_init_std,
         ),
     }
+    if str(control_spec.get("target_tissue_path", "")).lower() == "fixed_one_hot":
+        modules["target_tissue_encoder"] = FixedOneHotTissueEncoder(
+            num_classes=int(control_spec.get("tissue_channels", 16)),
+            downsample_factor=2 ** _count_conv_blocks(tissue_state, "blocks"),
+            scale=float(control_spec.get("target_one_hot_scale", 4.0) or 4.0),
+        )
+    elif "target_hte" in state or "target_tissue_downsampler" in state:
+        if "target_hte" not in state or "target_tissue_downsampler" not in state:
+            raise KeyError(
+                "Cross V3 checkpoint must contain both 'target_hte' and "
+                "'target_tissue_downsampler' for a target-specific tissue path."
+            )
+        target_hte_state = state["target_hte"]
+        target_tissue_state = state["target_tissue_downsampler"]
+        target_hte_dim = target_hte_state["parent_embeddings.weight"].shape[1]
+        target_tissue_in = target_tissue_state["blocks.0.block.0.weight"].shape[1]
+        target_tissue_hidden = target_tissue_state["blocks.0.block.0.weight"].shape[0]
+        target_tissue_out = target_tissue_state[
+            f"blocks.{_count_conv_blocks(target_tissue_state, 'blocks') - 1}.block.0.weight"
+        ].shape[0]
+        modules["target_hte"] = HierarchicalTissueEmbedding(embedding_dim=target_hte_dim)
+        modules["target_tissue_downsampler"] = TissueConditionDownsampler(
+            in_channels=target_tissue_in,
+            hidden_channels=target_tissue_hidden,
+            out_channels=target_tissue_out,
+            num_blocks=_count_conv_blocks(target_tissue_state, "blocks"),
+        )
     for name, module in modules.items():
-        module.load_state_dict(state[name])
+        if name in state:
+            module.load_state_dict(state[name])
         module.to(device=device, dtype=torch_dtype)
         module.eval()
     return modules

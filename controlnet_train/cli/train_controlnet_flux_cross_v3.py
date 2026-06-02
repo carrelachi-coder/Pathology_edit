@@ -175,6 +175,34 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help="Optimizer step for [REF-CHECK] with-ref vs zero-ref noise-pred diff; set 0 to disable.",
     )
     parser.add_argument("--tissue-embedding-dim", type=int, default=64)
+    parser.add_argument(
+        "--target-tissue-encoding",
+        type=str,
+        default="shared_hte",
+        choices=["shared_hte", "low_capacity_hte", "one_hot"],
+        help=(
+            "Target-side tissue condition for ControlNet. 'one_hot' is fixed "
+            "non-learnable class layout; reference-side HTE remains learnable."
+        ),
+    )
+    parser.add_argument(
+        "--target-tissue-embedding-dim",
+        type=int,
+        default=None,
+        help=(
+            "Embedding dim for --target-tissue-encoding=low_capacity_hte. "
+            "Defaults to --tissue-embedding-dim."
+        ),
+    )
+    parser.add_argument(
+        "--target-one-hot-scale",
+        type=float,
+        default=4.0,
+        help=(
+            "Fixed multiplier for --target-tissue-encoding=one_hot. This keeps "
+            "target layout feature magnitude comparable to learned tissue features."
+        ),
+    )
     parser.add_argument("--tissue-out-channels", type=int, default=64)
     parser.add_argument("--nuclei-embedding-dim", type=int, default=16)
     parser.add_argument("--nuclei-out-channels", type=int, default=16)
