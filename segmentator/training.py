@@ -264,6 +264,7 @@ def summarize_mask_label_space(dataset: TissueSegmentationDataset, num_classes: 
             record.dataset_id,
             {
                 "samples": 0,
+                "total_pixels": 0,
                 "raw_values": {},
                 "remapped_values": {},
                 "ignored_pixels": 0,
@@ -282,6 +283,7 @@ def summarize_mask_label_space(dataset: TissueSegmentationDataset, num_classes: 
             )
             continue
 
+        dataset_summary["total_pixels"] += int(mask.numel())
         raw_values, raw_counts = torch.unique(mask, return_counts=True)
         raw_hist = dataset_summary["raw_values"]
         for value, count in zip(raw_values.tolist(), raw_counts.tolist()):
@@ -301,7 +303,35 @@ def summarize_mask_label_space(dataset: TissueSegmentationDataset, num_classes: 
         if isinstance(dataset_summary, dict):
             dataset_summary["raw_values"] = dict(sorted(dataset_summary["raw_values"].items(), key=lambda item: int(item[0])))
             dataset_summary["remapped_values"] = dict(sorted(dataset_summary["remapped_values"].items(), key=lambda item: int(item[0])))
+            total_pixels = int(dataset_summary["total_pixels"])
+            dataset_summary["ignored_fraction"] = float(dataset_summary["ignored_pixels"] / total_pixels) if total_pixels else 0.0
     return dict(sorted(summary.items()))
+
+
+def compact_label_space_summary(summary: dict[str, object]) -> dict[str, object]:
+    compact: dict[str, object] = {}
+    for dataset_id, raw_dataset_summary in summary.items():
+        if not isinstance(raw_dataset_summary, dict):
+            continue
+        raw_values = raw_dataset_summary.get("raw_values", {})
+        remapped_values = raw_dataset_summary.get("remapped_values", {})
+        if not isinstance(raw_values, dict) or not isinstance(remapped_values, dict):
+            continue
+        remapped_total = sum(int(value) for value in remapped_values.values())
+        compact[dataset_id] = {
+            "samples": raw_dataset_summary.get("samples", 0),
+            "total_pixels": raw_dataset_summary.get("total_pixels", 0),
+            "ignored_pixels": raw_dataset_summary.get("ignored_pixels", 0),
+            "ignored_fraction": raw_dataset_summary.get("ignored_fraction", 0.0),
+            "raw_values": [int(value) for value in raw_values],
+            "remapped_values": remapped_values,
+            "remapped_fractions": {
+                key: (float(int(value) / remapped_total) if remapped_total else 0.0)
+                for key, value in remapped_values.items()
+            },
+            "skipped_unreadable_samples": raw_dataset_summary.get("skipped_unreadable_samples", []),
+        }
+    return compact
 
 
 def _export_val_outputs(
@@ -386,6 +416,14 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         config.remap_invalid_to,
     )
     label_space_summary = summarize_mask_label_space(train_ds, config.num_classes) if main_process else {}
+    if main_process:
+        print(
+            json.dumps(
+                {"label_space_summary_compact": compact_label_space_summary(label_space_summary)},
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
     if config.decoder == "mask2former":
         class_weight_metadata["effective_invalid_target"] = config.mask2former_ignore_index
         class_weight_metadata["note"] = "Mask2Former masks invalid labels with ignore_index during target assignment; no-object query weight is separate."
