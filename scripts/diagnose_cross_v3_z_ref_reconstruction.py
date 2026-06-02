@@ -1,8 +1,14 @@
-"""Pure z_ref reference reconstruction diagnostic for Cross V3.
+"""Pure z_ref reference-path diagnostic for Cross V3.
 
-This bypasses the target/ControlNet structure path during sampling. The only
-image-specific signal given to the transformer is the Cross V3 reference token
-sequence produced from ``z_ref``; reference tissue/nuclei features are zeroed.
+The default diagnostic is teacher-forced one-step reconstruction: encode the
+reference image to latent space, add fixed-timestep flow noise, and ask the
+transformer to predict the reference velocity with only z_ref-derived reference
+tokens. Target/ControlNet structure is bypassed, and reference tissue/nuclei
+features are zeroed.
+
+Free sampling from random noise is intentionally opt-in because, without the
+target/ControlNet path, the base FLUX prior can dominate and generate arbitrary
+semantic images that are not meaningful evidence about texture transfer.
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ import json
 import math
 import random
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -28,11 +35,24 @@ Z_REF_ONLY_VARIANT = "z_ref_only"
 ZERO_TOKENS_VARIANT = "zero_tokens"
 
 
+@dataclass
+class ZRefOnlyBundle:
+    pretrained_model_name_or_path: str | Path
+    checkpoint_path: Path
+    device: str
+    torch_dtype: torch.dtype
+    num_inference_steps: int
+    guidance_scale: float
+    flux_pipeline: object
+    condition_modules: dict[str, torch.nn.Module]
+    reference_spec: object
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Diagnose whether the Cross V3 reference path can reconstruct the "
-            "reference image using only z_ref tokens, with no target/ControlNet path."
+            "Diagnose Cross V3 reference texture transfer with fixed-t one-step "
+            "reference reconstruction using z_ref-derived tokens and no target/ControlNet path."
         )
     )
     parser.add_argument("--pretrained-model-name-or-path", required=True)
@@ -49,13 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--torch-dtype", choices=["bf16", "fp16", "fp32"], default="bf16")
-    parser.add_argument("--num-inference-steps", type=int, default=28)
+    parser.add_argument("--num-inference-steps", type=int, default=28, help="Used only with --run-free-sampling.")
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument(
         "--generation-seed",
         type=int,
         default=42,
-        help="Base denoising seed. Each sample uses generation_seed + sample index.",
+        help="Base noise seed. Each sample uses generation_seed + sample index.",
     )
     parser.add_argument(
         "--prompt",
@@ -66,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--color-match",
         choices=("none", "lab"),
         default="none",
-        help="Keep 'none' for the actual diagnostic; 'lab' is a stain-only display control.",
+        help="Only applied to the optional --run-free-sampling OOD stress test.",
     )
     parser.add_argument("--thumbnail-size", type=int, default=192)
     parser.add_argument("--overview-max-samples", type=int, default=32)
@@ -77,10 +97,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--fixed-t-eval-timesteps",
-        default=None,
-        help="Optional comma-separated FLUX training timesteps for one-step reference denoising losses.",
+        default="100,300,500,700",
+        help="Comma-separated FLUX training timesteps for one-step reference reconstruction.",
     )
     parser.add_argument("--fixed-t-eval-seed", type=int, default=42)
+    parser.add_argument(
+        "--run-free-sampling",
+        action="store_true",
+        help="Also run the old random-noise free sampling path as an explicit OOD stress test.",
+    )
     parser.add_argument("--glcm-levels", type=int, default=32)
     parser.add_argument("--glcm-distances", default="1,2,4")
     parser.add_argument("--glcm-angles", default="0,45,90,135")
@@ -98,14 +123,12 @@ def main(argv=None) -> int:
         _match_image_color_to_reference,
         _pil_to_chw_float,
         _safe_name,
-        _save_error_image,
         compute_cross_metrics,
         read_cross_metadata,
     )
     from controlnet_train.data.common import load_image_tensor
     from controlnet_train.inference.pipeline_cross_v3 import (
         CROSS_V3_PROMPT,
-        load_cross_v3_bundle,
     )
     from scripts.diagnose_cross_v3_ref_mismatch import (
         _distance_stats,
@@ -130,14 +153,13 @@ def main(argv=None) -> int:
     samples_dir = output_dir / "samples"
     samples_dir.mkdir(parents=True, exist_ok=True)
 
-    bundle = load_cross_v3_bundle(
+    bundle = load_cross_v3_z_ref_only_bundle(
         pretrained_model_name_or_path=args.pretrained_model_name_or_path,
         checkpoint_path=args.checkpoint,
         device=args.device,
         torch_dtype=dtype_by_name[args.torch_dtype],
         num_inference_steps=args.num_inference_steps,
         guidance_scale=args.guidance_scale,
-        controlnet_conditioning_scale=0.0,
     )
     prompt = str(args.prompt or CROSS_V3_PROMPT)
     variants = reference_variants(args.run_zero_z_ref_ablation)
@@ -146,7 +168,7 @@ def main(argv=None) -> int:
     glcm_angles = _parse_angles(args.glcm_angles)
 
     rows: list[dict[str, Any]] = []
-    fixed_t_rows: list[dict[str, Any]] = []
+    free_sampling_rows: list[dict[str, Any]] = []
     panel_paths: list[Path] = []
     for index, record in enumerate(records):
         sample_id = str(record.get("sample_id") or Path(record.get("target_image", "")).stem)
@@ -176,6 +198,7 @@ def main(argv=None) -> int:
 
         variant_results: list[dict[str, Any]] = []
         sample_seed = int(args.generation_seed) + index
+        timestep_seed = int(args.fixed_t_eval_seed) + index
         for variant in variants:
             active_tokens = (
                 torch.zeros_like(reference_tokens)
@@ -183,31 +206,26 @@ def main(argv=None) -> int:
                 else reference_tokens
             )
             with torch.no_grad():
-                raw_prediction = sample_with_reference_tokens_only(
+                timestep_results = fixed_timestep_reconstructions_reference_tokens_only(
                     bundle=bundle,
+                    reference_image=reference_tensor,
                     reference_tokens=active_tokens,
-                    output_size=tuple(int(v) for v in reference_tensor.shape[1:]),
                     prompt=prompt,
-                    seed=sample_seed,
-                ).convert("RGB")
-
-            prediction = raw_prediction
-            if args.color_match == "lab":
-                prediction = _match_image_color_to_reference(
-                    source=raw_prediction,
-                    reference=reference_pil,
-                    method=args.color_match,
+                    timesteps=fixed_t_eval_timesteps,
+                    seed=timestep_seed,
                 )
 
-            prefix = "" if len(variants) == 1 else f"_{variant}"
-            raw_prediction.save(sample_dir / f"prediction{prefix}_raw.png")
-            prediction.save(sample_dir / f"prediction{prefix}.png")
-            pred_array = _pil_to_chw_float(prediction)
-            abs_error = np.abs(pred_array - reference_array).mean(axis=0)
-            _save_error_image(abs_error, sample_dir / f"abs_error{prefix}.png")
+            prefix = f"_{variant}"
+            for timestep_key, timestep_result in timestep_results.items():
+                timestep_result["image"].save(sample_dir / f"one_step{prefix}_{timestep_key}.png")
+                Image.fromarray(
+                    (np.clip(timestep_result["abs_error"], 0.0, 1.0) * 255).astype(np.uint8),
+                    mode="L",
+                ).save(sample_dir / f"one_step_abs_error{prefix}_{timestep_key}.png")
+            best_preview = select_preview_timestep(timestep_results)
 
             prediction_stats = image_quant_stats(
-                prediction,
+                best_preview["image"],
                 levels=args.glcm_levels,
                 distances=glcm_distances,
                 angles=glcm_angles,
@@ -217,54 +235,74 @@ def main(argv=None) -> int:
                 **_prefix_stats("prediction", prediction_stats),
             }
             stat_row.update(_distance_stats(stat_row, left="prediction", right="reference", prefix="pred_ref"))
-            metrics = compute_cross_metrics(pred_array, reference_array)
+            metrics = compute_cross_metrics(best_preview["pred_array"], reference_array)
             row = {
                 "index": index,
                 "sample_id": sample_id,
                 "reference_sample_id": ref_id,
                 "variant": variant,
+                "diagnostic_mode": "teacher_forced_one_step",
                 "dataset": record.get("dataset", ""),
                 "controlnet_used": False,
                 "target_condition_used": False,
                 "ref_mask_features_used": False,
                 "prompt": prompt,
-                "generation_seed": sample_seed,
-                "color_match_applied": args.color_match != "none",
+                "fixed_t_eval_seed": timestep_seed,
+                "preview_timestep": best_preview["timestep"],
+                "preview_timestep_key": best_preview["timestep_key"],
                 "z_ref_l2_norm": z_ref_stats["l2_norm"],
                 "z_ref_std": z_ref_stats["std"],
                 "reference_token_l2_norm": token_stats["l2_norm"] if variant == Z_REF_ONLY_VARIANT else 0.0,
                 "reference_token_std": token_stats["std"] if variant == Z_REF_ONLY_VARIANT else 0.0,
+                "preview_velocity_mse": best_preview["loss"],
+                "preview_sigma": best_preview["sigma"],
                 **metrics,
                 **stat_row,
+                **flatten_timestep_metrics(timestep_results),
             }
             variant_results.append(
                 {
                     "variant": variant,
                     "row": row,
-                    "prediction": prediction,
-                    "pred_array": pred_array,
-                    "abs_error": abs_error,
+                    "prediction": best_preview["image"],
+                    "pred_array": best_preview["pred_array"],
+                    "abs_error": best_preview["abs_error"],
+                    "preview_timestep_key": best_preview["timestep_key"],
+                    "timestep_results": timestep_results,
                 }
             )
 
-            if fixed_t_eval_timesteps:
+            if args.run_free_sampling:
                 with torch.no_grad():
-                    fixed_t_losses = fixed_timestep_losses_reference_tokens_only(
+                    raw_prediction = sample_with_reference_tokens_only(
                         bundle=bundle,
-                        reference_image=reference_tensor,
                         reference_tokens=active_tokens,
+                        output_size=tuple(int(v) for v in reference_tensor.shape[1:]),
                         prompt=prompt,
-                        timesteps=fixed_t_eval_timesteps,
-                        seed=args.fixed_t_eval_seed,
+                        seed=sample_seed,
+                    ).convert("RGB")
+                free_prefix = "" if len(variants) == 1 else f"_{variant}"
+                raw_prediction.save(sample_dir / f"free_prediction{free_prefix}_raw.png")
+                free_prediction = raw_prediction
+                if args.color_match == "lab":
+                    free_prediction = _match_image_color_to_reference(
+                        source=raw_prediction,
+                        reference=reference_pil,
+                        method=args.color_match,
                     )
-                row["fixed_t_eval"] = fixed_t_losses
-                fixed_t_rows.append(
+                free_prediction.save(sample_dir / f"free_prediction{free_prefix}.png")
+                free_pred_array = _pil_to_chw_float(free_prediction)
+                free_metrics = compute_cross_metrics(free_pred_array, reference_array)
+                free_sampling_rows.append(
                     {
                         "index": index,
                         "sample_id": sample_id,
                         "reference_sample_id": ref_id,
                         "variant": variant,
-                        **{f"fixed_t_loss_{key}": value for key, value in fixed_t_losses.items()},
+                        "diagnostic_mode": "free_sampling_ood",
+                        "generation_seed": sample_seed,
+                        "color_match_applied": args.color_match != "none",
+                        **free_metrics,
                     }
                 )
 
@@ -276,7 +314,7 @@ def main(argv=None) -> int:
             reference=reference_pil,
             variant_results=variant_results,
             thumbnail_size=args.thumbnail_size,
-            title=f"z_ref-only reference reconstruction | ref={ref_id}",
+            title=f"z_ref-only one-step reference diagnostic | ref={ref_id}",
         )
         panel_path = sample_dir / "panel.png"
         panel.save(panel_path)
@@ -298,17 +336,20 @@ def main(argv=None) -> int:
         primary = next(result for result in variant_results if result["variant"] == Z_REF_ONLY_VARIANT)
         message = (
             f"[{index + 1}/{len(records)}] ref={ref_id} "
+            f"preview={primary['row']['preview_timestep_key']} "
+            f"z_ref_loss={primary['row']['preview_velocity_mse']:.4f} "
             f"z_ref_l1={primary['row']['full_l1']:.4f} "
-            f"z_ref_psnr={primary['row']['full_psnr']:.2f} "
-            f"pred_ref_glcm_l2={primary['row']['pred_ref_glcm_l2']:.4f}"
+            f"z_ref_psnr={primary['row']['full_psnr']:.2f}"
         )
-        if "prediction_l1_vs_zero_tokens" in primary["row"]:
-            message += f" z_ref_vs_zero_l1={primary['row']['prediction_l1_vs_zero_tokens']:.4f}"
+        if "preview_velocity_mse_delta_zero_minus_z_ref" in primary["row"]:
+            message += f" zero_minus_z_ref={primary['row']['preview_velocity_mse_delta_zero_minus_z_ref']:.4f}"
+        if "preview_noise_pred_relative_l2_vs_zero" in primary["row"]:
+            message += f" pred_rel_delta={primary['row']['preview_noise_pred_relative_l2_vs_zero']:.4f}"
         print(message)
 
     write_rows(output_dir, rows)
-    if fixed_t_rows:
-        write_rows(output_dir, fixed_t_rows, stem="fixed_t_metrics")
+    if free_sampling_rows:
+        write_rows(output_dir, free_sampling_rows, stem="free_sampling_metrics")
     summary = build_z_ref_reconstruction_summary(rows)
     summary["architecture"] = "cross_v3"
     summary["controlnet_used"] = False
@@ -320,9 +361,9 @@ def main(argv=None) -> int:
         "distances": glcm_distances,
         "angles_degrees": glcm_angles,
     }
-    if fixed_t_rows:
-        summary["fixed_t_eval"] = aggregate_fixed_t_losses(fixed_t_rows)
-        summary["fixed_t_eval_timesteps"] = fixed_t_eval_timesteps
+    summary["fixed_t_eval_timesteps"] = fixed_t_eval_timesteps
+    if free_sampling_rows:
+        summary["free_sampling"] = aggregate_fixed_t_losses(free_sampling_rows)
     (output_dir / "metrics_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=True),
         encoding="utf8",
@@ -379,6 +420,70 @@ def unique_reference_records(records: list[dict[str, Any]]) -> list[dict[str, An
     return output
 
 
+def load_cross_v3_z_ref_only_bundle(
+    *,
+    pretrained_model_name_or_path: str | Path,
+    checkpoint_path: str | Path,
+    device: str = "cuda",
+    torch_dtype: torch.dtype | None = None,
+    num_inference_steps: int = 28,
+    guidance_scale: float = 3.5,
+) -> ZRefOnlyBundle:
+    from diffusers import FluxPipeline
+
+    from controlnet_train.inference.pipeline_cross_v3 import (
+        _load_cross_v3_reference_spec,
+        _resolve_device,
+        _resolve_torch_dtype,
+        _torch_load_weights,
+    )
+    from controlnet_train.modules.cross_v3_conditioning import CrossV3ReferenceContextEncoder
+
+    resolved_device = _resolve_device(device)
+    resolved_dtype = _resolve_torch_dtype(torch_dtype, resolved_device)
+    checkpoint = Path(checkpoint_path)
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"Checkpoint path not found: {checkpoint}")
+    conditioning_path = checkpoint / "phase5_conditioning.pt"
+    if not conditioning_path.exists():
+        raise FileNotFoundError(f"Missing phase5_conditioning.pt under checkpoint path: {checkpoint}")
+
+    reference_spec = _load_cross_v3_reference_spec(checkpoint)
+    state = _torch_load_weights(conditioning_path)
+    reference_state = state["reference_context_encoder"]
+    reference_context_encoder = CrossV3ReferenceContextEncoder(
+        reference_latent_channels=reference_spec.reference_latent_channels,
+        tissue_channels=reference_spec.tissue_channels,
+        nuclei_channels=reference_spec.nuclei_channels,
+        token_dim=reference_spec.token_dim,
+        hidden_dim=reference_state["proj_in.weight"].shape[0],
+        output_init_std=reference_spec.output_init_std,
+        route_anchor_mode=reference_spec.route_anchor_mode,
+        route_embedding_init_std=reference_spec.route_embedding_init_std,
+    )
+    reference_context_encoder.load_state_dict(reference_state)
+    reference_context_encoder.to(device=resolved_device, dtype=resolved_dtype)
+    reference_context_encoder.eval()
+
+    pipe = FluxPipeline.from_pretrained(
+        pretrained_model_name_or_path,
+        torch_dtype=resolved_dtype,
+    )
+    pipe.to(resolved_device)
+    pipe.set_progress_bar_config(disable=True)
+    return ZRefOnlyBundle(
+        pretrained_model_name_or_path=pretrained_model_name_or_path,
+        checkpoint_path=checkpoint,
+        device=resolved_device,
+        torch_dtype=resolved_dtype,
+        num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale,
+        flux_pipeline=pipe,
+        condition_modules={"reference_context_encoder": reference_context_encoder},
+        reference_spec=reference_spec,
+    )
+
+
 @torch.inference_mode()
 def build_z_ref_only_reference_tokens(bundle, *, reference_image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     from controlnet_train.inference.pipeline_cross_v3 import _encode_images_to_latents
@@ -408,8 +513,36 @@ def build_z_ref_only_reference_tokens(bundle, *, reference_image: torch.Tensor) 
         z_ref=z_ref,
         ref_tissue_feat=ref_tissue_feat,
         ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=torch.zeros(
+            z_ref.shape[0],
+            int(reference_image.shape[1]),
+            int(reference_image.shape[2]),
+            device=z_ref.device,
+            dtype=torch.long,
+        ),
     )
     return reference_tokens, z_ref
+
+
+def select_preview_timestep(timestep_results: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    if not timestep_results:
+        raise ValueError("No timestep reconstruction results were produced.")
+    return min(
+        timestep_results.values(),
+        key=lambda result: abs(float(result["timestep"]) - 500.0),
+    )
+
+
+def flatten_timestep_metrics(timestep_results: dict[str, dict[str, Any]]) -> dict[str, float]:
+    output: dict[str, float] = {}
+    for timestep_key, result in sorted(timestep_results.items(), key=lambda item: float(item[1]["timestep"])):
+        metrics = result["metrics"]
+        output[f"velocity_mse_{timestep_key}"] = float(result["loss"])
+        output[f"sigma_{timestep_key}"] = float(result["sigma"])
+        output[f"one_step_l1_{timestep_key}"] = float(metrics["full_l1"])
+        output[f"one_step_mse_{timestep_key}"] = float(metrics["full_mse"])
+        output[f"one_step_psnr_{timestep_key}"] = float(metrics["full_psnr"])
+    return output
 
 
 @torch.inference_mode()
@@ -501,7 +634,7 @@ def sample_with_reference_tokens_only(
 
 
 @torch.inference_mode()
-def fixed_timestep_losses_reference_tokens_only(
+def fixed_timestep_reconstructions_reference_tokens_only(
     *,
     bundle,
     reference_image: torch.Tensor,
@@ -509,9 +642,7 @@ def fixed_timestep_losses_reference_tokens_only(
     prompt: str,
     timesteps: list[float],
     seed: int,
-) -> dict[str, float]:
-    from diffusers import FluxControlNetPipeline
-
+) -> dict[str, dict[str, Any]]:
     from controlnet_train.inference.pipeline_cross_v3 import (
         _encode_images_to_latents,
         _format_timestep_key,
@@ -523,6 +654,7 @@ def fixed_timestep_losses_reference_tokens_only(
 
     pipe = bundle.flux_pipeline
     torch_device = torch.device(bundle.device)
+    height, width = tuple(int(v) for v in reference_image.shape[1:])
     pixel_latents = _encode_images_to_latents(
         pipe.vae,
         reference_image.unsqueeze(0),
@@ -542,7 +674,7 @@ def fixed_timestep_losses_reference_tokens_only(
     )
 
     bsz = int(pixel_latents.shape[0])
-    packed_pixel_latents = FluxControlNetPipeline._pack_latents(
+    packed_pixel_latents = pipe._pack_latents(
         pixel_latents,
         bsz,
         pixel_latents.shape[1],
@@ -563,7 +695,8 @@ def fixed_timestep_losses_reference_tokens_only(
         dtype=packed_pixel_latents.dtype,
     )
 
-    results: dict[str, float] = {}
+    reference_array = reference_image.detach().float().cpu().numpy()
+    results: dict[str, dict[str, Any]] = {}
     for timestep_value in timesteps:
         timestep = torch.tensor([timestep_value], device=torch_device, dtype=torch.float32)
         sigma = _sigma_for_timestep(
@@ -590,8 +723,73 @@ def fixed_timestep_losses_reference_tokens_only(
         )[0]
         target_velocity = noise - packed_pixel_latents
         loss = _per_sample_mse(noise_pred, target_velocity).mean()
-        results[_format_timestep_key(timestep_value)] = float(loss.detach().cpu().item())
+        reconstructed_packed = noisy_model_input - sigma * noise_pred
+        reconstructed_latents = pipe._unpack_latents(
+            reconstructed_packed,
+            height,
+            width,
+            pipe.vae_scale_factor,
+        )
+        reconstructed_latents = (
+            reconstructed_latents / pipe.vae.config.scaling_factor
+        ) + pipe.vae.config.shift_factor
+        decoded = pipe.vae.decode(reconstructed_latents.to(dtype=bundle.torch_dtype), return_dict=False)[0]
+        image = pipe.image_processor.postprocess(decoded, output_type="pil")[0].convert("RGB")
+        pred_array = pil_to_chw_float(image)
+        abs_error = np.abs(pred_array - reference_array).mean(axis=0)
+        timestep_key = _format_timestep_key(timestep_value)
+        results[timestep_key] = {
+            "timestep_key": timestep_key,
+            "timestep": float(timestep_value),
+            "sigma": float(sigma.detach().float().flatten()[0].cpu().item()),
+            "loss": float(loss.detach().cpu().item()),
+            "noise_pred_flat": noise_pred.detach().float().reshape(-1).cpu(),
+            "image": image,
+            "pred_array": pred_array,
+            "abs_error": abs_error,
+            "metrics": compute_array_metrics(pred_array, reference_array),
+        }
     return results
+
+
+@torch.inference_mode()
+def fixed_timestep_losses_reference_tokens_only(
+    *,
+    bundle,
+    reference_image: torch.Tensor,
+    reference_tokens: torch.Tensor,
+    prompt: str,
+    timesteps: list[float],
+    seed: int,
+) -> dict[str, float]:
+    reconstructions = fixed_timestep_reconstructions_reference_tokens_only(
+        bundle=bundle,
+        reference_image=reference_image,
+        reference_tokens=reference_tokens,
+        prompt=prompt,
+        timesteps=timesteps,
+        seed=seed,
+    )
+    return {key: float(result["loss"]) for key, result in reconstructions.items()}
+
+
+def pil_to_chw_float(image: Image.Image) -> np.ndarray:
+    return np.transpose(np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0, (2, 0, 1))
+
+
+def compute_array_metrics(prediction: np.ndarray, target: np.ndarray) -> dict[str, float]:
+    pred = np.asarray(prediction, dtype=np.float32)
+    tgt = np.asarray(target, dtype=np.float32)
+    if pred.shape != tgt.shape:
+        raise ValueError(f"prediction and target shapes differ: {pred.shape} vs {tgt.shape}")
+    diff = pred - tgt
+    mse = float(np.square(diff).mean())
+    psnr = math.inf if mse <= 0.0 else float(-10.0 * math.log10(mse))
+    return {
+        "full_l1": float(np.abs(diff).mean()),
+        "full_mse": mse,
+        "full_psnr": psnr,
+    }
 
 
 def attach_zero_token_delta(variant_results: list[dict[str, Any]], *, sample_dir: Path) -> None:
@@ -607,9 +805,56 @@ def attach_zero_token_delta(variant_results: list[dict[str, Any]], *, sample_dir
     z_ref["row"]["prediction_mse_vs_zero_tokens"] = mse
     zero["row"]["prediction_l1_vs_z_ref_only"] = l1
     zero["row"]["prediction_mse_vs_z_ref_only"] = mse
+    if (
+        z_ref["row"].get("preview_timestep_key") == zero["row"].get("preview_timestep_key")
+        and "preview_velocity_mse" in z_ref["row"]
+        and "preview_velocity_mse" in zero["row"]
+    ):
+        loss_delta = float(zero["row"]["preview_velocity_mse"] - z_ref["row"]["preview_velocity_mse"])
+        z_ref["row"]["preview_velocity_mse_delta_zero_minus_z_ref"] = loss_delta
+        zero["row"]["preview_velocity_mse_delta_zero_minus_z_ref"] = loss_delta
+    attach_noise_prediction_deltas(z_ref, zero)
     Image.fromarray((np.clip(diff.mean(axis=0), 0.0, 1.0) * 255).astype(np.uint8), mode="L").save(
         sample_dir / "z_ref_vs_zero_tokens_diff.png"
     )
+
+
+def attach_noise_prediction_deltas(z_ref: dict[str, Any], zero: dict[str, Any]) -> None:
+    z_results = z_ref.get("timestep_results") or {}
+    zero_results = zero.get("timestep_results") or {}
+    preview_key = str(z_ref["row"].get("preview_timestep_key", ""))
+    for timestep_key in sorted(set(z_results) & set(zero_results)):
+        left = z_results[timestep_key].get("noise_pred_flat")
+        right = zero_results[timestep_key].get("noise_pred_flat")
+        if left is None or right is None:
+            continue
+        stats = compare_flat_tensors(left, right)
+        for name, value in stats.items():
+            z_ref["row"][f"noise_pred_{name}_vs_zero_{timestep_key}"] = value
+            zero["row"][f"noise_pred_{name}_vs_z_ref_{timestep_key}"] = value
+        if timestep_key == preview_key:
+            for name, value in stats.items():
+                z_ref["row"][f"preview_noise_pred_{name}_vs_zero"] = value
+                zero["row"][f"preview_noise_pred_{name}_vs_z_ref"] = value
+
+
+def compare_flat_tensors(left: torch.Tensor, right: torch.Tensor) -> dict[str, float]:
+    left_f = left.detach().float().reshape(-1)
+    right_f = right.detach().float().reshape(-1)
+    if left_f.numel() != right_f.numel():
+        raise ValueError(f"Tensor sizes differ: {left_f.numel()} vs {right_f.numel()}")
+    diff = left_f - right_f
+    left_norm = float(torch.linalg.vector_norm(left_f).item())
+    right_norm = float(torch.linalg.vector_norm(right_f).item())
+    diff_l2 = float(torch.linalg.vector_norm(diff).item())
+    denom = max(left_norm * right_norm, 1e-12)
+    cosine = float(torch.dot(left_f, right_f).item() / denom)
+    return {
+        "l1": float(diff.abs().mean().item()),
+        "l2": diff_l2,
+        "relative_l2": float(diff_l2 / max(right_norm, 1e-12)),
+        "cosine": cosine,
+    }
 
 
 def make_reference_reconstruction_panel(
@@ -621,7 +866,8 @@ def make_reference_reconstruction_panel(
 ) -> Image.Image:
     images: list[tuple[str, Image.Image]] = [("reference", reference.convert("RGB"))]
     for result in variant_results:
-        images.append((result["variant"], result["prediction"].convert("RGB")))
+        label = f"{result['variant']} {result.get('preview_timestep_key', '')}".strip()
+        images.append((label, result["prediction"].convert("RGB")))
     primary = next((result for result in variant_results if result["variant"] == Z_REF_ONLY_VARIANT), variant_results[0])
     images.append(
         (
@@ -728,6 +974,21 @@ def build_z_ref_reconstruction_summary(rows: list[dict[str, Any]]) -> dict[str, 
                 "z_ref_tokens_have_little_visible_effect"
                 if float(np.mean(zero_deltas)) < 0.01
                 else "z_ref_tokens_change_generation"
+            )
+        loss_deltas = [
+            float(row["preview_velocity_mse_delta_zero_minus_z_ref"])
+            for row in z_rows
+            if "preview_velocity_mse_delta_zero_minus_z_ref" in row
+            and math.isfinite(float(row["preview_velocity_mse_delta_zero_minus_z_ref"]))
+        ]
+        if loss_deltas:
+            mean_delta = float(np.mean(loss_deltas))
+            summary["preview_velocity_mse_delta_zero_minus_z_ref_mean"] = mean_delta
+            summary["preview_velocity_mse_delta_zero_minus_z_ref_std"] = float(np.std(loss_deltas))
+            summary["z_ref_loss_hint"] = (
+                "z_ref_reduces_reference_denoising_loss"
+                if mean_delta > 1e-4
+                else "no_clear_z_ref_loss_benefit"
             )
     return summary
 

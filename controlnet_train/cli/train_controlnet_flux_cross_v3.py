@@ -169,10 +169,113 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help="Normal init std for the reference token output projection; bias is zeroed.",
     )
     parser.add_argument(
+        "--reference-route-anchor-mode",
+        type=str,
+        default="none",
+        choices=["none", "coarse", "fine"],
+        help=(
+            "Optional semantic route anchors for reference tokens. Keep 'none' for pure appearance "
+            "transfer; 'coarse' or 'fine' are explicit semantic-routing experiments."
+        ),
+    )
+    parser.add_argument(
+        "--reference-route-embedding-init-std",
+        type=float,
+        default=0.02,
+        help="Normal init std for learned reference route/type embeddings.",
+    )
+    parser.add_argument(
+        "--reference-style-loss-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "Weight for region-level reference stain/style loss. The loss matches RGB "
+            "mean/std/covariance on target/reference regions that share tissue or nuclei labels."
+        ),
+    )
+    parser.add_argument(
+        "--reference-style-loss-interval",
+        type=int,
+        default=1,
+        help="Compute reference style loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--reference-style-tissue-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for shared tissue-mask region style terms.",
+    )
+    parser.add_argument(
+        "--reference-style-nuclei-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for shared nuclei-mask region style terms.",
+    )
+    parser.add_argument(
+        "--reference-style-mean-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for per-region RGB mean matching.",
+    )
+    parser.add_argument(
+        "--reference-style-std-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for per-region RGB standard-deviation matching.",
+    )
+    parser.add_argument(
+        "--reference-style-cov-weight",
+        type=float,
+        default=0.25,
+        help="Relative weight for per-region RGB covariance matching.",
+    )
+    parser.add_argument(
+        "--reference-style-min-pixels",
+        type=int,
+        default=32,
+        help="Minimum target/reference pixels required for a tissue or nuclei class to enter style loss.",
+    )
+    parser.add_argument(
+        "--reference-style-max-regions-per-sample",
+        type=int,
+        default=None,
+        help="Optional cap on style-loss regions per sample, keeping largest labels first.",
+    )
+    parser.add_argument(
+        "--ref-swap-loss-weight",
+        type=float,
+        default=0.1,
+        help=(
+            "Weight for reference-swap sensitivity loss. It compares normal-reference denoising "
+            "loss against zero/shuffled-reference denoising losses with a margin."
+        ),
+    )
+    parser.add_argument(
+        "--ref-swap-loss-interval",
+        type=int,
+        default=1,
+        help="Compute reference-swap sensitivity loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--ref-swap-margin",
+        type=float,
+        default=0.08,
+        help="Required per-sample denoising-loss margin between normal and swapped references.",
+    )
+    parser.add_argument(
+        "--ref-swap-variants",
+        type=str,
+        default="zero",
+        help="Comma-separated swapped-reference variants for ref-swap loss: zero, random.",
+    )
+    parser.add_argument(
         "--ref-check-step",
         type=int,
         default=10,
-        help="Optimizer step for [REF-CHECK] with-ref vs zero-ref noise-pred diff; set 0 to disable.",
+        help=(
+            "Optimizer step for [REF-CHECK] reference/control 2x2 noise-pred diffs; "
+            "set 0 to disable."
+        ),
     )
     parser.add_argument("--tissue-embedding-dim", type=int, default=64)
     parser.add_argument(

@@ -24,6 +24,9 @@ from controlnet_train.modules.cross_v2_1_conditioning import (
 from controlnet_train.modules.cross_v3_conditioning import (
     CROSS_V3_PROMPT,
     CROSS_V3_REFERENCE_ZERO_REF,
+    CROSS_V3_ROUTE_COARSE,
+    CROSS_V3_ROUTE_FINE,
+    CROSS_V3_ROUTE_NONE,
     CrossV3ControlSpec,
     CrossV3ReferenceContextEncoder,
     CrossV3ReferenceSpec,
@@ -31,7 +34,10 @@ from controlnet_train.modules.cross_v3_conditioning import (
     apply_cross_v3_reference_mode,
     apply_cross_v3_reference_token_mode,
     build_cross_v3_control_condition,
+    build_cross_v3_reference_route_ids,
+    cross_v3_route_class_count,
     normalize_cross_v3_reference_mode,
+    normalize_cross_v3_reference_route_mode,
     pack_cross_v3_reference_grid,
 )
 from controlnet_train.modules.fixed_tissue_encoder import FixedOneHotTissueEncoder
@@ -368,6 +374,57 @@ class CrossV3ConditioningTests(unittest.TestCase):
         self.assertEqual(reference_spec.raw_channels, 6)
         self.assertEqual(reference_spec.packed_channels, 24)
         self.assertEqual(reference_spec.token_dim, 8)
+        self.assertEqual(reference_spec.route_class_count, 0)
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v3 training helpers")
+    def test_cross_v3_ref_swap_token_variants_zero_or_shuffle_reference_tokens(self):
+        tokens = torch.arange(3 * 2 * 4, dtype=torch.float32).reshape(3, 2, 4)
+
+        zero_tokens = cross_v3_training._build_swapped_reference_tokens(tokens, "zero")
+        random_tokens = cross_v3_training._build_swapped_reference_tokens(tokens, "random")
+        single_random = cross_v3_training._build_swapped_reference_tokens(tokens[:1], "random")
+
+        self.assertTrue(torch.equal(zero_tokens, torch.zeros_like(tokens)))
+        self.assertTrue(torch.equal(random_tokens, tokens.index_select(0, torch.tensor([2, 0, 1]))))
+        self.assertIsNone(single_random)
+        self.assertEqual(cross_v3_training._parse_ref_swap_variants("zero,batch-shuffle"), ["zero", "random"])
+
+    def test_cross_v3_reference_route_modes_keep_fine_tumor_ids_when_requested(self):
+        self.assertEqual(normalize_cross_v3_reference_route_mode("fine-anchor"), CROSS_V3_ROUTE_FINE)
+        self.assertEqual(normalize_cross_v3_reference_route_mode("coarse"), CROSS_V3_ROUTE_COARSE)
+        self.assertEqual(normalize_cross_v3_reference_route_mode("off"), CROSS_V3_ROUTE_NONE)
+        self.assertEqual(cross_v3_route_class_count("fine"), 16)
+        self.assertEqual(cross_v3_route_class_count("coarse"), 8)
+        self.assertEqual(cross_v3_route_class_count("none"), 0)
+        self.assertEqual(CrossV3ReferenceSpec(route_anchor_mode="fine").route_class_count, 16)
+
+        fine_tumor_mask = torch.tensor(
+            [
+                [8, 8, 9, 9],
+                [8, 8, 9, 9],
+                [10, 10, 1, 1],
+                [10, 10, 1, 1],
+            ],
+            dtype=torch.long,
+        )
+
+        fine_ids, fine_confidence = build_cross_v3_reference_route_ids(
+            ref_tissue_ids=fine_tumor_mask,
+            token_height=2,
+            token_width=2,
+            route_anchor_mode="fine",
+        )
+        coarse_ids, coarse_confidence = build_cross_v3_reference_route_ids(
+            ref_tissue_ids=fine_tumor_mask,
+            token_height=2,
+            token_width=2,
+            route_anchor_mode="coarse",
+        )
+
+        self.assertTrue(torch.equal(fine_ids[0], torch.tensor([[8, 9], [10, 1]])))
+        self.assertTrue(torch.equal(coarse_ids[0], torch.ones(2, 2, dtype=torch.long)))
+        self.assertTrue(torch.equal(fine_confidence, torch.ones_like(fine_confidence)))
+        self.assertTrue(torch.equal(coarse_confidence, torch.ones_like(coarse_confidence)))
 
     def test_cross_v3_reference_grid_packs_latent_and_ref_masks(self):
         z_ref = torch.full((1, 2, 4, 4), 1.0)
@@ -401,6 +458,51 @@ class CrossV3ConditioningTests(unittest.TestCase):
         )
 
         self.assertEqual(tokens.shape, (2, 4, 7))
+
+    def test_cross_v3_reference_context_encoder_appends_fine_route_anchors(self):
+        encoder = CrossV3ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=7,
+            hidden_dim=5,
+            route_anchor_mode="fine",
+        )
+        ref_tissue_ids = torch.tensor(
+            [
+                [8, 8, 9, 9],
+                [8, 8, 9, 9],
+                [10, 10, 1, 1],
+                [10, 10, 1, 1],
+            ],
+            dtype=torch.long,
+        ).unsqueeze(0)
+
+        tokens = encoder(
+            z_ref=torch.randn(1, 2, 4, 4),
+            ref_tissue_feat=torch.randn(1, 3, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=ref_tissue_ids,
+        )
+
+        self.assertEqual(tokens.shape, (1, 16 + 4, 7))
+
+    def test_cross_v3_reference_context_encoder_requires_route_ids_when_enabled(self):
+        encoder = CrossV3ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=7,
+            hidden_dim=5,
+            route_anchor_mode="fine",
+        )
+
+        with self.assertRaisesRegex(ValueError, "ref_tissue_ids"):
+            encoder(
+                z_ref=torch.randn(1, 2, 4, 4),
+                ref_tissue_feat=torch.randn(1, 3, 4, 4),
+                ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            )
 
     def test_cross_v3_reference_context_encoder_uses_small_output_init(self):
         encoder = CrossV3ReferenceContextEncoder(

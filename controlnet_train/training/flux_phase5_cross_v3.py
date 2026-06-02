@@ -59,6 +59,12 @@ from controlnet_train.modules.cross_v3_conditioning import (
     deterministic_latent_from_posterior,
 )
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
+from controlnet_train.training.cross_v1_losses import (
+    RegionalStainStyleLossConfig,
+    ref_swap_sensitivity_loss,
+    regional_stain_style_loss,
+    unpack_flux_packed_latents,
+)
 
 if is_wandb_available():
     import wandb  # noqa: F401
@@ -191,6 +197,7 @@ def _build_cross_v3_control_batch(
         z_ref=reference_image_latent,
         ref_tissue_feat=ref_tissue_feat,
         ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=batch["reference_tissue_mask"].to(device=device),
     )
     feature_stats = _cross_v3_feature_stats(
         tar_tissue_feat=tar_tissue_feat,
@@ -294,6 +301,78 @@ def _per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Ten
 
 def _mean_abs_diff(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return (a.float() - b.float()).abs().mean()
+
+
+def _decode_packed_model_prediction(
+    *,
+    vae: AutoencoderKL,
+    packed_noisy_latents: torch.Tensor,
+    noise_pred: torch.Tensor,
+    sigmas: torch.Tensor,
+    latent_channels: int,
+    latent_height: int,
+    latent_width: int,
+    weight_dtype: torch.dtype,
+) -> torch.Tensor:
+    pred_original = packed_noisy_latents - sigmas * noise_pred
+    pred_latents = unpack_flux_packed_latents(
+        pred_original,
+        channels=latent_channels,
+        height=latent_height,
+        width=latent_width,
+    )
+    pred_latents = (pred_latents / vae.config.scaling_factor) + vae.config.shift_factor
+    decoded = vae.decode(
+        pred_latents.to(device=next(vae.parameters()).device, dtype=weight_dtype),
+        return_dict=False,
+    )[0]
+    return ((decoded.float() / 2.0) + 0.5).clamp(0.0, 1.0)
+
+
+def _cast_control_samples(
+    samples: list[torch.Tensor] | tuple[torch.Tensor, ...] | None,
+    dtype: torch.dtype,
+) -> list[torch.Tensor] | None:
+    if samples is None:
+        return None
+    return [sample.to(dtype=dtype) for sample in samples]
+
+
+def _zero_control_samples_like(samples: list[torch.Tensor] | None) -> list[torch.Tensor] | None:
+    if samples is None:
+        return None
+    return [torch.zeros_like(sample) for sample in samples]
+
+
+def _parse_ref_swap_variants(value: str | None) -> list[str]:
+    variants: list[str] = []
+    for raw_part in str(value or "").split(","):
+        variant = raw_part.strip().lower().replace("-", "_")
+        if not variant:
+            continue
+        if variant in {"shuffle", "batch_shuffle"}:
+            variant = "random"
+        if variant not in {"zero", "random"}:
+            raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
+        if variant not in variants:
+            variants.append(variant)
+    return variants
+
+
+def _build_swapped_reference_tokens(
+    reference_tokens: torch.Tensor,
+    variant: str,
+) -> torch.Tensor | None:
+    variant = str(variant).lower()
+    if variant == "zero":
+        return torch.zeros_like(reference_tokens)
+    if variant == "random":
+        bsz = int(reference_tokens.shape[0])
+        if bsz <= 1:
+            return None
+        order = torch.arange(bsz, device=reference_tokens.device).roll(1)
+        return reference_tokens.index_select(0, order)
+    raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
 
 
 def _apply_training_prompt_policy(records: list[dict], args: argparse.Namespace) -> None:
@@ -438,13 +517,17 @@ def _save_condition_modules(
             "packed_channels": int(reference_spec.packed_channels),
             "token_dim": int(reference_spec.token_dim),
             "output_init_std": float(reference_spec.output_init_std),
+            "route_anchor_mode": str(reference_spec.normalized_route_anchor_mode),
+            "route_class_count": int(reference_spec.route_class_count),
+            "route_embedding_init_std": float(reference_spec.route_embedding_init_std),
             "condition_order": [
                 "z_ref",
                 "ref_tissue_feat",
                 "ref_nuclei_feat",
+                "ref_tissue_ids_for_semantic_route",
             ],
             "injection_path": "flux_joint_cross_attention_context",
-            "txt_ids": "zeros_no_reference_coordinates",
+            "txt_ids": "zeros_no_reference_coordinates_route_is_learned_token_payload",
         },
         "prompt_policy": {
             "kind": "fixed",
@@ -645,9 +728,47 @@ def _load_condition_modules_from_checkpoint(
     if "target_tissue_encoder" in modules:
         logger.info("Using fixed one-hot target tissue encoder; no target-side tissue weights are loaded.")
     if "reference_context_encoder" in state:
-        modules["reference_context_encoder"].load_state_dict(state["reference_context_encoder"])
+        _load_reference_context_encoder_state(
+            modules["reference_context_encoder"],
+            state["reference_context_encoder"],
+            state_path=state_path,
+        )
     else:
         logger.info("Conditioning checkpoint has no reference_context_encoder; initializing it from scratch.")
+
+
+def _load_reference_context_encoder_state(
+    module: nn.Module,
+    state_dict: dict[str, torch.Tensor],
+    *,
+    state_path: Path,
+) -> None:
+    try:
+        module.load_state_dict(state_dict, strict=True)
+        return
+    except RuntimeError:
+        if getattr(module, "route_class_count", 0) <= 0:
+            raise
+    missing, unexpected = module.load_state_dict(state_dict, strict=False)
+    allowed_missing_prefixes = (
+        "local_route_embedding.",
+        "anchor_route_embedding.",
+        "route_type_embedding.",
+        "route_missing_anchor",
+    )
+    disallowed_missing = [
+        key for key in missing if not any(key.startswith(prefix) for prefix in allowed_missing_prefixes)
+    ]
+    if disallowed_missing or unexpected:
+        raise RuntimeError(
+            "Could not load reference_context_encoder from "
+            f"{state_path}: missing={list(missing)}, unexpected={list(unexpected)}"
+        )
+    logger.info(
+        "Loaded reference_context_encoder from %s with newly initialized semantic route parameters: %s",
+        state_path,
+        ", ".join(missing),
+    )
 
 
 def run_cross_v3_training(args: argparse.Namespace) -> None:
@@ -687,6 +808,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         nuclei_channels=args.nuclei_out_channels,
         token_dim=int(getattr(args, "reference_token_dim", 4096)),
         output_init_std=float(getattr(args, "reference_token_output_init_std", 0.02)),
+        route_anchor_mode=str(getattr(args, "reference_route_anchor_mode", "none")),
+        route_embedding_init_std=float(getattr(args, "reference_route_embedding_init_std", 0.02)),
     )
     target_tissue_embedding_dim = int(
         getattr(args, "target_tissue_embedding_dim", None) or args.tissue_embedding_dim
@@ -710,6 +833,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             token_dim=reference_spec.token_dim,
             hidden_dim=int(getattr(args, "reference_token_hidden_dim", reference_spec.token_dim)),
             output_init_std=reference_spec.output_init_std,
+            route_anchor_mode=reference_spec.route_anchor_mode,
+            route_embedding_init_std=reference_spec.route_embedding_init_std,
         ),
     }
     if target_tissue_encoding == "one_hot":
@@ -737,6 +862,24 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         max(0.0, float(getattr(args, "self_reconstruction_sample_prob", 0.0) or 0.0)),
     )
     ref_check_step = int(getattr(args, "ref_check_step", 10) or 0)
+    reference_style_loss_weight = max(
+        0.0,
+        float(getattr(args, "reference_style_loss_weight", 1.0) or 0.0),
+    )
+    reference_style_loss_interval = int(getattr(args, "reference_style_loss_interval", 1) or 0)
+    reference_style_loss_config = RegionalStainStyleLossConfig(
+        tissue_weight=float(getattr(args, "reference_style_tissue_weight", 1.0) or 0.0),
+        nuclei_weight=float(getattr(args, "reference_style_nuclei_weight", 1.0) or 0.0),
+        mean_weight=float(getattr(args, "reference_style_mean_weight", 1.0) or 0.0),
+        std_weight=float(getattr(args, "reference_style_std_weight", 1.0) or 0.0),
+        covariance_weight=float(getattr(args, "reference_style_cov_weight", 0.25) or 0.0),
+        min_pixels=max(1, int(getattr(args, "reference_style_min_pixels", 32) or 1)),
+        max_regions_per_sample=getattr(args, "reference_style_max_regions_per_sample", None),
+    )
+    ref_swap_loss_weight = max(0.0, float(getattr(args, "ref_swap_loss_weight", 0.1) or 0.0))
+    ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
+    ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.08) or 0.0)
+    ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero"))
 
     logging_out_dir = Path(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
@@ -763,11 +906,32 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     logger.info(
         "Using Cross V3 ControlNet target-only order [tar_tissue_feat, tar_nuclei_feat]: "
         "raw_channels=%s packed_channels=%s; reference [z_ref, ref_tissue_feat, ref_nuclei_feat] "
-        "enters joint cross-attention with token_dim=%s",
+        "enters joint cross-attention with token_dim=%s route_anchor_mode=%s",
         control_spec.raw_channels,
         control_spec.packed_channels,
         reference_spec.token_dim,
+        reference_spec.normalized_route_anchor_mode,
     )
+    if reference_style_loss_weight > 0.0:
+        logger.info(
+            "Using Cross V3 reference region stain/style loss: weight=%s interval=%s "
+            "tissue=%s nuclei=%s mean/std/cov=%s/%s/%s",
+            reference_style_loss_weight,
+            reference_style_loss_interval,
+            reference_style_loss_config.tissue_weight,
+            reference_style_loss_config.nuclei_weight,
+            reference_style_loss_config.mean_weight,
+            reference_style_loss_config.std_weight,
+            reference_style_loss_config.covariance_weight,
+        )
+    if ref_swap_loss_weight > 0.0:
+        logger.info(
+            "Using Cross V3 ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
+            ref_swap_loss_weight,
+            ref_swap_loss_interval,
+            ref_swap_margin,
+            ",".join(ref_swap_variants),
+        )
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()
     else:
@@ -1105,7 +1269,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     control_tensor.shape[3],
                 )
                 batch_prompt, batch_pooled = _resolve_prompt_batch(
-                    prompts=batch["prompts"],
+                    prompts=training_batch["prompts"],
                     prompt_cache=prompt_cache,
                     empty_prompt_embeds=empty_prompt_embeds,
                     empty_pooled=empty_pooled,
@@ -1159,6 +1323,14 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     img_ids=latent_image_ids,
                     return_dict=False,
                 )
+                transformer_controlnet_block_samples = _cast_control_samples(
+                    controlnet_block_samples,
+                    weight_dtype,
+                )
+                transformer_controlnet_single_block_samples = _cast_control_samples(
+                    controlnet_single_block_samples,
+                    weight_dtype,
+                )
 
                 noise_pred = flux_transformer(
                     hidden_states=noisy_model_input,
@@ -1166,16 +1338,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     guidance=guidance_vec,
                     pooled_projections=batch_pooled,
                     encoder_hidden_states=batch_context,
-                    controlnet_block_samples=(
-                        [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
-                        if controlnet_block_samples is not None
-                        else None
-                    ),
-                    controlnet_single_block_samples=(
-                        [sample.to(dtype=weight_dtype) for sample in controlnet_single_block_samples]
-                        if controlnet_single_block_samples is not None
-                        else None
-                    ),
+                    controlnet_block_samples=transformer_controlnet_block_samples,
+                    controlnet_single_block_samples=transformer_controlnet_single_block_samples,
                     txt_ids=context_ids,
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=None,
@@ -1183,40 +1347,95 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 )[0]
 
                 ref_check_diff = None
+                ref_check_logs: dict[str, float] = {}
                 if ref_check_step > 0 and global_step == ref_check_step:
-                    zero_context, zero_context_ids = append_cross_v3_reference_context(
-                        prompt_embeds=batch_prompt,
-                        text_ids=text_ids,
-                        reference_tokens=torch.zeros_like(reference_tokens),
-                    )
-                    zero_noise_pred = flux_transformer(
-                        hidden_states=noisy_model_input,
-                        timestep=timesteps / 1000,
-                        guidance=guidance_vec,
-                        pooled_projections=batch_pooled,
-                        encoder_hidden_states=zero_context,
-                        controlnet_block_samples=(
-                            [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
-                            if controlnet_block_samples is not None
-                            else None
-                        ),
-                        controlnet_single_block_samples=(
-                            [sample.to(dtype=weight_dtype) for sample in controlnet_single_block_samples]
-                            if controlnet_single_block_samples is not None
-                            else None
-                        ),
-                        txt_ids=zero_context_ids,
-                        img_ids=latent_image_ids,
-                        joint_attention_kwargs=None,
-                        return_dict=False,
-                    )[0]
-                    ref_check_diff = _mean_abs_diff(noise_pred.detach(), zero_noise_pred.detach())
+                    with torch.no_grad():
+                        zero_context, zero_context_ids = append_cross_v3_reference_context(
+                            prompt_embeds=batch_prompt,
+                            text_ids=text_ids,
+                            reference_tokens=torch.zeros_like(reference_tokens),
+                        )
+                        zero_ref_with_control = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=zero_context,
+                            controlnet_block_samples=transformer_controlnet_block_samples,
+                            controlnet_single_block_samples=transformer_controlnet_single_block_samples,
+                            txt_ids=zero_context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=None,
+                            return_dict=False,
+                        )[0]
+                        zero_controlnet_block_samples = _zero_control_samples_like(
+                            transformer_controlnet_block_samples
+                        )
+                        zero_controlnet_single_block_samples = _zero_control_samples_like(
+                            transformer_controlnet_single_block_samples
+                        )
+                        with_ref_zero_control = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=batch_context,
+                            controlnet_block_samples=zero_controlnet_block_samples,
+                            controlnet_single_block_samples=zero_controlnet_single_block_samples,
+                            txt_ids=context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=None,
+                            return_dict=False,
+                        )[0]
+                        zero_ref_zero_control = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=zero_context,
+                            controlnet_block_samples=zero_controlnet_block_samples,
+                            controlnet_single_block_samples=zero_controlnet_single_block_samples,
+                            txt_ids=zero_context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=None,
+                            return_dict=False,
+                        )[0]
+                        with_control_ref_effect = noise_pred.detach() - zero_ref_with_control.detach()
+                        zero_control_ref_effect = (
+                            with_ref_zero_control.detach() - zero_ref_zero_control.detach()
+                        )
+                        ref_check_diff = _mean_abs_diff(noise_pred.detach(), zero_ref_with_control.detach())
+                        ref_check_logs = {
+                            "ref_check_mean_abs_noise_pred_diff": ref_check_diff.detach().item(),
+                            "control_check_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                noise_pred.detach(),
+                                with_ref_zero_control.detach(),
+                            ).detach().item(),
+                            "ref_check_zero_control_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                with_ref_zero_control.detach(),
+                                zero_ref_zero_control.detach(),
+                            ).detach().item(),
+                            "control_check_zero_ref_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                zero_ref_with_control.detach(),
+                                zero_ref_zero_control.detach(),
+                            ).detach().item(),
+                            "ref_control_interaction_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                with_control_ref_effect,
+                                zero_control_ref_effect,
+                            ).detach().item(),
+                        }
                     if accelerator.is_main_process:
                         logger.info(
-                            "[REF-CHECK] step=%s mean_abs_noise_pred_diff=%.8g "
+                            "[REF-CHECK] step=%s ref_with_control_diff=%.8g "
+                            "control_with_ref_diff=%.8g ref_zero_control_diff=%.8g "
+                            "control_zero_ref_diff=%.8g ref_control_interaction_diff=%.8g "
                             "ref_token_abs_mean=%.8g ref_token_abs_max=%.8g output_init_std=%.8g",
                             global_step,
-                            float(ref_check_diff.cpu().item()),
+                            float(ref_check_logs["ref_check_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["control_check_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["ref_check_zero_control_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["control_check_zero_ref_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["ref_control_interaction_mean_abs_noise_pred_diff"]),
                             float(reference_tokens.detach().float().abs().mean().cpu().item()),
                             float(reference_tokens.detach().float().abs().max().cpu().item()),
                             float(getattr(args, "reference_token_output_init_std", 0.02)),
@@ -1224,12 +1443,97 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
 
                 target_velocity = noise - packed_pixel_latents
                 per_sample_loss = _per_sample_mse(noise_pred, target_velocity)
-                loss = per_sample_loss.mean()
+                denoise_loss = per_sample_loss.mean()
                 cross_denoise_loss = _masked_mean_or_zero(per_sample_loss, cross_sample_mask)
                 counterfactual_denoise_loss = _masked_mean_or_zero(per_sample_loss, counterfactual_sample_mask)
                 self_reconstruction_denoise_loss = _masked_mean_or_zero(
                     per_sample_loss,
                     self_reconstruction_sample_mask,
+                )
+                style_loss = noise_pred.new_zeros(())
+                style_tissue_loss = noise_pred.new_zeros(())
+                style_nuclei_loss = noise_pred.new_zeros(())
+                style_tissue_regions = 0
+                style_nuclei_regions = 0
+                should_compute_style_loss = (
+                    reference_style_loss_weight > 0.0
+                    and reference_style_loss_interval > 0
+                    and global_step % reference_style_loss_interval == 0
+                )
+                if should_compute_style_loss:
+                    prediction_rgb = _decode_packed_model_prediction(
+                        vae=vae,
+                        packed_noisy_latents=noisy_model_input,
+                        noise_pred=noise_pred,
+                        sigmas=sigmas,
+                        latent_channels=pixel_latents.shape[1],
+                        latent_height=pixel_latents.shape[2],
+                        latent_width=pixel_latents.shape[3],
+                        weight_dtype=weight_dtype,
+                    )
+                    style_terms = regional_stain_style_loss(
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                        reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                        config=reference_style_loss_config,
+                    )
+                    style_loss = style_terms["total"].to(dtype=denoise_loss.dtype)
+                    style_tissue_loss = style_terms["tissue"].to(dtype=denoise_loss.dtype)
+                    style_nuclei_loss = style_terms["nuclei"].to(dtype=denoise_loss.dtype)
+                    style_tissue_regions = int(style_terms["tissue_regions"])
+                    style_nuclei_regions = int(style_terms["nuclei_regions"])
+
+                swap_loss = noise_pred.new_zeros(())
+                ref_variant_loss_logs: dict[str, float] = {}
+                should_compute_swap_loss = (
+                    ref_swap_loss_weight > 0.0
+                    and ref_swap_loss_interval > 0
+                    and global_step % ref_swap_loss_interval == 0
+                    and bool(ref_swap_variants)
+                )
+                if should_compute_swap_loss:
+                    swapped_per_sample_losses = []
+                    for variant in ref_swap_variants:
+                        swapped_reference_tokens = _build_swapped_reference_tokens(reference_tokens, variant)
+                        if swapped_reference_tokens is None:
+                            continue
+                        swapped_context, swapped_context_ids = append_cross_v3_reference_context(
+                            prompt_embeds=batch_prompt,
+                            text_ids=text_ids,
+                            reference_tokens=swapped_reference_tokens,
+                        )
+                        swapped_noise_pred = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=swapped_context,
+                            controlnet_block_samples=transformer_controlnet_block_samples,
+                            controlnet_single_block_samples=transformer_controlnet_single_block_samples,
+                            txt_ids=swapped_context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=None,
+                            return_dict=False,
+                        )[0]
+                        swapped_per_sample_losses.append(_per_sample_mse(swapped_noise_pred, target_velocity))
+                        ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = (
+                            swapped_per_sample_losses[-1].mean().detach().item()
+                        )
+                    swap_loss = ref_swap_sensitivity_loss(
+                        per_sample_loss,
+                        swapped_per_sample_losses,
+                        margin=ref_swap_margin,
+                    ).to(dtype=denoise_loss.dtype)
+                loss = (
+                    denoise_loss
+                    + reference_style_loss_weight * style_loss
+                    + ref_swap_loss_weight * swap_loss
                 )
 
                 accelerator.backward(loss)
@@ -1260,17 +1564,25 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
 
             logs = {
                 "loss": loss.detach().item(),
-                "denoise_loss": loss.detach().item(),
+                "denoise_loss": denoise_loss.detach().item(),
                 "cross_denoise_loss": cross_denoise_loss.detach().item(),
                 "counterfactual_denoise_loss": counterfactual_denoise_loss.detach().item(),
                 "self_reconstruction_denoise_loss": self_reconstruction_denoise_loss.detach().item(),
+                "style_loss": style_loss.detach().item(),
+                "style_tissue_loss": style_tissue_loss.detach().item(),
+                "style_nuclei_loss": style_nuclei_loss.detach().item(),
+                "style_tissue_regions": style_tissue_regions,
+                "style_nuclei_regions": style_nuclei_regions,
+                "ref_swap_loss": swap_loss.detach().item(),
+                "ref_normal_denoise_loss": denoise_loss.detach().item(),
                 "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
                 "counterfactual_samples": int(counterfactual_sample_mask.sum().detach().item()),
                 "cross_samples": int(cross_sample_mask.sum().detach().item()),
                 "lr": lr_scheduler.get_last_lr()[0],
             }
+            logs.update(ref_variant_loss_logs)
             if ref_check_diff is not None:
-                logs["ref_check_mean_abs_noise_pred_diff"] = ref_check_diff.detach().item()
+                logs.update(ref_check_logs)
             if global_step <= 1:
                 logs.update(feature_stats)
             progress_bar.set_postfix(**logs)
