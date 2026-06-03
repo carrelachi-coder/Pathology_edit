@@ -116,7 +116,7 @@ def collate_cross_v3_batch(examples: list[dict]) -> dict:
         else:
             flattened.append(item)
     examples = flattened
-    return {
+    batch = {
         "sample_ids": [item["sample_id"] for item in examples],
         "reference_sample_ids": [item["reference_sample_id"] for item in examples],
         "target_image": torch.stack([item["target_image"] for item in examples]),
@@ -128,6 +128,24 @@ def collate_cross_v3_batch(examples: list[dict]) -> dict:
         "prompts": [item["prompt"] for item in examples],
         "sample_modes": [item.get("sample_mode", "cross") for item in examples],
     }
+    if all("same_class_swap_reference_image" in item for item in examples):
+        batch.update(
+            {
+                "same_class_swap_reference_sample_ids": [
+                    item["same_class_swap_reference_sample_id"] for item in examples
+                ],
+                "same_class_swap_reference_image": torch.stack(
+                    [item["same_class_swap_reference_image"] for item in examples]
+                ),
+                "same_class_swap_reference_tissue_mask": torch.stack(
+                    [item["same_class_swap_reference_tissue_mask"] for item in examples]
+                ),
+                "same_class_swap_reference_nuclei_mask": torch.stack(
+                    [item["same_class_swap_reference_nuclei_mask"] for item in examples]
+                ),
+            }
+        )
+    return batch
 
 
 def _pair_difficulty_target_distribution(args: argparse.Namespace) -> dict[str, float]:
@@ -389,6 +407,39 @@ def _build_cross_v4_control_batch(
     return target_image_latent, control_tensor, reference_encoding, target_metadata, feature_stats
 
 
+def _build_cross_v4_same_class_swap_encoding(
+    *,
+    batch: dict,
+    modules: dict[str, nn.Module],
+    vae: AutoencoderKL,
+    weight_dtype: torch.dtype,
+) -> CrossV4ReferenceEncoding | None:
+    required_keys = (
+        "same_class_swap_reference_image",
+        "same_class_swap_reference_tissue_mask",
+        "same_class_swap_reference_nuclei_mask",
+    )
+    if not all(key in batch for key in required_keys):
+        return None
+    device = next(vae.parameters()).device
+    reference_image_latent = _encode_images_to_deterministic_latents(
+        vae,
+        batch["same_class_swap_reference_image"],
+        weight_dtype,
+    )
+    ref_tissue_mask = batch["same_class_swap_reference_tissue_mask"].to(device=device)
+    ref_nuclei_mask = batch["same_class_swap_reference_nuclei_mask"].to(device=device)
+    ref_tissue_feat = modules["tissue_downsampler"](modules["hte"](ref_tissue_mask)).to(dtype=weight_dtype)
+    ref_nuclei_feat = modules["nuclei_encoder"](ref_nuclei_mask).to(dtype=weight_dtype)
+    return modules["reference_context_encoder"](
+        z_ref=reference_image_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=ref_tissue_mask,
+        ref_nuclei_ids=ref_nuclei_mask,
+    )
+
+
 def _target_hte(modules: dict[str, nn.Module]) -> nn.Module:
     if "target_tissue_encoder" in modules:
         return modules["target_tissue_encoder"]
@@ -532,8 +583,12 @@ def _parse_ref_swap_variants(value: str | None) -> list[str]:
             continue
         if variant in {"shuffle", "batch_shuffle"}:
             variant = "random"
-        if variant not in {"zero", "random"}:
-            raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
+        if variant in {"sameclass", "same_class", "same_class_swap"}:
+            variant = "same_class"
+        if variant not in {"zero", "random", "same_class"}:
+            raise ValueError(
+                f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class."
+            )
         if variant not in variants:
             variants.append(variant)
     return variants
@@ -563,7 +618,9 @@ def _build_swapped_cross_v4_reference_encoding(
     if variant == "zero":
         return apply_cross_v4_reference_encoding_mode(reference_encoding, "zero-ref")
     if variant != "random":
-        raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
+        raise ValueError(
+            f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class."
+        )
     bsz = int(reference_encoding.local_tokens.shape[0])
     if bsz <= 1:
         return None
@@ -2394,9 +2451,22 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         if is_cross_v4:
                             if reference_encoding is None or target_metadata is None:
                                 raise RuntimeError("Cross V4 ref-swap requires reference encoding and target metadata.")
-                            swapped_encoding = _build_swapped_cross_v4_reference_encoding(reference_encoding, variant)
+                            if variant == "same_class":
+                                swapped_encoding = _build_cross_v4_same_class_swap_encoding(
+                                    batch=training_batch,
+                                    modules=modules,
+                                    vae=vae,
+                                    weight_dtype=weight_dtype,
+                                )
+                            else:
+                                swapped_encoding = _build_swapped_cross_v4_reference_encoding(
+                                    reference_encoding,
+                                    variant,
+                                )
                             if swapped_encoding is None:
+                                ref_variant_loss_logs[f"ref_{variant}_available"] = 0.0
                                 continue
+                            ref_variant_loss_logs[f"ref_{variant}_available"] = 1.0
                             swapped_context, swapped_context_ids, swapped_joint_attention_kwargs, _, _ = (
                                 _build_cross_v4_context_and_kwargs(
                                     prompt_embeds=batch_prompt,
@@ -2526,6 +2596,9 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 cross_v4_diagnostic_logs["cross_v4_bias_scale_effective"] = _cross_v4_bias_scale(args, global_step)
                 cross_v4_diagnostic_logs["cross_v4_zero_ref_delta_available"] = float(
                     "ref_zero_minus_normal_denoise_loss" in ref_variant_loss_logs
+                )
+                cross_v4_diagnostic_logs["cross_v4_same_class_swap_delta_available"] = float(
+                    "ref_same_class_minus_normal_denoise_loss" in ref_variant_loss_logs
                 )
                 regular_verdict, regular_issues = _cross_v4_diagnostic_verdict(cross_v4_diagnostic_logs)
                 cross_v4_diagnostic_logs["cross_v4_extreme_bias_smoke"] = float(

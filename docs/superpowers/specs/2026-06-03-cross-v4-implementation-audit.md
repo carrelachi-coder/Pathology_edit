@@ -8,7 +8,7 @@ Reference design: `docs/superpowers/specs/2026-06-02-mask-guided-correspondence-
 
 Cross V4 is implemented as the MVP requested by the design: target masks stay in the ControlNet path, reference image/masks become local FLUX context tokens with token-level metadata, learned coarse tissue prior tokens provide fallback, and a mask-guided additive bias is injected into selected FLUX double-block joint attention logits.
 
-The current v4 launch defaults deliberately do not use ref-swap loss or self-reconstruction warmup. An earlier `SELF_RECONSTRUCTION_WARMUP_STEPS=500` default made the first 500 optimizer steps report `self_reconstruction_samples=1` and `cross_samples=0` for per-GPU batch size 1, which is unsafe for the correspondence MVP because it can train a self-copy shortcut before any cross-pair signal is observed.
+The current v4 launch defaults keep self-reconstruction warmup disabled, but now enable a lightweight same-class ref-swap diagnostic before step 4000. An earlier `SELF_RECONSTRUCTION_WARMUP_STEPS=500` default made the first 500 optimizer steps report `self_reconstruction_samples=1` and `cross_samples=0` for per-GPU batch size 1, which is unsafe for the correspondence MVP because it can train a self-copy shortcut before any cross-pair signal is observed.
 
 The runnable training path is:
 
@@ -45,7 +45,7 @@ scripts/nohup_train_phase5_cross_v4.sh
 - `controlnet_train/cli/train_controlnet_flux_cross_v4.py`
   - Thin v4 entrypoint that reuses the v3 parser/training loop and forces `args.cross_version = "v4"`.
   - Renames default output/tracker names from v3 to v4.
-  - Overrides v4 MVP defaults to disable ref-swap loss and cell bias unless the user explicitly passes ablation arguments.
+  - Overrides v4 MVP defaults to use lightweight same-class ref-swap (`weight=0.05`, `interval=100`, `variants=same_class`) and disable cell bias unless the user explicitly passes ablation arguments.
 
 - `controlnet_train/cli/train_controlnet_flux_cross_v3.py`
   - Adds Cross V4 prior/bias CLI options.
@@ -188,7 +188,8 @@ Current step-1500 readout is positive and should not trigger a restart for text-
 | Around step 1500 | Attention mass in `cross_v4_diagnostics.jsonl`: covered same-class reference vs all reference vs mismatch/prior/text buckets | Covered target tokens put most reference-local mass on same-class reference tokens; missing target tokens prefer matching tissue priors over mismatch reference. For the current run, `ref_all_local ~= 0.165`, `ref_same_total ~= 0.163`, and text/global is stable at `~= 0.137`. | Confirms reference tokens are getting bandwidth and the bias is pointing to the intended semantic class. Do not add text-bias merely because text remains non-zero; `text_global ~= 0.137` is a normal equilibrium for `same_fine=+3` and no negative text bias. |
 | Steps 2000-5000 | TensorBoard `style_tissue_loss`, plus `style_tissue_regions` | `style_tissue_regions > 0` and `style_tissue_loss` trends down from the early baseline | Early low-frequency gate. A downward per-region stain loss means generated tissue regions are moving toward the corresponding reference tissue regions. |
 | Around step 5000 | Visual checkpoint with target tissue mask overlay | Tumor/stroma/etc regions have distinguishable stain when the reference regions differ, and each generated region visually tracks the matching reference class | Confirms the numeric stain signal is visible and per-class, not just whole-image color drift. |
-| Step 8000+ | Visual texture inspection, reference swap, and zero/random-ref sensitivity if enabled | Nuclear morphology, chromatin granularity, and edge texture follow the reference while target structure remains controlled by the target mask | Final high-frequency test. Combine with the stain gate to decide whether the remaining failure is a V bottleneck or a routing failure. |
+| Before step 4000 | Same-class ref-swap sensitivity: `ref_same_class_denoise_loss`, `ref_same_class_minus_normal_denoise_loss`, `ref_same_class_available`, and `ref_swap_loss` | `ref_same_class_available=1` and same-class swap creates a measurable loss delta from the normal reference. | Separates "reference affects the output but V/IP-Adapter may flatten texture" from "reference is effectively unused". This gate should run before interpreting step-5000 visuals. |
+| Step 8000+ | Visual texture inspection, same-class reference swap, and zero/random-ref sensitivity if enabled | Nuclear morphology, chromatin granularity, and edge texture follow the reference while target structure remains controlled by the target mask | Final high-frequency test. Combine with the stain and pre-4000 swap gates to decide whether the remaining failure is a V bottleneck or a routing failure. |
 
 For a stricter sample-level check, compute mean color per generated target tissue mask and compare it with the mean color of the matching reference tissue mask. The same-class distance should be lower than mismatched-class distances. This is the visual/metric counterpart of `style_tissue_loss`, which already matches per-region stain statistics through mean/std/covariance terms.
 
@@ -212,7 +213,7 @@ Text-bias decision rule:
 - If stain transfers but texture does not, text-bias is still unlikely to fix the root cause; prioritize the independent reference K/V path.
 - If both stain and texture are weak while same-class attention is otherwise correct, then add a `--cross-v4-text-bias`/negative text-bias ablation to test whether more reference bandwidth helps.
 
-Non-invasive preparation for the next branch: add a `--cross-v4-text-bias` switch and a same-class swap diagnostic, but do not use either to interrupt the current run. These are contingency tools for the bandwidth-failure branch, not evidence that the current run should be reset.
+Non-invasive preparation for the next branch: add a `--cross-v4-text-bias` switch if both stain and same-class swap are weak. Same-class swap is now part of the default early diagnostic path so texture failures are not conflated with reference-unused failures.
 
 Two caveats matter for interpretation:
 
@@ -227,13 +228,13 @@ These pieces exist in code but are intentionally disabled by script defaults to 
 - cell prior tokens: set `CROSS_V4_CELL_PRIOR_TOKENS_PER_CLASS=2`.
 - global style tokens: set `CROSS_V4_GLOBAL_STYLE_TOKENS=2`.
 - multiple biased double blocks: set `CROSS_V4_BIASED_DOUBLE_BLOCKS=-2,-1` or `all`, but re-check memory.
-- ref-swap loss: set `REF_SWAP_LOSS_WEIGHT=0.1`, `REF_SWAP_LOSS_INTERVAL=1`, and `REF_SWAP_VARIANTS=zero,random` for explicit sensitivity ablation.
+- stronger ref-swap loss: default is lightweight same-class swap (`REF_SWAP_LOSS_WEIGHT=0.05`, `REF_SWAP_LOSS_INTERVAL=100`, `REF_SWAP_VARIANTS=same_class`); set `REF_SWAP_LOSS_WEIGHT=0.1`, `REF_SWAP_LOSS_INTERVAL=1`, and `REF_SWAP_VARIANTS=same_class,zero,random` for explicit stronger sensitivity ablation.
 
 ## Remaining Gaps
 
 - Coverage-aware training now uses a `pair_difficulty` weighted sampler; monitor logs to confirm the effective target remains full/partial/low = 70/25/5.
 - Attention visualizations are not yet saved as images; current implementation records numeric attention mass.
 - Ref-swap loss is still image-level denoise loss, not region-level covered/missing loss.
-- Ref-swap is disabled by default for v4 training; use it as an explicit ablation/diagnostic only.
+- Same-class ref-swap is enabled by default for v4 training as a pre-4000 diagnostic. Zero/random swaps remain explicit ablations.
 - Attention regularizer is not yet added as a training loss.
 - Cell histogram/density bias is available in the bias formula, but MVP diagnosis should first verify tissue-only behavior by setting cell-prior/global off.

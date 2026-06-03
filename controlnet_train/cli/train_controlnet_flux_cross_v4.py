@@ -38,9 +38,9 @@ def parse_args(input_args=None, description: str | None = None):
     if args.tracker_project_name == "flux_controlnet_phase5_cross_v3":
         args.tracker_project_name = "flux_controlnet_phase5_cross_v4"
     v4_defaults = {
-        "--ref-swap-loss-weight": ("ref_swap_loss_weight", 0.0),
-        "--ref-swap-loss-interval": ("ref_swap_loss_interval", 0),
-        "--ref-swap-variants": ("ref_swap_variants", ""),
+        "--ref-swap-loss-weight": ("ref_swap_loss_weight", 0.05),
+        "--ref-swap-loss-interval": ("ref_swap_loss_interval", 100),
+        "--ref-swap-variants": ("ref_swap_variants", "same_class"),
         "--cross-v4-cell-similarity-bias": ("cross_v4_cell_similarity_bias", 0.0),
         "--cross-v4-density-gap-bias": ("cross_v4_density_gap_bias", 0.0),
         "--cross-v4-cell-prior-bias": ("cross_v4_cell_prior_bias", 0.0),
