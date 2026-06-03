@@ -1,6 +1,5 @@
 # Mask-Guided Correspondence Cross V4 模型架构设想
 
-Date: 2026-06-02
 
 ## 0. 一句话结论
 

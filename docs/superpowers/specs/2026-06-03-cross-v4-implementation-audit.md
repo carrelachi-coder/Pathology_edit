@@ -188,7 +188,7 @@ These pieces exist in code but are intentionally disabled by script defaults to 
 
 ## Remaining Gaps
 
-- Coverage-aware sampler ratio is not yet enforced in the dataloader.
+- Coverage-aware training now uses a `pair_difficulty` weighted sampler; monitor logs to confirm the effective target remains full/partial/low = 70/25/5.
 - Attention visualizations are not yet saved as images; current implementation records numeric attention mass.
 - Ref-swap loss is still image-level denoise loss, not region-level covered/missing loss.
 - Ref-swap is disabled by default for v4 training; use it as an explicit ablation/diagnostic only.

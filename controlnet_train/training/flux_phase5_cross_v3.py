@@ -130,6 +130,86 @@ def collate_cross_v3_batch(examples: list[dict]) -> dict:
     }
 
 
+def _pair_difficulty_target_distribution(args: argparse.Namespace) -> dict[str, float]:
+    target = {
+        "full": float(getattr(args, "pair_difficulty_target_full", 0.70) or 0.0),
+        "partial": float(getattr(args, "pair_difficulty_target_partial", 0.25) or 0.0),
+        "low": float(getattr(args, "pair_difficulty_target_low", 0.05) or 0.0),
+    }
+    negative = {name: value for name, value in target.items() if value < 0.0}
+    if negative:
+        raise ValueError(f"pair difficulty sampler targets must be non-negative, got {negative}.")
+    total = sum(target.values())
+    if total <= 0.0:
+        raise ValueError("At least one pair difficulty sampler target must be positive.")
+    return {name: value / total for name, value in target.items()}
+
+
+def _build_pair_difficulty_sampler(
+    records: list[dict],
+    *,
+    target_distribution: dict[str, float],
+    seed: int,
+    num_samples: int | None = None,
+) -> tuple[torch.utils.data.WeightedRandomSampler, dict]:
+    if not records:
+        raise ValueError("Cannot build pair difficulty sampler for an empty dataset.")
+
+    buckets = ("full", "partial", "low")
+    counts = {bucket: 0 for bucket in buckets}
+    difficulties: list[str] = []
+    for record in records:
+        difficulty = str(record.get("pair_difficulty", "full") or "full").lower()
+        if difficulty not in counts:
+            difficulty = "full"
+        counts[difficulty] += 1
+        difficulties.append(difficulty)
+
+    missing_target = [
+        bucket
+        for bucket in buckets
+        if counts[bucket] == 0 and float(target_distribution.get(bucket, 0.0)) > 0.0
+    ]
+    if missing_target:
+        raise ValueError(
+            "Cannot target pair_difficulty buckets with no records: "
+            + ", ".join(missing_target)
+        )
+
+    total_records = float(len(records))
+    class_weights = {}
+    for bucket in buckets:
+        target_fraction = float(target_distribution.get(bucket, 0.0))
+        observed_fraction = counts[bucket] / total_records if counts[bucket] > 0 else 0.0
+        class_weights[bucket] = (
+            target_fraction / observed_fraction
+            if observed_fraction > 0.0 and target_fraction > 0.0
+            else 0.0
+        )
+    sample_weights = torch.as_tensor(
+        [class_weights[difficulty] for difficulty in difficulties],
+        dtype=torch.double,
+    )
+    if float(sample_weights.sum().item()) <= 0.0:
+        raise ValueError("Pair difficulty sampler produced all-zero sample weights.")
+
+    generator = torch.Generator()
+    generator.manual_seed(int(seed))
+    sampler = torch.utils.data.WeightedRandomSampler(
+        sample_weights,
+        num_samples=int(num_samples or len(records)),
+        replacement=True,
+        generator=generator,
+    )
+    stats = {
+        "counts": counts,
+        "target_distribution": {bucket: float(target_distribution.get(bucket, 0.0)) for bucket in buckets},
+        "class_weights": class_weights,
+        "num_samples": int(num_samples or len(records)),
+    }
+    return sampler, stats
+
+
 def _configure_controlnet_trainable_params(
     controlnet: nn.Module,
     *,
@@ -1843,12 +1923,28 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     )
 
     dataloader_kwargs = {
-        "shuffle": True,
         "collate_fn": collate_cross_v3_batch,
         "batch_size": args.train_batch_size,
         "num_workers": args.dataloader_num_workers,
         "pin_memory": True,
     }
+    if bool(getattr(args, "pair_difficulty_sampler", False)):
+        sampler_seed = int(args.seed if args.seed is not None else 0) + int(accelerator.process_index)
+        pair_sampler, pair_sampler_stats = _build_pair_difficulty_sampler(
+            dataset.records,
+            target_distribution=_pair_difficulty_target_distribution(args),
+            seed=sampler_seed,
+        )
+        dataloader_kwargs["sampler"] = pair_sampler
+        logger.info(
+            "Using pair_difficulty weighted sampler: counts=%s target=%s class_weights=%s seed=%s",
+            pair_sampler_stats["counts"],
+            pair_sampler_stats["target_distribution"],
+            pair_sampler_stats["class_weights"],
+            sampler_seed,
+        )
+    else:
+        dataloader_kwargs["shuffle"] = True
     if args.dataloader_num_workers > 0:
         dataloader_kwargs["persistent_workers"] = True
         dataloader_kwargs["prefetch_factor"] = max(1, int(getattr(args, "dataloader_prefetch_factor", 2) or 2))

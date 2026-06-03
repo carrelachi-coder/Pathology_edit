@@ -73,6 +73,10 @@ CROSS_V4_DIAGNOSE_INTERVAL="${CROSS_V4_DIAGNOSE_INTERVAL:-0}"
 CROSS_V4_DIAGNOSE_JSONL="${CROSS_V4_DIAGNOSE_JSONL:-${CROSS_V4_OUTPUT_DIR}/cross_v4_diagnostics.jsonl}"
 DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
 DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-4}"
+PAIR_DIFFICULTY_SAMPLER="${PAIR_DIFFICULTY_SAMPLER:-1}"
+PAIR_DIFFICULTY_TARGET_FULL="${PAIR_DIFFICULTY_TARGET_FULL:-0.70}"
+PAIR_DIFFICULTY_TARGET_PARTIAL="${PAIR_DIFFICULTY_TARGET_PARTIAL:-0.25}"
+PAIR_DIFFICULTY_TARGET_LOW="${PAIR_DIFFICULTY_TARGET_LOW:-0.05}"
 MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-5000}"
 CHECKPOINTING_STEPS="${CHECKPOINTING_STEPS:-1000}"
 CROSS_V4_EXTREME_BIAS_SMOKE="${CROSS_V4_EXTREME_BIAS_SMOKE:-0}"
@@ -125,6 +129,17 @@ if [[ "${CONTROLNET_TRAIN_X_EMBEDDER}" == "1" ]]; then
   TRAIN_CONTROLNET_ARGS+=(--controlnet-train-x-embedder)
 fi
 
+TRAIN_PAIR_SAMPLER_ARGS=(
+  --pair-difficulty-target-full "${PAIR_DIFFICULTY_TARGET_FULL}"
+  --pair-difficulty-target-partial "${PAIR_DIFFICULTY_TARGET_PARTIAL}"
+  --pair-difficulty-target-low "${PAIR_DIFFICULTY_TARGET_LOW}"
+)
+if [[ "${PAIR_DIFFICULTY_SAMPLER}" == "1" ]]; then
+  TRAIN_PAIR_SAMPLER_ARGS+=(--pair-difficulty-sampler)
+else
+  TRAIN_PAIR_SAMPLER_ARGS+=(--no-pair-difficulty-sampler)
+fi
+
 TRAIN_CHECKPOINT_ARGS=()
 if [[ -n "${CONTROLNET_CHECKPOINT}" ]]; then
   TRAIN_CHECKPOINT_ARGS+=(--controlnet_model_name_or_path "${CONTROLNET_CHECKPOINT}")
@@ -140,6 +155,7 @@ fi
 
 echo "Cross V4 launch: gpus=${GPU_IDS} processes=${NUM_PROCESSES} max_steps=${MAX_TRAIN_STEPS} output=${CROSS_V4_OUTPUT_DIR}"
 echo "Cross V4 sampling: self_recon_warmup=${SELF_RECONSTRUCTION_WARMUP_STEPS} self_recon_prob=${SELF_RECONSTRUCTION_SAMPLE_PROB} ref_swap_loss=${REF_SWAP_LOSS_WEIGHT} ref_swap_interval=${REF_SWAP_LOSS_INTERVAL}"
+echo "Cross V4 pair sampler: enabled=${PAIR_DIFFICULTY_SAMPLER} target_full=${PAIR_DIFFICULTY_TARGET_FULL} target_partial=${PAIR_DIFFICULTY_TARGET_PARTIAL} target_low=${PAIR_DIFFICULTY_TARGET_LOW}"
 echo "Cross V4 bias: blocks=${CROSS_V4_BIASED_DOUBLE_BLOCKS} scale=${CROSS_V4_BIAS_SCALE} warmup=${CROSS_V4_BIAS_WARMUP_STEPS} same_fine=${CROSS_V4_SAME_FINE_BIAS} same_coarse=${CROSS_V4_SAME_COARSE_BIAS} mismatch=${CROSS_V4_MISMATCH_BIAS} prior_missing=${CROSS_V4_PRIOR_MISSING_BIAS}"
 echo "Cross V4 diagnostics: steps=${CROSS_V4_DIAGNOSE_STEPS} interval=${CROSS_V4_DIAGNOSE_INTERVAL} jsonl=${CROSS_V4_DIAGNOSE_JSONL} memory_limit_gb=${MAX_CUDA_MEMORY_GB} extreme_smoke=${CROSS_V4_EXTREME_BIAS_SMOKE}"
 
@@ -203,6 +219,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --allow-tf32 \
   --dataloader-num-workers "${DATALOADER_NUM_WORKERS}" \
   --dataloader-prefetch-factor "${DATALOADER_PREFETCH_FACTOR}" \
+  "${TRAIN_PAIR_SAMPLER_ARGS[@]}" \
   --num-double-layers 4 \
   --num-single-layers 4 \
   --guidance-scale 3.5 \

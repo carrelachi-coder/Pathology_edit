@@ -48,6 +48,11 @@ def parse_args(input_args=None, description: str | None = None):
     for option_name, (attr_name, default_value) in v4_defaults.items():
         if not _has_cli_arg(input_args, option_name):
             setattr(args, attr_name, default_value)
+    if not _has_cli_arg(input_args, "--pair-difficulty-sampler") and not _has_cli_arg(
+        input_args,
+        "--no-pair-difficulty-sampler",
+    ):
+        args.pair_difficulty_sampler = True
     return args
 
 

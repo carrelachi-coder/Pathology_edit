@@ -956,6 +956,29 @@ class CrossV4ConditioningTests(unittest.TestCase):
         self.assertEqual(mass["missing"]["tissue_prior_target"], 0.98)
         self.assertEqual(mass["missing"]["ref_mismatch"], 0.002)
 
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_pair_difficulty_sampler_upsamples_partial_and_low_buckets(self):
+        records = (
+            [{"pair_difficulty": "full"} for _ in range(85)]
+            + [{"pair_difficulty": "partial"} for _ in range(14)]
+            + [{"pair_difficulty": "low"}]
+        )
+        target = {"full": 0.70, "partial": 0.25, "low": 0.05}
+
+        sampler, stats = cross_v3_training._build_pair_difficulty_sampler(
+            records,
+            target_distribution=target,
+            seed=123,
+        )
+
+        self.assertEqual(len(sampler), len(records))
+        self.assertEqual(stats["counts"], {"full": 85, "partial": 14, "low": 1})
+        self.assertLess(stats["class_weights"]["full"], stats["class_weights"]["partial"])
+        self.assertLess(stats["class_weights"]["partial"], stats["class_weights"]["low"])
+        self.assertAlmostEqual(stats["class_weights"]["full"], 0.70 / 0.85)
+        self.assertAlmostEqual(stats["class_weights"]["partial"], 0.25 / 0.14)
+        self.assertAlmostEqual(stats["class_weights"]["low"], 0.05 / 0.01)
+
 
 if __name__ == "__main__":
     unittest.main()

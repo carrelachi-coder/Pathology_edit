@@ -298,6 +298,10 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.cross_v4_cell_similarity_bias, 0.0)
         self.assertEqual(args.cross_v4_density_gap_bias, 0.0)
         self.assertEqual(args.cross_v4_cell_prior_bias, 0.0)
+        self.assertTrue(args.pair_difficulty_sampler)
+        self.assertEqual(args.pair_difficulty_target_full, 0.70)
+        self.assertEqual(args.pair_difficulty_target_partial, 0.25)
+        self.assertEqual(args.pair_difficulty_target_low, 0.05)
         self.assertFalse(args.cross_v4_extreme_bias_smoke)
 
     def test_cross_v4_cli_respects_explicit_swap_and_cell_bias_ablation_args(self):
@@ -330,6 +334,19 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.cross_v4_density_gap_bias, 0.5)
         self.assertEqual(args.cross_v4_cell_prior_bias, 1.0)
         self.assertTrue(args.cross_v4_extreme_bias_smoke)
+
+    def test_cross_v4_cli_can_disable_pair_difficulty_sampler(self):
+        args = parse_cross_v4_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--no-pair-difficulty-sampler",
+            ]
+        )
+
+        self.assertFalse(args.pair_difficulty_sampler)
 
 
 if __name__ == "__main__":

@@ -111,6 +111,35 @@ def parse_args(input_args=None, description: str | None = None) -> argparse.Name
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--dataloader-num-workers", type=int, default=0)
     parser.add_argument("--dataloader-prefetch-factor", type=int, default=2)
+    parser.add_argument(
+        "--pair-difficulty-sampler",
+        action="store_true",
+        help="Sample cross pairs by pair_difficulty target ratios instead of natural metadata frequency.",
+    )
+    parser.add_argument(
+        "--no-pair-difficulty-sampler",
+        dest="pair_difficulty_sampler",
+        action="store_false",
+        help="Disable pair_difficulty weighted sampling.",
+    )
+    parser.add_argument(
+        "--pair-difficulty-target-full",
+        type=float,
+        default=0.70,
+        help="Target sampling fraction for pair_difficulty=full when --pair-difficulty-sampler is enabled.",
+    )
+    parser.add_argument(
+        "--pair-difficulty-target-partial",
+        type=float,
+        default=0.25,
+        help="Target sampling fraction for pair_difficulty=partial when --pair-difficulty-sampler is enabled.",
+    )
+    parser.add_argument(
+        "--pair-difficulty-target-low",
+        type=float,
+        default=0.05,
+        help="Target sampling fraction for pair_difficulty=low when --pair-difficulty-sampler is enabled.",
+    )
     parser.add_argument("--checkpointing-steps", type=int, default=500)
     parser.add_argument("--checkpoints-total-limit", type=int, default=None)
     parser.add_argument("--resume-from-checkpoint", type=str, default=None)
