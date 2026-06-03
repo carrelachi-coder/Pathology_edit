@@ -22,6 +22,7 @@ from typing import Callable
 import accelerate
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -41,7 +42,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
-from dataset_config import NUM_FINE
+from dataset_config import NUM_COARSE, NUM_FINE
 from controlnet_train.data import CrossReconstructionDataset
 from controlnet_train.modules import (
     FixedOneHotTissueEncoder,
@@ -500,7 +501,8 @@ def _build_cross_v4_context_and_kwargs(
     args: argparse.Namespace,
     global_step: int,
     dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    diagnose_attention: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, dict, object, dict | None]:
     prior_tokens = prior_token_bank(reference_encoding.local_tokens)
     context = append_cross_v4_context(
         prompt_embeds=prompt_embeds,
@@ -530,7 +532,15 @@ def _build_cross_v4_context_and_kwargs(
         "cross_v4_bias": correspondence_bias,
         "cross_v4_bias_scale": _cross_v4_bias_scale(args, global_step),
     }
-    return context.encoder_hidden_states, context.txt_ids, joint_attention_kwargs
+    diagnostics = None
+    if diagnose_attention:
+        diagnostics = _build_cross_v4_attention_diagnostics(
+            context=context,
+            target_metadata=target_metadata,
+            correspondence_bias=correspondence_bias,
+        )
+        joint_attention_kwargs["cross_v4_diagnostics"] = diagnostics
+    return context.encoder_hidden_states, context.txt_ids, joint_attention_kwargs, context, diagnostics
 
 
 def _cross_v4_bias_scale(args: argparse.Namespace, global_step: int) -> float:
@@ -539,6 +549,285 @@ def _cross_v4_bias_scale(args: argparse.Namespace, global_step: int) -> float:
     if base == 0.0 or warmup == 0:
         return base
     return base * min(1.0, float(max(0, global_step)) / float(warmup))
+
+
+def _parse_step_set(value: str | None) -> set[int]:
+    steps: set[int] = set()
+    for raw_part in str(value or "").split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        step = int(part)
+        if step > 0:
+            steps.add(step)
+    return steps
+
+
+def _should_run_cross_v4_diagnostics(args: argparse.Namespace, step: int) -> bool:
+    if step <= 0:
+        return False
+    diagnose_steps = _parse_step_set(getattr(args, "cross_v4_diagnose_steps", "500,1000,1500,2000"))
+    if step in diagnose_steps:
+        return True
+    interval = max(0, int(getattr(args, "cross_v4_diagnose_interval", 0) or 0))
+    return interval > 0 and step % interval == 0
+
+
+def _build_cross_v4_attention_diagnostics(
+    *,
+    context,
+    target_metadata,
+    correspondence_bias: torch.Tensor,
+) -> dict:
+    bucket_masks = _cross_v4_attention_bucket_masks(context=context, target_metadata=target_metadata)
+    group_masks = _cross_v4_attention_group_masks(
+        target_metadata=target_metadata,
+        reference_metadata=context.reference_metadata,
+    )
+    return {
+        "bucket_masks": bucket_masks,
+        "group_masks": group_masks,
+        "records": [],
+        "static": _cross_v4_static_diagnostic_stats(
+            context=context,
+            target_metadata=target_metadata,
+            group_masks=group_masks,
+        ),
+        "bias_stats": _summarize_cross_v4_bucket_tensor(
+            correspondence_bias.detach().float(),
+            bucket_masks=bucket_masks,
+            group_masks=group_masks,
+            prefix="cross_v4_bias",
+        ),
+    }
+
+
+def _cross_v4_attention_bucket_masks(*, context, target_metadata) -> dict[str, torch.Tensor]:
+    device = target_metadata.tissue_coarse_id.device
+    batch_size, image_tokens = target_metadata.tissue_coarse_id.shape
+    context_tokens = int(context.segments.total_tokens)
+
+    def empty() -> torch.Tensor:
+        return torch.zeros(batch_size, image_tokens, context_tokens, device=device, dtype=torch.bool)
+
+    buckets: dict[str, torch.Tensor] = {
+        "ref_same_fine": empty(),
+        "ref_same_coarse": empty(),
+        "ref_same_total": empty(),
+        "ref_mismatch": empty(),
+        "ref_all_local": empty(),
+        "tissue_prior_target": empty(),
+        "tissue_prior_other": empty(),
+        "cell_prior_match": empty(),
+        "cell_prior_other": empty(),
+        "text_global": empty(),
+        "route_anchor": empty(),
+    }
+
+    text_start, text_end = context.segments.text
+    global_start, global_end = context.segments.global_style
+    if text_end > text_start:
+        buckets["text_global"][:, :, text_start:text_end] = True
+    if global_end > global_start:
+        buckets["text_global"][:, :, global_start:global_end] = True
+
+    route_start, route_end = context.segments.route_anchor
+    if route_end > route_start:
+        buckets["route_anchor"][:, :, route_start:route_end] = True
+
+    ref_start, ref_end = context.segments.reference_local
+    if ref_end > ref_start:
+        reference = context.reference_metadata
+        same_fine = target_metadata.tissue_fine_id[:, :, None] == reference.tissue_fine_id[:, None, :]
+        same_coarse = target_metadata.tissue_coarse_id[:, :, None] == reference.tissue_coarse_id[:, None, :]
+        buckets["ref_same_fine"][:, :, ref_start:ref_end] = same_fine
+        buckets["ref_same_coarse"][:, :, ref_start:ref_end] = same_coarse & ~same_fine
+        buckets["ref_same_total"][:, :, ref_start:ref_end] = same_coarse
+        buckets["ref_mismatch"][:, :, ref_start:ref_end] = ~same_coarse
+        buckets["ref_all_local"][:, :, ref_start:ref_end] = True
+
+    prior_start, prior_end = context.segments.tissue_prior
+    if prior_end > prior_start:
+        prior_ids = context.tissue_prior_class_ids.to(device=device)
+        target_is_prior = target_metadata.tissue_coarse_id[:, :, None] == prior_ids.view(1, 1, -1)
+        buckets["tissue_prior_target"][:, :, prior_start:prior_end] = target_is_prior
+        buckets["tissue_prior_other"][:, :, prior_start:prior_end] = ~target_is_prior
+
+    cell_start, cell_end = context.segments.cell_prior
+    if cell_end > cell_start:
+        cell_prior_ids = context.cell_prior_class_ids.to(device=device)
+        dominant_cell = target_metadata.cell_hist.to(device=device).argmax(dim=-1)
+        cell_match = dominant_cell[:, :, None] == cell_prior_ids.view(1, 1, -1)
+        buckets["cell_prior_match"][:, :, cell_start:cell_end] = cell_match
+        buckets["cell_prior_other"][:, :, cell_start:cell_end] = ~cell_match
+    return buckets
+
+
+def _cross_v4_attention_group_masks(*, target_metadata, reference_metadata) -> dict[str, torch.Tensor]:
+    device = target_metadata.tissue_coarse_id.device
+    ref_presence = _cross_v4_class_presence(reference_metadata.tissue_coarse_id.to(device=device), NUM_COARSE)
+    target_class = target_metadata.tissue_coarse_id.to(device=device)
+    covered = ref_presence.gather(1, target_class).bool()
+    groups: dict[str, torch.Tensor] = {
+        "all": torch.ones_like(covered, dtype=torch.bool),
+        "covered": covered,
+        "missing": ~covered,
+    }
+    for class_id in range(NUM_COARSE):
+        class_mask = target_class == class_id
+        groups[f"class_{class_id}"] = class_mask
+        groups[f"covered_class_{class_id}"] = covered & class_mask
+        groups[f"missing_class_{class_id}"] = (~covered) & class_mask
+    return groups
+
+
+def _cross_v4_class_presence(class_ids: torch.Tensor, class_count: int) -> torch.Tensor:
+    return F.one_hot(class_ids.long(), num_classes=class_count).bool().any(dim=1)
+
+
+def _cross_v4_static_diagnostic_stats(*, context, target_metadata, group_masks: dict[str, torch.Tensor]) -> dict[str, float]:
+    target_class = target_metadata.tissue_coarse_id
+    reference_class = context.reference_metadata.tissue_coarse_id.to(device=target_class.device)
+    target_presence = _cross_v4_class_presence(target_class, NUM_COARSE)
+    reference_presence = _cross_v4_class_presence(reference_class, NUM_COARSE)
+    stats = {
+        "cross_v4_context_tokens": float(context.segments.total_tokens),
+        "cross_v4_text_tokens": float(context.segments.text[1] - context.segments.text[0]),
+        "cross_v4_global_style_tokens": float(context.segments.global_style[1] - context.segments.global_style[0]),
+        "cross_v4_tissue_prior_tokens": float(context.segments.tissue_prior[1] - context.segments.tissue_prior[0]),
+        "cross_v4_cell_prior_tokens": float(context.segments.cell_prior[1] - context.segments.cell_prior[0]),
+        "cross_v4_route_anchor_tokens": float(context.segments.route_anchor[1] - context.segments.route_anchor[0]),
+        "cross_v4_reference_local_tokens": float(context.segments.reference_local[1] - context.segments.reference_local[0]),
+        "cross_v4_target_tokens": float(target_class.numel()),
+        "cross_v4_target_present_coarse_classes": float(target_presence.sum(dim=1).float().mean().item()),
+        "cross_v4_reference_present_coarse_classes": float(reference_presence.sum(dim=1).float().mean().item()),
+    }
+    for group_name in ("covered", "missing"):
+        group = group_masks[group_name]
+        stats[f"cross_v4_{group_name}_target_token_fraction"] = float(group.float().mean().item())
+        stats[f"cross_v4_{group_name}_target_tokens"] = float(group.sum().item())
+    return stats
+
+
+def _summarize_cross_v4_bucket_tensor(
+    values: torch.Tensor,
+    *,
+    bucket_masks: dict[str, torch.Tensor],
+    group_masks: dict[str, torch.Tensor],
+    prefix: str,
+) -> dict[str, float]:
+    summary: dict[str, float] = {}
+    values = values.detach().float()
+    for bucket_name, raw_bucket_mask in bucket_masks.items():
+        bucket_mask = raw_bucket_mask.to(device=values.device, dtype=torch.bool)
+        if bucket_mask.shape != values.shape:
+            continue
+        for group_name, raw_group_mask in group_masks.items():
+            if group_name.startswith("class_") or group_name.startswith("covered_class_") or group_name.startswith("missing_class_"):
+                continue
+            group_mask = raw_group_mask.to(device=values.device, dtype=torch.bool)
+            expanded_group = group_mask[:, :, None].expand_as(bucket_mask)
+            combined = bucket_mask & expanded_group
+            if not bool(combined.any().item()):
+                continue
+            summary[f"{prefix}_{group_name}_{bucket_name}_mean"] = float(values[combined].mean().item())
+    return summary
+
+
+def _summarize_cross_v4_attention_records(diagnostics: dict | None) -> dict[str, float]:
+    if not diagnostics:
+        return {}
+    records = list(diagnostics.get("records") or [])
+    if not records:
+        return {}
+    keys = sorted({key for record in records for key in record})
+    summary = {"cross_v4_attention_diagnostic_layers": float(len(records))}
+    for key in keys:
+        vals = [float(record[key]) for record in records if key in record]
+        if vals:
+            summary[key] = float(sum(vals) / len(vals))
+    return summary
+
+
+def _cross_v4_diagnostic_verdict(summary: dict[str, float]) -> tuple[str, list[str]]:
+    issues: list[str] = []
+    covered_fraction = float(summary.get("cross_v4_covered_target_token_fraction", 0.0))
+    missing_fraction = float(summary.get("cross_v4_missing_target_token_fraction", 0.0))
+
+    covered_same = float(summary.get("cross_v4_attention_covered_ref_same_total", 0.0))
+    covered_all_ref = float(summary.get("cross_v4_attention_covered_ref_all_local", 0.0))
+    covered_mismatch = float(summary.get("cross_v4_attention_covered_ref_mismatch", 0.0))
+    covered_prior = float(summary.get("cross_v4_attention_covered_tissue_prior_target", 0.0))
+    if covered_fraction > 0.0 and covered_all_ref > 0.0:
+        same_ratio = covered_same / max(covered_all_ref, 1e-8)
+        if same_ratio <= 0.6:
+            issues.append(f"covered ref_same/ref_all={same_ratio:.3f} <= 0.6")
+        if covered_same <= covered_prior:
+            issues.append("covered same-class reference mass is not above matching tissue-prior mass")
+        if covered_mismatch >= covered_same / 3.0:
+            issues.append("covered mismatch reference mass is too high")
+
+    missing_prior = float(summary.get("cross_v4_attention_missing_tissue_prior_target", 0.0))
+    missing_mismatch = float(summary.get("cross_v4_attention_missing_ref_mismatch", 0.0))
+    missing_prior_other = float(summary.get("cross_v4_attention_missing_tissue_prior_other", 0.0))
+    if missing_fraction > 0.0:
+        if missing_prior <= missing_mismatch:
+            issues.append("missing-class matching tissue-prior mass is not above mismatch reference mass")
+        if missing_prior_other > max(0.05, missing_prior * 0.5):
+            issues.append("missing-class wrong-prior mass is high")
+
+    if "cross_v4_attention_diagnostic_layers" not in summary:
+        issues.append("no injected attention diagnostics were recorded")
+    if issues:
+        return "watch", issues
+    return "pass", []
+
+
+def _module_grad_norm(module: nn.Module | None) -> float:
+    if module is None:
+        return 0.0
+    total = 0.0
+    for param in module.parameters():
+        if param.grad is None:
+            continue
+        grad = param.grad.detach().float()
+        total += float(grad.pow(2).sum().item())
+    return math.sqrt(total)
+
+
+def _cuda_memory_stats(device: torch.device | str) -> dict[str, float]:
+    if not torch.cuda.is_available():
+        return {}
+    torch_device = torch.device(device)
+    return {
+        "cuda_memory_allocated_gb": float(torch.cuda.memory_allocated(torch_device) / (1024**3)),
+        "cuda_memory_reserved_gb": float(torch.cuda.memory_reserved(torch_device) / (1024**3)),
+        "cuda_peak_memory_allocated_gb": float(torch.cuda.max_memory_allocated(torch_device) / (1024**3)),
+        "cuda_peak_memory_reserved_gb": float(torch.cuda.max_memory_reserved(torch_device) / (1024**3)),
+    }
+
+
+def _enforce_cuda_memory_limit(
+    *,
+    device: torch.device | str,
+    max_memory_gb: float,
+    step: int,
+) -> dict[str, float]:
+    stats = _cuda_memory_stats(device)
+    if max_memory_gb > 0.0 and stats:
+        peak_reserved = float(stats["cuda_peak_memory_reserved_gb"])
+        if peak_reserved > float(max_memory_gb):
+            raise RuntimeError(
+                f"CUDA peak reserved memory {peak_reserved:.2f} GiB exceeded "
+                f"--max-cuda-memory-gb={float(max_memory_gb):.2f} at step {step}."
+            )
+    return stats
+
+
+def _append_jsonl(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
 def _apply_training_prompt_policy(records: list[dict], args: argparse.Namespace) -> None:
@@ -1131,6 +1420,12 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
     ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.08) or 0.0)
     ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero"))
+    max_cuda_memory_gb = max(0.0, float(getattr(args, "max_cuda_memory_gb", 0.0) or 0.0))
+    cuda_memory_check_interval = max(0, int(getattr(args, "cuda_memory_check_interval", 10) or 0))
+    cross_v4_diagnose_jsonl = Path(
+        getattr(args, "cross_v4_diagnose_jsonl", None)
+        or os.path.join(args.output_dir, "cross_v4_diagnostics.jsonl")
+    )
 
     logging_out_dir = Path(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
@@ -1174,6 +1469,13 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             getattr(args, "cross_v4_bias_scale", 1.0),
             getattr(args, "cross_v4_bias_warmup_steps", 1000),
             getattr(args, "cross_v4_biased_double_blocks", "last"),
+        )
+        logger.info(
+            "Cross V4 early diagnostics: steps=%s interval=%s jsonl=%s max_cuda_memory_gb=%s",
+            getattr(args, "cross_v4_diagnose_steps", "500,1000,1500,2000"),
+            getattr(args, "cross_v4_diagnose_interval", 0),
+            cross_v4_diagnose_jsonl,
+            max_cuda_memory_gb or "disabled",
         )
     if reference_style_loss_weight > 0.0:
         logger.info(
@@ -1571,10 +1873,23 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     proportion_empty_prompts=0.0,
                 )
                 joint_attention_kwargs = None
+                cross_v4_context = None
+                cross_v4_diagnostics = None
+                cross_v4_run_diagnostics = (
+                    is_cross_v4
+                    and accelerator.sync_gradients
+                    and _should_run_cross_v4_diagnostics(args, global_step + 1)
+                )
                 if is_cross_v4:
                     if reference_encoding is None or target_metadata is None:
                         raise RuntimeError("Cross V4 requires reference encoding and target metadata.")
-                    batch_context, context_ids, joint_attention_kwargs = _build_cross_v4_context_and_kwargs(
+                    (
+                        batch_context,
+                        context_ids,
+                        joint_attention_kwargs,
+                        cross_v4_context,
+                        cross_v4_diagnostics,
+                    ) = _build_cross_v4_context_and_kwargs(
                         prompt_embeds=batch_prompt,
                         text_ids=text_ids,
                         reference_encoding=reference_encoding,
@@ -1583,6 +1898,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         args=args,
                         global_step=global_step,
                         dtype=weight_dtype,
+                        diagnose_attention=cross_v4_run_diagnostics,
                     )
                 else:
                     batch_context, context_ids = append_cross_v3_reference_context(
@@ -1665,7 +1981,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                             if reference_encoding is None or target_metadata is None:
                                 raise RuntimeError("Cross V4 ref-check requires reference encoding and target metadata.")
                             zero_encoding = apply_cross_v4_reference_encoding_mode(reference_encoding, "zero-ref")
-                            zero_context, zero_context_ids, zero_joint_attention_kwargs = (
+                            zero_context, zero_context_ids, zero_joint_attention_kwargs, _, _ = (
                                 _build_cross_v4_context_and_kwargs(
                                     prompt_embeds=batch_prompt,
                                     text_ids=text_ids,
@@ -1835,7 +2151,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                             swapped_encoding = _build_swapped_cross_v4_reference_encoding(reference_encoding, variant)
                             if swapped_encoding is None:
                                 continue
-                            swapped_context, swapped_context_ids, swapped_joint_attention_kwargs = (
+                            swapped_context, swapped_context_ids, swapped_joint_attention_kwargs, _, _ = (
                                 _build_cross_v4_context_and_kwargs(
                                     prompt_embeds=batch_prompt,
                                     text_ids=text_ids,
