@@ -1649,6 +1649,13 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         flux_controlnet.enable_gradient_checkpointing()
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats(accelerator.device)
+        _enforce_cuda_memory_limit(
+            device=accelerator.device,
+            max_memory_gb=max_cuda_memory_gb,
+            step=0,
+        )
 
     if args.scale_lr:
         args.learning_rate *= (
@@ -2186,8 +2193,11 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                             return_dict=False,
                         )[0]
                         swapped_per_sample_losses.append(_per_sample_mse(swapped_noise_pred, target_velocity))
-                        ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = (
-                            swapped_per_sample_losses[-1].mean().detach().item()
+                        swapped_loss_value = swapped_per_sample_losses[-1].mean().detach().item()
+                        normal_loss_value = denoise_loss.detach().item()
+                        ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = swapped_loss_value
+                        ref_variant_loss_logs[f"ref_{variant}_minus_normal_denoise_loss"] = (
+                            swapped_loss_value - normal_loss_value
                         )
                     swap_loss = ref_swap_sensitivity_loss(
                         per_sample_loss,
@@ -2200,8 +2210,19 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     + ref_swap_loss_weight * swap_loss
                 )
 
+                cross_v4_grad_logs: dict[str, float] = {}
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
+                    if is_cross_v4 and cross_v4_run_diagnostics:
+                        cross_v4_grad_logs = {
+                            "cross_v4_controlnet_grad_norm": _module_grad_norm(flux_controlnet),
+                            "cross_v4_reference_encoder_grad_norm": _module_grad_norm(
+                                modules.get("reference_context_encoder")
+                            ),
+                            "cross_v4_prior_token_bank_grad_norm": _module_grad_norm(
+                                modules.get("prior_token_bank")
+                            ),
+                        }
                     accelerator.clip_grad_norm_(
                         [param for model in [flux_controlnet, *modules.values()] for param in model.parameters() if param.requires_grad],
                         args.max_grad_norm,
@@ -2227,6 +2248,69 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     )
                     logger.info("Saved eval-ready Phase 5.3 cross-%s artifacts to %s", cross_version, save_path)
 
+            memory_logs: dict[str, float] = {}
+            if accelerator.sync_gradients:
+                cuda_stats = _enforce_cuda_memory_limit(
+                    device=accelerator.device,
+                    max_memory_gb=max_cuda_memory_gb,
+                    step=global_step,
+                )
+                should_log_memory = (
+                    bool(cuda_stats)
+                    and (
+                        global_step <= 1
+                        or cross_v4_run_diagnostics
+                        or (
+                            cuda_memory_check_interval > 0
+                            and global_step % cuda_memory_check_interval == 0
+                        )
+                    )
+                )
+                if should_log_memory:
+                    memory_logs = cuda_stats
+
+            cross_v4_diagnostic_logs: dict[str, float] = {}
+            if is_cross_v4 and cross_v4_run_diagnostics:
+                cross_v4_diagnostic_logs.update((cross_v4_diagnostics or {}).get("static") or {})
+                cross_v4_diagnostic_logs.update((cross_v4_diagnostics or {}).get("bias_stats") or {})
+                cross_v4_diagnostic_logs.update(_summarize_cross_v4_attention_records(cross_v4_diagnostics))
+                cross_v4_diagnostic_logs.update(cross_v4_grad_logs)
+                cross_v4_diagnostic_logs.update(feature_stats)
+                cross_v4_diagnostic_logs.update(memory_logs)
+                cross_v4_diagnostic_logs["cross_v4_bias_scale_effective"] = _cross_v4_bias_scale(args, global_step)
+                cross_v4_diagnostic_logs["cross_v4_zero_ref_delta_available"] = float(
+                    "ref_zero_minus_normal_denoise_loss" in ref_variant_loss_logs
+                )
+                verdict, issues = _cross_v4_diagnostic_verdict(cross_v4_diagnostic_logs)
+                cross_v4_diagnostic_logs["cross_v4_diagnostic_pass"] = 1.0 if verdict == "pass" else 0.0
+                cross_v4_diagnostic_logs["cross_v4_diagnostic_issue_count"] = float(len(issues))
+                if accelerator.is_main_process:
+                    payload = {
+                        "step": int(global_step),
+                        "verdict": verdict,
+                        "issues": issues,
+                        "metrics": cross_v4_diagnostic_logs,
+                    }
+                    _append_jsonl(cross_v4_diagnose_jsonl, payload)
+                    logger.info(
+                        "[CROSS-V4-DIAG] step=%s verdict=%s issues=%s "
+                        "covered_ref_same=%.8g covered_ref_all=%.8g covered_prior=%.8g "
+                        "missing_prior=%.8g missing_ref_mismatch=%.8g ref_zero_delta=%.8g "
+                        "prior_grad=%.8g ref_encoder_grad=%.8g peak_reserved_gb=%.3f",
+                        global_step,
+                        verdict,
+                        "; ".join(issues) if issues else "none",
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_ref_same_total", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_ref_all_local", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_tissue_prior_target", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_missing_tissue_prior_target", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_missing_ref_mismatch", 0.0)),
+                        float(ref_variant_loss_logs.get("ref_zero_minus_normal_denoise_loss", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_prior_token_bank_grad_norm", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_reference_encoder_grad_norm", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cuda_peak_memory_reserved_gb", 0.0)),
+                    )
+
             logs = {
                 "loss": loss.detach().item(),
                 "denoise_loss": denoise_loss.detach().item(),
@@ -2250,6 +2334,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 logs.update(ref_check_logs)
             if global_step <= 1:
                 logs.update(feature_stats)
+            logs.update(memory_logs)
+            logs.update(cross_v4_diagnostic_logs)
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 

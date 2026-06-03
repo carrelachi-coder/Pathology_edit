@@ -788,6 +788,86 @@ class CrossV4ConditioningTests(unittest.TestCase):
         self.assertEqual(image_out.shape, hidden_states.shape)
         self.assertEqual(context_out.shape, encoder_hidden_states.shape)
 
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_attention_diagnostics_summarize_same_ref_and_prior_buckets(self):
+        prompt_embeds = torch.zeros(1, 2, 6)
+        text_ids = torch.zeros(2, 3)
+        ref_encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=1,
+            tissue_channels=1,
+            nuclei_channels=1,
+            token_dim=6,
+            hidden_dim=4,
+        )
+        ref_encoding = ref_encoder(
+            z_ref=torch.randn(1, 1, 4, 4),
+            ref_tissue_feat=torch.randn(1, 1, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 2, 2],
+                    [1, 1, 2, 2],
+                    [2, 2, 2, 2],
+                    [2, 2, 2, 2],
+                ]],
+                dtype=torch.long,
+            ),
+            ref_nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+        )
+        prior = CrossV4PriorTokenBank(token_dim=6, tissue_prior_tokens_per_class=1)(ref_encoding.local_tokens)
+        context = append_cross_v4_context(
+            prompt_embeds=prompt_embeds,
+            text_ids=text_ids,
+            reference_encoding=ref_encoding,
+            prior_tokens=prior,
+        )
+        target_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [2, 2, 3, 3],
+                    [2, 2, 3, 3],
+                ]],
+                dtype=torch.long,
+            ),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+        bias = build_cross_v4_correspondence_bias(
+            target_metadata=target_meta,
+            context=context,
+            config=CrossV4CorrespondenceBiasConfig(cell_similarity=0.0, density_gap=0.0),
+        )
+
+        diagnostics = cross_v3_training._build_cross_v4_attention_diagnostics(
+            context=context,
+            target_metadata=target_meta,
+            correspondence_bias=bias,
+        )
+        records = diagnostics["records"]
+        records.append(
+            {
+                "cross_v4_attention_covered_ref_same_total": 0.4,
+                "cross_v4_attention_covered_ref_all_local": 0.5,
+                "cross_v4_attention_covered_ref_mismatch": 0.05,
+                "cross_v4_attention_covered_tissue_prior_target": 0.1,
+                "cross_v4_attention_missing_tissue_prior_target": 0.4,
+                "cross_v4_attention_missing_ref_mismatch": 0.1,
+                "cross_v4_attention_missing_tissue_prior_other": 0.01,
+            }
+        )
+        summary = {}
+        summary.update(diagnostics["static"])
+        summary.update(cross_v3_training._summarize_cross_v4_attention_records(diagnostics))
+        verdict, issues = cross_v3_training._cross_v4_diagnostic_verdict(summary)
+
+        self.assertEqual(verdict, "pass")
+        self.assertEqual(issues, [])
+        self.assertGreater(summary["cross_v4_covered_target_tokens"], 0.0)
+        self.assertGreater(summary["cross_v4_missing_target_tokens"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
