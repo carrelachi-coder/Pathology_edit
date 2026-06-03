@@ -8,6 +8,8 @@ Reference design: `docs/superpowers/specs/2026-06-02-mask-guided-correspondence-
 
 Cross V4 is implemented as the MVP requested by the design: target masks stay in the ControlNet path, reference image/masks become local FLUX context tokens with token-level metadata, learned coarse tissue prior tokens provide fallback, and a mask-guided additive bias is injected into selected FLUX double-block joint attention logits.
 
+The current v4 launch defaults deliberately do not use ref-swap loss or self-reconstruction warmup. An earlier `SELF_RECONSTRUCTION_WARMUP_STEPS=500` default made the first 500 optimizer steps report `self_reconstruction_samples=1` and `cross_samples=0` for per-GPU batch size 1, which is unsafe for the correspondence MVP because it can train a self-copy shortcut before any cross-pair signal is observed.
+
 The runnable training path is:
 
 ```text
@@ -32,7 +34,7 @@ scripts/nohup_train_phase5_cross_v4.sh
 | Single biased double block for MVP | Done | `--cross-v4-biased-double-blocks last` default |
 | Route anchor off for clean MVP diagnosis | Done | `scripts/train_phase5_cross_v4.sh` default `REFERENCE_ROUTE_ANCHOR_MODE=none` |
 | Bias warmup | Done | `_cross_v4_bias_scale()`; shell default warmup 1000 steps |
-| 500-2000 step diagnostics | Done | `--cross-v4-diagnose-steps 500,1000,1500,2000`; JSONL at `cross_v4_diagnostics.jsonl` |
+| Step-1 plus 500-2000 diagnostics | Done | `--cross-v4-diagnose-steps 1,10,100,500,1000,1500,2000`; JSONL at `cross_v4_diagnostics.jsonl` |
 | Hard 80 GB memory guard | Done | `--max-cuda-memory-gb 80` with peak CUDA reserved memory enforcement |
 | Checkpoint/inference config parity | Done | `_save_condition_modules()` saves `cross_v4_reference_spec` and `cross_v4_attention_bias`; `pipeline_cross_v4.py` loads them |
 
@@ -43,6 +45,7 @@ scripts/nohup_train_phase5_cross_v4.sh
 - `controlnet_train/cli/train_controlnet_flux_cross_v4.py`
   - Thin v4 entrypoint that reuses the v3 parser/training loop and forces `args.cross_version = "v4"`.
   - Renames default output/tracker names from v3 to v4.
+  - Overrides v4 MVP defaults to disable ref-swap loss and cell bias unless the user explicitly passes ablation arguments.
 
 - `controlnet_train/cli/train_controlnet_flux_cross_v3.py`
   - Adds Cross V4 prior/bias CLI options.
@@ -94,11 +97,18 @@ cuda_peak_memory_reserved_gb
 cross_v4_diagnostic_pass
 ```
 
+Interpretation at step 1:
+
+- Confirm attention diagnostics are present; otherwise the bias processor or diagnose hook is not connected.
+- In `CROSS_V4_EXTREME_BIAS_SMOKE=1`, covered target tokens should be dominated by same-class reference mass and missing target tokens should be dominated by matching tissue-prior mass.
+- `self_reconstruction_samples` should be 0 and `cross_samples` should be positive unless the dataloader sample itself is counterfactual.
+- `cuda_peak_memory_reserved_gb` must stay below 80.
+
 Interpretation at 500-2000 steps:
 
 - Covered target tokens should put most reference-local mass on same-class reference tokens.
 - Missing target tokens should prefer matching tissue prior over mismatch reference.
-- `ref_zero_minus_normal_denoise_loss` should trend positive when zero-ref is enabled in `REF_SWAP_VARIANTS`.
+- `ref_zero_minus_normal_denoise_loss` should trend positive only in explicit ablation runs where zero-ref variants are enabled.
 - Reference encoder and prior token bank grad norms should be non-zero on diagnostic steps.
 - `cuda_peak_memory_reserved_gb` must stay below 80.
 
@@ -112,8 +122,13 @@ Interpretation at 500-2000 steps:
     - `CROSS_V4_GLOBAL_STYLE_TOKENS=0`
     - `CROSS_V4_BIASED_DOUBLE_BLOCKS=last`
     - `MAX_CUDA_MEMORY_GB=80`
-    - `REF_SWAP_VARIANTS=zero,random`
-    - `CROSS_V4_DIAGNOSE_STEPS=500,1000,1500,2000`
+    - `SELF_RECONSTRUCTION_WARMUP_STEPS=0`
+    - `SELF_RECONSTRUCTION_SAMPLE_PROB=0`
+    - `REF_SWAP_LOSS_WEIGHT=0`
+    - `REF_SWAP_LOSS_INTERVAL=0`
+    - `REF_SWAP_VARIANTS=` empty
+    - `CROSS_V4_DIAGNOSE_STEPS=1,10,100,500,1000,1500,2000`
+    - tissue-only bias: cell similarity, density gap, and cell-prior bias are `0`
 
 - `scripts/nohup_train_phase5_cross_v4.sh`
   - One-command background launcher.
@@ -122,12 +137,37 @@ Interpretation at 500-2000 steps:
     - PID file
     - manifest JSON
     - training diagnostic JSONL path
+  - Records effective MVP guard settings in the manifest: self-reconstruction, ref-swap, bias warmup, smoke mode, and memory limit.
 
 Run:
 
 ```bash
 bash scripts/nohup_train_phase5_cross_v4.sh
 ```
+
+One-step extreme bias smoke test before a real run:
+
+```bash
+CROSS_V4_EXTREME_BIAS_SMOKE=1 bash scripts/nohup_train_phase5_cross_v4.sh
+```
+
+This forces:
+
+```text
+MAX_TRAIN_STEPS=1
+SELF_RECONSTRUCTION_WARMUP_STEPS=0
+SELF_RECONSTRUCTION_SAMPLE_PROB=0
+REF_SWAP_LOSS_WEIGHT=0
+CROSS_V4_DIAGNOSE_STEPS=1
+CROSS_V4_BIAS_WARMUP_STEPS=0
+CROSS_V4_SAME_FINE_BIAS=50
+CROSS_V4_SAME_COARSE_BIAS=50
+CROSS_V4_MISMATCH_BIAS=-50
+CROSS_V4_PRIOR_MISSING_BIAS=50
+CROSS_V4_PRIOR_WRONG_CLASS_BIAS=-50
+```
+
+The smoke run is a wiring test, not a training-quality test. It should produce one diagnostic JSONL row showing that the installed biased attention layer recorded attention mass and that the extreme same-class/prior logits affect the expected buckets.
 
 Useful live checks:
 
@@ -144,11 +184,13 @@ These pieces exist in code but are intentionally disabled by script defaults to 
 - cell prior tokens: set `CROSS_V4_CELL_PRIOR_TOKENS_PER_CLASS=2`.
 - global style tokens: set `CROSS_V4_GLOBAL_STYLE_TOKENS=2`.
 - multiple biased double blocks: set `CROSS_V4_BIASED_DOUBLE_BLOCKS=-2,-1` or `all`, but re-check memory.
+- ref-swap loss: set `REF_SWAP_LOSS_WEIGHT=0.1`, `REF_SWAP_LOSS_INTERVAL=1`, and `REF_SWAP_VARIANTS=zero,random` for explicit sensitivity ablation.
 
 ## Remaining Gaps
 
 - Coverage-aware sampler ratio is not yet enforced in the dataloader.
 - Attention visualizations are not yet saved as images; current implementation records numeric attention mass.
 - Ref-swap loss is still image-level denoise loss, not region-level covered/missing loss.
+- Ref-swap is disabled by default for v4 training; use it as an explicit ablation/diagnostic only.
 - Attention regularizer is not yet added as a training loss.
 - Cell histogram/density bias is available in the bias formula, but MVP diagnosis should first verify tissue-only behavior by setting cell-prior/global off.

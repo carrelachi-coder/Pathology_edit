@@ -453,10 +453,25 @@ def _load_cross_v4_condition_modules(
         )
     for name, module in modules.items():
         if name in state:
-            module.load_state_dict(state[name])
+            if name == "prior_token_bank":
+                _load_prior_token_bank_state(module, state[name])
+            else:
+                module.load_state_dict(state[name])
         module.to(device=device, dtype=torch_dtype)
         module.eval()
     return modules
+
+
+def _load_prior_token_bank_state(module: nn.Module, state_dict: dict[str, torch.Tensor]) -> None:
+    try:
+        module.load_state_dict(state_dict, strict=True)
+        return
+    except RuntimeError:
+        current_keys = set(module.state_dict())
+        filtered = {key: value for key, value in state_dict.items() if key in current_keys}
+        missing, unexpected = module.load_state_dict(filtered, strict=False)
+        if missing or unexpected:
+            raise
 
 
 def _bias_config_from_bundle(bundle: CrossV4InferenceBundle) -> CrossV4CorrespondenceBiasConfig:

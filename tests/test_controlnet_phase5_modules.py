@@ -885,6 +885,77 @@ class CrossV4ConditioningTests(unittest.TestCase):
         self.assertGreater(summary["cross_v4_covered_target_tokens"], 0.0)
         self.assertGreater(summary["cross_v4_missing_target_tokens"], 0.0)
 
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_diagnostic_verdict_flags_non_cross_diagnostic_batch(self):
+        summary = {
+            "cross_samples": 0.0,
+            "self_reconstruction_samples": 1.0,
+            "cross_v4_attention_diagnostic_layers": 1.0,
+            "cross_v4_attention_covered_ref_same_total": 0.4,
+            "cross_v4_attention_covered_ref_all_local": 0.5,
+            "cross_v4_attention_covered_ref_mismatch": 0.05,
+            "cross_v4_attention_covered_tissue_prior_target": 0.1,
+            "cross_v4_attention_missing_tissue_prior_target": 0.4,
+            "cross_v4_attention_missing_ref_mismatch": 0.1,
+            "cross_v4_attention_missing_tissue_prior_other": 0.01,
+        }
+
+        verdict, issues = cross_v3_training._cross_v4_diagnostic_verdict(summary)
+
+        self.assertEqual(verdict, "watch")
+        self.assertIn("diagnostic batch has no cross samples", issues)
+        self.assertIn("diagnostic batch contains self-reconstruction samples", issues)
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_extreme_bias_smoke_verdict_uses_hard_attention_thresholds(self):
+        summary = {
+            "cross_samples": 1.0,
+            "self_reconstruction_samples": 0.0,
+            "cross_v4_bias_scale_effective": 1.0,
+            "cross_v4_attention_diagnostic_layers": 1.0,
+            "cross_v4_covered_target_token_fraction": 0.5,
+            "cross_v4_missing_target_token_fraction": 0.5,
+            "cross_v4_attention_covered_ref_same_total": 0.99,
+            "cross_v4_attention_missing_tissue_prior_target": 0.98,
+            "cross_v4_attention_covered_ref_mismatch": 0.001,
+            "cross_v4_attention_missing_ref_mismatch": 0.002,
+        }
+
+        verdict, issues, metrics = cross_v3_training._cross_v4_extreme_bias_smoke_verdict(summary)
+
+        self.assertEqual(verdict, "pass")
+        self.assertEqual(issues, [])
+        self.assertEqual(metrics["cross_v4_smoke_covered_ref_same_pass"], 1.0)
+        self.assertEqual(metrics["cross_v4_smoke_missing_prior_pass"], 1.0)
+
+        failed = dict(summary)
+        failed["cross_v4_attention_covered_ref_same_total"] = 0.6
+        failed["cross_v4_attention_missing_ref_mismatch"] = 0.2
+
+        verdict, issues, metrics = cross_v3_training._cross_v4_extreme_bias_smoke_verdict(failed)
+
+        self.assertEqual(verdict, "fail")
+        self.assertEqual(metrics["cross_v4_smoke_covered_ref_same_pass"], 0.0)
+        self.assertEqual(metrics["cross_v4_smoke_missing_mismatch_pass"], 0.0)
+        self.assertTrue(any("same-class reference" in issue for issue in issues))
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_attention_mass_by_source_builds_nested_json_payload(self):
+        summary = {
+            "cross_v4_attention_diagnostic_layers": 1.0,
+            "cross_v4_attention_covered_ref_same_total": 0.99,
+            "cross_v4_attention_covered_ref_mismatch": 0.001,
+            "cross_v4_attention_missing_tissue_prior_target": 0.98,
+            "cross_v4_attention_missing_ref_mismatch": 0.002,
+        }
+
+        mass = cross_v3_training._cross_v4_attention_mass_by_source(summary)
+
+        self.assertEqual(mass["covered"]["ref_same_total"], 0.99)
+        self.assertEqual(mass["covered"]["ref_mismatch"], 0.001)
+        self.assertEqual(mass["missing"]["tissue_prior_target"], 0.98)
+        self.assertEqual(mass["missing"]["ref_mismatch"], 0.002)
+
 
 if __name__ == "__main__":
     unittest.main()

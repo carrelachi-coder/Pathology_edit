@@ -13,6 +13,7 @@ from controlnet_train.cli.train_controlnet_flux_cross import parse_args as parse
 from controlnet_train.cli.train_controlnet_flux_cross_v1 import parse_args as parse_cross_v1_args
 from controlnet_train.cli.train_controlnet_flux_cross_v2_1 import parse_args as parse_cross_v2_1_args
 from controlnet_train.cli.train_controlnet_flux_cross_v3 import parse_args as parse_cross_v3_args
+from controlnet_train.cli.train_controlnet_flux_cross_v4 import parse_args as parse_cross_v4_args
 from controlnet_train.cli.train_controlnet_flux_inpaint import parse_args as parse_inpaint_args
 
 
@@ -272,6 +273,63 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.target_one_hot_scale, 3.5)
         self.assertFalse(hasattr(args, "uni_checkpoint_path"))
         self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
+
+    def test_cross_v4_cli_uses_mvp_safe_defaults(self):
+        args = parse_cross_v4_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+            ]
+        )
+
+        self.assertEqual(args.cross_version, "v4")
+        self.assertEqual(args.output_dir, "phase5-controlnet-cross-v4")
+        self.assertEqual(args.self_reconstruction_warmup_steps, 0)
+        self.assertEqual(args.self_reconstruction_sample_prob, 0.0)
+        self.assertEqual(args.ref_swap_loss_weight, 0.0)
+        self.assertEqual(args.ref_swap_loss_interval, 0)
+        self.assertEqual(args.ref_swap_variants, "")
+        self.assertEqual(args.cross_v4_diagnose_steps, "1,10,100,500,1000,1500,2000")
+        self.assertEqual(args.cross_v4_biased_double_blocks, "last")
+        self.assertEqual(args.cross_v4_cell_prior_tokens_per_class, 0)
+        self.assertEqual(args.cross_v4_global_style_tokens, 0)
+        self.assertEqual(args.cross_v4_cell_similarity_bias, 0.0)
+        self.assertEqual(args.cross_v4_density_gap_bias, 0.0)
+        self.assertEqual(args.cross_v4_cell_prior_bias, 0.0)
+        self.assertFalse(args.cross_v4_extreme_bias_smoke)
+
+    def test_cross_v4_cli_respects_explicit_swap_and_cell_bias_ablation_args(self):
+        args = parse_cross_v4_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--ref-swap-loss-weight",
+                "0.1",
+                "--ref-swap-loss-interval",
+                "5",
+                "--ref-swap-variants",
+                "zero,random",
+                "--cross-v4-cell-similarity-bias",
+                "1.0",
+                "--cross-v4-density-gap-bias",
+                "0.5",
+                "--cross-v4-cell-prior-bias",
+                "1.0",
+                "--cross-v4-extreme-bias-smoke",
+            ]
+        )
+
+        self.assertEqual(args.ref_swap_loss_weight, 0.1)
+        self.assertEqual(args.ref_swap_loss_interval, 5)
+        self.assertEqual(args.ref_swap_variants, "zero,random")
+        self.assertEqual(args.cross_v4_cell_similarity_bias, 1.0)
+        self.assertEqual(args.cross_v4_density_gap_bias, 0.5)
+        self.assertEqual(args.cross_v4_cell_prior_bias, 1.0)
+        self.assertTrue(args.cross_v4_extreme_bias_smoke)
 
 
 if __name__ == "__main__":

@@ -91,6 +91,22 @@ logger = get_logger(__name__)
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
 
+CROSS_V4_SMOKE_MIN_ATTRACTED_MASS = 0.95
+CROSS_V4_SMOKE_MAX_MISMATCH_MASS = 0.01
+CROSS_V4_ATTENTION_BUCKET_NAMES = (
+    "tissue_prior_target",
+    "tissue_prior_other",
+    "cell_prior_match",
+    "cell_prior_other",
+    "ref_same_coarse",
+    "ref_same_total",
+    "ref_same_fine",
+    "ref_mismatch",
+    "ref_all_local",
+    "text_global",
+    "route_anchor",
+)
+
 
 def collate_cross_v3_batch(examples: list[dict]) -> dict:
     flattened: list[dict] = []
@@ -566,7 +582,7 @@ def _parse_step_set(value: str | None) -> set[int]:
 def _should_run_cross_v4_diagnostics(args: argparse.Namespace, step: int) -> bool:
     if step <= 0:
         return False
-    diagnose_steps = _parse_step_set(getattr(args, "cross_v4_diagnose_steps", "500,1000,1500,2000"))
+    diagnose_steps = _parse_step_set(getattr(args, "cross_v4_diagnose_steps", "1,10,100,500,1000,1500,2000"))
     if step in diagnose_steps:
         return True
     interval = max(0, int(getattr(args, "cross_v4_diagnose_interval", 0) or 0))
@@ -751,6 +767,11 @@ def _summarize_cross_v4_attention_records(diagnostics: dict | None) -> dict[str,
 
 def _cross_v4_diagnostic_verdict(summary: dict[str, float]) -> tuple[str, list[str]]:
     issues: list[str] = []
+    if "cross_samples" in summary and float(summary.get("cross_samples", 0.0)) <= 0.0:
+        issues.append("diagnostic batch has no cross samples")
+    if float(summary.get("self_reconstruction_samples", 0.0)) > 0.0:
+        issues.append("diagnostic batch contains self-reconstruction samples")
+
     covered_fraction = float(summary.get("cross_v4_covered_target_token_fraction", 0.0))
     missing_fraction = float(summary.get("cross_v4_missing_target_token_fraction", 0.0))
 
@@ -781,6 +802,107 @@ def _cross_v4_diagnostic_verdict(summary: dict[str, float]) -> tuple[str, list[s
     if issues:
         return "watch", issues
     return "pass", []
+
+
+def _cross_v4_extreme_bias_smoke_verdict(
+    summary: dict[str, float],
+    *,
+    min_attracted_mass: float = CROSS_V4_SMOKE_MIN_ATTRACTED_MASS,
+    max_mismatch_mass: float = CROSS_V4_SMOKE_MAX_MISMATCH_MASS,
+) -> tuple[str, list[str], dict[str, float]]:
+    issues: list[str] = []
+    metrics = {
+        "cross_v4_smoke_min_attracted_mass": float(min_attracted_mass),
+        "cross_v4_smoke_max_mismatch_mass": float(max_mismatch_mass),
+    }
+    if "cross_samples" in summary and float(summary.get("cross_samples", 0.0)) <= 0.0:
+        issues.append("smoke diagnostic batch has no cross samples")
+    if float(summary.get("self_reconstruction_samples", 0.0)) > 0.0:
+        issues.append("smoke diagnostic batch contains self-reconstruction samples")
+    if abs(float(summary.get("cross_v4_bias_scale_effective", 0.0)) - 1.0) > 1e-6:
+        issues.append(
+            "smoke effective bias scale is not 1.0 "
+            f"({float(summary.get('cross_v4_bias_scale_effective', 0.0)):.6g})"
+        )
+    if "cross_v4_attention_diagnostic_layers" not in summary:
+        issues.append("smoke recorded no injected attention diagnostics")
+
+    covered_fraction = float(summary.get("cross_v4_covered_target_token_fraction", 0.0))
+    missing_fraction = float(summary.get("cross_v4_missing_target_token_fraction", 0.0))
+    metrics["cross_v4_smoke_has_covered_tokens"] = 1.0 if covered_fraction > 0.0 else 0.0
+    metrics["cross_v4_smoke_has_missing_tokens"] = 1.0 if missing_fraction > 0.0 else 0.0
+    if covered_fraction <= 0.0:
+        issues.append("smoke diagnostic batch has no covered target tokens")
+    if missing_fraction <= 0.0:
+        issues.append("smoke diagnostic batch has no missing target tokens")
+
+    checks = (
+        (
+            "covered_ref_same",
+            "cross_v4_attention_covered_ref_same_total",
+            min_attracted_mass,
+            "min",
+            "covered tokens did not put ~all mass on same-class reference tokens",
+        ),
+        (
+            "missing_prior",
+            "cross_v4_attention_missing_tissue_prior_target",
+            min_attracted_mass,
+            "min",
+            "missing-class tokens did not put ~all mass on matching tissue prior",
+        ),
+        (
+            "covered_mismatch",
+            "cross_v4_attention_covered_ref_mismatch",
+            max_mismatch_mass,
+            "max",
+            "covered tokens still attend to mismatched reference tokens",
+        ),
+        (
+            "missing_mismatch",
+            "cross_v4_attention_missing_ref_mismatch",
+            max_mismatch_mass,
+            "max",
+            "missing-class tokens still attend to mismatched reference tokens",
+        ),
+    )
+    for metric_name, source_key, threshold, direction, message in checks:
+        if source_key not in summary:
+            metrics[f"cross_v4_smoke_{metric_name}_pass"] = 0.0
+            issues.append(f"smoke missing metric {source_key}")
+            continue
+        value = float(summary[source_key])
+        if direction == "min":
+            passed = value >= threshold
+            comparator = ">="
+        else:
+            passed = value <= threshold
+            comparator = "<="
+        metrics[f"cross_v4_smoke_{metric_name}_pass"] = 1.0 if passed else 0.0
+        if not passed:
+            issues.append(f"{message}: {source_key}={value:.6g} expected {comparator}{threshold:.6g}")
+
+    if issues:
+        return "fail", issues, metrics
+    return "pass", [], metrics
+
+
+def _cross_v4_attention_mass_by_source(summary: dict[str, float]) -> dict[str, dict[str, float]]:
+    mass: dict[str, dict[str, float]] = {}
+    for key, value in summary.items():
+        if not key.startswith("cross_v4_attention_"):
+            continue
+        if key == "cross_v4_attention_diagnostic_layers":
+            continue
+        body = key.removeprefix("cross_v4_attention_")
+        for bucket_name in CROSS_V4_ATTENTION_BUCKET_NAMES:
+            suffix = f"_{bucket_name}"
+            if body.endswith(suffix):
+                group_name = body[: -len(suffix)]
+                if group_name:
+                    mass.setdefault(group_name, {})[bucket_name] = float(value)
+                break
+    return mass
 
 
 def _module_grad_norm(module: nn.Module | None) -> float:
@@ -1253,9 +1375,30 @@ def _load_condition_modules_from_checkpoint(
         logger.info("Conditioning checkpoint has no reference_context_encoder; initializing it from scratch.")
     if "prior_token_bank" in modules:
         if "prior_token_bank" in state:
-            modules["prior_token_bank"].load_state_dict(state["prior_token_bank"], strict=True)
+            _load_prior_token_bank_state(
+                modules["prior_token_bank"],
+                state["prior_token_bank"],
+                state_path=state_path,
+            )
         else:
             logger.info("Conditioning checkpoint has no prior_token_bank; initializing Cross V4 priors from scratch.")
+
+
+def _load_prior_token_bank_state(module: nn.Module, state_dict: dict[str, torch.Tensor], *, state_path: Path) -> None:
+    try:
+        module.load_state_dict(state_dict, strict=True)
+        return
+    except RuntimeError:
+        current_keys = set(module.state_dict())
+        filtered = {key: value for key, value in state_dict.items() if key in current_keys}
+        ignored = sorted(set(state_dict) - set(filtered))
+        missing, unexpected = module.load_state_dict(filtered, strict=False)
+        if unexpected or missing:
+            raise RuntimeError(
+                "Could not load prior_token_bank from "
+                f"{state_path}: missing={list(missing)}, unexpected={list(unexpected)}, ignored={ignored}"
+            )
+        logger.info("Loaded prior_token_bank from %s while ignoring disabled empty parameters: %s", state_path, ignored)
 
 
 def _load_reference_context_encoder_state(
@@ -1472,7 +1615,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         )
         logger.info(
             "Cross V4 early diagnostics: steps=%s interval=%s jsonl=%s max_cuda_memory_gb=%s",
-            getattr(args, "cross_v4_diagnose_steps", "500,1000,1500,2000"),
+            getattr(args, "cross_v4_diagnose_steps", "1,10,100,500,1000,1500,2000"),
             getattr(args, "cross_v4_diagnose_interval", 0),
             cross_v4_diagnose_jsonl,
             max_cuda_memory_gb or "disabled",
@@ -2277,11 +2420,35 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 cross_v4_diagnostic_logs.update(cross_v4_grad_logs)
                 cross_v4_diagnostic_logs.update(feature_stats)
                 cross_v4_diagnostic_logs.update(memory_logs)
+                cross_v4_diagnostic_logs["self_reconstruction_samples"] = float(
+                    self_reconstruction_sample_mask.sum().detach().item()
+                )
+                cross_v4_diagnostic_logs["counterfactual_samples"] = float(
+                    counterfactual_sample_mask.sum().detach().item()
+                )
+                cross_v4_diagnostic_logs["cross_samples"] = float(cross_sample_mask.sum().detach().item())
                 cross_v4_diagnostic_logs["cross_v4_bias_scale_effective"] = _cross_v4_bias_scale(args, global_step)
                 cross_v4_diagnostic_logs["cross_v4_zero_ref_delta_available"] = float(
                     "ref_zero_minus_normal_denoise_loss" in ref_variant_loss_logs
                 )
-                verdict, issues = _cross_v4_diagnostic_verdict(cross_v4_diagnostic_logs)
+                regular_verdict, regular_issues = _cross_v4_diagnostic_verdict(cross_v4_diagnostic_logs)
+                cross_v4_diagnostic_logs["cross_v4_extreme_bias_smoke"] = float(
+                    bool(getattr(args, "cross_v4_extreme_bias_smoke", False))
+                )
+                cross_v4_diagnostic_logs["cross_v4_regular_diagnostic_pass"] = (
+                    1.0 if regular_verdict == "pass" else 0.0
+                )
+                if bool(getattr(args, "cross_v4_extreme_bias_smoke", False)):
+                    verdict, issues, smoke_metrics = _cross_v4_extreme_bias_smoke_verdict(
+                        cross_v4_diagnostic_logs
+                    )
+                    cross_v4_diagnostic_logs.update(smoke_metrics)
+                    cross_v4_diagnostic_logs["cross_v4_smoke_diagnostic_pass"] = (
+                        1.0 if verdict == "pass" else 0.0
+                    )
+                    cross_v4_diagnostic_logs["cross_v4_smoke_diagnostic_issue_count"] = float(len(issues))
+                else:
+                    verdict, issues = regular_verdict, regular_issues
                 cross_v4_diagnostic_logs["cross_v4_diagnostic_pass"] = 1.0 if verdict == "pass" else 0.0
                 cross_v4_diagnostic_logs["cross_v4_diagnostic_issue_count"] = float(len(issues))
                 if accelerator.is_main_process:
@@ -2289,17 +2456,24 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         "step": int(global_step),
                         "verdict": verdict,
                         "issues": issues,
+                        "attention_mass_by_source": _cross_v4_attention_mass_by_source(
+                            cross_v4_diagnostic_logs
+                        ),
                         "metrics": cross_v4_diagnostic_logs,
                     }
                     _append_jsonl(cross_v4_diagnose_jsonl, payload)
                     logger.info(
                         "[CROSS-V4-DIAG] step=%s verdict=%s issues=%s "
+                        "samples cross/self/counter=%.0f/%.0f/%.0f "
                         "covered_ref_same=%.8g covered_ref_all=%.8g covered_prior=%.8g "
                         "missing_prior=%.8g missing_ref_mismatch=%.8g ref_zero_delta=%.8g "
                         "prior_grad=%.8g ref_encoder_grad=%.8g peak_reserved_gb=%.3f",
                         global_step,
                         verdict,
                         "; ".join(issues) if issues else "none",
+                        float(cross_v4_diagnostic_logs.get("cross_samples", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("self_reconstruction_samples", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("counterfactual_samples", 0.0)),
                         float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_ref_same_total", 0.0)),
                         float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_ref_all_local", 0.0)),
                         float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_tissue_prior_target", 0.0)),

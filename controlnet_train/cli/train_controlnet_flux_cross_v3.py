@@ -362,7 +362,7 @@ def parse_args(input_args=None, description: str | None = None) -> argparse.Name
     parser.add_argument(
         "--cross-v4-diagnose-steps",
         type=str,
-        default="500,1000,1500,2000",
+        default="1,10,100,500,1000,1500,2000",
         help="Cross V4 only: comma-separated optimizer steps for strong early diagnostics.",
     )
     parser.add_argument(
@@ -376,6 +376,11 @@ def parse_args(input_args=None, description: str | None = None) -> argparse.Name
         type=str,
         default=None,
         help="Cross V4 only: path for JSONL diagnostic snapshots. Defaults to output_dir/cross_v4_diagnostics.jsonl.",
+    )
+    parser.add_argument(
+        "--cross-v4-extreme-bias-smoke",
+        action="store_true",
+        help="Cross V4 only: apply strict pass/fail thresholds for the +50/-50 attention-bias smoke test.",
     )
     parser.add_argument("--cross-version", type=str, default="v3")
     return parser.parse_args(input_args)
