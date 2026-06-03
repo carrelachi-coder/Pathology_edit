@@ -40,6 +40,21 @@ from controlnet_train.modules.cross_v3_conditioning import (
     normalize_cross_v3_reference_route_mode,
     pack_cross_v3_reference_grid,
 )
+from controlnet_train.modules.cross_v4_conditioning import (
+    NUM_CELL_WITH_BG,
+    CrossV4CorrespondenceBiasConfig,
+    CrossV4PriorTokenBank,
+    CrossV4ReferenceContextEncoder,
+    append_cross_v4_context,
+    apply_cross_v4_reference_encoding_mode,
+    build_cross_v4_correspondence_bias,
+    build_cross_v4_token_metadata,
+    remap_cross_v4_cell_ids,
+)
+from controlnet_train.training.cross_v4_attention import (
+    FluxCrossV4AttnProcessor2_0,
+    parse_cross_v4_block_indices,
+)
 from controlnet_train.modules.fixed_tissue_encoder import FixedOneHotTissueEncoder
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
@@ -59,7 +74,7 @@ cross_v3_training = importlib.util.module_from_spec(_CROSS_V3_TRAINING_SPEC)
 try:
     sys.modules[_CROSS_V3_TRAINING_SPEC.name] = cross_v3_training
     _CROSS_V3_TRAINING_SPEC.loader.exec_module(cross_v3_training)
-except ModuleNotFoundError:
+except (ModuleNotFoundError, RuntimeError):
     cross_v3_training = None
 
 
@@ -553,6 +568,225 @@ class CrossV3ConditioningTests(unittest.TestCase):
         self.assertTrue(torch.equal(nuclei_out, torch.zeros_like(ref_nuclei)))
         self.assertTrue(torch.equal(apply_cross_v3_reference_token_mode(tokens, "zero-ref"), torch.zeros_like(tokens)))
         self.assertEqual(normalize_cross_v3_reference_mode("zero-ref"), CROSS_V3_REFERENCE_ZERO_REF)
+
+
+class CrossV4ConditioningTests(unittest.TestCase):
+    def test_cross_v4_token_metadata_downsamples_tissue_and_cell_masks(self):
+        tissue = torch.tensor(
+            [[
+                [1, 1, 2, 2],
+                [1, 1, 2, 2],
+                [3, 3, 4, 4],
+                [3, 3, 4, 4],
+            ]],
+            dtype=torch.long,
+        )
+        nuclei = torch.tensor(
+            [[
+                [101, 101, 0, 0],
+                [101, 102, 0, 0],
+                [104, 104, 102, 102],
+                [104, 0, 102, 0],
+            ]],
+            dtype=torch.long,
+        )
+
+        meta = build_cross_v4_token_metadata(
+            tissue_ids=tissue,
+            nuclei_ids=nuclei,
+            token_height=2,
+            token_width=2,
+        )
+
+        self.assertTrue(torch.equal(meta.tissue_fine_id[0], torch.tensor([1, 2, 3, 4])))
+        self.assertTrue(torch.equal(meta.tissue_coarse_id[0], torch.tensor([1, 2, 3, 4])))
+        self.assertTrue(torch.equal(meta.tissue_confidence, torch.ones_like(meta.tissue_confidence)))
+        self.assertEqual(meta.cell_hist.shape, (1, 4, NUM_CELL_WITH_BG))
+        self.assertAlmostEqual(float(meta.cell_density[0, 0].item()), 1.0)
+        self.assertAlmostEqual(float(meta.cell_hist[0, 1, 0].item()), 1.0)
+        self.assertAlmostEqual(float(meta.cell_density[0, 2].item()), 0.75)
+        self.assertTrue(torch.equal(remap_cross_v4_cell_ids(torch.tensor([0, 101, 105])), torch.tensor([0, 1, 5])))
+
+    def test_cross_v4_reference_encoder_returns_local_tokens_route_anchors_and_metadata(self):
+        encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=7,
+            hidden_dim=5,
+            route_anchor_mode="coarse",
+        )
+        tissue = torch.tensor(
+            [[
+                [1, 1, 2, 2],
+                [1, 1, 2, 2],
+                [3, 3, 4, 4],
+                [3, 3, 4, 4],
+            ]],
+            dtype=torch.long,
+        )
+        nuclei = torch.zeros(1, 4, 4, dtype=torch.long)
+
+        encoding = encoder(
+            z_ref=torch.randn(1, 2, 4, 4),
+            ref_tissue_feat=torch.randn(1, 3, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=tissue,
+            ref_nuclei_ids=nuclei,
+        )
+
+        self.assertEqual(encoding.local_tokens.shape, (1, 4, 7))
+        self.assertEqual(encoding.route_anchor_tokens.shape, (1, 8, 7))
+        self.assertEqual(encoding.tokens.shape, (1, 12, 7))
+        self.assertTrue(torch.equal(encoding.metadata.tissue_fine_id[0], torch.tensor([1, 2, 3, 4])))
+
+    def test_cross_v4_context_segments_and_prior_bias_fallback(self):
+        prompt_embeds = torch.zeros(1, 2, 6)
+        text_ids = torch.zeros(2, 3)
+        ref_encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=1,
+            tissue_channels=1,
+            nuclei_channels=1,
+            token_dim=6,
+            hidden_dim=4,
+        )
+        ref_tissue = torch.tensor(
+            [[
+                [1, 1, 2, 2],
+                [1, 1, 2, 2],
+                [2, 2, 2, 2],
+                [2, 2, 2, 2],
+            ]],
+            dtype=torch.long,
+        )
+        ref_encoding = ref_encoder(
+            z_ref=torch.randn(1, 1, 4, 4),
+            ref_tissue_feat=torch.randn(1, 1, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=ref_tissue,
+            ref_nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+        )
+        prior_bank = CrossV4PriorTokenBank(
+            token_dim=6,
+            tissue_prior_tokens_per_class=1,
+            cell_prior_tokens_per_class=1,
+            global_style_tokens=1,
+        )
+        prior = prior_bank(ref_encoding.local_tokens)
+        context = append_cross_v4_context(
+            prompt_embeds=prompt_embeds,
+            text_ids=text_ids,
+            reference_encoding=ref_encoding,
+            prior_tokens=prior,
+        )
+        target_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [2, 2, 3, 3],
+                    [2, 2, 3, 3],
+                ]],
+                dtype=torch.long,
+            ),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+
+        bias = build_cross_v4_correspondence_bias(
+            target_metadata=target_meta,
+            context=context,
+            config=CrossV4CorrespondenceBiasConfig(
+                cell_similarity=0.0,
+                density_gap=0.0,
+                cell_prior=0.0,
+            ),
+        )
+
+        self.assertEqual(bias.shape, (1, 4, context.encoder_hidden_states.shape[1]))
+        self.assertEqual(context.segments.text, (0, 2))
+        self.assertEqual(context.segments.global_style, (2, 3))
+        self.assertEqual(context.segments.tissue_prior, (3, 11))
+        self.assertEqual(context.segments.cell_prior, (11, 17))
+        tumor_ref_start, tumor_ref_end = context.segments.reference_local
+        self.assertGreater(float(bias[0, 0, tumor_ref_start].item()), 0.0)
+        missing_necrosis_prior_index = context.segments.tissue_prior[0] + 3
+        covered_tumor_prior_index = context.segments.tissue_prior[0] + 1
+        self.assertAlmostEqual(float(bias[0, 1, missing_necrosis_prior_index].item()), 3.0)
+        self.assertAlmostEqual(float(bias[0, 0, covered_tumor_prior_index].item()), 0.5)
+        self.assertLess(float(bias[0, 1, tumor_ref_end - 1].item()), 0.0)
+
+    def test_cross_v4_zero_reference_mode_preserves_metadata(self):
+        encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=1,
+            tissue_channels=1,
+            nuclei_channels=1,
+            token_dim=4,
+            hidden_dim=4,
+        )
+        encoding = encoder(
+            z_ref=torch.randn(1, 1, 4, 4),
+            ref_tissue_feat=torch.randn(1, 1, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=torch.ones(1, 4, 4, dtype=torch.long),
+            ref_nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+        )
+
+        zero = apply_cross_v4_reference_encoding_mode(encoding, "zero-ref")
+
+        self.assertTrue(torch.equal(zero.local_tokens, torch.zeros_like(encoding.local_tokens)))
+        self.assertTrue(torch.equal(zero.metadata.tissue_fine_id, encoding.metadata.tissue_fine_id))
+
+    def test_cross_v4_attention_block_index_parser(self):
+        self.assertEqual(parse_cross_v4_block_indices("last"), (-1,))
+        self.assertEqual(parse_cross_v4_block_indices("1,3"), (1, 3))
+        self.assertEqual(parse_cross_v4_block_indices("off"), ())
+        self.assertEqual(parse_cross_v4_block_indices("all", total_blocks=3), (0, 1, 2))
+
+    def test_cross_v4_attention_processor_accepts_bias_for_double_block_path(self):
+        class FakeAttention(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.heads = 1
+                self.to_q = torch.nn.Linear(4, 4, bias=False)
+                self.to_k = torch.nn.Linear(4, 4, bias=False)
+                self.to_v = torch.nn.Linear(4, 4, bias=False)
+                self.add_q_proj = torch.nn.Linear(4, 4, bias=False)
+                self.add_k_proj = torch.nn.Linear(4, 4, bias=False)
+                self.add_v_proj = torch.nn.Linear(4, 4, bias=False)
+                self.to_add_out = torch.nn.Identity()
+                self.to_out = torch.nn.ModuleList([torch.nn.Identity(), torch.nn.Identity()])
+                self.norm_q = None
+                self.norm_k = None
+                self.norm_added_q = None
+                self.norm_added_k = None
+                for module in (
+                    self.to_q,
+                    self.to_k,
+                    self.to_v,
+                    self.add_q_proj,
+                    self.add_k_proj,
+                    self.add_v_proj,
+                ):
+                    module.weight.data.copy_(torch.eye(4))
+
+        processor = FluxCrossV4AttnProcessor2_0(apply_cross_v4_bias=True)
+        attn = FakeAttention()
+        hidden_states = torch.randn(1, 3, 4)
+        encoder_hidden_states = torch.randn(1, 2, 4)
+        bias = torch.zeros(1, 3, 2)
+        bias[:, :, 0] = 5.0
+
+        image_out, context_out = processor(
+            attn,
+            hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            cross_v4_bias=bias,
+        )
+
+        self.assertEqual(image_out.shape, hidden_states.shape)
+        self.assertEqual(context_out.shape, encoder_hidden_states.shape)
 
 
 if __name__ == "__main__":

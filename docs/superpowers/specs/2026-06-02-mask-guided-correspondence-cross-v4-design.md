@@ -508,6 +508,14 @@ debug_maps:
 
 这些不是训练必须，但对诊断“模型到底有没有听 reference”非常关键。
 
+这里的 `attention_mass_by_source` 不能只是一个输出字段名。它必须绑定固定算法和判读协议，用来回答三个递进问题：
+
+1. bias 是否真的加进了 softmax 前 logits。
+2. attention mass 是否按语义集中到正确来源。
+3. 指向正确后，reference 内容是否真的被用到了输出里。
+
+完整定义见第 12.5 节。
+
 ---
 
 ## 5. Token 设计
@@ -1916,6 +1924,236 @@ for each target tissue class:
 - 是 cell mask 噪声；
 - 是 ControlNet 结构没控制住。
 
+### 12.5 Attention Diagnostics Protocol
+
+`attention_mass_by_source` 必须从“想保存的字段名”升级成一套固定诊断协议。目标不是笼统判断“指向对不对”，而是依次回答三个问题：
+
+1. bias 是否真的加进了 softmax 前的 logits。
+2. attention mass 是否按语义集中到正确来源。
+3. attention 指向正确后，reference 内容是否真的被用到了输出中。
+
+#### 第 0 步：极端值 sanity check
+
+在正式看任何统计之前，先做一次工程正确性测试：
+
+- 临时把 `lambda_same_coarse` 设成极大值，例如 `+50`。
+- 跑一个单层 forward。
+- 观察注入层的 attention 是否几乎全部压到 `reference same-class` token。
+
+判读：
+
+- 如果 attention 分布几乎不变，说明 bias 没真正进 logits。
+- 常见原因是 `joint_attention_kwargs` 没传到实际跑的 attention processor、context segment slice 错位、或 monkey patch 没替换到真实执行的层。
+- 第 0 步不过，后面所有 attention mass 指标都不可信，必须先修工程通路。
+
+#### 第 1 步：attention mass by source 的定义
+
+在注入 bias 的那一层，拿 softmax 之后的 attention：
+
+```text
+attn_weights shape = (B, heads, N_img, N_context)
+```
+
+对每个 target image token `i`，先按 source bucket 求和：
+
+```text
+mass[i, bucket] = sum_{j in bucket(i)} attn_weights[i, j]
+```
+
+这里最关键的是：`bucket(i)` 是 **per-target-token** 的相对分桶，不是固定 segment 名字。因为 `same` / `mismatch` 取决于 target token 自己的类别。
+
+对 target token `i`，类别记为 `c`，建议至少分成：
+
+```text
+ref_same_fine:
+  reference local token 中 fine == target fine 的 token
+
+ref_same_coarse:
+  reference local token 中 coarse == target coarse 但 fine != target fine 的 token
+
+ref_mismatch:
+  reference local token 中 coarse != target coarse 的 token
+
+tissue_prior_c:
+  属于 target coarse 类别 c 的 tissue prior token
+
+tissue_prior_other:
+  不属于 c 的其他 tissue prior token
+
+cell_prior_match:
+  与 target cell histogram 主导成分一致的 cell prior token
+
+cell_prior_other:
+  其他 cell prior token
+
+text_global:
+  text token + global style token
+```
+
+然后再按 target token 语义分组聚合。例如：
+
+- target 是 tumor，且 reference 有 tumor 的 token，聚合成 A 类 tumor。
+- target 是 tumor，但 reference 没 tumor 的 token，聚合成 B 类 tumor。
+
+不能只看全图平均，否则 A/B 两种行为会被平均掉。
+
+#### 第 2 步：A/B 类区域的判读
+
+A 类：reference 有对应组织。
+
+以 target tumor 且 reference 有 tumor 为例，期望：
+
+```text
+mass[ref_same_fine + ref_same_coarse] 高
+mass[ref_mismatch] 低
+mass[tissue_prior_c] 低或中
+```
+
+B 类：reference 缺对应组织。
+
+以 target tumor 但 reference 无 tumor 为例，期望：
+
+```text
+mass[tissue_prior_c] 高
+mass[ref_mismatch] 低
+mass[ref_same_*] 约等于 0
+```
+
+这正是 Cross V4 的核心机制：
+
+- A 类区域听 reference 同类。
+- B 类区域听 prior。
+
+#### 第 3 步：推荐阈值
+
+MVP 的 coarse tissue-only 版本，建议先用下面的经验阈值判读：
+
+A 类健康标准：
+
+```text
+mass[ref_same_total] / mass[ref_all_local] > 0.6
+mass[ref_same_total] > mass[tissue_prior_c]
+mass[ref_mismatch] < mass[ref_same_total] / 3
+```
+
+其中：
+
+```text
+ref_same_total = ref_same_fine + ref_same_coarse
+ref_all_local = ref_same_fine + ref_same_coarse + ref_mismatch
+```
+
+B 类健康标准：
+
+```text
+mass[tissue_prior_c] > mass[ref_mismatch]
+mass[ref_mismatch] 低
+mass[tissue_prior_other] 接近 0
+```
+
+全局健康标准：
+
+```text
+mass[tissue_prior_other] 接近 0
+```
+
+这表示 `lambda_prior_wrong` 在起作用，模型没有乱抓错类 prior。
+
+这些阈值不是理论真值，但足够作为工程闸门：
+
+- A 类 `ref_same_total` 上不去，先怀疑 bias 太弱或 metadata 对齐错。
+- B 类 `tissue_prior_c` 抢不过 `ref_mismatch`，先怀疑 `lambda_prior_missing` 太弱或 reference presence gate 错。
+
+#### 第 4 步：指对了不等于用上了
+
+attention mass 集中只说明 query 看向了正确 token，不说明 reference 的纹理内容真的被传到了输出里。还需要一个独立验证：
+
+`ref-swap` 输出敏感度。
+
+做法：
+
+- 固定 target 和 target masks。
+- 选择两个 reference，它们都覆盖 target 当前类别，但纹理/风格明显不同。
+- 生成 `output(ref_A)` 和 `output(ref_B)`。
+- 只在 covered region 上计算输出差异：
+
+```text
+swap_sensitivity = || output(ref_A) - output(ref_B) || over covered target region
+```
+
+判读：
+
+- `attention mass` 集中，且 `swap_sensitivity` 明显大：指对了，也用上了。
+- `attention mass` 集中，但 `swap_sensitivity` 很小：指对了，但 reference 内容没真正传进去。
+- `attention mass` 本身不集中：先回去修 bias，不要急着动内容通路。
+
+第二种情况非常重要。它通常意味着：
+
+- query 的确 attend 到了正确 reference token；
+- 但 value projection 没有携带足够纹理信息；
+- 或 reference token 已经在 encoder/projection 里被压平了。
+
+这类结果才是真正触发“是否需要更独立的 reference K/V 路径或 IP-Adapter 类设计”的信号。
+
+#### 第 5 步：两张必须出的图
+
+数字会被平均掩盖，所以至少保留两类可视化。
+
+第一张：reference attention heatmap overlay
+
+- 选一个 target token，最好来自 tumor/stroma/necrosis 等代表性区域。
+- 取它对 reference local token 的 attention。
+- reshape 回 reference token 的 2D 网格。
+- 叠在 reference 图和 reference mask 上。
+
+健康图像应该表现为：
+
+- target tumor token 的热点落在 reference tumor 区。
+- target stroma token 的热点落在 reference stroma 区。
+- 热点不是全图散开，也不是系统性落在 mismatch 区。
+
+第二张：per-target-token dominant source map
+
+- 对每个 target token，计算哪一个 source bucket 拿到最大 mass。
+- 用颜色编码 `ref_same`、`ref_mismatch`、`tissue_prior`、`cell_prior`、`text_global`。
+- 回贴到 target token 网格，再 overlay 到 target mask。
+
+健康图像应该表现为：
+
+- covered class 区域大多显示 `ref_same`。
+- missing class 区域大多显示 `tissue_prior`。
+- 边界大致和 target mask 语义区吻合。
+
+#### 第 6 步：在哪一层看
+
+MVP 只在 1 个中后层注入 bias，就看那一层。
+
+如果以后扩到多层，优先看中后层：
+
+- 早期层 attention 更偏全局结构，本来就不一定强语义化。
+- 中后层更接近纹理/局部外观决策。
+
+不要因为早期层看起来“不够集中”就误判整个机制失败。
+
+#### 第 7 步：与文档其它指标的关系
+
+这套 protocol 是所有高层诊断的基础：
+
+- `normal vs zero/random reference` 只能回答“reference 有没有影响”。
+- `attention_mass_by_source` 回答“影响来自哪里”。
+- `ref-swap sensitivity` 回答“reference 内容有没有真的被用上”。
+
+推荐顺序固定为：
+
+```text
+第 0 步 extreme-lambda sanity check
+-> 第 1/2/3 步 attention_mass_by_source
+-> 第 4 步 ref-swap 内容验证
+-> 第 5 步两张可视化图
+```
+
+第 0 步不过，不要继续调 lambda、prior 或 cell bias。
+
 ---
 
 ## 13. 当前缺的东西
@@ -2626,6 +2864,8 @@ MVP 成功标准：
 - zero/random reference 明显变差。
 - partial coverage 下，covered class 更像 reference，missing class 不错误贴 mismatch reference。
 - attention stats 显示 same-class ref mass 高，missing class prior mass 高。
+- 12.5 的第 0 步 extreme-lambda sanity check 通过，且第 1/3 步的 `attention_mass_by_source` 达到 A/B 类阈值。
+- 12.5 的第 4 步 `swap_sensitivity` 在 covered region 上为正且有可见差异，不是“指对了但没用上”。
 - 256/单层 materialized attention 能稳定训练，显存和 step time 可接受。
 - cross-case/cross-WSI reference 不把 reference 布局复制到 target。
 - 更换 reference 时 covered class 外观有方向性变化。

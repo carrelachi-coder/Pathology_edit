@@ -10,9 +10,10 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
-def parse_args(input_args=None) -> argparse.Namespace:
+def parse_args(input_args=None, description: str | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
+        description=description
+        or (
             "Train Phase 5.3 Cross V3 Flux ControlNet: fixed prompt, target-only "
             "ControlNet mask, and reference latent+mask cross-attention tokens."
         )
@@ -114,6 +115,18 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--checkpoints-total-limit", type=int, default=None)
     parser.add_argument("--resume-from-checkpoint", type=str, default=None)
     parser.add_argument("--mixed-precision", type=str, default=None, choices=["no", "fp16", "bf16"])
+    parser.add_argument(
+        "--max-cuda-memory-gb",
+        type=float,
+        default=0.0,
+        help="Abort training if per-process peak CUDA reserved memory exceeds this many GiB. 0 disables.",
+    )
+    parser.add_argument(
+        "--cuda-memory-check-interval",
+        type=int,
+        default=10,
+        help="Check/log peak CUDA memory every N optimizer steps. Use 0 to check only on diagnose steps.",
+    )
     parser.add_argument("--allow-tf32", action="store_true")
     parser.add_argument("--enable-xformers-memory-efficient-attention", action="store_true")
     parser.add_argument("--set-grads-to-none", action="store_true")
@@ -310,6 +323,60 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--nuclei-embedding-dim", type=int, default=16)
     parser.add_argument("--nuclei-out-channels", type=int, default=16)
     parser.add_argument("--condition-downsample-blocks", type=int, default=3)
+    parser.add_argument(
+        "--cross-v4-tissue-prior-tokens-per-class",
+        type=int,
+        default=4,
+        help="Cross V4 only: number of learned coarse tissue prior tokens per class.",
+    )
+    parser.add_argument(
+        "--cross-v4-cell-prior-tokens-per-class",
+        type=int,
+        default=0,
+        help="Cross V4 only: number of learned cell prior tokens per class, including background.",
+    )
+    parser.add_argument(
+        "--cross-v4-global-style-tokens",
+        type=int,
+        default=0,
+        help="Cross V4 only: weak global style tokens derived from pooled reference local tokens.",
+    )
+    parser.add_argument("--cross-v4-prior-init-std", type=float, default=0.02)
+    parser.add_argument(
+        "--cross-v4-biased-double-blocks",
+        type=str,
+        default="last",
+        help="Cross V4 only: double transformer blocks receiving correspondence bias, e.g. last, all, 1,3, or off.",
+    )
+    parser.add_argument("--cross-v4-bias-scale", type=float, default=1.0)
+    parser.add_argument("--cross-v4-bias-warmup-steps", type=int, default=1000)
+    parser.add_argument("--cross-v4-same-fine-bias", type=float, default=3.0)
+    parser.add_argument("--cross-v4-same-coarse-bias", type=float, default=2.0)
+    parser.add_argument("--cross-v4-mismatch-bias", type=float, default=-2.0)
+    parser.add_argument("--cross-v4-cell-similarity-bias", type=float, default=1.0)
+    parser.add_argument("--cross-v4-density-gap-bias", type=float, default=0.5)
+    parser.add_argument("--cross-v4-prior-present-bias", type=float, default=0.5)
+    parser.add_argument("--cross-v4-prior-missing-bias", type=float, default=3.0)
+    parser.add_argument("--cross-v4-prior-wrong-class-bias", type=float, default=-2.0)
+    parser.add_argument("--cross-v4-cell-prior-bias", type=float, default=1.0)
+    parser.add_argument(
+        "--cross-v4-diagnose-steps",
+        type=str,
+        default="500,1000,1500,2000",
+        help="Cross V4 only: comma-separated optimizer steps for strong early diagnostics.",
+    )
+    parser.add_argument(
+        "--cross-v4-diagnose-interval",
+        type=int,
+        default=0,
+        help="Cross V4 only: additionally emit diagnostics every N optimizer steps. 0 disables.",
+    )
+    parser.add_argument(
+        "--cross-v4-diagnose-jsonl",
+        type=str,
+        default=None,
+        help="Cross V4 only: path for JSONL diagnostic snapshots. Defaults to output_dir/cross_v4_diagnostics.jsonl.",
+    )
     parser.add_argument("--cross-version", type=str, default="v3")
     return parser.parse_args(input_args)
 
