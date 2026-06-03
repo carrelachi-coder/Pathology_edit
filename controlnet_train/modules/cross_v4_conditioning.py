@@ -344,13 +344,22 @@ class CrossV4PriorTokenBank(nn.Module):
         self.cell_prior_tokens_per_class = max(0, int(cell_prior_tokens_per_class))
         self.global_style_token_count = max(0, int(global_style_tokens))
         self.init_std = float(init_std)
-        self.tissue_prior_tokens = nn.Parameter(
-            torch.empty(NUM_COARSE, self.tissue_prior_tokens_per_class, self.token_dim)
-        )
-        self.cell_prior_tokens = nn.Parameter(
-            torch.empty(NUM_CELL_WITH_BG, self.cell_prior_tokens_per_class, self.token_dim)
-        )
-        self.global_style_offsets = nn.Parameter(torch.empty(self.global_style_token_count, self.token_dim))
+        if self.tissue_prior_tokens_per_class > 0:
+            self.tissue_prior_tokens = nn.Parameter(
+                torch.empty(NUM_COARSE, self.tissue_prior_tokens_per_class, self.token_dim)
+            )
+        else:
+            self.register_parameter("tissue_prior_tokens", None)
+        if self.cell_prior_tokens_per_class > 0:
+            self.cell_prior_tokens = nn.Parameter(
+                torch.empty(NUM_CELL_WITH_BG, self.cell_prior_tokens_per_class, self.token_dim)
+            )
+        else:
+            self.register_parameter("cell_prior_tokens", None)
+        if self.global_style_token_count > 0:
+            self.global_style_offsets = nn.Parameter(torch.empty(self.global_style_token_count, self.token_dim))
+        else:
+            self.register_parameter("global_style_offsets", None)
         self.global_style_proj = (
             nn.Linear(self.token_dim, self.token_dim) if self.global_style_token_count > 0 else None
         )
@@ -361,7 +370,7 @@ class CrossV4PriorTokenBank(nn.Module):
             raise ValueError(f"init_std must be non-negative, got {self.init_std}.")
         with torch.no_grad():
             for value in (self.tissue_prior_tokens, self.cell_prior_tokens, self.global_style_offsets):
-                if value.numel() == 0:
+                if value is None or value.numel() == 0:
                     continue
                 if self.init_std == 0.0:
                     value.zero_()
@@ -384,21 +393,30 @@ class CrossV4PriorTokenBank(nn.Module):
         dtype = reference_local_tokens.dtype
         device = reference_local_tokens.device
 
-        tissue_tokens = self.tissue_prior_tokens.to(device=device, dtype=dtype)
-        tissue_tokens = tissue_tokens.reshape(1, -1, self.token_dim).expand(batch_size, -1, -1)
-        tissue_ids = torch.arange(NUM_COARSE, device=device, dtype=torch.long).repeat_interleave(
-            self.tissue_prior_tokens_per_class
-        )
+        if self.tissue_prior_tokens is not None:
+            tissue_tokens = self.tissue_prior_tokens.to(device=device, dtype=dtype)
+            tissue_tokens = tissue_tokens.reshape(1, -1, self.token_dim).expand(batch_size, -1, -1)
+            tissue_ids = torch.arange(NUM_COARSE, device=device, dtype=torch.long).repeat_interleave(
+                self.tissue_prior_tokens_per_class
+            )
+        else:
+            tissue_tokens = reference_local_tokens.new_zeros((batch_size, 0, self.token_dim))
+            tissue_ids = torch.empty(0, device=device, dtype=torch.long)
 
-        cell_tokens = self.cell_prior_tokens.to(device=device, dtype=dtype)
-        cell_tokens = cell_tokens.reshape(1, -1, self.token_dim).expand(batch_size, -1, -1)
-        cell_ids = torch.arange(NUM_CELL_WITH_BG, device=device, dtype=torch.long).repeat_interleave(
-            self.cell_prior_tokens_per_class
-        )
+        if self.cell_prior_tokens is not None:
+            cell_tokens = self.cell_prior_tokens.to(device=device, dtype=dtype)
+            cell_tokens = cell_tokens.reshape(1, -1, self.token_dim).expand(batch_size, -1, -1)
+            cell_ids = torch.arange(NUM_CELL_WITH_BG, device=device, dtype=torch.long).repeat_interleave(
+                self.cell_prior_tokens_per_class
+            )
+        else:
+            cell_tokens = reference_local_tokens.new_zeros((batch_size, 0, self.token_dim))
+            cell_ids = torch.empty(0, device=device, dtype=torch.long)
 
         if self.global_style_token_count > 0:
             pooled = reference_local_tokens.mean(dim=1)
             assert self.global_style_proj is not None
+            assert self.global_style_offsets is not None
             projected = self.global_style_proj(pooled.to(dtype=self.global_style_proj.weight.dtype)).to(dtype=dtype)
             offsets = self.global_style_offsets.to(device=device, dtype=dtype).unsqueeze(0)
             global_tokens = projected.unsqueeze(1) + offsets

@@ -717,6 +717,23 @@ class CrossV4ConditioningTests(unittest.TestCase):
         self.assertAlmostEqual(float(bias[0, 0, covered_tumor_prior_index].item()), 0.5)
         self.assertLess(float(bias[0, 1, tumor_ref_end - 1].item()), 0.0)
 
+    def test_cross_v4_prior_bank_omits_disabled_optional_parameters(self):
+        bank = CrossV4PriorTokenBank(
+            token_dim=6,
+            tissue_prior_tokens_per_class=1,
+            cell_prior_tokens_per_class=0,
+            global_style_tokens=0,
+        )
+        params = dict(bank.named_parameters())
+        tokens = bank(torch.randn(2, 4, 6))
+
+        self.assertIn("tissue_prior_tokens", params)
+        self.assertNotIn("cell_prior_tokens", params)
+        self.assertNotIn("global_style_offsets", params)
+        self.assertEqual(tokens.tissue_prior_tokens.shape, (2, 8, 6))
+        self.assertEqual(tokens.cell_prior_tokens.shape, (2, 0, 6))
+        self.assertEqual(tokens.global_style_tokens.shape, (2, 0, 6))
+
     def test_cross_v4_zero_reference_mode_preserves_metadata(self):
         encoder = CrossV4ReferenceContextEncoder(
             reference_latent_channels=1,
