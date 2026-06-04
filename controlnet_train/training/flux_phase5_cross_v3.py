@@ -83,6 +83,10 @@ from controlnet_train.training.cross_v1_losses import (
     regional_stain_style_loss,
     unpack_flux_packed_latents,
 )
+from controlnet_train.training.same_wsi_appearance import (
+    load_same_wsi_encoder,
+    same_wsi_perceptual_loss,
+)
 
 if is_wandb_available():
     import wandb  # noqa: F401
@@ -407,39 +411,6 @@ def _build_cross_v4_control_batch(
     return target_image_latent, control_tensor, reference_encoding, target_metadata, feature_stats
 
 
-def _build_cross_v4_same_class_swap_encoding(
-    *,
-    batch: dict,
-    modules: dict[str, nn.Module],
-    vae: AutoencoderKL,
-    weight_dtype: torch.dtype,
-) -> CrossV4ReferenceEncoding | None:
-    required_keys = (
-        "same_class_swap_reference_image",
-        "same_class_swap_reference_tissue_mask",
-        "same_class_swap_reference_nuclei_mask",
-    )
-    if not all(key in batch for key in required_keys):
-        return None
-    device = next(vae.parameters()).device
-    reference_image_latent = _encode_images_to_deterministic_latents(
-        vae,
-        batch["same_class_swap_reference_image"],
-        weight_dtype,
-    )
-    ref_tissue_mask = batch["same_class_swap_reference_tissue_mask"].to(device=device)
-    ref_nuclei_mask = batch["same_class_swap_reference_nuclei_mask"].to(device=device)
-    ref_tissue_feat = modules["tissue_downsampler"](modules["hte"](ref_tissue_mask)).to(dtype=weight_dtype)
-    ref_nuclei_feat = modules["nuclei_encoder"](ref_nuclei_mask).to(dtype=weight_dtype)
-    return modules["reference_context_encoder"](
-        z_ref=reference_image_latent,
-        ref_tissue_feat=ref_tissue_feat,
-        ref_nuclei_feat=ref_nuclei_feat,
-        ref_tissue_ids=ref_tissue_mask,
-        ref_nuclei_ids=ref_nuclei_mask,
-    )
-
-
 def _target_hte(modules: dict[str, nn.Module]) -> nn.Module:
     if "target_tissue_encoder" in modules:
         return modules["target_tissue_encoder"]
@@ -583,15 +554,24 @@ def _parse_ref_swap_variants(value: str | None) -> list[str]:
             continue
         if variant in {"shuffle", "batch_shuffle"}:
             variant = "random"
-        if variant in {"sameclass", "same_class", "same_class_swap"}:
-            variant = "same_class"
-        if variant not in {"zero", "random", "same_class"}:
-            raise ValueError(
-                f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class."
-            )
+        if variant not in {"zero", "random"}:
+            raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
         if variant not in variants:
             variants.append(variant)
     return variants
+
+
+def _parse_int_list(value: str | None, *, name: str) -> tuple[int, ...]:
+    parsed: list[int] = []
+    for raw_part in str(value or "").split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        try:
+            parsed.append(int(part))
+        except ValueError as exc:
+            raise ValueError(f"{name} must be a comma-separated list of integers, got {value!r}.") from exc
+    return tuple(parsed)
 
 
 def _build_swapped_reference_tokens(
@@ -618,9 +598,7 @@ def _build_swapped_cross_v4_reference_encoding(
     if variant == "zero":
         return apply_cross_v4_reference_encoding_mode(reference_encoding, "zero-ref")
     if variant != "random":
-        raise ValueError(
-            f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class."
-        )
+        raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
     bsz = int(reference_encoding.local_tokens.shape[0])
     if bsz <= 1:
         return None
@@ -1700,6 +1678,22 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
     ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.08) or 0.0)
     ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero"))
+    same_wsi_perceptual_weight = max(
+        0.0,
+        float(getattr(args, "same_wsi_perceptual_weight", 0.0) or 0.0),
+    )
+    same_wsi_perceptual_interval = int(getattr(args, "same_wsi_perceptual_interval", 1) or 0)
+    same_wsi_perceptual_layers = _parse_int_list(
+        getattr(args, "same_wsi_perceptual_layers", "1,2,3"),
+        name="same_wsi_perceptual_layers",
+    )
+    same_wsi_perceptual_min_pixels = max(
+        1,
+        int(getattr(args, "same_wsi_perceptual_min_pixels", 8) or 1),
+    )
+    same_wsi_perceptual_checkpoint = getattr(args, "same_wsi_perceptual_checkpoint", None)
+    if same_wsi_perceptual_weight > 0.0 and not same_wsi_perceptual_checkpoint:
+        raise ValueError("--same-wsi-perceptual-weight requires --same-wsi-perceptual-checkpoint.")
     max_cuda_memory_gb = max(0.0, float(getattr(args, "max_cuda_memory_gb", 0.0) or 0.0))
     cuda_memory_check_interval = max(0, int(getattr(args, "cuda_memory_check_interval", 10) or 0))
     cross_v4_diagnose_jsonl = Path(
@@ -1864,6 +1858,20 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+
+    same_wsi_encoder = None
+    if same_wsi_perceptual_weight > 0.0:
+        same_wsi_encoder = load_same_wsi_encoder(same_wsi_perceptual_checkpoint, map_location="cpu")
+        same_wsi_encoder.to(device=accelerator.device, dtype=weight_dtype)
+        same_wsi_encoder.eval()
+        logger.info(
+            "Using frozen same-WSI appearance perceptual loss: checkpoint=%s weight=%s interval=%s layers=%s min_pixels=%s",
+            same_wsi_perceptual_checkpoint,
+            same_wsi_perceptual_weight,
+            same_wsi_perceptual_interval,
+            ",".join(str(layer) for layer in same_wsi_perceptual_layers),
+            same_wsi_perceptual_min_pixels,
+        )
 
     prompt_cache, empty_prompt, text_ids = _build_prompt_cache(
         pipeline=tmp_pipeline,
@@ -2402,12 +2410,21 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 style_nuclei_loss = noise_pred.new_zeros(())
                 style_tissue_regions = 0
                 style_nuclei_regions = 0
+                same_wsi_loss = noise_pred.new_zeros(())
+                same_wsi_feature_layers = 0
+                prediction_rgb = None
                 should_compute_style_loss = (
                     reference_style_loss_weight > 0.0
                     and reference_style_loss_interval > 0
                     and global_step % reference_style_loss_interval == 0
                 )
-                if should_compute_style_loss:
+                should_compute_same_wsi_loss = (
+                    same_wsi_encoder is not None
+                    and same_wsi_perceptual_weight > 0.0
+                    and same_wsi_perceptual_interval > 0
+                    and global_step % same_wsi_perceptual_interval == 0
+                )
+                if should_compute_style_loss or should_compute_same_wsi_loss:
                     prediction_rgb = _decode_packed_model_prediction(
                         vae=vae,
                         packed_noisy_latents=noisy_model_input,
@@ -2418,6 +2435,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         latent_width=pixel_latents.shape[3],
                         weight_dtype=weight_dtype,
                     )
+                if should_compute_style_loss:
                     style_terms = regional_stain_style_loss(
                         prediction=prediction_rgb,
                         reference=training_batch["reference_image"].to(
@@ -2435,6 +2453,20 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     style_nuclei_loss = style_terms["nuclei"].to(dtype=denoise_loss.dtype)
                     style_tissue_regions = int(style_terms["tissue_regions"])
                     style_nuclei_regions = int(style_terms["nuclei_regions"])
+                if should_compute_same_wsi_loss:
+                    same_wsi_loss, same_wsi_feature_layers = same_wsi_perceptual_loss(
+                        encoder=same_wsi_encoder,
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        layers=same_wsi_perceptual_layers,
+                        min_pixels=same_wsi_perceptual_min_pixels,
+                    )
+                    same_wsi_loss = same_wsi_loss.to(dtype=denoise_loss.dtype)
 
                 swap_loss = noise_pred.new_zeros(())
                 ref_variant_loss_logs: dict[str, float] = {}
@@ -2451,22 +2483,9 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         if is_cross_v4:
                             if reference_encoding is None or target_metadata is None:
                                 raise RuntimeError("Cross V4 ref-swap requires reference encoding and target metadata.")
-                            if variant == "same_class":
-                                swapped_encoding = _build_cross_v4_same_class_swap_encoding(
-                                    batch=training_batch,
-                                    modules=modules,
-                                    vae=vae,
-                                    weight_dtype=weight_dtype,
-                                )
-                            else:
-                                swapped_encoding = _build_swapped_cross_v4_reference_encoding(
-                                    reference_encoding,
-                                    variant,
-                                )
+                            swapped_encoding = _build_swapped_cross_v4_reference_encoding(reference_encoding, variant)
                             if swapped_encoding is None:
-                                ref_variant_loss_logs[f"ref_{variant}_available"] = 0.0
                                 continue
-                            ref_variant_loss_logs[f"ref_{variant}_available"] = 1.0
                             swapped_context, swapped_context_ids, swapped_joint_attention_kwargs, _, _ = (
                                 _build_cross_v4_context_and_kwargs(
                                     prompt_embeds=batch_prompt,
@@ -2517,6 +2536,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     denoise_loss
                     + reference_style_loss_weight * style_loss
                     + ref_swap_loss_weight * swap_loss
+                    + same_wsi_perceptual_weight * same_wsi_loss
                 )
 
                 cross_v4_grad_logs: dict[str, float] = {}
@@ -2597,9 +2617,6 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 cross_v4_diagnostic_logs["cross_v4_zero_ref_delta_available"] = float(
                     "ref_zero_minus_normal_denoise_loss" in ref_variant_loss_logs
                 )
-                cross_v4_diagnostic_logs["cross_v4_same_class_swap_delta_available"] = float(
-                    "ref_same_class_minus_normal_denoise_loss" in ref_variant_loss_logs
-                )
                 regular_verdict, regular_issues = _cross_v4_diagnostic_verdict(cross_v4_diagnostic_logs)
                 cross_v4_diagnostic_logs["cross_v4_extreme_bias_smoke"] = float(
                     bool(getattr(args, "cross_v4_extreme_bias_smoke", False))
@@ -2665,6 +2682,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 "style_nuclei_loss": style_nuclei_loss.detach().item(),
                 "style_tissue_regions": style_tissue_regions,
                 "style_nuclei_regions": style_nuclei_regions,
+                "same_wsi_perceptual_loss": same_wsi_loss.detach().item(),
+                "same_wsi_perceptual_layers": same_wsi_feature_layers,
                 "ref_swap_loss": swap_loss.detach().item(),
                 "ref_normal_denoise_loss": denoise_loss.detach().item(),
                 "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),

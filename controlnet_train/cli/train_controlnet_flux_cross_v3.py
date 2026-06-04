@@ -284,6 +284,36 @@ def parse_args(input_args=None, description: str | None = None) -> argparse.Name
         help="Optional cap on style-loss regions per sample, keeping largest labels first.",
     )
     parser.add_argument(
+        "--same-wsi-perceptual-checkpoint",
+        type=str,
+        default=None,
+        help="Path to a pretrained same-WSI appearance encoder checkpoint. Disabled when omitted.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-weight",
+        type=float,
+        default=0.0,
+        help="Weight for frozen same-WSI appearance perceptual loss.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-interval",
+        type=int,
+        default=1,
+        help="Compute same-WSI perceptual loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-layers",
+        type=str,
+        default="1,2,3",
+        help="Comma-separated encoder block indices used for same-WSI perceptual features.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-min-pixels",
+        type=int,
+        default=8,
+        help="Minimum downsampled feature-map pixels per shared tissue class.",
+    )
+    parser.add_argument(
         "--ref-swap-loss-weight",
         type=float,
         default=0.1,

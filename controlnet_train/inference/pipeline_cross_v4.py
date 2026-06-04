@@ -140,7 +140,7 @@ def run_cross_v4_bundle(
     )
     return _sample_with_flux_controlnet_v4(
         bundle=bundle,
-        prompt=CROSS_V4_PROMPT,
+        prompt=prompt,
         control_tensor=control_tensor,
         reference_encoding=reference_encoding,
         target_metadata=target_metadata,

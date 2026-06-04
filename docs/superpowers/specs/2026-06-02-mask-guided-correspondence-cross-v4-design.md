@@ -1557,6 +1557,31 @@ prior tokens enabled but weak
 - prior token grad norm。
 - decoded reconstruction sanity。
 
+当前 Cross V4 早期训练的梯度 sanity check 已经支持 plumbing 是活的：
+
+```text
+step  prior_grad  ref_enc_grad  cnet_grad
+   1     0.00603       0.6664    14.949
+  10     0.00360       0.3306    10.878
+ 100     0.00583       0.4057     5.339
+ 200     0.00269       0.3058     8.016
+ 300     0.00214       0.1999     3.499
+ 400     0.00123       0.0966     3.187
+ 500     0.00165       0.0959     9.785
+1000     0.00189       0.0284     3.276
+1500     0.00144       0.0636     5.205
+2000     0.00205       0.1121     3.523
+```
+
+判读：
+
+- `prior_grad` 量级小但持续非零，符合 tissue prior token bank 参数少、只在 prior/fallback 路径上弱参与的预期。
+- `ref_enc_grad` 从 step 1 的高值逐步下降，之后在 step 1500/2000 回升到 `0.0636/0.1121`，说明 reference encoder 没有 collapse。
+- `cnet_grad` 明显更大是正常现象，因为 ControlNet 是主 denoise 结构路径，参数量和损失通路都更大，不能和 reference/prior 模块直接横向比较。
+- step 500 的 `cnet_grad=9.785` 更像 batch 波动，不构成异常。
+
+因此，这组数应该作为 Stage 0 通过信号：prior token bank、reference encoder、ControlNet 三条训练链路都有梯度，当前 run 不应因为模块活性问题重启。后续判断应转向 attention bandwidth、`style_tissue_loss`、per-class 染色迁移和 step 8000+ 纹理迁移。
+
 ### 10.2 Stage 1: full coverage correspondence
 
 目标：
@@ -1587,6 +1612,8 @@ MVP 阶段这里的 `cell bias enabled soft` 应理解为可选项。为了先�
 - same-class attention mass 上升。
 - generated target 的同类区域色调/纹理更接近 reference 同类区域。
 - 换成另一个同类 reference 时，covered class 的外观有可观察变化，但 target mask 结构不漂移。
+
+当前 step 4000 的输出层观测尚未达到这个标准：染色有扰动但没有朝 reference 方向迁移，`ref_normal` / `ref_swap` / `zero_ref` 的纹理基本一模一样。这说明梯度非零和 same-class attention 上升只是必要条件，不是充分条件；Stage 1 必须把 reference-swap / zero-ref 的可见差异作为硬门槛。若 step 8000 仍然无差异，优先怀疑训练目标与人眼定义的 stain/texture migration 不一致，或当前 reference path 的内容没有以可感知方式进入输出，而不是只继续调 attention bias 数值。
 
 ### 10.3 Stage 2: partial coverage + prior fallback
 
@@ -1766,7 +1793,85 @@ attention_loss_weight = 0.01 - 0.05
 
 这不是主损失，只是防止模型绕开 reference/prior token。
 
-### 11.5 Prior anti-collapse loss
+### 11.5 Same-WSI appearance perceptual loss
+
+建议新增一个专门为本任务训练的 frozen appearance encoder，用它替代或补充 UNI2-h perceptual loss。
+
+动机：
+
+- UNI2-h 更偏语义和病理表征，可能主动丢掉同一 WSI 内的染色、扫描和局部纹理细节。
+- VGG perceptual loss 来自自然图像，对 H&E 纹理、核染色、间质纤维、腺体边界等病理外观不够对症。
+- Cross V4 当前真正缺的是“生成图是否像 reference 所在 WSI 的外观域”，而不是更强的通用语义一致性。
+
+训练一个独立的“同 WSI 判别器/度量网络”：
+
+```text
+input:  patch_a, patch_b
+label: 1 if patch_a and patch_b come from the same WSI/case
+       0 if patch_a and patch_b come from different WSI/case
+```
+
+推荐先做 Siamese / two-tower encoder，而不是 GAN discriminator：
+
+```text
+f_a = E(patch_a)
+f_b = E(patch_b)
+logit_same = head([f_a, f_b, |f_a - f_b|, f_a * f_b])
+loss_same_wsi = BCEWithLogits(logit_same, same_wsi_label)
+```
+
+也可以加 supervised contrastive / triplet loss，让同 WSI patch embedding 靠近、不同 WSI embedding 拉开。关键是这个网络只在真实 patch 对上预训练，训好后完全 frozen，不和生成器对抗。
+
+为什么它应该学到需要的特征：
+
+- 同一 WSI 的标志往往正是染色风格、扫描亮度、组织纹理统计、核染色颗粒度、切片制备伪影等低中层外观信息。
+- 如果正负样本跨组织类别采样，网络不能只靠“都是肿瘤/都是间质”判断，必须编码 WSI appearance domain。
+- 取中间层 feature map 而不是最终 same/different logit，可以得到一个病理外观 perceptual space。
+
+用于 Cross V4 训练时：
+
+```text
+E_same_wsi frozen
+
+feat_gen = E_same_wsi.middle_layers(generated_rgb)
+feat_ref = E_same_wsi.middle_layers(reference_rgb)
+
+loss_same_wsi_perceptual =
+  region/class-aware distance(feat_gen[target class regions],
+                              feat_ref[reference same-class regions])
+```
+
+接入原则：
+
+- 优先按 tissue class 做 region-aware feature distance，只在 reference 覆盖同类时启用强约束。
+- missing class 区域不和 mismatch reference 强行匹配；最多用全局 stain/style token 或 prior consistency 做弱约束。
+- 可先用 decoded RGB 每 `N` step 计算，和当前 `regional_stain_style_loss` 共用 decode，避免每步额外显存开销。
+- 先用 L1/cosine feature distance；不要把 same/different head 的 adversarial loss 接进生成器。
+
+建议初始权重：
+
+```text
+same_wsi_perceptual_weight = 0.05 - 0.2
+same_wsi_perceptual_interval = 1 - 4
+layers = early/mid conv or ViT block features, not final classifier embedding only
+```
+
+这个 loss 和已有 regional stain/style loss 的关系：
+
+- `regional_stain_style_loss` 主要约束颜色统计，能看见低频 stain。
+- same-WSI perceptual loss 应该补上颜色统计看不见的核纹理、染色颗粒度、组织边缘质感和局部重复纹理。
+- 两者可以并存；如果显存紧，优先保留 regional stain/style 作为低频 gate，再逐步打开 same-WSI perceptual。
+
+必须防的捷径：
+
+- 不要让网络只靠文件名、坐标、背景空白、压缩伪影或 tissue class 分布判断 WSI。
+- 负样本要包含 same tissue class 的 different-WSI patch；正样本要包含不同空间位置和不同组织构成的 same-WSI patch。
+- 加 H&E color jitter、blur/jpeg/brightness augment 时要谨慎：增强太弱会让网络记扫描伪影，增强太强会抹掉我们想保留的染色风格。
+- 验证集必须按 WSI split，并报告 same-class cross-WSI hard negatives 的 AUC/accuracy。
+
+如果该 encoder 在真实 patch 对上能稳定区分 same/different WSI，并且 hard negative 不是靠组织类别取胜，那么它是比 UNI2-h 更贴合本任务的 perceptual backbone。
+
+### 11.6 Prior anti-collapse loss
 
 Prior tokens 有两个风险：
 
@@ -1786,7 +1891,7 @@ prior_usage_balance:
 
 第一版可以只监控，不一定上损失。
 
-### 11.6 Mask consistency loss
+### 11.7 Mask consistency loss
 
 可选，风险较高但很有价值。
 
@@ -1803,7 +1908,7 @@ prior_usage_balance:
 
 建议先作为 eval metric，后续再上轻量 loss。
 
-### 11.7 总损失建议
+### 11.8 总损失建议
 
 第一版总损失：
 
@@ -1813,6 +1918,7 @@ loss =
 + w_style * loss_regional_style
 + w_swap  * loss_ref_swap
 + w_attn  * loss_attention_correspondence
++ w_wsi   * loss_same_wsi_perceptual   # optional after encoder pretraining
 ```
 
 初始权重：
@@ -1821,6 +1927,7 @@ loss =
 w_style = 0.5
 w_swap  = 0.1
 w_attn  = 0.02
+w_wsi   = 0.05 - 0.2
 ```
 
 如果不方便拿 attention maps：
@@ -2736,10 +2843,13 @@ denoise: 1.0
 regional_style: 0.5
 ref_swap: 0.1
 attention_regularizer: 0.02
+same_wsi_perceptual: 0.05 - 0.2, optional after separate pretraining
 prior_diversity: 0.001, optional
 ```
 
 ref-swap 的 `0.1` 是起步值。如果诊断显示模型仍然不读 reference，可提高到 `0.2 - 0.3`，但要按 covered/missing region 分开看，避免 missing class 被错误惩罚。
+
+same-WSI perceptual loss 不是 MVP wiring loss。它应该在独立 same-WSI 判别器/度量网络通过 hard-negative 验证后再打开，用来替代 UNI2-h perceptual loss 或作为 texture/stain objective mismatch 的分支验证。
 
 ### 16.5 Sampling 比例
 
