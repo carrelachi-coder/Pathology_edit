@@ -22,6 +22,7 @@ from typing import Callable
 import accelerate
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -41,7 +42,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
-from dataset_config import NUM_FINE
+from dataset_config import NUM_COARSE, NUM_FINE
 from controlnet_train.data import CrossReconstructionDataset
 from controlnet_train.modules import (
     FixedOneHotTissueEncoder,
@@ -58,7 +59,34 @@ from controlnet_train.modules.cross_v3_conditioning import (
     build_cross_v3_control_condition,
     deterministic_latent_from_posterior,
 )
+from controlnet_train.modules.cross_v4_conditioning import (
+    CrossV4ControlSpec,
+    CrossV4CorrespondenceBiasConfig,
+    CrossV4PriorTokenBank,
+    CrossV4ReferenceContextEncoder,
+    CrossV4ReferenceEncoding,
+    CrossV4ReferenceSpec,
+    append_cross_v4_context,
+    apply_cross_v4_reference_encoding_mode,
+    build_cross_v4_control_condition,
+    build_cross_v4_correspondence_bias,
+    build_cross_v4_token_metadata,
+)
+from controlnet_train.training.cross_v4_attention import (
+    install_cross_v4_attention_processors,
+    parse_cross_v4_block_indices,
+)
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
+from controlnet_train.training.cross_v1_losses import (
+    RegionalStainStyleLossConfig,
+    ref_swap_sensitivity_loss,
+    regional_stain_style_loss,
+    unpack_flux_packed_latents,
+)
+from controlnet_train.training.same_wsi_appearance import (
+    load_same_wsi_encoder,
+    same_wsi_perceptual_loss,
+)
 
 if is_wandb_available():
     import wandb  # noqa: F401
@@ -66,6 +94,22 @@ if is_wandb_available():
 logger = get_logger(__name__)
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
+
+CROSS_V4_SMOKE_MIN_ATTRACTED_MASS = 0.95
+CROSS_V4_SMOKE_MAX_MISMATCH_MASS = 0.01
+CROSS_V4_ATTENTION_BUCKET_NAMES = (
+    "tissue_prior_target",
+    "tissue_prior_other",
+    "cell_prior_match",
+    "cell_prior_other",
+    "ref_same_coarse",
+    "ref_same_total",
+    "ref_same_fine",
+    "ref_mismatch",
+    "ref_all_local",
+    "text_global",
+    "route_anchor",
+)
 
 
 def collate_cross_v3_batch(examples: list[dict]) -> dict:
@@ -76,7 +120,7 @@ def collate_cross_v3_batch(examples: list[dict]) -> dict:
         else:
             flattened.append(item)
     examples = flattened
-    return {
+    batch = {
         "sample_ids": [item["sample_id"] for item in examples],
         "reference_sample_ids": [item["reference_sample_id"] for item in examples],
         "target_image": torch.stack([item["target_image"] for item in examples]),
@@ -88,6 +132,104 @@ def collate_cross_v3_batch(examples: list[dict]) -> dict:
         "prompts": [item["prompt"] for item in examples],
         "sample_modes": [item.get("sample_mode", "cross") for item in examples],
     }
+    if all("same_class_swap_reference_image" in item for item in examples):
+        batch.update(
+            {
+                "same_class_swap_reference_sample_ids": [
+                    item["same_class_swap_reference_sample_id"] for item in examples
+                ],
+                "same_class_swap_reference_image": torch.stack(
+                    [item["same_class_swap_reference_image"] for item in examples]
+                ),
+                "same_class_swap_reference_tissue_mask": torch.stack(
+                    [item["same_class_swap_reference_tissue_mask"] for item in examples]
+                ),
+                "same_class_swap_reference_nuclei_mask": torch.stack(
+                    [item["same_class_swap_reference_nuclei_mask"] for item in examples]
+                ),
+            }
+        )
+    return batch
+
+
+def _pair_difficulty_target_distribution(args: argparse.Namespace) -> dict[str, float]:
+    target = {
+        "full": float(getattr(args, "pair_difficulty_target_full", 0.70) or 0.0),
+        "partial": float(getattr(args, "pair_difficulty_target_partial", 0.25) or 0.0),
+        "low": float(getattr(args, "pair_difficulty_target_low", 0.05) or 0.0),
+    }
+    negative = {name: value for name, value in target.items() if value < 0.0}
+    if negative:
+        raise ValueError(f"pair difficulty sampler targets must be non-negative, got {negative}.")
+    total = sum(target.values())
+    if total <= 0.0:
+        raise ValueError("At least one pair difficulty sampler target must be positive.")
+    return {name: value / total for name, value in target.items()}
+
+
+def _build_pair_difficulty_sampler(
+    records: list[dict],
+    *,
+    target_distribution: dict[str, float],
+    seed: int,
+    num_samples: int | None = None,
+) -> tuple[torch.utils.data.WeightedRandomSampler, dict]:
+    if not records:
+        raise ValueError("Cannot build pair difficulty sampler for an empty dataset.")
+
+    buckets = ("full", "partial", "low")
+    counts = {bucket: 0 for bucket in buckets}
+    difficulties: list[str] = []
+    for record in records:
+        difficulty = str(record.get("pair_difficulty", "full") or "full").lower()
+        if difficulty not in counts:
+            difficulty = "full"
+        counts[difficulty] += 1
+        difficulties.append(difficulty)
+
+    missing_target = [
+        bucket
+        for bucket in buckets
+        if counts[bucket] == 0 and float(target_distribution.get(bucket, 0.0)) > 0.0
+    ]
+    if missing_target:
+        raise ValueError(
+            "Cannot target pair_difficulty buckets with no records: "
+            + ", ".join(missing_target)
+        )
+
+    total_records = float(len(records))
+    class_weights = {}
+    for bucket in buckets:
+        target_fraction = float(target_distribution.get(bucket, 0.0))
+        observed_fraction = counts[bucket] / total_records if counts[bucket] > 0 else 0.0
+        class_weights[bucket] = (
+            target_fraction / observed_fraction
+            if observed_fraction > 0.0 and target_fraction > 0.0
+            else 0.0
+        )
+    sample_weights = torch.as_tensor(
+        [class_weights[difficulty] for difficulty in difficulties],
+        dtype=torch.double,
+    )
+    if float(sample_weights.sum().item()) <= 0.0:
+        raise ValueError("Pair difficulty sampler produced all-zero sample weights.")
+
+    generator = torch.Generator()
+    generator.manual_seed(int(seed))
+    sampler = torch.utils.data.WeightedRandomSampler(
+        sample_weights,
+        num_samples=int(num_samples or len(records)),
+        replacement=True,
+        generator=generator,
+    )
+    stats = {
+        "counts": counts,
+        "target_distribution": {bucket: float(target_distribution.get(bucket, 0.0)) for bucket in buckets},
+        "class_weights": class_weights,
+        "num_samples": int(num_samples or len(records)),
+    }
+    return sampler, stats
 
 
 def _configure_controlnet_trainable_params(
@@ -132,6 +274,147 @@ def _set_last_n_modules_requires_grad(modules: nn.Module | None, count: int) -> 
         return
     for module in list(modules)[-count:]:
         module.requires_grad_(True)
+
+
+def _audit_optimizer_param_groups(
+    *,
+    optimizer,
+    controlnet: nn.Module,
+    modules: dict[str, nn.Module],
+    required_module_names: tuple[str, ...] = (),
+) -> None:
+    """Log optimizer membership and fail if required trainable modules are missing."""
+
+    name_by_param_id = _named_parameter_lookup(controlnet=controlnet, modules=modules)
+    optimizer_param_ids: set[int] = set()
+    duplicate_param_names: list[str] = []
+    frozen_in_optimizer: list[str] = []
+
+    for group_index, group in enumerate(optimizer.param_groups):
+        params = list(group.get("params", []))
+        group_trainable = [param for param in params if param.requires_grad]
+        group_frozen = [param for param in params if not param.requires_grad]
+        for param in params:
+            param_id = id(param)
+            if param_id in optimizer_param_ids:
+                duplicate_param_names.append(name_by_param_id.get(param_id, f"<unnamed:{param_id}>"))
+            optimizer_param_ids.add(param_id)
+        frozen_in_optimizer.extend(name_by_param_id.get(id(param), f"<unnamed:{id(param)}>") for param in group_frozen)
+        logger.info(
+            "[OPTIMIZER-AUDIT] group=%s lr=%s tensors=%s trainable_tensors=%s "
+            "trainable_params=%s frozen_tensors=%s frozen_params=%s sample_names=%s",
+            group_index,
+            group.get("lr"),
+            len(params),
+            len(group_trainable),
+            sum(param.numel() for param in group_trainable),
+            len(group_frozen),
+            sum(param.numel() for param in group_frozen),
+            ", ".join(name_by_param_id.get(id(param), f"<unnamed:{id(param)}>") for param in params[:12]),
+        )
+
+    if duplicate_param_names:
+        logger.warning(
+            "[OPTIMIZER-AUDIT] duplicate optimizer params detected: %s",
+            ", ".join(duplicate_param_names[:24]),
+        )
+    if frozen_in_optimizer:
+        raise ValueError(
+            "[OPTIMIZER-AUDIT] Frozen parameters were added to the optimizer: "
+            + ", ".join(frozen_in_optimizer[:24])
+        )
+
+    required = set(required_module_names)
+    _log_module_optimizer_audit(
+        module_name="controlnet",
+        module=controlnet,
+        optimizer_param_ids=optimizer_param_ids,
+        required=False,
+    )
+    for module_name, module in modules.items():
+        _log_module_optimizer_audit(
+            module_name=module_name,
+            module=module,
+            optimizer_param_ids=optimizer_param_ids,
+            required=module_name in required,
+        )
+
+
+def _named_parameter_lookup(*, controlnet: nn.Module, modules: dict[str, nn.Module]) -> dict[int, str]:
+    lookup: dict[int, str] = {}
+    for name, param in controlnet.named_parameters():
+        lookup[id(param)] = f"controlnet.{name}"
+    for module_name, module in modules.items():
+        for name, param in module.named_parameters():
+            lookup[id(param)] = f"{module_name}.{name}"
+    return lookup
+
+
+def _log_module_optimizer_audit(
+    *,
+    module_name: str,
+    module: nn.Module,
+    optimizer_param_ids: set[int],
+    required: bool,
+) -> None:
+    named_params = list(module.named_parameters())
+    trainable = [(name, param) for name, param in named_params if param.requires_grad]
+    frozen = [(name, param) for name, param in named_params if not param.requires_grad]
+    trainable_in_optimizer = [(name, param) for name, param in trainable if id(param) in optimizer_param_ids]
+    trainable_missing = [(name, param) for name, param in trainable if id(param) not in optimizer_param_ids]
+    logger.info(
+        "[OPTIMIZER-AUDIT] module=%s training=%s total_tensors=%s total_params=%s "
+        "trainable_tensors=%s trainable_params=%s in_optimizer_tensors=%s "
+        "in_optimizer_params=%s frozen_tensors=%s frozen_params=%s "
+        "missing_trainable_sample=%s frozen_sample=%s",
+        module_name,
+        bool(getattr(module, "training", False)),
+        len(named_params),
+        sum(param.numel() for _, param in named_params),
+        len(trainable),
+        sum(param.numel() for _, param in trainable),
+        len(trainable_in_optimizer),
+        sum(param.numel() for _, param in trainable_in_optimizer),
+        len(frozen),
+        sum(param.numel() for _, param in frozen),
+        ", ".join(name for name, _ in trainable_missing[:12]),
+        ", ".join(name for name, _ in frozen[:12]),
+    )
+
+    if not required:
+        return
+    failures: list[str] = []
+    if not bool(getattr(module, "training", False)):
+        failures.append("module is in eval mode")
+    if not trainable:
+        failures.append("module has no requires_grad=True parameters")
+    if trainable_missing:
+        failures.append(
+            "trainable parameters missing from optimizer: "
+            + ", ".join(name for name, _ in trainable_missing[:12])
+        )
+    if failures:
+        raise ValueError(
+            f"[OPTIMIZER-AUDIT] Required module {module_name!r} failed optimizer audit: "
+            + "; ".join(failures)
+        )
+
+
+def _cross_v4_required_optimizer_modules(modules: dict[str, nn.Module]) -> tuple[str, ...]:
+    required: list[str] = []
+    for module_name in (
+        "hte",
+        "tissue_downsampler",
+        "nuclei_encoder",
+        "reference_context_encoder",
+        "prior_token_bank",
+    ):
+        module = modules.get(module_name)
+        if module is None:
+            continue
+        if any(param.numel() > 0 for param in module.parameters()):
+            required.append(module_name)
+    return tuple(required)
 
 
 def _encode_images_to_latents(vae: AutoencoderKL, images: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
@@ -191,6 +474,7 @@ def _build_cross_v3_control_batch(
         z_ref=reference_image_latent,
         ref_tissue_feat=ref_tissue_feat,
         ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=batch["reference_tissue_mask"].to(device=device),
     )
     feature_stats = _cross_v3_feature_stats(
         tar_tissue_feat=tar_tissue_feat,
@@ -200,6 +484,72 @@ def _build_cross_v3_control_batch(
         reference_tokens=reference_tokens,
     )
     return target_image_latent, control_tensor, reference_tokens, feature_stats
+
+
+def _build_cross_v4_control_batch(
+    *,
+    batch: dict,
+    modules: dict[str, nn.Module],
+    vae: AutoencoderKL,
+    weight_dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor, CrossV4ReferenceEncoding, object, dict[str, float]]:
+    device = next(vae.parameters()).device
+    target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
+    reference_image_latent = _encode_images_to_deterministic_latents(
+        vae,
+        batch["reference_image"],
+        weight_dtype,
+    )
+
+    ref_tissue_feat = modules["tissue_downsampler"](
+        modules["hte"](batch["reference_tissue_mask"].to(device=device))
+    ).to(dtype=weight_dtype)
+    ref_nuclei_feat = modules["nuclei_encoder"](
+        batch["reference_nuclei_mask"].to(device=device)
+    ).to(dtype=weight_dtype)
+    tar_tissue_feat = _target_tissue_downsampler(modules)(
+        _target_hte(modules)(batch["target_tissue_mask"].to(device=device))
+    ).to(dtype=weight_dtype)
+    tar_nuclei_feat = modules["nuclei_encoder"](
+        batch["target_nuclei_mask"].to(device=device)
+    ).to(dtype=weight_dtype)
+
+    control_tensor = build_cross_v4_control_condition(
+        tar_tissue_feat=tar_tissue_feat,
+        tar_nuclei_feat=tar_nuclei_feat,
+    )
+    reference_encoding = modules["reference_context_encoder"](
+        z_ref=reference_image_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=batch["reference_tissue_mask"].to(device=device),
+        ref_nuclei_ids=batch["reference_nuclei_mask"].to(device=device),
+    )
+    target_metadata = build_cross_v4_token_metadata(
+        tissue_ids=batch["target_tissue_mask"].to(device=device),
+        nuclei_ids=batch["target_nuclei_mask"].to(device=device),
+        token_height=target_image_latent.shape[2] // 2,
+        token_width=target_image_latent.shape[3] // 2,
+    )
+    feature_stats = _cross_v3_feature_stats(
+        tar_tissue_feat=tar_tissue_feat,
+        tar_nuclei_feat=tar_nuclei_feat,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        reference_tokens=reference_encoding.local_tokens,
+    )
+    feature_stats.update(
+        {
+            "reference_route_anchor_tokens": float(reference_encoding.route_anchor_tokens.shape[1]),
+            "target_token_cell_density_mean": float(
+                target_metadata.cell_density.detach().float().mean().cpu().item()
+            ),
+            "reference_token_cell_density_mean": float(
+                reference_encoding.metadata.cell_density.detach().float().mean().cpu().item()
+            ),
+        }
+    )
+    return target_image_latent, control_tensor, reference_encoding, target_metadata, feature_stats
 
 
 def _target_hte(modules: dict[str, nn.Module]) -> nn.Module:
@@ -292,8 +642,670 @@ def _per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Ten
     return (prediction.float() - target.float()).pow(2).flatten(1).mean(dim=1)
 
 
+def _cross_v4_covered_token_mse(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    *,
+    target_metadata,
+    reference_metadata,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return per-sample denoise MSE on target tokens covered by reference classes."""
+
+    if prediction.shape != target.shape:
+        raise ValueError(
+            f"prediction and target shapes differ: {tuple(prediction.shape)} vs {tuple(target.shape)}"
+        )
+    if prediction.ndim != 3:
+        raise ValueError(f"expected packed prediction shape (B, N, C), got {tuple(prediction.shape)}")
+    target_class = target_metadata.tissue_coarse_id.to(device=prediction.device)
+    reference_class = reference_metadata.tissue_coarse_id.to(device=prediction.device)
+    if target_class.shape != prediction.shape[:2]:
+        raise ValueError(
+            "target metadata token shape does not match prediction tokens: "
+            f"{tuple(target_class.shape)} vs {tuple(prediction.shape[:2])}"
+        )
+    ref_presence = torch.zeros(
+        reference_class.shape[0],
+        NUM_COARSE,
+        device=prediction.device,
+        dtype=torch.bool,
+    )
+    ref_presence.scatter_(1, reference_class.clamp(0, NUM_COARSE - 1), True)
+    covered = ref_presence.gather(1, target_class.clamp(0, NUM_COARSE - 1)).bool()
+    per_sample, active_mask = _packed_token_masked_mse(prediction, target, covered)
+    return per_sample, active_mask, covered
+
+
+def _packed_token_masked_mse(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    token_mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if prediction.shape != target.shape:
+        raise ValueError(
+            f"prediction and target shapes differ: {tuple(prediction.shape)} vs {tuple(target.shape)}"
+        )
+    if prediction.ndim != 3:
+        raise ValueError(f"expected packed prediction shape (B, N, C), got {tuple(prediction.shape)}")
+    token_mask = token_mask.to(device=prediction.device, dtype=torch.bool)
+    if token_mask.shape != prediction.shape[:2]:
+        raise ValueError(
+            f"token_mask shape {tuple(token_mask.shape)} does not match prediction tokens {tuple(prediction.shape[:2])}"
+        )
+    token_loss = (prediction.float() - target.float()).pow(2).mean(dim=-1)
+    per_sample = []
+    for sample_index in range(token_loss.shape[0]):
+        sample_mask = token_mask[sample_index]
+        if bool(sample_mask.any().item()):
+            per_sample.append(token_loss[sample_index][sample_mask].mean())
+        else:
+            per_sample.append(token_loss[sample_index].mean().detach() * 0.0)
+    active_mask = token_mask.any(dim=1)
+    return torch.stack(per_sample), active_mask
+
+
 def _mean_abs_diff(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return (a.float() - b.float()).abs().mean()
+
+
+def _decode_packed_model_prediction(
+    *,
+    vae: AutoencoderKL,
+    packed_noisy_latents: torch.Tensor,
+    noise_pred: torch.Tensor,
+    sigmas: torch.Tensor,
+    latent_channels: int,
+    latent_height: int,
+    latent_width: int,
+    weight_dtype: torch.dtype,
+) -> torch.Tensor:
+    pred_original = packed_noisy_latents - sigmas * noise_pred
+    pred_latents = unpack_flux_packed_latents(
+        pred_original,
+        channels=latent_channels,
+        height=latent_height,
+        width=latent_width,
+    )
+    pred_latents = (pred_latents / vae.config.scaling_factor) + vae.config.shift_factor
+    decoded = vae.decode(
+        pred_latents.to(device=next(vae.parameters()).device, dtype=weight_dtype),
+        return_dict=False,
+    )[0]
+    return ((decoded.float() / 2.0) + 0.5).clamp(0.0, 1.0)
+
+
+def _cast_control_samples(
+    samples: list[torch.Tensor] | tuple[torch.Tensor, ...] | None,
+    dtype: torch.dtype,
+) -> list[torch.Tensor] | None:
+    if samples is None:
+        return None
+    return [sample.to(dtype=dtype) for sample in samples]
+
+
+def _zero_control_samples_like(samples: list[torch.Tensor] | None) -> list[torch.Tensor] | None:
+    if samples is None:
+        return None
+    return [torch.zeros_like(sample) for sample in samples]
+
+
+def _parse_ref_swap_variants(value: str | None) -> list[str]:
+    variants: list[str] = []
+    for raw_part in str(value or "").split(","):
+        variant = raw_part.strip().lower().replace("-", "_")
+        if not variant:
+            continue
+        if variant in {"shuffle", "batch_shuffle"}:
+            variant = "random"
+        if variant in {"sameclass", "same_class_swap", "same_class_ref", "same_class_reference"}:
+            variant = "same_class"
+        if variant not in {"zero", "random", "same_class"}:
+            raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class.")
+        if variant not in variants:
+            variants.append(variant)
+    return variants
+
+
+def _parse_int_list(value: str | None, *, name: str) -> tuple[int, ...]:
+    parsed: list[int] = []
+    for raw_part in str(value or "").split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        try:
+            parsed.append(int(part))
+        except ValueError as exc:
+            raise ValueError(f"{name} must be a comma-separated list of integers, got {value!r}.") from exc
+    return tuple(parsed)
+
+
+def _build_swapped_reference_tokens(
+    reference_tokens: torch.Tensor,
+    variant: str,
+) -> torch.Tensor | None:
+    variant = str(variant).lower()
+    if variant == "zero":
+        return torch.zeros_like(reference_tokens)
+    if variant == "random":
+        bsz = int(reference_tokens.shape[0])
+        if bsz <= 1:
+            return None
+        order = torch.arange(bsz, device=reference_tokens.device).roll(1)
+        return reference_tokens.index_select(0, order)
+    raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class.")
+
+
+def _build_swapped_cross_v4_reference_encoding(
+    reference_encoding: CrossV4ReferenceEncoding,
+    variant: str,
+    *,
+    same_class_swap_encoding: CrossV4ReferenceEncoding | None = None,
+) -> CrossV4ReferenceEncoding | None:
+    variant = str(variant).lower().replace("-", "_")
+    if variant == "zero":
+        return apply_cross_v4_reference_encoding_mode(reference_encoding, "zero-ref")
+    if variant == "same_class":
+        return same_class_swap_encoding
+    if variant != "random":
+        raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class.")
+    if same_class_swap_encoding is not None:
+        return same_class_swap_encoding
+    bsz = int(reference_encoding.local_tokens.shape[0])
+    if bsz <= 1:
+        return None
+    order = torch.arange(bsz, device=reference_encoding.local_tokens.device).roll(1)
+
+    def select(value: torch.Tensor) -> torch.Tensor:
+        return value.index_select(0, order) if value.shape[0] == bsz else value
+
+    metadata = reference_encoding.metadata
+    swapped_metadata = type(metadata)(
+        tissue_fine_id=select(metadata.tissue_fine_id),
+        tissue_coarse_id=select(metadata.tissue_coarse_id),
+        tissue_confidence=select(metadata.tissue_confidence),
+        cell_hist=select(metadata.cell_hist),
+        cell_density=select(metadata.cell_density),
+    )
+    return CrossV4ReferenceEncoding(
+        local_tokens=select(reference_encoding.local_tokens),
+        route_anchor_tokens=select(reference_encoding.route_anchor_tokens),
+        metadata=swapped_metadata,
+    )
+
+
+def _build_same_class_swap_cross_v4_reference_encoding(
+    *,
+    batch: dict,
+    modules: dict[str, nn.Module],
+    vae: AutoencoderKL,
+    weight_dtype: torch.dtype,
+) -> CrossV4ReferenceEncoding | None:
+    if "same_class_swap_reference_image" not in batch:
+        return None
+    device = next(vae.parameters()).device
+    reference_image_latent = _encode_images_to_deterministic_latents(
+        vae,
+        batch["same_class_swap_reference_image"],
+        weight_dtype,
+    )
+    ref_tissue_feat = modules["tissue_downsampler"](
+        modules["hte"](batch["same_class_swap_reference_tissue_mask"].to(device=device))
+    ).to(dtype=weight_dtype)
+    ref_nuclei_feat = modules["nuclei_encoder"](
+        batch["same_class_swap_reference_nuclei_mask"].to(device=device)
+    ).to(dtype=weight_dtype)
+    return modules["reference_context_encoder"](
+        z_ref=reference_image_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=batch["same_class_swap_reference_tissue_mask"].to(device=device),
+        ref_nuclei_ids=batch["same_class_swap_reference_nuclei_mask"].to(device=device),
+    )
+
+
+def _build_cross_v4_context_and_kwargs(
+    *,
+    prompt_embeds: torch.Tensor,
+    text_ids: torch.Tensor,
+    reference_encoding: CrossV4ReferenceEncoding,
+    target_metadata,
+    prior_token_bank: nn.Module,
+    args: argparse.Namespace,
+    global_step: int,
+    dtype: torch.dtype,
+    diagnose_attention: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, dict, object, dict | None]:
+    prior_tokens = prior_token_bank(reference_encoding.local_tokens)
+    context = append_cross_v4_context(
+        prompt_embeds=prompt_embeds,
+        text_ids=text_ids,
+        reference_encoding=reference_encoding,
+        prior_tokens=prior_tokens,
+    )
+    bias_config = CrossV4CorrespondenceBiasConfig(
+        same_fine=float(getattr(args, "cross_v4_same_fine_bias", 3.0)),
+        same_coarse=float(getattr(args, "cross_v4_same_coarse_bias", 2.0)),
+        mismatch=float(getattr(args, "cross_v4_mismatch_bias", -2.0)),
+        cell_similarity=float(getattr(args, "cross_v4_cell_similarity_bias", 1.0)),
+        density_gap=float(getattr(args, "cross_v4_density_gap_bias", 0.5)),
+        prior_when_ref_present=float(getattr(args, "cross_v4_prior_present_bias", 0.5)),
+        prior_when_ref_missing=float(getattr(args, "cross_v4_prior_missing_bias", 3.0)),
+        prior_wrong_class=float(getattr(args, "cross_v4_prior_wrong_class_bias", -2.0)),
+        cell_prior=float(getattr(args, "cross_v4_cell_prior_bias", 1.0)),
+        scale=1.0,
+    )
+    correspondence_bias = build_cross_v4_correspondence_bias(
+        target_metadata=target_metadata,
+        context=context,
+        config=bias_config,
+        dtype=dtype,
+    )
+    joint_attention_kwargs = {
+        "cross_v4_bias": correspondence_bias,
+        "cross_v4_bias_scale": _cross_v4_bias_scale(args, global_step),
+    }
+    diagnostics = None
+    if diagnose_attention:
+        diagnostics = _build_cross_v4_attention_diagnostics(
+            context=context,
+            target_metadata=target_metadata,
+            correspondence_bias=correspondence_bias,
+        )
+        joint_attention_kwargs["cross_v4_diagnostics"] = diagnostics
+    return context.encoder_hidden_states, context.txt_ids, joint_attention_kwargs, context, diagnostics
+
+
+def _cross_v4_bias_scale(args: argparse.Namespace, global_step: int) -> float:
+    base = max(0.0, float(getattr(args, "cross_v4_bias_scale", 1.0) or 0.0))
+    warmup = max(0, int(getattr(args, "cross_v4_bias_warmup_steps", 1000) or 0))
+    if base == 0.0 or warmup == 0:
+        return base
+    return base * min(1.0, float(max(0, global_step)) / float(warmup))
+
+
+def _parse_step_set(value: str | None) -> set[int]:
+    steps: set[int] = set()
+    for raw_part in str(value or "").split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        step = int(part)
+        if step > 0:
+            steps.add(step)
+    return steps
+
+
+def _should_run_cross_v4_diagnostics(args: argparse.Namespace, step: int) -> bool:
+    if step <= 0:
+        return False
+    diagnose_steps = _parse_step_set(getattr(args, "cross_v4_diagnose_steps", "1,10,100,500,1000,1500,2000"))
+    if step in diagnose_steps:
+        return True
+    interval = max(0, int(getattr(args, "cross_v4_diagnose_interval", 0) or 0))
+    return interval > 0 and step % interval == 0
+
+
+def _build_cross_v4_attention_diagnostics(
+    *,
+    context,
+    target_metadata,
+    correspondence_bias: torch.Tensor,
+) -> dict:
+    bucket_masks = _cross_v4_attention_bucket_masks(context=context, target_metadata=target_metadata)
+    group_masks = _cross_v4_attention_group_masks(
+        target_metadata=target_metadata,
+        reference_metadata=context.reference_metadata,
+    )
+    return {
+        "bucket_masks": bucket_masks,
+        "group_masks": group_masks,
+        "records": [],
+        "static": _cross_v4_static_diagnostic_stats(
+            context=context,
+            target_metadata=target_metadata,
+            group_masks=group_masks,
+        ),
+        "bias_stats": _summarize_cross_v4_bucket_tensor(
+            correspondence_bias.detach().float(),
+            bucket_masks=bucket_masks,
+            group_masks=group_masks,
+            prefix="cross_v4_bias",
+        ),
+    }
+
+
+def _cross_v4_attention_bucket_masks(*, context, target_metadata) -> dict[str, torch.Tensor]:
+    device = target_metadata.tissue_coarse_id.device
+    batch_size, image_tokens = target_metadata.tissue_coarse_id.shape
+    context_tokens = int(context.segments.total_tokens)
+
+    def empty() -> torch.Tensor:
+        return torch.zeros(batch_size, image_tokens, context_tokens, device=device, dtype=torch.bool)
+
+    buckets: dict[str, torch.Tensor] = {
+        "ref_same_fine": empty(),
+        "ref_same_coarse": empty(),
+        "ref_same_total": empty(),
+        "ref_mismatch": empty(),
+        "ref_all_local": empty(),
+        "tissue_prior_target": empty(),
+        "tissue_prior_other": empty(),
+        "cell_prior_match": empty(),
+        "cell_prior_other": empty(),
+        "text_global": empty(),
+        "route_anchor": empty(),
+    }
+
+    text_start, text_end = context.segments.text
+    global_start, global_end = context.segments.global_style
+    if text_end > text_start:
+        buckets["text_global"][:, :, text_start:text_end] = True
+    if global_end > global_start:
+        buckets["text_global"][:, :, global_start:global_end] = True
+
+    route_start, route_end = context.segments.route_anchor
+    if route_end > route_start:
+        buckets["route_anchor"][:, :, route_start:route_end] = True
+
+    ref_start, ref_end = context.segments.reference_local
+    if ref_end > ref_start:
+        reference = context.reference_metadata
+        same_fine = target_metadata.tissue_fine_id[:, :, None] == reference.tissue_fine_id[:, None, :]
+        same_coarse = target_metadata.tissue_coarse_id[:, :, None] == reference.tissue_coarse_id[:, None, :]
+        buckets["ref_same_fine"][:, :, ref_start:ref_end] = same_fine
+        buckets["ref_same_coarse"][:, :, ref_start:ref_end] = same_coarse & ~same_fine
+        buckets["ref_same_total"][:, :, ref_start:ref_end] = same_coarse
+        buckets["ref_mismatch"][:, :, ref_start:ref_end] = ~same_coarse
+        buckets["ref_all_local"][:, :, ref_start:ref_end] = True
+
+    prior_start, prior_end = context.segments.tissue_prior
+    if prior_end > prior_start:
+        prior_ids = context.tissue_prior_class_ids.to(device=device)
+        target_is_prior = target_metadata.tissue_coarse_id[:, :, None] == prior_ids.view(1, 1, -1)
+        buckets["tissue_prior_target"][:, :, prior_start:prior_end] = target_is_prior
+        buckets["tissue_prior_other"][:, :, prior_start:prior_end] = ~target_is_prior
+
+    cell_start, cell_end = context.segments.cell_prior
+    if cell_end > cell_start:
+        cell_prior_ids = context.cell_prior_class_ids.to(device=device)
+        dominant_cell = target_metadata.cell_hist.to(device=device).argmax(dim=-1)
+        cell_match = dominant_cell[:, :, None] == cell_prior_ids.view(1, 1, -1)
+        buckets["cell_prior_match"][:, :, cell_start:cell_end] = cell_match
+        buckets["cell_prior_other"][:, :, cell_start:cell_end] = ~cell_match
+    return buckets
+
+
+def _cross_v4_attention_group_masks(*, target_metadata, reference_metadata) -> dict[str, torch.Tensor]:
+    device = target_metadata.tissue_coarse_id.device
+    ref_presence = _cross_v4_class_presence(reference_metadata.tissue_coarse_id.to(device=device), NUM_COARSE)
+    target_class = target_metadata.tissue_coarse_id.to(device=device)
+    covered = ref_presence.gather(1, target_class).bool()
+    groups: dict[str, torch.Tensor] = {
+        "all": torch.ones_like(covered, dtype=torch.bool),
+        "covered": covered,
+        "missing": ~covered,
+    }
+    for class_id in range(NUM_COARSE):
+        class_mask = target_class == class_id
+        groups[f"class_{class_id}"] = class_mask
+        groups[f"covered_class_{class_id}"] = covered & class_mask
+        groups[f"missing_class_{class_id}"] = (~covered) & class_mask
+    return groups
+
+
+def _cross_v4_class_presence(class_ids: torch.Tensor, class_count: int) -> torch.Tensor:
+    return F.one_hot(class_ids.long(), num_classes=class_count).bool().any(dim=1)
+
+
+def _cross_v4_static_diagnostic_stats(*, context, target_metadata, group_masks: dict[str, torch.Tensor]) -> dict[str, float]:
+    target_class = target_metadata.tissue_coarse_id
+    reference_class = context.reference_metadata.tissue_coarse_id.to(device=target_class.device)
+    target_presence = _cross_v4_class_presence(target_class, NUM_COARSE)
+    reference_presence = _cross_v4_class_presence(reference_class, NUM_COARSE)
+    stats = {
+        "cross_v4_context_tokens": float(context.segments.total_tokens),
+        "cross_v4_text_tokens": float(context.segments.text[1] - context.segments.text[0]),
+        "cross_v4_global_style_tokens": float(context.segments.global_style[1] - context.segments.global_style[0]),
+        "cross_v4_tissue_prior_tokens": float(context.segments.tissue_prior[1] - context.segments.tissue_prior[0]),
+        "cross_v4_cell_prior_tokens": float(context.segments.cell_prior[1] - context.segments.cell_prior[0]),
+        "cross_v4_route_anchor_tokens": float(context.segments.route_anchor[1] - context.segments.route_anchor[0]),
+        "cross_v4_reference_local_tokens": float(context.segments.reference_local[1] - context.segments.reference_local[0]),
+        "cross_v4_target_tokens": float(target_class.numel()),
+        "cross_v4_target_present_coarse_classes": float(target_presence.sum(dim=1).float().mean().item()),
+        "cross_v4_reference_present_coarse_classes": float(reference_presence.sum(dim=1).float().mean().item()),
+    }
+    for group_name in ("covered", "missing"):
+        group = group_masks[group_name]
+        stats[f"cross_v4_{group_name}_target_token_fraction"] = float(group.float().mean().item())
+        stats[f"cross_v4_{group_name}_target_tokens"] = float(group.sum().item())
+    return stats
+
+
+def _summarize_cross_v4_bucket_tensor(
+    values: torch.Tensor,
+    *,
+    bucket_masks: dict[str, torch.Tensor],
+    group_masks: dict[str, torch.Tensor],
+    prefix: str,
+) -> dict[str, float]:
+    summary: dict[str, float] = {}
+    values = values.detach().float()
+    for bucket_name, raw_bucket_mask in bucket_masks.items():
+        bucket_mask = raw_bucket_mask.to(device=values.device, dtype=torch.bool)
+        if bucket_mask.shape != values.shape:
+            continue
+        for group_name, raw_group_mask in group_masks.items():
+            if group_name.startswith("class_") or group_name.startswith("covered_class_") or group_name.startswith("missing_class_"):
+                continue
+            group_mask = raw_group_mask.to(device=values.device, dtype=torch.bool)
+            expanded_group = group_mask[:, :, None].expand_as(bucket_mask)
+            combined = bucket_mask & expanded_group
+            if not bool(combined.any().item()):
+                continue
+            summary[f"{prefix}_{group_name}_{bucket_name}_mean"] = float(values[combined].mean().item())
+    return summary
+
+
+def _summarize_cross_v4_attention_records(diagnostics: dict | None) -> dict[str, float]:
+    if not diagnostics:
+        return {}
+    records = list(diagnostics.get("records") or [])
+    if not records:
+        return {}
+    keys = sorted({key for record in records for key in record})
+    summary = {"cross_v4_attention_diagnostic_layers": float(len(records))}
+    for key in keys:
+        vals = [float(record[key]) for record in records if key in record]
+        if vals:
+            summary[key] = float(sum(vals) / len(vals))
+    return summary
+
+
+def _cross_v4_diagnostic_verdict(summary: dict[str, float]) -> tuple[str, list[str]]:
+    issues: list[str] = []
+    if "cross_samples" in summary and float(summary.get("cross_samples", 0.0)) <= 0.0:
+        issues.append("diagnostic batch has no cross samples")
+    if float(summary.get("self_reconstruction_samples", 0.0)) > 0.0:
+        issues.append("diagnostic batch contains self-reconstruction samples")
+
+    covered_fraction = float(summary.get("cross_v4_covered_target_token_fraction", 0.0))
+    missing_fraction = float(summary.get("cross_v4_missing_target_token_fraction", 0.0))
+
+    covered_same = float(summary.get("cross_v4_attention_covered_ref_same_total", 0.0))
+    covered_all_ref = float(summary.get("cross_v4_attention_covered_ref_all_local", 0.0))
+    covered_mismatch = float(summary.get("cross_v4_attention_covered_ref_mismatch", 0.0))
+    covered_prior = float(summary.get("cross_v4_attention_covered_tissue_prior_target", 0.0))
+    if covered_fraction > 0.0 and covered_all_ref > 0.0:
+        same_ratio = covered_same / max(covered_all_ref, 1e-8)
+        if same_ratio <= 0.6:
+            issues.append(f"covered ref_same/ref_all={same_ratio:.3f} <= 0.6")
+        if covered_same <= covered_prior:
+            issues.append("covered same-class reference mass is not above matching tissue-prior mass")
+        if covered_mismatch >= covered_same / 3.0:
+            issues.append("covered mismatch reference mass is too high")
+
+    missing_prior = float(summary.get("cross_v4_attention_missing_tissue_prior_target", 0.0))
+    missing_mismatch = float(summary.get("cross_v4_attention_missing_ref_mismatch", 0.0))
+    missing_prior_other = float(summary.get("cross_v4_attention_missing_tissue_prior_other", 0.0))
+    if missing_fraction > 0.0:
+        if missing_prior <= missing_mismatch:
+            issues.append("missing-class matching tissue-prior mass is not above mismatch reference mass")
+        if missing_prior_other > max(0.05, missing_prior * 0.5):
+            issues.append("missing-class wrong-prior mass is high")
+
+    if "cross_v4_attention_diagnostic_layers" not in summary:
+        issues.append("no injected attention diagnostics were recorded")
+    if issues:
+        return "watch", issues
+    return "pass", []
+
+
+def _cross_v4_extreme_bias_smoke_verdict(
+    summary: dict[str, float],
+    *,
+    min_attracted_mass: float = CROSS_V4_SMOKE_MIN_ATTRACTED_MASS,
+    max_mismatch_mass: float = CROSS_V4_SMOKE_MAX_MISMATCH_MASS,
+) -> tuple[str, list[str], dict[str, float]]:
+    issues: list[str] = []
+    metrics = {
+        "cross_v4_smoke_min_attracted_mass": float(min_attracted_mass),
+        "cross_v4_smoke_max_mismatch_mass": float(max_mismatch_mass),
+    }
+    if "cross_samples" in summary and float(summary.get("cross_samples", 0.0)) <= 0.0:
+        issues.append("smoke diagnostic batch has no cross samples")
+    if float(summary.get("self_reconstruction_samples", 0.0)) > 0.0:
+        issues.append("smoke diagnostic batch contains self-reconstruction samples")
+    if abs(float(summary.get("cross_v4_bias_scale_effective", 0.0)) - 1.0) > 1e-6:
+        issues.append(
+            "smoke effective bias scale is not 1.0 "
+            f"({float(summary.get('cross_v4_bias_scale_effective', 0.0)):.6g})"
+        )
+    if "cross_v4_attention_diagnostic_layers" not in summary:
+        issues.append("smoke recorded no injected attention diagnostics")
+
+    covered_fraction = float(summary.get("cross_v4_covered_target_token_fraction", 0.0))
+    missing_fraction = float(summary.get("cross_v4_missing_target_token_fraction", 0.0))
+    metrics["cross_v4_smoke_has_covered_tokens"] = 1.0 if covered_fraction > 0.0 else 0.0
+    metrics["cross_v4_smoke_has_missing_tokens"] = 1.0 if missing_fraction > 0.0 else 0.0
+    if covered_fraction <= 0.0:
+        issues.append("smoke diagnostic batch has no covered target tokens")
+    if missing_fraction <= 0.0:
+        issues.append("smoke diagnostic batch has no missing target tokens")
+
+    checks = (
+        (
+            "covered_ref_same",
+            "cross_v4_attention_covered_ref_same_total",
+            min_attracted_mass,
+            "min",
+            "covered tokens did not put ~all mass on same-class reference tokens",
+        ),
+        (
+            "missing_prior",
+            "cross_v4_attention_missing_tissue_prior_target",
+            min_attracted_mass,
+            "min",
+            "missing-class tokens did not put ~all mass on matching tissue prior",
+        ),
+        (
+            "covered_mismatch",
+            "cross_v4_attention_covered_ref_mismatch",
+            max_mismatch_mass,
+            "max",
+            "covered tokens still attend to mismatched reference tokens",
+        ),
+        (
+            "missing_mismatch",
+            "cross_v4_attention_missing_ref_mismatch",
+            max_mismatch_mass,
+            "max",
+            "missing-class tokens still attend to mismatched reference tokens",
+        ),
+    )
+    for metric_name, source_key, threshold, direction, message in checks:
+        if source_key not in summary:
+            metrics[f"cross_v4_smoke_{metric_name}_pass"] = 0.0
+            issues.append(f"smoke missing metric {source_key}")
+            continue
+        value = float(summary[source_key])
+        if direction == "min":
+            passed = value >= threshold
+            comparator = ">="
+        else:
+            passed = value <= threshold
+            comparator = "<="
+        metrics[f"cross_v4_smoke_{metric_name}_pass"] = 1.0 if passed else 0.0
+        if not passed:
+            issues.append(f"{message}: {source_key}={value:.6g} expected {comparator}{threshold:.6g}")
+
+    if issues:
+        return "fail", issues, metrics
+    return "pass", [], metrics
+
+
+def _cross_v4_attention_mass_by_source(summary: dict[str, float]) -> dict[str, dict[str, float]]:
+    mass: dict[str, dict[str, float]] = {}
+    for key, value in summary.items():
+        if not key.startswith("cross_v4_attention_"):
+            continue
+        if key == "cross_v4_attention_diagnostic_layers":
+            continue
+        body = key.removeprefix("cross_v4_attention_")
+        for bucket_name in CROSS_V4_ATTENTION_BUCKET_NAMES:
+            suffix = f"_{bucket_name}"
+            if body.endswith(suffix):
+                group_name = body[: -len(suffix)]
+                if group_name:
+                    mass.setdefault(group_name, {})[bucket_name] = float(value)
+                break
+    return mass
+
+
+def _module_grad_norm(module: nn.Module | None) -> float:
+    if module is None:
+        return 0.0
+    total = 0.0
+    for param in module.parameters():
+        if param.grad is None:
+            continue
+        grad = param.grad.detach().float()
+        total += float(grad.pow(2).sum().item())
+    return math.sqrt(total)
+
+
+def _cuda_memory_stats(device: torch.device | str) -> dict[str, float]:
+    if not torch.cuda.is_available():
+        return {}
+    torch_device = torch.device(device)
+    return {
+        "cuda_memory_allocated_gb": float(torch.cuda.memory_allocated(torch_device) / (1024**3)),
+        "cuda_memory_reserved_gb": float(torch.cuda.memory_reserved(torch_device) / (1024**3)),
+        "cuda_peak_memory_allocated_gb": float(torch.cuda.max_memory_allocated(torch_device) / (1024**3)),
+        "cuda_peak_memory_reserved_gb": float(torch.cuda.max_memory_reserved(torch_device) / (1024**3)),
+    }
+
+
+def _enforce_cuda_memory_limit(
+    *,
+    device: torch.device | str,
+    max_memory_gb: float,
+    step: int,
+) -> dict[str, float]:
+    stats = _cuda_memory_stats(device)
+    if max_memory_gb > 0.0 and stats:
+        peak_reserved = float(stats["cuda_peak_memory_reserved_gb"])
+        if peak_reserved > float(max_memory_gb):
+            raise RuntimeError(
+                f"CUDA peak reserved memory {peak_reserved:.2f} GiB exceeded "
+                f"--max-cuda-memory-gb={float(max_memory_gb):.2f} at step {step}."
+            )
+    return stats
+
+
+def _append_jsonl(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
 def _apply_training_prompt_policy(records: list[dict], args: argparse.Namespace) -> None:
@@ -405,9 +1417,12 @@ def _save_condition_modules(
     *,
     control_spec: CrossV3ControlSpec,
     reference_spec: CrossV3ReferenceSpec,
+    cross_version: str = "v3",
+    args: argparse.Namespace | None = None,
 ) -> None:
+    cross_version = str(cross_version or "v3").lower()
     state = {
-        "cross_version": "v3",
+        "cross_version": cross_version,
         "cross_v3_control_spec": {
             "tissue_channels": int(control_spec.tissue_channels),
             "nuclei_channels": int(control_spec.nuclei_channels),
@@ -438,13 +1453,17 @@ def _save_condition_modules(
             "packed_channels": int(reference_spec.packed_channels),
             "token_dim": int(reference_spec.token_dim),
             "output_init_std": float(reference_spec.output_init_std),
+            "route_anchor_mode": str(reference_spec.normalized_route_anchor_mode),
+            "route_class_count": int(reference_spec.route_class_count),
+            "route_embedding_init_std": float(reference_spec.route_embedding_init_std),
             "condition_order": [
                 "z_ref",
                 "ref_tissue_feat",
                 "ref_nuclei_feat",
+                "ref_tissue_ids_for_semantic_route",
             ],
             "injection_path": "flux_joint_cross_attention_context",
-            "txt_ids": "zeros_no_reference_coordinates",
+            "txt_ids": "zeros_no_reference_coordinates_route_is_learned_token_payload",
         },
         "prompt_policy": {
             "kind": "fixed",
@@ -452,6 +1471,61 @@ def _save_condition_modules(
             "proportion_empty_prompts": 0.0,
         },
     }
+    if cross_version == "v4":
+        state["cross_v4_control_spec"] = dict(state["cross_v3_control_spec"])
+        state["cross_v4_reference_spec"] = {
+            "reference_latent_channels": int(reference_spec.reference_latent_channels),
+            "tissue_channels": int(reference_spec.tissue_channels),
+            "nuclei_channels": int(reference_spec.nuclei_channels),
+            "raw_channels": int(reference_spec.raw_channels),
+            "packed_channels": int(reference_spec.packed_channels),
+            "token_dim": int(reference_spec.token_dim),
+            "output_init_std": float(reference_spec.output_init_std),
+            "route_anchor_mode": str(reference_spec.normalized_route_anchor_mode),
+            "route_class_count": int(reference_spec.route_class_count),
+            "route_embedding_init_std": float(reference_spec.route_embedding_init_std),
+            "tissue_prior_tokens_per_class": int(
+                getattr(reference_spec, "tissue_prior_tokens_per_class", 4)
+            ),
+            "cell_prior_tokens_per_class": int(getattr(reference_spec, "cell_prior_tokens_per_class", 0)),
+            "global_style_tokens": int(getattr(reference_spec, "global_style_tokens", 0)),
+            "prior_init_std": float(getattr(reference_spec, "prior_init_std", 0.02)),
+            "condition_order": [
+                "z_ref",
+                "ref_tissue_feat",
+                "ref_nuclei_feat",
+                "ref_tissue_ids_for_token_metadata",
+                "ref_nuclei_ids_for_token_metadata",
+                "target_tissue_ids_for_token_metadata",
+                "target_nuclei_ids_for_token_metadata",
+            ],
+            "injection_path": "flux_joint_cross_attention_context_with_cross_v4_bias",
+            "context_order": [
+                "text_tokens",
+                "global_style_tokens",
+                "tissue_prior_tokens",
+                "cell_prior_tokens",
+                "route_anchor_tokens",
+                "reference_local_tokens",
+            ],
+        }
+        if args is not None:
+            state["cross_v4_attention_bias"] = {
+                "biased_double_block_indices": str(
+                    getattr(args, "cross_v4_biased_double_blocks", "last")
+                ),
+                "bias_scale": float(getattr(args, "cross_v4_bias_scale", 1.0)),
+                "bias_warmup_steps": int(getattr(args, "cross_v4_bias_warmup_steps", 1000)),
+                "same_fine": float(getattr(args, "cross_v4_same_fine_bias", 3.0)),
+                "same_coarse": float(getattr(args, "cross_v4_same_coarse_bias", 2.0)),
+                "mismatch": float(getattr(args, "cross_v4_mismatch_bias", -2.0)),
+                "cell_similarity": float(getattr(args, "cross_v4_cell_similarity_bias", 1.0)),
+                "density_gap": float(getattr(args, "cross_v4_density_gap_bias", 0.5)),
+                "prior_when_ref_present": float(getattr(args, "cross_v4_prior_present_bias", 0.5)),
+                "prior_when_ref_missing": float(getattr(args, "cross_v4_prior_missing_bias", 3.0)),
+                "prior_wrong_class": float(getattr(args, "cross_v4_prior_wrong_class_bias", -2.0)),
+                "cell_prior": float(getattr(args, "cross_v4_cell_prior_bias", 1.0)),
+            }
     for name, module in modules.items():
         unwrapped = unwrap_model(module)
         state[name] = {key: value.detach().cpu().to(save_dtype) for key, value in unwrapped.state_dict().items()}
@@ -467,6 +1541,7 @@ def _save_cross_v3_artifacts(
     unwrap_model: Callable[[nn.Module], nn.Module],
     control_spec: CrossV3ControlSpec,
     reference_spec: CrossV3ReferenceSpec,
+    cross_version: str = "v3",
 ) -> None:
     save_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(args.save_weight_dtype, torch.float32)
     unwrapped_controlnet = unwrap_model(flux_controlnet)
@@ -481,6 +1556,8 @@ def _save_cross_v3_artifacts(
         save_dtype,
         control_spec=control_spec,
         reference_spec=reference_spec,
+        cross_version=cross_version,
+        args=args,
     )
 
 
@@ -645,15 +1722,80 @@ def _load_condition_modules_from_checkpoint(
     if "target_tissue_encoder" in modules:
         logger.info("Using fixed one-hot target tissue encoder; no target-side tissue weights are loaded.")
     if "reference_context_encoder" in state:
-        modules["reference_context_encoder"].load_state_dict(state["reference_context_encoder"])
+        _load_reference_context_encoder_state(
+            modules["reference_context_encoder"],
+            state["reference_context_encoder"],
+            state_path=state_path,
+        )
     else:
         logger.info("Conditioning checkpoint has no reference_context_encoder; initializing it from scratch.")
+    if "prior_token_bank" in modules:
+        if "prior_token_bank" in state:
+            _load_prior_token_bank_state(
+                modules["prior_token_bank"],
+                state["prior_token_bank"],
+                state_path=state_path,
+            )
+        else:
+            logger.info("Conditioning checkpoint has no prior_token_bank; initializing Cross V4 priors from scratch.")
+
+
+def _load_prior_token_bank_state(module: nn.Module, state_dict: dict[str, torch.Tensor], *, state_path: Path) -> None:
+    try:
+        module.load_state_dict(state_dict, strict=True)
+        return
+    except RuntimeError:
+        current_keys = set(module.state_dict())
+        filtered = {key: value for key, value in state_dict.items() if key in current_keys}
+        ignored = sorted(set(state_dict) - set(filtered))
+        missing, unexpected = module.load_state_dict(filtered, strict=False)
+        if unexpected or missing:
+            raise RuntimeError(
+                "Could not load prior_token_bank from "
+                f"{state_path}: missing={list(missing)}, unexpected={list(unexpected)}, ignored={ignored}"
+            )
+        logger.info("Loaded prior_token_bank from %s while ignoring disabled empty parameters: %s", state_path, ignored)
+
+
+def _load_reference_context_encoder_state(
+    module: nn.Module,
+    state_dict: dict[str, torch.Tensor],
+    *,
+    state_path: Path,
+) -> None:
+    try:
+        module.load_state_dict(state_dict, strict=True)
+        return
+    except RuntimeError:
+        if getattr(module, "route_class_count", 0) <= 0:
+            raise
+    missing, unexpected = module.load_state_dict(state_dict, strict=False)
+    allowed_missing_prefixes = (
+        "local_route_embedding.",
+        "anchor_route_embedding.",
+        "route_type_embedding.",
+        "route_missing_anchor",
+    )
+    disallowed_missing = [
+        key for key in missing if not any(key.startswith(prefix) for prefix in allowed_missing_prefixes)
+    ]
+    if disallowed_missing or unexpected:
+        raise RuntimeError(
+            "Could not load reference_context_encoder from "
+            f"{state_path}: missing={list(missing)}, unexpected={list(unexpected)}"
+        )
+    logger.info(
+        "Loaded reference_context_encoder from %s with newly initialized semantic route parameters: %s",
+        state_path,
+        ", ".join(missing),
+    )
 
 
 def run_cross_v3_training(args: argparse.Namespace) -> None:
     cross_version = str(getattr(args, "cross_version", "v3")).lower().replace("_", ".").replace("-", ".")
-    if cross_version != "v3":
-        raise NotImplementedError("This module implements only cross V3.")
+    if cross_version not in {"v3", "v4"}:
+        raise NotImplementedError("This module implements cross V3 and Cross V4.")
+    is_cross_v4 = cross_version == "v4"
 
     dataset = CrossReconstructionDataset(
         args.train_metadata,
@@ -677,17 +1819,29 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             "choose shared_hte, low_capacity_hte, or one_hot."
         )
     target_tissue_channels = NUM_FINE if target_tissue_encoding == "one_hot" else args.tissue_out_channels
-    control_spec = CrossV3ControlSpec(
+    control_spec = (CrossV4ControlSpec if is_cross_v4 else CrossV3ControlSpec)(
         tissue_channels=target_tissue_channels,
         nuclei_channels=args.nuclei_out_channels,
     )
-    reference_spec = CrossV3ReferenceSpec(
-        reference_latent_channels=int(getattr(args, "reference_latent_channels", 16)),
-        tissue_channels=args.tissue_out_channels,
-        nuclei_channels=args.nuclei_out_channels,
-        token_dim=int(getattr(args, "reference_token_dim", 4096)),
-        output_init_std=float(getattr(args, "reference_token_output_init_std", 0.02)),
-    )
+    reference_spec_kwargs = {
+        "reference_latent_channels": int(getattr(args, "reference_latent_channels", 16)),
+        "tissue_channels": args.tissue_out_channels,
+        "nuclei_channels": args.nuclei_out_channels,
+        "token_dim": int(getattr(args, "reference_token_dim", 4096)),
+        "output_init_std": float(getattr(args, "reference_token_output_init_std", 0.02)),
+        "route_anchor_mode": str(getattr(args, "reference_route_anchor_mode", "none")),
+        "route_embedding_init_std": float(getattr(args, "reference_route_embedding_init_std", 0.02)),
+    }
+    if is_cross_v4:
+        reference_spec = CrossV4ReferenceSpec(
+            **reference_spec_kwargs,
+            tissue_prior_tokens_per_class=int(getattr(args, "cross_v4_tissue_prior_tokens_per_class", 4)),
+            cell_prior_tokens_per_class=int(getattr(args, "cross_v4_cell_prior_tokens_per_class", 0)),
+            global_style_tokens=int(getattr(args, "cross_v4_global_style_tokens", 0)),
+            prior_init_std=float(getattr(args, "cross_v4_prior_init_std", 0.02)),
+        )
+    else:
+        reference_spec = CrossV3ReferenceSpec(**reference_spec_kwargs)
     target_tissue_embedding_dim = int(
         getattr(args, "target_tissue_embedding_dim", None) or args.tissue_embedding_dim
     )
@@ -703,15 +1857,25 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             out_channels=args.nuclei_out_channels,
             num_blocks=args.condition_downsample_blocks,
         ),
-        "reference_context_encoder": CrossV3ReferenceContextEncoder(
+        "reference_context_encoder": (CrossV4ReferenceContextEncoder if is_cross_v4 else CrossV3ReferenceContextEncoder)(
             reference_latent_channels=reference_spec.reference_latent_channels,
             tissue_channels=reference_spec.tissue_channels,
             nuclei_channels=reference_spec.nuclei_channels,
             token_dim=reference_spec.token_dim,
             hidden_dim=int(getattr(args, "reference_token_hidden_dim", reference_spec.token_dim)),
             output_init_std=reference_spec.output_init_std,
+            route_anchor_mode=reference_spec.route_anchor_mode,
+            route_embedding_init_std=reference_spec.route_embedding_init_std,
         ),
     }
+    if is_cross_v4:
+        modules["prior_token_bank"] = CrossV4PriorTokenBank(
+            token_dim=reference_spec.token_dim,
+            tissue_prior_tokens_per_class=int(reference_spec.tissue_prior_tokens_per_class),
+            cell_prior_tokens_per_class=int(reference_spec.cell_prior_tokens_per_class),
+            global_style_tokens=int(reference_spec.global_style_tokens),
+            init_std=float(reference_spec.prior_init_std),
+        )
     if target_tissue_encoding == "one_hot":
         modules["target_tissue_encoder"] = FixedOneHotTissueEncoder(
             num_classes=NUM_FINE,
@@ -737,6 +1901,46 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         max(0.0, float(getattr(args, "self_reconstruction_sample_prob", 0.0) or 0.0)),
     )
     ref_check_step = int(getattr(args, "ref_check_step", 10) or 0)
+    reference_style_loss_weight = max(
+        0.0,
+        float(getattr(args, "reference_style_loss_weight", 1.0) or 0.0),
+    )
+    reference_style_loss_interval = int(getattr(args, "reference_style_loss_interval", 1) or 0)
+    reference_style_loss_config = RegionalStainStyleLossConfig(
+        tissue_weight=float(getattr(args, "reference_style_tissue_weight", 1.0) or 0.0),
+        nuclei_weight=float(getattr(args, "reference_style_nuclei_weight", 1.0) or 0.0),
+        mean_weight=float(getattr(args, "reference_style_mean_weight", 1.0) or 0.0),
+        std_weight=float(getattr(args, "reference_style_std_weight", 1.0) or 0.0),
+        covariance_weight=float(getattr(args, "reference_style_cov_weight", 0.25) or 0.0),
+        min_pixels=max(1, int(getattr(args, "reference_style_min_pixels", 32) or 1)),
+        max_regions_per_sample=getattr(args, "reference_style_max_regions_per_sample", None),
+    )
+    ref_swap_loss_weight = max(0.0, float(getattr(args, "ref_swap_loss_weight", 0.1) or 0.0))
+    ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
+    ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.08) or 0.0)
+    ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero"))
+    same_wsi_perceptual_weight = max(
+        0.0,
+        float(getattr(args, "same_wsi_perceptual_weight", 0.0) or 0.0),
+    )
+    same_wsi_perceptual_interval = int(getattr(args, "same_wsi_perceptual_interval", 1) or 0)
+    same_wsi_perceptual_layers = _parse_int_list(
+        getattr(args, "same_wsi_perceptual_layers", "1,2,3"),
+        name="same_wsi_perceptual_layers",
+    )
+    same_wsi_perceptual_min_pixels = max(
+        1,
+        int(getattr(args, "same_wsi_perceptual_min_pixels", 8) or 1),
+    )
+    same_wsi_perceptual_checkpoint = getattr(args, "same_wsi_perceptual_checkpoint", None)
+    if same_wsi_perceptual_weight > 0.0 and not same_wsi_perceptual_checkpoint:
+        raise ValueError("--same-wsi-perceptual-weight requires --same-wsi-perceptual-checkpoint.")
+    max_cuda_memory_gb = max(0.0, float(getattr(args, "max_cuda_memory_gb", 0.0) or 0.0))
+    cuda_memory_check_interval = max(0, int(getattr(args, "cuda_memory_check_interval", 10) or 0))
+    cross_v4_diagnose_jsonl = Path(
+        getattr(args, "cross_v4_diagnose_jsonl", None)
+        or os.path.join(args.output_dir, "cross_v4_diagnostics.jsonl")
+    )
 
     logging_out_dir = Path(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
@@ -761,13 +1965,54 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     )
     logger.info(accelerator.state, main_process_only=False)
     logger.info(
-        "Using Cross V3 ControlNet target-only order [tar_tissue_feat, tar_nuclei_feat]: "
+        "Using Cross %s ControlNet target-only order [tar_tissue_feat, tar_nuclei_feat]: "
         "raw_channels=%s packed_channels=%s; reference [z_ref, ref_tissue_feat, ref_nuclei_feat] "
-        "enters joint cross-attention with token_dim=%s",
+        "enters joint cross-attention with token_dim=%s route_anchor_mode=%s",
+        cross_version.upper(),
         control_spec.raw_channels,
         control_spec.packed_channels,
         reference_spec.token_dim,
+        reference_spec.normalized_route_anchor_mode,
     )
+    if is_cross_v4:
+        logger.info(
+            "Cross V4 priors: tissue_per_class=%s cell_per_class=%s global_style=%s "
+            "bias_scale=%s warmup_steps=%s biased_double_blocks=%s",
+            reference_spec.tissue_prior_tokens_per_class,
+            reference_spec.cell_prior_tokens_per_class,
+            reference_spec.global_style_tokens,
+            getattr(args, "cross_v4_bias_scale", 1.0),
+            getattr(args, "cross_v4_bias_warmup_steps", 1000),
+            getattr(args, "cross_v4_biased_double_blocks", "last"),
+        )
+        logger.info(
+            "Cross V4 early diagnostics: steps=%s interval=%s jsonl=%s max_cuda_memory_gb=%s",
+            getattr(args, "cross_v4_diagnose_steps", "1,10,100,500,1000,1500,2000"),
+            getattr(args, "cross_v4_diagnose_interval", 0),
+            cross_v4_diagnose_jsonl,
+            max_cuda_memory_gb or "disabled",
+        )
+    if reference_style_loss_weight > 0.0:
+        logger.info(
+            "Using Cross V3 reference region stain/style loss: weight=%s interval=%s "
+            "tissue=%s nuclei=%s mean/std/cov=%s/%s/%s",
+            reference_style_loss_weight,
+            reference_style_loss_interval,
+            reference_style_loss_config.tissue_weight,
+            reference_style_loss_config.nuclei_weight,
+            reference_style_loss_config.mean_weight,
+            reference_style_loss_config.std_weight,
+            reference_style_loss_config.covariance_weight,
+        )
+    if ref_swap_loss_weight > 0.0:
+        logger.info(
+            "Using Cross %s ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
+            cross_version.upper(),
+            ref_swap_loss_weight,
+            ref_swap_loss_interval,
+            ref_swap_margin,
+            ",".join(ref_swap_variants),
+        )
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()
     else:
@@ -856,6 +2101,20 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+    same_wsi_encoder = None
+    if same_wsi_perceptual_weight > 0.0:
+        same_wsi_encoder = load_same_wsi_encoder(same_wsi_perceptual_checkpoint, map_location="cpu")
+        same_wsi_encoder.to(device=accelerator.device, dtype=weight_dtype)
+        same_wsi_encoder.eval()
+        logger.info(
+            "Using frozen same-WSI appearance perceptual loss: checkpoint=%s weight=%s interval=%s layers=%s min_pixels=%s",
+            same_wsi_perceptual_checkpoint,
+            same_wsi_perceptual_weight,
+            same_wsi_perceptual_interval,
+            ",".join(str(layer) for layer in same_wsi_perceptual_layers),
+            same_wsi_perceptual_min_pixels,
+        )
+
     prompt_cache, empty_prompt, text_ids = _build_prompt_cache(
         pipeline=tmp_pipeline,
         prompts=[record["prompt"] for record in dataset.records],
@@ -901,10 +2160,32 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     if args.enable_xformers_memory_efficient_attention and is_xformers_available():
         flux_transformer.enable_xformers_memory_efficient_attention()
         flux_controlnet.enable_xformers_memory_efficient_attention()
+    if is_cross_v4:
+        biased_indices = parse_cross_v4_block_indices(
+            getattr(args, "cross_v4_biased_double_blocks", "last"),
+            total_blocks=len(getattr(flux_transformer, "transformer_blocks", []) or []),
+        )
+        install_summary = install_cross_v4_attention_processors(
+            flux_transformer,
+            biased_double_block_indices=biased_indices,
+        )
+        logger.info(
+            "Installed Cross V4 attention processors: double_blocks=%s biased=%s single_blocks=%s",
+            install_summary.double_blocks,
+            list(install_summary.biased_double_blocks),
+            install_summary.single_blocks,
+        )
     if args.gradient_checkpointing:
         flux_controlnet.enable_gradient_checkpointing()
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats(accelerator.device)
+        _enforce_cuda_memory_limit(
+            device=accelerator.device,
+            max_memory_gb=max_cuda_memory_gb,
+            step=0,
+        )
 
     if args.scale_lr:
         args.learning_rate *= (
@@ -947,14 +2228,36 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+    _audit_optimizer_param_groups(
+        optimizer=optimizer,
+        controlnet=flux_controlnet,
+        modules=modules,
+        required_module_names=_cross_v4_required_optimizer_modules(modules) if is_cross_v4 else (),
+    )
 
     dataloader_kwargs = {
-        "shuffle": True,
         "collate_fn": collate_cross_v3_batch,
         "batch_size": args.train_batch_size,
         "num_workers": args.dataloader_num_workers,
         "pin_memory": True,
     }
+    if bool(getattr(args, "pair_difficulty_sampler", False)):
+        sampler_seed = int(args.seed if args.seed is not None else 0) + int(accelerator.process_index)
+        pair_sampler, pair_sampler_stats = _build_pair_difficulty_sampler(
+            dataset.records,
+            target_distribution=_pair_difficulty_target_distribution(args),
+            seed=sampler_seed,
+        )
+        dataloader_kwargs["sampler"] = pair_sampler
+        logger.info(
+            "Using pair_difficulty weighted sampler: counts=%s target=%s class_weights=%s seed=%s",
+            pair_sampler_stats["counts"],
+            pair_sampler_stats["target_distribution"],
+            pair_sampler_stats["class_weights"],
+            sampler_seed,
+        )
+    else:
+        dataloader_kwargs["shuffle"] = True
     if args.dataloader_num_workers > 0:
         dataloader_kwargs["persistent_workers"] = True
         dataloader_kwargs["prefetch_factor"] = max(1, int(getattr(args, "dataloader_prefetch_factor", 2) or 2))
@@ -1057,12 +2360,29 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 counterfactual_sample_mask = _batch_mode_mask(training_batch, "counterfactual", device=accelerator.device)
                 cross_sample_mask = ~(counterfactual_sample_mask | self_reconstruction_sample_mask)
 
-                pixel_latents, control_tensor, reference_tokens, feature_stats = _build_cross_v3_control_batch(
-                    batch=training_batch,
-                    modules=modules,
-                    vae=vae,
-                    weight_dtype=weight_dtype,
-                )
+                reference_encoding = None
+                target_metadata = None
+                if is_cross_v4:
+                    (
+                        pixel_latents,
+                        control_tensor,
+                        reference_encoding,
+                        target_metadata,
+                        feature_stats,
+                    ) = _build_cross_v4_control_batch(
+                        batch=training_batch,
+                        modules=modules,
+                        vae=vae,
+                        weight_dtype=weight_dtype,
+                    )
+                    reference_tokens = reference_encoding.local_tokens
+                else:
+                    pixel_latents, control_tensor, reference_tokens, feature_stats = _build_cross_v3_control_batch(
+                        batch=training_batch,
+                        modules=modules,
+                        vae=vae,
+                        weight_dtype=weight_dtype,
+                    )
                 if accelerator.is_main_process and global_step == 0:
                     logger.info(
                         "[SCALE-CHECK] step=%s target_tissue_abs_mean=%.8g "
@@ -1105,17 +2425,46 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     control_tensor.shape[3],
                 )
                 batch_prompt, batch_pooled = _resolve_prompt_batch(
-                    prompts=batch["prompts"],
+                    prompts=training_batch["prompts"],
                     prompt_cache=prompt_cache,
                     empty_prompt_embeds=empty_prompt_embeds,
                     empty_pooled=empty_pooled,
                     proportion_empty_prompts=0.0,
                 )
-                batch_context, context_ids = append_cross_v3_reference_context(
-                    prompt_embeds=batch_prompt,
-                    text_ids=text_ids,
-                    reference_tokens=reference_tokens,
+                joint_attention_kwargs = None
+                cross_v4_context = None
+                cross_v4_diagnostics = None
+                cross_v4_run_diagnostics = (
+                    is_cross_v4
+                    and accelerator.sync_gradients
+                    and _should_run_cross_v4_diagnostics(args, global_step + 1)
                 )
+                if is_cross_v4:
+                    if reference_encoding is None or target_metadata is None:
+                        raise RuntimeError("Cross V4 requires reference encoding and target metadata.")
+                    (
+                        batch_context,
+                        context_ids,
+                        joint_attention_kwargs,
+                        cross_v4_context,
+                        cross_v4_diagnostics,
+                    ) = _build_cross_v4_context_and_kwargs(
+                        prompt_embeds=batch_prompt,
+                        text_ids=text_ids,
+                        reference_encoding=reference_encoding,
+                        target_metadata=target_metadata,
+                        prior_token_bank=modules["prior_token_bank"],
+                        args=args,
+                        global_step=global_step,
+                        dtype=weight_dtype,
+                        diagnose_attention=cross_v4_run_diagnostics,
+                    )
+                else:
+                    batch_context, context_ids = append_cross_v3_reference_context(
+                        prompt_embeds=batch_prompt,
+                        text_ids=text_ids,
+                        reference_tokens=reference_tokens,
+                    )
 
                 noise = torch.randn_like(packed_pixel_latents)
                 u = compute_density_for_timestep_sampling(
@@ -1159,6 +2508,14 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     img_ids=latent_image_ids,
                     return_dict=False,
                 )
+                transformer_controlnet_block_samples = _cast_control_samples(
+                    controlnet_block_samples,
+                    weight_dtype,
+                )
+                transformer_controlnet_single_block_samples = _cast_control_samples(
+                    controlnet_single_block_samples,
+                    weight_dtype,
+                )
 
                 noise_pred = flux_transformer(
                     hidden_states=noisy_model_input,
@@ -1166,57 +2523,122 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     guidance=guidance_vec,
                     pooled_projections=batch_pooled,
                     encoder_hidden_states=batch_context,
-                    controlnet_block_samples=(
-                        [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
-                        if controlnet_block_samples is not None
-                        else None
-                    ),
-                    controlnet_single_block_samples=(
-                        [sample.to(dtype=weight_dtype) for sample in controlnet_single_block_samples]
-                        if controlnet_single_block_samples is not None
-                        else None
-                    ),
+                    controlnet_block_samples=transformer_controlnet_block_samples,
+                    controlnet_single_block_samples=transformer_controlnet_single_block_samples,
                     txt_ids=context_ids,
                     img_ids=latent_image_ids,
-                    joint_attention_kwargs=None,
+                    joint_attention_kwargs=joint_attention_kwargs,
                     return_dict=False,
                 )[0]
 
                 ref_check_diff = None
+                ref_check_logs: dict[str, float] = {}
                 if ref_check_step > 0 and global_step == ref_check_step:
-                    zero_context, zero_context_ids = append_cross_v3_reference_context(
-                        prompt_embeds=batch_prompt,
-                        text_ids=text_ids,
-                        reference_tokens=torch.zeros_like(reference_tokens),
-                    )
-                    zero_noise_pred = flux_transformer(
-                        hidden_states=noisy_model_input,
-                        timestep=timesteps / 1000,
-                        guidance=guidance_vec,
-                        pooled_projections=batch_pooled,
-                        encoder_hidden_states=zero_context,
-                        controlnet_block_samples=(
-                            [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
-                            if controlnet_block_samples is not None
-                            else None
-                        ),
-                        controlnet_single_block_samples=(
-                            [sample.to(dtype=weight_dtype) for sample in controlnet_single_block_samples]
-                            if controlnet_single_block_samples is not None
-                            else None
-                        ),
-                        txt_ids=zero_context_ids,
-                        img_ids=latent_image_ids,
-                        joint_attention_kwargs=None,
-                        return_dict=False,
-                    )[0]
-                    ref_check_diff = _mean_abs_diff(noise_pred.detach(), zero_noise_pred.detach())
+                    with torch.no_grad():
+                        zero_joint_attention_kwargs = None
+                        if is_cross_v4:
+                            if reference_encoding is None or target_metadata is None:
+                                raise RuntimeError("Cross V4 ref-check requires reference encoding and target metadata.")
+                            zero_encoding = apply_cross_v4_reference_encoding_mode(reference_encoding, "zero-ref")
+                            zero_context, zero_context_ids, zero_joint_attention_kwargs, _, _ = (
+                                _build_cross_v4_context_and_kwargs(
+                                    prompt_embeds=batch_prompt,
+                                    text_ids=text_ids,
+                                    reference_encoding=zero_encoding,
+                                    target_metadata=target_metadata,
+                                    prior_token_bank=modules["prior_token_bank"],
+                                    args=args,
+                                    global_step=global_step,
+                                    dtype=weight_dtype,
+                                )
+                            )
+                        else:
+                            zero_context, zero_context_ids = append_cross_v3_reference_context(
+                                prompt_embeds=batch_prompt,
+                                text_ids=text_ids,
+                                reference_tokens=torch.zeros_like(reference_tokens),
+                            )
+                        zero_ref_with_control = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=zero_context,
+                            controlnet_block_samples=transformer_controlnet_block_samples,
+                            controlnet_single_block_samples=transformer_controlnet_single_block_samples,
+                            txt_ids=zero_context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=zero_joint_attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        zero_controlnet_block_samples = _zero_control_samples_like(
+                            transformer_controlnet_block_samples
+                        )
+                        zero_controlnet_single_block_samples = _zero_control_samples_like(
+                            transformer_controlnet_single_block_samples
+                        )
+                        with_ref_zero_control = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=batch_context,
+                            controlnet_block_samples=zero_controlnet_block_samples,
+                            controlnet_single_block_samples=zero_controlnet_single_block_samples,
+                            txt_ids=context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=joint_attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        zero_ref_zero_control = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=zero_context,
+                            controlnet_block_samples=zero_controlnet_block_samples,
+                            controlnet_single_block_samples=zero_controlnet_single_block_samples,
+                            txt_ids=zero_context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=zero_joint_attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        with_control_ref_effect = noise_pred.detach() - zero_ref_with_control.detach()
+                        zero_control_ref_effect = (
+                            with_ref_zero_control.detach() - zero_ref_zero_control.detach()
+                        )
+                        ref_check_diff = _mean_abs_diff(noise_pred.detach(), zero_ref_with_control.detach())
+                        ref_check_logs = {
+                            "ref_check_mean_abs_noise_pred_diff": ref_check_diff.detach().item(),
+                            "control_check_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                noise_pred.detach(),
+                                with_ref_zero_control.detach(),
+                            ).detach().item(),
+                            "ref_check_zero_control_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                with_ref_zero_control.detach(),
+                                zero_ref_zero_control.detach(),
+                            ).detach().item(),
+                            "control_check_zero_ref_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                zero_ref_with_control.detach(),
+                                zero_ref_zero_control.detach(),
+                            ).detach().item(),
+                            "ref_control_interaction_mean_abs_noise_pred_diff": _mean_abs_diff(
+                                with_control_ref_effect,
+                                zero_control_ref_effect,
+                            ).detach().item(),
+                        }
                     if accelerator.is_main_process:
                         logger.info(
-                            "[REF-CHECK] step=%s mean_abs_noise_pred_diff=%.8g "
+                            "[REF-CHECK] step=%s ref_with_control_diff=%.8g "
+                            "control_with_ref_diff=%.8g ref_zero_control_diff=%.8g "
+                            "control_zero_ref_diff=%.8g ref_control_interaction_diff=%.8g "
                             "ref_token_abs_mean=%.8g ref_token_abs_max=%.8g output_init_std=%.8g",
                             global_step,
-                            float(ref_check_diff.cpu().item()),
+                            float(ref_check_logs["ref_check_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["control_check_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["ref_check_zero_control_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["control_check_zero_ref_mean_abs_noise_pred_diff"]),
+                            float(ref_check_logs["ref_control_interaction_mean_abs_noise_pred_diff"]),
                             float(reference_tokens.detach().float().abs().mean().cpu().item()),
                             float(reference_tokens.detach().float().abs().max().cpu().item()),
                             float(getattr(args, "reference_token_output_init_std", 0.02)),
@@ -1224,16 +2646,235 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
 
                 target_velocity = noise - packed_pixel_latents
                 per_sample_loss = _per_sample_mse(noise_pred, target_velocity)
-                loss = per_sample_loss.mean()
+                denoise_loss = per_sample_loss.mean()
                 cross_denoise_loss = _masked_mean_or_zero(per_sample_loss, cross_sample_mask)
                 counterfactual_denoise_loss = _masked_mean_or_zero(per_sample_loss, counterfactual_sample_mask)
                 self_reconstruction_denoise_loss = _masked_mean_or_zero(
                     per_sample_loss,
                     self_reconstruction_sample_mask,
                 )
+                style_loss = noise_pred.new_zeros(())
+                style_tissue_loss = noise_pred.new_zeros(())
+                style_nuclei_loss = noise_pred.new_zeros(())
+                style_tissue_regions = 0
+                style_nuclei_regions = 0
+                same_wsi_loss = noise_pred.new_zeros(())
+                same_wsi_feature_layers = 0
+                prediction_rgb = None
+                should_compute_style_loss = (
+                    reference_style_loss_weight > 0.0
+                    and reference_style_loss_interval > 0
+                    and global_step % reference_style_loss_interval == 0
+                )
+                should_compute_same_wsi_loss = (
+                    same_wsi_encoder is not None
+                    and same_wsi_perceptual_weight > 0.0
+                    and same_wsi_perceptual_interval > 0
+                    and global_step % same_wsi_perceptual_interval == 0
+                )
+                should_compute_swap_loss = (
+                    ref_swap_loss_weight > 0.0
+                    and ref_swap_loss_interval > 0
+                    and global_step % ref_swap_loss_interval == 0
+                    and bool(ref_swap_variants)
+                )
+                if should_compute_style_loss or should_compute_same_wsi_loss:
+                    prediction_rgb = _decode_packed_model_prediction(
+                        vae=vae,
+                        packed_noisy_latents=noisy_model_input,
+                        noise_pred=noise_pred,
+                        sigmas=sigmas,
+                        latent_channels=pixel_latents.shape[1],
+                        latent_height=pixel_latents.shape[2],
+                        latent_width=pixel_latents.shape[3],
+                        weight_dtype=weight_dtype,
+                    )
+                if should_compute_style_loss:
+                    style_terms = regional_stain_style_loss(
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                        reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                        config=reference_style_loss_config,
+                    )
+                    style_loss = style_terms["total"].to(dtype=denoise_loss.dtype)
+                    style_tissue_loss = style_terms["tissue"].to(dtype=denoise_loss.dtype)
+                    style_nuclei_loss = style_terms["nuclei"].to(dtype=denoise_loss.dtype)
+                    style_tissue_regions = int(style_terms["tissue_regions"])
+                    style_nuclei_regions = int(style_terms["nuclei_regions"])
+                if should_compute_same_wsi_loss:
+                    same_wsi_loss, same_wsi_feature_layers = same_wsi_perceptual_loss(
+                        encoder=same_wsi_encoder,
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        layers=same_wsi_perceptual_layers,
+                        min_pixels=same_wsi_perceptual_min_pixels,
+                    )
+                    same_wsi_loss = same_wsi_loss.to(dtype=denoise_loss.dtype)
 
+                swap_loss = noise_pred.new_zeros(())
+                covered_per_sample_loss = None
+                covered_ref_sample_mask = None
+                covered_ref_token_mask = None
+                if is_cross_v4 and target_metadata is not None and reference_encoding is not None:
+                    covered_per_sample_loss, covered_ref_sample_mask, covered_ref_token_mask = _cross_v4_covered_token_mse(
+                        noise_pred,
+                        target_velocity,
+                        target_metadata=target_metadata,
+                        reference_metadata=reference_encoding.metadata,
+                    )
+                ref_variant_loss_logs: dict[str, float] = {}
+                if covered_per_sample_loss is not None and covered_ref_sample_mask is not None:
+                    ref_variant_loss_logs["ref_normal_covered_denoise_loss"] = _masked_mean_or_zero(
+                        covered_per_sample_loss,
+                        covered_ref_sample_mask,
+                    ).detach().item()
+                    ref_variant_loss_logs["ref_normal_covered_regions"] = float(
+                        covered_ref_sample_mask.sum().detach().item()
+                    )
+                if should_compute_swap_loss:
+                    same_class_swap_encoding = None
+                    if is_cross_v4 and (
+                        "random" in ref_swap_variants or "same_class" in ref_swap_variants
+                    ):
+                        same_class_swap_encoding = _build_same_class_swap_cross_v4_reference_encoding(
+                            batch=training_batch,
+                            modules=modules,
+                            vae=vae,
+                            weight_dtype=weight_dtype,
+                        )
+                    swapped_per_sample_losses = []
+                    for variant in ref_swap_variants:
+                        swapped_joint_attention_kwargs = None
+                        swapped_reference_metadata = None
+                        if is_cross_v4:
+                            if reference_encoding is None or target_metadata is None:
+                                raise RuntimeError("Cross V4 ref-swap requires reference encoding and target metadata.")
+                            swapped_encoding = _build_swapped_cross_v4_reference_encoding(
+                                reference_encoding,
+                                variant,
+                                same_class_swap_encoding=same_class_swap_encoding,
+                            )
+                            if swapped_encoding is None:
+                                continue
+                            swapped_reference_metadata = swapped_encoding.metadata
+                            swapped_context, swapped_context_ids, swapped_joint_attention_kwargs, _, _ = (
+                                _build_cross_v4_context_and_kwargs(
+                                    prompt_embeds=batch_prompt,
+                                    text_ids=text_ids,
+                                    reference_encoding=swapped_encoding,
+                                    target_metadata=target_metadata,
+                                    prior_token_bank=modules["prior_token_bank"],
+                                    args=args,
+                                    global_step=global_step,
+                                    dtype=weight_dtype,
+                                )
+                            )
+                        else:
+                            swapped_reference_tokens = _build_swapped_reference_tokens(reference_tokens, variant)
+                            if swapped_reference_tokens is None:
+                                continue
+                            swapped_context, swapped_context_ids = append_cross_v3_reference_context(
+                                prompt_embeds=batch_prompt,
+                                text_ids=text_ids,
+                                reference_tokens=swapped_reference_tokens,
+                            )
+                        swapped_noise_pred = flux_transformer(
+                            hidden_states=noisy_model_input,
+                            timestep=timesteps / 1000,
+                            guidance=guidance_vec,
+                            pooled_projections=batch_pooled,
+                            encoder_hidden_states=swapped_context,
+                            controlnet_block_samples=transformer_controlnet_block_samples,
+                            controlnet_single_block_samples=transformer_controlnet_single_block_samples,
+                            txt_ids=swapped_context_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=swapped_joint_attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        swapped_per_sample_loss = _per_sample_mse(swapped_noise_pred, target_velocity)
+                        swapped_loss_value = swapped_per_sample_loss.mean().detach().item()
+                        if is_cross_v4 and covered_ref_token_mask is not None:
+                            swapped_covered_loss, swapped_covered_sample_mask = _packed_token_masked_mse(
+                                swapped_noise_pred,
+                                target_velocity,
+                                covered_ref_token_mask,
+                            )
+                            if covered_ref_sample_mask is not None:
+                                active_swap_mask = covered_ref_sample_mask
+                                if bool(active_swap_mask.any().item()):
+                                    active_swapped_covered_loss = swapped_covered_loss[active_swap_mask]
+                                    swapped_per_sample_losses.append(active_swapped_covered_loss)
+                                else:
+                                    continue
+                            else:
+                                active_swapped_covered_loss = swapped_covered_loss
+                                swapped_per_sample_losses.append(active_swapped_covered_loss)
+                            ref_variant_loss_logs[f"ref_{variant}_covered_denoise_loss"] = (
+                                active_swapped_covered_loss.mean().detach().item()
+                            )
+                            ref_variant_loss_logs[f"ref_{variant}_covered_regions"] = float(
+                                swapped_covered_sample_mask.sum().detach().item()
+                            )
+                        else:
+                            swapped_per_sample_losses.append(swapped_per_sample_loss)
+                        normal_loss_value = denoise_loss.detach().item()
+                        ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = swapped_loss_value
+                        ref_variant_loss_logs[f"ref_{variant}_minus_normal_denoise_loss"] = (
+                            swapped_loss_value - normal_loss_value
+                        )
+                        if covered_per_sample_loss is not None:
+                            ref_variant_loss_logs[f"ref_{variant}_minus_normal_covered_denoise_loss"] = (
+                                ref_variant_loss_logs.get(
+                                    f"ref_{variant}_covered_denoise_loss",
+                                    swapped_loss_value,
+                                )
+                                - ref_variant_loss_logs.get(
+                                    "ref_normal_covered_denoise_loss",
+                                    covered_per_sample_loss.mean().detach().item(),
+                                )
+                            )
+                    swap_loss = ref_swap_sensitivity_loss(
+                        (
+                            covered_per_sample_loss[covered_ref_sample_mask]
+                            if covered_per_sample_loss is not None
+                            and covered_ref_sample_mask is not None
+                            and bool(covered_ref_sample_mask.any().item())
+                            else per_sample_loss
+                        ),
+                        swapped_per_sample_losses,
+                        margin=ref_swap_margin,
+                    ).to(dtype=denoise_loss.dtype)
+                loss = (
+                    denoise_loss
+                    + reference_style_loss_weight * style_loss
+                    + ref_swap_loss_weight * swap_loss
+                    + same_wsi_perceptual_weight * same_wsi_loss
+                )
+
+                cross_v4_grad_logs: dict[str, float] = {}
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
+                    if is_cross_v4 and cross_v4_run_diagnostics:
+                        cross_v4_grad_logs = {
+                            "cross_v4_controlnet_grad_norm": _module_grad_norm(flux_controlnet),
+                            "cross_v4_reference_encoder_grad_norm": _module_grad_norm(
+                                modules.get("reference_context_encoder")
+                            ),
+                            "cross_v4_prior_token_bank_grad_norm": _module_grad_norm(
+                                modules.get("prior_token_bank")
+                            ),
+                        }
                     accelerator.clip_grad_norm_(
                         [param for model in [flux_controlnet, *modules.values()] for param in model.parameters() if param.requires_grad],
                         args.max_grad_norm,
@@ -1255,24 +2896,131 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         unwrap_model=unwrap_model,
                         control_spec=control_spec,
                         reference_spec=reference_spec,
+                        cross_version=cross_version,
                     )
-                    logger.info("Saved eval-ready Phase 5.3 cross-v3 artifacts to %s", save_path)
+                    logger.info("Saved eval-ready Phase 5.3 cross-%s artifacts to %s", cross_version, save_path)
+
+            memory_logs: dict[str, float] = {}
+            if accelerator.sync_gradients:
+                cuda_stats = _enforce_cuda_memory_limit(
+                    device=accelerator.device,
+                    max_memory_gb=max_cuda_memory_gb,
+                    step=global_step,
+                )
+                should_log_memory = (
+                    bool(cuda_stats)
+                    and (
+                        global_step <= 1
+                        or cross_v4_run_diagnostics
+                        or (
+                            cuda_memory_check_interval > 0
+                            and global_step % cuda_memory_check_interval == 0
+                        )
+                    )
+                )
+                if should_log_memory:
+                    memory_logs = cuda_stats
+
+            cross_v4_diagnostic_logs: dict[str, float] = {}
+            if is_cross_v4 and cross_v4_run_diagnostics:
+                cross_v4_diagnostic_logs.update((cross_v4_diagnostics or {}).get("static") or {})
+                cross_v4_diagnostic_logs.update((cross_v4_diagnostics or {}).get("bias_stats") or {})
+                cross_v4_diagnostic_logs.update(_summarize_cross_v4_attention_records(cross_v4_diagnostics))
+                cross_v4_diagnostic_logs.update(cross_v4_grad_logs)
+                cross_v4_diagnostic_logs.update(feature_stats)
+                cross_v4_diagnostic_logs.update(memory_logs)
+                cross_v4_diagnostic_logs["self_reconstruction_samples"] = float(
+                    self_reconstruction_sample_mask.sum().detach().item()
+                )
+                cross_v4_diagnostic_logs["counterfactual_samples"] = float(
+                    counterfactual_sample_mask.sum().detach().item()
+                )
+                cross_v4_diagnostic_logs["cross_samples"] = float(cross_sample_mask.sum().detach().item())
+                cross_v4_diagnostic_logs["cross_v4_bias_scale_effective"] = _cross_v4_bias_scale(args, global_step)
+                cross_v4_diagnostic_logs["cross_v4_zero_ref_delta_available"] = float(
+                    "ref_zero_minus_normal_denoise_loss" in ref_variant_loss_logs
+                )
+                regular_verdict, regular_issues = _cross_v4_diagnostic_verdict(cross_v4_diagnostic_logs)
+                cross_v4_diagnostic_logs["cross_v4_extreme_bias_smoke"] = float(
+                    bool(getattr(args, "cross_v4_extreme_bias_smoke", False))
+                )
+                cross_v4_diagnostic_logs["cross_v4_regular_diagnostic_pass"] = (
+                    1.0 if regular_verdict == "pass" else 0.0
+                )
+                if bool(getattr(args, "cross_v4_extreme_bias_smoke", False)):
+                    verdict, issues, smoke_metrics = _cross_v4_extreme_bias_smoke_verdict(
+                        cross_v4_diagnostic_logs
+                    )
+                    cross_v4_diagnostic_logs.update(smoke_metrics)
+                    cross_v4_diagnostic_logs["cross_v4_smoke_diagnostic_pass"] = (
+                        1.0 if verdict == "pass" else 0.0
+                    )
+                    cross_v4_diagnostic_logs["cross_v4_smoke_diagnostic_issue_count"] = float(len(issues))
+                else:
+                    verdict, issues = regular_verdict, regular_issues
+                cross_v4_diagnostic_logs["cross_v4_diagnostic_pass"] = 1.0 if verdict == "pass" else 0.0
+                cross_v4_diagnostic_logs["cross_v4_diagnostic_issue_count"] = float(len(issues))
+                if accelerator.is_main_process:
+                    payload = {
+                        "step": int(global_step),
+                        "verdict": verdict,
+                        "issues": issues,
+                        "attention_mass_by_source": _cross_v4_attention_mass_by_source(
+                            cross_v4_diagnostic_logs
+                        ),
+                        "metrics": cross_v4_diagnostic_logs,
+                    }
+                    _append_jsonl(cross_v4_diagnose_jsonl, payload)
+                    logger.info(
+                        "[CROSS-V4-DIAG] step=%s verdict=%s issues=%s "
+                        "samples cross/self/counter=%.0f/%.0f/%.0f "
+                        "covered_ref_same=%.8g covered_ref_all=%.8g covered_prior=%.8g "
+                        "missing_prior=%.8g missing_ref_mismatch=%.8g ref_zero_delta=%.8g "
+                        "prior_grad=%.8g ref_encoder_grad=%.8g peak_reserved_gb=%.3f",
+                        global_step,
+                        verdict,
+                        "; ".join(issues) if issues else "none",
+                        float(cross_v4_diagnostic_logs.get("cross_samples", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("self_reconstruction_samples", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("counterfactual_samples", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_ref_same_total", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_ref_all_local", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_covered_tissue_prior_target", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_missing_tissue_prior_target", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_attention_missing_ref_mismatch", 0.0)),
+                        float(ref_variant_loss_logs.get("ref_zero_minus_normal_denoise_loss", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_prior_token_bank_grad_norm", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cross_v4_reference_encoder_grad_norm", 0.0)),
+                        float(cross_v4_diagnostic_logs.get("cuda_peak_memory_reserved_gb", 0.0)),
+                    )
 
             logs = {
                 "loss": loss.detach().item(),
-                "denoise_loss": loss.detach().item(),
+                "denoise_loss": denoise_loss.detach().item(),
                 "cross_denoise_loss": cross_denoise_loss.detach().item(),
                 "counterfactual_denoise_loss": counterfactual_denoise_loss.detach().item(),
                 "self_reconstruction_denoise_loss": self_reconstruction_denoise_loss.detach().item(),
+                "style_loss": style_loss.detach().item(),
+                "style_tissue_loss": style_tissue_loss.detach().item(),
+                "style_nuclei_loss": style_nuclei_loss.detach().item(),
+                "style_tissue_regions": style_tissue_regions,
+                "style_nuclei_regions": style_nuclei_regions,
+                "same_wsi_perceptual_loss": same_wsi_loss.detach().item(),
+                "same_wsi_perceptual_layers": same_wsi_feature_layers,
+                "ref_swap_loss": swap_loss.detach().item(),
+                "ref_normal_denoise_loss": denoise_loss.detach().item(),
                 "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
                 "counterfactual_samples": int(counterfactual_sample_mask.sum().detach().item()),
                 "cross_samples": int(cross_sample_mask.sum().detach().item()),
                 "lr": lr_scheduler.get_last_lr()[0],
             }
+            logs.update(ref_variant_loss_logs)
             if ref_check_diff is not None:
-                logs["ref_check_mean_abs_noise_pred_diff"] = ref_check_diff.detach().item()
+                logs.update(ref_check_logs)
             if global_step <= 1:
                 logs.update(feature_stats)
+            logs.update(memory_logs)
+            logs.update(cross_v4_diagnostic_logs)
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -1291,7 +3039,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             unwrap_model=unwrap_model,
             control_spec=control_spec,
             reference_spec=reference_spec,
+            cross_version=cross_version,
         )
-        logger.info("Saved Phase 5.3 cross-v3 artifacts to %s", args.output_dir)
+        logger.info("Saved Phase 5.3 cross-%s artifacts to %s", cross_version, args.output_dir)
 
     accelerator.end_training()

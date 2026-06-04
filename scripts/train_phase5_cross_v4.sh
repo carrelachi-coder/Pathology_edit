@@ -1,0 +1,227 @@
+#!/bin/bash
+set -euo pipefail
+
+# Phase 5.4 Cross V4.
+# Target structure still enters ControlNet only. Reference local tokens, route
+# anchors, per-class prior tokens, and mask-guided correspondence bias enter
+# FLUX joint attention.
+
+GPU_IDS="${GPU_IDS:-1,2,4}"
+export CUDA_VISIBLE_DEVICES="${GPU_IDS}"
+export NCCL_TIMEOUT="${NCCL_TIMEOUT:-3600}"
+export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-0}"
+export TORCH_NCCL_BLOCKING_WAIT="${TORCH_NCCL_BLOCKING_WAIT:-0}"
+export TORCH_NCCL_ASYNC_ERROR_HANDLING="${TORCH_NCCL_ASYNC_ERROR_HANDLING:-1}"
+export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+export HF_HOME="${HF_HOME:-/data/huggingface}"
+
+PROJECT_ROOT="${PROJECT_ROOT:-/home/lyw/wqx-DL/flow-edit/FlowEdit-main}"
+MODEL_DIR="${MODEL_DIR:-/data/huggingface/FLUX.1-dev}"
+CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
+CROSS_V4_OUTPUT_DIR="${CROSS_V4_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v4_mask_guided}"
+
+CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-}"
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
+LOAD_CONDITIONING_FROM_CHECKPOINT="${LOAD_CONDITIONING_FROM_CHECKPOINT:-0}"
+
+PYTHON_BIN="${PYTHON_BIN:-python}"
+MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
+IFS=',' read -r -a GPU_ID_ARRAY <<< "${GPU_IDS}"
+NUM_PROCESSES="${NUM_PROCESSES:-${#GPU_ID_ARRAY[@]}}"
+USE_8BIT_ADAM="${USE_8BIT_ADAM:-1}"
+GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
+
+CONTROLNET_LEARNING_RATE="${CONTROLNET_LEARNING_RATE:-1e-6}"
+CONTROLNET_TRAIN_MODE="${CONTROLNET_TRAIN_MODE:-outputs}"
+CONTROLNET_TRAIN_X_EMBEDDER="${CONTROLNET_TRAIN_X_EMBEDDER:-1}"
+CONDITIONING_LEARNING_RATE="${CONDITIONING_LEARNING_RATE:-5e-7}"
+
+TARGET_TISSUE_ENCODING="${TARGET_TISSUE_ENCODING:-one_hot}"
+TARGET_ONE_HOT_SCALE="${TARGET_ONE_HOT_SCALE:-4.0}"
+REFERENCE_ROUTE_ANCHOR_MODE="${REFERENCE_ROUTE_ANCHOR_MODE:-none}"
+REFERENCE_TOKEN_OUTPUT_INIT_STD="${REFERENCE_TOKEN_OUTPUT_INIT_STD:-0.02}"
+
+CROSS_V4_TISSUE_PRIOR_TOKENS_PER_CLASS="${CROSS_V4_TISSUE_PRIOR_TOKENS_PER_CLASS:-4}"
+CROSS_V4_CELL_PRIOR_TOKENS_PER_CLASS="${CROSS_V4_CELL_PRIOR_TOKENS_PER_CLASS:-0}"
+CROSS_V4_GLOBAL_STYLE_TOKENS="${CROSS_V4_GLOBAL_STYLE_TOKENS:-0}"
+CROSS_V4_BIASED_DOUBLE_BLOCKS="${CROSS_V4_BIASED_DOUBLE_BLOCKS:-last}"
+CROSS_V4_BIAS_SCALE="${CROSS_V4_BIAS_SCALE:-1.0}"
+CROSS_V4_BIAS_WARMUP_STEPS="${CROSS_V4_BIAS_WARMUP_STEPS:-1000}"
+CROSS_V4_SAME_FINE_BIAS="${CROSS_V4_SAME_FINE_BIAS:-3.0}"
+CROSS_V4_SAME_COARSE_BIAS="${CROSS_V4_SAME_COARSE_BIAS:-2.0}"
+CROSS_V4_MISMATCH_BIAS="${CROSS_V4_MISMATCH_BIAS:--2.0}"
+CROSS_V4_CELL_SIMILARITY_BIAS="${CROSS_V4_CELL_SIMILARITY_BIAS:-0.0}"
+CROSS_V4_DENSITY_GAP_BIAS="${CROSS_V4_DENSITY_GAP_BIAS:-0.0}"
+CROSS_V4_PRIOR_PRESENT_BIAS="${CROSS_V4_PRIOR_PRESENT_BIAS:-0.5}"
+CROSS_V4_PRIOR_MISSING_BIAS="${CROSS_V4_PRIOR_MISSING_BIAS:-3.0}"
+CROSS_V4_PRIOR_WRONG_CLASS_BIAS="${CROSS_V4_PRIOR_WRONG_CLASS_BIAS:--2.0}"
+CROSS_V4_CELL_PRIOR_BIAS="${CROSS_V4_CELL_PRIOR_BIAS:-0.0}"
+
+SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-0}"
+SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0}"
+REFERENCE_STYLE_LOSS_WEIGHT="${REFERENCE_STYLE_LOSS_WEIGHT:-1.0}"
+REFERENCE_STYLE_LOSS_INTERVAL="${REFERENCE_STYLE_LOSS_INTERVAL:-1}"
+REF_SWAP_LOSS_WEIGHT="${REF_SWAP_LOSS_WEIGHT:-0}"
+REF_SWAP_MARGIN="${REF_SWAP_MARGIN:-0.08}"
+REF_SWAP_VARIANTS="${REF_SWAP_VARIANTS:-}"
+REF_SWAP_LOSS_INTERVAL="${REF_SWAP_LOSS_INTERVAL:-0}"
+REF_CHECK_STEP="${REF_CHECK_STEP:-10}"
+MAX_CUDA_MEMORY_GB="${MAX_CUDA_MEMORY_GB:-80}"
+CUDA_MEMORY_CHECK_INTERVAL="${CUDA_MEMORY_CHECK_INTERVAL:-10}"
+CROSS_V4_DIAGNOSE_STEPS="${CROSS_V4_DIAGNOSE_STEPS:-1,10,100,500,1000,1500,2000}"
+CROSS_V4_DIAGNOSE_INTERVAL="${CROSS_V4_DIAGNOSE_INTERVAL:-0}"
+CROSS_V4_DIAGNOSE_JSONL="${CROSS_V4_DIAGNOSE_JSONL:-${CROSS_V4_OUTPUT_DIR}/cross_v4_diagnostics.jsonl}"
+DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
+DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-4}"
+PAIR_DIFFICULTY_SAMPLER="${PAIR_DIFFICULTY_SAMPLER:-1}"
+PAIR_DIFFICULTY_TARGET_FULL="${PAIR_DIFFICULTY_TARGET_FULL:-0.70}"
+PAIR_DIFFICULTY_TARGET_PARTIAL="${PAIR_DIFFICULTY_TARGET_PARTIAL:-0.25}"
+PAIR_DIFFICULTY_TARGET_LOW="${PAIR_DIFFICULTY_TARGET_LOW:-0.05}"
+MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-5000}"
+CHECKPOINTING_STEPS="${CHECKPOINTING_STEPS:-1000}"
+CROSS_V4_EXTREME_BIAS_SMOKE="${CROSS_V4_EXTREME_BIAS_SMOKE:-0}"
+
+if [[ "${CROSS_V4_EXTREME_BIAS_SMOKE}" == "1" ]]; then
+  MAX_TRAIN_STEPS=1
+  GRADIENT_CHECKPOINTING=0
+  CHECKPOINTING_STEPS="${CHECKPOINTING_STEPS:-1000}"
+  SELF_RECONSTRUCTION_WARMUP_STEPS=0
+  SELF_RECONSTRUCTION_SAMPLE_PROB=0
+  REFERENCE_STYLE_LOSS_WEIGHT=0
+  REFERENCE_STYLE_LOSS_INTERVAL=0
+  REF_SWAP_LOSS_WEIGHT=0
+  REF_SWAP_LOSS_INTERVAL=0
+  REF_SWAP_VARIANTS=""
+  CROSS_V4_DIAGNOSE_STEPS=1
+  CROSS_V4_DIAGNOSE_INTERVAL=0
+  CROSS_V4_BIAS_SCALE=1.0
+  CROSS_V4_BIAS_WARMUP_STEPS=0
+  CROSS_V4_SAME_FINE_BIAS="${CROSS_V4_SMOKE_SAME_FINE_BIAS:-50.0}"
+  CROSS_V4_SAME_COARSE_BIAS="${CROSS_V4_SMOKE_SAME_COARSE_BIAS:-50.0}"
+  CROSS_V4_MISMATCH_BIAS="${CROSS_V4_SMOKE_MISMATCH_BIAS:--50.0}"
+  CROSS_V4_PRIOR_PRESENT_BIAS="${CROSS_V4_SMOKE_PRIOR_PRESENT_BIAS:-0.5}"
+  CROSS_V4_PRIOR_MISSING_BIAS="${CROSS_V4_SMOKE_PRIOR_MISSING_BIAS:-50.0}"
+  CROSS_V4_PRIOR_WRONG_CLASS_BIAS="${CROSS_V4_SMOKE_PRIOR_WRONG_CLASS_BIAS:--50.0}"
+  CROSS_V4_CELL_SIMILARITY_BIAS=0
+  CROSS_V4_DENSITY_GAP_BIAS=0
+  CROSS_V4_CELL_PRIOR_BIAS=0
+fi
+
+cd "${PROJECT_ROOT}"
+
+TRAIN_OPTIMIZER_ARGS=()
+if [[ "${USE_8BIT_ADAM}" == "1" ]]; then
+  TRAIN_OPTIMIZER_ARGS+=(--use-8bit-adam)
+fi
+
+TRAIN_MEMORY_ARGS=()
+if [[ "${GRADIENT_CHECKPOINTING}" == "1" ]]; then
+  TRAIN_MEMORY_ARGS+=(--gradient-checkpointing)
+fi
+
+TRAIN_CROSS_V4_SMOKE_ARGS=()
+if [[ "${CROSS_V4_EXTREME_BIAS_SMOKE}" == "1" ]]; then
+  TRAIN_CROSS_V4_SMOKE_ARGS+=(--cross-v4-extreme-bias-smoke)
+fi
+
+TRAIN_CONTROLNET_ARGS=(--controlnet-train-mode "${CONTROLNET_TRAIN_MODE}")
+if [[ "${CONTROLNET_TRAIN_X_EMBEDDER}" == "1" ]]; then
+  TRAIN_CONTROLNET_ARGS+=(--controlnet-train-x-embedder)
+fi
+
+TRAIN_PAIR_SAMPLER_ARGS=(
+  --pair-difficulty-target-full "${PAIR_DIFFICULTY_TARGET_FULL}"
+  --pair-difficulty-target-partial "${PAIR_DIFFICULTY_TARGET_PARTIAL}"
+  --pair-difficulty-target-low "${PAIR_DIFFICULTY_TARGET_LOW}"
+)
+if [[ "${PAIR_DIFFICULTY_SAMPLER}" == "1" ]]; then
+  TRAIN_PAIR_SAMPLER_ARGS+=(--pair-difficulty-sampler)
+else
+  TRAIN_PAIR_SAMPLER_ARGS+=(--no-pair-difficulty-sampler)
+fi
+
+TRAIN_CHECKPOINT_ARGS=()
+if [[ -n "${CONTROLNET_CHECKPOINT}" ]]; then
+  TRAIN_CHECKPOINT_ARGS+=(--controlnet_model_name_or_path "${CONTROLNET_CHECKPOINT}")
+  if [[ "${LOAD_CONDITIONING_FROM_CHECKPOINT}" == "1" ]]; then
+    TRAIN_CHECKPOINT_ARGS+=(--load-conditioning-from-checkpoint)
+  fi
+fi
+
+RESUME_ARGS=()
+if [[ -n "${RESUME_FROM_CHECKPOINT}" ]]; then
+  RESUME_ARGS+=(--resume-from-checkpoint "${RESUME_FROM_CHECKPOINT}")
+fi
+
+echo "Cross V4 launch: gpus=${GPU_IDS} processes=${NUM_PROCESSES} max_steps=${MAX_TRAIN_STEPS} output=${CROSS_V4_OUTPUT_DIR}"
+echo "Cross V4 sampling: self_recon_warmup=${SELF_RECONSTRUCTION_WARMUP_STEPS} self_recon_prob=${SELF_RECONSTRUCTION_SAMPLE_PROB} ref_swap_loss=${REF_SWAP_LOSS_WEIGHT} ref_swap_interval=${REF_SWAP_LOSS_INTERVAL}"
+echo "Cross V4 pair sampler: enabled=${PAIR_DIFFICULTY_SAMPLER} target_full=${PAIR_DIFFICULTY_TARGET_FULL} target_partial=${PAIR_DIFFICULTY_TARGET_PARTIAL} target_low=${PAIR_DIFFICULTY_TARGET_LOW}"
+echo "Cross V4 bias: blocks=${CROSS_V4_BIASED_DOUBLE_BLOCKS} scale=${CROSS_V4_BIAS_SCALE} warmup=${CROSS_V4_BIAS_WARMUP_STEPS} same_fine=${CROSS_V4_SAME_FINE_BIAS} same_coarse=${CROSS_V4_SAME_COARSE_BIAS} mismatch=${CROSS_V4_MISMATCH_BIAS} prior_missing=${CROSS_V4_PRIOR_MISSING_BIAS}"
+echo "Cross V4 diagnostics: steps=${CROSS_V4_DIAGNOSE_STEPS} interval=${CROSS_V4_DIAGNOSE_INTERVAL} jsonl=${CROSS_V4_DIAGNOSE_JSONL} memory_limit_gb=${MAX_CUDA_MEMORY_GB} extreme_smoke=${CROSS_V4_EXTREME_BIAS_SMOKE}"
+
+accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GPU_IDS}" \
+  controlnet_train/cli/train_controlnet_flux_cross_v4.py \
+  --pretrained_model_name_or_path "${MODEL_DIR}" \
+  --train-metadata "${CROSS_META}" \
+  "${TRAIN_CHECKPOINT_ARGS[@]}" \
+  --output-dir "${CROSS_V4_OUTPUT_DIR}" \
+  "${RESUME_ARGS[@]}" \
+  --logging-dir logs \
+  --seed 42 \
+  --train-batch-size 1 \
+  --gradient-accumulation-steps 8 \
+  --num-train-epochs 10 \
+  --max-train-steps "${MAX_TRAIN_STEPS}" \
+  --self-reconstruction-warmup-steps "${SELF_RECONSTRUCTION_WARMUP_STEPS}" \
+  --self-reconstruction-sample-prob "${SELF_RECONSTRUCTION_SAMPLE_PROB}" \
+  --reference-token-output-init-std "${REFERENCE_TOKEN_OUTPUT_INIT_STD}" \
+  --reference-route-anchor-mode "${REFERENCE_ROUTE_ANCHOR_MODE}" \
+  --reference-style-loss-weight "${REFERENCE_STYLE_LOSS_WEIGHT}" \
+  --reference-style-loss-interval "${REFERENCE_STYLE_LOSS_INTERVAL}" \
+  --ref-swap-loss-weight "${REF_SWAP_LOSS_WEIGHT}" \
+  --ref-swap-loss-interval "${REF_SWAP_LOSS_INTERVAL}" \
+  --ref-swap-margin "${REF_SWAP_MARGIN}" \
+  --ref-swap-variants "${REF_SWAP_VARIANTS}" \
+  --ref-check-step "${REF_CHECK_STEP}" \
+  --target-tissue-encoding "${TARGET_TISSUE_ENCODING}" \
+  --target-one-hot-scale "${TARGET_ONE_HOT_SCALE}" \
+  --cross-v4-tissue-prior-tokens-per-class "${CROSS_V4_TISSUE_PRIOR_TOKENS_PER_CLASS}" \
+  --cross-v4-cell-prior-tokens-per-class "${CROSS_V4_CELL_PRIOR_TOKENS_PER_CLASS}" \
+  --cross-v4-global-style-tokens "${CROSS_V4_GLOBAL_STYLE_TOKENS}" \
+  --cross-v4-biased-double-blocks "${CROSS_V4_BIASED_DOUBLE_BLOCKS}" \
+  --cross-v4-bias-scale "${CROSS_V4_BIAS_SCALE}" \
+  --cross-v4-bias-warmup-steps "${CROSS_V4_BIAS_WARMUP_STEPS}" \
+  --cross-v4-same-fine-bias "${CROSS_V4_SAME_FINE_BIAS}" \
+  --cross-v4-same-coarse-bias "${CROSS_V4_SAME_COARSE_BIAS}" \
+  --cross-v4-mismatch-bias "${CROSS_V4_MISMATCH_BIAS}" \
+  --cross-v4-cell-similarity-bias "${CROSS_V4_CELL_SIMILARITY_BIAS}" \
+  --cross-v4-density-gap-bias "${CROSS_V4_DENSITY_GAP_BIAS}" \
+  --cross-v4-prior-present-bias "${CROSS_V4_PRIOR_PRESENT_BIAS}" \
+  --cross-v4-prior-missing-bias "${CROSS_V4_PRIOR_MISSING_BIAS}" \
+  --cross-v4-prior-wrong-class-bias "${CROSS_V4_PRIOR_WRONG_CLASS_BIAS}" \
+  --cross-v4-cell-prior-bias "${CROSS_V4_CELL_PRIOR_BIAS}" \
+  --cross-v4-diagnose-steps "${CROSS_V4_DIAGNOSE_STEPS}" \
+  --cross-v4-diagnose-interval "${CROSS_V4_DIAGNOSE_INTERVAL}" \
+  --cross-v4-diagnose-jsonl "${CROSS_V4_DIAGNOSE_JSONL}" \
+  "${TRAIN_CROSS_V4_SMOKE_ARGS[@]}" \
+  --learning-rate "${CONTROLNET_LEARNING_RATE}" \
+  "${TRAIN_CONTROLNET_ARGS[@]}" \
+  --conditioning-learning-rate "${CONDITIONING_LEARNING_RATE}" \
+  --lr-scheduler constant_with_warmup \
+  --lr-warmup-steps 500 \
+  --checkpointing-steps "${CHECKPOINTING_STEPS}" \
+  --checkpoints-total-limit 5 \
+  --mixed-precision "${MIXED_PRECISION}" \
+  "${TRAIN_OPTIMIZER_ARGS[@]}" \
+  "${TRAIN_MEMORY_ARGS[@]}" \
+  --max-cuda-memory-gb "${MAX_CUDA_MEMORY_GB}" \
+  --cuda-memory-check-interval "${CUDA_MEMORY_CHECK_INTERVAL}" \
+  --allow-tf32 \
+  --dataloader-num-workers "${DATALOADER_NUM_WORKERS}" \
+  --dataloader-prefetch-factor "${DATALOADER_PREFETCH_FACTOR}" \
+  "${TRAIN_PAIR_SAMPLER_ARGS[@]}" \
+  --num-double-layers 4 \
+  --num-single-layers 4 \
+  --guidance-scale 3.5 \
+  --report-to tensorboard \
+  --tracker-project-name flux_controlnet_phase5_cross_v4_mask_guided

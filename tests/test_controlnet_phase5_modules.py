@@ -24,6 +24,9 @@ from controlnet_train.modules.cross_v2_1_conditioning import (
 from controlnet_train.modules.cross_v3_conditioning import (
     CROSS_V3_PROMPT,
     CROSS_V3_REFERENCE_ZERO_REF,
+    CROSS_V3_ROUTE_COARSE,
+    CROSS_V3_ROUTE_FINE,
+    CROSS_V3_ROUTE_NONE,
     CrossV3ControlSpec,
     CrossV3ReferenceContextEncoder,
     CrossV3ReferenceSpec,
@@ -31,8 +34,26 @@ from controlnet_train.modules.cross_v3_conditioning import (
     apply_cross_v3_reference_mode,
     apply_cross_v3_reference_token_mode,
     build_cross_v3_control_condition,
+    build_cross_v3_reference_route_ids,
+    cross_v3_route_class_count,
     normalize_cross_v3_reference_mode,
+    normalize_cross_v3_reference_route_mode,
     pack_cross_v3_reference_grid,
+)
+from controlnet_train.modules.cross_v4_conditioning import (
+    NUM_CELL_WITH_BG,
+    CrossV4CorrespondenceBiasConfig,
+    CrossV4PriorTokenBank,
+    CrossV4ReferenceContextEncoder,
+    append_cross_v4_context,
+    apply_cross_v4_reference_encoding_mode,
+    build_cross_v4_correspondence_bias,
+    build_cross_v4_token_metadata,
+    remap_cross_v4_cell_ids,
+)
+from controlnet_train.training.cross_v4_attention import (
+    FluxCrossV4AttnProcessor2_0,
+    parse_cross_v4_block_indices,
 )
 from controlnet_train.modules.fixed_tissue_encoder import FixedOneHotTissueEncoder
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
@@ -53,7 +74,7 @@ cross_v3_training = importlib.util.module_from_spec(_CROSS_V3_TRAINING_SPEC)
 try:
     sys.modules[_CROSS_V3_TRAINING_SPEC.name] = cross_v3_training
     _CROSS_V3_TRAINING_SPEC.loader.exec_module(cross_v3_training)
-except ModuleNotFoundError:
+except (ModuleNotFoundError, RuntimeError):
     cross_v3_training = None
 
 
@@ -368,6 +389,57 @@ class CrossV3ConditioningTests(unittest.TestCase):
         self.assertEqual(reference_spec.raw_channels, 6)
         self.assertEqual(reference_spec.packed_channels, 24)
         self.assertEqual(reference_spec.token_dim, 8)
+        self.assertEqual(reference_spec.route_class_count, 0)
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v3 training helpers")
+    def test_cross_v3_ref_swap_token_variants_zero_or_shuffle_reference_tokens(self):
+        tokens = torch.arange(3 * 2 * 4, dtype=torch.float32).reshape(3, 2, 4)
+
+        zero_tokens = cross_v3_training._build_swapped_reference_tokens(tokens, "zero")
+        random_tokens = cross_v3_training._build_swapped_reference_tokens(tokens, "random")
+        single_random = cross_v3_training._build_swapped_reference_tokens(tokens[:1], "random")
+
+        self.assertTrue(torch.equal(zero_tokens, torch.zeros_like(tokens)))
+        self.assertTrue(torch.equal(random_tokens, tokens.index_select(0, torch.tensor([2, 0, 1]))))
+        self.assertIsNone(single_random)
+        self.assertEqual(cross_v3_training._parse_ref_swap_variants("zero,batch-shuffle"), ["zero", "random"])
+
+    def test_cross_v3_reference_route_modes_keep_fine_tumor_ids_when_requested(self):
+        self.assertEqual(normalize_cross_v3_reference_route_mode("fine-anchor"), CROSS_V3_ROUTE_FINE)
+        self.assertEqual(normalize_cross_v3_reference_route_mode("coarse"), CROSS_V3_ROUTE_COARSE)
+        self.assertEqual(normalize_cross_v3_reference_route_mode("off"), CROSS_V3_ROUTE_NONE)
+        self.assertEqual(cross_v3_route_class_count("fine"), 16)
+        self.assertEqual(cross_v3_route_class_count("coarse"), 8)
+        self.assertEqual(cross_v3_route_class_count("none"), 0)
+        self.assertEqual(CrossV3ReferenceSpec(route_anchor_mode="fine").route_class_count, 16)
+
+        fine_tumor_mask = torch.tensor(
+            [
+                [8, 8, 9, 9],
+                [8, 8, 9, 9],
+                [10, 10, 1, 1],
+                [10, 10, 1, 1],
+            ],
+            dtype=torch.long,
+        )
+
+        fine_ids, fine_confidence = build_cross_v3_reference_route_ids(
+            ref_tissue_ids=fine_tumor_mask,
+            token_height=2,
+            token_width=2,
+            route_anchor_mode="fine",
+        )
+        coarse_ids, coarse_confidence = build_cross_v3_reference_route_ids(
+            ref_tissue_ids=fine_tumor_mask,
+            token_height=2,
+            token_width=2,
+            route_anchor_mode="coarse",
+        )
+
+        self.assertTrue(torch.equal(fine_ids[0], torch.tensor([[8, 9], [10, 1]])))
+        self.assertTrue(torch.equal(coarse_ids[0], torch.ones(2, 2, dtype=torch.long)))
+        self.assertTrue(torch.equal(fine_confidence, torch.ones_like(fine_confidence)))
+        self.assertTrue(torch.equal(coarse_confidence, torch.ones_like(coarse_confidence)))
 
     def test_cross_v3_reference_grid_packs_latent_and_ref_masks(self):
         z_ref = torch.full((1, 2, 4, 4), 1.0)
@@ -401,6 +473,51 @@ class CrossV3ConditioningTests(unittest.TestCase):
         )
 
         self.assertEqual(tokens.shape, (2, 4, 7))
+
+    def test_cross_v3_reference_context_encoder_appends_fine_route_anchors(self):
+        encoder = CrossV3ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=7,
+            hidden_dim=5,
+            route_anchor_mode="fine",
+        )
+        ref_tissue_ids = torch.tensor(
+            [
+                [8, 8, 9, 9],
+                [8, 8, 9, 9],
+                [10, 10, 1, 1],
+                [10, 10, 1, 1],
+            ],
+            dtype=torch.long,
+        ).unsqueeze(0)
+
+        tokens = encoder(
+            z_ref=torch.randn(1, 2, 4, 4),
+            ref_tissue_feat=torch.randn(1, 3, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=ref_tissue_ids,
+        )
+
+        self.assertEqual(tokens.shape, (1, 16 + 4, 7))
+
+    def test_cross_v3_reference_context_encoder_requires_route_ids_when_enabled(self):
+        encoder = CrossV3ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=7,
+            hidden_dim=5,
+            route_anchor_mode="fine",
+        )
+
+        with self.assertRaisesRegex(ValueError, "ref_tissue_ids"):
+            encoder(
+                z_ref=torch.randn(1, 2, 4, 4),
+                ref_tissue_feat=torch.randn(1, 3, 4, 4),
+                ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            )
 
     def test_cross_v3_reference_context_encoder_uses_small_output_init(self):
         encoder = CrossV3ReferenceContextEncoder(
@@ -451,6 +568,416 @@ class CrossV3ConditioningTests(unittest.TestCase):
         self.assertTrue(torch.equal(nuclei_out, torch.zeros_like(ref_nuclei)))
         self.assertTrue(torch.equal(apply_cross_v3_reference_token_mode(tokens, "zero-ref"), torch.zeros_like(tokens)))
         self.assertEqual(normalize_cross_v3_reference_mode("zero-ref"), CROSS_V3_REFERENCE_ZERO_REF)
+
+
+class CrossV4ConditioningTests(unittest.TestCase):
+    def test_cross_v4_token_metadata_downsamples_tissue_and_cell_masks(self):
+        tissue = torch.tensor(
+            [[
+                [1, 1, 2, 2],
+                [1, 1, 2, 2],
+                [3, 3, 4, 4],
+                [3, 3, 4, 4],
+            ]],
+            dtype=torch.long,
+        )
+        nuclei = torch.tensor(
+            [[
+                [101, 101, 0, 0],
+                [101, 102, 0, 0],
+                [104, 104, 102, 102],
+                [104, 0, 102, 0],
+            ]],
+            dtype=torch.long,
+        )
+
+        meta = build_cross_v4_token_metadata(
+            tissue_ids=tissue,
+            nuclei_ids=nuclei,
+            token_height=2,
+            token_width=2,
+        )
+
+        self.assertTrue(torch.equal(meta.tissue_fine_id[0], torch.tensor([1, 2, 3, 4])))
+        self.assertTrue(torch.equal(meta.tissue_coarse_id[0], torch.tensor([1, 2, 3, 4])))
+        self.assertTrue(torch.equal(meta.tissue_confidence, torch.ones_like(meta.tissue_confidence)))
+        self.assertEqual(meta.cell_hist.shape, (1, 4, NUM_CELL_WITH_BG))
+        self.assertAlmostEqual(float(meta.cell_density[0, 0].item()), 1.0)
+        self.assertAlmostEqual(float(meta.cell_hist[0, 1, 0].item()), 1.0)
+        self.assertAlmostEqual(float(meta.cell_density[0, 2].item()), 0.75)
+        self.assertTrue(torch.equal(remap_cross_v4_cell_ids(torch.tensor([0, 101, 105])), torch.tensor([0, 1, 5])))
+
+    def test_cross_v4_reference_encoder_returns_local_tokens_route_anchors_and_metadata(self):
+        encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=2,
+            tissue_channels=3,
+            nuclei_channels=1,
+            token_dim=7,
+            hidden_dim=5,
+            route_anchor_mode="coarse",
+        )
+        tissue = torch.tensor(
+            [[
+                [1, 1, 2, 2],
+                [1, 1, 2, 2],
+                [3, 3, 4, 4],
+                [3, 3, 4, 4],
+            ]],
+            dtype=torch.long,
+        )
+        nuclei = torch.zeros(1, 4, 4, dtype=torch.long)
+
+        encoding = encoder(
+            z_ref=torch.randn(1, 2, 4, 4),
+            ref_tissue_feat=torch.randn(1, 3, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=tissue,
+            ref_nuclei_ids=nuclei,
+        )
+
+        self.assertEqual(encoding.local_tokens.shape, (1, 4, 7))
+        self.assertEqual(encoding.route_anchor_tokens.shape, (1, 8, 7))
+        self.assertEqual(encoding.tokens.shape, (1, 12, 7))
+        self.assertTrue(torch.equal(encoding.metadata.tissue_fine_id[0], torch.tensor([1, 2, 3, 4])))
+
+    def test_cross_v4_context_segments_and_prior_bias_fallback(self):
+        prompt_embeds = torch.zeros(1, 2, 6)
+        text_ids = torch.zeros(2, 3)
+        ref_encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=1,
+            tissue_channels=1,
+            nuclei_channels=1,
+            token_dim=6,
+            hidden_dim=4,
+        )
+        ref_tissue = torch.tensor(
+            [[
+                [1, 1, 2, 2],
+                [1, 1, 2, 2],
+                [2, 2, 2, 2],
+                [2, 2, 2, 2],
+            ]],
+            dtype=torch.long,
+        )
+        ref_encoding = ref_encoder(
+            z_ref=torch.randn(1, 1, 4, 4),
+            ref_tissue_feat=torch.randn(1, 1, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=ref_tissue,
+            ref_nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+        )
+        prior_bank = CrossV4PriorTokenBank(
+            token_dim=6,
+            tissue_prior_tokens_per_class=1,
+            cell_prior_tokens_per_class=1,
+            global_style_tokens=1,
+        )
+        prior = prior_bank(ref_encoding.local_tokens)
+        context = append_cross_v4_context(
+            prompt_embeds=prompt_embeds,
+            text_ids=text_ids,
+            reference_encoding=ref_encoding,
+            prior_tokens=prior,
+        )
+        target_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [2, 2, 3, 3],
+                    [2, 2, 3, 3],
+                ]],
+                dtype=torch.long,
+            ),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+
+        bias = build_cross_v4_correspondence_bias(
+            target_metadata=target_meta,
+            context=context,
+            config=CrossV4CorrespondenceBiasConfig(
+                cell_similarity=0.0,
+                density_gap=0.0,
+                cell_prior=0.0,
+            ),
+        )
+
+        self.assertEqual(bias.shape, (1, 4, context.encoder_hidden_states.shape[1]))
+        self.assertEqual(context.segments.text, (0, 2))
+        self.assertEqual(context.segments.global_style, (2, 3))
+        self.assertEqual(context.segments.tissue_prior, (3, 11))
+        self.assertEqual(context.segments.cell_prior, (11, 17))
+        tumor_ref_start, tumor_ref_end = context.segments.reference_local
+        self.assertGreater(float(bias[0, 0, tumor_ref_start].item()), 0.0)
+        missing_necrosis_prior_index = context.segments.tissue_prior[0] + 3
+        covered_tumor_prior_index = context.segments.tissue_prior[0] + 1
+        self.assertAlmostEqual(float(bias[0, 1, missing_necrosis_prior_index].item()), 3.0)
+        self.assertAlmostEqual(float(bias[0, 0, covered_tumor_prior_index].item()), 0.5)
+        self.assertLess(float(bias[0, 1, tumor_ref_end - 1].item()), 0.0)
+
+    def test_cross_v4_prior_bank_omits_disabled_optional_parameters(self):
+        bank = CrossV4PriorTokenBank(
+            token_dim=6,
+            tissue_prior_tokens_per_class=1,
+            cell_prior_tokens_per_class=0,
+            global_style_tokens=0,
+        )
+        params = dict(bank.named_parameters())
+        tokens = bank(torch.randn(2, 4, 6))
+
+        self.assertIn("tissue_prior_tokens", params)
+        self.assertNotIn("cell_prior_tokens", params)
+        self.assertNotIn("global_style_offsets", params)
+        self.assertEqual(tokens.tissue_prior_tokens.shape, (2, 8, 6))
+        self.assertEqual(tokens.cell_prior_tokens.shape, (2, 0, 6))
+        self.assertEqual(tokens.global_style_tokens.shape, (2, 0, 6))
+
+    def test_cross_v4_zero_reference_mode_preserves_metadata(self):
+        encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=1,
+            tissue_channels=1,
+            nuclei_channels=1,
+            token_dim=4,
+            hidden_dim=4,
+        )
+        encoding = encoder(
+            z_ref=torch.randn(1, 1, 4, 4),
+            ref_tissue_feat=torch.randn(1, 1, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=torch.ones(1, 4, 4, dtype=torch.long),
+            ref_nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+        )
+
+        zero = apply_cross_v4_reference_encoding_mode(encoding, "zero-ref")
+
+        self.assertTrue(torch.equal(zero.local_tokens, torch.zeros_like(encoding.local_tokens)))
+        self.assertTrue(torch.equal(zero.metadata.tissue_fine_id, encoding.metadata.tissue_fine_id))
+
+    def test_cross_v4_attention_block_index_parser(self):
+        self.assertEqual(parse_cross_v4_block_indices("last"), (-1,))
+        self.assertEqual(parse_cross_v4_block_indices("1,3"), (1, 3))
+        self.assertEqual(parse_cross_v4_block_indices("off"), ())
+        self.assertEqual(parse_cross_v4_block_indices("all", total_blocks=3), (0, 1, 2))
+
+    def test_cross_v4_attention_processor_accepts_bias_for_double_block_path(self):
+        class FakeAttention(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.heads = 1
+                self.to_q = torch.nn.Linear(4, 4, bias=False)
+                self.to_k = torch.nn.Linear(4, 4, bias=False)
+                self.to_v = torch.nn.Linear(4, 4, bias=False)
+                self.add_q_proj = torch.nn.Linear(4, 4, bias=False)
+                self.add_k_proj = torch.nn.Linear(4, 4, bias=False)
+                self.add_v_proj = torch.nn.Linear(4, 4, bias=False)
+                self.to_add_out = torch.nn.Identity()
+                self.to_out = torch.nn.ModuleList([torch.nn.Identity(), torch.nn.Identity()])
+                self.norm_q = None
+                self.norm_k = None
+                self.norm_added_q = None
+                self.norm_added_k = None
+                for module in (
+                    self.to_q,
+                    self.to_k,
+                    self.to_v,
+                    self.add_q_proj,
+                    self.add_k_proj,
+                    self.add_v_proj,
+                ):
+                    module.weight.data.copy_(torch.eye(4))
+
+        processor = FluxCrossV4AttnProcessor2_0(apply_cross_v4_bias=True)
+        attn = FakeAttention()
+        hidden_states = torch.randn(1, 3, 4)
+        encoder_hidden_states = torch.randn(1, 2, 4)
+        bias = torch.zeros(1, 3, 2)
+        bias[:, :, 0] = 5.0
+
+        image_out, context_out = processor(
+            attn,
+            hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            cross_v4_bias=bias,
+        )
+
+        self.assertEqual(image_out.shape, hidden_states.shape)
+        self.assertEqual(context_out.shape, encoder_hidden_states.shape)
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_attention_diagnostics_summarize_same_ref_and_prior_buckets(self):
+        prompt_embeds = torch.zeros(1, 2, 6)
+        text_ids = torch.zeros(2, 3)
+        ref_encoder = CrossV4ReferenceContextEncoder(
+            reference_latent_channels=1,
+            tissue_channels=1,
+            nuclei_channels=1,
+            token_dim=6,
+            hidden_dim=4,
+        )
+        ref_encoding = ref_encoder(
+            z_ref=torch.randn(1, 1, 4, 4),
+            ref_tissue_feat=torch.randn(1, 1, 4, 4),
+            ref_nuclei_feat=torch.randn(1, 1, 4, 4),
+            ref_tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 2, 2],
+                    [1, 1, 2, 2],
+                    [2, 2, 2, 2],
+                    [2, 2, 2, 2],
+                ]],
+                dtype=torch.long,
+            ),
+            ref_nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+        )
+        prior = CrossV4PriorTokenBank(token_dim=6, tissue_prior_tokens_per_class=1)(ref_encoding.local_tokens)
+        context = append_cross_v4_context(
+            prompt_embeds=prompt_embeds,
+            text_ids=text_ids,
+            reference_encoding=ref_encoding,
+            prior_tokens=prior,
+        )
+        target_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [2, 2, 3, 3],
+                    [2, 2, 3, 3],
+                ]],
+                dtype=torch.long,
+            ),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+        bias = build_cross_v4_correspondence_bias(
+            target_metadata=target_meta,
+            context=context,
+            config=CrossV4CorrespondenceBiasConfig(cell_similarity=0.0, density_gap=0.0),
+        )
+
+        diagnostics = cross_v3_training._build_cross_v4_attention_diagnostics(
+            context=context,
+            target_metadata=target_meta,
+            correspondence_bias=bias,
+        )
+        records = diagnostics["records"]
+        records.append(
+            {
+                "cross_v4_attention_covered_ref_same_total": 0.4,
+                "cross_v4_attention_covered_ref_all_local": 0.5,
+                "cross_v4_attention_covered_ref_mismatch": 0.05,
+                "cross_v4_attention_covered_tissue_prior_target": 0.1,
+                "cross_v4_attention_missing_tissue_prior_target": 0.4,
+                "cross_v4_attention_missing_ref_mismatch": 0.1,
+                "cross_v4_attention_missing_tissue_prior_other": 0.01,
+            }
+        )
+        summary = {}
+        summary.update(diagnostics["static"])
+        summary.update(cross_v3_training._summarize_cross_v4_attention_records(diagnostics))
+        verdict, issues = cross_v3_training._cross_v4_diagnostic_verdict(summary)
+
+        self.assertEqual(verdict, "pass")
+        self.assertEqual(issues, [])
+        self.assertGreater(summary["cross_v4_covered_target_tokens"], 0.0)
+        self.assertGreater(summary["cross_v4_missing_target_tokens"], 0.0)
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_diagnostic_verdict_flags_non_cross_diagnostic_batch(self):
+        summary = {
+            "cross_samples": 0.0,
+            "self_reconstruction_samples": 1.0,
+            "cross_v4_attention_diagnostic_layers": 1.0,
+            "cross_v4_attention_covered_ref_same_total": 0.4,
+            "cross_v4_attention_covered_ref_all_local": 0.5,
+            "cross_v4_attention_covered_ref_mismatch": 0.05,
+            "cross_v4_attention_covered_tissue_prior_target": 0.1,
+            "cross_v4_attention_missing_tissue_prior_target": 0.4,
+            "cross_v4_attention_missing_ref_mismatch": 0.1,
+            "cross_v4_attention_missing_tissue_prior_other": 0.01,
+        }
+
+        verdict, issues = cross_v3_training._cross_v4_diagnostic_verdict(summary)
+
+        self.assertEqual(verdict, "watch")
+        self.assertIn("diagnostic batch has no cross samples", issues)
+        self.assertIn("diagnostic batch contains self-reconstruction samples", issues)
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_extreme_bias_smoke_verdict_uses_hard_attention_thresholds(self):
+        summary = {
+            "cross_samples": 1.0,
+            "self_reconstruction_samples": 0.0,
+            "cross_v4_bias_scale_effective": 1.0,
+            "cross_v4_attention_diagnostic_layers": 1.0,
+            "cross_v4_covered_target_token_fraction": 0.5,
+            "cross_v4_missing_target_token_fraction": 0.5,
+            "cross_v4_attention_covered_ref_same_total": 0.99,
+            "cross_v4_attention_missing_tissue_prior_target": 0.98,
+            "cross_v4_attention_covered_ref_mismatch": 0.001,
+            "cross_v4_attention_missing_ref_mismatch": 0.002,
+        }
+
+        verdict, issues, metrics = cross_v3_training._cross_v4_extreme_bias_smoke_verdict(summary)
+
+        self.assertEqual(verdict, "pass")
+        self.assertEqual(issues, [])
+        self.assertEqual(metrics["cross_v4_smoke_covered_ref_same_pass"], 1.0)
+        self.assertEqual(metrics["cross_v4_smoke_missing_prior_pass"], 1.0)
+
+        failed = dict(summary)
+        failed["cross_v4_attention_covered_ref_same_total"] = 0.6
+        failed["cross_v4_attention_missing_ref_mismatch"] = 0.2
+
+        verdict, issues, metrics = cross_v3_training._cross_v4_extreme_bias_smoke_verdict(failed)
+
+        self.assertEqual(verdict, "fail")
+        self.assertEqual(metrics["cross_v4_smoke_covered_ref_same_pass"], 0.0)
+        self.assertEqual(metrics["cross_v4_smoke_missing_mismatch_pass"], 0.0)
+        self.assertTrue(any("same-class reference" in issue for issue in issues))
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_cross_v4_attention_mass_by_source_builds_nested_json_payload(self):
+        summary = {
+            "cross_v4_attention_diagnostic_layers": 1.0,
+            "cross_v4_attention_covered_ref_same_total": 0.99,
+            "cross_v4_attention_covered_ref_mismatch": 0.001,
+            "cross_v4_attention_missing_tissue_prior_target": 0.98,
+            "cross_v4_attention_missing_ref_mismatch": 0.002,
+        }
+
+        mass = cross_v3_training._cross_v4_attention_mass_by_source(summary)
+
+        self.assertEqual(mass["covered"]["ref_same_total"], 0.99)
+        self.assertEqual(mass["covered"]["ref_mismatch"], 0.001)
+        self.assertEqual(mass["missing"]["tissue_prior_target"], 0.98)
+        self.assertEqual(mass["missing"]["ref_mismatch"], 0.002)
+
+    @unittest.skipIf(cross_v3_training is None, "diffusers/accelerate are required for cross-v4 training helpers")
+    def test_pair_difficulty_sampler_upsamples_partial_and_low_buckets(self):
+        records = (
+            [{"pair_difficulty": "full"} for _ in range(85)]
+            + [{"pair_difficulty": "partial"} for _ in range(14)]
+            + [{"pair_difficulty": "low"}]
+        )
+        target = {"full": 0.70, "partial": 0.25, "low": 0.05}
+
+        sampler, stats = cross_v3_training._build_pair_difficulty_sampler(
+            records,
+            target_distribution=target,
+            seed=123,
+        )
+
+        self.assertEqual(len(sampler), len(records))
+        self.assertEqual(stats["counts"], {"full": 85, "partial": 14, "low": 1})
+        self.assertLess(stats["class_weights"]["full"], stats["class_weights"]["partial"])
+        self.assertLess(stats["class_weights"]["partial"], stats["class_weights"]["low"])
+        self.assertAlmostEqual(stats["class_weights"]["full"], 0.70 / 0.85)
+        self.assertAlmostEqual(stats["class_weights"]["partial"], 0.25 / 0.14)
+        self.assertAlmostEqual(stats["class_weights"]["low"], 0.05 / 0.01)
 
 
 if __name__ == "__main__":

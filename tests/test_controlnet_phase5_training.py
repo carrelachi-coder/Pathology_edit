@@ -1,9 +1,17 @@
 import unittest
+import importlib.util
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import mock
 
+import numpy as np
 import torch
 import torch.nn as nn
+from PIL import Image
 
 from controlnet_train.modules.conditioning import build_inpaint_condition
+from controlnet_train.cli.train_same_wsi_appearance import SameWSIPairDataset
+from controlnet_train.modules.cross_v4_conditioning import build_cross_v4_token_metadata
 from controlnet_train.training.conditioning import (
     CrossV0ControlSpec,
     InpaintControlSpec,
@@ -13,7 +21,16 @@ from controlnet_train.cli.train_controlnet_flux_cross import parse_args as parse
 from controlnet_train.cli.train_controlnet_flux_cross_v1 import parse_args as parse_cross_v1_args
 from controlnet_train.cli.train_controlnet_flux_cross_v2_1 import parse_args as parse_cross_v2_1_args
 from controlnet_train.cli.train_controlnet_flux_cross_v3 import parse_args as parse_cross_v3_args
+from controlnet_train.cli.train_controlnet_flux_cross_v4 import parse_args as parse_cross_v4_args
 from controlnet_train.cli.train_controlnet_flux_inpaint import parse_args as parse_inpaint_args
+from controlnet_train.training.same_wsi_appearance import (
+    SameWSIAppearanceConfig,
+    SameWSIAppearanceEncoder,
+    SameWSIPairClassifier,
+    same_wsi_perceptual_loss,
+)
+
+HAS_TRAINING_RUNTIME = importlib.util.find_spec("accelerate") is not None
 
 
 class InpaintConditioningTests(unittest.TestCase):
@@ -259,12 +276,334 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.reference_token_dim, 4096)
         self.assertEqual(args.reference_token_hidden_dim, 1024)
         self.assertEqual(args.reference_token_output_init_std, 0.01)
+        self.assertEqual(args.reference_route_anchor_mode, "none")
+        self.assertEqual(args.reference_route_embedding_init_std, 0.02)
+        self.assertEqual(args.reference_style_loss_weight, 1.0)
+        self.assertEqual(args.reference_style_loss_interval, 1)
+        self.assertEqual(args.ref_swap_loss_weight, 0.1)
+        self.assertEqual(args.ref_swap_margin, 0.08)
+        self.assertEqual(args.ref_swap_variants, "zero")
+        self.assertIsNone(args.same_wsi_perceptual_checkpoint)
+        self.assertEqual(args.same_wsi_perceptual_weight, 0.0)
+        self.assertEqual(args.same_wsi_perceptual_interval, 1)
+        self.assertEqual(args.same_wsi_perceptual_layers, "1,2,3")
         self.assertEqual(args.ref_check_step, 10)
         self.assertEqual(args.target_tissue_encoding, "one_hot")
         self.assertEqual(args.target_tissue_embedding_dim, 8)
         self.assertEqual(args.target_one_hot_scale, 3.5)
         self.assertFalse(hasattr(args, "uni_checkpoint_path"))
         self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
+
+    def test_cross_v4_cli_uses_lr_experiment_safe_defaults(self):
+        args = parse_cross_v4_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+            ]
+        )
+
+        self.assertEqual(args.cross_version, "v4")
+        self.assertEqual(args.output_dir, "phase5-controlnet-cross-v4")
+        self.assertEqual(args.self_reconstruction_warmup_steps, 0)
+        self.assertEqual(args.self_reconstruction_sample_prob, 0.0)
+        self.assertEqual(args.ref_swap_loss_weight, 0.0)
+        self.assertEqual(args.ref_swap_loss_interval, 0)
+        self.assertEqual(args.ref_swap_variants, "")
+        self.assertEqual(args.cross_v4_diagnose_steps, "1,10,100,500,1000,1500,2000")
+        self.assertEqual(args.cross_v4_biased_double_blocks, "last")
+        self.assertEqual(args.cross_v4_cell_prior_tokens_per_class, 0)
+        self.assertEqual(args.cross_v4_global_style_tokens, 0)
+        self.assertEqual(args.cross_v4_cell_similarity_bias, 0.0)
+        self.assertEqual(args.cross_v4_density_gap_bias, 0.0)
+        self.assertEqual(args.cross_v4_cell_prior_bias, 0.0)
+        self.assertTrue(args.pair_difficulty_sampler)
+        self.assertEqual(args.pair_difficulty_target_full, 0.70)
+        self.assertEqual(args.pair_difficulty_target_partial, 0.25)
+        self.assertEqual(args.pair_difficulty_target_low, 0.05)
+        self.assertFalse(args.cross_v4_extreme_bias_smoke)
+
+    def test_cross_v4_cli_respects_explicit_swap_and_cell_bias_ablation_args(self):
+        args = parse_cross_v4_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--ref-swap-loss-weight",
+                "0.1",
+                "--ref-swap-loss-interval",
+                "5",
+                "--ref-swap-variants",
+                "zero,random",
+                "--cross-v4-cell-similarity-bias",
+                "1.0",
+                "--cross-v4-density-gap-bias",
+                "0.5",
+                "--cross-v4-cell-prior-bias",
+                "1.0",
+                "--cross-v4-extreme-bias-smoke",
+                "--same-wsi-perceptual-checkpoint",
+                "same_wsi/best.pt",
+                "--same-wsi-perceptual-weight",
+                "0.1",
+                "--same-wsi-perceptual-interval",
+                "4",
+                "--same-wsi-perceptual-layers",
+                "0,1",
+            ]
+        )
+
+        self.assertEqual(args.ref_swap_loss_weight, 0.1)
+        self.assertEqual(args.ref_swap_loss_interval, 5)
+        self.assertEqual(args.ref_swap_variants, "zero,random")
+        self.assertEqual(args.cross_v4_cell_similarity_bias, 1.0)
+        self.assertEqual(args.cross_v4_density_gap_bias, 0.5)
+        self.assertEqual(args.cross_v4_cell_prior_bias, 1.0)
+        self.assertTrue(args.cross_v4_extreme_bias_smoke)
+        self.assertEqual(args.same_wsi_perceptual_checkpoint, "same_wsi/best.pt")
+        self.assertEqual(args.same_wsi_perceptual_weight, 0.1)
+        self.assertEqual(args.same_wsi_perceptual_interval, 4)
+        self.assertEqual(args.same_wsi_perceptual_layers, "0,1")
+
+    def test_cross_v4_cli_can_disable_pair_difficulty_sampler(self):
+        args = parse_cross_v4_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--no-pair-difficulty-sampler",
+            ]
+        )
+
+        self.assertFalse(args.pair_difficulty_sampler)
+
+
+class CrossV4InferenceTests(unittest.TestCase):
+    def test_run_cross_v4_bundle_forwards_prompt_override(self):
+        from controlnet_train.inference import pipeline_cross_v4
+
+        captured = {}
+
+        def fake_sample(**kwargs):
+            captured.update(kwargs)
+            return Image.new("RGB", (4, 4))
+
+        with (
+            mock.patch.object(
+                pipeline_cross_v4,
+                "_build_cross_v4_inference_conditions",
+                return_value=(torch.zeros(1, 1, 2, 2), object(), object()),
+            ),
+            mock.patch.object(
+                pipeline_cross_v4,
+                "_sample_with_flux_controlnet_v4",
+                side_effect=fake_sample,
+            ),
+        ):
+            pipeline_cross_v4.run_cross_v4_bundle(
+                object(),
+                reference_image=torch.zeros(3, 4, 4),
+                reference_tissue_mask=torch.zeros(4, 4, dtype=torch.long),
+                reference_nuclei_mask=torch.zeros(4, 4, dtype=torch.long),
+                target_tissue_mask=torch.zeros(4, 4, dtype=torch.long),
+                target_nuclei_mask=torch.zeros(4, 4, dtype=torch.long),
+                prompt="custom pathology prompt",
+            )
+
+        self.assertEqual(captured["prompt"], "custom pathology prompt")
+        self.assertEqual(captured["output_size"], (4, 4))
+
+
+class OptimizerAuditTests(unittest.TestCase):
+    @unittest.skipIf(not HAS_TRAINING_RUNTIME, "accelerate is required for training helper imports")
+    def test_optimizer_audit_fails_when_required_ref_module_missing_from_optimizer(self):
+        from controlnet_train.training.flux_phase5_cross_v3 import _audit_optimizer_param_groups
+
+        controlnet = nn.Linear(2, 2)
+        modules = {
+            "reference_context_encoder": nn.Linear(2, 2),
+            "prior_token_bank": nn.Linear(2, 2),
+        }
+        optimizer = torch.optim.AdamW(controlnet.parameters(), lr=1e-4)
+
+        with self.assertRaisesRegex(ValueError, "reference_context_encoder"):
+            _audit_optimizer_param_groups(
+                optimizer=optimizer,
+                controlnet=controlnet,
+                modules=modules,
+                required_module_names=("reference_context_encoder", "prior_token_bank"),
+            )
+
+    @unittest.skipIf(not HAS_TRAINING_RUNTIME, "accelerate is required for training helper imports")
+    def test_optimizer_audit_accepts_required_ref_modules_in_optimizer(self):
+        from controlnet_train.training.flux_phase5_cross_v3 import _audit_optimizer_param_groups
+
+        controlnet = nn.Linear(2, 2)
+        modules = {
+            "reference_context_encoder": nn.Linear(2, 2),
+            "prior_token_bank": nn.Linear(2, 2),
+        }
+        optimizer = torch.optim.AdamW(
+            [
+                {"params": controlnet.parameters(), "lr": 1e-4},
+                {"params": modules["reference_context_encoder"].parameters(), "lr": 2e-4},
+                {"params": modules["prior_token_bank"].parameters(), "lr": 2e-4},
+            ]
+        )
+
+        _audit_optimizer_param_groups(
+            optimizer=optimizer,
+            controlnet=controlnet,
+            modules=modules,
+            required_module_names=("reference_context_encoder", "prior_token_bank"),
+        )
+
+    @unittest.skipIf(not HAS_TRAINING_RUNTIME, "accelerate is required for training helper imports")
+    def test_cross_v4_covered_token_mse_uses_only_reference_covered_target_classes(self):
+        from controlnet_train.training.flux_phase5_cross_v3 import _cross_v4_covered_token_mse
+
+        prediction = torch.tensor([[[1.0], [10.0], [3.0], [30.0]]])
+        target = torch.zeros_like(prediction)
+        target_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                ]],
+                dtype=torch.long,
+            ),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+        reference_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.ones(1, 4, 4, dtype=torch.long),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+
+        loss, active_mask, token_mask = _cross_v4_covered_token_mse(
+            prediction,
+            target,
+            target_metadata=target_meta,
+            reference_metadata=reference_meta,
+        )
+
+        self.assertTrue(torch.equal(active_mask, torch.tensor([True])))
+        self.assertTrue(torch.equal(token_mask, torch.tensor([[True, False, True, False]])))
+        self.assertTrue(torch.allclose(loss, torch.tensor([(1.0 + 9.0) / 2.0])))
+
+
+class SameWSIAppearanceTests(unittest.TestCase):
+    def test_pair_classifier_and_masked_perceptual_loss_run(self):
+        config = SameWSIAppearanceConfig(
+            backbone_channels=(8, 16),
+            embedding_dim=12,
+            feature_layers=(0, 1),
+        )
+        encoder = SameWSIAppearanceEncoder(config)
+        classifier = SameWSIPairClassifier(encoder)
+        image_a = torch.rand(2, 3, 32, 32)
+        image_b = torch.rand(2, 3, 32, 32)
+
+        logits = classifier(image_a, image_b)
+
+        self.assertEqual(logits.shape, (2,))
+
+        target_mask = torch.zeros(2, 32, 32, dtype=torch.long)
+        reference_mask = torch.zeros(2, 32, 32, dtype=torch.long)
+        target_mask[:, 4:24, 4:24] = 1
+        reference_mask[:, 6:26, 6:26] = 1
+        loss, layers = same_wsi_perceptual_loss(
+            encoder=encoder,
+            prediction=image_a,
+            reference=image_b,
+            target_tissue_mask=target_mask,
+            reference_tissue_mask=reference_mask,
+            layers=(0, 1),
+            min_pixels=1,
+        )
+
+        self.assertEqual(layers, 2)
+        self.assertEqual(loss.dim(), 0)
+        self.assertGreaterEqual(float(loss.detach().item()), 0.0)
+
+    def test_same_wsi_pair_dataset_prefers_tissue_matched_hard_negatives(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            image_dir = root / "images"
+            mask_dir = root / "masks"
+            image_dir.mkdir()
+            mask_dir.mkdir()
+
+            def write_sample(name: str, label: int) -> tuple[str, str]:
+                image_path = image_dir / f"{name}.png"
+                mask_path = mask_dir / f"{name}.png"
+                Image.fromarray(np.full((8, 8, 3), 128, dtype=np.uint8)).save(image_path)
+                Image.fromarray(np.full((8, 8), label, dtype=np.uint8)).save(mask_path)
+                return str(image_path), str(mask_path)
+
+            a1_img, a1_mask = write_sample("a1", 1)
+            a2_img, a2_mask = write_sample("a2", 1)
+            b1_img, b1_mask = write_sample("b1", 1)
+            c1_img, c1_mask = write_sample("c1", 2)
+            payload = {
+                "pairs": [
+                    {
+                        "dataset": "TEST",
+                        "case_id": "case_a",
+                        "sample_id": "a1",
+                        "reference_sample_id": "a2",
+                        "target_image": a1_img,
+                        "target_tissue_mask": a1_mask,
+                        "reference_image": a2_img,
+                        "reference_tissue_mask": a2_mask,
+                    },
+                    {
+                        "dataset": "TEST",
+                        "case_id": "case_b",
+                        "sample_id": "b1",
+                        "reference_sample_id": "b1",
+                        "target_image": b1_img,
+                        "target_tissue_mask": b1_mask,
+                        "reference_image": b1_img,
+                        "reference_tissue_mask": b1_mask,
+                    },
+                    {
+                        "dataset": "TEST",
+                        "case_id": "case_c",
+                        "sample_id": "c1",
+                        "reference_sample_id": "c1",
+                        "target_image": c1_img,
+                        "target_tissue_mask": c1_mask,
+                        "reference_image": c1_img,
+                        "reference_tissue_mask": c1_mask,
+                    },
+                ]
+            }
+            metadata_path = root / "metadata.json"
+            metadata_path.write_text(__import__("json").dumps(payload), encoding="utf8")
+
+            dataset = SameWSIPairDataset(
+                metadata_path,
+                pairs_per_epoch=2,
+                image_size=8,
+                seed=7,
+                hard_negative_prob=1.0,
+                hard_negative_pool_size=1,
+                hard_negative_candidate_count=16,
+            )
+            sample_a = next(sample for sample in dataset.samples if sample["sample_id"] == "a1")
+            negative = dataset._draw_negative(sample_a)
+
+            self.assertEqual(negative["sample_id"], "b1")
+            self.assertNotEqual(negative["case_key"], sample_a["case_key"])
 
 
 if __name__ == "__main__":

@@ -240,6 +240,7 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
             if stain_augmentation == "hed_aggressive"
             else None
         )
+        self._same_class_swap_by_key = self._build_same_class_swap_index(self.records)
 
     def __len__(self) -> int:
         return len(self.records)
@@ -269,6 +270,19 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
             "area_coverage_ratio": float(record.get("area_coverage_ratio", 1.0)),
             "missing_target_tissue_ids": record.get("missing_target_tissue_ids", []),
         }
+        swap_record = self._same_class_swap_record(record)
+        if swap_record is not None:
+            item.update(
+                {
+                    "same_class_swap_reference_sample_id": swap_record["reference_sample_id"],
+                    "same_class_swap_reference_image": load_image_tensor(swap_record["reference_image"]),
+                    "same_class_swap_reference_tissue_mask": load_tissue_mask(swap_record["reference_tissue_mask"]),
+                    "same_class_swap_reference_nuclei_mask": load_nuclei_mask(
+                        swap_record["reference_nuclei_mask"],
+                        remap=True,
+                    ),
+                }
+            )
         if (
             self.hed_augment is not None
             and self.stain_counterfactual_prob > 0.0
@@ -307,6 +321,43 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
             "area_coverage_ratio": float(record.get("area_coverage_ratio", 1.0)),
             "missing_target_tissue_ids": record.get("missing_target_tissue_ids", []),
         }
+
+    @staticmethod
+    def _build_same_class_swap_index(records: list[dict]) -> dict[tuple[str, str, str, str], list[dict]]:
+        by_key: dict[tuple[str, str, str, str], list[dict]] = {}
+        for record in records:
+            key = (
+                str(record.get("dataset", "")),
+                str(record.get("case_id", "")),
+                str(record.get("sample_id", "")),
+                str(record.get("pair_difficulty", "full") or "full"),
+            )
+            by_key.setdefault(key, []).append(record)
+        return by_key
+
+    def _same_class_swap_record(self, record: dict) -> dict | None:
+        key = (
+            str(record.get("dataset", "")),
+            str(record.get("case_id", "")),
+            str(record.get("sample_id", "")),
+            str(record.get("pair_difficulty", "full") or "full"),
+        )
+        reference_sample_id = str(record.get("reference_sample_id", ""))
+        candidates = [
+            candidate
+            for candidate in self._same_class_swap_by_key.get(key, [])
+            if str(candidate.get("reference_sample_id", "")) != reference_sample_id
+        ]
+        if not candidates and key[-1] != "full":
+            fallback_key = (key[0], key[1], key[2], "full")
+            candidates = [
+                candidate
+                for candidate in self._same_class_swap_by_key.get(fallback_key, [])
+                if str(candidate.get("reference_sample_id", "")) != reference_sample_id
+            ]
+        if not candidates:
+            return None
+        return random.choice(candidates)
 
 
 def _summarize_sample(sample: LayeredSample) -> dict:
