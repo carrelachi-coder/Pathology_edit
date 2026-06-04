@@ -1,4 +1,5 @@
 import unittest
+import importlib.util
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -10,6 +11,7 @@ from PIL import Image
 
 from controlnet_train.modules.conditioning import build_inpaint_condition
 from controlnet_train.cli.train_same_wsi_appearance import SameWSIPairDataset
+from controlnet_train.modules.cross_v4_conditioning import build_cross_v4_token_metadata
 from controlnet_train.training.conditioning import (
     CrossV0ControlSpec,
     InpaintControlSpec,
@@ -27,6 +29,8 @@ from controlnet_train.training.same_wsi_appearance import (
     SameWSIPairClassifier,
     same_wsi_perceptual_loss,
 )
+
+HAS_TRAINING_RUNTIME = importlib.util.find_spec("accelerate") is not None
 
 
 class InpaintConditioningTests(unittest.TestCase):
@@ -290,7 +294,7 @@ class TrainingCliTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "uni_checkpoint_path"))
         self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
 
-    def test_cross_v4_cli_uses_mvp_safe_defaults(self):
+    def test_cross_v4_cli_uses_lr_experiment_safe_defaults(self):
         args = parse_cross_v4_args(
             [
                 "--pretrained_model_name_or_path",
@@ -411,6 +415,89 @@ class CrossV4InferenceTests(unittest.TestCase):
 
         self.assertEqual(captured["prompt"], "custom pathology prompt")
         self.assertEqual(captured["output_size"], (4, 4))
+
+
+class OptimizerAuditTests(unittest.TestCase):
+    @unittest.skipIf(not HAS_TRAINING_RUNTIME, "accelerate is required for training helper imports")
+    def test_optimizer_audit_fails_when_required_ref_module_missing_from_optimizer(self):
+        from controlnet_train.training.flux_phase5_cross_v3 import _audit_optimizer_param_groups
+
+        controlnet = nn.Linear(2, 2)
+        modules = {
+            "reference_context_encoder": nn.Linear(2, 2),
+            "prior_token_bank": nn.Linear(2, 2),
+        }
+        optimizer = torch.optim.AdamW(controlnet.parameters(), lr=1e-4)
+
+        with self.assertRaisesRegex(ValueError, "reference_context_encoder"):
+            _audit_optimizer_param_groups(
+                optimizer=optimizer,
+                controlnet=controlnet,
+                modules=modules,
+                required_module_names=("reference_context_encoder", "prior_token_bank"),
+            )
+
+    @unittest.skipIf(not HAS_TRAINING_RUNTIME, "accelerate is required for training helper imports")
+    def test_optimizer_audit_accepts_required_ref_modules_in_optimizer(self):
+        from controlnet_train.training.flux_phase5_cross_v3 import _audit_optimizer_param_groups
+
+        controlnet = nn.Linear(2, 2)
+        modules = {
+            "reference_context_encoder": nn.Linear(2, 2),
+            "prior_token_bank": nn.Linear(2, 2),
+        }
+        optimizer = torch.optim.AdamW(
+            [
+                {"params": controlnet.parameters(), "lr": 1e-4},
+                {"params": modules["reference_context_encoder"].parameters(), "lr": 2e-4},
+                {"params": modules["prior_token_bank"].parameters(), "lr": 2e-4},
+            ]
+        )
+
+        _audit_optimizer_param_groups(
+            optimizer=optimizer,
+            controlnet=controlnet,
+            modules=modules,
+            required_module_names=("reference_context_encoder", "prior_token_bank"),
+        )
+
+    @unittest.skipIf(not HAS_TRAINING_RUNTIME, "accelerate is required for training helper imports")
+    def test_cross_v4_covered_token_mse_uses_only_reference_covered_target_classes(self):
+        from controlnet_train.training.flux_phase5_cross_v3 import _cross_v4_covered_token_mse
+
+        prediction = torch.tensor([[[1.0], [10.0], [3.0], [30.0]]])
+        target = torch.zeros_like(prediction)
+        target_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.tensor(
+                [[
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                    [1, 1, 3, 3],
+                ]],
+                dtype=torch.long,
+            ),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+        reference_meta = build_cross_v4_token_metadata(
+            tissue_ids=torch.ones(1, 4, 4, dtype=torch.long),
+            nuclei_ids=torch.zeros(1, 4, 4, dtype=torch.long),
+            token_height=2,
+            token_width=2,
+        )
+
+        loss, active_mask, token_mask = _cross_v4_covered_token_mse(
+            prediction,
+            target,
+            target_metadata=target_meta,
+            reference_metadata=reference_meta,
+        )
+
+        self.assertTrue(torch.equal(active_mask, torch.tensor([True])))
+        self.assertTrue(torch.equal(token_mask, torch.tensor([[True, False, True, False]])))
+        self.assertTrue(torch.allclose(loss, torch.tensor([(1.0 + 9.0) / 2.0])))
 
 
 class SameWSIAppearanceTests(unittest.TestCase):

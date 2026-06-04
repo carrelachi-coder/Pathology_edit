@@ -338,7 +338,10 @@ def parse_args(input_args=None, description: str | None = None) -> argparse.Name
         "--ref-swap-variants",
         type=str,
         default="zero",
-        help="Comma-separated swapped-reference variants for ref-swap loss: zero, random.",
+        help=(
+            "Comma-separated swapped-reference variants for ref-swap loss: zero, random, "
+            "same_class. same_class uses Cross V4 dataset-provided alternate references."
+        ),
     )
     parser.add_argument(
         "--ref-check-step",

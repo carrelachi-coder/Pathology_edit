@@ -25,6 +25,68 @@
 
 现在最关键缺口是：**reference tokens 虽然进了 attention，但 target 的每个生成位置并不知道应该 attend reference 的哪个语义类别。** 所以模型很容易退化成只用 reference 的全局染色/色调，不真正搬运组织级、细胞级纹理。
 
+### 0.1 2026-06-04 落地状态回写
+
+Cross V4 MVP 已经从设计推进到可训练/可诊断状态：
+
+- mask-guided correspondence bias 已实现，并注入 FLUX double-block joint attention logits。
+- reference local tokens、target/reference token metadata、coarse tissue prior tokens、context segment offsets 已实现并随 checkpoint 保存。
+- Cross V4 训练入口、nohup launcher、manifest、早期 attention/memory diagnostics 已接入。
+- coverage-aware pair sampler 已启用，默认目标比例为 `full/partial/low = 70/25/5`。
+- frozen same-WSI appearance perceptual branch 已实现并接入训练。它不参与对抗，只作为预训练 frozen perceptual backbone 使用。
+- 旧低 LR run 的 same-class swap 现象是 `zero_ref` 和 normal reference 染色有差，但 reference A/B 之间染色、疏密、纹理全同。这只能说明旧 `5e-7`/早期 checkpoint 状态存在 reference-content collapse；不能替代正在跑的 `5e-6` LR 实验。
+- 当前第一优先级是让 `5e-6` run 干净跑到 bias warmup 完成和 2000+ 步 no-grad same-class swap。A/B 若自己分化，旧现象就是欠训，不能加 ref-swap/perceptual；A/B 若仍全同，才启用 sparse region-aware ref-swap supervision。
+
+Same-WSI appearance encoder 当前实现包括：
+
+```text
+controlnet_train/training/same_wsi_appearance.py
+controlnet_train/cli/train_same_wsi_appearance.py
+```
+
+预训练数据来自 Cross metadata 的真实 patch 对：
+
+- positive: same `dataset::case_id` 的不同真实 patch。
+- negative: different WSI/case。
+- hard negative: 优先采样 tissue composition 相似但来自 different WSI/case 的 patch，避免判别器只靠组织类别分布取胜。
+
+第一版 5 epoch 预训练结果可作为首轮 frozen perceptual backbone：
+
+```text
+train loss 0.3355, train acc 0.8593
+val   loss 0.3350, val   acc 0.8770
+```
+
+Cross V4 训练中已新增：
+
+```text
+--same-wsi-perceptual-checkpoint
+--same-wsi-perceptual-weight
+--same-wsi-perceptual-interval
+--same-wsi-perceptual-layers
+--same-wsi-perceptual-min-pixels
+```
+
+其中 `same_wsi_perceptual_weight=0.05` 的含义是 raw same-WSI feature loss 乘以 `0.05` 后加入总 loss，不是和 denoise loss 固定保持 5% 比例。
+
+当前决策规则：先完成 `5e-6` LR-only 实验；只有 2000+ 步 A/B 仍全同时，才用 region-aware ref-swap 解决“reference A/B 不分”；ref-swap 让 A/B 分化但高频弱时，再用 region-aware same-WSI perceptual 小权重解决“高频纹理不动”。只有当这些显式监督已经打开后 A/B 仍然纹丝不动，才回到独立 K/V 或 IP-Adapter-style path。
+
+推理/诊断也已有状态回写：
+
+- `controlnet_train/inference/pipeline_cross_v4.py` 会加载 `cross_v4_reference_spec` 与 `cross_v4_attention_bias`。
+- `run_cross_v4_bundle(..., prompt=...)` 已修正为使用调用方传入的 prompt，而不是固定覆盖成 `CROSS_V4_PROMPT`。
+- `scripts/diagnose_cross_v4_same_class_swap.py` 默认 `--prompt-source fixed`，与训练时固定 `"histopathology image"` 对齐；同时保存 `run_config.json`，记录 checkpoint、prompt、`num_inference_steps`、guidance、ControlNet scale、Cross V4 spec 和 bias config。
+- `scripts/plot_cross_v4_same_wsi_losses.py` 可同时画 `denoise_loss`、`style_loss`、`same_wsi_perceptual_loss`，并通过 `--since-manifest`/`--since-log` 避免和旧 run 的 TensorBoard events 混在一起。
+
+解释训练中“2000步图像像山水画”时要先区分两个概念：
+
+```text
+checkpoint-2000        = 训练 global step 2000 的 checkpoint
+--num-inference-steps  = 扩散采样步数，当前诊断默认 28
+```
+
+如果图来自 `checkpoint-2000` 的单独推理，它只是早期 checkpoint 的采样结果；2000 optimizer steps 对 Cross V4 仍然很早，不能单独判定架构失败。若 5000/8000 之后同一诊断脚本仍稳定生成自然图像/山水画，才应按推理条件未生效、checkpoint 混用、或 ControlNet/reference context 被 FLUX 自然图像先验压过来排查。
+
 ---
 
 ## 1. 任务重新定义
@@ -1801,6 +1863,7 @@ attention_loss_weight = 0.01 - 0.05
 
 - UNI2-h 更偏语义和病理表征，可能主动丢掉同一 WSI 内的染色、扫描和局部纹理细节。
 - VGG perceptual loss 来自自然图像，对 H&E 纹理、核染色、间质纤维、腺体边界等病理外观不够对症。
+- 早期 Perceiver/通用 perceptual 分支出现过严重颜色崩坏：生成结果整体偏深紫色，视觉上非常恐怖，说明该 feature/loss 空间对 H&E 外观的约束方向不可靠，容易把染色推向非病理的极端色域。
 - Cross V4 当前真正缺的是“生成图是否像 reference 所在 WSI 的外观域”，而不是更强的通用语义一致性。
 
 训练一个独立的“同 WSI 判别器/度量网络”：
@@ -1870,6 +1933,25 @@ layers = early/mid conv or ViT block features, not final classifier embedding on
 - 验证集必须按 WSI split，并报告 same-class cross-WSI hard negatives 的 AUC/accuracy。
 
 如果该 encoder 在真实 patch 对上能稳定区分 same/different WSI，并且 hard negative 不是靠组织类别取胜，那么它是比 UNI2-h 更贴合本任务的 perceptual backbone。
+
+2026-06-04 implementation status:
+
+- 已实现 `SameWSIAppearanceEncoder` 与 `SameWSIPairClassifier`。
+- 已实现 `same_wsi_perceptual_loss()`，支持从 frozen encoder 中间层取 feature，并按 target/reference tissue mask 做同类区域比较。
+- 已实现单独预训练 CLI `python -m controlnet_train.cli.train_same_wsi_appearance`。
+- hard negative 采样规则已改为 tissue-composition-matched different-WSI/case negatives，并用候选采样近似避免全量 O(N^2) 建索引卡住。
+- 已接入 Cross V3/V4 训练 loop，和 decoded RGB 复用，按 `same_wsi_perceptual_interval` 计算。
+- 首轮 backbone checkpoint 路径为 `/data/wqx/flowedit/same_wsi_appearance/best.pt`，5 epoch validation accuracy 约 `0.877`，可用于首轮实验。
+
+当前建议首跑配置：
+
+```text
+same_wsi_perceptual_weight = 0.05
+same_wsi_perceptual_interval = 2
+same_wsi_perceptual_layers = 1,2,3
+```
+
+不要直接把 weight 跳到 `0.5` 作为过夜首跑。这个 weight 是 raw feature loss 的乘子；只有看过 `denoise_loss`、`style_loss`、`same_wsi_perceptual_loss` 的量级和生成图之后，才适合提高。
 
 ### 11.6 Prior anti-collapse loss
 
@@ -2029,6 +2111,44 @@ for each target tissue class:
 - 是 prior 没学到；
 - 是 cell mask 噪声；
 - 是 ControlNet 结构没控制住。
+
+当前落地诊断脚本：
+
+```text
+scripts/diagnose_cross_v4_same_class_swap.py
+```
+
+该脚本对同一个 target masks 跑三种 reference 条件：
+
+```text
+normal reference
+same-class swapped reference
+zero reference
+```
+
+并保存：
+
+```text
+run_config.json
+summary.json
+samples/*/diagnostic.json
+samples/*/panel_same_class_swap.png
+overview_grid.png
+```
+
+`run_config.json` 是当前最重要的 sanity 文件，必须先确认：
+
+```text
+checkpoint
+prompt_source / prompt_override
+num_inference_steps
+guidance_scale
+controlnet_conditioning_scale
+control_spec / reference_spec
+attention_bias_config
+```
+
+特别注意输出目录复用时，TensorBoard events 和 checkpoint 都可能混入旧 run。画 loss 时使用 manifest 过滤；推理时必须明确传入具体 checkpoint 目录，例如 `checkpoint-2000`、`checkpoint-5000`，不要把旧 run 根目录误当成当前 checkpoint。
 
 ### 12.5 Attention Diagnostics Protocol
 
@@ -2260,11 +2380,42 @@ MVP 只在 1 个中后层注入 bias，就看那一层。
 
 第 0 步不过，不要继续调 lambda、prior 或 cell bias。
 
+### 12.6 推理步数、训练步数和早期山水图判读
+
+Cross V4 调试里容易混淆两类“步数”：
+
+```text
+checkpoint-2000        = 训练 global step 2000
+--num-inference-steps  = 单次扩散采样步数，当前默认 28
+```
+
+`checkpoint-2000` 的图像很差，甚至出现自然图像/山水画，首先按 early checkpoint 处理；它说明模型还没被训练拉回病理分布，不能单独证明 same-WSI perceptual loss 或 Cross V4 架构失败。
+
+排查顺序：
+
+1. 固定同一个 checkpoint，比较 `--num-inference-steps 28` 和 `50`。如果 50 明显改善，采样步数过低；如果 28/50 都像自然图像，问题不主要在推理步数。
+2. 检查 `run_config.json`，确认 checkpoint、prompt、guidance、ControlNet scale、Cross V4 spec 和 bias config 正确。
+3. 用 `controlnet_conditioning_scale=0` 与 `1.0` 对照。如果两者几乎一样，ControlNet/reference 条件大概率没有有效影响采样。
+4. 等 5000/8000 checkpoint 用同一脚本复测。若后期仍稳定山水画，再按硬故障处理：checkpoint 混用、ControlNet residual 接近 0、reference context 未进入 transformer、或 guidance/prompt 先验压过条件。
+
 ---
 
 ## 13. 当前缺的东西
 
-下面是最重要的缺口清单，按优先级排序。
+本节保留原始设计阶段的缺口清单，便于追溯 Cross V4 为什么要这样改。2026-06-04 的状态回写如下：
+
+| 原始缺口 | 当前状态 |
+| --- | --- |
+| mask-guided attention bias | 已实现并注入 selected FLUX double blocks |
+| per-class prior fallback tokens | 已实现 coarse tissue priors；cell/global prior MVP-off |
+| cell/nuclei attention metadata | 已实现 histogram/density metadata 和 bias公式；MVP 默认 tissue-only |
+| coverage-aware sampler | 已实现 pair difficulty weighted sampler，默认 70/25/5 |
+| loss 局部化 | regional stain/style 已有；same-WSI perceptual 已接入；ref-swap 仍主要是 image-level |
+| attention diagnostics | 已实现 numeric attention mass JSONL；尚未保存 heatmap 图 |
+| inference/checkpoint spec | 已实现 Cross V4 spec/bias 保存加载；diagnose 脚本保存 run_config |
+| evaluation metrics | 已有 same-class swap diagnostic 和 loss plotting；系统性 metrics 仍需完善 |
+
+下面旧清单中的“当前状态”指 2026-06-02 设计时状态，不代表最新代码状态。
 
 ### 13.1 缺口 1：真正的 mask-guided attention bias
 

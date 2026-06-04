@@ -276,6 +276,147 @@ def _set_last_n_modules_requires_grad(modules: nn.Module | None, count: int) -> 
         module.requires_grad_(True)
 
 
+def _audit_optimizer_param_groups(
+    *,
+    optimizer,
+    controlnet: nn.Module,
+    modules: dict[str, nn.Module],
+    required_module_names: tuple[str, ...] = (),
+) -> None:
+    """Log optimizer membership and fail if required trainable modules are missing."""
+
+    name_by_param_id = _named_parameter_lookup(controlnet=controlnet, modules=modules)
+    optimizer_param_ids: set[int] = set()
+    duplicate_param_names: list[str] = []
+    frozen_in_optimizer: list[str] = []
+
+    for group_index, group in enumerate(optimizer.param_groups):
+        params = list(group.get("params", []))
+        group_trainable = [param for param in params if param.requires_grad]
+        group_frozen = [param for param in params if not param.requires_grad]
+        for param in params:
+            param_id = id(param)
+            if param_id in optimizer_param_ids:
+                duplicate_param_names.append(name_by_param_id.get(param_id, f"<unnamed:{param_id}>"))
+            optimizer_param_ids.add(param_id)
+        frozen_in_optimizer.extend(name_by_param_id.get(id(param), f"<unnamed:{id(param)}>") for param in group_frozen)
+        logger.info(
+            "[OPTIMIZER-AUDIT] group=%s lr=%s tensors=%s trainable_tensors=%s "
+            "trainable_params=%s frozen_tensors=%s frozen_params=%s sample_names=%s",
+            group_index,
+            group.get("lr"),
+            len(params),
+            len(group_trainable),
+            sum(param.numel() for param in group_trainable),
+            len(group_frozen),
+            sum(param.numel() for param in group_frozen),
+            ", ".join(name_by_param_id.get(id(param), f"<unnamed:{id(param)}>") for param in params[:12]),
+        )
+
+    if duplicate_param_names:
+        logger.warning(
+            "[OPTIMIZER-AUDIT] duplicate optimizer params detected: %s",
+            ", ".join(duplicate_param_names[:24]),
+        )
+    if frozen_in_optimizer:
+        raise ValueError(
+            "[OPTIMIZER-AUDIT] Frozen parameters were added to the optimizer: "
+            + ", ".join(frozen_in_optimizer[:24])
+        )
+
+    required = set(required_module_names)
+    _log_module_optimizer_audit(
+        module_name="controlnet",
+        module=controlnet,
+        optimizer_param_ids=optimizer_param_ids,
+        required=False,
+    )
+    for module_name, module in modules.items():
+        _log_module_optimizer_audit(
+            module_name=module_name,
+            module=module,
+            optimizer_param_ids=optimizer_param_ids,
+            required=module_name in required,
+        )
+
+
+def _named_parameter_lookup(*, controlnet: nn.Module, modules: dict[str, nn.Module]) -> dict[int, str]:
+    lookup: dict[int, str] = {}
+    for name, param in controlnet.named_parameters():
+        lookup[id(param)] = f"controlnet.{name}"
+    for module_name, module in modules.items():
+        for name, param in module.named_parameters():
+            lookup[id(param)] = f"{module_name}.{name}"
+    return lookup
+
+
+def _log_module_optimizer_audit(
+    *,
+    module_name: str,
+    module: nn.Module,
+    optimizer_param_ids: set[int],
+    required: bool,
+) -> None:
+    named_params = list(module.named_parameters())
+    trainable = [(name, param) for name, param in named_params if param.requires_grad]
+    frozen = [(name, param) for name, param in named_params if not param.requires_grad]
+    trainable_in_optimizer = [(name, param) for name, param in trainable if id(param) in optimizer_param_ids]
+    trainable_missing = [(name, param) for name, param in trainable if id(param) not in optimizer_param_ids]
+    logger.info(
+        "[OPTIMIZER-AUDIT] module=%s training=%s total_tensors=%s total_params=%s "
+        "trainable_tensors=%s trainable_params=%s in_optimizer_tensors=%s "
+        "in_optimizer_params=%s frozen_tensors=%s frozen_params=%s "
+        "missing_trainable_sample=%s frozen_sample=%s",
+        module_name,
+        bool(getattr(module, "training", False)),
+        len(named_params),
+        sum(param.numel() for _, param in named_params),
+        len(trainable),
+        sum(param.numel() for _, param in trainable),
+        len(trainable_in_optimizer),
+        sum(param.numel() for _, param in trainable_in_optimizer),
+        len(frozen),
+        sum(param.numel() for _, param in frozen),
+        ", ".join(name for name, _ in trainable_missing[:12]),
+        ", ".join(name for name, _ in frozen[:12]),
+    )
+
+    if not required:
+        return
+    failures: list[str] = []
+    if not bool(getattr(module, "training", False)):
+        failures.append("module is in eval mode")
+    if not trainable:
+        failures.append("module has no requires_grad=True parameters")
+    if trainable_missing:
+        failures.append(
+            "trainable parameters missing from optimizer: "
+            + ", ".join(name for name, _ in trainable_missing[:12])
+        )
+    if failures:
+        raise ValueError(
+            f"[OPTIMIZER-AUDIT] Required module {module_name!r} failed optimizer audit: "
+            + "; ".join(failures)
+        )
+
+
+def _cross_v4_required_optimizer_modules(modules: dict[str, nn.Module]) -> tuple[str, ...]:
+    required: list[str] = []
+    for module_name in (
+        "hte",
+        "tissue_downsampler",
+        "nuclei_encoder",
+        "reference_context_encoder",
+        "prior_token_bank",
+    ):
+        module = modules.get(module_name)
+        if module is None:
+            continue
+        if any(param.numel() > 0 for param in module.parameters()):
+            required.append(module_name)
+    return tuple(required)
+
+
 def _encode_images_to_latents(vae: AutoencoderKL, images: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
     device = next(vae.parameters()).device
     images = images.to(device=device, dtype=dtype)
@@ -501,6 +642,68 @@ def _per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Ten
     return (prediction.float() - target.float()).pow(2).flatten(1).mean(dim=1)
 
 
+def _cross_v4_covered_token_mse(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    *,
+    target_metadata,
+    reference_metadata,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return per-sample denoise MSE on target tokens covered by reference classes."""
+
+    if prediction.shape != target.shape:
+        raise ValueError(
+            f"prediction and target shapes differ: {tuple(prediction.shape)} vs {tuple(target.shape)}"
+        )
+    if prediction.ndim != 3:
+        raise ValueError(f"expected packed prediction shape (B, N, C), got {tuple(prediction.shape)}")
+    target_class = target_metadata.tissue_coarse_id.to(device=prediction.device)
+    reference_class = reference_metadata.tissue_coarse_id.to(device=prediction.device)
+    if target_class.shape != prediction.shape[:2]:
+        raise ValueError(
+            "target metadata token shape does not match prediction tokens: "
+            f"{tuple(target_class.shape)} vs {tuple(prediction.shape[:2])}"
+        )
+    ref_presence = torch.zeros(
+        reference_class.shape[0],
+        NUM_COARSE,
+        device=prediction.device,
+        dtype=torch.bool,
+    )
+    ref_presence.scatter_(1, reference_class.clamp(0, NUM_COARSE - 1), True)
+    covered = ref_presence.gather(1, target_class.clamp(0, NUM_COARSE - 1)).bool()
+    per_sample, active_mask = _packed_token_masked_mse(prediction, target, covered)
+    return per_sample, active_mask, covered
+
+
+def _packed_token_masked_mse(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    token_mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if prediction.shape != target.shape:
+        raise ValueError(
+            f"prediction and target shapes differ: {tuple(prediction.shape)} vs {tuple(target.shape)}"
+        )
+    if prediction.ndim != 3:
+        raise ValueError(f"expected packed prediction shape (B, N, C), got {tuple(prediction.shape)}")
+    token_mask = token_mask.to(device=prediction.device, dtype=torch.bool)
+    if token_mask.shape != prediction.shape[:2]:
+        raise ValueError(
+            f"token_mask shape {tuple(token_mask.shape)} does not match prediction tokens {tuple(prediction.shape[:2])}"
+        )
+    token_loss = (prediction.float() - target.float()).pow(2).mean(dim=-1)
+    per_sample = []
+    for sample_index in range(token_loss.shape[0]):
+        sample_mask = token_mask[sample_index]
+        if bool(sample_mask.any().item()):
+            per_sample.append(token_loss[sample_index][sample_mask].mean())
+        else:
+            per_sample.append(token_loss[sample_index].mean().detach() * 0.0)
+    active_mask = token_mask.any(dim=1)
+    return torch.stack(per_sample), active_mask
+
+
 def _mean_abs_diff(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return (a.float() - b.float()).abs().mean()
 
@@ -554,8 +757,10 @@ def _parse_ref_swap_variants(value: str | None) -> list[str]:
             continue
         if variant in {"shuffle", "batch_shuffle"}:
             variant = "random"
-        if variant not in {"zero", "random"}:
-            raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
+        if variant in {"sameclass", "same_class_swap", "same_class_ref", "same_class_reference"}:
+            variant = "same_class"
+        if variant not in {"zero", "random", "same_class"}:
+            raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class.")
         if variant not in variants:
             variants.append(variant)
     return variants
@@ -587,18 +792,24 @@ def _build_swapped_reference_tokens(
             return None
         order = torch.arange(bsz, device=reference_tokens.device).roll(1)
         return reference_tokens.index_select(0, order)
-    raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
+    raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class.")
 
 
 def _build_swapped_cross_v4_reference_encoding(
     reference_encoding: CrossV4ReferenceEncoding,
     variant: str,
+    *,
+    same_class_swap_encoding: CrossV4ReferenceEncoding | None = None,
 ) -> CrossV4ReferenceEncoding | None:
-    variant = str(variant).lower()
+    variant = str(variant).lower().replace("-", "_")
     if variant == "zero":
         return apply_cross_v4_reference_encoding_mode(reference_encoding, "zero-ref")
+    if variant == "same_class":
+        return same_class_swap_encoding
     if variant != "random":
-        raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero and/or random.")
+        raise ValueError(f"Unsupported ref-swap variant {variant!r}; choose zero, random, and/or same_class.")
+    if same_class_swap_encoding is not None:
+        return same_class_swap_encoding
     bsz = int(reference_encoding.local_tokens.shape[0])
     if bsz <= 1:
         return None
@@ -619,6 +830,36 @@ def _build_swapped_cross_v4_reference_encoding(
         local_tokens=select(reference_encoding.local_tokens),
         route_anchor_tokens=select(reference_encoding.route_anchor_tokens),
         metadata=swapped_metadata,
+    )
+
+
+def _build_same_class_swap_cross_v4_reference_encoding(
+    *,
+    batch: dict,
+    modules: dict[str, nn.Module],
+    vae: AutoencoderKL,
+    weight_dtype: torch.dtype,
+) -> CrossV4ReferenceEncoding | None:
+    if "same_class_swap_reference_image" not in batch:
+        return None
+    device = next(vae.parameters()).device
+    reference_image_latent = _encode_images_to_deterministic_latents(
+        vae,
+        batch["same_class_swap_reference_image"],
+        weight_dtype,
+    )
+    ref_tissue_feat = modules["tissue_downsampler"](
+        modules["hte"](batch["same_class_swap_reference_tissue_mask"].to(device=device))
+    ).to(dtype=weight_dtype)
+    ref_nuclei_feat = modules["nuclei_encoder"](
+        batch["same_class_swap_reference_nuclei_mask"].to(device=device)
+    ).to(dtype=weight_dtype)
+    return modules["reference_context_encoder"](
+        z_ref=reference_image_latent,
+        ref_tissue_feat=ref_tissue_feat,
+        ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=batch["same_class_swap_reference_tissue_mask"].to(device=device),
+        ref_nuclei_ids=batch["same_class_swap_reference_nuclei_mask"].to(device=device),
     )
 
 
@@ -1765,7 +2006,8 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         )
     if ref_swap_loss_weight > 0.0:
         logger.info(
-            "Using Cross V3 ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
+            "Using Cross %s ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
+            cross_version.upper(),
             ref_swap_loss_weight,
             ref_swap_loss_interval,
             ref_swap_margin,
@@ -1985,6 +2227,12 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
+    )
+    _audit_optimizer_param_groups(
+        optimizer=optimizer,
+        controlnet=flux_controlnet,
+        modules=modules,
+        required_module_names=_cross_v4_required_optimizer_modules(modules) if is_cross_v4 else (),
     )
 
     dataloader_kwargs = {
@@ -2424,6 +2672,12 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     and same_wsi_perceptual_interval > 0
                     and global_step % same_wsi_perceptual_interval == 0
                 )
+                should_compute_swap_loss = (
+                    ref_swap_loss_weight > 0.0
+                    and ref_swap_loss_interval > 0
+                    and global_step % ref_swap_loss_interval == 0
+                    and bool(ref_swap_variants)
+                )
                 if should_compute_style_loss or should_compute_same_wsi_loss:
                     prediction_rgb = _decode_packed_model_prediction(
                         vae=vae,
@@ -2469,23 +2723,51 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     same_wsi_loss = same_wsi_loss.to(dtype=denoise_loss.dtype)
 
                 swap_loss = noise_pred.new_zeros(())
+                covered_per_sample_loss = None
+                covered_ref_sample_mask = None
+                covered_ref_token_mask = None
+                if is_cross_v4 and target_metadata is not None and reference_encoding is not None:
+                    covered_per_sample_loss, covered_ref_sample_mask, covered_ref_token_mask = _cross_v4_covered_token_mse(
+                        noise_pred,
+                        target_velocity,
+                        target_metadata=target_metadata,
+                        reference_metadata=reference_encoding.metadata,
+                    )
                 ref_variant_loss_logs: dict[str, float] = {}
-                should_compute_swap_loss = (
-                    ref_swap_loss_weight > 0.0
-                    and ref_swap_loss_interval > 0
-                    and global_step % ref_swap_loss_interval == 0
-                    and bool(ref_swap_variants)
-                )
+                if covered_per_sample_loss is not None and covered_ref_sample_mask is not None:
+                    ref_variant_loss_logs["ref_normal_covered_denoise_loss"] = _masked_mean_or_zero(
+                        covered_per_sample_loss,
+                        covered_ref_sample_mask,
+                    ).detach().item()
+                    ref_variant_loss_logs["ref_normal_covered_regions"] = float(
+                        covered_ref_sample_mask.sum().detach().item()
+                    )
                 if should_compute_swap_loss:
+                    same_class_swap_encoding = None
+                    if is_cross_v4 and (
+                        "random" in ref_swap_variants or "same_class" in ref_swap_variants
+                    ):
+                        same_class_swap_encoding = _build_same_class_swap_cross_v4_reference_encoding(
+                            batch=training_batch,
+                            modules=modules,
+                            vae=vae,
+                            weight_dtype=weight_dtype,
+                        )
                     swapped_per_sample_losses = []
                     for variant in ref_swap_variants:
                         swapped_joint_attention_kwargs = None
+                        swapped_reference_metadata = None
                         if is_cross_v4:
                             if reference_encoding is None or target_metadata is None:
                                 raise RuntimeError("Cross V4 ref-swap requires reference encoding and target metadata.")
-                            swapped_encoding = _build_swapped_cross_v4_reference_encoding(reference_encoding, variant)
+                            swapped_encoding = _build_swapped_cross_v4_reference_encoding(
+                                reference_encoding,
+                                variant,
+                                same_class_swap_encoding=same_class_swap_encoding,
+                            )
                             if swapped_encoding is None:
                                 continue
+                            swapped_reference_metadata = swapped_encoding.metadata
                             swapped_context, swapped_context_ids, swapped_joint_attention_kwargs, _, _ = (
                                 _build_cross_v4_context_and_kwargs(
                                     prompt_embeds=batch_prompt,
@@ -2520,15 +2802,56 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                             joint_attention_kwargs=swapped_joint_attention_kwargs,
                             return_dict=False,
                         )[0]
-                        swapped_per_sample_losses.append(_per_sample_mse(swapped_noise_pred, target_velocity))
-                        swapped_loss_value = swapped_per_sample_losses[-1].mean().detach().item()
+                        swapped_per_sample_loss = _per_sample_mse(swapped_noise_pred, target_velocity)
+                        swapped_loss_value = swapped_per_sample_loss.mean().detach().item()
+                        if is_cross_v4 and covered_ref_token_mask is not None:
+                            swapped_covered_loss, swapped_covered_sample_mask = _packed_token_masked_mse(
+                                swapped_noise_pred,
+                                target_velocity,
+                                covered_ref_token_mask,
+                            )
+                            if covered_ref_sample_mask is not None:
+                                active_swap_mask = covered_ref_sample_mask
+                                if bool(active_swap_mask.any().item()):
+                                    active_swapped_covered_loss = swapped_covered_loss[active_swap_mask]
+                                    swapped_per_sample_losses.append(active_swapped_covered_loss)
+                                else:
+                                    continue
+                            else:
+                                active_swapped_covered_loss = swapped_covered_loss
+                                swapped_per_sample_losses.append(active_swapped_covered_loss)
+                            ref_variant_loss_logs[f"ref_{variant}_covered_denoise_loss"] = (
+                                active_swapped_covered_loss.mean().detach().item()
+                            )
+                            ref_variant_loss_logs[f"ref_{variant}_covered_regions"] = float(
+                                swapped_covered_sample_mask.sum().detach().item()
+                            )
+                        else:
+                            swapped_per_sample_losses.append(swapped_per_sample_loss)
                         normal_loss_value = denoise_loss.detach().item()
                         ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = swapped_loss_value
                         ref_variant_loss_logs[f"ref_{variant}_minus_normal_denoise_loss"] = (
                             swapped_loss_value - normal_loss_value
                         )
+                        if covered_per_sample_loss is not None:
+                            ref_variant_loss_logs[f"ref_{variant}_minus_normal_covered_denoise_loss"] = (
+                                ref_variant_loss_logs.get(
+                                    f"ref_{variant}_covered_denoise_loss",
+                                    swapped_loss_value,
+                                )
+                                - ref_variant_loss_logs.get(
+                                    "ref_normal_covered_denoise_loss",
+                                    covered_per_sample_loss.mean().detach().item(),
+                                )
+                            )
                     swap_loss = ref_swap_sensitivity_loss(
-                        per_sample_loss,
+                        (
+                            covered_per_sample_loss[covered_ref_sample_mask]
+                            if covered_per_sample_loss is not None
+                            and covered_ref_sample_mask is not None
+                            and bool(covered_ref_sample_mask.any().item())
+                            else per_sample_loss
+                        ),
                         swapped_per_sample_losses,
                         margin=ref_swap_margin,
                     ).to(dtype=denoise_loss.dtype)
