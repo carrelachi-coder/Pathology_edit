@@ -19,14 +19,25 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
-import accelerate
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import transformers
-from accelerate import Accelerator
-from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
+try:
+    import accelerate
+    from accelerate import Accelerator
+    from accelerate.logging import get_logger
+    from accelerate.utils import ProjectConfiguration, set_seed
+except ModuleNotFoundError:
+    accelerate = None
+    Accelerator = object
+    ProjectConfiguration = None
+
+    def get_logger(name):
+        return logging.getLogger(name)
+
+    def set_seed(seed):
+        torch.manual_seed(int(seed))
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
@@ -42,13 +53,22 @@ from diffusers.utils.torch_utils import is_compiled_module
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
-from dataset_config import NUM_COARSE, NUM_FINE
-from controlnet_train.data import CrossReconstructionDataset
+from dataset_config import FINE_TO_PARENT, NUM_COARSE, NUM_FINE
+from controlnet_train.data import CrossReconstructionDataset, CrossV5PairingDataset, CrossV5PairingSamplerConfig
 from controlnet_train.modules import (
     FixedOneHotTissueEncoder,
     HierarchicalTissueEmbedding,
     NucleiConditionEncoder,
     TissueConditionDownsampler,
+)
+from controlnet_train.modules.cross_v5_conditioning import (
+    CrossV5GeometryControlSpec,
+    CrossV5PriorPrototypeBank,
+    CrossV5RefBankBuilder,
+    CrossV5SpatialAdaLNModulator,
+    CrossV5TissueBank,
+    build_cross_v5_geometry_control_condition,
+    build_cross_v5_spatial_structure_tokens,
 )
 from controlnet_train.modules.cross_v3_conditioning import (
     CROSS_V3_PROMPT,
@@ -75,6 +95,28 @@ from controlnet_train.modules.cross_v4_conditioning import (
 from controlnet_train.training.cross_v4_attention import (
     install_cross_v4_attention_processors,
     parse_cross_v4_block_indices,
+)
+from controlnet_train.training.cross_v5_flux_adapters import (
+    CROSS_V5_BANK_KEY,
+    CROSS_V5_FALLBACK_PROTOTYPES_KEY,
+    CROSS_V5_TARGET_CLASS_IDS_KEY,
+    CROSS_V5_TARGET_STRUCTURE_TOKENS_KEY,
+    install_cross_v5_flux_adaln_adapters,
+)
+from controlnet_train.training.cross_v5_glue import (
+    CrossV5LatentDecodeConfig,
+    CrossV5LossIntervals,
+    CrossV5LossWeights,
+    CrossV5PairingPolicy,
+    CrossV5StepContext,
+    assemble_cross_v5_step_losses,
+    decode_cross_v5_prediction_rgb,
+    should_run_cross_v5_branch,
+)
+from controlnet_train.training.cross_v5_losses import CrossV5AppearanceLossConfig, CrossV5GeometryConsistencyLossConfig
+from controlnet_train.training.cross_v5_external_losses import (
+    CrossV5SegmentatorGeometryPredictor,
+    CrossV5VGGTextureExtractor,
 )
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
 from controlnet_train.training.cross_v1_losses import (
@@ -132,6 +174,19 @@ def collate_cross_v3_batch(examples: list[dict]) -> dict:
         "prompts": [item["prompt"] for item in examples],
         "sample_modes": [item.get("sample_mode", "cross") for item in examples],
     }
+    if any("v5_pair_mode" in item for item in examples):
+        batch.update(
+            {
+                "v5_pair_modes": [item.get("v5_pair_mode", "unknown") for item in examples],
+                "v5_coverage_modes": [item.get("v5_coverage_mode", item.get("pair_difficulty", "full")) for item in examples],
+                "v5_reference_bank_keep_tissue_ids": [
+                    list(item.get("v5_reference_bank_keep_tissue_ids", [])) for item in examples
+                ],
+                "v5_reference_bank_drop_tissue_ids": [
+                    list(item.get("v5_reference_bank_drop_tissue_ids", [])) for item in examples
+                ],
+            }
+        )
     if all("same_class_swap_reference_image" in item for item in examples):
         batch.update(
             {
@@ -165,6 +220,137 @@ def _pair_difficulty_target_distribution(args: argparse.Namespace) -> dict[str, 
     if total <= 0.0:
         raise ValueError("At least one pair difficulty sampler target must be positive.")
     return {name: value / total for name, value in target.items()}
+
+
+def _cross_v5_pairing_policy_from_args(args: argparse.Namespace) -> CrossV5PairingPolicy:
+    return CrossV5PairingPolicy(
+        same_wsi_fraction=float(getattr(args, "cross_v5_same_wsi_fraction", 0.35)),
+        cross_wsi_fraction=float(getattr(args, "cross_v5_cross_wsi_fraction", 0.45)),
+        high_appearance_gap_fraction=float(getattr(args, "cross_v5_high_appearance_gap_fraction", 0.20)),
+        full_coverage_fraction=float(getattr(args, "cross_v5_full_coverage_fraction", 0.55)),
+        partial_coverage_fraction=float(getattr(args, "cross_v5_partial_coverage_fraction", 0.35)),
+        low_coverage_fraction=float(getattr(args, "cross_v5_low_coverage_fraction", 0.10)),
+        class_bank_dropout_prob=float(getattr(args, "cross_v5_class_bank_dropout_prob", 0.15)),
+        min_ref_presence_tokens=float(getattr(args, "cross_v5_min_ref_presence_tokens", 1.0)),
+        min_bank_token_confidence=float(getattr(args, "cross_v5_min_bank_token_confidence", 0.5)),
+    )
+
+
+def _cross_v5_prototype_dim(args: argparse.Namespace) -> int:
+    source = str(getattr(args, "cross_v5_prototype_source", "hed_stats") or "hed_stats").lower()
+    source = source.replace("-", "_").replace("+", "_")
+    hed_channels = int(getattr(args, "cross_v5_hed_channels", 2))
+    texture_dim = 3
+    dim = 0
+    if "hed" in source or "stain" in source:
+        dim += 2 * hed_channels
+        if bool(getattr(args, "cross_v5_include_hed_covariance", False)):
+            dim += 1
+    if "texture" in source:
+        kind = str(getattr(args, "cross_v5_texture_stat_kind", "var") or "var").lower()
+        dim += texture_dim * (2 if kind in {"mean_var", "meanvar", "mean_variance"} else 1)
+    if "token_pool" in source or source in {"token", "tokens"}:
+        dim += texture_dim
+    if dim <= 0:
+        raise ValueError(f"Unsupported Cross V5 prototype source {source!r}.")
+    return dim
+
+
+def _cross_v5_loss_weights_from_args(args: argparse.Namespace) -> CrossV5LossWeights:
+    return CrossV5LossWeights(
+        denoise=float(getattr(args, "cross_v5_denoise_weight", 1.0)),
+        appearance=float(getattr(args, "cross_v5_appearance_weight", 0.75)),
+        geometry=float(getattr(args, "cross_v5_geometry_weight", 0.0)),
+        swap_sensitivity=float(getattr(args, "cross_v5_swap_sensitivity_weight", 0.0)),
+    )
+
+
+def _cross_v5_loss_intervals_from_args(args: argparse.Namespace) -> CrossV5LossIntervals:
+    return CrossV5LossIntervals(
+        appearance=int(getattr(args, "cross_v5_appearance_interval", 1) or 0),
+        geometry=int(getattr(args, "cross_v5_geometry_interval", 4) or 0),
+        smoke=int(getattr(args, "cross_v5_smoke_interval", 500) or 0),
+        appearance_timestep_min=getattr(args, "cross_v5_appearance_timestep_min", None),
+        appearance_timestep_max=getattr(args, "cross_v5_appearance_timestep_max", None),
+        geometry_timestep_min=getattr(args, "cross_v5_geometry_timestep_min", None),
+        geometry_timestep_max=getattr(args, "cross_v5_geometry_timestep_max", 350.0),
+    )
+
+
+def _cross_v5_appearance_config_from_args(args: argparse.Namespace) -> CrossV5AppearanceLossConfig:
+    return CrossV5AppearanceLossConfig(
+        color_weight=float(getattr(args, "cross_v5_color_weight", 2.0)),
+        texture_weight=float(getattr(args, "cross_v5_texture_weight", 0.0)),
+        mean_weight=float(getattr(args, "cross_v5_color_mean_weight", 1.0)),
+        std_weight=float(getattr(args, "cross_v5_color_std_weight", 1.0)),
+        covariance_weight=float(getattr(args, "cross_v5_color_covariance_weight", 0.0)),
+        min_pixels=max(1, int(getattr(args, "cross_v5_appearance_min_pixels", 32) or 1)),
+        color_space=str(getattr(args, "cross_v5_color_space", "hed")),
+    )
+
+
+def _cross_v5_geometry_config_from_args(args: argparse.Namespace) -> CrossV5GeometryConsistencyLossConfig:
+    return CrossV5GeometryConsistencyLossConfig(
+        tissue_ce_weight=float(getattr(args, "cross_v5_geometry_tissue_ce_weight", 1.0)),
+        tissue_dice_weight=float(getattr(args, "cross_v5_geometry_tissue_dice_weight", 1.0)),
+        nuclei_ce_weight=float(getattr(args, "cross_v5_geometry_nuclei_ce_weight", 1.0)),
+        nuclei_dice_weight=float(getattr(args, "cross_v5_geometry_nuclei_dice_weight", 1.0)),
+        nuclei_binary_bce_weight=float(getattr(args, "cross_v5_geometry_nuclei_binary_bce_weight", 1.0)),
+        nuclei_binary_dice_weight=float(getattr(args, "cross_v5_geometry_nuclei_binary_dice_weight", 1.0)),
+        dense_l1_weight=float(getattr(args, "cross_v5_geometry_dense_l1_weight", 1.0)),
+    )
+
+
+def _build_cross_v5_texture_feature_extractor(
+    args: argparse.Namespace,
+    *,
+    weight_dtype: torch.dtype,
+    device: torch.device,
+):
+    texture_weight = float(getattr(args, "cross_v5_texture_weight", 0.0) or 0.0)
+    if texture_weight <= 0.0:
+        return None
+    extractor = CrossV5VGGTextureExtractor.from_torchvision(
+        layers=str(getattr(args, "cross_v5_vgg_layers", "relu1_2,relu2_2,relu3_3")),
+        weights_path=getattr(args, "cross_v5_vgg_weights_path", None),
+        allow_download=bool(getattr(args, "cross_v5_vgg_allow_download", True)),
+    )
+    # Keep VGG in fp32 for stable shallow feature statistics. Input gradients
+    # still flow back through dtype conversion to generated RGB.
+    extractor.to(device=device, dtype=torch.float32)
+    extractor.eval()
+    extractor.requires_grad_(False)
+    return extractor
+
+
+def _build_cross_v5_geometry_predictor(
+    args: argparse.Namespace,
+    *,
+    weight_dtype: torch.dtype,
+    device: torch.device,
+):
+    geometry_weight = float(getattr(args, "cross_v5_geometry_weight", 0.0) or 0.0)
+    checkpoint = getattr(args, "cross_v5_geometry_predictor_checkpoint", None)
+    if geometry_weight <= 0.0:
+        return None
+    if geometry_weight > 0.0 and not checkpoint:
+        raise ValueError(
+            "--cross-v5-geometry-weight > 0 requires --cross-v5-geometry-predictor-checkpoint."
+        )
+    predictor = CrossV5SegmentatorGeometryPredictor.from_checkpoint(
+        checkpoint,
+        num_classes=int(getattr(args, "cross_v5_geometry_predictor_num_classes", 8) or 8),
+        decoder=str(getattr(args, "cross_v5_geometry_predictor_decoder", "mask2former")),
+        local_repo=str(getattr(args, "cross_v5_geometry_predictor_local_repo", "UNI-2h")),
+        mask2former_queries=int(getattr(args, "cross_v5_geometry_predictor_mask2former_queries", 100) or 100),
+        mask2former_ignore_index=int(getattr(args, "cross_v5_geometry_predictor_ignore_index", 255) or 255),
+    )
+    # Keep the frozen segmentation judge in fp32; Mask2Former/mmseg operators
+    # are more reliable this way, and geometry is sparsely scheduled.
+    predictor.to(device=device, dtype=torch.float32)
+    predictor.eval()
+    predictor.requires_grad_(False)
+    return predictor
 
 
 def _build_pair_difficulty_sampler(
@@ -259,6 +445,10 @@ def _configure_controlnet_trainable_params(
         train_last_n_single_blocks,
     )
     return [name for name, param in controlnet.named_parameters() if param.requires_grad]
+
+
+def _should_train_controlnet_x_embedder(args: argparse.Namespace, *, is_cross_v5: bool) -> bool:
+    return bool(getattr(args, "controlnet_train_x_embedder", False) or is_cross_v5)
 
 
 def _set_module_requires_grad(module: nn.Module | None, value: bool) -> None:
@@ -552,6 +742,92 @@ def _build_cross_v4_control_batch(
     return target_image_latent, control_tensor, reference_encoding, target_metadata, feature_stats
 
 
+def _build_cross_v5_control_batch(
+    *,
+    batch: dict,
+    modules: dict[str, nn.Module],
+    vae: AutoencoderKL,
+    weight_dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor, CrossV5TissueBank, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float]]:
+    device = next(vae.parameters()).device
+    target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
+
+    control_tensor = build_cross_v5_geometry_control_condition(
+        target_tissue_mask=batch["target_tissue_mask"].to(device=device),
+        target_nuclei_mask=batch["target_nuclei_mask"].to(device=device),
+        output_height=target_image_latent.shape[2],
+        output_width=target_image_latent.shape[3],
+    ).to(device=device, dtype=weight_dtype)
+    token_height = target_image_latent.shape[2] // 2
+    token_width = target_image_latent.shape[3] // 2
+    reference_coarse = _fine_tissue_to_coarse(batch["reference_tissue_mask"].to(device=device))
+    target_coarse = _fine_tissue_to_coarse(batch["target_tissue_mask"].to(device=device))
+    reference_tokens = _build_cross_v5_reference_texture_tokens(
+        batch["reference_image"].to(device=device, dtype=torch.float32),
+        token_height=token_height,
+        token_width=token_width,
+        dtype=weight_dtype,
+    )
+    bank = modules["cross_v5_ref_bank_builder"](
+        reference_tokens=reference_tokens,
+        reference_image=batch["reference_image"].to(device=device, dtype=torch.float32),
+        reference_class_ids=reference_coarse,
+        token_height=token_height,
+        token_width=token_width,
+    )
+    bank = _apply_cross_v5_bank_dropout(bank, batch=batch)
+
+    target_metadata = build_cross_v4_token_metadata(
+        tissue_ids=batch["target_tissue_mask"].to(device=device),
+        nuclei_ids=batch["target_nuclei_mask"].to(device=device),
+        token_height=token_height,
+        token_width=token_width,
+    )
+    target_structure_tokens = build_cross_v5_spatial_structure_tokens(
+        class_ids=target_coarse,
+        num_classes=NUM_COARSE,
+        token_height=token_height,
+        token_width=token_width,
+        geometry_maps=control_tensor.float(),
+    ).to(device=device, dtype=weight_dtype)
+    fallback_prototypes = modules["cross_v5_prior_bank"](target_image_latent.shape[0]).to(
+        device=device,
+        dtype=weight_dtype,
+    )
+    reference_tokens_flat = bank.local_tokens.reshape(bank.local_tokens.shape[0], -1, bank.local_tokens.shape[-1])
+    feature_stats = {
+        "target_feature_height": float(control_tensor.shape[2]),
+        "target_feature_width": float(control_tensor.shape[3]),
+        "reference_feature_height": float(token_height),
+        "reference_feature_width": float(token_width),
+        "reference_token_abs_mean": float(reference_tokens_flat.detach().float().abs().mean().cpu().item()),
+        "cross_v5_control_abs_mean": float(control_tensor.detach().float().abs().mean().cpu().item()),
+        "cross_v5_control_abs_max": float(control_tensor.detach().float().abs().max().cpu().item()),
+        "cross_v5_control_tissue_boundary_mean": float(control_tensor[:, 0].detach().float().mean().cpu().item()),
+        "cross_v5_control_nuclei_binary_mean": float(control_tensor[:, 1].detach().float().mean().cpu().item()),
+        "cross_v5_control_nuclei_density_mean": float(control_tensor[:, 2].detach().float().mean().cpu().item()),
+        "cross_v5_control_nuclei_distance_mean": float(control_tensor[:, 3].detach().float().mean().cpu().item()),
+    }
+    feature_stats.update(
+        {
+            "cross_v5_bank_present_classes": float(bank.class_present.float().sum(dim=1).mean().detach().cpu().item()),
+            "cross_v5_bank_prototype_abs_mean": float(bank.prototypes.detach().float().abs().mean().cpu().item()),
+            "cross_v5_structure_token_abs_mean": float(
+                target_structure_tokens.detach().float().abs().mean().cpu().item()
+            ),
+        }
+    )
+    return (
+        target_image_latent,
+        control_tensor,
+        bank,
+        target_metadata.tissue_coarse_id,
+        target_structure_tokens,
+        fallback_prototypes,
+        feature_stats,
+    )
+
+
 def _target_hte(modules: dict[str, nn.Module]) -> nn.Module:
     if "target_tissue_encoder" in modules:
         return modules["target_tissue_encoder"]
@@ -562,6 +838,56 @@ def _target_tissue_downsampler(modules: dict[str, nn.Module]) -> nn.Module:
     if "target_tissue_encoder" in modules:
         return nn.Identity()
     return modules.get("target_tissue_downsampler") or modules["tissue_downsampler"]
+
+
+def _fine_tissue_to_coarse(tissue_ids: torch.Tensor) -> torch.Tensor:
+    if tissue_ids.ndim == 4 and tissue_ids.shape[1] == 1:
+        tissue_ids = tissue_ids[:, 0]
+    if isinstance(FINE_TO_PARENT, dict):
+        max_key = max(int(key) for key in FINE_TO_PARENT)
+        lookup_values = [int(FINE_TO_PARENT.get(index, 0)) for index in range(max_key + 1)]
+    else:
+        lookup_values = [int(value) for value in FINE_TO_PARENT]
+    lookup = torch.as_tensor(lookup_values, device=tissue_ids.device, dtype=torch.long)
+    return lookup[tissue_ids.long().clamp(0, len(lookup_values) - 1)]
+
+
+def _build_cross_v5_reference_texture_tokens(
+    reference_image: torch.Tensor,
+    *,
+    token_height: int,
+    token_width: int,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    pooled = F.adaptive_avg_pool2d(
+        reference_image.float(),
+        output_size=(int(token_height), int(token_width)),
+    )
+    return pooled.permute(0, 2, 3, 1).reshape(reference_image.shape[0], int(token_height) * int(token_width), -1).to(
+        dtype=dtype
+    )
+
+
+def _apply_cross_v5_bank_dropout(bank: CrossV5TissueBank, *, batch: dict) -> CrossV5TissueBank:
+    drop_ids_by_sample = batch.get("v5_reference_bank_drop_tissue_ids")
+    if not drop_ids_by_sample:
+        return bank
+    class_present = bank.class_present.clone()
+    for sample_index, drop_ids in enumerate(drop_ids_by_sample):
+        if sample_index >= class_present.shape[0]:
+            break
+        for raw_id in drop_ids:
+            class_id = int(raw_id)
+            if 0 <= class_id < class_present.shape[1]:
+                class_present[sample_index, class_id] = False
+    return CrossV5TissueBank(
+        prototypes=bank.prototypes,
+        local_tokens=bank.local_tokens,
+        class_present=class_present,
+        class_mass=bank.class_mass,
+        token_class_ids=bank.token_class_ids,
+        token_class_confidence=bank.token_class_confidence,
+    )
 
 
 def _cross_v3_feature_stats(
@@ -1421,14 +1747,31 @@ def _save_condition_modules(
     args: argparse.Namespace | None = None,
 ) -> None:
     cross_version = str(cross_version or "v3").lower()
+    control_condition_order = list(
+        getattr(
+            control_spec,
+            "condition_order",
+            (
+                "tar_tissue_feat",
+                "tar_nuclei_feat",
+            ),
+        )
+    )
     state = {
         "cross_version": cross_version,
         "cross_v3_control_spec": {
-            "tissue_channels": int(control_spec.tissue_channels),
-            "nuclei_channels": int(control_spec.nuclei_channels),
+            "tissue_channels": (
+                int(control_spec.tissue_channels) if hasattr(control_spec, "tissue_channels") else None
+            ),
+            "nuclei_channels": (
+                int(control_spec.nuclei_channels) if hasattr(control_spec, "nuclei_channels") else None
+            ),
             "raw_channels": int(control_spec.raw_channels),
             "packed_channels": int(control_spec.packed_channels),
             "target_tissue_path": (
+                "not_controlnet_geometry_only"
+                if cross_version == "v5"
+                else
                 "fixed_one_hot"
                 if "target_tissue_encoder" in modules
                 else "target_hte,target_tissue_downsampler"
@@ -1440,10 +1783,7 @@ def _save_condition_modules(
                 if "target_tissue_encoder" in modules
                 else None
             ),
-            "condition_order": [
-                "tar_tissue_feat",
-                "tar_nuclei_feat",
-            ],
+            "condition_order": control_condition_order,
         },
         "cross_v3_reference_spec": {
             "reference_latent_channels": int(reference_spec.reference_latent_channels),
@@ -1526,6 +1866,29 @@ def _save_condition_modules(
                 "prior_wrong_class": float(getattr(args, "cross_v4_prior_wrong_class_bias", -2.0)),
                 "cell_prior": float(getattr(args, "cross_v4_cell_prior_bias", 1.0)),
             }
+    if cross_version == "v5":
+        state["cross_v5_control_spec"] = {
+            "geometry_channels": int(getattr(control_spec, "geometry_channels", control_spec.raw_channels)),
+            "raw_channels": int(control_spec.raw_channels),
+            "packed_channels": int(control_spec.packed_channels),
+            "condition_order": control_condition_order,
+            "class_agnostic": True,
+            "target_class_ids_path": "flux_spatial_adaln_and_loss_only",
+        }
+        state["cross_v5_reference_bank_spec"] = {
+            "num_classes": NUM_COARSE,
+            "prototype_source": str(getattr(args, "cross_v5_prototype_source", "hed_stats") if args else "hed_stats"),
+            "prototype_dim": int(_cross_v5_prototype_dim(args)) if args is not None else None,
+            "hed_channels": int(getattr(args, "cross_v5_hed_channels", 2) if args else 2),
+            "include_hed_covariance": bool(
+                getattr(args, "cross_v5_include_hed_covariance", False) if args else False
+            ),
+            "local_tokens_per_class": int(
+                getattr(args, "cross_v5_local_tokens_per_class", 4) if args else 4
+            ),
+            "injection_path": "flux_double_block_sean_style_spatial_adaln",
+            "single_blocks": "strip_cross_v5_kwargs_only",
+        }
     for name, module in modules.items():
         unwrapped = unwrap_model(module)
         state[name] = {key: value.detach().cpu().to(save_dtype) for key, value in unwrapped.state_dict().items()}
@@ -1588,6 +1951,8 @@ def _load_source_layout(checkpoint: Path) -> dict:
     if not state_path.exists():
         return {}
     state = _torch_load_weights(state_path)
+    if "cross_v5_control_spec" in state:
+        return {"kind": "cross_v5", **dict(state["cross_v5_control_spec"])}
     if "cross_v3_control_spec" in state:
         return {"kind": "cross_v3", **dict(state["cross_v3_control_spec"])}
     if "cross_v2_1_control_spec" in state:
@@ -1616,10 +1981,14 @@ def _remap_x_embedder_state_dict(
 
     remapped = dict(state_dict)
     new_weight = old_weight.new_zeros((old_weight.shape[0], new_in_features))
-    source_target_start = _source_packed_target_mask_start(source_layout, old_weight.shape[1])
-    copy_width = min(new_in_features, max(0, old_weight.shape[1] - source_target_start))
-    if copy_width > 0:
-        new_weight[:, :copy_width] = old_weight[:, source_target_start : source_target_start + copy_width]
+    source_kind = str(source_layout.get("kind", "")).lower()
+    if isinstance(target_spec, CrossV5GeometryControlSpec) and source_kind != "cross_v5":
+        copy_width = 0
+    else:
+        source_target_start = _source_packed_target_mask_start(source_layout, old_weight.shape[1])
+        copy_width = min(new_in_features, max(0, old_weight.shape[1] - source_target_start))
+        if copy_width > 0:
+            new_weight[:, :copy_width] = old_weight[:, source_target_start : source_target_start + copy_width]
 
     if "controlnet_x_embedder.bias" in state_dict:
         remapped["controlnet_x_embedder.bias"] = state_dict["controlnet_x_embedder.bias"]
@@ -1629,6 +1998,8 @@ def _remap_x_embedder_state_dict(
 
 def _source_packed_target_mask_start(source_layout: dict, old_width: int) -> int:
     kind = str(source_layout.get("kind", "")).lower()
+    if kind == "cross_v5":
+        return 0
     spatial_mode = str(source_layout.get("spatial_mode", "reference_target")).lower()
     tissue_channels = int(source_layout.get("tissue_channels", 64))
     nuclei_channels = int(source_layout.get("nuclei_channels", 16))
@@ -1721,13 +2092,13 @@ def _load_condition_modules_from_checkpoint(
             )
     if "target_tissue_encoder" in modules:
         logger.info("Using fixed one-hot target tissue encoder; no target-side tissue weights are loaded.")
-    if "reference_context_encoder" in state:
+    if "reference_context_encoder" in state and "reference_context_encoder" in modules:
         _load_reference_context_encoder_state(
             modules["reference_context_encoder"],
             state["reference_context_encoder"],
             state_path=state_path,
         )
-    else:
+    elif "reference_context_encoder" in modules:
         logger.info("Conditioning checkpoint has no reference_context_encoder; initializing it from scratch.")
     if "prior_token_bank" in modules:
         if "prior_token_bank" in state:
@@ -1792,10 +2163,13 @@ def _load_reference_context_encoder_state(
 
 
 def run_cross_v3_training(args: argparse.Namespace) -> None:
+    if accelerate is None:
+        raise ModuleNotFoundError("Training requires the 'accelerate' package.")
     cross_version = str(getattr(args, "cross_version", "v3")).lower().replace("_", ".").replace("-", ".")
-    if cross_version not in {"v3", "v4"}:
-        raise NotImplementedError("This module implements cross V3 and Cross V4.")
+    if cross_version not in {"v3", "v4", "v5"}:
+        raise NotImplementedError("This module implements cross V3, Cross V4, and Cross V5.")
     is_cross_v4 = cross_version == "v4"
+    is_cross_v5 = cross_version == "v5"
 
     dataset = CrossReconstructionDataset(
         args.train_metadata,
@@ -1811,6 +2185,17 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     )
     if args.max_train_samples is not None:
         dataset.records = dataset.records[: args.max_train_samples]
+    if is_cross_v5 and bool(getattr(args, "cross_v5_pairing_sampler", True)):
+        dataset = CrossV5PairingDataset(
+            base_dataset=dataset,
+            pairs_per_epoch=getattr(args, "cross_v5_pairs_per_epoch", None),
+            policy=_cross_v5_pairing_policy_from_args(args),
+            config=CrossV5PairingSamplerConfig(
+                high_gap_quantile=float(getattr(args, "cross_v5_high_gap_quantile", 0.75)),
+                keep_at_least_one_bank_class=True,
+            ),
+            seed=int(args.seed if args.seed is not None else 0),
+        )
 
     target_tissue_encoding = str(getattr(args, "target_tissue_encoding", "shared_hte") or "shared_hte").lower()
     if target_tissue_encoding not in {"shared_hte", "low_capacity_hte", "one_hot"}:
@@ -1819,10 +2204,13 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             "choose shared_hte, low_capacity_hte, or one_hot."
         )
     target_tissue_channels = NUM_FINE if target_tissue_encoding == "one_hot" else args.tissue_out_channels
-    control_spec = (CrossV4ControlSpec if is_cross_v4 else CrossV3ControlSpec)(
-        tissue_channels=target_tissue_channels,
-        nuclei_channels=args.nuclei_out_channels,
-    )
+    if is_cross_v5:
+        control_spec = CrossV5GeometryControlSpec()
+    else:
+        control_spec = (CrossV4ControlSpec if is_cross_v4 else CrossV3ControlSpec)(
+            tissue_channels=target_tissue_channels,
+            nuclei_channels=args.nuclei_out_channels,
+        )
     reference_spec_kwargs = {
         "reference_latent_channels": int(getattr(args, "reference_latent_channels", 16)),
         "tissue_channels": args.tissue_out_channels,
@@ -1857,7 +2245,11 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             out_channels=args.nuclei_out_channels,
             num_blocks=args.condition_downsample_blocks,
         ),
-        "reference_context_encoder": (CrossV4ReferenceContextEncoder if is_cross_v4 else CrossV3ReferenceContextEncoder)(
+    }
+    if not is_cross_v5:
+        modules["reference_context_encoder"] = (
+            CrossV4ReferenceContextEncoder if is_cross_v4 else CrossV3ReferenceContextEncoder
+        )(
             reference_latent_channels=reference_spec.reference_latent_channels,
             tissue_channels=reference_spec.tissue_channels,
             nuclei_channels=reference_spec.nuclei_channels,
@@ -1866,8 +2258,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             output_init_std=reference_spec.output_init_std,
             route_anchor_mode=reference_spec.route_anchor_mode,
             route_embedding_init_std=reference_spec.route_embedding_init_std,
-        ),
-    }
+        )
     if is_cross_v4:
         modules["prior_token_bank"] = CrossV4PriorTokenBank(
             token_dim=reference_spec.token_dim,
@@ -1915,6 +2306,10 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         min_pixels=max(1, int(getattr(args, "reference_style_min_pixels", 32) or 1)),
         max_regions_per_sample=getattr(args, "reference_style_max_regions_per_sample", None),
     )
+    cross_v5_loss_weights = _cross_v5_loss_weights_from_args(args) if is_cross_v5 else None
+    cross_v5_loss_intervals = _cross_v5_loss_intervals_from_args(args) if is_cross_v5 else None
+    cross_v5_appearance_config = _cross_v5_appearance_config_from_args(args) if is_cross_v5 else None
+    cross_v5_geometry_config = _cross_v5_geometry_config_from_args(args) if is_cross_v5 else None
     ref_swap_loss_weight = max(0.0, float(getattr(args, "ref_swap_loss_weight", 0.1) or 0.0))
     ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
     ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.08) or 0.0)
@@ -1964,16 +2359,26 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         level=logging.INFO,
     )
     logger.info(accelerator.state, main_process_only=False)
-    logger.info(
-        "Using Cross %s ControlNet target-only order [tar_tissue_feat, tar_nuclei_feat]: "
-        "raw_channels=%s packed_channels=%s; reference [z_ref, ref_tissue_feat, ref_nuclei_feat] "
-        "enters joint cross-attention with token_dim=%s route_anchor_mode=%s",
-        cross_version.upper(),
-        control_spec.raw_channels,
-        control_spec.packed_channels,
-        reference_spec.token_dim,
-        reference_spec.normalized_route_anchor_mode,
-    )
+    if is_cross_v5:
+        logger.info(
+            "Using Cross V5 geometry-only ControlNet order "
+            "[target_tissue_boundary, target_nuclei_binary, target_nuclei_density, target_nuclei_distance]: "
+            "raw_channels=%s packed_channels=%s; reference RGB+mask builds HED/texture bank and enters "
+            "FLUX through spatial AdaLN modulation, not residual cross-attention.",
+            control_spec.raw_channels,
+            control_spec.packed_channels,
+        )
+    else:
+        logger.info(
+            "Using Cross %s ControlNet target-only order [tar_tissue_feat, tar_nuclei_feat]: "
+            "raw_channels=%s packed_channels=%s; reference [z_ref, ref_tissue_feat, ref_nuclei_feat] "
+            "enters joint cross-attention with token_dim=%s route_anchor_mode=%s",
+            cross_version.upper(),
+            control_spec.raw_channels,
+            control_spec.packed_channels,
+            reference_spec.token_dim,
+            reference_spec.normalized_route_anchor_mode,
+        )
     if is_cross_v4:
         logger.info(
             "Cross V4 priors: tissue_per_class=%s cell_per_class=%s global_style=%s "
@@ -1991,6 +2396,17 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             getattr(args, "cross_v4_diagnose_interval", 0),
             cross_v4_diagnose_jsonl,
             max_cuda_memory_gb or "disabled",
+        )
+    if is_cross_v5:
+        logger.info(
+            "Cross V5 spatial AdaLN: prototype_source=%s prototype_dim=%s appearance_weight=%s "
+            "geometry_weight=%s pairing_sampler=%s class_bank_dropout=%s",
+            getattr(args, "cross_v5_prototype_source", "hed_stats"),
+            _cross_v5_prototype_dim(args),
+            cross_v5_loss_weights.appearance if cross_v5_loss_weights is not None else 0.0,
+            cross_v5_loss_weights.geometry if cross_v5_loss_weights is not None else 0.0,
+            bool(getattr(args, "cross_v5_pairing_sampler", True)),
+            getattr(args, "cross_v5_class_bank_dropout_prob", 0.15),
         )
     if reference_style_loss_weight > 0.0:
         logger.info(
@@ -2081,7 +2497,11 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         )
 
     patch_controlnet_x_embedder(flux_controlnet, control_spec.packed_channels)
-    logger.info("Patched controlnet_x_embedder to packed width %s for cross-v3", control_spec.packed_channels)
+    logger.info(
+        "Patched controlnet_x_embedder to packed width %s for cross-%s",
+        control_spec.packed_channels,
+        cross_version,
+    )
 
     tmp_pipeline = FluxControlNetPipeline(
         scheduler=noise_scheduler,
@@ -2101,6 +2521,37 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+    cross_v5_texture_feature_extractor = None
+    cross_v5_geometry_predictor = None
+
+    if is_cross_v5:
+        cross_v5_prototype_dim = _cross_v5_prototype_dim(args)
+        cross_v5_structure_dim = NUM_COARSE + int(control_spec.raw_channels) + 2
+        modules["cross_v5_ref_bank_builder"] = CrossV5RefBankBuilder(
+            num_classes=NUM_COARSE,
+            local_tokens_per_class=max(1, int(getattr(args, "cross_v5_local_tokens_per_class", 4) or 4)),
+            min_presence_mass=float(getattr(args, "cross_v5_min_ref_presence_tokens", 1.0)),
+            prototype_confidence_threshold=float(getattr(args, "cross_v5_min_bank_token_confidence", 0.5)),
+            prototype_source=str(getattr(args, "cross_v5_prototype_source", "hed_stats")),
+            hed_channels=int(getattr(args, "cross_v5_hed_channels", 2)),
+            include_hed_covariance=bool(getattr(args, "cross_v5_include_hed_covariance", False)),
+            texture_stat_kind=str(getattr(args, "cross_v5_texture_stat_kind", "var")),
+        )
+        modules["cross_v5_prior_bank"] = CrossV5PriorPrototypeBank(
+            num_classes=NUM_COARSE,
+            prototype_dim=cross_v5_prototype_dim,
+            init_std=float(getattr(args, "cross_v5_prior_init_std", 0.02)),
+        )
+        modules["cross_v5_adaln_modulator"] = CrossV5SpatialAdaLNModulator(
+            hidden_dim=int(getattr(flux_transformer, "inner_dim")),
+            prototype_dim=cross_v5_prototype_dim,
+            structure_dim=cross_v5_structure_dim,
+            mlp_hidden_dim=getattr(args, "cross_v5_adaln_hidden_dim", None),
+            initial_gamma=float(getattr(args, "cross_v5_initial_gamma", 0.05)),
+            output_init_std=float(getattr(args, "cross_v5_adaln_output_init_std", 0.02)),
+            use_internal_norm=False,
+        )
+
     same_wsi_encoder = None
     if same_wsi_perceptual_weight > 0.0:
         same_wsi_encoder = load_same_wsi_encoder(same_wsi_perceptual_checkpoint, map_location="cpu")
@@ -2114,6 +2565,33 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             ",".join(str(layer) for layer in same_wsi_perceptual_layers),
             same_wsi_perceptual_min_pixels,
         )
+
+    if is_cross_v5:
+        cross_v5_texture_feature_extractor = _build_cross_v5_texture_feature_extractor(
+            args,
+            weight_dtype=weight_dtype,
+            device=accelerator.device,
+        )
+        if cross_v5_texture_feature_extractor is not None:
+            logger.info(
+                "Using frozen Cross V5 VGG texture extractor: layers=%s weights_path=%s allow_download=%s",
+                getattr(args, "cross_v5_vgg_layers", "relu1_2,relu2_2,relu3_3"),
+                getattr(args, "cross_v5_vgg_weights_path", None) or "torchvision_default",
+                bool(getattr(args, "cross_v5_vgg_allow_download", True)),
+            )
+        cross_v5_geometry_predictor = _build_cross_v5_geometry_predictor(
+            args,
+            weight_dtype=weight_dtype,
+            device=accelerator.device,
+        )
+        if cross_v5_geometry_predictor is not None:
+            logger.info(
+                "Using frozen Cross V5 geometry predictor: checkpoint=%s decoder=%s num_classes=%s local_repo=%s",
+                getattr(args, "cross_v5_geometry_predictor_checkpoint", None),
+                getattr(args, "cross_v5_geometry_predictor_decoder", "mask2former"),
+                getattr(args, "cross_v5_geometry_predictor_num_classes", 8),
+                getattr(args, "cross_v5_geometry_predictor_local_repo", "UNI-2h"),
+            )
 
     prompt_cache, empty_prompt, text_ids = _build_prompt_cache(
         pipeline=tmp_pipeline,
@@ -2137,7 +2615,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     controlnet_trainable_names = _configure_controlnet_trainable_params(
         flux_controlnet,
         mode=getattr(args, "controlnet_train_mode", "all"),
-        train_x_embedder=bool(getattr(args, "controlnet_train_x_embedder", False)),
+        train_x_embedder=_should_train_controlnet_x_embedder(args, is_cross_v5=is_cross_v5),
         train_last_n_blocks=max(0, int(getattr(args, "controlnet_train_last_n_blocks", 0) or 0)),
         train_last_n_single_blocks=max(0, int(getattr(args, "controlnet_train_last_n_single_blocks", 0) or 0)),
     )
@@ -2174,6 +2652,28 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
             install_summary.double_blocks,
             list(install_summary.biased_double_blocks),
             install_summary.single_blocks,
+        )
+    if is_cross_v5:
+        v5_double_indices = parse_cross_v4_block_indices(
+            getattr(args, "cross_v5_adaln_double_blocks", "last"),
+            total_blocks=len(getattr(flux_transformer, "transformer_blocks", []) or []),
+        )
+        v5_install_summary = install_cross_v5_flux_adaln_adapters(
+            transformer=flux_transformer,
+            modulator=modules["cross_v5_adaln_modulator"],
+            double_block_indices=v5_double_indices,
+            single_block_indices=(),
+            detach_bank=bool(getattr(args, "cross_v5_detach_bank", False)),
+            require_nonzero_gamma=True,
+            require_conditioning=True,
+        )
+        logger.info(
+            "Installed Cross V5 spatial AdaLN adapters: double_modulated=%s double_stripped=%s "
+            "single_modulated=%s single_stripped=%s",
+            list(v5_install_summary.double_blocks),
+            list(v5_install_summary.double_strip_blocks),
+            list(v5_install_summary.single_blocks),
+            list(v5_install_summary.single_strip_blocks),
         )
     if args.gradient_checkpointing:
         flux_controlnet.enable_gradient_checkpointing()
@@ -2241,7 +2741,10 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         "num_workers": args.dataloader_num_workers,
         "pin_memory": True,
     }
-    if bool(getattr(args, "pair_difficulty_sampler", False)):
+    if is_cross_v5 and bool(getattr(args, "cross_v5_pairing_sampler", True)):
+        dataloader_kwargs["shuffle"] = False
+        logger.info("Using Cross V5 pairing dataset wrapper; DataLoader-level pair_difficulty sampler is disabled.")
+    elif bool(getattr(args, "pair_difficulty_sampler", False)):
         sampler_seed = int(args.seed if args.seed is not None else 0) + int(accelerator.process_index)
         pair_sampler, pair_sampler_stats = _build_pair_difficulty_sampler(
             dataset.records,
@@ -2362,7 +2865,31 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
 
                 reference_encoding = None
                 target_metadata = None
-                if is_cross_v4:
+                cross_v5_bank = None
+                cross_v5_target_class_ids = None
+                cross_v5_target_structure_tokens = None
+                cross_v5_fallback_prototypes = None
+                if is_cross_v5:
+                    (
+                        pixel_latents,
+                        control_tensor,
+                        cross_v5_bank,
+                        cross_v5_target_class_ids,
+                        cross_v5_target_structure_tokens,
+                        cross_v5_fallback_prototypes,
+                        feature_stats,
+                    ) = _build_cross_v5_control_batch(
+                        batch=training_batch,
+                        modules=modules,
+                        vae=vae,
+                        weight_dtype=weight_dtype,
+                    )
+                    reference_tokens = cross_v5_bank.local_tokens.reshape(
+                        cross_v5_bank.local_tokens.shape[0],
+                        -1,
+                        cross_v5_bank.local_tokens.shape[-1],
+                    )
+                elif is_cross_v4:
                     (
                         pixel_latents,
                         control_tensor,
@@ -2384,30 +2911,50 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         weight_dtype=weight_dtype,
                     )
                 if accelerator.is_main_process and global_step == 0:
-                    logger.info(
-                        "[SCALE-CHECK] step=%s target_tissue_abs_mean=%.8g "
-                        "reference_tissue_abs_mean=%.8g target/ref_ratio=%.8g "
-                        "target_tissue_abs_max=%.8g reference_tissue_abs_max=%.8g "
-                        "target_nuclei_abs_mean=%.8g reference_nuclei_abs_mean=%.8g "
-                        "reference_token_abs_mean=%.8g target_feature_hw=%sx%s "
-                        "reference_feature_hw=%sx%s target_tissue_encoding=%s "
-                        "target_one_hot_scale=%.8g",
-                        global_step,
-                        feature_stats["target_tissue_abs_mean"],
-                        feature_stats["reference_tissue_abs_mean"],
-                        feature_stats["target_to_reference_tissue_abs_mean_ratio"],
-                        feature_stats["target_tissue_abs_max"],
-                        feature_stats["reference_tissue_abs_max"],
-                        feature_stats["target_nuclei_abs_mean"],
-                        feature_stats["reference_nuclei_abs_mean"],
-                        feature_stats["reference_token_abs_mean"],
-                        int(feature_stats["target_feature_height"]),
-                        int(feature_stats["target_feature_width"]),
-                        int(feature_stats["reference_feature_height"]),
-                        int(feature_stats["reference_feature_width"]),
-                        target_tissue_encoding,
-                        float(getattr(args, "target_one_hot_scale", 4.0)),
-                    )
+                    if is_cross_v5:
+                        logger.info(
+                            "[SCALE-CHECK] step=%s cross_v5_geometry_only_control_abs_mean=%.8g "
+                            "abs_max=%.8g tissue_boundary=%.8g nuclei_binary=%.8g "
+                            "nuclei_density=%.8g nuclei_distance=%.8g reference_token_abs_mean=%.8g "
+                            "control_hw=%sx%s token_hw=%sx%s",
+                            global_step,
+                            feature_stats["cross_v5_control_abs_mean"],
+                            feature_stats["cross_v5_control_abs_max"],
+                            feature_stats["cross_v5_control_tissue_boundary_mean"],
+                            feature_stats["cross_v5_control_nuclei_binary_mean"],
+                            feature_stats["cross_v5_control_nuclei_density_mean"],
+                            feature_stats["cross_v5_control_nuclei_distance_mean"],
+                            feature_stats["reference_token_abs_mean"],
+                            int(feature_stats["target_feature_height"]),
+                            int(feature_stats["target_feature_width"]),
+                            int(feature_stats["reference_feature_height"]),
+                            int(feature_stats["reference_feature_width"]),
+                        )
+                    else:
+                        logger.info(
+                            "[SCALE-CHECK] step=%s target_tissue_abs_mean=%.8g "
+                            "reference_tissue_abs_mean=%.8g target/ref_ratio=%.8g "
+                            "target_tissue_abs_max=%.8g reference_tissue_abs_max=%.8g "
+                            "target_nuclei_abs_mean=%.8g reference_nuclei_abs_mean=%.8g "
+                            "reference_token_abs_mean=%.8g target_feature_hw=%sx%s "
+                            "reference_feature_hw=%sx%s target_tissue_encoding=%s "
+                            "target_one_hot_scale=%.8g",
+                            global_step,
+                            feature_stats["target_tissue_abs_mean"],
+                            feature_stats["reference_tissue_abs_mean"],
+                            feature_stats["target_to_reference_tissue_abs_mean_ratio"],
+                            feature_stats["target_tissue_abs_max"],
+                            feature_stats["reference_tissue_abs_max"],
+                            feature_stats["target_nuclei_abs_mean"],
+                            feature_stats["reference_nuclei_abs_mean"],
+                            feature_stats["reference_token_abs_mean"],
+                            int(feature_stats["target_feature_height"]),
+                            int(feature_stats["target_feature_width"]),
+                            int(feature_stats["reference_feature_height"]),
+                            int(feature_stats["reference_feature_width"]),
+                            target_tissue_encoding,
+                            float(getattr(args, "target_one_hot_scale", 4.0)),
+                        )
                 bsz = pixel_latents.shape[0]
 
                 packed_pixel_latents = FluxControlNetPipeline._pack_latents(
@@ -2439,7 +2986,32 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     and accelerator.sync_gradients
                     and _should_run_cross_v4_diagnostics(args, global_step + 1)
                 )
-                if is_cross_v4:
+                if is_cross_v5:
+                    if (
+                        cross_v5_bank is None
+                        or cross_v5_target_class_ids is None
+                        or cross_v5_target_structure_tokens is None
+                        or cross_v5_fallback_prototypes is None
+                    ):
+                        raise RuntimeError("Cross V5 requires bank, target class IDs, structure tokens, and priors.")
+                    batch_context = batch_prompt
+                    context_ids = text_ids
+                    joint_attention_kwargs = {
+                        CROSS_V5_TARGET_CLASS_IDS_KEY: cross_v5_target_class_ids.to(
+                            device=accelerator.device,
+                            dtype=torch.long,
+                        ),
+                        CROSS_V5_TARGET_STRUCTURE_TOKENS_KEY: cross_v5_target_structure_tokens.to(
+                            device=accelerator.device,
+                            dtype=weight_dtype,
+                        ),
+                        CROSS_V5_BANK_KEY: cross_v5_bank,
+                        CROSS_V5_FALLBACK_PROTOTYPES_KEY: cross_v5_fallback_prototypes.to(
+                            device=accelerator.device,
+                            dtype=weight_dtype,
+                        ),
+                    }
+                elif is_cross_v4:
                     if reference_encoding is None or target_metadata is None:
                         raise RuntimeError("Cross V4 requires reference encoding and target metadata.")
                     (
@@ -2533,7 +3105,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
 
                 ref_check_diff = None
                 ref_check_logs: dict[str, float] = {}
-                if ref_check_step > 0 and global_step == ref_check_step:
+                if ref_check_step > 0 and global_step == ref_check_step and not is_cross_v5:
                     with torch.no_grad():
                         zero_joint_attention_kwargs = None
                         if is_cross_v4:
@@ -2665,18 +3237,21 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                     reference_style_loss_weight > 0.0
                     and reference_style_loss_interval > 0
                     and global_step % reference_style_loss_interval == 0
+                    and not is_cross_v5
                 )
                 should_compute_same_wsi_loss = (
                     same_wsi_encoder is not None
                     and same_wsi_perceptual_weight > 0.0
                     and same_wsi_perceptual_interval > 0
                     and global_step % same_wsi_perceptual_interval == 0
+                    and not is_cross_v5
                 )
                 should_compute_swap_loss = (
                     ref_swap_loss_weight > 0.0
                     and ref_swap_loss_interval > 0
                     and global_step % ref_swap_loss_interval == 0
                     and bool(ref_swap_variants)
+                    and not is_cross_v5
                 )
                 if should_compute_style_loss or should_compute_same_wsi_loss:
                     prediction_rgb = _decode_packed_model_prediction(
@@ -2855,12 +3430,97 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                         swapped_per_sample_losses,
                         margin=ref_swap_margin,
                     ).to(dtype=denoise_loss.dtype)
-                loss = (
-                    denoise_loss
-                    + reference_style_loss_weight * style_loss
-                    + ref_swap_loss_weight * swap_loss
-                    + same_wsi_perceptual_weight * same_wsi_loss
-                )
+                cross_v5_loss_components: dict[str, torch.Tensor | int] = {}
+                if is_cross_v5:
+                    assert cross_v5_loss_weights is not None
+                    assert cross_v5_loss_intervals is not None
+                    assert cross_v5_appearance_config is not None
+                    assert cross_v5_geometry_config is not None
+                    run_v5_appearance = bool(
+                        cross_v5_loss_weights.appearance > 0.0
+                        and should_run_cross_v5_branch(
+                            global_step=global_step,
+                            interval=cross_v5_loss_intervals.appearance,
+                            timestep=timesteps,
+                            timestep_min=cross_v5_loss_intervals.appearance_timestep_min,
+                            timestep_max=cross_v5_loss_intervals.appearance_timestep_max,
+                        )
+                    )
+                    run_v5_geometry = bool(
+                        cross_v5_loss_weights.geometry > 0.0
+                        and cross_v5_geometry_predictor is not None
+                        and should_run_cross_v5_branch(
+                            global_step=global_step,
+                            interval=cross_v5_loss_intervals.geometry,
+                            timestep=timesteps,
+                            timestep_min=cross_v5_loss_intervals.geometry_timestep_min,
+                            timestep_max=cross_v5_loss_intervals.geometry_timestep_max,
+                        )
+                    )
+                    if run_v5_appearance or run_v5_geometry:
+                        prediction_rgb = decode_cross_v5_prediction_rgb(
+                            vae=vae,
+                            noisy_latents=noisy_model_input,
+                            model_prediction=noise_pred,
+                            sigma=sigmas,
+                            config=CrossV5LatentDecodeConfig(
+                                prediction_type="velocity",
+                                packed_latents=True,
+                                latent_channels=pixel_latents.shape[1],
+                                latent_height=pixel_latents.shape[2],
+                                latent_width=pixel_latents.shape[3],
+                                vae_dtype=weight_dtype,
+                                clamp_rgb=True,
+                            ),
+                        )
+                        target_coarse_mask = _fine_tissue_to_coarse(
+                            training_batch["target_tissue_mask"].to(device=accelerator.device)
+                        )
+                        reference_coarse_mask = _fine_tissue_to_coarse(
+                            training_batch["reference_tissue_mask"].to(device=accelerator.device)
+                        )
+                        v5_context = CrossV5StepContext(
+                            prediction_rgb=prediction_rgb,
+                            reference_rgb=training_batch["reference_image"].to(
+                                device=accelerator.device,
+                                dtype=prediction_rgb.dtype,
+                            ),
+                            target_tissue_mask=target_coarse_mask,
+                            reference_tissue_mask=reference_coarse_mask,
+                            target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                            target_nuclei_binary=(
+                                training_batch["target_nuclei_mask"].to(accelerator.device) > 0
+                            ).float(),
+                        )
+                        cross_v5_bundle = assemble_cross_v5_step_losses(
+                            denoise_loss=denoise_loss,
+                            context=v5_context,
+                            weights=cross_v5_loss_weights,
+                            global_step=global_step,
+                            timestep=timesteps,
+                            intervals=cross_v5_loss_intervals,
+                            appearance_config=cross_v5_appearance_config,
+                            texture_feature_extractor=cross_v5_texture_feature_extractor,
+                            geometry_config=cross_v5_geometry_config,
+                            geometry_predictor=cross_v5_geometry_predictor,
+                        )
+                        loss = cross_v5_bundle.total
+                        cross_v5_loss_components = cross_v5_bundle.components
+                    else:
+                        loss = cross_v5_loss_weights.denoise * denoise_loss
+                        cross_v5_loss_components = {
+                            "denoise": denoise_loss,
+                            "gate_appearance": 0,
+                            "gate_geometry": 0,
+                            "global_step": int(global_step),
+                        }
+                else:
+                    loss = (
+                        denoise_loss
+                        + reference_style_loss_weight * style_loss
+                        + ref_swap_loss_weight * swap_loss
+                        + same_wsi_perceptual_weight * same_wsi_loss
+                    )
 
                 cross_v4_grad_logs: dict[str, float] = {}
                 accelerator.backward(loss)
@@ -3014,6 +3674,19 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
                 "cross_samples": int(cross_sample_mask.sum().detach().item()),
                 "lr": lr_scheduler.get_last_lr()[0],
             }
+            if is_cross_v5:
+                for key, value in cross_v5_loss_components.items():
+                    log_key = f"cross_v5_{key}"
+                    if isinstance(value, torch.Tensor):
+                        logs[log_key] = value.detach().float().mean().item()
+                    else:
+                        logs[log_key] = int(value)
+                if "v5_pair_modes" in training_batch:
+                    logs["cross_v5_pair_samples"] = len(training_batch["v5_pair_modes"])
+                if "v5_reference_bank_drop_tissue_ids" in training_batch:
+                    logs["cross_v5_bank_dropout_classes"] = sum(
+                        len(ids) for ids in training_batch["v5_reference_bank_drop_tissue_ids"]
+                    )
             logs.update(ref_variant_loss_logs)
             if ref_check_diff is not None:
                 logs.update(ref_check_logs)

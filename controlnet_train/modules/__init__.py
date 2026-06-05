@@ -59,6 +59,21 @@ from .cross_v4_conditioning import (
     normalize_cross_v4_reference_mode,
     remap_cross_v4_cell_ids,
 )
+from .cross_v5_conditioning import (
+    CrossV5AdaLNModulator,
+    CrossV5AdaLNOutput,
+    CrossV5GeometryControlSpec,
+    CrossV5PriorPrototypeBank,
+    CrossV5RefBankBuilder,
+    CrossV5SpatialAdaLNModulator,
+    CrossV5TissueBank,
+    build_cross_v5_geometry_control_condition,
+    build_cross_v5_hed_stat_prototypes,
+    build_cross_v5_spatial_structure_tokens,
+    build_cross_v5_token_class_probs,
+    cross_v5_rgb_to_hed_concentrations,
+    gather_cross_v5_class_values,
+)
 from .fixed_tissue_encoder import FixedOneHotTissueEncoder
 from .hte_embedding import HierarchicalTissueEmbedding
 from .nuclei_condition_encoder import NucleiConditionEncoder
@@ -94,6 +109,13 @@ __all__ = [
     "CrossV4ReferenceEncoding",
     "CrossV4ReferenceSpec",
     "CrossV4TokenMetadata",
+    "CrossV5AdaLNModulator",
+    "CrossV5AdaLNOutput",
+    "CrossV5GeometryControlSpec",
+    "CrossV5PriorPrototypeBank",
+    "CrossV5RefBankBuilder",
+    "CrossV5SpatialAdaLNModulator",
+    "CrossV5TissueBank",
     "FixedOneHotTissueEncoder",
     "HierarchicalTissueEmbedding",
     "NUM_CELL_WITH_BG",
@@ -114,6 +136,10 @@ __all__ = [
     "build_cross_v4_control_condition",
     "build_cross_v4_correspondence_bias",
     "build_cross_v4_token_metadata",
+    "build_cross_v5_geometry_control_condition",
+    "build_cross_v5_hed_stat_prototypes",
+    "build_cross_v5_spatial_structure_tokens",
+    "build_cross_v5_token_class_probs",
     "cross_v3_route_class_count",
     "deterministic_cross_v3_latent_from_posterior",
     "build_inpaint_condition",
@@ -121,6 +147,8 @@ __all__ = [
     "normalize_cross_v3_reference_mode",
     "normalize_cross_v3_reference_route_mode",
     "normalize_cross_v4_reference_mode",
+    "cross_v5_rgb_to_hed_concentrations",
+    "gather_cross_v5_class_values",
     "pack_cross_v3_reference_grid",
     "remap_cross_v4_cell_ids",
 ]
