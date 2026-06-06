@@ -57,7 +57,7 @@ final condition:
 
 一句话：
 
-**采纳 nuclei residual merge；同时把 same-class attention 作为 gamma 初始为 0 的 residual 分支挂上首版，否则 mean-pooling baseline 会给出一个注定模糊的 ref-insensitive 负结果。**
+**采纳 nuclei residual merge；同时把 same-class attention 作为 gamma 小正值初始化的 residual 分支挂上首版，否则 mean-pooling baseline 只能给出低频 reference causality 下界。**
 
 ## 0.1 保留的 V5 教训
 
@@ -206,7 +206,7 @@ z_tissue_pool =
 所以：
 
 ```text
-pooling-only ref-insensitive != reference path 失败
+pooling-only 只有低频 reference response != reference path 失败
 ```
 
 ### 2.2 Same-class Attention Residual
@@ -278,7 +278,7 @@ nuclei_binary
 nuclei_boundary
 nuclei_distance_map
 tissue_boundary
-optional coordinate embedding
+recommended coordinate embedding
 optional density / centroid geometry
 ```
 
