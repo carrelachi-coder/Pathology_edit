@@ -1,13 +1,16 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
+import torch
 
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "diagnose_cross_v3_z_ref_reconstruction.py"
 _SPEC = importlib.util.spec_from_file_location("diagnose_cross_v3_z_ref_reconstruction", _MODULE_PATH)
 diag = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = diag
 _SPEC.loader.exec_module(diag)
 
 
@@ -62,6 +65,33 @@ class CrossV3ZRefReconstructionDiagnosticTests(unittest.TestCase):
 
             self.assertAlmostEqual(variant_results[0]["row"]["prediction_l1_vs_zero_tokens"], 0.25)
             self.assertTrue((Path(tmpdir) / "z_ref_vs_zero_tokens_diff.png").exists())
+
+    def test_attach_zero_token_delta_reports_noise_prediction_change(self):
+        z_pred = np.zeros((3, 4, 4), dtype=np.float32)
+        zero_pred = np.ones((3, 4, 4), dtype=np.float32) * 0.25
+        variant_results = [
+            {
+                "variant": "z_ref_only",
+                "row": {"preview_timestep_key": "t500", "preview_velocity_mse": 0.4},
+                "pred_array": z_pred,
+                "timestep_results": {"t500": {"noise_pred_flat": torch.tensor([1.0, 0.0])}},
+            },
+            {
+                "variant": "zero_tokens",
+                "row": {"preview_timestep_key": "t500", "preview_velocity_mse": 0.5},
+                "pred_array": zero_pred,
+                "timestep_results": {"t500": {"noise_pred_flat": torch.tensor([0.0, 1.0])}},
+            },
+        ]
+
+        with TemporaryDirectory() as tmpdir:
+            diag.attach_zero_token_delta(variant_results, sample_dir=Path(tmpdir))
+
+        self.assertAlmostEqual(
+            variant_results[0]["row"]["preview_velocity_mse_delta_zero_minus_z_ref"],
+            0.1,
+        )
+        self.assertGreater(variant_results[0]["row"]["preview_noise_pred_relative_l2_vs_zero"], 1.0)
 
     def test_summary_interprets_strong_and_poor_reconstruction(self):
         strong = diag.build_z_ref_reconstruction_summary(

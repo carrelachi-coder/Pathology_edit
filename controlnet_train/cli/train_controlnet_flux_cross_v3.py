@@ -10,9 +10,10 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
-def parse_args(input_args=None) -> argparse.Namespace:
+def parse_args(input_args=None, description: str | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
+        description=description
+        or (
             "Train Phase 5.3 Cross V3 Flux ControlNet: fixed prompt, target-only "
             "ControlNet mask, and reference latent+mask cross-attention tokens."
         )
@@ -110,10 +111,51 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--dataloader-num-workers", type=int, default=0)
     parser.add_argument("--dataloader-prefetch-factor", type=int, default=2)
+    parser.add_argument(
+        "--pair-difficulty-sampler",
+        action="store_true",
+        help="Sample cross pairs by pair_difficulty target ratios instead of natural metadata frequency.",
+    )
+    parser.add_argument(
+        "--no-pair-difficulty-sampler",
+        dest="pair_difficulty_sampler",
+        action="store_false",
+        help="Disable pair_difficulty weighted sampling.",
+    )
+    parser.add_argument(
+        "--pair-difficulty-target-full",
+        type=float,
+        default=0.70,
+        help="Target sampling fraction for pair_difficulty=full when --pair-difficulty-sampler is enabled.",
+    )
+    parser.add_argument(
+        "--pair-difficulty-target-partial",
+        type=float,
+        default=0.25,
+        help="Target sampling fraction for pair_difficulty=partial when --pair-difficulty-sampler is enabled.",
+    )
+    parser.add_argument(
+        "--pair-difficulty-target-low",
+        type=float,
+        default=0.05,
+        help="Target sampling fraction for pair_difficulty=low when --pair-difficulty-sampler is enabled.",
+    )
     parser.add_argument("--checkpointing-steps", type=int, default=500)
     parser.add_argument("--checkpoints-total-limit", type=int, default=None)
     parser.add_argument("--resume-from-checkpoint", type=str, default=None)
     parser.add_argument("--mixed-precision", type=str, default=None, choices=["no", "fp16", "bf16"])
+    parser.add_argument(
+        "--max-cuda-memory-gb",
+        type=float,
+        default=0.0,
+        help="Abort training if per-process peak CUDA reserved memory exceeds this many GiB. 0 disables.",
+    )
+    parser.add_argument(
+        "--cuda-memory-check-interval",
+        type=int,
+        default=10,
+        help="Check/log peak CUDA memory every N optimizer steps. Use 0 to check only on diagnose steps.",
+    )
     parser.add_argument("--allow-tf32", action="store_true")
     parser.add_argument("--enable-xformers-memory-efficient-attention", action="store_true")
     parser.add_argument("--set-grads-to-none", action="store_true")
@@ -169,10 +211,146 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help="Normal init std for the reference token output projection; bias is zeroed.",
     )
     parser.add_argument(
+        "--reference-route-anchor-mode",
+        type=str,
+        default="none",
+        choices=["none", "coarse", "fine"],
+        help=(
+            "Optional semantic route anchors for reference tokens. Keep 'none' for pure appearance "
+            "transfer; 'coarse' or 'fine' are explicit semantic-routing experiments."
+        ),
+    )
+    parser.add_argument(
+        "--reference-route-embedding-init-std",
+        type=float,
+        default=0.02,
+        help="Normal init std for learned reference route/type embeddings.",
+    )
+    parser.add_argument(
+        "--reference-style-loss-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "Weight for region-level reference stain/style loss. The loss matches RGB "
+            "mean/std/covariance on target/reference regions that share tissue or nuclei labels."
+        ),
+    )
+    parser.add_argument(
+        "--reference-style-loss-interval",
+        type=int,
+        default=1,
+        help="Compute reference style loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--reference-style-tissue-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for shared tissue-mask region style terms.",
+    )
+    parser.add_argument(
+        "--reference-style-nuclei-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for shared nuclei-mask region style terms.",
+    )
+    parser.add_argument(
+        "--reference-style-mean-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for per-region RGB mean matching.",
+    )
+    parser.add_argument(
+        "--reference-style-std-weight",
+        type=float,
+        default=1.0,
+        help="Relative weight for per-region RGB standard-deviation matching.",
+    )
+    parser.add_argument(
+        "--reference-style-cov-weight",
+        type=float,
+        default=0.25,
+        help="Relative weight for per-region RGB covariance matching.",
+    )
+    parser.add_argument(
+        "--reference-style-min-pixels",
+        type=int,
+        default=32,
+        help="Minimum target/reference pixels required for a tissue or nuclei class to enter style loss.",
+    )
+    parser.add_argument(
+        "--reference-style-max-regions-per-sample",
+        type=int,
+        default=None,
+        help="Optional cap on style-loss regions per sample, keeping largest labels first.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-checkpoint",
+        type=str,
+        default=None,
+        help="Path to a pretrained same-WSI appearance encoder checkpoint. Disabled when omitted.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-weight",
+        type=float,
+        default=0.0,
+        help="Weight for frozen same-WSI appearance perceptual loss.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-interval",
+        type=int,
+        default=1,
+        help="Compute same-WSI perceptual loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-layers",
+        type=str,
+        default="1,2,3",
+        help="Comma-separated encoder block indices used for same-WSI perceptual features.",
+    )
+    parser.add_argument(
+        "--same-wsi-perceptual-min-pixels",
+        type=int,
+        default=8,
+        help="Minimum downsampled feature-map pixels per shared tissue class.",
+    )
+    parser.add_argument(
+        "--ref-swap-loss-weight",
+        type=float,
+        default=0.1,
+        help=(
+            "Weight for reference-swap sensitivity loss. It compares normal-reference denoising "
+            "loss against zero/shuffled-reference denoising losses with a margin."
+        ),
+    )
+    parser.add_argument(
+        "--ref-swap-loss-interval",
+        type=int,
+        default=1,
+        help="Compute reference-swap sensitivity loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--ref-swap-margin",
+        type=float,
+        default=0.08,
+        help="Required per-sample denoising-loss margin between normal and swapped references.",
+    )
+    parser.add_argument(
+        "--ref-swap-variants",
+        type=str,
+        default="zero",
+        help=(
+            "Comma-separated swapped-reference variants for ref-swap loss: zero, random, "
+            "same_class. same_class uses Cross V4 dataset-provided alternate references."
+        ),
+    )
+    parser.add_argument(
         "--ref-check-step",
         type=int,
         default=10,
-        help="Optimizer step for [REF-CHECK] with-ref vs zero-ref noise-pred diff; set 0 to disable.",
+        help=(
+            "Optimizer step for [REF-CHECK] reference/control 2x2 noise-pred diffs; "
+            "set 0 to disable."
+        ),
     )
     parser.add_argument("--tissue-embedding-dim", type=int, default=64)
     parser.add_argument(
@@ -207,6 +385,124 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--nuclei-embedding-dim", type=int, default=16)
     parser.add_argument("--nuclei-out-channels", type=int, default=16)
     parser.add_argument("--condition-downsample-blocks", type=int, default=3)
+    parser.add_argument(
+        "--cross-v4-tissue-prior-tokens-per-class",
+        type=int,
+        default=4,
+        help="Cross V4 only: number of learned coarse tissue prior tokens per class.",
+    )
+    parser.add_argument(
+        "--cross-v4-cell-prior-tokens-per-class",
+        type=int,
+        default=0,
+        help="Cross V4 only: number of learned cell prior tokens per class, including background.",
+    )
+    parser.add_argument(
+        "--cross-v4-global-style-tokens",
+        type=int,
+        default=0,
+        help="Cross V4 only: weak global style tokens derived from pooled reference local tokens.",
+    )
+    parser.add_argument("--cross-v4-prior-init-std", type=float, default=0.02)
+    parser.add_argument(
+        "--cross-v4-biased-double-blocks",
+        type=str,
+        default="last",
+        help="Cross V4 only: double transformer blocks receiving correspondence bias, e.g. last, all, 1,3, or off.",
+    )
+    parser.add_argument("--cross-v4-bias-scale", type=float, default=1.0)
+    parser.add_argument("--cross-v4-bias-warmup-steps", type=int, default=1000)
+    parser.add_argument("--cross-v4-same-fine-bias", type=float, default=3.0)
+    parser.add_argument("--cross-v4-same-coarse-bias", type=float, default=2.0)
+    parser.add_argument("--cross-v4-mismatch-bias", type=float, default=-2.0)
+    parser.add_argument("--cross-v4-cell-similarity-bias", type=float, default=1.0)
+    parser.add_argument("--cross-v4-density-gap-bias", type=float, default=0.5)
+    parser.add_argument("--cross-v4-prior-present-bias", type=float, default=0.5)
+    parser.add_argument("--cross-v4-prior-missing-bias", type=float, default=3.0)
+    parser.add_argument("--cross-v4-prior-wrong-class-bias", type=float, default=-2.0)
+    parser.add_argument("--cross-v4-cell-prior-bias", type=float, default=1.0)
+    parser.add_argument(
+        "--cross-v4-diagnose-steps",
+        type=str,
+        default="1,10,100,500,1000,1500,2000",
+        help="Cross V4 only: comma-separated optimizer steps for strong early diagnostics.",
+    )
+    parser.add_argument(
+        "--cross-v4-diagnose-interval",
+        type=int,
+        default=0,
+        help="Cross V4 only: additionally emit diagnostics every N optimizer steps. 0 disables.",
+    )
+    parser.add_argument(
+        "--cross-v4-diagnose-jsonl",
+        type=str,
+        default=None,
+        help="Cross V4 only: path for JSONL diagnostic snapshots. Defaults to output_dir/cross_v4_diagnostics.jsonl.",
+    )
+    parser.add_argument(
+        "--cross-v4-extreme-bias-smoke",
+        action="store_true",
+        help="Cross V4 only: apply strict pass/fail thresholds for the +50/-50 attention-bias smoke test.",
+    )
+    parser.add_argument("--cross-v5-pairing-sampler", action="store_true", default=True)
+    parser.add_argument("--no-cross-v5-pairing-sampler", dest="cross_v5_pairing_sampler", action="store_false")
+    parser.add_argument("--cross-v5-pairs-per-epoch", type=int, default=None)
+    parser.add_argument("--cross-v5-same-wsi-fraction", type=float, default=0.35)
+    parser.add_argument("--cross-v5-cross-wsi-fraction", type=float, default=0.45)
+    parser.add_argument("--cross-v5-high-appearance-gap-fraction", type=float, default=0.20)
+    parser.add_argument("--cross-v5-full-coverage-fraction", type=float, default=0.55)
+    parser.add_argument("--cross-v5-partial-coverage-fraction", type=float, default=0.35)
+    parser.add_argument("--cross-v5-low-coverage-fraction", type=float, default=0.10)
+    parser.add_argument("--cross-v5-class-bank-dropout-prob", type=float, default=0.15)
+    parser.add_argument("--cross-v5-high-gap-quantile", type=float, default=0.75)
+    parser.add_argument("--cross-v5-min-ref-presence-tokens", type=float, default=1.0)
+    parser.add_argument("--cross-v5-min-bank-token-confidence", type=float, default=0.5)
+    parser.add_argument("--cross-v5-local-tokens-per-class", type=int, default=4)
+    parser.add_argument("--cross-v5-prototype-source", type=str, default="hed_stats")
+    parser.add_argument("--cross-v5-hed-channels", type=int, default=2)
+    parser.add_argument("--cross-v5-include-hed-covariance", action="store_true")
+    parser.add_argument("--cross-v5-texture-stat-kind", type=str, default="var")
+    parser.add_argument("--cross-v5-prior-init-std", type=float, default=0.02)
+    parser.add_argument("--cross-v5-adaln-double-blocks", type=str, default="last")
+    parser.add_argument("--cross-v5-adaln-hidden-dim", type=int, default=None)
+    parser.add_argument("--cross-v5-initial-gamma", type=float, default=0.05)
+    parser.add_argument("--cross-v5-adaln-output-init-std", type=float, default=0.02)
+    parser.add_argument("--cross-v5-detach-bank", action="store_true")
+    parser.add_argument("--cross-v5-denoise-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-appearance-weight", type=float, default=0.75)
+    parser.add_argument("--cross-v5-geometry-weight", type=float, default=0.0)
+    parser.add_argument("--cross-v5-swap-sensitivity-weight", type=float, default=0.0)
+    parser.add_argument("--cross-v5-appearance-interval", type=int, default=1)
+    parser.add_argument("--cross-v5-geometry-interval", type=int, default=4)
+    parser.add_argument("--cross-v5-smoke-interval", type=int, default=500)
+    parser.add_argument("--cross-v5-appearance-timestep-min", type=float, default=None)
+    parser.add_argument("--cross-v5-appearance-timestep-max", type=float, default=None)
+    parser.add_argument("--cross-v5-geometry-timestep-min", type=float, default=None)
+    parser.add_argument("--cross-v5-geometry-timestep-max", type=float, default=350.0)
+    parser.add_argument("--cross-v5-color-weight", type=float, default=2.0)
+    parser.add_argument("--cross-v5-texture-weight", type=float, default=0.0)
+    parser.add_argument("--cross-v5-color-mean-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-color-std-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-color-covariance-weight", type=float, default=0.0)
+    parser.add_argument("--cross-v5-appearance-min-pixels", type=int, default=32)
+    parser.add_argument("--cross-v5-color-space", type=str, default="hed", choices=["hed", "rgb"])
+    parser.add_argument("--cross-v5-vgg-weights-path", type=str, default=None)
+    parser.add_argument("--cross-v5-vgg-layers", type=str, default="relu1_2,relu2_2,relu3_3")
+    parser.add_argument("--cross-v5-no-vgg-download", dest="cross_v5_vgg_allow_download", action="store_false")
+    parser.set_defaults(cross_v5_vgg_allow_download=True)
+    parser.add_argument("--cross-v5-geometry-predictor-checkpoint", type=str, default=None)
+    parser.add_argument("--cross-v5-geometry-predictor-decoder", type=str, default="mask2former", choices=["upernet", "mask2former"])
+    parser.add_argument("--cross-v5-geometry-predictor-num-classes", type=int, default=8)
+    parser.add_argument("--cross-v5-geometry-predictor-local-repo", type=str, default="UNI-2h")
+    parser.add_argument("--cross-v5-geometry-predictor-mask2former-queries", type=int, default=100)
+    parser.add_argument("--cross-v5-geometry-predictor-ignore-index", type=int, default=255)
+    parser.add_argument("--cross-v5-geometry-tissue-ce-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-geometry-tissue-dice-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-geometry-nuclei-ce-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-geometry-nuclei-dice-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-geometry-nuclei-binary-bce-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-geometry-nuclei-binary-dice-weight", type=float, default=1.0)
+    parser.add_argument("--cross-v5-geometry-dense-l1-weight", type=float, default=1.0)
     parser.add_argument("--cross-version", type=str, default="v3")
     return parser.parse_args(input_args)
 

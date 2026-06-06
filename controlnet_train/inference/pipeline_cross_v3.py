@@ -167,6 +167,7 @@ def _build_cross_v3_inference_conditions(
         z_ref=reference_latent,
         ref_tissue_feat=ref_tissue_feat,
         ref_nuclei_feat=ref_nuclei_feat,
+        ref_tissue_ids=reference_tissue_mask.unsqueeze(0).to(device=bundle.device),
     )
     reference_tokens = apply_cross_v3_reference_token_mode(reference_tokens, reference_condition_mode)
     return control_tensor, reference_tokens
@@ -376,6 +377,8 @@ def _load_cross_v3_reference_spec(checkpoint_path: Path) -> CrossV3ReferenceSpec
         nuclei_channels=int(saved_spec.get("nuclei_channels", 16)),
         token_dim=int(saved_spec.get("token_dim", 4096)),
         output_init_std=float(saved_spec.get("output_init_std", 0.02)),
+        route_anchor_mode=str(saved_spec.get("route_anchor_mode", "none")),
+        route_embedding_init_std=float(saved_spec.get("route_embedding_init_std", 0.02)),
     )
 
 
@@ -421,6 +424,8 @@ def _load_condition_modules(
             token_dim=reference_spec.token_dim,
             hidden_dim=reference_state["proj_in.weight"].shape[0],
             output_init_std=reference_spec.output_init_std,
+            route_anchor_mode=reference_spec.route_anchor_mode,
+            route_embedding_init_std=reference_spec.route_embedding_init_std,
         ),
     }
     if str(control_spec.get("target_tissue_path", "")).lower() == "fixed_one_hot":

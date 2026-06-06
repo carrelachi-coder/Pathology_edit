@@ -109,6 +109,27 @@ def main(input_args=None) -> None:
             args.reference_token_hidden_dim = 4096
         if not hasattr(args, "reference_token_output_init_std"):
             args.reference_token_output_init_std = 0.02
+        if not hasattr(args, "reference_route_anchor_mode"):
+            args.reference_route_anchor_mode = "none"
+        if not hasattr(args, "reference_route_embedding_init_std"):
+            args.reference_route_embedding_init_std = 0.02
+        for name, value in (
+            ("reference_style_loss_weight", 1.0),
+            ("reference_style_loss_interval", 1),
+            ("reference_style_tissue_weight", 1.0),
+            ("reference_style_nuclei_weight", 1.0),
+            ("reference_style_mean_weight", 1.0),
+            ("reference_style_std_weight", 1.0),
+            ("reference_style_cov_weight", 0.25),
+            ("reference_style_min_pixels", 32),
+            ("reference_style_max_regions_per_sample", None),
+            ("ref_swap_loss_weight", 0.1),
+            ("ref_swap_loss_interval", 1),
+            ("ref_swap_margin", 0.08),
+            ("ref_swap_variants", "zero"),
+        ):
+            if not hasattr(args, name):
+                setattr(args, name, value)
         if not hasattr(args, "ref_check_step"):
             args.ref_check_step = 10
         if not hasattr(args, "conditioning_checkpoint"):
