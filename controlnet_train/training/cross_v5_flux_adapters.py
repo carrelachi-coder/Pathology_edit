@@ -37,6 +37,7 @@ CROSS_V5_TARGET_STRUCTURE_TOKENS_KEY = "cross_v5_target_structure_tokens"
 CROSS_V5_BANK_KEY = "cross_v5_bank"
 CROSS_V5_FALLBACK_PROTOTYPES_KEY = "cross_v5_fallback_prototypes"
 CROSS_V5_IMAGE_TOKEN_START_KEY = "cross_v5_image_token_start"
+CROSS_V5_ADALN_SCALE_KEY = "cross_v5_adaln_scale"
 
 DOUBLE_IMAGE_POST_NORM_HOOK = "double_image_post_norm2_before_ff"
 SINGLE_IMAGE_POST_NORM_HOOK = "single_image_post_norm_mlp_only"
@@ -79,6 +80,8 @@ def install_cross_v5_flux_adaln_adapters(
     ``cross_v5_fallback_prototypes``: optional prior prototypes.
     ``cross_v5_image_token_start``: optional text length for single-stream
     blocks that use the legacy pre-concatenated single-stream signature.
+    ``cross_v5_adaln_scale``: optional temporary inference-time multiplier for
+    the AdaLN delta, useful for diagnosing whether the reference path is active.
     """
 
     double_blocks = list(getattr(transformer, "transformer_blocks", []) or [])
@@ -359,6 +362,7 @@ def _apply_cross_v5_from_kwargs(
         fallback_prototypes=cross_v5_kwargs.get(CROSS_V5_FALLBACK_PROTOTYPES_KEY),
         target_structure_tokens=target_structure_tokens,
         detach_bank=bool(getattr(block, "cross_v5_detach_bank", False)),
+        modulation_scale=cross_v5_kwargs.get(CROSS_V5_ADALN_SCALE_KEY, 1.0),
     )
     if image_token_start == 0 and image_token_end == hidden_states.shape[1]:
         return modulated
@@ -381,6 +385,7 @@ def _split_joint_kwargs(joint_attention_kwargs: Mapping[str, Any] | None) -> tup
         CROSS_V5_BANK_KEY,
         CROSS_V5_FALLBACK_PROTOTYPES_KEY,
         CROSS_V5_IMAGE_TOKEN_START_KEY,
+        CROSS_V5_ADALN_SCALE_KEY,
     }
     attention_kwargs: dict[str, Any] = {}
     cross_v5_kwargs: dict[str, Any] = {}
@@ -437,6 +442,7 @@ def _normalize_indices(indices: Sequence[int], total_blocks: int, *, name: str) 
 
 
 __all__ = [
+    "CROSS_V5_ADALN_SCALE_KEY",
     "CROSS_V5_BANK_KEY",
     "CROSS_V5_FALLBACK_PROTOTYPES_KEY",
     "CROSS_V5_IMAGE_TOKEN_START_KEY",

@@ -11,6 +11,7 @@ training loop. It provides the pieces that the loop needs to call:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from typing import Callable, Mapping, Protocol, Sequence
 
@@ -212,6 +213,7 @@ class CrossV5AdaLNAdapterMixin:
         bank: CrossV5TissueBank,
         fallback_prototypes: torch.Tensor | None = None,
         target_structure_tokens: torch.Tensor | None = None,
+        modulation_scale: float | torch.Tensor = 1.0,
     ) -> torch.Tensor:
         modulator = getattr(self, "cross_v5_adaln_modulator", None)
         if modulator is None:
@@ -224,6 +226,7 @@ class CrossV5AdaLNAdapterMixin:
             fallback_prototypes=fallback_prototypes,
             target_structure_tokens=target_structure_tokens,
             detach_bank=bool(getattr(self, "cross_v5_detach_bank", False)),
+            modulation_scale=modulation_scale,
         )
 
 
@@ -287,6 +290,7 @@ def apply_cross_v5_adaln_to_hidden(
     fallback_prototypes: torch.Tensor | None = None,
     target_structure_tokens: torch.Tensor | None = None,
     detach_bank: bool = False,
+    modulation_scale: float | torch.Tensor = 1.0,
 ) -> torch.Tensor:
     """Small adapter called by a V5-ready DiT block at its AdaLN hook point."""
 
@@ -308,7 +312,10 @@ def apply_cross_v5_adaln_to_hidden(
         fallback_prototypes=fallback_prototypes,
         target_structure_tokens=target_structure_tokens,
     )
-    return output.hidden_states
+    scale = _as_cross_v5_modulation_scale(modulation_scale, hidden_states)
+    if not torch.is_tensor(scale) and scale == 1.0:
+        return output.hidden_states
+    return hidden_states + scale * (output.hidden_states - hidden_states)
 
 
 def run_frozen_predictor_bridge(
@@ -594,6 +601,28 @@ def _broadcast_schedule_value(value: torch.Tensor | float, target: torch.Tensor)
     while tensor.ndim < target.ndim:
         tensor = tensor.unsqueeze(-1)
     return tensor
+
+
+def _as_cross_v5_modulation_scale(value: torch.Tensor | float, target: torch.Tensor) -> torch.Tensor | float:
+    if torch.is_tensor(value):
+        scale = value.to(device=target.device, dtype=target.dtype)
+        if not bool(torch.isfinite(scale).all().detach().cpu().item()):
+            raise ValueError("Cross V5 AdaLN modulation scale must be finite.")
+        while scale.ndim < target.ndim:
+            scale = scale.unsqueeze(-1)
+        try:
+            torch.broadcast_shapes(tuple(scale.shape), tuple(target.shape))
+        except RuntimeError as exc:
+            raise ValueError(
+                f"Cross V5 AdaLN modulation scale shape {tuple(scale.shape)} cannot broadcast to "
+                f"hidden_states shape {tuple(target.shape)}."
+            ) from exc
+        return scale
+
+    scale = float(value)
+    if not math.isfinite(scale):
+        raise ValueError("Cross V5 AdaLN modulation scale must be finite.")
+    return scale
 
 
 def _normalize_weights(values: Mapping[str, float]) -> dict[str, float]:

@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import unittest
 
 try:
@@ -6,6 +8,38 @@ except ModuleNotFoundError:
     torch = None
 
 if torch is not None:
+    cache_root = Path(os.environ.get("CROSS_V5_TEST_HF_CACHE", "/private/tmp/codex_hf_cache"))
+    cache_root.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("HF_HOME", str(cache_root))
+    os.environ.setdefault("TRANSFORMERS_CACHE", str(cache_root / "transformers"))
+    os.environ.setdefault("HF_HUB_CACHE", str(cache_root / "hub"))
+    for _float8_name in ("float8_e4m3fn", "float8_e5m2"):
+        if not hasattr(torch, _float8_name):
+            setattr(torch, _float8_name, torch.uint8)
+    if not hasattr(torch, "compiler"):
+        class _TorchCompilerCompat:
+            @staticmethod
+            def disable(fn=None, *args, **kwargs):
+                if fn is None:
+                    return lambda wrapped: wrapped
+                return fn
+
+        torch.compiler = _TorchCompilerCompat()
+    elif not hasattr(torch.compiler, "disable"):
+        torch.compiler.disable = lambda fn=None, *args, **kwargs: (lambda wrapped: wrapped) if fn is None else fn
+    try:
+        import transformers
+
+        if not hasattr(transformers.integrations, "deepspeed"):
+            class _TransformersDeepspeedCompat:
+                @staticmethod
+                def is_deepspeed_zero3_enabled():
+                    return False
+
+            transformers.integrations.deepspeed = _TransformersDeepspeedCompat()
+    except Exception:
+        pass
+
     from controlnet_train.data.cross_v5_pairing import CrossV5PairingSampler
     from controlnet_train.modules.cross_v5_conditioning import (
         CrossV5AdaLNModulator,
@@ -39,11 +73,13 @@ if torch is not None:
         decode_cross_v5_prediction_rgb,
         freeze_predictor_for_v5_loss,
         install_cross_v5_adaln_hooks,
+        apply_cross_v5_adaln_to_hidden,
         reconstruct_cross_v5_x0_latents,
         should_run_cross_v5_branch,
         validate_cross_v5_predictor_grad_bridge,
     )
     from controlnet_train.training.cross_v5_flux_adapters import (
+        CROSS_V5_ADALN_SCALE_KEY,
         CROSS_V5_BANK_KEY,
         CROSS_V5_IMAGE_TOKEN_START_KEY,
         CROSS_V5_TARGET_CLASS_IDS_KEY,
@@ -242,6 +278,31 @@ class CrossV5MinInterfaceTests(unittest.TestCase):
         self.assertEqual(tuple(output.hidden_states.shape), (1, 3, 4))
         self.assertTrue(torch.allclose(output.source_prototypes[0, 1], fallback[1]))
         self.assertFalse(torch.allclose(output.gamma, torch.zeros_like(output.gamma)))
+
+    def test_adaln_modulation_scale_multiplies_hidden_delta(self):
+        hidden = torch.randn(1, 3, 4)
+        bank = CrossV5TissueBank(
+            prototypes=torch.tensor([[[1.0, 0.0, 0.0, 0.0]]]),
+            local_tokens=torch.zeros(1, 1, 1, 4),
+            class_present=torch.ones(1, 1, dtype=torch.bool),
+            class_mass=torch.ones(1, 1),
+            token_class_ids=torch.zeros(1, 1, dtype=torch.long),
+            token_class_confidence=torch.ones(1, 1),
+        )
+        modulator = CrossV5AdaLNModulator(hidden_dim=4, output_init_std=0.01)
+        kwargs = dict(
+            hidden_states=hidden,
+            target_class_ids=torch.zeros(1, 3, dtype=torch.long),
+            bank=bank,
+            modulator=modulator,
+        )
+
+        base = apply_cross_v5_adaln_to_hidden(**kwargs, modulation_scale=1.0)
+        zero = apply_cross_v5_adaln_to_hidden(**kwargs, modulation_scale=0.0)
+        triple = apply_cross_v5_adaln_to_hidden(**kwargs, modulation_scale=3.0)
+
+        self.assertTrue(torch.allclose(zero, hidden))
+        self.assertTrue(torch.allclose(triple - hidden, 3.0 * (base - hidden), atol=1e-6))
 
     def test_spatial_adaln_modulator_uses_target_structure_tokens(self):
         hidden = torch.zeros(1, 2, 4)

@@ -451,6 +451,21 @@ def _should_train_controlnet_x_embedder(args: argparse.Namespace, *, is_cross_v5
     return bool(getattr(args, "controlnet_train_x_embedder", False) or is_cross_v5)
 
 
+def _force_controlnet_x_embedder_trainable(controlnet: nn.Module, *, enabled: bool) -> tuple[list[str], int]:
+    if not enabled:
+        return [], 0
+    x_embedder = getattr(controlnet, "controlnet_x_embedder", None)
+    if x_embedder is None:
+        raise AttributeError("ControlNet is missing controlnet_x_embedder; cannot enable V5 geometry input training.")
+    x_embedder.requires_grad_(True)
+    trainable = [
+        f"controlnet_x_embedder.{name}"
+        for name, param in x_embedder.named_parameters()
+        if param.requires_grad
+    ]
+    return trainable, sum(param.numel() for param in x_embedder.parameters() if param.requires_grad)
+
+
 def _set_module_requires_grad(module: nn.Module | None, value: bool) -> None:
     if module is not None:
         module.requires_grad_(value)
@@ -471,6 +486,7 @@ def _audit_optimizer_param_groups(
     optimizer,
     controlnet: nn.Module,
     modules: dict[str, nn.Module],
+    required_controlnet_submodule_names: tuple[str, ...] = (),
     required_module_names: tuple[str, ...] = (),
 ) -> None:
     """Log optimizer membership and fail if required trainable modules are missing."""
@@ -521,6 +537,16 @@ def _audit_optimizer_param_groups(
         optimizer_param_ids=optimizer_param_ids,
         required=False,
     )
+    for submodule_name in required_controlnet_submodule_names:
+        submodule = getattr(controlnet, submodule_name, None)
+        if submodule is None:
+            raise ValueError(f"[OPTIMIZER-AUDIT] Required ControlNet submodule {submodule_name!r} is missing.")
+        _log_module_optimizer_audit(
+            module_name=f"controlnet.{submodule_name}",
+            module=submodule,
+            optimizer_param_ids=optimizer_param_ids,
+            required=True,
+        )
     for module_name, module in modules.items():
         _log_module_optimizer_audit(
             module_name=module_name,
@@ -2612,16 +2638,28 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
     vae.requires_grad_(False)
     flux_controlnet.to(accelerator.device, dtype=weight_dtype)
     flux_controlnet.train()
+    force_train_x_embedder = _should_train_controlnet_x_embedder(args, is_cross_v5=is_cross_v5)
     controlnet_trainable_names = _configure_controlnet_trainable_params(
         flux_controlnet,
         mode=getattr(args, "controlnet_train_mode", "all"),
-        train_x_embedder=_should_train_controlnet_x_embedder(args, is_cross_v5=is_cross_v5),
+        train_x_embedder=force_train_x_embedder,
         train_last_n_blocks=max(0, int(getattr(args, "controlnet_train_last_n_blocks", 0) or 0)),
         train_last_n_single_blocks=max(0, int(getattr(args, "controlnet_train_last_n_single_blocks", 0) or 0)),
     )
+    x_embedder_trainable_names, x_embedder_trainable_params = _force_controlnet_x_embedder_trainable(
+        flux_controlnet,
+        enabled=force_train_x_embedder,
+    )
+    controlnet_trainable_names = [
+        name for name, param in flux_controlnet.named_parameters() if param.requires_grad
+    ]
     logger.info(
-        "ControlNet train mode=%s trainable_tensors=%s trainable_params=%s sample_names=%s",
+        "ControlNet train mode=%s train_x_embedder=%s x_embedder_tensors=%s "
+        "x_embedder_params=%s trainable_tensors=%s trainable_params=%s sample_names=%s",
         getattr(args, "controlnet_train_mode", "all"),
+        force_train_x_embedder,
+        len(x_embedder_trainable_names),
+        x_embedder_trainable_params,
         len(controlnet_trainable_names),
         sum(param.numel() for param in flux_controlnet.parameters() if param.requires_grad),
         ", ".join(controlnet_trainable_names[:12]),
@@ -2732,6 +2770,7 @@ def run_cross_v3_training(args: argparse.Namespace) -> None:
         optimizer=optimizer,
         controlnet=flux_controlnet,
         modules=modules,
+        required_controlnet_submodule_names=("controlnet_x_embedder",) if force_train_x_embedder else (),
         required_module_names=_cross_v4_required_optimizer_modules(modules) if is_cross_v4 else (),
     )
 

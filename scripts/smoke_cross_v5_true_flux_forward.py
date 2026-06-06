@@ -84,7 +84,7 @@ def main() -> None:
         patch_size=1,
         in_channels=latent_channels,
         out_channels=latent_channels,
-        num_layers=1,
+        num_layers=2,
         num_single_layers=1,
         attention_head_dim=8,
         num_attention_heads=2,
@@ -120,6 +120,8 @@ def main() -> None:
     )
     if summary.single_blocks:
         raise SystemExit("V5-min true-FLUX smoke should not install appearance modulation on single blocks.")
+    if summary.double_strip_blocks != (1,):
+        raise SystemExit("Unselected double block was not patched to strip V5 kwargs in double-only mode.")
     if summary.single_strip_blocks != (0,):
         raise SystemExit("Single block was not patched to strip V5 kwargs in double-only mode.")
 
@@ -239,6 +241,7 @@ def main() -> None:
             {
                 "bank_swap_delta_abs_mean": float(bank_delta.cpu().item()),
                 "double_blocks": list(summary.double_blocks),
+                "double_strip_blocks": list(summary.double_strip_blocks),
                 "noop_max_abs_diff": float(noop_max_abs_diff.cpu().item()),
                 "output_shape": list(output_a.shape),
                 "single_blocks": list(summary.single_blocks),
