@@ -744,7 +744,7 @@ reference 缺失 class/type 时，不计算该 class/type 的 region color / tex
 必须比较：
 
 ```text
-P: pooling-only short train / gamma = 0
+P: pooling-only short train / gamma disabled
 A: gamma-attention residual
 ```
 
@@ -753,18 +753,21 @@ A: gamma-attention residual
 ```text
 same target + ref A
 same target + ref B
-gamma value
+gamma 是否显著偏离初值并稳定增长
 attention residual norm
+VAE class-internal token variance
 ```
 
 判读：
 
 ```text
-P ref-insensitive, A ref-sensitive:
+P 只有低频 reference causality, A 有额外类内空间 reference causality:
   reference path 成立，pooling 是信息瓶颈。
 
-P 和 A 都 ref-insensitive:
-  排查 VAE latent、sampler、normalization、ControlNet residual、loss。
+P 和 A 都只有低频 ref response 或都 ref-insensitive:
+  先看 VAE class-internal variance。
+  若方差极低，问题是 VAE latent 没有可迁移空间信息。
+  若方差足够，再排查 sampler、normalization、ControlNet residual、loss。
 ```
 
 ### 7.2 Layer B: nuclei 是否有贡献
@@ -811,12 +814,20 @@ C: z_ref_to_target + geometry + target masks in final condition
 
 ```text
 controlnet_conditioning_scale = 0 vs 1
+gamma - gamma_init norm / histogram
+attention residual norm
 ||z_ref_to_target||
 std(z_ref_to_target)
 ||projected_z_ref_to_target||
 ||cond_feats[i]||
 ||ControlNet residual from condition||
 retrieval confidence / missing-class map visualization
+```
+
+训练前必须跑：
+
+```text
+VAE class-internal token variance / PCA energy / pairwise distance
 ```
 
 ## 8. 推荐默认配置
@@ -834,14 +845,17 @@ composer:
     gamma:
       type: per_channel_layerscale
       shape: [1, C_lat, 1, 1]
-      init: 0
+      init: 1e-3 - 1e-2
     q_class_onehot: forbidden
     q_inputs:
       nuclei_binary: enabled
       nuclei_boundary: enabled
       nuclei_distance_map: enabled
       tissue_boundary: enabled
-      coord_embedding: optional
+      coord_embedding: recommended
+    coord_constraints:
+      value_source: K/V_only
+      break_pseudo_self_absolute_coord_shortcut: independent_ref_target_crop_flip_jitter
     q_projection: Linear_Q
     kv_source: ref_latent_same_class_tokens
     k_projection: Linear_K
@@ -850,6 +864,8 @@ composer:
     variable_bank:
       implementation: padding_plus_attention_mask
       mask_padding_logits: -inf
+      max_ref_tokens_per_class: required
+      token_sampling: uniform_spatial_or_random
     empty_bank_fallback: pooling + missing_class_map
 
   nuclei_appearance:
@@ -893,9 +909,12 @@ losses:
   geometry_consistency_as_loss: false
 
 diagnostics:
+  vae_class_internal_variance_precheck: required
+  vae_class_internal_pca_energy: required
+  vae_class_internal_pairwise_distance: required
   dist_z_tissue_to_target_latent: enabled
   dist_z_ref_to_target_to_target_latent: enabled
-  gamma_value: enabled
+  gamma_delta_from_init: enabled
   gamma_l2_norm: enabled
   gamma_histogram: enabled
   attention_residual_norm: enabled
