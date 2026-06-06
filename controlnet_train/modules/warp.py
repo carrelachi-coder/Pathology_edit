@@ -1,12 +1,11 @@
 """Preview a warped reference: reference appearance rearranged into the
  target layout via same-class mask correspondence.
 
-This v2 script keeps the original mean / soft / hard baselines, and adds a
-stronger pathology-oriented warp:
+This script keeps only the original mean / soft / hard pixel-level baselines.
 
-  * patch: class-gated token/patch-level copy from the reference, using
-    component-local mask geometry features, match-field smoothing, Hann-window
-    patch paste, and a confidence/validity map.
+The HARD mode is the intended warped_ref candidate: it performs same-class
+nearest-neighbor pixel copy from the reference into the target layout. Patch
+warp has been intentionally removed because it can introduce quilting artifacts.
 
 Important design choice
 -----------------------
@@ -19,27 +18,25 @@ features, not as first-pass matching features.
 Usage
 -----
 Real data:
-  python warp_preview_v2.py \
+  python warp_preview_hard.py \
       --ref-image ref.png --ref-tissue ref_tissue.png --ref-nuclei ref_nuclei.png \
       --tar-image tar.png --tar-tissue tar_tissue.png --tar-nuclei tar_nuclei.png \
       --out warp_preview.png --corr-size 256 --gate tissue
 
 Synthetic demo:
-  python warp_preview_v2.py --demo --out warp_preview.png
+  python warp_preview_hard.py --demo --out warp_preview.png
 
 Recommended real-data first try:
-  python warp_preview_v2.py \
+  python warp_preview_hard.py \
       --ref-image ref.png --ref-tissue ref_tissue.png --ref-nuclei ref_nuclei.png \
       --tar-tissue tar_tissue.png --tar-nuclei tar_nuclei.png \
       --out warp_preview.png \
-      --corr-size 256 --gate tissue --patch-size 21 --patch-stride 6 \
-      --patch-topk 1 --patch-smooth 3
+      --corr-size 256 --baseline-gate tissue_nucbin --smooth 3 --no-soft
 """
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -351,260 +348,6 @@ def compute_warp(
 
 
 # ---------------------------------------------------------------------------
-# Refined patch/token-level warp
-# ---------------------------------------------------------------------------
-
-@dataclass
-class PatchWarpDebug:
-    match_y: np.ndarray
-    match_x: np.ndarray
-    confidence: np.ndarray
-    token_validity: np.ndarray
-
-
-def _hann2d(size: int) -> np.ndarray:
-    size = int(size)
-    if size <= 2:
-        return np.ones((size, size, 1), np.float32)
-    win = np.hanning(size).astype(np.float32)
-    # avoid zero edge weights, otherwise uncovered seams can appear with stride > 1
-    win = np.maximum(win, 0.05)
-    w = np.outer(win, win)
-    w = w / (w.max() + 1e-6)
-    return w[..., None].astype(np.float32)
-
-
-def _grid_centers(h: int, w: int, stride: int) -> tuple[np.ndarray, np.ndarray]:
-    stride = max(int(stride), 1)
-    ys = np.arange(stride // 2, h, stride, dtype=np.int64)
-    xs = np.arange(stride // 2, w, stride, dtype=np.int64)
-    if ys.size == 0:
-        ys = np.array([h // 2], dtype=np.int64)
-    if xs.size == 0:
-        xs = np.array([w // 2], dtype=np.int64)
-    gy, gx = np.meshgrid(ys, xs, indexing="ij")
-    return gy, gx
-
-
-def _smooth_match_field_by_class(
-    match_y: np.ndarray,
-    match_x: np.ndarray,
-    grid_cls: np.ndarray,
-    valid: np.ndarray,
-    *,
-    smooth: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    if smooth <= 1:
-        return match_y, match_x
-    out_y = match_y.copy()
-    out_x = match_x.copy()
-    for cls in np.unique(grid_cls[valid]):
-        m = (grid_cls == cls) & valid
-        if m.sum() < 4:
-            continue
-        # Fill non-class cells with the current global field; only write back class cells.
-        fy = match_y.copy().astype(np.float32)
-        fx = match_x.copy().astype(np.float32)
-        fy[~m] = match_y[m].mean()
-        fx[~m] = match_x[m].mean()
-        sy = median_filter(fy, size=int(smooth))
-        sx = median_filter(fx, size=int(smooth))
-        out_y[m] = sy[m]
-        out_x[m] = sx[m]
-    return out_y, out_x
-
-
-def compute_patch_warp(
-    ref_rgb: np.ndarray,
-    ref_tissue: np.ndarray,
-    ref_nuclei: np.ndarray,
-    tar_tissue: np.ndarray,
-    tar_nuclei: np.ndarray,
-    *,
-    corr_size: int = 256,
-    gate: str = "tissue",
-    patch_size: int = 21,
-    patch_stride: int = 6,
-    patch_topk: int = 1,
-    tau: float = 0.05,
-    max_ref_tokens: int = 4096,
-    smooth: int = 3,
-    density_sigma: float = 3.0,
-    seed: int = 0,
-) -> tuple[np.ndarray, np.ndarray, PatchWarpDebug]:
-    """Class-gated patch/token warp.
-
-    Returns:
-      warped_rgb: [H,W,3]
-      confidence_map: [H,W]
-      debug: token-level match field/confidence
-    """
-    rng = np.random.default_rng(seed)
-    h = w = int(corr_size)
-    p = int(patch_size)
-    if p % 2 == 0:
-        p += 1
-    r = p // 2
-    stride = max(int(patch_stride), 1)
-    topk = max(int(patch_topk), 1)
-
-    ref_rgb_s = _resize_rgb(ref_rgb, h)
-    ref_t0 = _resize_label(ref_tissue, h)
-    ref_n = _resize_label(ref_nuclei, h)
-    tar_t0 = _resize_label(tar_tissue, h)
-    tar_n = _resize_label(tar_nuclei, h)
-    ref_t, tar_t, tissue_classes = _remap_tissue_pair(ref_t0, tar_t0)
-    nuc_classes = int(max(ref_n.max(), tar_n.max())) + 1
-
-    ref_gate = _make_gate_labels(ref_t, ref_n, gate=gate, nuc_classes=nuc_classes)
-    tar_gate = _make_gate_labels(tar_t, tar_n, gate=gate, nuc_classes=nuc_classes)
-
-    ref_feat = _component_local_geometry_features(
-        ref_t, ref_n, tissue_classes=np.arange(len(tissue_classes)), density_sigma=density_sigma
-    )
-    tar_feat = _component_local_geometry_features(
-        tar_t, tar_n, tissue_classes=np.arange(len(tissue_classes)), density_sigma=density_sigma
-    )
-    D = ref_feat.shape[-1]
-
-    gy, gx = _grid_centers(h, w, stride)
-    GH, GW = gy.shape
-    tar_idx = (gy * w + gx).reshape(-1)
-    tar_cls = tar_gate[gy, gx].reshape(-1)
-    tar_feat_tok = tar_feat[gy, gx].reshape(-1, D)
-
-    ref_gy, ref_gx = _grid_centers(h, w, stride)
-    ref_idx_all = (ref_gy * w + ref_gx).reshape(-1)
-    ref_cls_all = ref_gate[ref_gy, ref_gx].reshape(-1)
-    ref_feat_tok_all = ref_feat[ref_gy, ref_gx].reshape(-1, D)
-    ref_y_all = ref_gy.reshape(-1)
-    ref_x_all = ref_gx.reshape(-1)
-
-    # Normalize rows for cosine-like descriptor distance.
-    tar_feat_norm = _l2_normalize_rows(tar_feat_tok)
-    ref_feat_norm_all = _l2_normalize_rows(ref_feat_tok_all)
-
-    match_y = np.full(tar_idx.shape, -1, np.float32)
-    match_x = np.full(tar_idx.shape, -1, np.float32)
-    conf_tok = np.zeros(tar_idx.shape, np.float32)
-    valid_tok = np.zeros(tar_idx.shape, bool)
-
-    for cls in np.unique(tar_cls):
-        ti = np.where(tar_cls == cls)[0]
-        ri = np.where(ref_cls_all == cls)[0]
-        if ri.size == 0:
-            continue
-        if ri.size > max_ref_tokens:
-            ri = rng.choice(ri, size=max_ref_tokens, replace=False)
-        rf = ref_feat_norm_all[ri]
-        ry = ref_y_all[ri]
-        rx = ref_x_all[ri]
-        tf = tar_feat_norm[ti]
-
-        # Cosine similarity; top-k sparse matching avoids class-wide RGB averaging.
-        sim = tf @ rf.T
-        k = min(topk, sim.shape[1])
-        if k == 1:
-            nn = sim.argmax(axis=1)
-            best = sim[np.arange(sim.shape[0]), nn]
-            # margin to second best as a confidence proxy if available
-            if sim.shape[1] > 1:
-                part = np.partition(sim, -2, axis=1)
-                second = part[:, -2]
-                margin = best - second
-                conf = 1.0 / (1.0 + np.exp(-10.0 * margin))
-            else:
-                conf = np.ones_like(best, dtype=np.float32)
-            match_y[ti] = ry[nn]
-            match_x[ti] = rx[nn]
-            conf_tok[ti] = conf.astype(np.float32)
-        else:
-            # Weighted coordinate average among a few nearest candidates. This smooths
-            # match fields without averaging all class pixels.
-            top_idx = np.argpartition(sim, -k, axis=1)[:, -k:]
-            top_sim = np.take_along_axis(sim, top_idx, axis=1)
-            weights = _softmax(top_sim / max(float(tau), 1e-6), axis=1)
-            match_y[ti] = (weights * ry[top_idx]).sum(axis=1)
-            match_x[ti] = (weights * rx[top_idx]).sum(axis=1)
-            conf_tok[ti] = weights.max(axis=1).astype(np.float32)
-        valid_tok[ti] = True
-
-    # Class-aware smoothing on token match field.
-    my_grid = match_y.reshape(GH, GW)
-    mx_grid = match_x.reshape(GH, GW)
-    cls_grid = tar_cls.reshape(GH, GW)
-    valid_grid = valid_tok.reshape(GH, GW)
-    my_grid, mx_grid = _smooth_match_field_by_class(
-        my_grid, mx_grid, cls_grid, valid_grid, smooth=max(int(smooth), 1)
-    )
-
-    # Patch paste with Hann window. This copies local image texture instead of
-    # copying single pixels or averaging whole classes.
-    accum = np.zeros((h, w, 3), np.float32)
-    weight = np.zeros((h, w, 1), np.float32)
-    conf_accum = np.zeros((h, w, 1), np.float32)
-    win = _hann2d(p)
-    ref_pad = np.pad(ref_rgb_s, ((r, r), (r, r), (0, 0)), mode="reflect")
-
-    # Per gate-class fallback color for holes / missing classes.
-    ref_flat = ref_rgb_s.reshape(-1, 3)
-    global_mean = ref_flat.mean(axis=0)
-    ref_gate_flat = ref_gate.reshape(-1)
-    class_mean: dict[int, np.ndarray] = {}
-    for cls in np.unique(tar_cls):
-        ri = np.where(ref_gate_flat == cls)[0]
-        class_mean[int(cls)] = ref_flat[ri].mean(axis=0) if ri.size else global_mean
-
-    flat_i = 0
-    for iy in range(GH):
-        for ix in range(GW):
-            ty = int(gy[iy, ix])
-            tx = int(gx[iy, ix])
-            cls = int(cls_grid[iy, ix])
-            if not valid_grid[iy, ix]:
-                # Paste a class mean patch to avoid black holes, but confidence remains 0.
-                ry = ty
-                rx = tx
-                patch = np.broadcast_to(class_mean.get(cls, global_mean), (p, p, 3)).copy()
-                c = 0.0
-            else:
-                ry = int(np.clip(np.round(my_grid[iy, ix]), 0, h - 1))
-                rx = int(np.clip(np.round(mx_grid[iy, ix]), 0, w - 1))
-                patch = ref_pad[ry : ry + p, rx : rx + p]
-                c = float(conf_tok.reshape(GH, GW)[iy, ix])
-
-            y0 = max(ty - r, 0)
-            y1 = min(ty + r + 1, h)
-            x0 = max(tx - r, 0)
-            x1 = min(tx + r + 1, w)
-            wy0 = y0 - (ty - r)
-            wy1 = wy0 + (y1 - y0)
-            wx0 = x0 - (tx - r)
-            wx1 = wx0 + (x1 - x0)
-            ww = win[wy0:wy1, wx0:wx1]
-            pp = patch[wy0:wy1, wx0:wx1]
-            accum[y0:y1, x0:x1] += pp * ww
-            weight[y0:y1, x0:x1] += ww
-            conf_accum[y0:y1, x0:x1] += ww * c
-            flat_i += 1
-
-    warped = accum / np.maximum(weight, 1e-6)
-    confidence = (conf_accum / np.maximum(weight, 1e-6))[..., 0]
-    empty = weight[..., 0] <= 1e-6
-    if empty.any():
-        warped[empty] = global_mean
-        confidence[empty] = 0.0
-
-    debug = PatchWarpDebug(
-        match_y=my_grid,
-        match_x=mx_grid,
-        confidence=conf_tok.reshape(GH, GW),
-        token_validity=valid_grid.astype(np.float32),
-    )
-    return np.clip(warped, 0, 1), np.clip(confidence, 0, 1), debug
-
-
-# ---------------------------------------------------------------------------
 # Visualization
 # ---------------------------------------------------------------------------
 
@@ -618,9 +361,7 @@ def visualize(
     warped_mean,
     warped_soft,
     warped_hard,
-    warped_patch,
     validity,
-    patch_conf,
     out_path,
 ):
     import matplotlib
@@ -628,14 +369,13 @@ def visualize(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(3, 5, figsize=(18.0, 11.5))
+    fig, ax = plt.subplots(3, 4, figsize=(15.5, 11.5))
     mask_kw = dict(cmap="tab10", vmin=0, vmax=9, interpolation="nearest")
 
     ax[0, 0].imshow(ref_rgb); ax[0, 0].set_title("reference RGB\n(texture source)")
     ax[0, 1].imshow(ref_t, **mask_kw); ax[0, 1].set_title("reference tissue mask")
     ax[0, 2].imshow(ref_n, **mask_kw); ax[0, 2].set_title("reference nuclei mask")
     ax[0, 3].axis("off")
-    ax[0, 4].axis("off")
 
     if tar_rgb is None:
         ax[1, 0].axis("off")
@@ -645,19 +385,17 @@ def visualize(
     ax[1, 0].set_title("TARGET RGB\n(preview only)")
     ax[1, 1].imshow(tar_t, **mask_kw); ax[1, 1].set_title("TARGET tissue mask")
     ax[1, 2].imshow(tar_n, **mask_kw); ax[1, 2].set_title("TARGET nuclei mask")
-    ax[1, 3].imshow(validity, cmap="gray", vmin=0, vmax=1); ax[1, 3].set_title("baseline validity")
-    ax[1, 4].imshow(patch_conf, cmap="magma", vmin=0, vmax=1); ax[1, 4].set_title("patch confidence")
+    ax[1, 3].imshow(validity, cmap="gray", vmin=0, vmax=1); ax[1, 3].set_title("HARD validity")
 
     ax[2, 0].imshow(np.clip(warped_mean, 0, 1)); ax[2, 0].set_title("MEAN\nper-class color")
     ax[2, 1].imshow(np.clip(warped_soft, 0, 1)); ax[2, 1].set_title("SOFT\nfull avg; texture dies")
-    ax[2, 2].imshow(np.clip(warped_hard, 0, 1)); ax[2, 2].set_title("HARD pixel copy")
-    ax[2, 3].imshow(np.clip(warped_patch, 0, 1)); ax[2, 3].set_title("PATCH warp\ntoken match + patch paste")
-    ax[2, 4].imshow(np.clip(np.abs(warped_patch - warped_mean) * 2.0, 0, 1)); ax[2, 4].set_title("PATCH - MEAN\n(texture / local variation)")
+    ax[2, 2].imshow(np.clip(warped_hard, 0, 1)); ax[2, 2].set_title("HARD pixel copy\nuse as warped_ref")
+    ax[2, 3].imshow(np.clip(np.abs(warped_hard - warped_mean) * 2.0, 0, 1)); ax[2, 3].set_title("HARD - MEAN\nlocal variation")
 
     for a in ax.ravel():
         a.set_xticks([]); a.set_yticks([])
     fig.suptitle(
-        "Warp preview v2: class-gated patch copy transfers more texture than pixel/color averaging",
+        "Warp preview: mean / soft / hard pixel-level copy only",
         fontsize=12,
     )
     fig.tight_layout()
@@ -733,24 +471,13 @@ def main():
     p.add_argument("--tar-image", default=None, help="Optional target RGB image shown for preview comparison.")
     p.add_argument("--tar-tissue"); p.add_argument("--tar-nuclei")
     p.add_argument("--out", default="warp_preview.png")
-    p.add_argument("--save-prefix", default=None, help="Optional prefix to save patch warp/confidence PNGs separately.")
+    p.add_argument("--save-prefix", default=None, help="Optional prefix to save hard/mean/validity PNGs separately.")
     p.add_argument("--corr-size", type=int, default=192)
     p.add_argument("--tau", type=float, default=0.02, help="temperature for the baseline soft warp")
     p.add_argument("--smooth", type=int, default=3, help="median filter size for baseline hard copy")
-    p.add_argument(
-        "--gate",
-        choices=["tissue", "tissue_nucbin", "joint"],
-        default="tissue",
-        help="hard gate for patch warp; tissue is usually most robust. joint is strict tissue x nuclei-ID.",
-    )
     p.add_argument("--baseline-gate", choices=["tissue", "tissue_nucbin", "joint"], default="joint")
     p.add_argument("--baseline-max-ref", type=int, default=2048, help="max reference pixels for baseline mean/soft/hard modes")
     p.add_argument("--no-soft", action="store_true", help="skip expensive full softmax baseline; reuse mean panel instead")
-    p.add_argument("--patch-size", type=int, default=21, help="odd patch size copied from ref for patch warp")
-    p.add_argument("--patch-stride", type=int, default=6, help="target token stride for patch warp")
-    p.add_argument("--patch-topk", type=int, default=1, help="top-k candidates; 1 preserves most texture")
-    p.add_argument("--patch-tau", type=float, default=0.05, help="temperature for top-k coordinate weighting when topk>1")
-    p.add_argument("--patch-smooth", type=int, default=3, help="class-aware median smoothing of the token match field")
     p.add_argument("--density-sigma", type=float, default=3.0)
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
@@ -774,23 +501,6 @@ def main():
     else:
         warped_soft, _ = compute_warp(ref_rgb, ref_t, ref_n, tar_t, tar_n, mode="soft", **common)
     warped_hard, validity = compute_warp(ref_rgb, ref_t, ref_n, tar_t, tar_n, mode="hard", **common)
-    warped_patch, patch_conf, debug = compute_patch_warp(
-        ref_rgb,
-        ref_t,
-        ref_n,
-        tar_t,
-        tar_n,
-        corr_size=args.corr_size,
-        gate=args.gate,
-        patch_size=args.patch_size,
-        patch_stride=args.patch_stride,
-        patch_topk=args.patch_topk,
-        tau=args.patch_tau,
-        smooth=args.patch_smooth,
-        density_sigma=args.density_sigma,
-        seed=args.seed,
-    )
-
     ref_t_s = _resize_label(ref_t, args.corr_size); ref_n_s = _resize_label(ref_n, args.corr_size)
     tar_t_s = _resize_label(tar_t, args.corr_size); tar_n_s = _resize_label(tar_n, args.corr_size)
     ref_rgb_s = _resize_rgb(ref_rgb, args.corr_size)
@@ -805,19 +515,18 @@ def main():
         warped_mean,
         warped_soft,
         warped_hard,
-        warped_patch,
         validity,
-        patch_conf,
         args.out,
     )
 
     if args.save_prefix:
         prefix = Path(args.save_prefix)
         prefix.parent.mkdir(parents=True, exist_ok=True)
-        _save_rgb(prefix.with_name(prefix.name + "_patch.png"), warped_patch)
-        _save_gray(prefix.with_name(prefix.name + "_confidence.png"), patch_conf)
         _save_rgb(prefix.with_name(prefix.name + "_hard.png"), warped_hard)
+        _save_gray(prefix.with_name(prefix.name + "_validity.png"), validity)
         _save_rgb(prefix.with_name(prefix.name + "_mean.png"), warped_mean)
+        if not args.no_soft:
+            _save_rgb(prefix.with_name(prefix.name + "_soft.png"), warped_soft)
         print(f"saved extra files with prefix {prefix}")
 
 

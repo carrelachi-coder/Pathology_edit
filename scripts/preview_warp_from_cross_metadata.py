@@ -25,6 +25,7 @@ from controlnet_train.modules.warp_preview import (  # noqa: E402
     _load_rgb,
     _resize_label,
     _resize_rgb,
+    compute_patch_warp,
     compute_warp,
     visualize,
 )
@@ -61,6 +62,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--corr-size", type=int, default=192)
     parser.add_argument("--tau", type=float, default=0.02)
     parser.add_argument("--smooth", type=int, default=3, help="match-field median filter size for hard copy")
+    parser.add_argument("--gate", choices=["tissue", "tissue_nucbin", "joint"], default="tissue")
+    parser.add_argument("--baseline-gate", choices=["tissue", "tissue_nucbin", "joint"], default="joint")
+    parser.add_argument("--baseline-max-ref", type=int, default=2048)
+    parser.add_argument("--no-soft", action="store_true", help="Skip expensive soft baseline and reuse mean panel.")
+    parser.add_argument("--patch-size", type=int, default=21)
+    parser.add_argument("--patch-stride", type=int, default=6)
+    parser.add_argument("--patch-topk", type=int, default=1)
+    parser.add_argument("--patch-tau", type=float, default=0.05)
+    parser.add_argument("--patch-smooth", type=int, default=3)
+    parser.add_argument("--density-sigma", type=float, default=3.0)
     parser.add_argument(
         "--selected-json",
         default=None,
@@ -183,6 +194,17 @@ def render_preview(
     corr_size: int,
     tau: float,
     smooth: int,
+    seed: int,
+    gate: str,
+    baseline_gate: str,
+    baseline_max_ref: int,
+    no_soft: bool,
+    patch_size: int,
+    patch_stride: int,
+    patch_topk: int,
+    patch_tau: float,
+    patch_smooth: int,
+    density_sigma: float,
 ) -> None:
     ref_rgb = _load_rgb(str(paths["reference_image"]))
     tar_rgb = _load_rgb(str(paths["target_image"]))
@@ -191,10 +213,29 @@ def render_preview(
     tar_t = _load_label(str(paths["target_tissue_mask"]))
     tar_n = _load_label(str(paths["target_nuclei_mask"]))
 
-    common = dict(corr_size=corr_size, tau=tau, smooth=smooth)
+    common = dict(corr_size=corr_size, tau=tau, smooth=smooth, gate=baseline_gate, seed=seed, max_ref=baseline_max_ref)
     warped_mean, _ = compute_warp(ref_rgb, ref_t, ref_n, tar_t, tar_n, mode="mean", **common)
-    warped_soft, _ = compute_warp(ref_rgb, ref_t, ref_n, tar_t, tar_n, mode="soft", **common)
+    if no_soft:
+        warped_soft = warped_mean.copy()
+    else:
+        warped_soft, _ = compute_warp(ref_rgb, ref_t, ref_n, tar_t, tar_n, mode="soft", **common)
     warped_hard, validity = compute_warp(ref_rgb, ref_t, ref_n, tar_t, tar_n, mode="hard", **common)
+    warped_patch, patch_conf, _ = compute_patch_warp(
+        ref_rgb,
+        ref_t,
+        ref_n,
+        tar_t,
+        tar_n,
+        corr_size=corr_size,
+        gate=gate,
+        patch_size=patch_size,
+        patch_stride=patch_stride,
+        patch_topk=patch_topk,
+        tau=patch_tau,
+        smooth=patch_smooth,
+        density_sigma=density_sigma,
+        seed=seed,
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     visualize(
@@ -207,7 +248,9 @@ def render_preview(
         warped_mean,
         warped_soft,
         warped_hard,
+        warped_patch,
         validity,
+        patch_conf,
         str(out_path),
     )
 
@@ -233,6 +276,17 @@ def main(argv: list[str] | None = None) -> int:
         corr_size=args.corr_size,
         tau=args.tau,
         smooth=args.smooth,
+        seed=args.seed,
+        gate=args.gate,
+        baseline_gate=args.baseline_gate,
+        baseline_max_ref=args.baseline_max_ref,
+        no_soft=args.no_soft,
+        patch_size=args.patch_size,
+        patch_stride=args.patch_stride,
+        patch_topk=args.patch_topk,
+        patch_tau=args.patch_tau,
+        patch_smooth=args.patch_smooth,
+        density_sigma=args.density_sigma,
     )
 
     selected = {
@@ -244,6 +298,12 @@ def main(argv: list[str] | None = None) -> int:
         "paths": {field: str(path) for field, path in paths.items()},
         **stats,
         "smooth": args.smooth,
+        "gate": args.gate,
+        "baseline_gate": args.baseline_gate,
+        "patch_size": args.patch_size,
+        "patch_stride": args.patch_stride,
+        "patch_topk": args.patch_topk,
+        "patch_smooth": args.patch_smooth,
         "out": str(out_path),
     }
     selected_json = Path(args.selected_json) if args.selected_json else out_path.with_suffix(".selected.json")
