@@ -16,7 +16,7 @@ export HF_HOME="${HF_HOME:-/data/huggingface}"
 PROJECT_ROOT="${PROJECT_ROOT:-/home/lyw/wqx-DL/flow-edit/FlowEdit-main}"
 MODEL_DIR="${MODEL_DIR:-/data/huggingface/FLUX.1-dev}"
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
-CROSS_V2_1_OUTPUT_DIR="${CROSS_V2_1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v2_1_nohed_selfrec}"
+CROSS_V2_1_OUTPUT_DIR="${CROSS_V2_1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v2_1_hed_texture_degraded}"
 
 # Optional warm start from Cross V1 or Cross V2.1. V1 mask weights are remapped
 # after the z_ref channels; the new z_ref projection starts at zero.
@@ -42,16 +42,27 @@ CONDITIONING_LEARNING_RATE="${CONDITIONING_LEARNING_RATE:-5e-7}"
 
 STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-none}"
 STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0}"
-HED_SIGMA="${HED_SIGMA:-0.1}"
-HED_BETA="${HED_BETA:-0.01}"
+HED_SIGMA="${HED_SIGMA:-0.2}"
+HED_BETA="${HED_BETA:-0.02}"
 HED_STRONG_ALPHA_SAMPLING="${HED_STRONG_ALPHA_SAMPLING:-0}"
 HED_ALPHA_MIN="${HED_ALPHA_MIN:-0.8}"
 HED_ALPHA_LOW="${HED_ALPHA_LOW:-0.95}"
 HED_ALPHA_HIGH="${HED_ALPHA_HIGH:-1.05}"
 HED_ALPHA_MAX="${HED_ALPHA_MAX:-1.2}"
+NOISING_DEGRADATION="${NOISING_DEGRADATION:-hed_texture}"
+TEXTURE_BLUR_PROB="${TEXTURE_BLUR_PROB:-0.7}"
+TEXTURE_BLUR_SIGMA_MIN="${TEXTURE_BLUR_SIGMA_MIN:-0.4}"
+TEXTURE_BLUR_SIGMA_MAX="${TEXTURE_BLUR_SIGMA_MAX:-1.4}"
+TEXTURE_DOWNSAMPLE_PROB="${TEXTURE_DOWNSAMPLE_PROB:-0.7}"
+TEXTURE_DOWNSAMPLE_SCALE_MIN="${TEXTURE_DOWNSAMPLE_SCALE_MIN:-0.35}"
+TEXTURE_DOWNSAMPLE_SCALE_MAX="${TEXTURE_DOWNSAMPLE_SCALE_MAX:-0.75}"
+TEXTURE_NOISE_PROB="${TEXTURE_NOISE_PROB:-0.35}"
+TEXTURE_NOISE_STD_MIN="${TEXTURE_NOISE_STD_MIN:-0.005}"
+TEXTURE_NOISE_STD_MAX="${TEXTURE_NOISE_STD_MAX:-0.03}"
+DEGRADED_NOISING_MIN_SIGMA="${DEGRADED_NOISING_MIN_SIGMA:-0.1}"
 
-SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-500}"
-SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0.1}"
+SELF_RECONSTRUCTION_WARMUP_STEPS="${SELF_RECONSTRUCTION_WARMUP_STEPS:-0}"
+SELF_RECONSTRUCTION_SAMPLE_PROB="${SELF_RECONSTRUCTION_SAMPLE_PROB:-0}"
 REFERENCE_REGION_LOSS_WEIGHT="${REFERENCE_REGION_LOSS_WEIGHT:-0.05}"
 REFERENCE_REGION_LOSS_WARMUP_STEPS="${REFERENCE_REGION_LOSS_WARMUP_STEPS:-500}"
 REFERENCE_REGION_LOSS_INTERVAL="${REFERENCE_REGION_LOSS_INTERVAL:-1}"
@@ -108,6 +119,17 @@ TRAIN_HED_ARGS=(
   --hed-alpha-low "${HED_ALPHA_LOW}"
   --hed-alpha-high "${HED_ALPHA_HIGH}"
   --hed-alpha-max "${HED_ALPHA_MAX}"
+  --noising-degradation "${NOISING_DEGRADATION}"
+  --texture-blur-prob "${TEXTURE_BLUR_PROB}"
+  --texture-blur-sigma-min "${TEXTURE_BLUR_SIGMA_MIN}"
+  --texture-blur-sigma-max "${TEXTURE_BLUR_SIGMA_MAX}"
+  --texture-downsample-prob "${TEXTURE_DOWNSAMPLE_PROB}"
+  --texture-downsample-scale-min "${TEXTURE_DOWNSAMPLE_SCALE_MIN}"
+  --texture-downsample-scale-max "${TEXTURE_DOWNSAMPLE_SCALE_MAX}"
+  --texture-noise-prob "${TEXTURE_NOISE_PROB}"
+  --texture-noise-std-min "${TEXTURE_NOISE_STD_MIN}"
+  --texture-noise-std-max "${TEXTURE_NOISE_STD_MAX}"
+  --degraded-noising-min-sigma "${DEGRADED_NOISING_MIN_SIGMA}"
 )
 if [[ "${HED_STRONG_ALPHA_SAMPLING}" == "1" ]]; then
   TRAIN_HED_ARGS+=(--hed-strong-alpha-sampling)
@@ -191,6 +213,7 @@ fi
 echo "Cross V2.1 warm-start ControlNet checkpoint: ${CONTROLNET_CHECKPOINT:-<none>}"
 echo "Cross V2.1 conditioning checkpoint: ${CONDITIONING_CHECKPOINT:-<none>} load=${LOAD_CONDITIONING_FROM_CHECKPOINT}"
 echo "Cross V2.1 output dir: ${CROSS_V2_1_OUTPUT_DIR}"
+echo "Cross V2.1 noising degradation: ${NOISING_DEGRADATION} min_sigma=${DEGRADED_NOISING_MIN_SIGMA} texture_blur=${TEXTURE_BLUR_PROB}/${TEXTURE_BLUR_SIGMA_MIN}-${TEXTURE_BLUR_SIGMA_MAX} downsample=${TEXTURE_DOWNSAMPLE_PROB}/${TEXTURE_DOWNSAMPLE_SCALE_MIN}-${TEXTURE_DOWNSAMPLE_SCALE_MAX} noise=${TEXTURE_NOISE_PROB}/${TEXTURE_NOISE_STD_MIN}-${TEXTURE_NOISE_STD_MAX}"
 echo "Cross V2.1 reference perceptual: backend=${REFERENCE_PERCEPTUAL_BACKEND} vgg_weights=${REFERENCE_VGG_WEIGHTS} vgg_weights_path=${REFERENCE_VGG_WEIGHTS_PATH:-<torchvision>} vgg_layers=${REFERENCE_VGG_LAYERS} vgg_loss_type=${REFERENCE_VGG_LOSS_TYPE} same_wsi=${SAME_WSI_APPEARANCE_CHECKPOINT:-<none>} uni=${UNI_CHECKPOINT_PATH:-<none>} weight=${REFERENCE_PERCEPTUAL_LOSS_WEIGHT} sigma=[${REFERENCE_PERCEPTUAL_LOSS_MIN_SIGMA},${REFERENCE_PERCEPTUAL_LOSS_MAX_SIGMA}]"
 echo "Cross V2.1 reference grad-ratio interval: ${REFERENCE_GRAD_RATIO_INTERVAL}"
 
@@ -228,5 +251,5 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --num-single-layers 4 \
   --guidance-scale 3.5 \
   --report-to tensorboard \
-  --tracker-project-name flux_controlnet_phase5_cross_v2_1_nohed_selfrec \
+  --tracker-project-name flux_controlnet_phase5_cross_v2_1_hed_texture_degraded \
   --prompt-source dataset

@@ -55,6 +55,35 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--hed-alpha-high", type=float, default=1.25)
     parser.add_argument("--hed-alpha-max", type=float, default=1.8)
     parser.add_argument(
+        "--noising-degradation",
+        type=str,
+        default="none",
+        choices=["none", "hed", "stain", "texture", "hed_texture", "stain_texture"],
+        help=(
+            "Clean image used to build noisy_input before denoising. "
+            "Use hed_texture to train from wrong stain + degraded texture while "
+            "keeping reference/ground truth as the original patch."
+        ),
+    )
+    parser.add_argument("--texture-blur-prob", type=float, default=0.7)
+    parser.add_argument("--texture-blur-sigma-min", type=float, default=0.4)
+    parser.add_argument("--texture-blur-sigma-max", type=float, default=1.4)
+    parser.add_argument("--texture-downsample-prob", type=float, default=0.7)
+    parser.add_argument("--texture-downsample-scale-min", type=float, default=0.35)
+    parser.add_argument("--texture-downsample-scale-max", type=float, default=0.75)
+    parser.add_argument("--texture-noise-prob", type=float, default=0.35)
+    parser.add_argument("--texture-noise-std-min", type=float, default=0.005)
+    parser.add_argument("--texture-noise-std-max", type=float, default=0.03)
+    parser.add_argument(
+        "--degraded-noising-min-sigma",
+        type=float,
+        default=0.1,
+        help=(
+            "Minimum training sigma for samples whose noisy_input starts from a degraded image. "
+            "Very low sigma makes degraded->ground-truth one-step restoration numerically sharp."
+        ),
+    )
+    parser.add_argument(
         "--prompt-source",
         type=str,
         default="dataset",

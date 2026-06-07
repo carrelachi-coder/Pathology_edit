@@ -229,6 +229,14 @@ class TrainingCliTests(unittest.TestCase):
                 "0.05",
                 "--reference-grad-ratio-interval",
                 "50",
+                "--noising-degradation",
+                "hed_texture",
+                "--texture-blur-prob",
+                "1.0",
+                "--texture-downsample-scale-min",
+                "0.25",
+                "--degraded-noising-min-sigma",
+                "0.2",
             ]
         )
 
@@ -249,6 +257,10 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.reference_perceptual_loss_weight, 0.05)
         self.assertEqual(args.reference_perceptual_loss_max_sigma, 0.4)
         self.assertEqual(args.reference_grad_ratio_interval, 50)
+        self.assertEqual(args.noising_degradation, "hed_texture")
+        self.assertEqual(args.texture_blur_prob, 1.0)
+        self.assertEqual(args.texture_downsample_scale_min, 0.25)
+        self.assertEqual(args.degraded_noising_min_sigma, 0.2)
         self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
 
     def test_cross_v2_1_cli_still_accepts_same_wsi_backend(self):
@@ -335,6 +347,61 @@ class TrainingCliTests(unittest.TestCase):
 
         _restore_parameter_grads(saved)
         self.assertTrue(torch.equal(parameter.grad, torch.tensor([3.0, 4.0])))
+
+    def test_cross_v2_1_self_reconstruction_preserves_degraded_noising_source(self):
+        try:
+            from controlnet_train.training.flux_phase5_cross_v2_1 import (
+                _insert_self_reconstruction_samples,
+                _use_self_reconstruction_reference,
+            )
+        except ModuleNotFoundError:
+            self.skipTest("flux_phase5_cross_v2_1 optional dependencies are not installed")
+
+        batch = {
+            "target_image": torch.full((2, 3, 2, 2), 1.0),
+            "clean_image_for_noising": torch.full((2, 3, 2, 2), 0.25),
+            "reference_image": torch.zeros(2, 3, 2, 2),
+            "target_tissue_mask": torch.ones(2, 2, 2, dtype=torch.long),
+            "reference_tissue_mask": torch.zeros(2, 2, 2, dtype=torch.long),
+            "target_nuclei_mask": torch.ones(2, 2, 2, dtype=torch.long),
+            "reference_nuclei_mask": torch.zeros(2, 2, 2, dtype=torch.long),
+            "uses_degraded_noising": torch.tensor([True, True]),
+        }
+
+        warmup = _use_self_reconstruction_reference(batch)
+        mixed = _insert_self_reconstruction_samples(batch, torch.tensor([True, False]))
+
+        self.assertTrue(torch.equal(warmup["clean_image_for_noising"], batch["clean_image_for_noising"]))
+        self.assertTrue(torch.equal(warmup["uses_degraded_noising"], batch["uses_degraded_noising"]))
+        self.assertTrue(torch.equal(mixed["clean_image_for_noising"], batch["clean_image_for_noising"]))
+        self.assertTrue(torch.equal(mixed["uses_degraded_noising"], batch["uses_degraded_noising"]))
+        self.assertTrue(torch.equal(warmup["reference_image"], batch["target_image"]))
+        self.assertTrue(torch.equal(mixed["reference_image"][0], batch["target_image"][0]))
+        self.assertTrue(torch.equal(mixed["reference_image"][1], batch["reference_image"][1]))
+
+    def test_cross_v2_1_degraded_timestep_helper_enforces_sigma_floor(self):
+        try:
+            from controlnet_train.training.flux_phase5_cross_v2_1 import (
+                _sample_timestep_indices_with_degraded_floor,
+            )
+        except ModuleNotFoundError:
+            self.skipTest("flux_phase5_cross_v2_1 optional dependencies are not installed")
+
+        initial = torch.tensor([0, 1, 2, 3], dtype=torch.long)
+        sigmas = torch.tensor([0.01, 0.04, 0.2, 0.6])
+        degraded = torch.tensor([True, True, False, True])
+
+        out = _sample_timestep_indices_with_degraded_floor(
+            initial_indices=initial,
+            degraded_sample_mask=degraded,
+            sigmas_by_index=sigmas,
+            min_sigma=0.1,
+            sample_indices=lambda count: torch.zeros(count, dtype=torch.long),
+            max_resample_rounds=1,
+        )
+
+        self.assertGreaterEqual(float(sigmas[out[degraded]].min()), 0.1)
+        self.assertEqual(int(out[2]), 2)
 
     def test_cross_v3_cli_uses_fixed_prompt_and_reference_tokens(self):
         args = parse_cross_v3_args(

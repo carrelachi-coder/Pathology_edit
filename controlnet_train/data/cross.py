@@ -13,6 +13,11 @@ import torch
 
 from dataset_config import get_config
 
+from .appearance_degradation import (
+    AppearanceDegradationAugment,
+    TextureDegradationAugment,
+    TextureDegradationConfig,
+)
 from .hed_stain_augment import HEDStainAugment
 from .common import (
     LayeredSample,
@@ -213,6 +218,16 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
         hed_alpha_low: float = 0.75,
         hed_alpha_high: float = 1.25,
         hed_alpha_max: float = 1.8,
+        noising_degradation: str = "none",
+        texture_blur_prob: float = 0.7,
+        texture_blur_sigma_min: float = 0.4,
+        texture_blur_sigma_max: float = 1.4,
+        texture_downsample_prob: float = 0.7,
+        texture_downsample_scale_min: float = 0.35,
+        texture_downsample_scale_max: float = 0.75,
+        texture_noise_prob: float = 0.35,
+        texture_noise_std_min: float = 0.005,
+        texture_noise_std_max: float = 0.03,
     ) -> None:
         metadata_path = Path(metadata_path)
         payload = json.loads(metadata_path.read_text(encoding="utf8"))
@@ -227,6 +242,19 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
             raise ValueError("stain_counterfactual_prob must be within [0, 1].")
         self.stain_augmentation = stain_augmentation
         self.stain_counterfactual_prob = float(stain_counterfactual_prob)
+        noising_degradation = str(noising_degradation or "none").strip().lower().replace("-", "_")
+        if noising_degradation not in {"none", "hed", "stain", "texture", "hed_texture", "stain_texture"}:
+            raise ValueError(
+                f"Unsupported noising_degradation {noising_degradation!r}; "
+                "choose 'none', 'hed', 'texture', or 'hed_texture'."
+            )
+        self.noising_degradation = noising_degradation
+        needs_hed = stain_augmentation == "hed_aggressive" or noising_degradation in {
+            "hed",
+            "stain",
+            "hed_texture",
+            "stain_texture",
+        }
         self.hed_augment = (
             HEDStainAugment(
                 sigma=hed_sigma,
@@ -237,8 +265,25 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
                 alpha_high=hed_alpha_high,
                 alpha_max=hed_alpha_max,
             )
-            if stain_augmentation == "hed_aggressive"
+            if needs_hed
             else None
+        )
+        self.appearance_degradation = AppearanceDegradationAugment(
+            mode=noising_degradation,
+            hed_augment=self.hed_augment,
+            texture_augment=TextureDegradationAugment(
+                TextureDegradationConfig(
+                    blur_prob=texture_blur_prob,
+                    blur_sigma_min=texture_blur_sigma_min,
+                    blur_sigma_max=texture_blur_sigma_max,
+                    downsample_prob=texture_downsample_prob,
+                    downsample_scale_min=texture_downsample_scale_min,
+                    downsample_scale_max=texture_downsample_scale_max,
+                    noise_prob=texture_noise_prob,
+                    noise_std_min=texture_noise_std_min,
+                    noise_std_max=texture_noise_std_max,
+                )
+            ),
         )
 
     def __len__(self) -> int:
@@ -246,67 +291,69 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index: int) -> dict:
         record = self.records[index]
-        target_image = load_image_tensor(record["target_image"])
-        reference_image = load_image_tensor(record["reference_image"])
-        if self.hed_augment is not None:
-            reference_image, target_image = self.hed_augment.apply_pair(reference_image, target_image)
-        item = {
-            "sample_mode": "cross",
-            "dataset": record["dataset"],
-            "sample_id": record["sample_id"],
-            "reference_sample_id": record["reference_sample_id"],
-            "case_id": record["case_id"],
-            "target_image": target_image,
-            "target_tissue_mask": load_tissue_mask(record["target_tissue_mask"]),
-            "target_nuclei_mask": load_nuclei_mask(record["target_nuclei_mask"], remap=True),
-            "reference_image": reference_image,
-            "reference_tissue_mask": load_tissue_mask(record["reference_tissue_mask"]),
-            "reference_nuclei_mask": load_nuclei_mask(record["reference_nuclei_mask"], remap=True),
-            "prompt": record["prompt"],
-            "distance": int(record["distance"]),
-            "pair_difficulty": record.get("pair_difficulty", "full"),
-            "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", 1.0)),
-            "area_coverage_ratio": float(record.get("area_coverage_ratio", 1.0)),
-            "missing_target_tissue_ids": record.get("missing_target_tissue_ids", []),
-        }
+        item = self._make_item(record, sample_mode="cross")
         if (
-            self.hed_augment is not None
+            (self.hed_augment is not None or self.noising_degradation != "none")
             and self.stain_counterfactual_prob > 0.0
             and random.random() < self.stain_counterfactual_prob
         ):
             item = {
                 "paired_counterfactual": [
-                    self._make_stain_variant(record),
-                    self._make_stain_variant(record),
+                    self._make_item(record, sample_mode="counterfactual"),
+                    self._make_item(record, sample_mode="counterfactual"),
                 ]
             }
         return item
 
-    def _make_stain_variant(self, record: dict) -> dict:
-        if self.hed_augment is None:
-            raise RuntimeError("stain counterfactual variants require HED augmentation.")
-        reference_image = load_image_tensor(record["reference_image"])
+    def _make_item(self, record: dict, *, sample_mode: str) -> dict:
         target_image = load_image_tensor(record["target_image"])
-        reference_image, target_image = self.hed_augment.apply_pair(reference_image, target_image)
-        return {
-            "sample_mode": "counterfactual",
+        target_tissue_mask = load_tissue_mask(record["target_tissue_mask"])
+        target_nuclei_mask = load_nuclei_mask(record["target_nuclei_mask"], remap=True)
+        clean_image_for_noising = target_image
+        uses_degraded_noising = self.noising_degradation != "none"
+
+        if uses_degraded_noising:
+            reference_image = target_image
+            reference_tissue_mask = target_tissue_mask
+            reference_nuclei_mask = target_nuclei_mask
+            clean_image_for_noising = self.appearance_degradation(target_image)
+            reference_sample_id = record["sample_id"]
+            distance = 0
+            if sample_mode == "cross":
+                sample_mode = "appearance_degraded"
+        else:
+            reference_image = load_image_tensor(record["reference_image"])
+            reference_tissue_mask = load_tissue_mask(record["reference_tissue_mask"])
+            reference_nuclei_mask = load_nuclei_mask(record["reference_nuclei_mask"], remap=True)
+            reference_sample_id = record["reference_sample_id"]
+            distance = int(record["distance"])
+
+        if self.hed_augment is not None and not uses_degraded_noising:
+            reference_image, target_image = self.hed_augment.apply_pair(reference_image, target_image)
+            clean_image_for_noising = target_image
+
+        item = {
+            "sample_mode": sample_mode,
             "dataset": record["dataset"],
             "sample_id": record["sample_id"],
-            "reference_sample_id": record["reference_sample_id"],
+            "reference_sample_id": reference_sample_id,
             "case_id": record["case_id"],
             "target_image": target_image,
-            "target_tissue_mask": load_tissue_mask(record["target_tissue_mask"]),
-            "target_nuclei_mask": load_nuclei_mask(record["target_nuclei_mask"], remap=True),
+            "clean_image_for_noising": clean_image_for_noising,
+            "uses_degraded_noising": uses_degraded_noising,
+            "target_tissue_mask": target_tissue_mask,
+            "target_nuclei_mask": target_nuclei_mask,
             "reference_image": reference_image,
-            "reference_tissue_mask": load_tissue_mask(record["reference_tissue_mask"]),
-            "reference_nuclei_mask": load_nuclei_mask(record["reference_nuclei_mask"], remap=True),
+            "reference_tissue_mask": reference_tissue_mask,
+            "reference_nuclei_mask": reference_nuclei_mask,
             "prompt": record["prompt"],
-            "distance": int(record["distance"]),
+            "distance": distance,
             "pair_difficulty": record.get("pair_difficulty", "full"),
             "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", 1.0)),
             "area_coverage_ratio": float(record.get("area_coverage_ratio", 1.0)),
             "missing_target_tissue_ids": record.get("missing_target_tissue_ids", []),
         }
+        return item
 
 
 def _summarize_sample(sample: LayeredSample) -> dict:

@@ -90,6 +90,9 @@ def collate_cross_v2_1_batch(examples: list[dict]) -> dict:
         "sample_ids": [item["sample_id"] for item in examples],
         "reference_sample_ids": [item["reference_sample_id"] for item in examples],
         "target_image": torch.stack([item["target_image"] for item in examples]),
+        "clean_image_for_noising": torch.stack(
+            [item.get("clean_image_for_noising", item["target_image"]) for item in examples]
+        ),
         "reference_image": torch.stack([item["reference_image"] for item in examples]),
         "target_tissue_mask": torch.stack([item["target_tissue_mask"] for item in examples]),
         "target_nuclei_mask": torch.stack([item["target_nuclei_mask"] for item in examples]),
@@ -97,6 +100,10 @@ def collate_cross_v2_1_batch(examples: list[dict]) -> dict:
         "reference_nuclei_mask": torch.stack([item["reference_nuclei_mask"] for item in examples]),
         "prompts": [item["prompt"] for item in examples],
         "sample_modes": [item.get("sample_mode", "cross") for item in examples],
+        "uses_degraded_noising": torch.tensor(
+            [bool(item.get("uses_degraded_noising", False)) for item in examples],
+            dtype=torch.bool,
+        ),
     }
 
 
@@ -198,9 +205,14 @@ def _build_cross_v2_1_control_batch(
     modules: dict[str, nn.Module],
     vae: AutoencoderKL,
     weight_dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     device = next(vae.parameters()).device
     target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
+    noising_image_latent = _encode_images_to_latents(
+        vae,
+        batch.get("clean_image_for_noising", batch["target_image"]),
+        weight_dtype,
+    )
     reference_image_latent = _encode_images_to_deterministic_latents(
         vae,
         batch["reference_image"],
@@ -227,7 +239,7 @@ def _build_cross_v2_1_control_batch(
         tar_tissue_feat=tar_tissue_feat,
         tar_nuclei_feat=tar_nuclei_feat,
     )
-    return target_image_latent, control_tensor
+    return target_image_latent, noising_image_latent, control_tensor
 
 
 def _use_self_reconstruction_reference(batch: dict) -> dict:
@@ -253,6 +265,8 @@ def _insert_self_reconstruction_samples(batch: dict, sample_mask: torch.Tensor) 
         ("reference_tissue_mask", "target_tissue_mask"),
         ("reference_nuclei_mask", "target_nuclei_mask"),
     ):
+        if reference_key not in batch:
+            continue
         reference = batch[reference_key].clone()
         reference[mask] = batch[target_key][mask].to(device=reference.device, dtype=reference.dtype)
         mixed[reference_key] = reference
@@ -275,6 +289,43 @@ def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tens
 
 def _per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return (prediction.float() - target.float()).pow(2).flatten(1).mean(dim=1)
+
+
+def _sample_timestep_indices_with_degraded_floor(
+    *,
+    initial_indices: torch.Tensor,
+    degraded_sample_mask: torch.Tensor,
+    sigmas_by_index: torch.Tensor,
+    min_sigma: float,
+    sample_indices: Callable[[int], torch.Tensor],
+    max_resample_rounds: int = 8,
+) -> torch.Tensor:
+    if min_sigma <= 0.0 or not bool(degraded_sample_mask.any().item()):
+        return initial_indices
+
+    indices = initial_indices.clone()
+    degraded_sample_mask = degraded_sample_mask.to(device=indices.device, dtype=torch.bool)
+    sigmas_by_index = sigmas_by_index.to(device=indices.device)
+    for _ in range(max(1, int(max_resample_rounds))):
+        low_sigma_mask = degraded_sample_mask & (sigmas_by_index[indices].float() < float(min_sigma))
+        if not bool(low_sigma_mask.any().item()):
+            break
+        indices[low_sigma_mask] = sample_indices(int(low_sigma_mask.sum().item())).to(
+            device=indices.device,
+            dtype=indices.dtype,
+        )
+    low_sigma_mask = degraded_sample_mask & (sigmas_by_index[indices].float() < float(min_sigma))
+    if bool(low_sigma_mask.any().item()):
+        valid_indices = torch.nonzero(sigmas_by_index.float() >= float(min_sigma), as_tuple=False).flatten()
+        if valid_indices.numel() > 0:
+            choice = torch.randint(
+                0,
+                int(valid_indices.numel()),
+                (int(low_sigma_mask.sum().item()),),
+                device=indices.device,
+            )
+            indices[low_sigma_mask] = valid_indices.to(device=indices.device, dtype=indices.dtype)[choice]
+    return indices
 
 
 def _clone_parameter_grads(parameters: list[torch.nn.Parameter]) -> list[tuple[torch.nn.Parameter, torch.Tensor | None]]:
@@ -761,6 +812,16 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
         hed_alpha_low=float(getattr(args, "hed_alpha_low", 0.75)),
         hed_alpha_high=float(getattr(args, "hed_alpha_high", 1.25)),
         hed_alpha_max=float(getattr(args, "hed_alpha_max", 1.8)),
+        noising_degradation=getattr(args, "noising_degradation", "none"),
+        texture_blur_prob=float(getattr(args, "texture_blur_prob", 0.7)),
+        texture_blur_sigma_min=float(getattr(args, "texture_blur_sigma_min", 0.4)),
+        texture_blur_sigma_max=float(getattr(args, "texture_blur_sigma_max", 1.4)),
+        texture_downsample_prob=float(getattr(args, "texture_downsample_prob", 0.7)),
+        texture_downsample_scale_min=float(getattr(args, "texture_downsample_scale_min", 0.35)),
+        texture_downsample_scale_max=float(getattr(args, "texture_downsample_scale_max", 0.75)),
+        texture_noise_prob=float(getattr(args, "texture_noise_prob", 0.35)),
+        texture_noise_std_min=float(getattr(args, "texture_noise_std_min", 0.005)),
+        texture_noise_std_max=float(getattr(args, "texture_noise_std_max", 0.03)),
     )
     if args.max_train_samples is not None:
         dataset.records = dataset.records[: args.max_train_samples]
@@ -793,6 +854,10 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
     self_reconstruction_sample_prob = min(
         1.0,
         max(0.0, float(getattr(args, "self_reconstruction_sample_prob", 0.0) or 0.0)),
+    )
+    degraded_noising_min_sigma = max(
+        0.0,
+        float(getattr(args, "degraded_noising_min_sigma", 0.1) or 0.0),
     )
     reference_region_loss_weight = max(
         0.0,
@@ -1082,8 +1147,8 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
         tokenizer=tokenizer_one,
         text_encoder_2=text_encoder_two,
         tokenizer_2=tokenizer_two,
-        transformer=flux_transformer,
-        controlnet=flux_controlnet,
+        transformer=None,
+        controlnet=None,
     )
     tmp_pipeline.to(accelerator.device)
 
@@ -1307,9 +1372,14 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
                     training_batch = batch
 
                 counterfactual_sample_mask = _batch_mode_mask(training_batch, "counterfactual", device=accelerator.device)
+                appearance_degraded_sample_mask = _batch_mode_mask(
+                    training_batch,
+                    "appearance_degraded",
+                    device=accelerator.device,
+                )
                 cross_sample_mask = ~(counterfactual_sample_mask | self_reconstruction_sample_mask)
 
-                pixel_latents, control_tensor = _build_cross_v2_1_control_batch(
+                pixel_latents, noising_latents, control_tensor = _build_cross_v2_1_control_batch(
                     batch=training_batch,
                     modules=modules,
                     vae=vae,
@@ -1323,6 +1393,13 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
                     pixel_latents.shape[1],
                     pixel_latents.shape[2],
                     pixel_latents.shape[3],
+                )
+                packed_noising_latents = FluxControlNetPipeline._pack_latents(
+                    noising_latents,
+                    bsz,
+                    noising_latents.shape[1],
+                    noising_latents.shape[2],
+                    noising_latents.shape[3],
                 )
                 control_image = FluxControlNetPipeline._pack_latents(
                     control_tensor,
@@ -1348,9 +1425,32 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
                     mode_scale=args.mode_scale,
                 )
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
+                degraded_noising_mask = training_batch.get("uses_degraded_noising")
+                if degraded_noising_mask is None:
+                    degraded_noising_mask = torch.zeros(bsz, device=accelerator.device, dtype=torch.bool)
+                else:
+                    degraded_noising_mask = degraded_noising_mask.to(device=accelerator.device, dtype=torch.bool)
+
+                def _resample_indices(count: int) -> torch.Tensor:
+                    new_u = compute_density_for_timestep_sampling(
+                        weighting_scheme=args.weighting_scheme,
+                        batch_size=count,
+                        logit_mean=args.logit_mean,
+                        logit_std=args.logit_std,
+                        mode_scale=args.mode_scale,
+                    )
+                    return (new_u * noise_scheduler_copy.config.num_train_timesteps).long()
+
+                indices = _sample_timestep_indices_with_degraded_floor(
+                    initial_indices=indices,
+                    degraded_sample_mask=degraded_noising_mask,
+                    sigmas_by_index=noise_scheduler_copy.sigmas,
+                    min_sigma=degraded_noising_min_sigma,
+                    sample_indices=_resample_indices,
+                )
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=packed_pixel_latents.device)
                 sigmas = get_sigmas(timesteps, n_dim=packed_pixel_latents.ndim, dtype=packed_pixel_latents.dtype)
-                noisy_model_input = (1.0 - sigmas) * packed_pixel_latents + sigmas * noise
+                noisy_model_input = (1.0 - sigmas) * packed_noising_latents + sigmas * noise
 
                 guidance_vec = None
                 if flux_transformer.config.guidance_embeds:
@@ -1404,7 +1504,7 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
                     return_dict=False,
                 )[0]
 
-                target_velocity = noise - packed_pixel_latents
+                target_velocity = (noisy_model_input - packed_pixel_latents) / sigmas.clamp_min(1e-6)
                 per_sample_loss = _per_sample_mse(noise_pred, target_velocity)
                 denoising_loss = per_sample_loss.mean()
                 cross_denoise_loss = _masked_mean_or_zero(per_sample_loss, cross_sample_mask)
@@ -1640,6 +1740,7 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
                 "reference_grad_appearance_norm": reference_grad_appearance_norm,
                 "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
                 "counterfactual_samples": int(counterfactual_sample_mask.sum().detach().item()),
+                "appearance_degraded_samples": int(appearance_degraded_sample_mask.sum().detach().item()),
                 "cross_samples": int(cross_sample_mask.sum().detach().item()),
                 "lr": lr_scheduler.get_last_lr()[0],
             }

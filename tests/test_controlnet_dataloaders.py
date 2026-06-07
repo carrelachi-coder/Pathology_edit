@@ -1343,6 +1343,58 @@ class CrossDatasetTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    def test_noising_degradation_uses_degraded_input_but_original_reference_and_target(self):
+        tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
+        try:
+            root = Path(tmpdir) / "BCSS"
+            (root / "images").mkdir(parents=True)
+            (root / "tissue_masks").mkdir()
+            (root / "nuclei_masks").mkdir()
+
+            names = ["case_deg_py0_px0.png", "case_deg_py0_px256.png"]
+            for index, name in enumerate(names):
+                arr = np.zeros((8, 8, 3), dtype=np.uint8)
+                arr[..., 0] = np.arange(8, dtype=np.uint8)[None, :] * 20 + index * 10
+                arr[..., 1] = np.arange(8, dtype=np.uint8)[:, None] * 20 + 40
+                arr[..., 2] = 128
+                Image.fromarray(arr).save(root / "images" / name)
+                _write_mask(root / "tissue_masks" / name, np.full((8, 8), 1, dtype=np.uint8))
+                _write_mask(root / "nuclei_masks" / name, np.full((8, 8), 101, dtype=np.uint8))
+
+            with (root / "metadata.jsonl").open("w", encoding="utf8") as f:
+                for name in names:
+                    f.write(json.dumps({"image": f"images\\{name}", "text": "breast prompt"}) + "\n")
+
+            train_path, _ = build_cross_metadata(
+                dataset_roots={"BCSS": root},
+                output_dir=root / "cross_output",
+                num_ref_per_target=1,
+                val_ratio=0.0,
+                seed=11,
+                top_k=2,
+            )
+
+            torch.manual_seed(7)
+            dataset = CrossReconstructionDataset(
+                train_path,
+                noising_degradation="texture",
+                texture_blur_prob=0.0,
+                texture_downsample_prob=1.0,
+                texture_downsample_scale_min=0.25,
+                texture_downsample_scale_max=0.25,
+                texture_noise_prob=0.0,
+            )
+            for index in range(len(dataset)):
+                sample = dataset[index]
+
+                self.assertEqual(sample["sample_mode"], "appearance_degraded")
+                self.assertTrue(sample["uses_degraded_noising"])
+                self.assertEqual(sample["reference_sample_id"], sample["sample_id"])
+                self.assertTrue(torch.equal(sample["reference_image"], sample["target_image"]))
+                self.assertFalse(torch.equal(sample["clean_image_for_noising"], sample["target_image"]))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def test_build_cross_metadata_can_mix_reference_coverage_difficulties(self):
         tmpdir = _TMP_ROOT / f"case_{uuid.uuid4().hex}"
         try:
