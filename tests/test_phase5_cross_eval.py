@@ -231,10 +231,142 @@ class CrossEvalMetricTests(unittest.TestCase):
 
         self.assertEqual([point.step for point in points["self_reconstruction_denoise_loss"]], [2])
 
+    def test_plot_training_logs_v2_1_reference_filters_after_step_and_zero_aux_losses(self):
+        rows = [
+            plot_logs.ScalarRow(tag="cross_denoise_loss", step=500, value=0.6),
+            plot_logs.ScalarRow(tag="cross_samples", step=500, value=1.0),
+            plot_logs.ScalarRow(tag="cross_denoise_loss", step=501, value=0.5),
+            plot_logs.ScalarRow(tag="cross_samples", step=501, value=1.0),
+            plot_logs.ScalarRow(tag="self_reconstruction_denoise_loss", step=501, value=0.4),
+            plot_logs.ScalarRow(tag="self_reconstruction_samples", step=501, value=1.0),
+            plot_logs.ScalarRow(tag="reference_region_loss_weighted", step=501, value=0.0),
+            plot_logs.ScalarRow(tag="reference_region_loss_weighted", step=502, value=0.03),
+            plot_logs.ScalarRow(tag="reference_perceptual_loss_weighted", step=501, value=0.0),
+            plot_logs.ScalarRow(tag="reference_perceptual_loss_weighted", step=503, value=0.02),
+        ]
+
+        points = plot_logs.build_filtered_loss_points(
+            rows,
+            plot_logs.V2_1_REFERENCE_LOSS_TAGS,
+            rolling_window=2,
+            after_step=500,
+            skip_zero_loss_tags=plot_logs.V2_1_REFERENCE_SKIP_ZERO_LOSS_TAGS,
+        )
+
+        self.assertEqual([point.step for point in points["cross_denoise_loss"]], [501])
+        self.assertEqual([point.step for point in points["self_reconstruction_denoise_loss"]], [501])
+        self.assertEqual([point.step for point in points["reference_region_loss_weighted"]], [502])
+        self.assertEqual([point.step for point in points["reference_perceptual_loss_weighted"]], [503])
+
+    def test_plot_training_logs_filters_grad_diagnostics_by_measured_flag(self):
+        rows = [
+            plot_logs.ScalarRow(tag="reference_grad_ratio", step=501, value=0.0),
+            plot_logs.ScalarRow(tag="reference_grad_ratio_measured", step=501, value=0.0),
+            plot_logs.ScalarRow(tag="reference_grad_ratio", step=502, value=0.25),
+            plot_logs.ScalarRow(tag="reference_grad_denoise_norm", step=502, value=2.0),
+            plot_logs.ScalarRow(tag="reference_grad_appearance_norm", step=502, value=0.5),
+            plot_logs.ScalarRow(tag="reference_grad_ratio_measured", step=502, value=1.0),
+        ]
+
+        points = plot_logs.build_filtered_scalar_points(
+            rows,
+            plot_logs.V2_1_REFERENCE_GRAD_TAGS,
+            rolling_window=2,
+            after_step=500,
+            measured_tag=plot_logs.V2_1_REFERENCE_GRAD_MEASURED_TAG,
+        )
+
+        self.assertEqual([point.step for point in points["reference_grad_ratio"]], [502])
+        self.assertEqual(points["reference_grad_ratio"][0].valid_reason, "reference_grad_ratio_measured>0")
+        self.assertEqual([point.step for point in points["reference_grad_denoise_norm"]], [502])
+        self.assertEqual([point.step for point in points["reference_grad_appearance_norm"]], [502])
+
+    def test_plot_training_logs_collapses_duplicate_grad_events_at_same_step(self):
+        rows = [
+            plot_logs.ScalarRow(tag="reference_grad_ratio", step=563, value=0.0, wall_time=1.0),
+            plot_logs.ScalarRow(tag="reference_grad_ratio", step=563, value=0.0, wall_time=2.0),
+            plot_logs.ScalarRow(tag="reference_grad_ratio", step=563, value=0.4626, wall_time=3.0),
+            plot_logs.ScalarRow(tag="reference_grad_ratio_measured", step=563, value=0.0, wall_time=1.0),
+            plot_logs.ScalarRow(tag="reference_grad_ratio_measured", step=563, value=1.0, wall_time=3.0),
+        ]
+
+        points = plot_logs.build_filtered_scalar_points(
+            rows,
+            ["reference_grad_ratio"],
+            rolling_window=2,
+            after_step=500,
+            measured_tag=plot_logs.V2_1_REFERENCE_GRAD_MEASURED_TAG,
+        )
+
+        self.assertEqual([point.step for point in points["reference_grad_ratio"]], [563])
+        self.assertAlmostEqual(points["reference_grad_ratio"][0].value, 0.4626)
+
     def test_plot_training_logs_parses_loss_ylim(self):
         self.assertEqual(plot_logs.parse_ylim("0.4,0.6"), (0.4, 0.6))
         with self.assertRaises(ValueError):
             plot_logs.parse_ylim("0.6,0.4")
+
+    def test_plot_training_logs_cross_v2_1_reference_loss_ylims(self):
+        self.assertEqual(
+            plot_logs.V2_1_REFERENCE_LOSS_YLIMS["reference_perceptual_loss_weighted"],
+            (0.0, 0.03),
+        )
+        self.assertEqual(
+            plot_logs.V2_1_REFERENCE_LOSS_YLIMS["reference_region_loss_weighted"],
+            (0.0, 0.008),
+        )
+        self.assertEqual(
+            plot_logs.V2_1_REFERENCE_LOSS_YLIMS["cross_denoise_loss"],
+            (0.4, 0.6),
+        )
+        self.assertEqual(
+            plot_logs.V2_1_REFERENCE_LOSS_YLIMS["self_reconstruction_denoise_loss"],
+            (0.4, 0.6),
+        )
+
+    def test_plot_training_logs_global_ylim_overrides_tag_ylim(self):
+        self.assertEqual(
+            plot_logs.resolve_ylim_for_tag(
+                "reference_perceptual_loss_weighted",
+                global_ylim=None,
+                ylims_by_tag=plot_logs.V2_1_REFERENCE_LOSS_YLIMS,
+            ),
+            (0.0, 0.03),
+        )
+        self.assertEqual(
+            plot_logs.resolve_ylim_for_tag(
+                "reference_perceptual_loss_weighted",
+                global_ylim=(1.0, 2.0),
+                ylims_by_tag=plot_logs.V2_1_REFERENCE_LOSS_YLIMS,
+            ),
+            (1.0, 2.0),
+        )
+
+    def test_plot_training_logs_auto_ylim_tracks_actual_scalar_range(self):
+        points = [
+            plot_logs.FilteredPoint(
+                tag="reference_perceptual_loss_weighted",
+                step=1,
+                value=0.002,
+                rolling=0.002,
+                source="",
+                valid_reason="test",
+            ),
+            plot_logs.FilteredPoint(
+                tag="reference_perceptual_loss_weighted",
+                step=2,
+                value=0.003,
+                rolling=0.0025,
+                source="",
+                valid_reason="test",
+            ),
+        ]
+
+        low, high = plot_logs.auto_ylim_for_points(points)
+
+        self.assertLess(low, 0.002)
+        self.assertGreater(high, 0.003)
+        self.assertLess(high, 0.01)
 
 
 if __name__ == "__main__":

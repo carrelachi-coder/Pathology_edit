@@ -139,6 +139,126 @@ def parse_args(input_args=None) -> argparse.Namespace:
         default=0.0,
         help="After warmup, randomly convert this fraction of the batch to reference=target samples.",
     )
+    parser.add_argument(
+        "--reference-region-loss-weight",
+        type=float,
+        default=0.05,
+        help=(
+            "Small weight for region-level reference stain/style loss. The loss matches "
+            "prediction target regions to reference regions with the same tissue/nuclei labels."
+        ),
+    )
+    parser.add_argument(
+        "--reference-region-loss-warmup-steps",
+        type=int,
+        default=500,
+        help="Linearly warm up reference-region loss weight over this many optimizer steps.",
+    )
+    parser.add_argument(
+        "--reference-region-loss-interval",
+        type=int,
+        default=1,
+        help="Compute reference-region loss every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--reference-region-loss-min-sigma",
+        type=float,
+        default=0.0,
+        help="Minimum sigma for reference-region loss timestep gating.",
+    )
+    parser.add_argument(
+        "--reference-region-loss-max-sigma",
+        type=float,
+        default=0.6,
+        help="Maximum sigma for reference-region loss timestep gating; keeps the loss in low/mid noise.",
+    )
+    parser.add_argument("--reference-region-tissue-weight", type=float, default=1.0)
+    parser.add_argument("--reference-region-nuclei-weight", type=float, default=1.0)
+    parser.add_argument("--reference-region-mean-weight", type=float, default=1.0)
+    parser.add_argument("--reference-region-std-weight", type=float, default=1.0)
+    parser.add_argument("--reference-region-cov-weight", type=float, default=0.25)
+    parser.add_argument("--reference-region-min-pixels", type=int, default=32)
+    parser.add_argument("--reference-region-max-regions-per-sample", type=int, default=None)
+    parser.add_argument(
+        "--uni-checkpoint-path",
+        type=str,
+        default=None,
+        help="Optional UNI2-h checkpoint when --reference-perceptual-backend=uni.",
+    )
+    parser.add_argument(
+        "--same-wsi-appearance-checkpoint",
+        type=str,
+        default=None,
+        help="Frozen same-WSI appearance encoder checkpoint for reference perceptual texture loss.",
+    )
+    parser.add_argument(
+        "--reference-perceptual-backend",
+        type=str,
+        default="vgg",
+        choices=["vgg", "same_wsi", "uni"],
+        help="Feature backend for reference perceptual texture loss.",
+    )
+    parser.add_argument(
+        "--reference-vgg-weights",
+        type=str,
+        default="imagenet",
+        choices=["imagenet", "none"],
+        help="Weights for --reference-perceptual-backend=vgg.",
+    )
+    parser.add_argument(
+        "--reference-vgg-weights-path",
+        type=str,
+        default=None,
+        help="Optional local VGG16 state dict path; avoids downloading torchvision weights.",
+    )
+    parser.add_argument(
+        "--reference-vgg-layers",
+        type=str,
+        default="relu1_1,relu1_2,relu2_1,relu2_2",
+        help="Comma-separated VGG16 feature layers for --reference-perceptual-backend=vgg.",
+    )
+    parser.add_argument(
+        "--reference-vgg-loss-type",
+        type=str,
+        default="gram",
+        choices=["gram", "feature_l1"],
+        help="VGG loss for --reference-perceptual-backend=vgg.",
+    )
+    parser.add_argument(
+        "--reference-vgg-rgb",
+        action="store_true",
+        help="Disable default grayscale conversion before VGG; intended only for ablations.",
+    )
+    parser.add_argument(
+        "--reference-vgg-input-size",
+        type=int,
+        default=256,
+        help="Resize generated/reference images to this square size before VGG features. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--reference-perceptual-loss-weight",
+        type=float,
+        default=0.0,
+        help="Small weight for frozen reference perceptual texture loss against the reference image.",
+    )
+    parser.add_argument("--reference-perceptual-loss-warmup-steps", type=int, default=500)
+    parser.add_argument("--reference-perceptual-loss-interval", type=int, default=1)
+    parser.add_argument("--reference-perceptual-loss-min-sigma", type=float, default=0.0)
+    parser.add_argument("--reference-perceptual-loss-max-sigma", type=float, default=0.4)
+    parser.add_argument("--reference-perceptual-min-pixels", type=int, default=8)
+    parser.add_argument("--reference-perceptual-mean-weight", type=float, default=1.0)
+    parser.add_argument("--reference-perceptual-std-weight", type=float, default=1.0)
+    parser.add_argument("--reference-perceptual-pooled-cosine-weight", type=float, default=0.25)
+    parser.add_argument(
+        "--reference-grad-ratio-interval",
+        type=int,
+        default=0,
+        help=(
+            "When > 0, log ControlNet grad-norm ratios every N batches where "
+            "reference perceptual loss is active. Uses weighted "
+            "region+perceptual appearance loss versus denoise loss."
+        ),
+    )
     parser.add_argument("--reference-latent-channels", type=int, default=16)
     parser.add_argument("--tissue-embedding-dim", type=int, default=64)
     parser.add_argument("--tissue-out-channels", type=int, default=64)

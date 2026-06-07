@@ -13,7 +13,22 @@ if torch is not None:
         regional_stain_style_loss,
         self_reconstruction_l1_loss,
         uni_token_cosine_perceptual_loss,
+        uni_token_distribution_perceptual_loss,
         unpack_flux_packed_latents,
+    )
+    from controlnet_train.training.same_wsi_appearance import (
+        SameWSIAppearanceConfig,
+        SameWSIAppearanceEncoder,
+        SameWSIPairClassifier,
+        load_same_wsi_encoder,
+        same_wsi_perceptual_loss,
+        save_same_wsi_checkpoint,
+    )
+    from controlnet_train.training.vgg_perceptual import (
+        RGB_TO_LUMA,
+        VGGPerceptualLoss,
+        normalize_vgg_loss_type,
+        parse_vgg_layer_indices,
     )
     try:
         from controlnet_train.training.flux_phase5_cross_v1 import (
@@ -66,6 +81,45 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertEqual(result["nuclei_regions"], 2)
         self.assertGreater(result["total"].item(), 0.0)
 
+    def test_regional_stain_style_loss_can_mask_batch_samples(self):
+        prediction = torch.zeros(2, 3, 4, 4)
+        reference = torch.zeros(2, 3, 4, 4)
+        prediction[1] = 0.25
+        reference[1] = 0.75
+        tissue = torch.ones(2, 4, 4, dtype=torch.long)
+
+        inactive = regional_stain_style_loss(
+            prediction=prediction,
+            reference=reference,
+            target_tissue_mask=tissue,
+            reference_tissue_mask=tissue,
+            sample_mask=torch.tensor([True, False]),
+            config=RegionalStainStyleLossConfig(
+                mean_weight=1.0,
+                std_weight=0.0,
+                covariance_weight=0.0,
+                min_pixels=2,
+            ),
+        )
+        active = regional_stain_style_loss(
+            prediction=prediction,
+            reference=reference,
+            target_tissue_mask=tissue,
+            reference_tissue_mask=tissue,
+            sample_mask=torch.tensor([False, True]),
+            config=RegionalStainStyleLossConfig(
+                mean_weight=1.0,
+                std_weight=0.0,
+                covariance_weight=0.0,
+                min_pixels=2,
+            ),
+        )
+
+        self.assertEqual(inactive["tissue_regions"], 1)
+        self.assertTrue(torch.allclose(inactive["total"], torch.tensor(0.0)))
+        self.assertEqual(active["tissue_regions"], 1)
+        self.assertGreater(active["total"].item(), 0.0)
+
     def test_ref_swap_sensitivity_loss_penalizes_swapped_loss_inside_margin(self):
         normal = torch.tensor([0.10, 0.20])
         zero = torch.tensor([0.11, 0.40])
@@ -117,6 +171,179 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         )
 
         self.assertTrue(torch.allclose(loss, torch.tensor(0.5)))
+
+    def test_uni_token_distribution_perceptual_loss_does_not_require_spatial_alignment(self):
+        prediction = torch.tensor([[[1.0, 0.0], [0.0, 1.0]]])
+        reference = torch.tensor([[[0.0, 1.0], [1.0, 0.0]]])
+
+        loss = uni_token_distribution_perceptual_loss(
+            prediction_features=prediction,
+            reference_features=reference,
+            pooled_cosine_weight=0.0,
+        )
+
+        self.assertTrue(torch.allclose(loss, torch.tensor(0.0)))
+
+    def test_same_wsi_perceptual_loss_uses_masked_reference_texture_features(self):
+        encoder = SameWSIAppearanceEncoder(
+            SameWSIAppearanceConfig(
+                backbone_channels=(4, 8),
+                embedding_dim=8,
+                input_size=8,
+                feature_layers=(1,),
+            )
+        )
+        encoder.eval()
+        encoder.requires_grad_(False)
+        prediction = torch.zeros(1, 3, 8, 8, requires_grad=True)
+        reference = torch.ones(1, 3, 8, 8)
+        mask = torch.ones(1, 8, 8, dtype=torch.long)
+
+        loss, terms = same_wsi_perceptual_loss(
+            encoder=encoder,
+            prediction=prediction,
+            reference=reference,
+            target_tissue_mask=mask,
+            reference_tissue_mask=mask,
+            min_pixels=1,
+        )
+
+        self.assertEqual(terms, 1)
+        self.assertGreater(loss.item(), 0.0)
+        loss.backward()
+        self.assertIsNotNone(prediction.grad)
+
+    def test_same_wsi_encoder_checkpoint_round_trips(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = f"{tmp}/best.pt"
+            config = SameWSIAppearanceConfig(
+                backbone_channels=(4, 8),
+                embedding_dim=8,
+                input_size=8,
+                feature_layers=(0, 1),
+            )
+            model = SameWSIPairClassifier(SameWSIAppearanceEncoder(config))
+            save_same_wsi_checkpoint(path, model)
+
+            loaded = load_same_wsi_encoder(path)
+
+        self.assertEqual(loaded.config.input_size, 8)
+        self.assertEqual(loaded.config.feature_layers, (0, 1))
+        self.assertFalse(any(param.requires_grad for param in loaded.parameters()))
+
+    def test_vgg_perceptual_loss_uses_masked_gram_style_features(self):
+        features = torch.nn.Sequential(
+            torch.nn.Conv2d(3, 4, kernel_size=1, bias=False),
+            torch.nn.ReLU(inplace=False),
+            torch.nn.Conv2d(4, 4, kernel_size=1, bias=False),
+            torch.nn.ReLU(inplace=False),
+        )
+        for param in features.parameters():
+            torch.nn.init.constant_(param, 0.25)
+        loss_fn = VGGPerceptualLoss(
+            features,
+            layer_indices=(1, 3),
+            loss_type="gram",
+            input_size=8,
+            normalize_mean=(0.0, 0.0, 0.0),
+            normalize_std=(1.0, 1.0, 1.0),
+        )
+        prediction = torch.zeros(1, 3, 8, 8, requires_grad=True)
+        reference = torch.ones(1, 3, 8, 8)
+        mask = torch.ones(1, 8, 8, dtype=torch.long)
+
+        loss, terms = loss_fn(
+            prediction,
+            reference,
+            target_tissue_mask=mask,
+            reference_tissue_mask=mask,
+            min_pixels=1,
+        )
+
+        self.assertEqual(terms, 2)
+        self.assertGreater(loss.item(), 0.0)
+        loss.backward()
+        self.assertIsNotNone(prediction.grad)
+        self.assertFalse(any(param.requires_grad for param in loss_fn.parameters()))
+
+    def test_vgg_region_gram_resizes_masks_per_feature_layer_and_filters_small_regions(self):
+        features = torch.nn.Sequential(
+            torch.nn.Conv2d(3, 2, kernel_size=1, bias=False),
+            torch.nn.ReLU(inplace=False),
+            torch.nn.MaxPool2d(kernel_size=2),
+            torch.nn.Conv2d(2, 2, kernel_size=1, bias=False),
+            torch.nn.ReLU(inplace=False),
+        )
+        for param in features.parameters():
+            torch.nn.init.constant_(param, 0.5)
+        loss_fn = VGGPerceptualLoss(
+            features,
+            layer_indices=(1, 4),
+            loss_type="gram",
+            input_size=4,
+            normalize_mean=(0.0, 0.0, 0.0),
+            normalize_std=(1.0, 1.0, 1.0),
+        )
+        prediction = torch.zeros(1, 3, 4, 4, requires_grad=True)
+        reference = torch.ones(1, 3, 4, 4)
+        mask = torch.ones(1, 4, 4, dtype=torch.long)
+        mask[:, 2:, 2:] = 2
+
+        loss, terms = loss_fn(
+            prediction,
+            reference,
+            target_tissue_mask=mask,
+            reference_tissue_mask=mask,
+            min_pixels=2,
+        )
+
+        self.assertEqual(terms, 2)
+        self.assertGreater(loss.item(), 0.0)
+
+    def test_vgg_grayscale_removes_color_only_gram_difference(self):
+        features = torch.nn.Sequential(torch.nn.Identity())
+        loss_fn = VGGPerceptualLoss(
+            features,
+            layer_indices=(0,),
+            loss_type="gram",
+            input_size=0,
+            normalize_mean=(0.0, 0.0, 0.0),
+            normalize_std=(1.0, 1.0, 1.0),
+        )
+        rgb_to_luma = torch.tensor(RGB_TO_LUMA)
+        prediction_color = torch.tensor([1.0, 0.0, 0.0])
+        reference_color = torch.tensor([0.0, rgb_to_luma[0].item() / rgb_to_luma[1].item(), 0.0])
+        self.assertTrue(torch.allclose(prediction_color @ rgb_to_luma, reference_color @ rgb_to_luma))
+        prediction = prediction_color.view(1, 3, 1, 1).expand(1, 3, 4, 4).clone().requires_grad_(True)
+        reference = reference_color.view(1, 3, 1, 1).expand(1, 3, 4, 4).clone()
+
+        loss, terms = loss_fn(prediction, reference)
+
+        self.assertEqual(terms, 1)
+        self.assertTrue(torch.allclose(loss, torch.tensor(0.0), atol=1e-6))
+        loss.backward()
+        self.assertIsNotNone(prediction.grad)
+
+        rgb_loss_fn = VGGPerceptualLoss(
+            features,
+            layer_indices=(0,),
+            loss_type="gram",
+            grayscale=False,
+            input_size=0,
+            normalize_mean=(0.0, 0.0, 0.0),
+            normalize_std=(1.0, 1.0, 1.0),
+        )
+        rgb_loss, _ = rgb_loss_fn(prediction.detach().requires_grad_(True), reference)
+        self.assertGreater(rgb_loss.item(), 0.0)
+
+    def test_parse_vgg_layer_indices_accepts_aliases_and_numbers(self):
+        self.assertEqual(parse_vgg_layer_indices("relu1_2,8,conv3_3"), (3, 8, 14))
+
+    def test_normalize_vgg_loss_type_accepts_style_alias(self):
+        self.assertEqual(normalize_vgg_loss_type("style"), "gram")
+        self.assertEqual(normalize_vgg_loss_type("feature"), "feature_l1")
 
     def test_unpack_flux_packed_latents_inverts_two_by_two_packing_order(self):
         latents = torch.arange(1 * 1 * 4 * 4, dtype=torch.float32).reshape(1, 1, 4, 4)

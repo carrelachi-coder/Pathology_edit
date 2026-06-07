@@ -78,6 +78,52 @@ def uni_token_cosine_perceptual_loss(
     return (1.0 - cosine).mean()
 
 
+def uni_token_distribution_perceptual_loss(
+    *,
+    prediction_features: torch.Tensor,
+    reference_features: torch.Tensor,
+    mean_weight: float = 1.0,
+    std_weight: float = 1.0,
+    pooled_cosine_weight: float = 0.25,
+) -> torch.Tensor:
+    """Distributional perceptual loss over frozen UNI patch tokens.
+
+    Unlike token-wise cosine, this compares patch-token statistics and does not
+    assume the reference and target images are spatially aligned.
+    """
+    if prediction_features.shape != reference_features.shape:
+        raise ValueError(
+            "prediction_features and reference_features shapes differ: "
+            f"{tuple(prediction_features.shape)} vs {tuple(reference_features.shape)}"
+        )
+    if prediction_features.ndim != 3:
+        raise ValueError(
+            "UNI features must have shape (B, tokens, channels), "
+            f"got {tuple(prediction_features.shape)}"
+        )
+
+    prediction = prediction_features.float()
+    reference = reference_features.detach().float()
+    pred_mean = prediction.mean(dim=1)
+    ref_mean = reference.mean(dim=1)
+    pred_std = torch.sqrt(prediction.var(dim=1, unbiased=False) + 1e-6)
+    ref_std = torch.sqrt(reference.var(dim=1, unbiased=False) + 1e-6)
+
+    total = prediction.new_zeros(())
+    normalizer = 0.0
+    if mean_weight > 0.0:
+        total = total + float(mean_weight) * F.l1_loss(pred_mean, ref_mean)
+        normalizer += float(mean_weight)
+    if std_weight > 0.0:
+        total = total + float(std_weight) * F.l1_loss(pred_std, ref_std)
+        normalizer += float(std_weight)
+    if pooled_cosine_weight > 0.0:
+        cosine = F.cosine_similarity(pred_mean, ref_mean, dim=-1, eps=1e-6)
+        total = total + float(pooled_cosine_weight) * (1.0 - cosine).mean()
+        normalizer += float(pooled_cosine_weight)
+    return total / normalizer if normalizer > 0.0 else total
+
+
 def unpack_flux_packed_latents(
     packed_latents: torch.Tensor,
     *,
@@ -134,6 +180,7 @@ def regional_stain_style_loss(
     reference_tissue_mask: torch.Tensor,
     target_nuclei_mask: torch.Tensor | None = None,
     reference_nuclei_mask: torch.Tensor | None = None,
+    sample_mask: torch.Tensor | None = None,
     config: RegionalStainStyleLossConfig | None = None,
 ) -> dict[str, torch.Tensor | int]:
     """Match color/style statistics inside shared tissue and nuclei classes.
@@ -151,6 +198,7 @@ def regional_stain_style_loss(
         reference=reference,
         target_mask=target_tissue_mask,
         reference_mask=reference_tissue_mask,
+        sample_mask=sample_mask,
         config=cfg,
     )
     nuclei_loss = zero
@@ -161,6 +209,7 @@ def regional_stain_style_loss(
             reference=reference,
             target_mask=target_nuclei_mask,
             reference_mask=reference_nuclei_mask,
+            sample_mask=sample_mask,
             config=cfg,
         )
 
@@ -189,6 +238,7 @@ def _regional_mask_loss(
     reference: torch.Tensor,
     target_mask: torch.Tensor,
     reference_mask: torch.Tensor,
+    sample_mask: torch.Tensor | None = None,
     config: RegionalStainStyleLossConfig,
 ) -> tuple[torch.Tensor, int]:
     image_size = tuple(int(v) for v in prediction.shape[-2:])
@@ -202,11 +252,21 @@ def _regional_mask_loss(
         raise ValueError(
             f"mask batch size {target_mask.shape[0]} does not match image batch size {prediction.shape[0]}"
         )
+    if sample_mask is None:
+        active_samples = torch.ones(prediction.shape[0], device=prediction.device, dtype=torch.bool)
+    else:
+        active_samples = sample_mask.to(device=prediction.device, dtype=torch.bool).flatten()
+        if active_samples.shape[0] != prediction.shape[0]:
+            raise ValueError(
+                f"sample_mask shape {tuple(active_samples.shape)} does not match batch size {prediction.shape[0]}"
+            )
 
     losses = []
     exclude = set(int(label) for label in config.exclude_labels)
     min_pixels = max(1, int(config.min_pixels))
     for batch_index in range(prediction.shape[0]):
+        if not bool(active_samples[batch_index].item()):
+            continue
         labels = _shared_labels(
             target_mask[batch_index],
             reference_mask[batch_index],

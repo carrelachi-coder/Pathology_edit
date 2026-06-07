@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -215,6 +217,18 @@ class TrainingCliTests(unittest.TestCase):
                 "0.0000005",
                 "--stain-counterfactual-prob",
                 "0.5",
+                "--reference-region-loss-weight",
+                "0.1",
+                "--reference-region-loss-warmup-steps",
+                "1000",
+                "--reference-region-loss-max-sigma",
+                "0.55",
+                "--reference-region-min-pixels",
+                "64",
+                "--reference-perceptual-loss-weight",
+                "0.05",
+                "--reference-grad-ratio-interval",
+                "50",
             ]
         )
 
@@ -222,8 +236,105 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.controlnet_train_mode, "outputs")
         self.assertEqual(args.conditioning_learning_rate, 0.0000005)
         self.assertEqual(args.stain_counterfactual_prob, 0.5)
-        self.assertFalse(hasattr(args, "uni_checkpoint_path"))
+        self.assertEqual(args.reference_region_loss_weight, 0.1)
+        self.assertEqual(args.reference_region_loss_warmup_steps, 1000)
+        self.assertEqual(args.reference_region_loss_max_sigma, 0.55)
+        self.assertEqual(args.reference_region_min_pixels, 64)
+        self.assertEqual(args.reference_perceptual_backend, "vgg")
+        self.assertIsNone(args.same_wsi_appearance_checkpoint)
+        self.assertEqual(args.reference_vgg_weights, "imagenet")
+        self.assertEqual(args.reference_vgg_layers, "relu1_1,relu1_2,relu2_1,relu2_2")
+        self.assertEqual(args.reference_vgg_loss_type, "gram")
+        self.assertEqual(args.reference_vgg_input_size, 256)
+        self.assertEqual(args.reference_perceptual_loss_weight, 0.05)
+        self.assertEqual(args.reference_perceptual_loss_max_sigma, 0.4)
+        self.assertEqual(args.reference_grad_ratio_interval, 50)
         self.assertFalse(hasattr(args, "ip_adapter_checkpoint"))
+
+    def test_cross_v2_1_cli_still_accepts_same_wsi_backend(self):
+        args = parse_cross_v2_1_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--reference-perceptual-backend",
+                "same_wsi",
+                "--same-wsi-appearance-checkpoint",
+                "/data/wqx/flowedit/same_wsi_appearance/best.pt",
+            ]
+        )
+
+        self.assertEqual(args.reference_perceptual_backend, "same_wsi")
+        self.assertEqual(
+            args.same_wsi_appearance_checkpoint,
+            "/data/wqx/flowedit/same_wsi_appearance/best.pt",
+        )
+
+    def test_cross_v2_1_source_layout_falls_back_to_parent_conditioning(self):
+        try:
+            from controlnet_train.training.flux_phase5_cross_v2_1 import (
+                _infer_source_layout_from_x_embedder_width,
+                _load_source_layout,
+                _resolve_controlnet_artifact_path,
+            )
+        except ModuleNotFoundError:
+            self.skipTest("flux_phase5_cross_v2_1 optional dependencies are not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "controlnet_cross_v1"
+            checkpoint = root / "checkpoint-66000"
+            checkpoint.mkdir(parents=True)
+            (root / "config.json").write_text("{}", encoding="utf8")
+            torch.save(
+                {
+                    "cross_v1_control_spec": {
+                        "tissue_channels": 64,
+                        "nuclei_channels": 16,
+                        "spatial_mode": "reference_target_delta",
+                    }
+                },
+                root / "phase5_conditioning.pt",
+            )
+
+            layout = _load_source_layout(checkpoint)
+            artifact_path = _resolve_controlnet_artifact_path(checkpoint)
+
+        self.assertEqual(layout["kind"], "cross_v1")
+        self.assertEqual(layout["spatial_mode"], "reference_target_delta")
+        self.assertEqual(artifact_path, root)
+        self.assertEqual(
+            _infer_source_layout_from_x_embedder_width(640)["spatial_mode"],
+            "reference_target",
+        )
+        self.assertEqual(
+            _infer_source_layout_from_x_embedder_width(960)["spatial_mode"],
+            "reference_target_delta",
+        )
+
+    def test_cross_v2_1_grad_ratio_helpers_restore_existing_gradients(self):
+        try:
+            from controlnet_train.training.flux_phase5_cross_v2_1 import (
+                _clear_parameter_grads,
+                _clone_parameter_grads,
+                _parameter_grad_norm,
+                _restore_parameter_grads,
+            )
+        except ModuleNotFoundError:
+            self.skipTest("flux_phase5_cross_v2_1 optional dependencies are not installed")
+
+        parameter = torch.nn.Parameter(torch.tensor([1.0, 2.0]))
+        parameter.grad = torch.tensor([3.0, 4.0])
+        saved = _clone_parameter_grads([parameter])
+
+        _clear_parameter_grads([parameter])
+        self.assertIsNone(parameter.grad)
+
+        parameter.grad = torch.tensor([6.0, 8.0])
+        self.assertEqual(_parameter_grad_norm([parameter]), 10.0)
+
+        _restore_parameter_grads(saved)
+        self.assertTrue(torch.equal(parameter.grad, torch.tensor([3.0, 4.0])))
 
     def test_cross_v3_cli_uses_fixed_prompt_and_reference_tokens(self):
         args = parse_cross_v3_args(

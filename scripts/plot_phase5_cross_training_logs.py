@@ -32,6 +32,28 @@ DEFAULT_LOSS_TAGS = [
     "counterfactual_denoise_loss",
     "self_reconstruction_denoise_loss",
 ]
+V2_1_REFERENCE_LOSS_TAGS = [
+    "cross_denoise_loss",
+    "self_reconstruction_denoise_loss",
+    "reference_region_loss_weighted",
+    "reference_perceptual_loss_weighted",
+]
+V2_1_REFERENCE_SKIP_ZERO_LOSS_TAGS = [
+    "reference_region_loss_weighted",
+    "reference_perceptual_loss_weighted",
+]
+V2_1_REFERENCE_LOSS_YLIMS = {
+    "cross_denoise_loss": (0.4, 0.6),
+    "self_reconstruction_denoise_loss": (0.4, 0.6),
+    "reference_region_loss_weighted": (0.0, 0.008),
+    "reference_perceptual_loss_weighted": (0.0, 0.03),
+}
+V2_1_REFERENCE_GRAD_TAGS = [
+    "reference_grad_ratio",
+    "reference_grad_denoise_norm",
+    "reference_grad_appearance_norm",
+]
+V2_1_REFERENCE_GRAD_MEASURED_TAG = "reference_grad_ratio_measured"
 DEFAULT_SAMPLE_TAGS = [
     "cross_samples",
     "counterfactual_samples",
@@ -73,6 +95,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", default="training_log_plots")
     parser.add_argument(
+        "--preset",
+        choices=["default", "cross_v2_1_reference_losses"],
+        default="default",
+        help=(
+            "Use cross_v2_1_reference_losses to plot cross/self denoise plus "
+            "weighted region/perceptual reference losses after step 500."
+        ),
+    )
+    parser.add_argument(
         "--rolling-window",
         type=int,
         default=25,
@@ -80,13 +111,51 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--loss-tags",
-        default=",".join(DEFAULT_LOSS_TAGS),
-        help="Comma-separated loss scalar tags to plot.",
+        default=None,
+        help=(
+            "Comma-separated loss scalar tags to plot. Defaults to the selected "
+            "preset's tags."
+        ),
+    )
+    parser.add_argument(
+        "--after-step",
+        type=int,
+        default=None,
+        help="Only keep scalar points with step greater than this value.",
+    )
+    parser.add_argument(
+        "--skip-zero-loss-tags",
+        default=None,
+        help=(
+            "Comma-separated loss tags whose zero-valued points should be "
+            "dropped before plotting."
+        ),
     )
     parser.add_argument(
         "--loss-ylim",
         default=None,
-        help="Optional y-axis limits for filtered_losses.png, formatted as min,max.",
+        help="Optional y-axis limits for loss plots, formatted as min,max.",
+    )
+    parser.add_argument(
+        "--grad-tags",
+        default=None,
+        help=(
+            "Comma-separated gradient diagnostic scalar tags to plot. Defaults "
+            "to the selected preset's gradient tags."
+        ),
+    )
+    parser.add_argument(
+        "--grad-measured-tag",
+        default=None,
+        help=(
+            "Optional scalar tag used to filter gradient diagnostics. Points "
+            "are kept only when this tag is > 0 at the same step."
+        ),
+    )
+    parser.add_argument(
+        "--grad-ylim",
+        default=None,
+        help="Optional y-axis limits for gradient plots, formatted as min,max.",
     )
     parser.add_argument(
         "--sample-tags",
@@ -129,6 +198,46 @@ def parse_ylim(value: str | None) -> tuple[float, float] | None:
     if not math.isfinite(low) or not math.isfinite(high) or low >= high:
         raise ValueError(f"--loss-ylim requires finite min < max, got {value!r}.")
     return low, high
+
+
+def auto_ylim_for_points(points: Iterable[FilteredPoint]) -> tuple[float, float] | None:
+    values = [
+        value
+        for point in points
+        for value in (point.value, point.rolling)
+        if math.isfinite(value)
+    ]
+    if not values:
+        return None
+    low = min(values)
+    high = max(values)
+    if low == high:
+        center = low
+        pad = max(abs(center) * 0.05, 1e-6)
+        return center - pad, center + pad
+    pad = max((high - low) * 0.08, 1e-9)
+    return low - pad, high + pad
+
+
+def auto_ylim_for_points_by_tag(points_by_tag: dict[str, list[FilteredPoint]]) -> tuple[float, float] | None:
+    return auto_ylim_for_points(
+        point
+        for points in points_by_tag.values()
+        for point in points
+    )
+
+
+def resolve_ylim_for_tag(
+    tag: str,
+    *,
+    global_ylim: tuple[float, float] | None,
+    ylims_by_tag: dict[str, tuple[float, float]] | None,
+) -> tuple[float, float] | None:
+    if global_ylim is not None:
+        return global_ylim
+    if ylims_by_tag is None:
+        return None
+    return ylims_by_tag.get(tag)
 
 
 def discover_log_files(paths: Iterable[str | Path]) -> list[Path]:
@@ -359,6 +468,8 @@ def filter_loss_points(
     *,
     rolling_window: int,
     keep_zero_losses: bool = False,
+    after_step: int | None = None,
+    skip_zero_values: bool = False,
 ) -> list[FilteredPoint]:
     rows = grouped.get(tag, [])
     sample_tag = CONDITIONAL_LOSS_SAMPLE_TAGS.get(tag)
@@ -370,6 +481,10 @@ def filter_loss_points(
     points: list[FilteredPoint] = []
 
     for row in rows:
+        if after_step is not None and row.step <= after_step:
+            continue
+        if skip_zero_values and row.value == 0.0:
+            continue
         valid = True
         reason = "unconditional"
         if sample_tag:
@@ -410,18 +525,79 @@ def build_filtered_loss_points(
     *,
     rolling_window: int,
     keep_zero_losses: bool = False,
+    after_step: int | None = None,
+    skip_zero_loss_tags: Iterable[str] = (),
 ) -> dict[str, list[FilteredPoint]]:
     grouped = group_by_tag(rows)
+    skip_zero_loss_tag_set = set(skip_zero_loss_tags)
     return {
         tag: filter_loss_points(
             grouped,
             tag,
             rolling_window=rolling_window,
             keep_zero_losses=keep_zero_losses,
+            after_step=after_step,
+            skip_zero_values=tag in skip_zero_loss_tag_set,
         )
         for tag in loss_tags
         if tag in grouped
     }
+
+
+def build_filtered_scalar_points(
+    rows: Iterable[ScalarRow],
+    scalar_tags: Iterable[str],
+    *,
+    rolling_window: int,
+    after_step: int | None = None,
+    measured_tag: str | None = None,
+) -> dict[str, list[FilteredPoint]]:
+    grouped = group_by_tag(rows)
+    measured_by_step = _measured_steps(grouped.get(measured_tag or "", []))
+    points_by_tag: dict[str, list[FilteredPoint]] = {}
+    for tag in scalar_tags:
+        if tag not in grouped:
+            continue
+        values: list[float] = []
+        points: list[FilteredPoint] = []
+        for row in _last_row_by_step(grouped[tag]):
+            if after_step is not None and row.step <= after_step:
+                continue
+            if measured_tag is not None and measured_by_step:
+                if row.step not in measured_by_step:
+                    continue
+                reason = f"{measured_tag}>0"
+            elif measured_tag is not None:
+                if row.value == 0.0:
+                    continue
+                reason = "value!=0 fallback"
+            else:
+                reason = "unconditional"
+            values.append(row.value)
+            points.append(
+                FilteredPoint(
+                    tag=tag,
+                    step=row.step,
+                    value=row.value,
+                    rolling=rolling_mean_tail(values, rolling_window),
+                    source=row.source,
+                    valid_reason=reason,
+                )
+            )
+        points_by_tag[tag] = points
+    return points_by_tag
+
+
+def _last_row_by_step(rows: list[ScalarRow]) -> list[ScalarRow]:
+    """Collapse duplicate TensorBoard events emitted at the same global step."""
+    by_step: dict[int, ScalarRow] = {}
+    for row in sorted(rows, key=lambda item: (item.step, item.wall_time if item.wall_time is not None else -math.inf)):
+        by_step[row.step] = row
+    return [by_step[step] for step in sorted(by_step)]
+
+
+def _measured_steps(rows: list[ScalarRow]) -> set[int]:
+    return {row.step for row in rows if row.value > 0.0}
 
 
 def write_filtered_points_csv(path: Path, points_by_tag: dict[str, list[FilteredPoint]]) -> None:
@@ -475,13 +651,84 @@ def plot_losses(
     ax.set_title("Filtered conditional losses")
     ax.set_xlabel("global step")
     ax.set_ylabel("loss")
-    if ylim is not None:
-        ax.set_ylim(*ylim)
+    effective_ylim = ylim if ylim is not None else auto_ylim_for_points_by_tag(points_by_tag)
+    if effective_ylim is not None:
+        ax.set_ylim(*effective_ylim)
     ax.grid(True, alpha=0.25)
     ax.legend(loc="best")
     fig.tight_layout()
     fig.savefig(output_path, dpi=dpi)
     plt.close(fig)
+
+
+def plot_scalar_points(
+    output_path: Path,
+    points: list[FilteredPoint],
+    *,
+    rolling_window: int,
+    draw_raw: bool,
+    ylim: tuple[float, float] | None,
+    dpi: int,
+    title: str,
+    ylabel: str,
+) -> None:
+    if not points:
+        return
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(11, 5))
+    steps = [point.step for point in points]
+    values = [point.value for point in points]
+    rolling = [point.rolling for point in points]
+    if draw_raw:
+        ax.plot(steps, values, alpha=0.18, linewidth=0.8)
+    ax.plot(steps, rolling, linewidth=1.8, label=f"rolling {rolling_window}")
+
+    ax.set_title(title)
+    ax.set_xlabel("global step")
+    ax.set_ylabel(ylabel)
+    effective_ylim = ylim if ylim is not None else auto_ylim_for_points(points)
+    if effective_ylim is not None:
+        ax.set_ylim(*effective_ylim)
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi)
+    plt.close(fig)
+
+
+def plot_scalar_points_by_tag(
+    output_dir: Path,
+    points_by_tag: dict[str, list[FilteredPoint]],
+    *,
+    rolling_window: int,
+    draw_raw: bool,
+    ylim: tuple[float, float] | None,
+    ylims_by_tag: dict[str, tuple[float, float]] | None = None,
+    dpi: int,
+    ylabel: str,
+    title_prefix: str,
+) -> None:
+    for tag, points in points_by_tag.items():
+        plot_scalar_points(
+            output_dir / f"{safe_filename(tag)}.png",
+            points,
+            rolling_window=rolling_window,
+            draw_raw=draw_raw,
+            ylim=resolve_ylim_for_tag(
+                tag,
+                global_ylim=ylim,
+                ylims_by_tag=ylims_by_tag,
+            ),
+            dpi=dpi,
+            title=f"{title_prefix}: {tag}",
+            ylabel=ylabel,
+        )
 
 
 def plot_samples(
@@ -525,15 +772,41 @@ def plot_samples(
     plt.close(fig)
 
 
-def write_summary(path: Path, rows: list[ScalarRow], points_by_tag: dict[str, list[FilteredPoint]]) -> None:
+def safe_filename(value: str) -> str:
+    cleaned = []
+    for char in str(value):
+        if char.isalnum() or char in {"-", "_", "."}:
+            cleaned.append(char)
+        else:
+            cleaned.append("_")
+    return "".join(cleaned).strip("._") or "scalar"
+
+
+def write_summary(
+    path: Path,
+    rows: list[ScalarRow],
+    points_by_tag: dict[str, list[FilteredPoint]],
+    *,
+    after_step: int | None,
+    skip_zero_loss_tags: Iterable[str],
+    grad_points_by_tag: dict[str, list[FilteredPoint]] | None = None,
+    grad_measured_tag: str | None = None,
+) -> None:
     grouped = group_by_tag(rows)
     summary = {
         "num_scalar_rows": len(rows),
         "available_tags": sorted(grouped),
+        "after_step": after_step,
+        "skip_zero_loss_tags": sorted(set(skip_zero_loss_tags)),
         "filtered_loss_points": {
             tag: len(points)
             for tag, points in sorted(points_by_tag.items())
         },
+        "filtered_grad_points": {
+            tag: len(points)
+            for tag, points in sorted((grad_points_by_tag or {}).items())
+        },
+        "grad_measured_tag": grad_measured_tag,
         "conditional_loss_sample_tags": CONDITIONAL_LOSS_SAMPLE_TAGS,
     }
     path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf8")
@@ -550,18 +823,60 @@ def main(argv=None) -> int:
     if not rows:
         raise RuntimeError("No scalar rows found in the provided logs.")
 
-    loss_tags = parse_tag_list(args.loss_tags)
+    if args.preset == "cross_v2_1_reference_losses":
+        default_loss_tags = V2_1_REFERENCE_LOSS_TAGS
+        default_skip_zero_loss_tags = V2_1_REFERENCE_SKIP_ZERO_LOSS_TAGS
+        default_grad_tags = V2_1_REFERENCE_GRAD_TAGS
+        default_grad_measured_tag = V2_1_REFERENCE_GRAD_MEASURED_TAG
+        default_after_step = 500
+        default_loss_ylims_by_tag = V2_1_REFERENCE_LOSS_YLIMS
+    else:
+        default_loss_tags = DEFAULT_LOSS_TAGS
+        default_skip_zero_loss_tags = []
+        default_grad_tags = []
+        default_grad_measured_tag = None
+        default_after_step = None
+        default_loss_ylims_by_tag = {}
+
+    loss_tags = parse_tag_list(args.loss_tags) if args.loss_tags is not None else list(default_loss_tags)
+    grad_tags = parse_tag_list(args.grad_tags) if args.grad_tags is not None else list(default_grad_tags)
+    grad_measured_tag = args.grad_measured_tag if args.grad_measured_tag is not None else default_grad_measured_tag
+    skip_zero_loss_tags = (
+        parse_tag_list(args.skip_zero_loss_tags)
+        if args.skip_zero_loss_tags is not None
+        else list(default_skip_zero_loss_tags)
+    )
+    after_step = args.after_step if args.after_step is not None else default_after_step
     sample_tags = parse_tag_list(args.sample_tags)
     loss_ylim = parse_ylim(args.loss_ylim)
+    grad_ylim = parse_ylim(args.grad_ylim)
     grouped = group_by_tag(rows)
     points_by_tag = build_filtered_loss_points(
         rows,
         loss_tags,
         rolling_window=max(1, args.rolling_window),
         keep_zero_losses=args.keep_zero_losses,
+        after_step=after_step,
+        skip_zero_loss_tags=skip_zero_loss_tags,
+    )
+    grad_points_by_tag = build_filtered_scalar_points(
+        rows,
+        grad_tags,
+        rolling_window=max(1, args.rolling_window),
+        after_step=after_step,
+        measured_tag=grad_measured_tag if grad_tags else None,
     )
     write_filtered_points_csv(output_dir / "filtered_loss_scalars.csv", points_by_tag)
-    write_summary(output_dir / "summary.json", rows, points_by_tag)
+    write_filtered_points_csv(output_dir / "filtered_grad_scalars.csv", grad_points_by_tag)
+    write_summary(
+        output_dir / "summary.json",
+        rows,
+        points_by_tag,
+        after_step=after_step,
+        skip_zero_loss_tags=skip_zero_loss_tags,
+        grad_points_by_tag=grad_points_by_tag,
+        grad_measured_tag=grad_measured_tag if grad_tags else None,
+    )
     plot_losses(
         output_dir / "filtered_losses.png",
         points_by_tag,
@@ -569,6 +884,28 @@ def main(argv=None) -> int:
         draw_raw=not args.no_raw,
         ylim=loss_ylim,
         dpi=args.dpi,
+    )
+    plot_scalar_points_by_tag(
+        output_dir / "losses",
+        points_by_tag,
+        rolling_window=max(1, args.rolling_window),
+        draw_raw=not args.no_raw,
+        ylim=loss_ylim,
+        ylims_by_tag=default_loss_ylims_by_tag,
+        dpi=args.dpi,
+        ylabel="loss",
+        title_prefix="Filtered loss",
+    )
+    plot_scalar_points_by_tag(
+        output_dir / "gradients",
+        grad_points_by_tag,
+        rolling_window=max(1, args.rolling_window),
+        draw_raw=not args.no_raw,
+        ylim=grad_ylim,
+        ylims_by_tag=None,
+        dpi=args.dpi,
+        ylabel="gradient diagnostic",
+        title_prefix="Reference gradient diagnostic",
     )
     plot_samples(
         output_dir / "sample_mix.png",

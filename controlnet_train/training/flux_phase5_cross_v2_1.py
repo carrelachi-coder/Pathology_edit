@@ -16,6 +16,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Callable
 
@@ -54,6 +55,20 @@ from controlnet_train.modules.cross_v2_1_conditioning import (
     deterministic_latent_from_posterior,
 )
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
+from controlnet_train.training.cross_v1_losses import (
+    RegionalStainStyleLossConfig,
+    regional_stain_style_loss,
+    uni_token_distribution_perceptual_loss,
+    unpack_flux_packed_latents,
+)
+from controlnet_train.training.same_wsi_appearance import (
+    load_same_wsi_encoder,
+    same_wsi_perceptual_loss,
+)
+from controlnet_train.training.vgg_perceptual import (
+    build_vgg16_perceptual_loss,
+    vgg_perceptual_loss,
+)
 
 if is_wandb_available():
     import wandb  # noqa: F401
@@ -150,6 +165,33 @@ def _encode_images_to_deterministic_latents(
     return (latents - vae.config.shift_factor) * vae.config.scaling_factor
 
 
+def _decode_packed_model_prediction(
+    *,
+    vae: AutoencoderKL,
+    packed_noisy_latents: torch.Tensor,
+    noise_pred: torch.Tensor,
+    sigmas: torch.Tensor,
+    latent_channels: int,
+    latent_height: int,
+    latent_width: int,
+    weight_dtype: torch.dtype,
+) -> torch.Tensor:
+    """Decode one-step denoised model output to RGB in [0, 1] for region losses."""
+    pred_original = packed_noisy_latents - sigmas * noise_pred
+    pred_latents = unpack_flux_packed_latents(
+        pred_original,
+        channels=latent_channels,
+        height=latent_height,
+        width=latent_width,
+    )
+    pred_latents = (pred_latents / vae.config.scaling_factor) + vae.config.shift_factor
+    decoded = vae.decode(
+        pred_latents.to(device=next(vae.parameters()).device, dtype=weight_dtype),
+        return_dict=False,
+    )[0]
+    return ((decoded.float() / 2.0) + 0.5).clamp(0.0, 1.0)
+
+
 def _build_cross_v2_1_control_batch(
     *,
     batch: dict,
@@ -233,6 +275,72 @@ def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tens
 
 def _per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return (prediction.float() - target.float()).pow(2).flatten(1).mean(dim=1)
+
+
+def _clone_parameter_grads(parameters: list[torch.nn.Parameter]) -> list[tuple[torch.nn.Parameter, torch.Tensor | None]]:
+    return [
+        (parameter, parameter.grad)
+        for parameter in parameters
+    ]
+
+
+def _clear_parameter_grads(parameters: list[torch.nn.Parameter]) -> None:
+    for parameter in parameters:
+        parameter.grad = None
+
+
+def _restore_parameter_grads(saved_grads: list[tuple[torch.nn.Parameter, torch.Tensor | None]]) -> None:
+    for parameter, grad in saved_grads:
+        parameter.grad = grad
+
+
+def _parameter_grad_norm(parameters: list[torch.nn.Parameter]) -> float:
+    total: torch.Tensor | None = None
+    for parameter in parameters:
+        if parameter.grad is None:
+            continue
+        grad = parameter.grad.detach()
+        if grad.is_sparse:
+            grad = grad.coalesce().values()
+        grad_sq = grad.float().pow(2).sum()
+        total = grad_sq if total is None else total + grad_sq.to(total.device)
+    if total is None:
+        return 0.0
+    return float(total.sqrt().item())
+
+
+def _diagnostic_backward_grad_norm(
+    loss: torch.Tensor,
+    measured_parameters: list[torch.nn.Parameter],
+    cleared_parameters: list[torch.nn.Parameter],
+    *,
+    accelerator: Accelerator,
+    no_sync_models: list[torch.nn.Module],
+    retain_graph: bool,
+) -> float:
+    _clear_parameter_grads(cleared_parameters)
+    with ExitStack() as stack:
+        for model in no_sync_models:
+            stack.enter_context(accelerator.no_sync(model))
+        accelerator.backward(loss, retain_graph=retain_graph)
+    return _parameter_grad_norm(measured_parameters)
+
+
+def _reference_region_warmup_scale(global_step: int, warmup_steps: int) -> float:
+    warmup_steps = max(0, int(warmup_steps or 0))
+    if warmup_steps == 0:
+        return 1.0
+    return min(1.0, max(0.0, float(global_step + 1) / float(warmup_steps)))
+
+
+def _reference_region_sigma_mask(
+    sigmas: torch.Tensor,
+    *,
+    min_sigma: float,
+    max_sigma: float,
+) -> torch.Tensor:
+    sigma_values = sigmas.detach().float().flatten()
+    return (sigma_values >= float(min_sigma)) & (sigma_values <= float(max_sigma))
 
 
 def _apply_training_prompt_policy(records: list[dict], args: argparse.Namespace) -> None:
@@ -411,27 +519,62 @@ def _load_cross_v2_1_controlnet_checkpoint(
     checkpoint_path: str | Path,
     control_spec: CrossV21ControlSpec,
 ) -> FluxControlNetModel:
-    checkpoint = Path(checkpoint_path)
+    checkpoint = _resolve_controlnet_artifact_path(Path(checkpoint_path))
+    logger.info("Loading Cross V2.1 ControlNet warm start from %s", checkpoint)
     if not checkpoint.exists():
+        logger.info("Warm-start path does not exist locally; delegating to from_pretrained.")
         return FluxControlNetModel.from_pretrained(str(checkpoint_path))
 
     controlnet_config = FluxControlNetModel.load_config(checkpoint)
     controlnet = FluxControlNetModel.from_config(controlnet_config)
     patch_controlnet_x_embedder(controlnet, control_spec.packed_channels)
     state_dict = _load_diffusers_model_state_dict(checkpoint)
+    source_layout_path = _find_phase5_conditioning_path(checkpoint)
     source_layout = _load_source_layout(checkpoint)
+    x_embedder_weight = state_dict.get("controlnet_x_embedder.weight")
+    old_x_width = int(x_embedder_weight.shape[1]) if x_embedder_weight is not None else None
+    if not source_layout and old_x_width is not None:
+        source_layout = _infer_source_layout_from_x_embedder_width(old_x_width)
     state_dict = _remap_x_embedder_state_dict(
         state_dict,
         source_layout=source_layout,
         target_spec=control_spec,
     )
+    remapped_x_embedder_weight = state_dict.get("controlnet_x_embedder.weight")
+    new_x_width = int(remapped_x_embedder_weight.shape[1]) if remapped_x_embedder_weight is not None else None
+    logger.info(
+        "Loaded warm-start state dict from %s; source_layout=%s source_layout_path=%s "
+        "controlnet_x_embedder_width=%s->%s",
+        checkpoint,
+        source_layout or "unknown",
+        source_layout_path or "unknown",
+        old_x_width,
+        new_x_width,
+    )
     controlnet.load_state_dict(state_dict, strict=True)
     return controlnet
 
 
+def _resolve_controlnet_artifact_path(checkpoint: Path) -> Path:
+    """Prefer an eval-ready diffusers artifact directory over an accelerate state dir."""
+    if not checkpoint.is_dir():
+        return checkpoint
+    if (checkpoint / "config.json").is_file():
+        return checkpoint
+    parent = checkpoint.parent
+    if (parent / "config.json").is_file():
+        logger.info(
+            "Warm-start path %s has no config.json; using parent artifact directory %s",
+            checkpoint,
+            parent,
+        )
+        return parent
+    return checkpoint
+
+
 def _load_source_layout(checkpoint: Path) -> dict:
-    state_path = checkpoint / "phase5_conditioning.pt"
-    if not state_path.exists():
+    state_path = _find_phase5_conditioning_path(checkpoint)
+    if state_path is None:
         return {}
     state = _torch_load_weights(state_path)
     if "cross_v2_1_control_spec" in state:
@@ -441,6 +584,38 @@ def _load_source_layout(checkpoint: Path) -> dict:
     if "cross_v1_spatial_mode" in state:
         return {"kind": "cross_v1", "spatial_mode": str(state["cross_v1_spatial_mode"])}
     return {}
+
+
+def _find_phase5_conditioning_path(checkpoint_path: str | Path) -> Path | None:
+    checkpoint = Path(checkpoint_path)
+    candidates = [checkpoint]
+    if checkpoint.is_dir():
+        candidates.append(checkpoint / "phase5_conditioning.pt")
+        candidates.append(checkpoint.parent / "phase5_conditioning.pt")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _infer_source_layout_from_x_embedder_width(old_width: int) -> dict:
+    cross_v1_mask_group = 4 * (64 + 16)
+    inferred: dict = {}
+    if int(old_width) == cross_v1_mask_group:
+        inferred = {"kind": "cross_v1", "spatial_mode": "target_only"}
+    elif int(old_width) == cross_v1_mask_group * 2:
+        inferred = {
+            "kind": "cross_v1",
+            "spatial_mode": "reference_target",
+            "inferred_from_x_embedder_width": int(old_width),
+        }
+    elif int(old_width) == cross_v1_mask_group * 3:
+        inferred = {
+            "kind": "cross_v1",
+            "spatial_mode": "reference_target_delta",
+            "inferred_from_x_embedder_width": int(old_width),
+        }
+    return inferred
 
 
 def _remap_x_embedder_state_dict(
@@ -462,6 +637,12 @@ def _remap_x_embedder_state_dict(
     new_weight = old_weight.new_zeros((old_weight.shape[0], new_in_features))
     kind = str(source_layout.get("kind", "")).lower()
     spatial_mode = str(source_layout.get("spatial_mode", "reference_target")).lower()
+    if not kind:
+        raise ValueError(
+            "Cannot remap controlnet_x_embedder with unknown source layout. "
+            "Provide a checkpoint directory whose phase5_conditioning.pt is present "
+            "in that directory or its parent."
+        )
 
     if kind == "cross_v1":
         if spatial_mode == "target_only":
@@ -551,10 +732,11 @@ def _load_condition_modules_from_checkpoint(
     modules: dict[str, nn.Module],
     checkpoint_path: str | Path,
 ) -> None:
-    checkpoint = Path(checkpoint_path)
-    state_path = checkpoint / "phase5_conditioning.pt" if checkpoint.is_dir() else checkpoint
-    if not state_path.exists():
-        raise FileNotFoundError(f"Missing phase5_conditioning.pt: {state_path}")
+    state_path = _find_phase5_conditioning_path(checkpoint_path)
+    if state_path is None:
+        checkpoint = Path(checkpoint_path)
+        expected = checkpoint / "phase5_conditioning.pt" if checkpoint.is_dir() else checkpoint
+        raise FileNotFoundError(f"Missing phase5_conditioning.pt: {expected}")
 
     state = _torch_load_weights(state_path)
     for name in ("hte", "tissue_downsampler", "nuclei_encoder"):
@@ -612,6 +794,123 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
         1.0,
         max(0.0, float(getattr(args, "self_reconstruction_sample_prob", 0.0) or 0.0)),
     )
+    reference_region_loss_weight = max(
+        0.0,
+        float(getattr(args, "reference_region_loss_weight", 0.0) or 0.0),
+    )
+    reference_region_loss_warmup_steps = max(
+        0,
+        int(getattr(args, "reference_region_loss_warmup_steps", 0) or 0),
+    )
+    reference_region_loss_interval = int(
+        getattr(args, "reference_region_loss_interval", 1) or 0
+    )
+    reference_region_loss_min_sigma = float(
+        getattr(args, "reference_region_loss_min_sigma", 0.0) or 0.0
+    )
+    reference_region_loss_max_sigma = float(
+        getattr(args, "reference_region_loss_max_sigma", 1.0)
+    )
+    if reference_region_loss_max_sigma < reference_region_loss_min_sigma:
+        raise ValueError(
+            "--reference-region-loss-max-sigma must be >= "
+            "--reference-region-loss-min-sigma."
+        )
+    reference_region_loss_config = RegionalStainStyleLossConfig(
+        tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
+        nuclei_weight=float(getattr(args, "reference_region_nuclei_weight", 1.0) or 0.0),
+        mean_weight=float(getattr(args, "reference_region_mean_weight", 1.0) or 0.0),
+        std_weight=float(getattr(args, "reference_region_std_weight", 1.0) or 0.0),
+        covariance_weight=float(getattr(args, "reference_region_cov_weight", 0.25) or 0.0),
+        min_pixels=max(1, int(getattr(args, "reference_region_min_pixels", 32) or 1)),
+        max_regions_per_sample=getattr(args, "reference_region_max_regions_per_sample", None),
+    )
+    reference_perceptual_loss_weight = max(
+        0.0,
+        float(getattr(args, "reference_perceptual_loss_weight", 0.0) or 0.0),
+    )
+    reference_perceptual_loss_warmup_steps = max(
+        0,
+        int(getattr(args, "reference_perceptual_loss_warmup_steps", 0) or 0),
+    )
+    reference_perceptual_loss_interval = int(
+        getattr(args, "reference_perceptual_loss_interval", 1) or 0
+    )
+    reference_perceptual_loss_min_sigma = float(
+        getattr(args, "reference_perceptual_loss_min_sigma", 0.0) or 0.0
+    )
+    reference_perceptual_loss_max_sigma = float(
+        getattr(args, "reference_perceptual_loss_max_sigma", 1.0)
+    )
+    if reference_perceptual_loss_max_sigma < reference_perceptual_loss_min_sigma:
+        raise ValueError(
+            "--reference-perceptual-loss-max-sigma must be >= "
+            "--reference-perceptual-loss-min-sigma."
+        )
+    reference_perceptual_backend = str(
+        getattr(args, "reference_perceptual_backend", "vgg") or "vgg"
+    ).lower()
+    if reference_perceptual_backend not in {"vgg", "same_wsi", "uni"}:
+        raise ValueError("--reference-perceptual-backend must be one of: vgg, same_wsi, uni.")
+    if reference_perceptual_loss_weight > 0.0:
+        if reference_perceptual_backend == "same_wsi" and not getattr(args, "same_wsi_appearance_checkpoint", None):
+            raise ValueError(
+                "--reference-perceptual-backend=same_wsi requires "
+                "--same-wsi-appearance-checkpoint."
+            )
+        if reference_perceptual_backend == "uni" and not getattr(args, "uni_checkpoint_path", None):
+            raise ValueError("--reference-perceptual-backend=uni requires --uni-checkpoint-path.")
+    reference_vgg_weights = str(getattr(args, "reference_vgg_weights", "imagenet") or "imagenet")
+    reference_vgg_weights_path = getattr(args, "reference_vgg_weights_path", None)
+    reference_vgg_layers = str(
+        getattr(args, "reference_vgg_layers", "relu1_1,relu1_2,relu2_1,relu2_2")
+        or "relu1_1,relu1_2,relu2_1,relu2_2"
+    )
+    reference_vgg_loss_type = str(getattr(args, "reference_vgg_loss_type", "gram") or "gram")
+    reference_vgg_grayscale = not bool(getattr(args, "reference_vgg_rgb", False))
+    reference_vgg_input_size = max(
+        0,
+        int(getattr(args, "reference_vgg_input_size", 256) or 0),
+    )
+    reference_perceptual_min_pixels = max(
+        1,
+        int(getattr(args, "reference_perceptual_min_pixels", 8) or 1),
+    )
+    reference_perceptual_mean_weight = float(
+        getattr(args, "reference_perceptual_mean_weight", 1.0) or 0.0
+    )
+    reference_perceptual_std_weight = float(
+        getattr(args, "reference_perceptual_std_weight", 1.0) or 0.0
+    )
+    reference_perceptual_pooled_cosine_weight = float(
+        getattr(args, "reference_perceptual_pooled_cosine_weight", 0.25) or 0.0
+    )
+    reference_grad_ratio_interval = max(
+        0,
+        int(getattr(args, "reference_grad_ratio_interval", 0) or 0),
+    )
+    perceptual_ref_encoder = None
+    if reference_perceptual_loss_weight > 0.0:
+        if reference_perceptual_backend == "vgg":
+            perceptual_ref_encoder = build_vgg16_perceptual_loss(
+                weights=reference_vgg_weights,
+                weights_path=reference_vgg_weights_path,
+                layers=reference_vgg_layers,
+                loss_type=reference_vgg_loss_type,
+                grayscale=reference_vgg_grayscale,
+                input_size=reference_vgg_input_size,
+            )
+        elif reference_perceptual_backend == "same_wsi":
+            perceptual_ref_encoder = load_same_wsi_encoder(args.same_wsi_appearance_checkpoint)
+        else:
+            from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder
+
+            perceptual_ref_encoder = ReferenceImageEncoder(
+                uni_checkpoint_path=args.uni_checkpoint_path,
+                skip_perceiver=True,
+            )
+        perceptual_ref_encoder.requires_grad_(False)
+        perceptual_ref_encoder.eval()
 
     logging_out_dir = Path(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
@@ -641,6 +940,71 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
         control_spec.raw_channels,
         control_spec.packed_channels,
     )
+    if reference_region_loss_weight > 0.0:
+        logger.info(
+            "Using reference-region stain/style loss: weight=%s warmup_steps=%s interval=%s "
+            "sigma=[%s,%s] tissue=%s nuclei=%s mean/std/cov=%s/%s/%s",
+            reference_region_loss_weight,
+            reference_region_loss_warmup_steps,
+            reference_region_loss_interval,
+            reference_region_loss_min_sigma,
+            reference_region_loss_max_sigma,
+            reference_region_loss_config.tissue_weight,
+            reference_region_loss_config.nuclei_weight,
+            reference_region_loss_config.mean_weight,
+            reference_region_loss_config.std_weight,
+            reference_region_loss_config.covariance_weight,
+        )
+    if reference_perceptual_loss_weight > 0.0:
+        if reference_perceptual_backend == "vgg":
+            logger.info(
+                "Using frozen VGG reference perceptual loss: weights=%s weights_path=%s "
+                "layers=%s loss_type=%s grayscale=%s input_size=%s weight=%s warmup_steps=%s interval=%s "
+                "sigma=[%s,%s] min_pixels=%s",
+                reference_vgg_weights,
+                reference_vgg_weights_path or "<torchvision>",
+                reference_vgg_layers,
+                reference_vgg_loss_type,
+                reference_vgg_grayscale,
+                reference_vgg_input_size,
+                reference_perceptual_loss_weight,
+                reference_perceptual_loss_warmup_steps,
+                reference_perceptual_loss_interval,
+                reference_perceptual_loss_min_sigma,
+                reference_perceptual_loss_max_sigma,
+                reference_perceptual_min_pixels,
+            )
+        elif reference_perceptual_backend == "same_wsi":
+            logger.info(
+                "Using frozen same-WSI reference perceptual loss: checkpoint=%s weight=%s "
+                "warmup_steps=%s interval=%s sigma=[%s,%s] min_pixels=%s",
+                args.same_wsi_appearance_checkpoint,
+                reference_perceptual_loss_weight,
+                reference_perceptual_loss_warmup_steps,
+                reference_perceptual_loss_interval,
+                reference_perceptual_loss_min_sigma,
+                reference_perceptual_loss_max_sigma,
+                reference_perceptual_min_pixels,
+            )
+        else:
+            logger.info(
+                "Using frozen UNI reference perceptual loss: weight=%s warmup_steps=%s interval=%s "
+                "sigma=[%s,%s] mean/std/pooled_cos=%s/%s/%s",
+                reference_perceptual_loss_weight,
+                reference_perceptual_loss_warmup_steps,
+                reference_perceptual_loss_interval,
+                reference_perceptual_loss_min_sigma,
+                reference_perceptual_loss_max_sigma,
+                reference_perceptual_mean_weight,
+                reference_perceptual_std_weight,
+                reference_perceptual_pooled_cosine_weight,
+            )
+    if reference_grad_ratio_interval > 0:
+        logger.info(
+            "Using reference gradient-ratio diagnostic: interval=%s optimizer steps, "
+            "measured only when reference perceptual loss is active.",
+            reference_grad_ratio_interval,
+        )
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()
     else:
@@ -743,6 +1107,9 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
 
     flux_transformer.to(accelerator.device, dtype=weight_dtype)
     flux_transformer.requires_grad_(False)
+    if perceptual_ref_encoder is not None:
+        perceptual_ref_encoder.to(accelerator.device)
+        perceptual_ref_encoder.eval()
     vae.to(accelerator.device, dtype=weight_dtype)
     vae.eval()
     vae.requires_grad_(False)
@@ -854,6 +1221,16 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
     optimizer = prepared[len(trainable_modules)]
     train_dataloader = prepared[len(trainable_modules) + 1]
     lr_scheduler = prepared[len(trainable_modules) + 2]
+    reference_grad_ratio_controlnet_params = [
+        param for param in flux_controlnet.parameters() if param.requires_grad
+    ]
+    reference_grad_ratio_trainable_modules = [flux_controlnet, *modules.values()]
+    reference_grad_ratio_all_params = [
+        param
+        for model in reference_grad_ratio_trainable_modules
+        for param in model.parameters()
+        if param.requires_grad
+    ]
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
@@ -882,6 +1259,8 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
 
     global_step = 0
     first_epoch = 0
+    reference_grad_ratio_active_steps = 0
+    reference_grad_ratio_disabled = False
     if args.resume_from_checkpoint:
         checkpoint_path = (
             os.path.join(args.output_dir, args.resume_from_checkpoint)
@@ -1027,13 +1406,189 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
 
                 target_velocity = noise - packed_pixel_latents
                 per_sample_loss = _per_sample_mse(noise_pred, target_velocity)
-                loss = per_sample_loss.mean()
+                denoising_loss = per_sample_loss.mean()
                 cross_denoise_loss = _masked_mean_or_zero(per_sample_loss, cross_sample_mask)
                 counterfactual_denoise_loss = _masked_mean_or_zero(per_sample_loss, counterfactual_sample_mask)
                 self_reconstruction_denoise_loss = _masked_mean_or_zero(
                     per_sample_loss,
                     self_reconstruction_sample_mask,
                 )
+                reference_region_loss = noise_pred.new_zeros(())
+                reference_region_tissue_loss = noise_pred.new_zeros(())
+                reference_region_nuclei_loss = noise_pred.new_zeros(())
+                reference_region_tissue_regions = 0
+                reference_region_nuclei_regions = 0
+                reference_perceptual_loss = noise_pred.new_zeros(())
+                reference_perceptual_terms = 0
+                reference_region_weight_scale = _reference_region_warmup_scale(
+                    global_step,
+                    reference_region_loss_warmup_steps,
+                )
+                reference_region_sigma_mask = _reference_region_sigma_mask(
+                    sigmas,
+                    min_sigma=reference_region_loss_min_sigma,
+                    max_sigma=reference_region_loss_max_sigma,
+                )
+                reference_region_sample_mask = reference_region_sigma_mask & cross_sample_mask
+                reference_perceptual_weight_scale = _reference_region_warmup_scale(
+                    global_step,
+                    reference_perceptual_loss_warmup_steps,
+                )
+                reference_perceptual_sigma_mask = _reference_region_sigma_mask(
+                    sigmas,
+                    min_sigma=reference_perceptual_loss_min_sigma,
+                    max_sigma=reference_perceptual_loss_max_sigma,
+                )
+                reference_perceptual_sample_mask = reference_perceptual_sigma_mask & cross_sample_mask
+                should_compute_reference_region_loss = (
+                    reference_region_loss_weight > 0.0
+                    and reference_region_loss_interval > 0
+                    and global_step % reference_region_loss_interval == 0
+                    and reference_region_weight_scale > 0.0
+                    and bool(reference_region_sample_mask.any().item())
+                )
+                should_compute_reference_perceptual_loss = (
+                    perceptual_ref_encoder is not None
+                    and reference_perceptual_loss_weight > 0.0
+                    and reference_perceptual_loss_interval > 0
+                    and global_step % reference_perceptual_loss_interval == 0
+                    and reference_perceptual_weight_scale > 0.0
+                    and bool(reference_perceptual_sample_mask.any().item())
+                )
+                prediction_rgb = None
+                if should_compute_reference_region_loss or should_compute_reference_perceptual_loss:
+                    prediction_rgb = _decode_packed_model_prediction(
+                        vae=vae,
+                        packed_noisy_latents=noisy_model_input,
+                        noise_pred=noise_pred,
+                        sigmas=sigmas,
+                        latent_channels=pixel_latents.shape[1],
+                        latent_height=pixel_latents.shape[2],
+                        latent_width=pixel_latents.shape[3],
+                        weight_dtype=weight_dtype,
+                    )
+                if should_compute_reference_region_loss:
+                    reference_region_terms = regional_stain_style_loss(
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                        reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                        sample_mask=reference_region_sample_mask,
+                        config=reference_region_loss_config,
+                    )
+                    reference_region_loss = reference_region_terms["total"].to(dtype=denoising_loss.dtype)
+                    reference_region_tissue_loss = reference_region_terms["tissue"].to(dtype=denoising_loss.dtype)
+                    reference_region_nuclei_loss = reference_region_terms["nuclei"].to(dtype=denoising_loss.dtype)
+                    reference_region_tissue_regions = int(reference_region_terms["tissue_regions"])
+                    reference_region_nuclei_regions = int(reference_region_terms["nuclei_regions"])
+                if should_compute_reference_perceptual_loss:
+                    perceptual_mask = reference_perceptual_sample_mask.to(device=accelerator.device, dtype=torch.bool)
+                    reference_images = training_batch["reference_image"].to(
+                        device=accelerator.device,
+                        dtype=prediction_rgb.dtype,
+                    )
+                    if reference_perceptual_backend == "vgg":
+                        reference_perceptual_loss, reference_perceptual_terms = vgg_perceptual_loss(
+                            encoder=perceptual_ref_encoder,
+                            prediction=prediction_rgb[perceptual_mask],
+                            reference=reference_images[perceptual_mask],
+                            target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device)[perceptual_mask],
+                            reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device)[perceptual_mask],
+                            min_pixels=reference_perceptual_min_pixels,
+                        )
+                        reference_perceptual_loss = reference_perceptual_loss.to(dtype=denoising_loss.dtype)
+                    elif reference_perceptual_backend == "same_wsi":
+                        reference_perceptual_loss, reference_perceptual_terms = same_wsi_perceptual_loss(
+                            encoder=perceptual_ref_encoder,
+                            prediction=prediction_rgb[perceptual_mask],
+                            reference=reference_images[perceptual_mask],
+                            target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device)[perceptual_mask],
+                            reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device)[perceptual_mask],
+                            min_pixels=reference_perceptual_min_pixels,
+                        )
+                        reference_perceptual_loss = reference_perceptual_loss.to(dtype=denoising_loss.dtype)
+                    else:
+                        uni_dtype = next(perceptual_ref_encoder.uni.parameters()).dtype
+                        prediction_features = perceptual_ref_encoder.extract_uni_features(
+                            prediction_rgb[perceptual_mask].to(device=accelerator.device, dtype=uni_dtype),
+                            allow_input_grad=True,
+                        )
+                        reference_features = perceptual_ref_encoder.extract_uni_features(
+                            reference_images[perceptual_mask].to(
+                                device=accelerator.device,
+                                dtype=uni_dtype,
+                            ),
+                        )
+                        reference_perceptual_loss = uni_token_distribution_perceptual_loss(
+                            prediction_features=prediction_features,
+                            reference_features=reference_features,
+                            mean_weight=reference_perceptual_mean_weight,
+                            std_weight=reference_perceptual_std_weight,
+                            pooled_cosine_weight=reference_perceptual_pooled_cosine_weight,
+                        ).to(dtype=denoising_loss.dtype)
+                        reference_perceptual_terms = int(perceptual_mask.sum().detach().item())
+                reference_region_loss_weighted = (
+                    reference_region_loss_weight
+                    * reference_region_weight_scale
+                    * reference_region_loss
+                )
+                reference_perceptual_loss_weighted = (
+                    reference_perceptual_loss_weight
+                    * reference_perceptual_weight_scale
+                    * reference_perceptual_loss
+                )
+                loss = denoising_loss + reference_region_loss_weighted + reference_perceptual_loss_weighted
+
+                reference_grad_ratio_measured = 0
+                reference_grad_ratio = 0.0
+                reference_grad_denoise_norm = 0.0
+                reference_grad_appearance_norm = 0.0
+                should_measure_reference_grad_ratio = (
+                    reference_grad_ratio_interval > 0
+                    and not reference_grad_ratio_disabled
+                    and should_compute_reference_perceptual_loss
+                    and reference_perceptual_terms > 0
+                    and reference_grad_ratio_active_steps % reference_grad_ratio_interval == 0
+                    and bool(reference_grad_ratio_controlnet_params)
+                )
+                if should_compute_reference_perceptual_loss and reference_perceptual_terms > 0:
+                    reference_grad_ratio_active_steps += 1
+                if should_measure_reference_grad_ratio:
+                    saved_grads = _clone_parameter_grads(reference_grad_ratio_all_params)
+                    try:
+                        reference_grad_denoise_norm = _diagnostic_backward_grad_norm(
+                            denoising_loss,
+                            reference_grad_ratio_controlnet_params,
+                            reference_grad_ratio_all_params,
+                            accelerator=accelerator,
+                            no_sync_models=reference_grad_ratio_trainable_modules,
+                            retain_graph=True,
+                        )
+                        reference_grad_appearance_norm = _diagnostic_backward_grad_norm(
+                            reference_region_loss_weighted + reference_perceptual_loss_weighted,
+                            reference_grad_ratio_controlnet_params,
+                            reference_grad_ratio_all_params,
+                            accelerator=accelerator,
+                            no_sync_models=reference_grad_ratio_trainable_modules,
+                            retain_graph=True,
+                        )
+                        if reference_grad_denoise_norm > 0.0:
+                            reference_grad_ratio = reference_grad_appearance_norm / reference_grad_denoise_norm
+                        reference_grad_ratio_measured = 1
+                    except RuntimeError as exc:
+                        reference_grad_ratio_disabled = True
+                        if accelerator.is_local_main_process:
+                            logger.warning(
+                                "Disabling reference grad-ratio diagnostic after backward error: %s",
+                                exc,
+                            )
+                    finally:
+                        _restore_parameter_grads(saved_grads)
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -1062,10 +1617,27 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
 
             logs = {
                 "loss": loss.detach().item(),
-                "denoise_loss": loss.detach().item(),
+                "denoise_loss": denoising_loss.detach().item(),
                 "cross_denoise_loss": cross_denoise_loss.detach().item(),
                 "counterfactual_denoise_loss": counterfactual_denoise_loss.detach().item(),
                 "self_reconstruction_denoise_loss": self_reconstruction_denoise_loss.detach().item(),
+                "reference_region_loss": reference_region_loss.detach().item(),
+                "reference_region_loss_weighted": reference_region_loss_weighted.detach().item(),
+                "reference_region_weight_scale": reference_region_weight_scale,
+                "reference_region_sigma_gated_samples": int(reference_region_sample_mask.sum().detach().item()),
+                "reference_region_tissue_loss": reference_region_tissue_loss.detach().item(),
+                "reference_region_nuclei_loss": reference_region_nuclei_loss.detach().item(),
+                "reference_region_tissue_regions": reference_region_tissue_regions,
+                "reference_region_nuclei_regions": reference_region_nuclei_regions,
+                "reference_perceptual_loss": reference_perceptual_loss.detach().item(),
+                "reference_perceptual_loss_weighted": reference_perceptual_loss_weighted.detach().item(),
+                "reference_perceptual_weight_scale": reference_perceptual_weight_scale,
+                "reference_perceptual_sigma_gated_samples": int(reference_perceptual_sample_mask.sum().detach().item()),
+                "reference_perceptual_terms": reference_perceptual_terms,
+                "reference_grad_ratio_measured": reference_grad_ratio_measured,
+                "reference_grad_ratio": reference_grad_ratio,
+                "reference_grad_denoise_norm": reference_grad_denoise_norm,
+                "reference_grad_appearance_norm": reference_grad_appearance_norm,
                 "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
                 "counterfactual_samples": int(counterfactual_sample_mask.sum().detach().item()),
                 "cross_samples": int(cross_sample_mask.sum().detach().item()),
