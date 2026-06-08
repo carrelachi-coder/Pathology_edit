@@ -1150,7 +1150,6 @@ def run_cross_v2_1_training(args: argparse.Namespace) -> None:
         transformer=None,
         controlnet=None,
     )
-    tmp_pipeline.to(accelerator.device)
 
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
