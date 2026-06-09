@@ -149,6 +149,15 @@ class TrainingCliTests(unittest.TestCase):
                 "reference_target_delta",
                 "--reference-style-loss-weight",
                 "0.2",
+                "--regional-ip-adapter",
+                "--noising-degradation",
+                "hed_texture",
+                "--degraded-noising-min-sigma",
+                "0.2",
+                "--reference-region-loss-weight",
+                "0.4",
+                "--reference-region-nuclei-weight",
+                "0.5",
                 "--reference-style-tissue-weight",
                 "2.0",
                 "--reference-style-nuclei-weight",
@@ -178,6 +187,11 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.stain_counterfactual_prob, 0.5)
         self.assertEqual(args.cross_v1_spatial_mode, "reference_target_delta")
         self.assertEqual(args.reference_style_loss_weight, 0.2)
+        self.assertTrue(args.regional_ip_adapter)
+        self.assertEqual(args.noising_degradation, "hed_texture")
+        self.assertEqual(args.degraded_noising_min_sigma, 0.2)
+        self.assertEqual(args.reference_region_loss_weight, 0.4)
+        self.assertEqual(args.reference_region_nuclei_weight, 0.5)
         self.assertEqual(args.reference_style_tissue_weight, 2.0)
         self.assertEqual(args.reference_style_nuclei_weight, 1.5)
         self.assertEqual(args.ref_swap_loss_weight, 0.3)
@@ -203,6 +217,9 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.ref_swap_loss_weight, 0.1)
         self.assertEqual(args.stain_counterfactual_prob, 0.0)
         self.assertEqual(args.ip_single_num_layers, 10)
+        self.assertFalse(args.regional_ip_adapter)
+        self.assertEqual(args.noising_degradation, "none")
+        self.assertEqual(args.reference_region_loss_weight, 0.0)
 
     def test_cross_v2_1_cli_has_no_ip_adapter_or_uni_requirement(self):
         args = parse_cross_v2_1_args(

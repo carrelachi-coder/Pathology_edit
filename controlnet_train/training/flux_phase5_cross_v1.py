@@ -29,6 +29,7 @@ from typing import Callable
 import accelerate
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -69,12 +70,14 @@ from controlnet_train.modules.cross_v1_conditioning import (
     build_cross_v1_condition,
     normalize_cross_v1_spatial_mode,
 )
-from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder
+from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder, resize_mask_to_token_labels
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
 from controlnet_train.training.cross_v1_losses import (
+    RegionalFeatureLossConfig,
     RegionalStainStyleLossConfig,
     per_sample_mse,
     ref_swap_sensitivity_loss,
+    regional_feature_map_loss,
     regional_stain_style_loss,
     self_reconstruction_l1_loss,
     uni_token_cosine_perceptual_loss,
@@ -145,6 +148,10 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
         ip_hidden_states: list[torch.Tensor] | tuple[torch.Tensor, ...] | None = None,
+        ip_adapter_masks: torch.Tensor | dict | None = None,
+        ip_region_token_labels: torch.Tensor | None = None,
+        ip_query_region_labels: torch.Tensor | None = None,
+        ip_region_strict: bool = True,
         txt_seq_len: int | None = None,
     ) -> torch.Tensor:
         if encoder_hidden_states is not None:
@@ -181,6 +188,10 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         output = output.to(query.dtype)
 
         if ip_hidden_states:
+            packed_key_labels, packed_query_labels, packed_strict = _unpack_region_ip_adapter_masks(ip_adapter_masks)
+            ip_region_token_labels = ip_region_token_labels if ip_region_token_labels is not None else packed_key_labels
+            ip_query_region_labels = ip_query_region_labels if ip_query_region_labels is not None else packed_query_labels
+            ip_region_strict = bool(ip_region_strict and packed_strict)
             txt_seq_len = int(txt_seq_len or 0)
             if txt_seq_len < 0 or txt_seq_len > output.shape[1]:
                 raise ValueError(
@@ -201,10 +212,21 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
                     ip_value = to_v_ip(current_ip_hidden_states)
                     ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                     ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                    ip_attn_mask = _build_region_attention_mask(
+                        query_region_labels=ip_query_region_labels,
+                        key_region_labels=ip_region_token_labels,
+                        batch_size=batch_size,
+                        query_len=image_query.shape[2],
+                        key_len=ip_key.shape[2],
+                        device=image_query.device,
+                        dtype=image_query.dtype,
+                        strict=bool(ip_region_strict),
+                    )
                     ip_attn = torch.nn.functional.scaled_dot_product_attention(
                         image_query,
                         ip_key,
                         ip_value,
+                        attn_mask=ip_attn_mask,
                         dropout_p=0.0,
                         is_causal=False,
                     )
@@ -219,6 +241,208 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         return output.to(hidden_states.dtype)
 
 
+class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
+    """FLUX double-stream IP processor with class-label-gated reference attention."""
+
+    def __init__(
+        self,
+        *,
+        hidden_size: int,
+        cross_attention_dim: int,
+        num_tokens: int | tuple[int, ...] = (16,),
+        scale: float | list[float] = 1.0,
+    ) -> None:
+        super().__init__()
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = (int(num_tokens),)
+        self.num_tokens = tuple(int(value) for value in num_tokens)
+        if not isinstance(scale, list):
+            scale = [float(scale)] * len(self.num_tokens)
+        if len(scale) != len(self.num_tokens):
+            raise ValueError("scale must have the same length as num_tokens.")
+        self.scale = [float(value) for value in scale]
+        self.to_k_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=True) for _ in self.num_tokens]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=True) for _ in self.num_tokens]
+        )
+
+    def __call__(
+        self,
+        attn,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        ip_hidden_states: list[torch.Tensor] | tuple[torch.Tensor, ...] | None = None,
+        ip_adapter_masks: torch.Tensor | dict | None = None,
+        ip_region_token_labels: torch.Tensor | None = None,
+        ip_query_region_labels: torch.Tensor | None = None,
+        ip_region_strict: bool = True,
+        txt_seq_len: int | None = None,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if encoder_hidden_states is None:
+            raise ValueError("FluxRegionalIPAdapterJointAttnProcessor2_0 expects double-stream states.")
+        batch_size, _, _ = encoder_hidden_states.shape
+        hidden_states_query_proj = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        hidden_states_query_proj = hidden_states_query_proj.view(
+            batch_size, -1, attn.heads, head_dim
+        ).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            hidden_states_query_proj = attn.norm_q(hidden_states_query_proj)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+        encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+            batch_size, -1, attn.heads, head_dim
+        ).transpose(1, 2)
+        encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+            batch_size, -1, attn.heads, head_dim
+        ).transpose(1, 2)
+        encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+            batch_size, -1, attn.heads, head_dim
+        ).transpose(1, 2)
+
+        if attn.norm_added_q is not None:
+            encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+        if attn.norm_added_k is not None:
+            encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+        query = torch.cat([encoder_hidden_states_query_proj, hidden_states_query_proj], dim=2)
+        key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+        value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
+        if image_rotary_emb is not None:
+            from diffusers.models.embeddings import apply_rotary_emb
+
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        attn_output = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            dropout_p=0.0,
+            is_causal=False,
+        )
+        attn_output = attn_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        attn_output = attn_output.to(query.dtype)
+
+        encoder_hidden_states, hidden_states = (
+            attn_output[:, : encoder_hidden_states.shape[1]],
+            attn_output[:, encoder_hidden_states.shape[1] :],
+        )
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        ip_attn_output = hidden_states.new_zeros(hidden_states.shape)
+        if ip_hidden_states:
+            packed_key_labels, packed_query_labels, packed_strict = _unpack_region_ip_adapter_masks(ip_adapter_masks)
+            ip_region_token_labels = ip_region_token_labels if ip_region_token_labels is not None else packed_key_labels
+            ip_query_region_labels = ip_query_region_labels if ip_query_region_labels is not None else packed_query_labels
+            ip_region_strict = bool(ip_region_strict and packed_strict)
+            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+                ip_hidden_states,
+                self.scale,
+                self.to_k_ip,
+                self.to_v_ip,
+            ):
+                if scale == 0:
+                    continue
+                ip_key = to_k_ip(current_ip_hidden_states)
+                ip_value = to_v_ip(current_ip_hidden_states)
+                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                ip_attn_mask = _build_region_attention_mask(
+                    query_region_labels=ip_query_region_labels,
+                    key_region_labels=ip_region_token_labels,
+                    batch_size=batch_size,
+                    query_len=hidden_states_query_proj.shape[2],
+                    key_len=ip_key.shape[2],
+                    device=hidden_states_query_proj.device,
+                    dtype=hidden_states_query_proj.dtype,
+                    strict=bool(ip_region_strict),
+                )
+                current_output = F.scaled_dot_product_attention(
+                    hidden_states_query_proj,
+                    ip_key,
+                    ip_value,
+                    attn_mask=ip_attn_mask,
+                    dropout_p=0.0,
+                    is_causal=False,
+                )
+                current_output = current_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                ip_attn_output = ip_attn_output + float(scale) * current_output.to(hidden_states.dtype)
+
+        return hidden_states, encoder_hidden_states, ip_attn_output
+
+
+def _build_region_attention_mask(
+    *,
+    query_region_labels: torch.Tensor | None,
+    key_region_labels: torch.Tensor | None,
+    batch_size: int,
+    query_len: int,
+    key_len: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    strict: bool,
+) -> torch.Tensor | None:
+    """Build an additive SDP mask that only allows same-label IP attention."""
+    if query_region_labels is None or key_region_labels is None:
+        return None
+    if not strict:
+        return None
+    query_labels = query_region_labels.to(device=device, dtype=torch.long)
+    key_labels = key_region_labels.to(device=device, dtype=torch.long)
+    if query_labels.ndim != 2 or key_labels.ndim != 2:
+        raise ValueError(
+            "region labels must have shape (B,T), "
+            f"got query={tuple(query_labels.shape)} key={tuple(key_labels.shape)}"
+        )
+    if query_labels.shape != (batch_size, query_len):
+        raise ValueError(
+            f"query region labels shape {tuple(query_labels.shape)} does not match "
+            f"(B,Q)=({batch_size},{query_len})"
+        )
+    if key_labels.shape != (batch_size, key_len):
+        raise ValueError(
+            f"key region labels shape {tuple(key_labels.shape)} does not match "
+            f"(B,K)=({batch_size},{key_len})"
+        )
+    allowed = query_labels[:, :, None] == key_labels[:, None, :]
+    missing = ~allowed.any(dim=-1)
+    if bool(missing.any().item()):
+        allowed = allowed | missing[:, :, None]
+    if bool(allowed.all().item()):
+        return None
+    mask = torch.zeros((batch_size, 1, query_len, key_len), device=device, dtype=dtype)
+    mask = mask.masked_fill(~allowed[:, None, :, :], -torch.finfo(mask.dtype).max)
+    return mask
+
+
+def _unpack_region_ip_adapter_masks(ip_adapter_masks: torch.Tensor | dict | None) -> tuple[torch.Tensor | None, torch.Tensor | None, bool]:
+    if not isinstance(ip_adapter_masks, dict):
+        return None, None, True
+    key_labels = ip_adapter_masks.get("key_region_labels")
+    query_labels = ip_adapter_masks.get("query_region_labels")
+    strict = bool(ip_adapter_masks.get("strict", True))
+    return key_labels, query_labels, strict
+
+
 def install_flux_ip_adapter_attention(
     transformer: FluxTransformer2DModel,
     hidden_dim: int = 3072,
@@ -227,6 +451,7 @@ def install_flux_ip_adapter_attention(
     scale: float = 1.0,
     ip_init_gain: float = 0.1,
     num_single_layers: int = 0,
+    regional: bool = False,
 ) -> None:
     """Install IP-Adapter attention processors on FLUX double and last-N single blocks."""
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
@@ -261,11 +486,20 @@ def install_flux_ip_adapter_attention(
     transformer.encoder_hid_proj = IPAdapterListProjection(raw_proj)
 
     for block in transformer.transformer_blocks:
-        processor = FluxIPAdapterJointAttnProcessorWithTxtSeqLen(
-            hidden_size=hidden_dim,
-            cross_attention_dim=cross_attention_dim,
-            num_tokens=(num_tokens,),
-            scale=[scale],
+        processor = (
+            FluxRegionalIPAdapterJointAttnProcessor2_0(
+                hidden_size=hidden_dim,
+                cross_attention_dim=cross_attention_dim,
+                num_tokens=(num_tokens,),
+                scale=[scale],
+            )
+            if regional
+            else FluxIPAdapterJointAttnProcessorWithTxtSeqLen(
+                hidden_size=hidden_dim,
+                cross_attention_dim=cross_attention_dim,
+                num_tokens=(num_tokens,),
+                scale=[scale],
+            )
         )
         for linear in processor.to_k_ip:
             _init_ip_adapter_linear(linear, gain=ip_init_gain)
@@ -384,7 +618,7 @@ def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str
         modules["encoder_hid_proj"] = transformer.encoder_hid_proj
     for i, block in enumerate(transformer.transformer_blocks):
         processor = block.attn.processor
-        if isinstance(processor, FluxIPAdapterJointAttnProcessor2_0):
+        if isinstance(processor, (FluxIPAdapterJointAttnProcessor2_0, FluxRegionalIPAdapterJointAttnProcessor2_0)):
             modules[f"block_{i}_to_k_ip"] = processor.to_k_ip
             modules[f"block_{i}_to_v_ip"] = processor.to_v_ip
     for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
@@ -487,6 +721,12 @@ def _sync_ip_adapter_to_transformer(
 def patch_flux_single_ip_forward(transformer: FluxTransformer2DModel) -> None:
     """Pass the text/image split index to single-stream IP processors."""
     if getattr(transformer, "_cross_v1_single_ip_forward_patched", False):
+        return
+    has_single_ip_processor = any(
+        isinstance(getattr(block.attn, "processor", None), FluxSingleIPAdapterAttnProcessor2_0)
+        for block in getattr(transformer, "single_transformer_blocks", [])
+    )
+    if not has_single_ip_processor:
         return
     original_forward = transformer.forward
 
@@ -609,9 +849,14 @@ def _build_cross_v1_control_batch(
     vae: AutoencoderKL,
     weight_dtype: torch.dtype,
     spatial_mode: str = CROSS_V1_SPATIAL_REFERENCE_TARGET,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     device = next(vae.parameters()).device
     target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
+    noising_image_latent = _encode_images_to_latents(
+        vae,
+        batch.get("clean_image_for_noising", batch["target_image"]),
+        weight_dtype,
+    )
 
     target_tissue_feat = modules["tissue_downsampler"](
         modules["hte"](batch["target_tissue_mask"].to(device=device))
@@ -639,7 +884,7 @@ def _build_cross_v1_control_batch(
         target_nuclei_feat=target_nuclei_feat,
         spatial_mode=spatial_mode,
     )
-    return target_image_latent, control_tensor
+    return target_image_latent, noising_image_latent, control_tensor
 
 
 def _build_ip_adapter_kwargs(
@@ -648,16 +893,45 @@ def _build_ip_adapter_kwargs(
     accelerator: Accelerator,
     weight_dtype: torch.dtype,
     transformer: FluxTransformer2DModel,
+    *,
+    regional: bool = False,
+    query_token_count: int | None = None,
+    strict: bool = True,
 ) -> dict:
     """Build joint_attention_kwargs with pre-projected ip_hidden_states."""
     ref_encoder = modules["ref_encoder"]
     uni_dtype = next(ref_encoder.uni.parameters()).dtype
-    ref_ip_features = ref_encoder(
-        batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
-    ).to(dtype=weight_dtype)
+    reference_images = batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
+    if regional:
+        ref_ip_features, region_token_labels = ref_encoder.encode_region_ip_tokens(
+            reference_images,
+            batch["reference_tissue_mask"].to(device=accelerator.device),
+        )
+        ref_ip_features = ref_ip_features.to(dtype=weight_dtype)
+        if query_token_count is None:
+            raise ValueError("query_token_count is required for regional IP-Adapter.")
+        query_region_labels = resize_mask_to_token_labels(
+            batch["target_tissue_mask"].to(device=accelerator.device),
+            int(query_token_count),
+        )
+    else:
+        ref_ip_features = ref_encoder(reference_images).to(dtype=weight_dtype)
+        region_token_labels = None
+        query_region_labels = None
     ip_hidden_states = transformer.encoder_hid_proj([ref_ip_features])
     ip_hidden_states = [hs.to(dtype=weight_dtype) for hs in ip_hidden_states]
-    return {"ip_hidden_states": ip_hidden_states}
+    kwargs = {"ip_hidden_states": ip_hidden_states}
+    if regional:
+        kwargs.update(
+            {
+                "ip_adapter_masks": {
+                    "key_region_labels": region_token_labels.to(device=accelerator.device),
+                    "query_region_labels": query_region_labels.to(device=accelerator.device),
+                    "strict": bool(strict),
+                },
+            }
+        )
+    return kwargs
 
 
 def _use_self_reconstruction_reference(batch: dict) -> dict:
@@ -707,6 +981,43 @@ def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tens
     if not bool(mask.any().item()):
         return values.new_zeros(())
     return values[mask].mean()
+
+
+def _sample_timestep_indices_with_degraded_floor(
+    *,
+    initial_indices: torch.Tensor,
+    degraded_sample_mask: torch.Tensor,
+    sigmas_by_index: torch.Tensor,
+    min_sigma: float,
+    sample_indices: Callable[[int], torch.Tensor],
+    max_resample_rounds: int = 8,
+) -> torch.Tensor:
+    if min_sigma <= 0.0 or not bool(degraded_sample_mask.any().item()):
+        return initial_indices
+
+    indices = initial_indices.clone()
+    degraded_sample_mask = degraded_sample_mask.to(device=indices.device, dtype=torch.bool)
+    sigmas_by_index = sigmas_by_index.to(device=indices.device)
+    for _ in range(max(1, int(max_resample_rounds))):
+        low_sigma_mask = degraded_sample_mask & (sigmas_by_index[indices].float() < float(min_sigma))
+        if not bool(low_sigma_mask.any().item()):
+            break
+        indices[low_sigma_mask] = sample_indices(int(low_sigma_mask.sum().item())).to(
+            device=indices.device,
+            dtype=indices.dtype,
+        )
+    low_sigma_mask = degraded_sample_mask & (sigmas_by_index[indices].float() < float(min_sigma))
+    if bool(low_sigma_mask.any().item()):
+        valid_indices = torch.nonzero(sigmas_by_index.float() >= float(min_sigma), as_tuple=False).flatten()
+        if valid_indices.numel() > 0:
+            choice = torch.randint(
+                0,
+                int(valid_indices.numel()),
+                (int(low_sigma_mask.sum().item()),),
+                device=indices.device,
+            )
+            indices[low_sigma_mask] = valid_indices.to(device=indices.device, dtype=indices.dtype)[choice]
+    return indices
 
 
 def _use_zero_reference(batch: dict) -> dict:
@@ -823,6 +1134,9 @@ def collate_cross_batch(examples: list[dict]) -> dict:
         "sample_ids": [item["sample_id"] for item in examples],
         "reference_sample_ids": [item["reference_sample_id"] for item in examples],
         "target_image": torch.stack([item["target_image"] for item in examples]),
+        "clean_image_for_noising": torch.stack(
+            [item.get("clean_image_for_noising", item["target_image"]) for item in examples]
+        ),
         "reference_image": torch.stack([item["reference_image"] for item in examples]),
         "target_tissue_mask": torch.stack([item["target_tissue_mask"] for item in examples]),
         "target_nuclei_mask": torch.stack([item["target_nuclei_mask"] for item in examples]),
@@ -830,6 +1144,10 @@ def collate_cross_batch(examples: list[dict]) -> dict:
         "reference_nuclei_mask": torch.stack([item["reference_nuclei_mask"] for item in examples]),
         "prompts": [item["prompt"] for item in examples],
         "sample_modes": [item.get("sample_mode", "cross") for item in examples],
+        "uses_degraded_noising": torch.tensor(
+            [bool(item.get("uses_degraded_noising", False)) for item in examples],
+            dtype=torch.bool,
+        ),
     }
 
 
@@ -1028,6 +1346,7 @@ def _save_ip_adapter_modules(
     *,
     num_tokens: int,
     ip_init_gain: float,
+    regional_ip_adapter: bool = False,
 ) -> None:
     unwrapped = unwrap_model(ip_wrapper)
     state = {
@@ -1038,6 +1357,7 @@ def _save_ip_adapter_modules(
     state["scale"] = 1.0
     state["num_tokens"] = int(num_tokens)
     state["ip_init_gain"] = float(ip_init_gain)
+    state["regional_ip_adapter"] = bool(regional_ip_adapter)
     single_block_indices = sorted(
         {
             int(name.split("_")[2])
@@ -1059,6 +1379,8 @@ def _save_cross_v1_artifacts(
     ip_trainable_wrapper: nn.Module,
     unwrap_model: Callable,
     control_spec: CrossV1ControlSpec,
+    ip_num_tokens: int | None = None,
+    regional_ip_adapter: bool = False,
 ) -> None:
     save_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(
         args.save_weight_dtype, torch.float32,
@@ -1080,8 +1402,9 @@ def _save_cross_v1_artifacts(
         ip_trainable_wrapper,
         unwrap_model,
         save_dtype,
-        num_tokens=args.reference_num_tokens,
+        num_tokens=int(ip_num_tokens or args.reference_num_tokens),
         ip_init_gain=args.ip_init_gain,
+        regional_ip_adapter=regional_ip_adapter,
     )
 
 
@@ -1240,10 +1563,7 @@ def _load_condition_modules_from_checkpoint(
     *,
     load_ref_encoder: bool = False,
 ) -> None:
-    checkpoint = Path(checkpoint_path)
-    state_path = checkpoint / "phase5_conditioning.pt" if checkpoint.is_dir() else checkpoint
-    if not state_path.exists():
-        raise FileNotFoundError(f"Missing phase5_conditioning.pt for A1-lite: {state_path}")
+    state_path = _resolve_phase5_conditioning_state_path(checkpoint_path)
 
     state = _torch_load_weights(state_path)
     for name in ("hte", "tissue_downsampler", "nuclei_encoder"):
@@ -1260,6 +1580,24 @@ def _load_condition_modules_from_checkpoint(
                 state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
             )
             ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
+
+
+def _resolve_phase5_conditioning_state_path(checkpoint_path: str | Path) -> Path:
+    checkpoint = Path(checkpoint_path)
+    candidates = []
+    if checkpoint.is_dir():
+        candidates.append(checkpoint / "phase5_conditioning.pt")
+        if checkpoint.name.startswith("checkpoint-"):
+            candidates.append(checkpoint.parent / "phase5_conditioning.pt")
+    else:
+        candidates.append(checkpoint)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    tried = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(f"Missing phase5_conditioning.pt for A1-lite. Tried: {tried}")
 
 
 def _resolve_ip_adapter_checkpoint_path(args: argparse.Namespace) -> Path | None:
@@ -1281,6 +1619,7 @@ def _load_ip_adapter_modules_from_checkpoint(
     checkpoint_path: str | Path,
     *,
     load_single_ip: bool = False,
+    expected_regional_ip_adapter: bool | None = None,
 ) -> None:
     checkpoint = Path(checkpoint_path)
     state_path = checkpoint / "phase5_ip_adapter.pt" if checkpoint.is_dir() else checkpoint
@@ -1288,6 +1627,14 @@ def _load_ip_adapter_modules_from_checkpoint(
         raise FileNotFoundError(f"Missing phase5_ip_adapter.pt: {state_path}")
 
     state = _torch_load_weights(state_path)
+    if expected_regional_ip_adapter is not None and bool(state.get("regional_ip_adapter", False)) != bool(expected_regional_ip_adapter):
+        logger.warning(
+            "Skipping IP-Adapter checkpoint %s because regional_ip_adapter=%s does not match expected %s.",
+            state_path,
+            bool(state.get("regional_ip_adapter", False)),
+            bool(expected_regional_ip_adapter),
+        )
+        return
     transformer.encoder_hid_proj.load_state_dict(state["encoder_hid_proj"])
     loaded_double = 0
     for i, block in enumerate(transformer.transformer_blocks):
@@ -1342,6 +1689,16 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         hed_alpha_low=float(getattr(args, "hed_alpha_low", 0.75)),
         hed_alpha_high=float(getattr(args, "hed_alpha_high", 1.25)),
         hed_alpha_max=float(getattr(args, "hed_alpha_max", 1.8)),
+        noising_degradation=getattr(args, "noising_degradation", "none"),
+        texture_blur_prob=float(getattr(args, "texture_blur_prob", 0.7)),
+        texture_blur_sigma_min=float(getattr(args, "texture_blur_sigma_min", 0.4)),
+        texture_blur_sigma_max=float(getattr(args, "texture_blur_sigma_max", 1.4)),
+        texture_downsample_prob=float(getattr(args, "texture_downsample_prob", 0.7)),
+        texture_downsample_scale_min=float(getattr(args, "texture_downsample_scale_min", 0.35)),
+        texture_downsample_scale_max=float(getattr(args, "texture_downsample_scale_max", 0.75)),
+        texture_noise_prob=float(getattr(args, "texture_noise_prob", 0.35)),
+        texture_noise_std_min=float(getattr(args, "texture_noise_std_min", 0.005)),
+        texture_noise_std_max=float(getattr(args, "texture_noise_std_max", 0.03)),
     )
     if args.max_train_samples is not None:
         dataset.records = dataset.records[: args.max_train_samples]
@@ -1379,6 +1736,28 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         float(getattr(args, "perceptual_loss_weight", 0.0) or 0.0),
     )
     perceptual_loss_interval = int(getattr(args, "perceptual_loss_interval", 1) or 0)
+    regional_ip_adapter = bool(getattr(args, "regional_ip_adapter", False))
+    regional_ip_strict = bool(getattr(args, "regional_ip_strict", True))
+    degraded_noising_min_sigma = max(
+        0.0,
+        float(getattr(args, "degraded_noising_min_sigma", 0.1) or 0.0),
+    )
+    reference_region_loss_weight = max(
+        0.0,
+        float(getattr(args, "reference_region_loss_weight", 0.0) or 0.0),
+    )
+    reference_region_loss_interval = int(
+        getattr(args, "reference_region_loss_interval", 1) or 0
+    )
+    reference_region_loss_config = RegionalFeatureLossConfig(
+        tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
+        nuclei_weight=float(getattr(args, "reference_region_nuclei_weight", 0.0) or 0.0),
+        mean_weight=float(getattr(args, "reference_region_mean_weight", 1.0) or 0.0),
+        std_weight=float(getattr(args, "reference_region_std_weight", 0.5) or 0.0),
+        pooled_cosine_weight=float(getattr(args, "reference_region_cosine_weight", 0.25) or 0.0),
+        min_tokens=max(1, int(getattr(args, "reference_region_min_tokens", 2) or 1)),
+        max_regions_per_sample=getattr(args, "reference_region_max_regions_per_sample", None),
+    )
     reference_style_loss_interval = int(
         getattr(args, "reference_style_loss_interval", 1) or 0
     )
@@ -1410,8 +1789,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             getattr(args, "disable_reference_perceiver_self_attn", False)
         ),
         perceiver_cross_gate_init=getattr(args, "reference_perceiver_cross_gate_init", None),
-        skip_perceiver=bool(getattr(args, "skip_reference_perceiver", False)),
+        skip_perceiver=bool(getattr(args, "skip_reference_perceiver", False)) or regional_ip_adapter,
     )
+    ip_num_tokens = ref_encoder.num_spatial_tokens if regional_ip_adapter else ref_encoder.num_output_tokens
 
     modules = {
         "hte": HierarchicalTissueEmbedding(embedding_dim=args.tissue_embedding_dim),
@@ -1512,6 +1892,29 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             perceptual_loss_weight,
             perceptual_loss_interval,
         )
+    if regional_ip_adapter:
+        logger.info(
+            "Using mask-guided regional IP-Adapter: tokens=%s strict=%s",
+            ip_num_tokens,
+            regional_ip_strict,
+        )
+    if getattr(args, "noising_degradation", "none") != "none":
+        logger.info(
+            "Using degraded target as noising source: mode=%s min_sigma=%s",
+            getattr(args, "noising_degradation", "none"),
+            degraded_noising_min_sigma,
+        )
+    if reference_region_loss_weight > 0.0:
+        logger.info(
+            "Using frozen UNI spatial reference region loss: weight=%s interval=%s tissue=%s nuclei=%s mean/std/cos=%s/%s/%s",
+            reference_region_loss_weight,
+            reference_region_loss_interval,
+            reference_region_loss_config.tissue_weight,
+            reference_region_loss_config.nuclei_weight,
+            reference_region_loss_config.mean_weight,
+            reference_region_loss_config.std_weight,
+            reference_region_loss_config.pooled_cosine_weight,
+        )
     if ref_swap_loss_weight > 0.0:
         logger.info(
             "Using ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
@@ -1591,9 +1994,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     # V1: install IP-Adapter attention on transformer
     install_flux_ip_adapter_attention(
         flux_transformer,
-        num_tokens=ref_encoder.num_output_tokens,
+        num_tokens=ip_num_tokens,
         ip_init_gain=args.ip_init_gain,
         num_single_layers=max(0, int(getattr(args, "ip_single_num_layers", 0) or 0)),
+        regional=regional_ip_adapter,
     )
     patch_flux_single_ip_forward(flux_transformer)
     ip_adapter_checkpoint = _resolve_ip_adapter_checkpoint_path(args)
@@ -1602,6 +2006,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             flux_transformer,
             ip_adapter_checkpoint,
             load_single_ip=bool(getattr(args, "load_single_ip_from_checkpoint", False)),
+            expected_regional_ip_adapter=regional_ip_adapter,
         )
     _log_ip_adapter_initialization_stats(
         flux_transformer,
@@ -1745,18 +2150,6 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     # --- FIX 1: IP-Adapter 可训练部分包成 wrapper ---
     ip_trainable_wrapper = IPAdapterTrainableWrapper(ip_adapter_modules)
 
-    # ---- optimizer: 现在所有可训练参数都在可 prepare 的 module 里 ----
-    trainable_modules_list = [
-        flux_controlnet,
-        *modules.values(),            # hte, tissue_downsampler, nuclei_encoder
-        ref_trainable_wrapper,         # ref_encoder 可训练部分
-        ip_trainable_wrapper,          # IP-Adapter 可训练部分
-    ]
-    if a1_lite:
-        trainable_modules_list = [
-            ref_trainable_wrapper,
-            ip_trainable_wrapper,
-        ]
     controlnet_lr_modules = [] if a1_lite else [flux_controlnet]
     conditioning_lr_modules = [] if a1_lite else list(modules.values())
     double_ip_modules, single_ip_modules = _split_ip_adapter_module_groups(ip_adapter_modules)
@@ -1851,24 +2244,34 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     )
 
     # ---- accelerator.prepare ----
-    # 所有可训练 module 都过 prepare，冻结的 UNI backbone 不在里面
-    n_cond_modules = len(modules)  # hte, tissue_downsampler, nuclei_encoder
-    all_to_prepare = [
-        flux_controlnet,
-        *modules.values(),
-        ref_trainable_wrapper,
-        ip_trainable_wrapper,
-    ]
+    # Only trainable wrappers go through DDP in A1-lite; frozen ControlNet and
+    # frozen spatial conditioning stay as ordinary modules on the accelerator.
+    trainable_modules_to_prepare = (
+        [ref_trainable_wrapper, ip_trainable_wrapper]
+        if a1_lite
+        else [
+            flux_controlnet,
+            *modules.values(),
+            ref_trainable_wrapper,
+            ip_trainable_wrapper,
+        ]
+    )
+    n_cond_modules = len(modules) if not a1_lite else 0
+    all_to_prepare = [*trainable_modules_to_prepare]
     prepared = accelerator.prepare(
         *all_to_prepare, optimizer, train_dataloader, lr_scheduler,
     )
     n_models = len(all_to_prepare)
 
-    flux_controlnet = prepared[0]
-    prepared_cond = prepared[1 : 1 + n_cond_modules]
-    modules = dict(zip(modules.keys(), prepared_cond))
-    ref_trainable_wrapper = prepared[1 + n_cond_modules]
-    ip_trainable_wrapper = prepared[1 + n_cond_modules + 1]
+    if a1_lite:
+        ref_trainable_wrapper = prepared[0]
+        ip_trainable_wrapper = prepared[1]
+    else:
+        flux_controlnet = prepared[0]
+        prepared_cond = prepared[1 : 1 + n_cond_modules]
+        modules = dict(zip(modules.keys(), prepared_cond))
+        ref_trainable_wrapper = prepared[1 + n_cond_modules]
+        ip_trainable_wrapper = prepared[1 + n_cond_modules + 1]
 
     optimizer = prepared[n_models]
     train_dataloader = prepared[n_models + 1]
@@ -1968,10 +2371,15 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     "counterfactual",
                     device=accelerator.device,
                 )
+                appearance_degraded_sample_mask = _batch_mode_mask(
+                    training_batch,
+                    "appearance_degraded",
+                    device=accelerator.device,
+                )
                 cross_sample_mask = ~(counterfactual_sample_mask | self_reconstruction_sample_mask)
 
                 with torch.no_grad() if a1_lite else contextlib.nullcontext():
-                    pixel_latents, control_tensor = _build_cross_v1_control_batch(
+                    pixel_latents, noising_latents, control_tensor = _build_cross_v1_control_batch(
                         batch=training_batch,
                         modules=modules,
                         vae=vae,
@@ -1983,6 +2391,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 packed_pixel_latents = FluxControlNetPipeline._pack_latents(
                     pixel_latents, bsz, pixel_latents.shape[1],
                     pixel_latents.shape[2], pixel_latents.shape[3],
+                )
+                packed_noising_latents = FluxControlNetPipeline._pack_latents(
+                    noising_latents, bsz, noising_latents.shape[1],
+                    noising_latents.shape[2], noising_latents.shape[3],
                 )
                 control_image = FluxControlNetPipeline._pack_latents(
                     control_tensor, bsz, control_tensor.shape[1],
@@ -2001,9 +2413,30 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     mode_scale=args.mode_scale,
                 )
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
+                degraded_noising_mask = training_batch.get("uses_degraded_noising")
+                if degraded_noising_mask is None:
+                    degraded_noising_mask = torch.zeros(bsz, device=accelerator.device, dtype=torch.bool)
+                else:
+                    degraded_noising_mask = degraded_noising_mask.to(device=accelerator.device, dtype=torch.bool)
+
+                def _resample_indices(count: int) -> torch.Tensor:
+                    new_u = compute_density_for_timestep_sampling(
+                        weighting_scheme=args.weighting_scheme, batch_size=count,
+                        logit_mean=args.logit_mean, logit_std=args.logit_std,
+                        mode_scale=args.mode_scale,
+                    )
+                    return (new_u * noise_scheduler_copy.config.num_train_timesteps).long()
+
+                indices = _sample_timestep_indices_with_degraded_floor(
+                    initial_indices=indices,
+                    degraded_sample_mask=degraded_noising_mask,
+                    sigmas_by_index=noise_scheduler_copy.sigmas,
+                    min_sigma=degraded_noising_min_sigma,
+                    sample_indices=_resample_indices,
+                )
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=packed_pixel_latents.device)
                 sigmas = get_sigmas(timesteps, n_dim=packed_pixel_latents.ndim, dtype=packed_pixel_latents.dtype)
-                noisy_model_input = (1.0 - sigmas) * packed_pixel_latents + sigmas * noise
+                noisy_model_input = (1.0 - sigmas) * packed_noising_latents + sigmas * noise
 
                 guidance_vec = None
                 if flux_transformer.config.guidance_embeds:
@@ -2039,7 +2472,14 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 )
 
                 joint_attention_kwargs = _build_ip_adapter_kwargs(
-                    training_batch, modules, accelerator, weight_dtype, flux_transformer,
+                    training_batch,
+                    modules,
+                    accelerator,
+                    weight_dtype,
+                    flux_transformer,
+                    regional=regional_ip_adapter,
+                    query_token_count=noisy_model_input.shape[1],
+                    strict=regional_ip_strict,
                 )
                 transformer_controlnet_block_samples = (
                     [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
@@ -2064,7 +2504,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     return_dict=False,
                 )[0]
 
-                target_velocity = noise - packed_pixel_latents
+                target_velocity = (noisy_model_input - packed_pixel_latents) / sigmas.clamp_min(1e-6)
                 normal_per_sample_loss = per_sample_mse(noise_pred, target_velocity)
                 denoising_loss = normal_per_sample_loss.mean()
                 cross_denoising_loss = _masked_mean_or_zero(normal_per_sample_loss, cross_sample_mask)
@@ -2082,6 +2522,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 style_tissue_regions = 0
                 style_nuclei_regions = 0
                 perceptual_loss = noise_pred.new_zeros(())
+                reference_region_loss = noise_pred.new_zeros(())
+                reference_region_tissue_loss = noise_pred.new_zeros(())
+                reference_region_nuclei_loss = noise_pred.new_zeros(())
+                reference_region_tissue_regions = 0
+                reference_region_nuclei_regions = 0
                 self_reconstruction_l1 = noise_pred.new_zeros(())
                 prediction_rgb = None
                 should_compute_style_loss = (
@@ -2094,12 +2539,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     and perceptual_loss_interval > 0
                     and global_step % perceptual_loss_interval == 0
                 )
+                should_compute_reference_region_loss = (
+                    reference_region_loss_weight > 0.0
+                    and reference_region_loss_interval > 0
+                    and global_step % reference_region_loss_interval == 0
+                )
                 should_compute_self_reconstruction_l1 = bool(
                     self_reconstruction_sample_mask.any().item()
                 )
                 if (
                     should_compute_style_loss
                     or should_compute_perceptual_loss
+                    or should_compute_reference_region_loss
                     or should_compute_self_reconstruction_l1
                 ):
                     prediction_rgb = _decode_packed_model_prediction(
@@ -2126,6 +2577,30 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         prediction_features=prediction_features,
                         target_features=target_features,
                     ).to(dtype=denoising_loss.dtype)
+                if should_compute_reference_region_loss:
+                    ref_encoder = modules["ref_encoder"]
+                    uni_dtype = next(ref_encoder.uni.parameters()).dtype
+                    prediction_features = ref_encoder.extract_uni_features(
+                        prediction_rgb.to(device=accelerator.device, dtype=uni_dtype),
+                        allow_input_grad=True,
+                    )
+                    reference_features = ref_encoder.extract_uni_features(
+                        training_batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype),
+                    )
+                    reference_region_terms = regional_feature_map_loss(
+                        prediction_features=prediction_features,
+                        reference_features=reference_features,
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                        reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                        config=reference_region_loss_config,
+                    )
+                    reference_region_loss = reference_region_terms["total"].to(dtype=denoising_loss.dtype)
+                    reference_region_tissue_loss = reference_region_terms["tissue"].to(dtype=denoising_loss.dtype)
+                    reference_region_nuclei_loss = reference_region_terms["nuclei"].to(dtype=denoising_loss.dtype)
+                    reference_region_tissue_regions = int(reference_region_terms["tissue_regions"])
+                    reference_region_nuclei_regions = int(reference_region_terms["nuclei_regions"])
                 if should_compute_style_loss:
                     style_terms = regional_stain_style_loss(
                         prediction=prediction_rgb,
@@ -2187,7 +2662,14 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         else:
                             continue
                         swapped_kwargs = _build_ip_adapter_kwargs(
-                            swapped_batch, modules, accelerator, weight_dtype, flux_transformer,
+                            swapped_batch,
+                            modules,
+                            accelerator,
+                            weight_dtype,
+                            flux_transformer,
+                            regional=regional_ip_adapter,
+                            query_token_count=noisy_model_input.shape[1],
+                            strict=regional_ip_strict,
                         )
                         swapped_noise_pred = flux_transformer(
                             hidden_states=noisy_model_input,
@@ -2217,6 +2699,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 loss = (
                     denoising_loss
                     + perceptual_loss_weight * perceptual_loss
+                    + reference_region_loss_weight * reference_region_loss
                     + reference_style_loss_weight * style_loss
                     + ref_swap_loss_weight * swap_loss
                     + self_reconstruction_l1_weighted
@@ -2254,6 +2737,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         ip_trainable_wrapper=ip_trainable_wrapper,
                         unwrap_model=unwrap_model,
                         control_spec=control_spec,
+                        ip_num_tokens=ip_num_tokens,
+                        regional_ip_adapter=regional_ip_adapter,
                     )
                     logger.info("Saved eval-ready Phase 5.3 cross-v1 artifacts to %s", save_path)
 
@@ -2264,6 +2749,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "counterfactual_denoise_loss": counterfactual_denoising_loss.detach().item(),
                 "self_reconstruction_denoise_loss": self_reconstruction_denoising_loss.detach().item(),
                 "perceptual_loss": perceptual_loss.detach().item(),
+                "reference_region_loss": reference_region_loss.detach().item(),
+                "reference_region_loss_weighted": (reference_region_loss_weight * reference_region_loss).detach().item(),
+                "reference_region_tissue_loss": reference_region_tissue_loss.detach().item(),
+                "reference_region_nuclei_loss": reference_region_nuclei_loss.detach().item(),
+                "reference_region_tissue_regions": reference_region_tissue_regions,
+                "reference_region_nuclei_regions": reference_region_nuclei_regions,
                 "style_loss": style_loss.detach().item(),
                 "style_tissue_loss": style_tissue_loss.detach().item(),
                 "style_nuclei_loss": style_nuclei_loss.detach().item(),
@@ -2271,6 +2762,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "self_reconstruction_l1_weighted": self_reconstruction_l1_weighted.detach().item(),
                 "self_reconstruction_samples": int(self_reconstruction_sample_mask.sum().detach().item()),
                 "counterfactual_samples": int(counterfactual_sample_mask.sum().detach().item()),
+                "appearance_degraded_samples": int(appearance_degraded_sample_mask.sum().detach().item()),
                 "cross_samples": int(cross_sample_mask.sum().detach().item()),
                 "ref_swap_loss": swap_loss.detach().item(),
                 "ref_normal_denoise_loss": denoising_loss.detach().item(),
@@ -2311,8 +2803,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             ip_trainable_wrapper,
             unwrap_model,
             save_dtype,
-            num_tokens=modules["ref_encoder"].num_output_tokens,
+            num_tokens=ip_num_tokens,
             ip_init_gain=args.ip_init_gain,
+            regional_ip_adapter=regional_ip_adapter,
         )
         logger.info("Saved Phase 5.3 cross-v1 artifacts to %s", args.output_dir)
 

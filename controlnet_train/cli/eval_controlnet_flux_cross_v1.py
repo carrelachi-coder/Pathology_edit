@@ -16,6 +16,10 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
+CROSS_V1_REFERENCE_WITH_REF = "with_ref"
+CROSS_V1_REFERENCE_ZERO_REF = "zero_ref"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate Phase 5.3 Cross V1 FLUX ControlNet.")
     parser.add_argument("--pretrained-model-name-or-path", required=True)
@@ -31,6 +35,61 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument("--ip-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--run-zero-ref-ablation",
+        action="store_true",
+        help=(
+            "Also evaluate each sample with the IP-Adapter reference image replaced "
+            "by an all-zero image. Reference tissue/nuclei masks are unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--source-latent-init-strength",
+        type=float,
+        default=0.0,
+        help=(
+            "Img2img-style source/ref latent start strength in [0,1]. "
+            "0 keeps random-noise sampling; try 0.25-0.45 for ref-preserving edits."
+        ),
+    )
+    parser.add_argument(
+        "--mask-chord-scale",
+        type=float,
+        default=0.0,
+        help=(
+            "Enable source-vs-target mask condition guidance. "
+            "0 keeps the baseline; try 0.5, 1.0, 1.5."
+        ),
+    )
+    parser.add_argument(
+        "--mask-chord-use-gate",
+        action="store_true",
+        help=(
+            "Gate mask-chord guidance to tissue/nuclei label changes, preserving "
+            "unchanged regions more strongly."
+        ),
+    )
+    parser.add_argument(
+        "--mask-chord-gate-dilate-radius",
+        type=int,
+        default=0,
+        help="Optional dilation radius, in VAE-latent pixels, for the mask-chord change gate.",
+    )
+    parser.add_argument(
+        "--mask-chord-gate-feather-radius",
+        type=int,
+        default=0,
+        help="Optional average-pool feather radius, in VAE-latent pixels, for the mask-chord change gate.",
+    )
+    parser.add_argument(
+        "--mask-chord-gate-outside-scale",
+        type=float,
+        default=0.0,
+        help=(
+            "Residual mask-chord scale outside the changed gate in [0,1]. "
+            "0 fully suppresses outside changes; 0.1 allows weak global harmonization."
+        ),
+    )
     parser.add_argument("--prompt-source", choices=["metadata", "dataset"], default="dataset")
     parser.add_argument("--prompt", default=None, help="Override every sample with one prompt.")
     parser.add_argument(
@@ -171,6 +230,18 @@ def main(argv=None) -> int:
         target_tissue_mask = load_tissue_mask(target_tissue_mask_path)
         target_nuclei_mask = load_nuclei_mask(target_nuclei_mask_path)
 
+        reference_pil = Image.open(reference_image_path).convert("RGB")
+        reference_pil.save(sample_dir / "reference.png")
+        target_pil = Image.open(target_image_path).convert("RGB")
+        target_pil.save(sample_dir / "target.png")
+        target_array = _pil_to_chw_float(target_pil)
+        reference_tissue_array = np.asarray(Image.open(reference_tissue_mask_path))
+        target_tissue_array = np.asarray(Image.open(target_tissue_mask_path))
+        _save_mask_image(reference_tissue_array, sample_dir / "reference_tissue_mask.png")
+        _save_mask_image(target_tissue_array, sample_dir / "target_tissue_mask.png")
+        _save_mask_image(np.asarray(Image.open(reference_nuclei_mask_path)), sample_dir / "reference_nuclei_mask.png")
+        _save_mask_image(np.asarray(Image.open(target_nuclei_mask_path)), sample_dir / "target_nuclei_mask.png")
+
         prompt = _resolve_eval_prompt(
             record=record,
             prompt_override=args.prompt,
@@ -178,82 +249,176 @@ def main(argv=None) -> int:
             default_prompt_for_dataset=default_prompt_for_dataset,
         )
 
-        with torch.no_grad():
-            prediction = run_cross_v1_bundle(
-                bundle,
-                reference_image=reference_image,
-                reference_tissue_mask=reference_tissue_mask,
-                reference_nuclei_mask=reference_nuclei_mask,
-                target_tissue_mask=target_tissue_mask,
-                target_nuclei_mask=target_nuclei_mask,
-                prompt=prompt,
-            )
+        variant_results: list[dict[str, Any]] = []
+        for variant in _reference_variants(args.run_zero_ref_ablation):
+            reference_image_for_model = _reference_image_for_mode(reference_image, variant)
+            if args.run_zero_ref_ablation:
+                _reference_pil_for_mode(reference_pil, variant).save(sample_dir / f"reference_used_{variant}.png")
 
-        reference_pil = Image.open(reference_image_path).convert("RGB")
-        reference_pil.save(sample_dir / "reference.png")
-        target_pil = Image.open(target_image_path).convert("RGB")
-        target_pil.save(sample_dir / "target.png")
-        prediction.save(sample_dir / "prediction_raw.png")
-        if args.color_match == "lab":
-            prediction = _match_image_color_to_reference(
-                source=prediction,
+            with torch.no_grad():
+                raw_prediction = run_cross_v1_bundle(
+                    bundle,
+                    reference_image=reference_image_for_model,
+                    reference_tissue_mask=reference_tissue_mask,
+                    reference_nuclei_mask=reference_nuclei_mask,
+                    target_tissue_mask=target_tissue_mask,
+                    target_nuclei_mask=target_nuclei_mask,
+                    prompt=prompt,
+                    source_latent_init_strength=args.source_latent_init_strength,
+                    mask_chord_scale=args.mask_chord_scale,
+                    mask_chord_use_gate=args.mask_chord_use_gate,
+                    mask_chord_gate_dilate_radius=args.mask_chord_gate_dilate_radius,
+                    mask_chord_gate_feather_radius=args.mask_chord_gate_feather_radius,
+                    mask_chord_gate_outside_scale=args.mask_chord_gate_outside_scale,
+                )
+
+            if args.run_zero_ref_ablation:
+                raw_prediction.save(sample_dir / f"prediction_{variant}_raw.png")
+            else:
+                raw_prediction.save(sample_dir / "prediction_raw.png")
+
+            prediction = raw_prediction
+            if args.color_match == "lab":
+                prediction = _match_image_color_to_reference(
+                    source=raw_prediction,
+                    reference=reference_pil,
+                    method=args.color_match,
+                )
+            if args.run_zero_ref_ablation:
+                prediction.save(sample_dir / f"prediction_{variant}.png")
+            else:
+                prediction.save(sample_dir / "prediction.png")
+
+            pred_array = _pil_to_chw_float(prediction)
+            metrics = compute_cross_metrics(pred_array, target_array)
+            abs_error = np.abs(pred_array - target_array).mean(axis=0)
+            if args.run_zero_ref_ablation:
+                _save_error_image(abs_error, sample_dir / f"abs_error_{variant}.png")
+            else:
+                _save_error_image(abs_error, sample_dir / "abs_error.png")
+
+            metric_row = {
+                "index": index,
+                "sample_id": sample_id,
+                "reference_sample_id": ref_id,
+                "dataset": record.get("dataset", ""),
+                "pair_difficulty": record.get("pair_difficulty", ""),
+                "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", math.nan)),
+                "area_coverage_ratio": float(record.get("area_coverage_ratio", math.nan)),
+                "color_match_applied": args.color_match != "none",
+                "ip_scale": float(args.ip_scale),
+                "controlnet_conditioning_scale": float(args.controlnet_conditioning_scale),
+                "source_latent_init_strength": float(args.source_latent_init_strength),
+                "mask_chord_scale": float(args.mask_chord_scale),
+                "mask_chord_use_gate": bool(args.mask_chord_use_gate),
+                "mask_chord_gate_dilate_radius": int(args.mask_chord_gate_dilate_radius),
+                "mask_chord_gate_feather_radius": int(args.mask_chord_gate_feather_radius),
+                "mask_chord_gate_outside_scale": float(args.mask_chord_gate_outside_scale),
+                **metrics,
+            }
+            if args.run_zero_ref_ablation:
+                metric_row["reference_condition_mode"] = variant
+                metric_row["zero_ref_ablation"] = variant == CROSS_V1_REFERENCE_ZERO_REF
+            metric_rows.append(metric_row)
+            if args.run_zero_ref_ablation:
+                (sample_dir / f"metrics_{variant}.json").write_text(
+                    json.dumps(metric_row, indent=2, ensure_ascii=False, allow_nan=True),
+                    encoding="utf8",
+                )
+
+            panel = _make_panel(
                 reference=reference_pil,
-                method=args.color_match,
+                prediction=prediction,
+                target=target_pil,
+                reference_tissue=reference_tissue_array,
+                target_tissue=target_tissue_array,
+                abs_error=abs_error,
+                thumbnail_size=args.thumbnail_size,
+                title=f"{sample_id} | ref={ref_id} | {variant}",
             )
-        prediction.save(sample_dir / "prediction.png")
-        _save_mask_image(np.asarray(Image.open(reference_tissue_mask_path)), sample_dir / "reference_tissue_mask.png")
-        _save_mask_image(np.asarray(Image.open(target_tissue_mask_path)), sample_dir / "target_tissue_mask.png")
-        _save_mask_image(np.asarray(Image.open(reference_nuclei_mask_path)), sample_dir / "reference_nuclei_mask.png")
-        _save_mask_image(np.asarray(Image.open(target_nuclei_mask_path)), sample_dir / "target_nuclei_mask.png")
+            if args.run_zero_ref_ablation:
+                panel.save(sample_dir / f"panel_{variant}.png")
+            variant_results.append(
+                {
+                    "variant": variant,
+                    "prediction": prediction,
+                    "pred_array": pred_array,
+                    "metrics": metrics,
+                    "metric_row": metric_row,
+                    "abs_error": abs_error,
+                    "panel": panel,
+                }
+            )
 
-        pred_array = _pil_to_chw_float(prediction)
-        target_array = _pil_to_chw_float(target_pil)
-        metrics = compute_cross_metrics(pred_array, target_array)
-        metric_row = {
-            "index": index,
-            "sample_id": sample_id,
-            "reference_sample_id": ref_id,
-            "dataset": record.get("dataset", ""),
-            "pair_difficulty": record.get("pair_difficulty", ""),
-            "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", math.nan)),
-            "area_coverage_ratio": float(record.get("area_coverage_ratio", math.nan)),
-            "color_match_applied": args.color_match != "none",
-            "ip_scale": float(args.ip_scale),
-            "controlnet_conditioning_scale": float(args.controlnet_conditioning_scale),
-            **metrics,
-        }
-        metric_rows.append(metric_row)
+        primary = variant_results[0]
+        if args.run_zero_ref_ablation:
+            metrics_payload = {result["variant"]: result["metric_row"] for result in variant_results}
+            comparison = _build_ref_ablation_comparison(variant_results)
+            metrics_payload["comparison"] = comparison
+            (sample_dir / "ref_ablation_comparison.json").write_text(
+                json.dumps(comparison, indent=2, ensure_ascii=False, allow_nan=True),
+                encoding="utf8",
+            )
+        else:
+            metrics_payload = primary["metric_row"]
         (sample_dir / "metrics.json").write_text(
-            json.dumps(metric_row, indent=2, ensure_ascii=False, allow_nan=True),
+            json.dumps(metrics_payload, indent=2, ensure_ascii=False, allow_nan=True),
             encoding="utf8",
         )
 
-        abs_error = np.abs(pred_array - target_array).mean(axis=0)
-        _save_error_image(abs_error, sample_dir / "abs_error.png")
-        panel = _make_panel(
-            reference=reference_pil,
-            prediction=prediction,
-            target=target_pil,
-            reference_tissue=np.asarray(Image.open(reference_tissue_mask_path)),
-            target_tissue=np.asarray(Image.open(target_tissue_mask_path)),
-            abs_error=abs_error,
-            thumbnail_size=args.thumbnail_size,
-            title=f"{sample_id} | ref={ref_id}",
-        )
+        if args.run_zero_ref_ablation:
+            panel = _make_ref_ablation_panel(
+                reference=reference_pil,
+                target=target_pil,
+                reference_tissue=reference_tissue_array,
+                target_tissue=target_tissue_array,
+                variant_results=variant_results,
+                thumbnail_size=args.thumbnail_size,
+                title=f"{sample_id} | ref={ref_id}",
+            )
+        else:
+            panel = primary["panel"]
         panel_path = sample_dir / "panel.png"
         panel.save(panel_path)
         if len(panel_paths) < args.overview_max_samples:
             panel_paths.append(panel_path)
 
-        print(
-            f"[{index + 1}/{len(records)}] {sample_id} ref={ref_id} "
-            f"full_l1={metrics['full_l1']:.4f} full_psnr={metrics['full_psnr']:.2f}"
-        )
+        if args.run_zero_ref_ablation:
+            with_ref_metrics = primary["metrics"]
+            zero_ref_metrics = next(
+                result["metrics"]
+                for result in variant_results
+                if result["variant"] == CROSS_V1_REFERENCE_ZERO_REF
+            )
+            print(
+                f"[{index + 1}/{len(records)}] {sample_id} ref={ref_id} "
+                f"with_ref_l1={with_ref_metrics['full_l1']:.4f} "
+                f"with_ref_psnr={with_ref_metrics['full_psnr']:.2f} "
+                f"zero_ref_l1={zero_ref_metrics['full_l1']:.4f} "
+                f"zero_ref_psnr={zero_ref_metrics['full_psnr']:.2f}"
+            )
+        else:
+            metrics = primary["metrics"]
+            print(
+                f"[{index + 1}/{len(records)}] {sample_id} ref={ref_id} "
+                f"full_l1={metrics['full_l1']:.4f} full_psnr={metrics['full_psnr']:.2f}"
+            )
 
     _write_metrics(output_dir, metric_rows)
     summary = aggregate_metrics(metric_rows)
     summary["ip_scale"] = float(args.ip_scale)
     summary["controlnet_conditioning_scale"] = float(args.controlnet_conditioning_scale)
+    summary["source_latent_init_strength"] = float(args.source_latent_init_strength)
+    summary["mask_chord_scale"] = float(args.mask_chord_scale)
+    summary["mask_chord_use_gate"] = bool(args.mask_chord_use_gate)
+    summary["mask_chord_gate_dilate_radius"] = int(args.mask_chord_gate_dilate_radius)
+    summary["mask_chord_gate_feather_radius"] = int(args.mask_chord_gate_feather_radius)
+    summary["mask_chord_gate_outside_scale"] = float(args.mask_chord_gate_outside_scale)
+    if args.run_zero_ref_ablation:
+        summary["reference_condition_modes"] = _reference_variants(args.run_zero_ref_ablation)
+        summary["run_zero_ref_ablation"] = True
+        summary["by_reference_condition_mode"] = _aggregate_by_reference_mode(metric_rows)
+        summary["ref_ablation_delta"] = _aggregate_ref_ablation_delta(metric_rows)
     (output_dir / "metrics_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=True),
         encoding="utf8",
@@ -351,6 +516,147 @@ def _mean_std_transfer_pil_lab(*, source: Image.Image, reference: Image.Image) -
 
 def _tissue_mask_from_rgb(rgb_float: np.ndarray, threshold: float = 0.85) -> np.ndarray:
     return rgb_float.mean(axis=-1) < threshold
+
+
+def _reference_variants(run_zero_ref_ablation: bool) -> list[str]:
+    variants = [CROSS_V1_REFERENCE_WITH_REF]
+    if run_zero_ref_ablation:
+        variants.append(CROSS_V1_REFERENCE_ZERO_REF)
+    return variants
+
+
+def _reference_image_for_mode(reference_image, mode: str):
+    if mode == CROSS_V1_REFERENCE_WITH_REF:
+        return reference_image
+    if mode == CROSS_V1_REFERENCE_ZERO_REF:
+        return reference_image.new_zeros(reference_image.shape)
+    raise ValueError(f"Unsupported Cross V1 reference condition mode: {mode!r}")
+
+
+def _reference_pil_for_mode(reference: Image.Image, mode: str) -> Image.Image:
+    if mode == CROSS_V1_REFERENCE_WITH_REF:
+        return reference.convert("RGB")
+    if mode == CROSS_V1_REFERENCE_ZERO_REF:
+        return Image.new("RGB", reference.size, "black")
+    raise ValueError(f"Unsupported Cross V1 reference condition mode: {mode!r}")
+
+
+def _build_ref_ablation_comparison(variant_results: list[dict[str, Any]]) -> dict[str, Any]:
+    by_variant = {result["variant"]: result for result in variant_results}
+    with_ref = by_variant.get(CROSS_V1_REFERENCE_WITH_REF)
+    zero_ref = by_variant.get(CROSS_V1_REFERENCE_ZERO_REF)
+    if with_ref is None or zero_ref is None:
+        return {}
+
+    output_abs_diff = np.abs(with_ref["pred_array"] - zero_ref["pred_array"])
+    return {
+        "with_ref": with_ref["metrics"],
+        "zero_ref": zero_ref["metrics"],
+        "delta_zero_ref_minus_with_ref": {
+            key: float(zero_ref["metrics"][key] - with_ref["metrics"][key])
+            for key in ("full_l1", "full_mse", "full_psnr")
+            if key in with_ref["metrics"] and key in zero_ref["metrics"]
+        },
+        "prediction_l1_between_modes": float(output_abs_diff.mean()),
+        "prediction_mse_between_modes": float(
+            np.square(with_ref["pred_array"] - zero_ref["pred_array"]).mean()
+        ),
+    }
+
+
+def _make_ref_ablation_panel(
+    *,
+    reference: Image.Image,
+    target: Image.Image,
+    reference_tissue: np.ndarray,
+    target_tissue: np.ndarray,
+    variant_results: list[dict[str, Any]],
+    thumbnail_size: int,
+    title: str,
+) -> Image.Image:
+    by_variant = {result["variant"]: result for result in variant_results}
+    with_ref = by_variant[CROSS_V1_REFERENCE_WITH_REF]
+    zero_ref = by_variant.get(CROSS_V1_REFERENCE_ZERO_REF)
+
+    images: list[tuple[str, Image.Image]] = [
+        ("reference", reference.convert("RGB")),
+        ("with_ref", with_ref["prediction"].convert("RGB")),
+    ]
+    if zero_ref is not None:
+        images.append(("zero_ref", zero_ref["prediction"].convert("RGB")))
+        diff = np.abs(with_ref["pred_array"] - zero_ref["pred_array"]).mean(axis=0)
+        images.append(
+            (
+                "ref_delta",
+                Image.fromarray(
+                    (np.clip(diff, 0.0, 1.0) * 255).astype(np.uint8),
+                    mode="L",
+                ).convert("RGB"),
+            )
+        )
+    images.extend(
+        [
+            ("target", target.convert("RGB")),
+            ("ref_tissue", _mask_to_rgb(reference_tissue)),
+            ("target_tissue", _mask_to_rgb(target_tissue)),
+        ]
+    )
+
+    thumbs = [(label, _thumbnail(image, thumbnail_size)) for label, image in images]
+    label_h = 34
+    title_h = 28
+    width = thumbnail_size * len(thumbs)
+    height = thumbnail_size + label_h + title_h
+    panel = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(panel)
+    draw.text((6, 6), title[:160], fill=(0, 0, 0))
+    for idx, (label, image) in enumerate(thumbs):
+        x = idx * thumbnail_size
+        panel.paste(image, (x, title_h))
+        draw.text((x + 6, title_h + thumbnail_size + 8), label, fill=(0, 0, 0))
+    return panel
+
+
+def _aggregate_by_reference_mode(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        mode = str(row.get("reference_condition_mode", ""))
+        if mode:
+            grouped.setdefault(mode, []).append(row)
+    return {
+        mode: aggregate_metrics(mode_rows)
+        for mode, mode_rows in sorted(grouped.items())
+    }
+
+
+def _aggregate_ref_ablation_delta(rows: list[dict[str, Any]]) -> dict[str, float]:
+    by_index: dict[int, dict[str, dict[str, Any]]] = {}
+    for row in rows:
+        by_index.setdefault(int(row["index"]), {})[str(row.get("reference_condition_mode", ""))] = row
+
+    deltas: list[dict[str, float]] = []
+    for variants in by_index.values():
+        with_ref = variants.get(CROSS_V1_REFERENCE_WITH_REF)
+        zero_ref = variants.get(CROSS_V1_REFERENCE_ZERO_REF)
+        if not with_ref or not zero_ref:
+            continue
+        deltas.append(
+            {
+                "full_l1_delta": float(zero_ref["full_l1"] - with_ref["full_l1"]),
+                "full_mse_delta": float(zero_ref["full_mse"] - with_ref["full_mse"]),
+                "full_psnr_delta": float(zero_ref["full_psnr"] - with_ref["full_psnr"]),
+            }
+        )
+
+    if not deltas:
+        return {}
+    summary = {"num_pairs": float(len(deltas))}
+    for key in deltas[0]:
+        values = [row[key] for row in deltas if math.isfinite(row[key])]
+        if values:
+            summary[f"{key}_mean"] = float(np.mean(values))
+            summary[f"{key}_std"] = float(np.std(values))
+    return summary
 
 
 def _safe_name(value: str) -> str:

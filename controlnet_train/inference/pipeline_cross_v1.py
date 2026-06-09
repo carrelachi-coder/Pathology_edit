@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from PIL import Image
 
 from controlnet_train.data.common import (
@@ -29,14 +28,19 @@ from controlnet_train.modules.cross_v1_conditioning import (
     CrossV1ControlSpec,
     build_cross_v1_condition,
 )
-from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
-from controlnet_train.training.flux_phase5_cross_v1 import (
-    install_flux_ip_adapter_attention,
-    patch_flux_single_ip_forward,
-    _collect_ip_adapter_modules,
-    _sync_ip_adapter_to_transformer,
+from controlnet_train.inference.pipeline_cross_v2_1 import (
+    _build_mask_change_map,
+    _build_packed_change_gate,
+    _pack_source_latents_for_sampling,
+    _prepare_source_noised_latents,
+    _sigma_for_timestep,
+    _source_init_timesteps,
+    _validate_nonnegative_float,
+    _validate_source_latent_init_strength,
 )
+from controlnet_train.modules.cross_v2_1_conditioning import deterministic_latent_from_posterior
+from controlnet_train.modules.reference_image_encoder import resize_mask_to_token_labels
 
 
 @dataclass
@@ -56,6 +60,8 @@ class CrossV1InferenceBundle:
     control_spec: CrossV1ControlSpec = field(default_factory=CrossV1ControlSpec)
     ip_adapter_modules: dict[str, nn.Module] = field(default_factory=dict)
     ref_encoder: ReferenceImageEncoder | None = None
+    regional_ip_adapter: bool = False
+    regional_ip_strict: bool = True
 
 
 def load_cross_v1_bundle(
@@ -75,6 +81,11 @@ def load_cross_v1_bundle(
     checkpoint = _validate_checkpoint_dir(checkpoint_path)
     control_spec = _load_cross_v1_control_spec(checkpoint)
     ref_encoder_config = _load_ref_encoder_config(checkpoint)
+    from controlnet_train.training.flux_phase5_cross_v1 import (
+        _collect_ip_adapter_modules,
+        install_flux_ip_adapter_attention,
+        patch_flux_single_ip_forward,
+    )
 
     # Load Flux ControlNet pipeline with the checkpoint's V1 spatial layout.
     pipe, controlnet = _load_flux_controlnet_pipeline(
@@ -87,10 +98,12 @@ def load_cross_v1_bundle(
 
     # Load IP-Adapter weights from checkpoint
     ip_state = _torch_load_weights(checkpoint / "phase5_ip_adapter.pt")
+    regional_ip_adapter = bool(ip_state.get("regional_ip_adapter", False))
     install_flux_ip_adapter_attention(
         pipe.transformer,
-        num_tokens=ref_encoder_config.get("num_output_tokens", ref_encoder_config["num_tokens"]),
+        num_tokens=int(ip_state.get("num_tokens", ref_encoder_config.get("num_output_tokens", ref_encoder_config["num_tokens"]))),
         num_single_layers=_resolve_saved_single_ip_layer_count(ip_state),
+        regional=regional_ip_adapter,
     )
     patch_flux_single_ip_forward(pipe.transformer)
     pipe.transformer.encoder_hid_proj.load_state_dict(ip_state["encoder_hid_proj"])
@@ -133,6 +146,7 @@ def load_cross_v1_bundle(
         control_spec=control_spec,
         ip_adapter_modules=ip_adapter_modules,
         ref_encoder=modules["ref_encoder"],
+        regional_ip_adapter=regional_ip_adapter,
     )
 
 
@@ -168,6 +182,14 @@ def set_ip_adapter_scale(transformer: nn.Module, scale: float) -> None:
                 processor.scale = float(scale)
 
 
+def _packed_flux_image_token_count(image: torch.Tensor, pipe) -> int:
+    height, width = (int(v) for v in image.shape[-2:])
+    vae_scale_factor = int(getattr(pipe, "vae_scale_factor", 8) or 8)
+    latent_height = height // vae_scale_factor
+    latent_width = width // vae_scale_factor
+    return (latent_height // 2) * (latent_width // 2)
+
+
 @torch.inference_mode()
 def run_cross_v1_bundle(
     bundle: CrossV1InferenceBundle,
@@ -177,11 +199,30 @@ def run_cross_v1_bundle(
     target_tissue_mask: torch.Tensor,
     target_nuclei_mask: torch.Tensor,
     prompt: str,
+    source_latent_init_strength: float = 0.0,
+    mask_chord_scale: float = 0.0,
+    mask_chord_use_gate: bool = False,
+    mask_chord_gate_dilate_radius: int = 0,
+    mask_chord_gate_feather_radius: int = 0,
+    mask_chord_gate_outside_scale: float = 0.0,
 ) -> Image.Image:
+    source_latent_init_strength = _validate_source_latent_init_strength(source_latent_init_strength)
+    mask_chord_scale = _validate_nonnegative_float(mask_chord_scale, "mask_chord_scale")
     # Encode reference image via UNI2-h + Perceiver resampler
-    ref_features = bundle.ref_encoder(
-        reference_image.unsqueeze(0).to(device=bundle.device, dtype=bundle.torch_dtype)
-    )
+    reference_batch = reference_image.unsqueeze(0).to(device=bundle.device, dtype=bundle.torch_dtype)
+    if bundle.regional_ip_adapter:
+        ref_features, region_token_labels = bundle.ref_encoder.encode_region_ip_tokens(
+            reference_batch,
+            reference_tissue_mask.unsqueeze(0).to(device=bundle.device),
+        )
+        query_region_labels = resize_mask_to_token_labels(
+            target_tissue_mask.unsqueeze(0).to(device=bundle.device),
+            _packed_flux_image_token_count(reference_image, bundle.flux_pipeline),
+        ).to(device=bundle.device)
+    else:
+        ref_features = bundle.ref_encoder(reference_batch)
+        region_token_labels = None
+        query_region_labels = None
     ref_features = ref_features.to(device=bundle.device, dtype=bundle.torch_dtype)
     ip_hidden_states = bundle.flux_pipeline.transformer.encoder_hid_proj([ref_features])
     ip_hidden_states = [
@@ -200,10 +241,14 @@ def run_cross_v1_bundle(
     ).to(dtype=bundle.torch_dtype)
     reference_tissue_feat = None
     reference_nuclei_feat = None
-    if bundle.control_spec.spatial_mode in {
-        CROSS_V1_SPATIAL_REFERENCE_TARGET,
-        CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
-    }:
+    needs_reference_mask_features = (
+        mask_chord_scale > 0.0
+        or bundle.control_spec.spatial_mode in {
+            CROSS_V1_SPATIAL_REFERENCE_TARGET,
+            CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
+        }
+    )
+    if needs_reference_mask_features:
         reference_tissue_feat = bundle.condition_modules["tissue_downsampler"](
             bundle.condition_modules["hte"](
                 reference_tissue_mask.unsqueeze(0).to(device=bundle.device)
@@ -220,20 +265,68 @@ def run_cross_v1_bundle(
         target_nuclei_feat=target_nuclei_feat,
         spatial_mode=bundle.control_spec.spatial_mode,
     )
+    source_control_tensor = None
+    if mask_chord_scale > 0.0:
+        if reference_tissue_feat is None or reference_nuclei_feat is None:
+            raise ValueError("Cross V1 mask chord guidance requires reference mask features.")
+        source_control_tensor = build_cross_v1_condition(
+            reference_tissue_feat=reference_tissue_feat,
+            reference_nuclei_feat=reference_nuclei_feat,
+            target_tissue_feat=reference_tissue_feat,
+            target_nuclei_feat=reference_nuclei_feat,
+            spatial_mode=bundle.control_spec.spatial_mode,
+        )
+
+    change_mask = None
+    if mask_chord_use_gate:
+        change_mask = _build_mask_change_map(
+            reference_tissue_mask=reference_tissue_mask,
+            reference_nuclei_mask=reference_nuclei_mask,
+            target_tissue_mask=target_tissue_mask,
+            target_nuclei_mask=target_nuclei_mask,
+        )
+
+    source_latents = None
+    if source_latent_init_strength > 0.0:
+        source_latents = _encode_images_to_latents(
+            bundle.flux_pipeline.vae,
+            reference_image.unsqueeze(0),
+            bundle.torch_dtype,
+        )
 
     output_size = tuple(int(v) for v in reference_image.shape[1:])
+    joint_attention_kwargs = {"ip_hidden_states": ip_hidden_states}
+    if bundle.regional_ip_adapter:
+        joint_attention_kwargs.update(
+            {
+                "ip_adapter_masks": {
+                    "key_region_labels": region_token_labels.to(device=bundle.device),
+                    "query_region_labels": query_region_labels,
+                    "strict": bool(bundle.regional_ip_strict),
+                },
+            }
+        )
+
     return _sample_with_flux_controlnet(
         pipe=bundle.flux_pipeline,
         controlnet=bundle.controlnet,
         prompt=prompt,
         control_tensor=control_tensor,
+        source_control_tensor=source_control_tensor,
+        source_latents=source_latents,
+        source_latent_init_strength=source_latent_init_strength,
+        mask_chord_scale=mask_chord_scale,
+        mask_chord_change_mask=change_mask,
+        mask_chord_gate_dilate_radius=mask_chord_gate_dilate_radius,
+        mask_chord_gate_feather_radius=mask_chord_gate_feather_radius,
+        mask_chord_gate_outside_scale=mask_chord_gate_outside_scale,
         output_size=output_size,
         device=bundle.device,
         torch_dtype=bundle.torch_dtype,
         num_inference_steps=bundle.num_inference_steps,
         guidance_scale=bundle.guidance_scale,
         controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
-        joint_attention_kwargs={"ip_hidden_states": ip_hidden_states},
+        joint_attention_kwargs=joint_attention_kwargs,
     )
 
 
@@ -485,6 +578,8 @@ def _load_condition_modules(
         module.eval()
 
     # Load ref_encoder
+    from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder
+
     ref_config = ref_encoder_config or _load_ref_encoder_config(checkpoint_path)
     ref_encoder = ReferenceImageEncoder(
         uni_checkpoint_path=uni_checkpoint_path,
@@ -528,6 +623,14 @@ def _sample_with_flux_controlnet(
     controlnet,
     prompt: str,
     control_tensor: torch.Tensor,
+    source_control_tensor: torch.Tensor | None = None,
+    source_latents: torch.Tensor | None = None,
+    source_latent_init_strength: float = 0.0,
+    mask_chord_scale: float = 0.0,
+    mask_chord_change_mask: torch.Tensor | None = None,
+    mask_chord_gate_dilate_radius: int = 0,
+    mask_chord_gate_feather_radius: int = 0,
+    mask_chord_gate_outside_scale: float = 0.0,
     output_size: tuple[int, int],
     device: str,
     torch_dtype: torch.dtype,
@@ -551,6 +654,15 @@ def _sample_with_flux_controlnet(
         control_tensor, 1, control_tensor.shape[1],
         control_tensor.shape[2], control_tensor.shape[3],
     )
+    source_control_image = None
+    if source_control_tensor is not None:
+        source_control_image = FluxControlNetPipeline._pack_latents(
+            source_control_tensor,
+            1,
+            source_control_tensor.shape[1],
+            source_control_tensor.shape[2],
+            source_control_tensor.shape[3],
+        )
     num_channels_latents = pipe.transformer.config.in_channels // 4
     latents, latent_image_ids = pipe.prepare_latents(
         1, num_channels_latents, height, width,
@@ -570,44 +682,90 @@ def _sample_with_flux_controlnet(
     timesteps, _ = retrieve_timesteps(
         pipe.scheduler, num_inference_steps, torch_device, sigmas=sigmas, mu=mu,
     )
+    source_latent_init_strength = _validate_source_latent_init_strength(source_latent_init_strength)
+    if source_latent_init_strength > 0.0:
+        timesteps = _source_init_timesteps(timesteps, source_latent_init_strength)
+        source_packed_latents = _pack_source_latents_for_sampling(
+            source_latents=source_latents,
+            expected_latents=latents,
+            torch_dtype=prompt_embeds.dtype,
+        )
+        start_sigma = _sigma_for_timestep(
+            pipe.scheduler,
+            timesteps[:1].to(device=torch_device, dtype=torch.float32),
+            n_dim=latents.ndim,
+            dtype=latents.dtype,
+        )
+        latents = _prepare_source_noised_latents(
+            source_latents=source_packed_latents,
+            noise_latents=latents,
+            sigma=start_sigma,
+        )
+
+    mask_chord_scale = _validate_nonnegative_float(mask_chord_scale, "mask_chord_scale")
+    mask_chord_gate = None
+    if mask_chord_change_mask is not None:
+        mask_chord_gate = _build_packed_change_gate(
+            change_mask=mask_chord_change_mask,
+            latent_height=control_tensor.shape[2],
+            latent_width=control_tensor.shape[3],
+            packed_channels=latents.shape[-1],
+            device=torch_device,
+            dtype=latents.dtype,
+            dilate_radius=mask_chord_gate_dilate_radius,
+            feather_radius=mask_chord_gate_feather_radius,
+            outside_scale=mask_chord_gate_outside_scale,
+        )
     controlnet_blocks_repeat = False if getattr(controlnet, "input_hint_block", None) is None else True
 
     for timestep in timesteps:
-        expanded_timestep = timestep.expand(latents.shape[0]).to(latents.dtype)
-        guidance = None
-        if controlnet.config.guidance_embeds:
-            guidance = torch.tensor([guidance_scale], device=torch_device).expand(latents.shape[0])
-        controlnet_block_samples, controlnet_single_block_samples = controlnet(
-            hidden_states=latents,
-            controlnet_cond=control_image,
-            controlnet_mode=None,
-            conditioning_scale=controlnet_conditioning_scale,
-            timestep=expanded_timestep / 1000,
-            guidance=guidance,
-            pooled_projections=pooled_prompt_embeds,
-            encoder_hidden_states=prompt_embeds,
-            txt_ids=text_ids,
-            img_ids=latent_image_ids,
-            joint_attention_kwargs=None,
-            return_dict=False,
-        )
-        transformer_guidance = None
-        if pipe.transformer.config.guidance_embeds:
-            transformer_guidance = torch.tensor([guidance_scale], device=torch_device).expand(latents.shape[0])
-        noise_pred = pipe.transformer(
-            hidden_states=latents,
-            timestep=expanded_timestep / 1000,
-            guidance=transformer_guidance,
-            pooled_projections=pooled_prompt_embeds,
-            encoder_hidden_states=prompt_embeds,
-            controlnet_block_samples=controlnet_block_samples,
-            controlnet_single_block_samples=controlnet_single_block_samples,
-            txt_ids=text_ids,
-            img_ids=latent_image_ids,
-            joint_attention_kwargs=dict(joint_attention_kwargs) if joint_attention_kwargs is not None else None,
-            return_dict=False,
-            controlnet_blocks_repeat=controlnet_blocks_repeat,
-        )[0]
+        if mask_chord_scale > 0.0:
+            if source_control_image is None:
+                raise ValueError("mask_chord_scale > 0 requires source_control_tensor.")
+            source_noise_pred, noise_pred = _predict_flux_controlnet_velocity_pair(
+                pipe=pipe,
+                controlnet=controlnet,
+                hidden_states=latents,
+                source_controlnet_cond=source_control_image,
+                target_controlnet_cond=control_image,
+                conditioning_scale=controlnet_conditioning_scale,
+                timestep=timestep,
+                guidance_scale=guidance_scale,
+                pooled_projections=pooled_prompt_embeds,
+                encoder_hidden_states=prompt_embeds,
+                txt_ids=text_ids,
+                img_ids=latent_image_ids,
+                controlnet_blocks_repeat=controlnet_blocks_repeat,
+                joint_attention_kwargs=joint_attention_kwargs,
+            )
+            delta = noise_pred - source_noise_pred
+            if mask_chord_gate is not None:
+                delta = delta * mask_chord_gate
+            noise_pred = source_noise_pred + mask_chord_scale * delta
+        else:
+            expanded_timestep = timestep.expand(latents.shape[0]).to(latents.dtype)
+            controlnet_guidance = None
+            if controlnet.config.guidance_embeds:
+                controlnet_guidance = torch.tensor([guidance_scale], device=torch_device).expand(latents.shape[0])
+            transformer_guidance = None
+            if pipe.transformer.config.guidance_embeds:
+                transformer_guidance = torch.tensor([guidance_scale], device=torch_device).expand(latents.shape[0])
+            noise_pred = _predict_flux_controlnet_velocity(
+                pipe=pipe,
+                controlnet=controlnet,
+                hidden_states=latents,
+                controlnet_cond=control_image,
+                conditioning_scale=controlnet_conditioning_scale,
+                timestep=expanded_timestep / 1000,
+                controlnet_guidance=controlnet_guidance,
+                transformer_guidance=transformer_guidance,
+                pooled_projections=pooled_prompt_embeds,
+                encoder_hidden_states=prompt_embeds,
+                txt_ids=text_ids,
+                img_ids=latent_image_ids,
+                controlnet_blocks_repeat=controlnet_blocks_repeat,
+                joint_attention_kwargs=joint_attention_kwargs,
+            )
         latents_dtype = latents.dtype
         latents = pipe.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
         if latents.dtype != latents_dtype:
@@ -617,6 +775,150 @@ def _sample_with_flux_controlnet(
     latents = (latents / pipe.vae.config.scaling_factor) + pipe.vae.config.shift_factor
     image = pipe.vae.decode(latents.to(dtype=torch_dtype), return_dict=False)[0]
     return pipe.image_processor.postprocess(image, output_type="pil")[0]
+
+
+def _encode_images_to_latents(vae, images: torch.Tensor, torch_dtype: torch.dtype) -> torch.Tensor:
+    device = next(vae.parameters()).device
+    images = images.to(device=device, dtype=torch_dtype)
+    images = images * 2.0 - 1.0
+    posterior = vae.encode(images).latent_dist
+    latents = deterministic_latent_from_posterior(posterior)
+    return (latents - vae.config.shift_factor) * vae.config.scaling_factor
+
+
+def _predict_flux_controlnet_velocity_pair(
+    *,
+    pipe,
+    controlnet,
+    hidden_states: torch.Tensor,
+    source_controlnet_cond: torch.Tensor,
+    target_controlnet_cond: torch.Tensor,
+    conditioning_scale: float,
+    timestep: torch.Tensor,
+    guidance_scale: float,
+    pooled_projections: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    txt_ids: torch.Tensor,
+    img_ids: torch.Tensor,
+    controlnet_blocks_repeat: bool,
+    joint_attention_kwargs: dict | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    batch_size = int(hidden_states.shape[0])
+    batched_hidden_states = torch.cat([hidden_states, hidden_states], dim=0)
+    batched_controlnet_cond = torch.cat([source_controlnet_cond, target_controlnet_cond], dim=0)
+    batched_timestep = timestep.expand(batch_size * 2).to(dtype=hidden_states.dtype) / 1000
+    batched_pooled = torch.cat([pooled_projections, pooled_projections], dim=0)
+    batched_encoder_hidden = torch.cat([encoder_hidden_states, encoder_hidden_states], dim=0)
+    device = hidden_states.device
+
+    controlnet_guidance = None
+    if controlnet.config.guidance_embeds:
+        controlnet_guidance = torch.full(
+            (batch_size * 2,),
+            float(guidance_scale),
+            device=device,
+            dtype=hidden_states.dtype,
+        )
+    transformer_guidance = None
+    if pipe.transformer.config.guidance_embeds:
+        transformer_guidance = torch.full(
+            (batch_size * 2,),
+            float(guidance_scale),
+            device=device,
+            dtype=hidden_states.dtype,
+        )
+
+    batched_noise_pred = _predict_flux_controlnet_velocity(
+        pipe=pipe,
+        controlnet=controlnet,
+        hidden_states=batched_hidden_states,
+        controlnet_cond=batched_controlnet_cond,
+        conditioning_scale=conditioning_scale,
+        timestep=batched_timestep,
+        controlnet_guidance=controlnet_guidance,
+        transformer_guidance=transformer_guidance,
+        pooled_projections=batched_pooled,
+        encoder_hidden_states=batched_encoder_hidden,
+        txt_ids=txt_ids,
+        img_ids=img_ids,
+        controlnet_blocks_repeat=controlnet_blocks_repeat,
+        joint_attention_kwargs=_repeat_joint_attention_kwargs(joint_attention_kwargs, repeats=2),
+    )
+    source_noise_pred, target_noise_pred = batched_noise_pred.chunk(2, dim=0)
+    return source_noise_pred, target_noise_pred
+
+
+def _repeat_joint_attention_kwargs(kwargs: dict | None, *, repeats: int) -> dict | None:
+    if kwargs is None:
+        return None
+    repeated: dict = {}
+    for key, value in kwargs.items():
+        if key == "ip_hidden_states" and isinstance(value, list):
+            repeated[key] = [
+                torch.cat([hidden_state] * repeats, dim=0)
+                for hidden_state in value
+            ]
+        elif key == "ip_adapter_masks" and isinstance(value, dict):
+            repeated[key] = {
+                sub_key: (
+                    torch.cat([sub_value] * repeats, dim=0)
+                    if torch.is_tensor(sub_value) and sub_value.shape[:1] == (1,)
+                    else sub_value
+                )
+                for sub_key, sub_value in value.items()
+            }
+        elif torch.is_tensor(value) and value.shape[:1] == (1,):
+            repeated[key] = torch.cat([value] * repeats, dim=0)
+        else:
+            repeated[key] = value
+    return repeated
+
+
+def _predict_flux_controlnet_velocity(
+    *,
+    pipe,
+    controlnet,
+    hidden_states: torch.Tensor,
+    controlnet_cond: torch.Tensor,
+    conditioning_scale: float,
+    timestep: torch.Tensor,
+    controlnet_guidance: torch.Tensor | None,
+    transformer_guidance: torch.Tensor | None,
+    pooled_projections: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    txt_ids: torch.Tensor,
+    img_ids: torch.Tensor,
+    controlnet_blocks_repeat: bool,
+    joint_attention_kwargs: dict | None = None,
+) -> torch.Tensor:
+    controlnet_block_samples, controlnet_single_block_samples = controlnet(
+        hidden_states=hidden_states,
+        controlnet_cond=controlnet_cond,
+        controlnet_mode=None,
+        conditioning_scale=conditioning_scale,
+        timestep=timestep,
+        guidance=controlnet_guidance,
+        pooled_projections=pooled_projections,
+        encoder_hidden_states=encoder_hidden_states,
+        txt_ids=txt_ids,
+        img_ids=img_ids,
+        joint_attention_kwargs=None,
+        return_dict=False,
+    )
+    return pipe.transformer(
+        hidden_states=hidden_states,
+        timestep=timestep,
+        guidance=transformer_guidance,
+        pooled_projections=pooled_projections,
+        encoder_hidden_states=encoder_hidden_states,
+        controlnet_block_samples=controlnet_block_samples,
+        controlnet_single_block_samples=controlnet_single_block_samples,
+        txt_ids=txt_ids,
+        img_ids=img_ids,
+        joint_attention_kwargs=dict(joint_attention_kwargs) if joint_attention_kwargs is not None else None,
+        return_dict=False,
+        controlnet_blocks_repeat=controlnet_blocks_repeat,
+    )[0]
 
 
 def _calculate_shift(

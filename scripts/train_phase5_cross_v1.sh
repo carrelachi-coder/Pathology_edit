@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-# Phase 5.3 Cross V1 Experiment B continuation.
-# Load the 20k Cross V1 checkpoint, train only ControlNet residual output
-# projections plus spatial conditioning/IP/ref, and continue with weak HED
-# counterfactual + sparse self-reconstruction. Do not add swap/style/single-stream IP.
+# Phase 5.3 Cross V1 regional IP continuation.
+# Default path: load checkpoint-66000, freeze ControlNet/conditioning with
+# --a1-lite, and train only the mask-guided regional IP-Adapter plus the
+# reference projection from degraded-target noising and UNI spatial region loss.
 
 GPU_IDS="${GPU_IDS:-1,2,4}"
 export CUDA_VISIBLE_DEVICES="${GPU_IDS}"
@@ -23,12 +23,16 @@ UNI_CHECKPOINT="${UNI_CHECKPOINT:-${PROJECT_ROOT}/UNI-2h/pytorch_model.bin}"
 
 # Cross V1 training metadata (165K pairs, already built)
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
-SOURCE_CROSS_V1_OUTPUT_DIR="${SOURCE_CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_skip_perceiver_20k}"
-CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/checkpoint-20000}"
-CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_expB_outputs_weak_hed}"
+SOURCE_CROSS_V1_OUTPUT_DIR="${SOURCE_CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_expB_outputs_weak_hed}"
+CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/checkpoint-66000}"
+CONDITIONING_CHECKPOINT="${CONDITIONING_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}}"
+CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_regional_ip_66k_degraded}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
+REGIONAL_IP_ADAPTER="${REGIONAL_IP_ADAPTER:-1}"
+REGIONAL_IP_STRICT="${REGIONAL_IP_STRICT:-1}"
+A1_LITE="${A1_LITE:-1}"
 LOAD_REF_ENCODER="${LOAD_REF_ENCODER:-1}"
-LOAD_IP_ADAPTER="${LOAD_IP_ADAPTER:-1}"
+LOAD_IP_ADAPTER="${LOAD_IP_ADAPTER:-0}"
 LOAD_SINGLE_IP_FROM_CHECKPOINT="${LOAD_SINGLE_IP_FROM_CHECKPOINT:-0}"
 
 MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
@@ -37,9 +41,18 @@ NUM_PROCESSES="${NUM_PROCESSES:-${#GPU_ID_ARRAY[@]}}"
 USE_8BIT_ADAM="${USE_8BIT_ADAM:-1}"
 GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
 
-# Reference-usage sanity losses. Keep style/swap off for a clean attribution test.
+# Reference-usage sanity losses. Keep RGB style/swap off for a clean attribution test.
 PERCEPTUAL_LOSS_WEIGHT="${PERCEPTUAL_LOSS_WEIGHT:-0.5}"
 PERCEPTUAL_LOSS_INTERVAL="${PERCEPTUAL_LOSS_INTERVAL:-1}"
+REFERENCE_REGION_LOSS_WEIGHT="${REFERENCE_REGION_LOSS_WEIGHT:-0.4}"
+REFERENCE_REGION_LOSS_INTERVAL="${REFERENCE_REGION_LOSS_INTERVAL:-1}"
+REFERENCE_REGION_TISSUE_WEIGHT="${REFERENCE_REGION_TISSUE_WEIGHT:-1.0}"
+REFERENCE_REGION_NUCLEI_WEIGHT="${REFERENCE_REGION_NUCLEI_WEIGHT:-0.25}"
+REFERENCE_REGION_MEAN_WEIGHT="${REFERENCE_REGION_MEAN_WEIGHT:-1.0}"
+REFERENCE_REGION_STD_WEIGHT="${REFERENCE_REGION_STD_WEIGHT:-0.5}"
+REFERENCE_REGION_COSINE_WEIGHT="${REFERENCE_REGION_COSINE_WEIGHT:-0.25}"
+REFERENCE_REGION_MIN_TOKENS="${REFERENCE_REGION_MIN_TOKENS:-2}"
+REFERENCE_REGION_MAX_REGIONS_PER_SAMPLE="${REFERENCE_REGION_MAX_REGIONS_PER_SAMPLE:-}"
 REFERENCE_STYLE_LOSS_WEIGHT="${REFERENCE_STYLE_LOSS_WEIGHT:-0}"
 REFERENCE_STYLE_TISSUE_WEIGHT="${REFERENCE_STYLE_TISSUE_WEIGHT:-1.0}"
 REFERENCE_STYLE_NUCLEI_WEIGHT="${REFERENCE_STYLE_NUCLEI_WEIGHT:-1.0}"
@@ -65,7 +78,18 @@ IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-1e-5}"
 IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-0}"
 IP_SINGLE_NUM_LAYERS="${IP_SINGLE_NUM_LAYERS:-0}"
 STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-hed_aggressive}"
-STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0.5}"
+STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0.25}"
+NOISING_DEGRADATION="${NOISING_DEGRADATION:-hed_texture}"
+DEGRADED_NOISING_MIN_SIGMA="${DEGRADED_NOISING_MIN_SIGMA:-0.15}"
+TEXTURE_BLUR_PROB="${TEXTURE_BLUR_PROB:-0.7}"
+TEXTURE_BLUR_SIGMA_MIN="${TEXTURE_BLUR_SIGMA_MIN:-0.4}"
+TEXTURE_BLUR_SIGMA_MAX="${TEXTURE_BLUR_SIGMA_MAX:-1.2}"
+TEXTURE_DOWNSAMPLE_PROB="${TEXTURE_DOWNSAMPLE_PROB:-0.7}"
+TEXTURE_DOWNSAMPLE_SCALE_MIN="${TEXTURE_DOWNSAMPLE_SCALE_MIN:-0.45}"
+TEXTURE_DOWNSAMPLE_SCALE_MAX="${TEXTURE_DOWNSAMPLE_SCALE_MAX:-0.8}"
+TEXTURE_NOISE_PROB="${TEXTURE_NOISE_PROB:-0.25}"
+TEXTURE_NOISE_STD_MIN="${TEXTURE_NOISE_STD_MIN:-0.005}"
+TEXTURE_NOISE_STD_MAX="${TEXTURE_NOISE_STD_MAX:-0.02}"
 HED_SIGMA="${HED_SIGMA:-0.1}"
 HED_BETA="${HED_BETA:-0.01}"
 HED_STRONG_ALPHA_SAMPLING="${HED_STRONG_ALPHA_SAMPLING:-0}"
@@ -177,6 +201,17 @@ fi
 TRAIN_HED_ARGS=(
   --stain-augmentation "${STAIN_AUGMENTATION}"
   --stain-counterfactual-prob "${STAIN_COUNTERFACTUAL_PROB}"
+  --noising-degradation "${NOISING_DEGRADATION}"
+  --degraded-noising-min-sigma "${DEGRADED_NOISING_MIN_SIGMA}"
+  --texture-blur-prob "${TEXTURE_BLUR_PROB}"
+  --texture-blur-sigma-min "${TEXTURE_BLUR_SIGMA_MIN}"
+  --texture-blur-sigma-max "${TEXTURE_BLUR_SIGMA_MAX}"
+  --texture-downsample-prob "${TEXTURE_DOWNSAMPLE_PROB}"
+  --texture-downsample-scale-min "${TEXTURE_DOWNSAMPLE_SCALE_MIN}"
+  --texture-downsample-scale-max "${TEXTURE_DOWNSAMPLE_SCALE_MAX}"
+  --texture-noise-prob "${TEXTURE_NOISE_PROB}"
+  --texture-noise-std-min "${TEXTURE_NOISE_STD_MIN}"
+  --texture-noise-std-max "${TEXTURE_NOISE_STD_MAX}"
   --hed-sigma "${HED_SIGMA}"
   --hed-beta "${HED_BETA}"
   --hed-alpha-min "${HED_ALPHA_MIN}"
@@ -200,6 +235,9 @@ if [[ -n "${CONTROLNET_CHECKPOINT}" ]]; then
     --load-conditioning-from-checkpoint
   )
 fi
+if [[ -n "${CONDITIONING_CHECKPOINT}" ]]; then
+  TRAIN_CHECKPOINT_ARGS+=(--conditioning-checkpoint "${CONDITIONING_CHECKPOINT}")
+fi
 if [[ "${LOAD_REF_ENCODER}" == "1" ]]; then
   TRAIN_CHECKPOINT_ARGS+=(--load-ref-encoder-from-checkpoint)
 fi
@@ -210,10 +248,36 @@ if [[ "${LOAD_SINGLE_IP_FROM_CHECKPOINT}" == "1" ]]; then
   TRAIN_CHECKPOINT_ARGS+=(--load-single-ip-from-checkpoint)
 fi
 
+TRAIN_MODE_ARGS=()
+if [[ "${A1_LITE}" == "1" ]]; then
+  TRAIN_MODE_ARGS+=(--a1-lite)
+fi
+if [[ "${REGIONAL_IP_ADAPTER}" == "1" ]]; then
+  TRAIN_MODE_ARGS+=(--regional-ip-adapter)
+fi
+if [[ "${REGIONAL_IP_STRICT}" != "1" ]]; then
+  TRAIN_MODE_ARGS+=(--no-regional-ip-strict)
+fi
+
+TRAIN_REGION_LOSS_ARGS=(
+  --reference-region-loss-weight "${REFERENCE_REGION_LOSS_WEIGHT}"
+  --reference-region-loss-interval "${REFERENCE_REGION_LOSS_INTERVAL}"
+  --reference-region-tissue-weight "${REFERENCE_REGION_TISSUE_WEIGHT}"
+  --reference-region-nuclei-weight "${REFERENCE_REGION_NUCLEI_WEIGHT}"
+  --reference-region-mean-weight "${REFERENCE_REGION_MEAN_WEIGHT}"
+  --reference-region-std-weight "${REFERENCE_REGION_STD_WEIGHT}"
+  --reference-region-cosine-weight "${REFERENCE_REGION_COSINE_WEIGHT}"
+  --reference-region-min-tokens "${REFERENCE_REGION_MIN_TOKENS}"
+)
+if [[ -n "${REFERENCE_REGION_MAX_REGIONS_PER_SAMPLE}" ]]; then
+  TRAIN_REGION_LOSS_ARGS+=(--reference-region-max-regions-per-sample "${REFERENCE_REGION_MAX_REGIONS_PER_SAMPLE}")
+fi
+
 accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GPU_IDS}" \
   controlnet_train/cli/train_controlnet_flux_cross_v1.py \
   --pretrained_model_name_or_path "${MODEL_DIR}" \
   --train-metadata "${CROSS_META}" \
+  "${TRAIN_MODE_ARGS[@]}" \
   "${TRAIN_HED_ARGS[@]}" \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
   "${TRAIN_CHECKPOINT_ARGS[@]}" \
@@ -250,6 +314,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --skip-reference-perceiver \
   --disable-reference-perceiver-self-attn \
   --perceptual-loss-weight "${PERCEPTUAL_LOSS_WEIGHT}" \
+  "${TRAIN_REGION_LOSS_ARGS[@]}" \
   --reference-style-loss-weight "${REFERENCE_STYLE_LOSS_WEIGHT}" \
   --reference-style-tissue-weight "${REFERENCE_STYLE_TISSUE_WEIGHT}" \
   --reference-style-nuclei-weight "${REFERENCE_STYLE_NUCLEI_WEIGHT}" \
@@ -263,5 +328,5 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   "${TRAIN_AUX_INTERVAL_ARGS[@]}" \
   --guidance-scale 3.5 \
   --report-to tensorboard \
-  --tracker-project-name flux_controlnet_phase5_cross_v1_expB_outputs_weak_hed \
+  --tracker-project-name flux_controlnet_phase5_cross_v1_regional_ip_66k \
   --prompt-source dataset

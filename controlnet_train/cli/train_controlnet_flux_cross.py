@@ -19,7 +19,7 @@ def parse_args(input_args=None) -> argparse.Namespace:
         "--cross-version",
         type=str,
         default="v0",
-        choices=["v0", "v1", "v2.1", "v2_1", "v21", "v3"],
+        choices=["v0", "v1", "v2.1", "v2_1", "v21", "v2.2", "v2_2", "v22", "v3"],
     )
     parser.add_argument(
         "--prompt-source",
@@ -96,6 +96,12 @@ def main(input_args=None) -> None:
 
         args.cross_version = "v2.1"
         run_cross_v2_1_training(args)
+        return
+    if normalized in {"v2.2", "v22"}:
+        from controlnet_train.training.flux_phase5_cross_v2_2 import run_cross_v2_2_training
+
+        args.cross_version = "v2.2"
+        run_cross_v2_2_training(args)
         return
     if normalized == "v3":
         from controlnet_train.training.flux_phase5_cross_v3 import run_cross_v3_training

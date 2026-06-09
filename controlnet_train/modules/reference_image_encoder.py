@@ -92,10 +92,14 @@ class ReferenceImageEncoder(nn.Module):
     @property
     def num_output_tokens(self) -> int:
         if self.skip_perceiver:
-            patch_size = int(UNI2H_KWARGS["patch_size"])
-            image_size = int(UNI2H_KWARGS["img_size"])
-            return (image_size // patch_size) * (image_size // patch_size)
+            return self.num_spatial_tokens
         return self.num_tokens
+
+    @property
+    def num_spatial_tokens(self) -> int:
+        patch_size = int(UNI2H_KWARGS["patch_size"])
+        image_size = int(UNI2H_KWARGS["img_size"])
+        return (image_size // patch_size) * (image_size // patch_size)
 
     def _load_uni(self, checkpoint_path: str | Path):
         import torch.distributed as dist
@@ -165,12 +169,34 @@ class ReferenceImageEncoder(nn.Module):
             )
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        uni_features = self.extract_uni_features(images)
-        projected = self.proj_mlp(uni_features)
+        projected = self.encode_projected_patch_tokens(images)
         if self.skip_perceiver:
             return projected
         resampled = self._resample(projected)
         return resampled
+
+    def encode_projected_patch_tokens(
+        self,
+        images: torch.Tensor,
+        *,
+        allow_input_grad: bool = False,
+    ) -> torch.Tensor:
+        """Return projected UNI spatial patch tokens before global Perceiver pooling."""
+        uni_features = self.extract_uni_features(
+            images,
+            allow_input_grad=allow_input_grad,
+        )
+        return self.proj_mlp(uni_features)
+
+    def encode_region_ip_tokens(
+        self,
+        images: torch.Tensor,
+        region_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return spatial IP tokens plus one tissue-region label per token."""
+        projected = self.encode_projected_patch_tokens(images)
+        labels = resize_mask_to_token_labels(region_mask, projected.shape[1])
+        return projected, labels.to(device=projected.device)
 
 
 class PerceiverCrossAttentionLayer(nn.Module):
@@ -227,3 +253,27 @@ class PerceiverCrossAttentionLayer(nn.Module):
             latents = latents + self_out
         latents = latents + self.ff(self.ff_norm(latents))
         return latents
+
+
+def resize_mask_to_token_labels(mask: torch.Tensor, num_tokens: int) -> torch.Tensor:
+    """Nearest-resize a BHW/B1HW mask to the square token grid and flatten to BTN labels."""
+    if mask.ndim == 2:
+        mask = mask.unsqueeze(0)
+    if mask.ndim == 4 and mask.shape[1] == 1:
+        mask = mask[:, 0]
+    if mask.ndim != 3:
+        raise ValueError(f"mask must have shape (B,H,W) or (B,1,H,W), got {tuple(mask.shape)}")
+    grid_h, grid_w = _infer_square_token_grid(int(num_tokens))
+    labels = F.interpolate(
+        mask.unsqueeze(1).float(),
+        size=(grid_h, grid_w),
+        mode="nearest",
+    )[:, 0]
+    return labels.to(dtype=torch.long).flatten(1)
+
+
+def _infer_square_token_grid(num_tokens: int) -> tuple[int, int]:
+    side = int(round(float(num_tokens) ** 0.5))
+    if side * side != int(num_tokens):
+        raise ValueError(f"expected a square spatial token grid, got num_tokens={num_tokens}")
+    return side, side

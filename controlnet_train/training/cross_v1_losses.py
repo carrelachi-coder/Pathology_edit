@@ -23,6 +23,20 @@ class RegionalStainStyleLossConfig:
     exclude_labels: tuple[int, ...] = (0,)
 
 
+@dataclass(frozen=True)
+class RegionalFeatureLossConfig:
+    """Weights for class-matched spatial feature-map region loss."""
+
+    tissue_weight: float = 1.0
+    nuclei_weight: float = 0.0
+    mean_weight: float = 1.0
+    std_weight: float = 0.5
+    pooled_cosine_weight: float = 0.25
+    min_tokens: int = 2
+    max_regions_per_sample: int | None = None
+    exclude_labels: tuple[int, ...] = (0,)
+
+
 def per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """Return one denoising MSE value per batch item."""
     if prediction.shape != target.shape:
@@ -232,6 +246,67 @@ def regional_stain_style_loss(
     }
 
 
+def regional_feature_map_loss(
+    *,
+    prediction_features: torch.Tensor,
+    reference_features: torch.Tensor,
+    target_tissue_mask: torch.Tensor,
+    reference_tissue_mask: torch.Tensor,
+    target_nuclei_mask: torch.Tensor | None = None,
+    reference_nuclei_mask: torch.Tensor | None = None,
+    sample_mask: torch.Tensor | None = None,
+    config: RegionalFeatureLossConfig | None = None,
+) -> dict[str, torch.Tensor | int]:
+    """Match frozen pathology feature-map statistics in class-aligned regions.
+
+    ``prediction_features`` and ``reference_features`` are spatial token maps
+    flattened as ``(B, T, C)``. Masks are nearest-resized to the square token
+    grid and regions are matched by label ID, so target/ref patches need not be
+    spatially aligned.
+    """
+    cfg = config or RegionalFeatureLossConfig()
+    _validate_feature_tokens(prediction_features, reference_features)
+    zero = prediction_features.new_zeros(())
+
+    tissue_loss, tissue_regions = _regional_feature_mask_loss(
+        prediction_features=prediction_features,
+        reference_features=reference_features,
+        target_mask=target_tissue_mask,
+        reference_mask=reference_tissue_mask,
+        sample_mask=sample_mask,
+        config=cfg,
+    )
+    nuclei_loss = zero
+    nuclei_regions = 0
+    if target_nuclei_mask is not None and reference_nuclei_mask is not None:
+        nuclei_loss, nuclei_regions = _regional_feature_mask_loss(
+            prediction_features=prediction_features,
+            reference_features=reference_features,
+            target_mask=target_nuclei_mask,
+            reference_mask=reference_nuclei_mask,
+            sample_mask=sample_mask,
+            config=cfg,
+        )
+
+    weighted = zero
+    active_weight = 0.0
+    if tissue_regions > 0 and cfg.tissue_weight > 0.0:
+        weighted = weighted + float(cfg.tissue_weight) * tissue_loss
+        active_weight += float(cfg.tissue_weight)
+    if nuclei_regions > 0 and cfg.nuclei_weight > 0.0:
+        weighted = weighted + float(cfg.nuclei_weight) * nuclei_loss
+        active_weight += float(cfg.nuclei_weight)
+
+    total = weighted / active_weight if active_weight > 0.0 else zero
+    return {
+        "total": total,
+        "tissue": tissue_loss,
+        "nuclei": nuclei_loss,
+        "tissue_regions": tissue_regions,
+        "nuclei_regions": nuclei_regions,
+    }
+
+
 def _regional_mask_loss(
     *,
     prediction: torch.Tensor,
@@ -299,6 +374,85 @@ def _regional_mask_loss(
     return torch.stack(losses).mean(), len(losses)
 
 
+def _regional_feature_mask_loss(
+    *,
+    prediction_features: torch.Tensor,
+    reference_features: torch.Tensor,
+    target_mask: torch.Tensor,
+    reference_mask: torch.Tensor,
+    sample_mask: torch.Tensor | None,
+    config: RegionalFeatureLossConfig,
+) -> tuple[torch.Tensor, int]:
+    token_grid = _infer_square_token_grid(prediction_features.shape[1])
+    target_mask = _resize_mask_to_image(target_mask, token_grid)
+    reference_mask = _resize_mask_to_image(reference_mask, token_grid)
+    if target_mask.shape != reference_mask.shape:
+        raise ValueError(
+            f"target/reference mask batch shapes differ: {tuple(target_mask.shape)} vs {tuple(reference_mask.shape)}"
+        )
+    if target_mask.shape[0] != prediction_features.shape[0]:
+        raise ValueError(
+            f"mask batch size {target_mask.shape[0]} does not match feature batch size {prediction_features.shape[0]}"
+        )
+    if sample_mask is None:
+        active_samples = torch.ones(prediction_features.shape[0], device=prediction_features.device, dtype=torch.bool)
+    else:
+        active_samples = sample_mask.to(device=prediction_features.device, dtype=torch.bool).flatten()
+        if active_samples.shape[0] != prediction_features.shape[0]:
+            raise ValueError(
+                f"sample_mask shape {tuple(active_samples.shape)} does not match batch size {prediction_features.shape[0]}"
+            )
+
+    losses = []
+    exclude = set(int(label) for label in config.exclude_labels)
+    min_tokens = max(1, int(config.min_tokens))
+    prediction_map = prediction_features.reshape(
+        prediction_features.shape[0],
+        token_grid[0],
+        token_grid[1],
+        prediction_features.shape[-1],
+    )
+    reference_map = reference_features.reshape(
+        reference_features.shape[0],
+        token_grid[0],
+        token_grid[1],
+        reference_features.shape[-1],
+    )
+    for batch_index in range(prediction_features.shape[0]):
+        if not bool(active_samples[batch_index].item()):
+            continue
+        labels = _shared_labels(
+            target_mask[batch_index],
+            reference_mask[batch_index],
+            exclude_labels=exclude,
+        )
+        if config.max_regions_per_sample is not None and len(labels) > config.max_regions_per_sample:
+            labels = _largest_labels(
+                labels,
+                target_mask[batch_index],
+                max_regions=int(config.max_regions_per_sample),
+            )
+        for label in labels:
+            target_region = target_mask[batch_index] == label
+            reference_region = reference_mask[batch_index] == label
+            if int(target_region.sum().item()) < min_tokens:
+                continue
+            if int(reference_region.sum().item()) < min_tokens:
+                continue
+            losses.append(
+                _region_feature_loss(
+                    prediction_map[batch_index],
+                    reference_map[batch_index],
+                    target_region,
+                    reference_region,
+                    config=config,
+                )
+            )
+    if not losses:
+        return prediction_features.new_zeros(()), 0
+    return torch.stack(losses).mean(), len(losses)
+
+
 def _region_stain_style_loss(
     prediction: torch.Tensor,
     reference: torch.Tensor,
@@ -323,6 +477,38 @@ def _region_stain_style_loss(
             ref_stats["covariance"],
         )
         normalizer += float(config.covariance_weight)
+    return total / normalizer if normalizer > 0.0 else total
+
+
+def _region_feature_loss(
+    prediction: torch.Tensor,
+    reference: torch.Tensor,
+    target_region: torch.Tensor,
+    reference_region: torch.Tensor,
+    *,
+    config: RegionalFeatureLossConfig,
+) -> torch.Tensor:
+    pred_values = prediction[target_region].float()
+    ref_values = reference.detach()[reference_region].float()
+    if pred_values.ndim != 2 or ref_values.ndim != 2:
+        raise ValueError("feature regions must select token-by-channel matrices")
+    pred_mean = pred_values.mean(dim=0)
+    ref_mean = ref_values.mean(dim=0)
+    pred_std = torch.sqrt(pred_values.var(dim=0, unbiased=False) + 1e-6)
+    ref_std = torch.sqrt(ref_values.var(dim=0, unbiased=False) + 1e-6)
+
+    total = prediction.new_zeros(())
+    normalizer = 0.0
+    if config.mean_weight > 0.0:
+        total = total + float(config.mean_weight) * F.l1_loss(pred_mean, ref_mean)
+        normalizer += float(config.mean_weight)
+    if config.std_weight > 0.0:
+        total = total + float(config.std_weight) * F.l1_loss(pred_std, ref_std)
+        normalizer += float(config.std_weight)
+    if config.pooled_cosine_weight > 0.0:
+        cosine = F.cosine_similarity(pred_mean, ref_mean, dim=0, eps=1e-6)
+        total = total + float(config.pooled_cosine_weight) * (1.0 - cosine)
+        normalizer += float(config.pooled_cosine_weight)
     return total / normalizer if normalizer > 0.0 else total
 
 
@@ -351,6 +537,26 @@ def _resize_mask_to_image(mask: torch.Tensor, image_size: tuple[int, int]) -> to
         mode="nearest",
     )
     return resized[:, 0].to(dtype=torch.long)
+
+
+def _infer_square_token_grid(num_tokens: int) -> tuple[int, int]:
+    side = int(round(float(num_tokens) ** 0.5))
+    if side * side != int(num_tokens):
+        raise ValueError(f"expected square feature token grid, got {num_tokens} tokens")
+    return side, side
+
+
+def _validate_feature_tokens(prediction_features: torch.Tensor, reference_features: torch.Tensor) -> None:
+    if prediction_features.shape != reference_features.shape:
+        raise ValueError(
+            "prediction_features and reference_features shapes differ: "
+            f"{tuple(prediction_features.shape)} vs {tuple(reference_features.shape)}"
+        )
+    if prediction_features.ndim != 3:
+        raise ValueError(
+            "features must have shape (B,T,C), "
+            f"got {tuple(prediction_features.shape)}"
+        )
 
 
 def _shared_labels(

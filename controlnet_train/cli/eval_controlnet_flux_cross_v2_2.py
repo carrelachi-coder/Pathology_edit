@@ -1,4 +1,4 @@
-"""Evaluate a Phase 5.3 Cross V2.1 FLUX ControlNet."""
+"""Evaluate a Phase 5.3 Cross V2.2 FLUX ControlNet."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate Phase 5.3 Cross V2.1 FLUX ControlNet.")
+    parser = argparse.ArgumentParser(description="Evaluate Phase 5.3 Cross V2.2 FLUX ControlNet.")
     parser.add_argument("--pretrained-model-name-or-path", required=True)
-    parser.add_argument("--checkpoint", required=True, help="Cross V2.1 checkpoint dir.")
+    parser.add_argument("--checkpoint", required=True, help="Cross V2.2 checkpoint dir.")
     parser.add_argument("--metadata", required=True, help="metadata_cross_{train,val}.json path.")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--num-samples", type=int, default=16)
@@ -30,51 +30,65 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument(
-        "--source-latent-init-strength",
-        type=float,
-        default=0.0,
-        help=(
-            "Img2img-style source/ref latent start strength in [0,1]. "
-            "0 keeps random-noise sampling; try 0.25-0.45 for ref-preserving edits."
-        ),
+        "--reference-bank-block-size",
+        type=int,
+        default=None,
+        help="Override the Cross V2.2 latent block-bank size saved in the checkpoint.",
     )
     parser.add_argument(
-        "--mask-chord-scale",
-        type=float,
-        default=0.0,
-        help=(
-            "Enable source-vs-target mask condition guidance. "
-            "0 keeps the baseline; try 0.5, 1.0, 1.5."
-        ),
+        "--reference-bank-label-mode",
+        choices=["tissue", "nuclei", "tissue_nuclei"],
+        default=None,
+        help="Override the Cross V2.2 label mode saved in the checkpoint.",
     )
     parser.add_argument(
-        "--mask-chord-use-gate",
+        "--keep-reference-mask-features",
         action="store_true",
+        help="Keep reference mask feature channels at inference instead of the V2.2 default zeroing.",
+    )
+    parser.add_argument(
+        "--reference-condition-source",
+        choices=["block_bank", "layered"],
+        default="block_bank",
         help=(
-            "Gate mask-chord guidance to tissue/nuclei label changes, preserving "
-            "unchanged regions more strongly."
+            "Use the original V2.2 latent block bank, or synthesize a layered "
+            "tissue-bank+nuclei condition image and encode it as z_ref."
         ),
     )
     parser.add_argument(
-        "--mask-chord-gate-dilate-radius",
+        "--layered-tissue-bank-block-size",
         type=int,
-        default=0,
-        help="Optional dilation radius, in VAE-latent pixels, for the mask-chord change gate.",
+        default=8,
+        help="Latent block size for the tissue-only bank when --reference-condition-source=layered.",
+    )
+    parser.add_argument("--layered-nuclei-hole-dilate-radius", type=int, default=3)
+    parser.add_argument("--layered-hole-feather-radius", type=float, default=1.5)
+    parser.add_argument("--layered-nucleus-context-radius", type=int, default=4)
+    parser.add_argument("--layered-nucleus-alpha-feather", type=float, default=1.0)
+    parser.add_argument("--layered-min-nucleus-area", type=int, default=4)
+    parser.add_argument(
+        "--layered-nuclei-alpha-scale",
+        type=float,
+        default=0.85,
+        help="Scale pasted nuclei alpha to reduce hard copy pressure.",
     )
     parser.add_argument(
-        "--mask-chord-gate-feather-radius",
-        type=int,
-        default=0,
-        help="Optional average-pool feather radius, in VAE-latent pixels, for the mask-chord change gate.",
+        "--layered-condition-blur-sigma",
+        type=float,
+        default=0.3,
+        help="Small RGB blur applied to layered condition image before VAE encoding.",
     )
     parser.add_argument(
-        "--mask-chord-gate-outside-scale",
+        "--layered-condition-noise-std",
         type=float,
         default=0.0,
-        help=(
-            "Residual mask-chord scale outside the changed gate in [0,1]. "
-            "0 fully suppresses outside changes; 0.1 allows weak global harmonization."
-        ),
+        help="Optional RGB noise std in [0,1] applied to layered condition image before VAE encoding.",
+    )
+    parser.add_argument(
+        "--reference-latent-scale",
+        type=float,
+        default=1.0,
+        help="Scale z_ref latent condition strength before concatenation. Try 0.5, 0.75, 1.0 for copy-risk sweeps.",
     )
     parser.add_argument("--prompt-source", choices=["metadata", "dataset"], default="dataset")
     parser.add_argument("--prompt", default=None, help="Override every sample with one prompt.")
@@ -152,12 +166,12 @@ def main(argv=None) -> int:
         load_nuclei_mask,
         load_tissue_mask,
     )
-    from controlnet_train.inference.pipeline_cross_v2_1 import (
-        CROSS_V2_1_REFERENCE_WITH_REF,
-        CROSS_V2_1_REFERENCE_ZERO_REF,
-        compute_cross_v2_1_fixed_timestep_losses,
-        load_cross_v2_1_bundle,
-        run_cross_v2_1_bundle,
+    from controlnet_train.inference.pipeline_cross_v2_2 import (
+        CROSS_V2_2_REFERENCE_WITH_REF,
+        CROSS_V2_2_REFERENCE_ZERO_REF,
+        compute_cross_v2_2_fixed_timestep_losses,
+        load_cross_v2_2_bundle,
+        run_cross_v2_2_bundle,
     )
 
     dtype_by_name = {
@@ -165,7 +179,7 @@ def main(argv=None) -> int:
         "fp16": torch.float16,
         "fp32": torch.float32,
     }
-    bundle = load_cross_v2_1_bundle(
+    bundle = load_cross_v2_2_bundle(
         pretrained_model_name_or_path=args.pretrained_model_name_or_path,
         checkpoint_path=args.checkpoint,
         device=args.device,
@@ -173,6 +187,9 @@ def main(argv=None) -> int:
         num_inference_steps=args.num_inference_steps,
         guidance_scale=args.guidance_scale,
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
+        reference_bank_block_size=args.reference_bank_block_size,
+        reference_bank_label_mode=args.reference_bank_label_mode,
+        keep_reference_mask_features=args.keep_reference_mask_features if args.keep_reference_mask_features else None,
     )
     fixed_t_eval_timesteps = _parse_fixed_t_eval_timesteps(args.fixed_t_eval_timesteps)
 
@@ -217,10 +234,25 @@ def main(argv=None) -> int:
         _save_mask_image(np.asarray(Image.open(reference_nuclei_mask_path)), sample_dir / "reference_nuclei_mask.png")
         _save_mask_image(np.asarray(Image.open(target_nuclei_mask_path)), sample_dir / "target_nuclei_mask.png")
 
+        reference_condition_image = None
+        reference_condition_debug: dict[str, Any] | None = None
+        if args.reference_condition_source == "layered":
+            reference_condition_image, reference_condition_debug = _build_layered_reference_condition(
+                bundle=bundle,
+                reference_image_path=reference_image_path,
+                reference_tissue_mask=reference_tissue_mask,
+                reference_nuclei_mask=reference_nuclei_mask,
+                target_tissue_mask=target_tissue_mask,
+                target_nuclei_mask=target_nuclei_mask,
+                sample_dir=sample_dir,
+                seed=int(args.seed) + index,
+                args=args,
+            )
+
         variant_results = []
         for variant in _reference_variants(args.run_zero_ref_ablation):
             with torch.no_grad():
-                prediction = run_cross_v2_1_bundle(
+                prediction = run_cross_v2_2_bundle(
                     bundle,
                     reference_image=reference_image_tensor,
                     reference_tissue_mask=reference_tissue_mask,
@@ -229,12 +261,8 @@ def main(argv=None) -> int:
                     target_nuclei_mask=target_nuclei_mask,
                     prompt=prompt,
                     reference_condition_mode=variant,
-                    source_latent_init_strength=args.source_latent_init_strength,
-                    mask_chord_scale=args.mask_chord_scale,
-                    mask_chord_use_gate=args.mask_chord_use_gate,
-                    mask_chord_gate_dilate_radius=args.mask_chord_gate_dilate_radius,
-                    mask_chord_gate_feather_radius=args.mask_chord_gate_feather_radius,
-                    mask_chord_gate_outside_scale=args.mask_chord_gate_outside_scale,
+                    reference_condition_image=reference_condition_image,
+                    reference_latent_scale=float(args.reference_latent_scale),
                 )
 
             result = _save_variant_outputs(
@@ -260,7 +288,7 @@ def main(argv=None) -> int:
             fixed_t_losses = {}
             if fixed_t_eval_timesteps:
                 with torch.no_grad():
-                    fixed_t_losses = compute_cross_v2_1_fixed_timestep_losses(
+                    fixed_t_losses = compute_cross_v2_2_fixed_timestep_losses(
                         bundle,
                         reference_image=reference_image_tensor,
                         reference_tissue_mask=reference_tissue_mask,
@@ -272,6 +300,8 @@ def main(argv=None) -> int:
                         timesteps=fixed_t_eval_timesteps,
                         reference_condition_mode=variant,
                         seed=args.fixed_t_eval_seed,
+                        reference_condition_image=reference_condition_image,
+                        reference_latent_scale=float(args.reference_latent_scale),
                     )
                 result["fixed_t_losses"] = fixed_t_losses
                 fixed_t_row = {
@@ -294,17 +324,18 @@ def main(argv=None) -> int:
                 "area_coverage_ratio": float(record.get("area_coverage_ratio", math.nan)),
                 "color_match_applied": args.color_match != "none",
                 "controlnet_conditioning_scale": float(args.controlnet_conditioning_scale),
-                "source_latent_init_strength": float(args.source_latent_init_strength),
-                "mask_chord_scale": float(args.mask_chord_scale),
-                "mask_chord_use_gate": bool(args.mask_chord_use_gate),
-                "mask_chord_gate_dilate_radius": int(args.mask_chord_gate_dilate_radius),
-                "mask_chord_gate_feather_radius": int(args.mask_chord_gate_feather_radius),
-                "mask_chord_gate_outside_scale": float(args.mask_chord_gate_outside_scale),
+                "reference_condition_source": str(args.reference_condition_source),
+                "reference_latent_scale": float(args.reference_latent_scale),
                 **result["metrics"],
             }
+            if args.reference_condition_source == "layered":
+                metric_row["layered_tissue_bank_block_size"] = int(args.layered_tissue_bank_block_size)
+                metric_row["layered_nuclei_alpha_scale"] = float(args.layered_nuclei_alpha_scale)
+                metric_row["layered_condition_blur_sigma"] = float(args.layered_condition_blur_sigma)
+                metric_row["layered_condition_noise_std"] = float(args.layered_condition_noise_std)
             if args.run_zero_ref_ablation:
                 metric_row["reference_condition_mode"] = variant
-                metric_row["zero_ref_ablation"] = variant == CROSS_V2_1_REFERENCE_ZERO_REF
+                metric_row["zero_ref_ablation"] = variant == CROSS_V2_2_REFERENCE_ZERO_REF
             metric_rows.append(metric_row)
             result["metric_row"] = metric_row
             if args.run_zero_ref_ablation:
@@ -331,6 +362,9 @@ def main(argv=None) -> int:
                 **variant_results[0]["metric_row"],
                 "fixed_t_eval": variant_results[0].get("fixed_t_losses", {}),
             }
+        if reference_condition_debug is not None:
+            if isinstance(metrics_payload, dict):
+                metrics_payload["layered_reference_condition"] = reference_condition_debug
 
         primary = variant_results[0]
         prediction = primary["prediction"]
@@ -375,7 +409,7 @@ def main(argv=None) -> int:
                 f"with_ref_l1={metrics['full_l1']:.4f} with_ref_psnr={metrics['full_psnr']:.2f}"
             )
             zero_metrics = next(
-                result["metrics"] for result in variant_results if result["variant"] == CROSS_V2_1_REFERENCE_ZERO_REF
+                result["metrics"] for result in variant_results if result["variant"] == CROSS_V2_2_REFERENCE_ZERO_REF
             )
             message += f" zero_ref_l1={zero_metrics['full_l1']:.4f} zero_ref_psnr={zero_metrics['full_psnr']:.2f}"
         else:
@@ -393,12 +427,15 @@ def main(argv=None) -> int:
         _write_fixed_t_metrics(output_dir, fixed_t_rows)
     summary = aggregate_metrics(metric_rows)
     summary["controlnet_conditioning_scale"] = float(args.controlnet_conditioning_scale)
-    summary["source_latent_init_strength"] = float(args.source_latent_init_strength)
-    summary["mask_chord_scale"] = float(args.mask_chord_scale)
-    summary["mask_chord_use_gate"] = bool(args.mask_chord_use_gate)
-    summary["mask_chord_gate_dilate_radius"] = int(args.mask_chord_gate_dilate_radius)
-    summary["mask_chord_gate_feather_radius"] = int(args.mask_chord_gate_feather_radius)
-    summary["mask_chord_gate_outside_scale"] = float(args.mask_chord_gate_outside_scale)
+    summary["reference_condition_source"] = str(args.reference_condition_source)
+    summary["reference_latent_scale"] = float(args.reference_latent_scale)
+    if args.reference_condition_source == "layered":
+        summary["layered_reference_condition"] = {
+            "tissue_bank_block_size": int(args.layered_tissue_bank_block_size),
+            "nuclei_alpha_scale": float(args.layered_nuclei_alpha_scale),
+            "condition_blur_sigma": float(args.layered_condition_blur_sigma),
+            "condition_noise_std": float(args.layered_condition_noise_std),
+        }
     if fixed_t_rows:
         summary["fixed_t_eval"] = _aggregate_fixed_t_losses(fixed_t_rows)
         summary["fixed_t_eval_timesteps"] = fixed_t_eval_timesteps
@@ -436,15 +473,185 @@ def _parse_fixed_t_eval_timesteps(value: str | None) -> list[float]:
 
 
 def _reference_variants(run_zero_ref_ablation: bool) -> list[str]:
-    from controlnet_train.inference.pipeline_cross_v2_1 import (
-        CROSS_V2_1_REFERENCE_WITH_REF,
-        CROSS_V2_1_REFERENCE_ZERO_REF,
+    from controlnet_train.inference.pipeline_cross_v2_2 import (
+        CROSS_V2_2_REFERENCE_WITH_REF,
+        CROSS_V2_2_REFERENCE_ZERO_REF,
     )
 
-    variants = [CROSS_V2_1_REFERENCE_WITH_REF]
+    variants = [CROSS_V2_2_REFERENCE_WITH_REF]
     if run_zero_ref_ablation:
-        variants.append(CROSS_V2_1_REFERENCE_ZERO_REF)
+        variants.append(CROSS_V2_2_REFERENCE_ZERO_REF)
     return variants
+
+
+def _build_layered_reference_condition(
+    *,
+    bundle,
+    reference_image_path: Path,
+    reference_tissue_mask,
+    reference_nuclei_mask,
+    target_tissue_mask,
+    target_nuclei_mask,
+    sample_dir: Path,
+    seed: int,
+    args: argparse.Namespace,
+):
+    import torch
+
+    from controlnet_train.modules.cross_v2_2_conditioning import (
+        build_cross_v2_2_block_bank_reference_latent,
+    )
+    from controlnet_train.inference.pipeline_cross_v2_2 import _encode_images_to_latents
+    from scripts.diagnose_cross_v2_2_z_ref_bank import (
+        decode_latents_to_images,
+        draw_block_grid,
+        mask_to_rgb,
+    )
+    from scripts.prototype_cross_v2_2_layered_condition import (
+        alpha_composite_rgb,
+        dilate_binary,
+        extract_nucleus_prototypes,
+        image_array_to_tensor,
+        remove_nuclei_with_same_tissue_fill,
+        rgba_on_background,
+        synthesize_nuclei_layer,
+        tensor_to_int_array,
+    )
+
+    ref_rgb = np.asarray(Image.open(reference_image_path).convert("RGB"), dtype=np.uint8)
+    ref_tissue_np = tensor_to_int_array(reference_tissue_mask)
+    ref_nuclei_np = tensor_to_int_array(reference_nuclei_mask)
+    target_nuclei_np = tensor_to_int_array(target_nuclei_mask)
+    hole = dilate_binary(
+        ref_nuclei_np > 0,
+        radius=int(args.layered_nuclei_hole_dilate_radius),
+    )
+    tissue_only, fill_report = remove_nuclei_with_same_tissue_fill(
+        ref_rgb,
+        hole,
+        ref_tissue_np,
+        feather_radius=float(args.layered_hole_feather_radius),
+    )
+    prototypes = extract_nucleus_prototypes(
+        ref_rgb,
+        ref_nuclei_np,
+        context_radius=int(args.layered_nucleus_context_radius),
+        alpha_feather=float(args.layered_nucleus_alpha_feather),
+        min_area=int(args.layered_min_nucleus_area),
+    )
+    nuclei_layer, nuclei_report = synthesize_nuclei_layer(
+        target_nuclei=target_nuclei_np,
+        prototypes=prototypes,
+        seed=seed,
+        alpha_feather=float(args.layered_nucleus_alpha_feather),
+    )
+    alpha_scale = float(args.layered_nuclei_alpha_scale)
+    if alpha_scale != 1.0:
+        nuclei_layer = nuclei_layer.copy()
+        nuclei_layer[..., 3] = np.clip(
+            nuclei_layer[..., 3].astype(np.float32) * alpha_scale,
+            0,
+            255,
+        ).round().astype(np.uint8)
+        nuclei_report["alpha_scale"] = alpha_scale
+
+    tissue_only_tensor = image_array_to_tensor(tissue_only).unsqueeze(0)
+    with torch.no_grad():
+        tissue_latent = _encode_images_to_latents(
+            bundle.flux_pipeline.vae,
+            tissue_only_tensor,
+            bundle.torch_dtype,
+        )
+        zero_ref_nuclei = torch.zeros_like(reference_tissue_mask).unsqueeze(0)
+        zero_target_nuclei = torch.zeros_like(target_tissue_mask).unsqueeze(0)
+        generator = torch.Generator(device=tissue_latent.device).manual_seed(seed)
+        tissue_bank_latent = build_cross_v2_2_block_bank_reference_latent(
+            z_ref=tissue_latent,
+            reference_tissue_mask=reference_tissue_mask.unsqueeze(0),
+            reference_nuclei_mask=zero_ref_nuclei,
+            target_tissue_mask=target_tissue_mask.unsqueeze(0),
+            target_nuclei_mask=zero_target_nuclei,
+            block_size=max(1, int(args.layered_tissue_bank_block_size)),
+            label_mode="tissue",
+            generator=generator,
+        ).to(dtype=bundle.torch_dtype)
+        tissue_bank_image = decode_latents_to_images(
+            bundle.flux_pipeline.vae,
+            tissue_bank_latent,
+            bundle.torch_dtype,
+        )[0]
+
+    tissue_bank_rgb = np.asarray(tissue_bank_image.convert("RGB"), dtype=np.uint8)
+    layered_condition = alpha_composite_rgb(tissue_bank_rgb, nuclei_layer)
+    condition_input = _perturb_layered_condition(
+        layered_condition,
+        blur_sigma=float(args.layered_condition_blur_sigma),
+        noise_std=float(args.layered_condition_noise_std),
+        seed=seed,
+    )
+    reference_condition_image = image_array_to_tensor(condition_input)
+
+    tissue_only_path = sample_dir / "layered_reference_tissue_only.png"
+    hole_path = sample_dir / "layered_reference_nuclei_hole.png"
+    tissue_bank_path = sample_dir / "layered_tissue_bank_decoded.png"
+    tissue_bank_grid_path = sample_dir / "layered_tissue_bank_decoded_grid.png"
+    nuclei_layer_path = sample_dir / "layered_nuclei_layer_rgba.png"
+    nuclei_layer_preview_path = sample_dir / "layered_nuclei_layer_on_white.png"
+    condition_path = sample_dir / "layered_condition_rgb.png"
+    condition_input_path = sample_dir / "layered_condition_input_rgb.png"
+    Image.fromarray(tissue_only, mode="RGB").save(tissue_only_path)
+    Image.fromarray((hole.astype(np.uint8) * 255), mode="L").save(hole_path)
+    tissue_bank_image.save(tissue_bank_path)
+    draw_block_grid(
+        tissue_bank_image,
+        latent_size=tuple(int(value) for value in tissue_bank_latent.shape[-2:]),
+        block_size=max(1, int(args.layered_tissue_bank_block_size)),
+    ).save(tissue_bank_grid_path)
+    Image.fromarray(nuclei_layer, mode="RGBA").save(nuclei_layer_path)
+    rgba_on_background(nuclei_layer, background=(255, 255, 255)).save(nuclei_layer_preview_path)
+    Image.fromarray(layered_condition, mode="RGB").save(condition_path)
+    Image.fromarray(condition_input, mode="RGB").save(condition_input_path)
+    mask_to_rgb(target_tissue_mask).save(sample_dir / "layered_target_tissue_mask.png")
+    mask_to_rgb(target_nuclei_mask).save(sample_dir / "layered_target_nuclei_mask.png")
+
+    debug = {
+        "source": "layered",
+        "tissue_bank_block_size": int(args.layered_tissue_bank_block_size),
+        "nuclei_hole_dilate_radius": int(args.layered_nuclei_hole_dilate_radius),
+        "nuclei_alpha_scale": alpha_scale,
+        "condition_blur_sigma": float(args.layered_condition_blur_sigma),
+        "condition_noise_std": float(args.layered_condition_noise_std),
+        "fill_report": fill_report,
+        "nuclei_report": nuclei_report,
+        "files": {
+            "tissue_only": str(tissue_only_path),
+            "nuclei_hole": str(hole_path),
+            "tissue_bank_decoded": str(tissue_bank_path),
+            "tissue_bank_decoded_grid": str(tissue_bank_grid_path),
+            "nuclei_layer_rgba": str(nuclei_layer_path),
+            "nuclei_layer_preview": str(nuclei_layer_preview_path),
+            "layered_condition_rgb": str(condition_path),
+            "layered_condition_input_rgb": str(condition_input_path),
+        },
+    }
+    return reference_condition_image, debug
+
+
+def _perturb_layered_condition(
+    image: np.ndarray,
+    *,
+    blur_sigma: float,
+    noise_std: float,
+    seed: int,
+) -> np.ndarray:
+    result = Image.fromarray(np.asarray(image, dtype=np.uint8), mode="RGB")
+    if blur_sigma > 0:
+        result = result.filter(ImageFilter.GaussianBlur(radius=float(blur_sigma)))
+    array = np.asarray(result, dtype=np.float32) / 255.0
+    if noise_std > 0:
+        rng = np.random.default_rng(seed)
+        array = array + rng.normal(0.0, float(noise_std), size=array.shape).astype(np.float32)
+    return (np.clip(array, 0.0, 1.0) * 255.0).round().astype(np.uint8)
 
 
 def _save_variant_outputs(

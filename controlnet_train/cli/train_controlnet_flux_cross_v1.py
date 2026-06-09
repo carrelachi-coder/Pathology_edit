@@ -111,6 +111,31 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--hed-alpha-high", type=float, default=1.25)
     parser.add_argument("--hed-alpha-max", type=float, default=1.8)
     parser.add_argument(
+        "--noising-degradation",
+        type=str,
+        default="none",
+        choices=["none", "hed", "stain", "texture", "hed_texture", "stain_texture"],
+        help=(
+            "Clean image used to build noisy_model_input. Use hed_texture to start "
+            "training from a degraded target while the supervision target remains clean."
+        ),
+    )
+    parser.add_argument("--texture-blur-prob", type=float, default=0.7)
+    parser.add_argument("--texture-blur-sigma-min", type=float, default=0.4)
+    parser.add_argument("--texture-blur-sigma-max", type=float, default=1.4)
+    parser.add_argument("--texture-downsample-prob", type=float, default=0.7)
+    parser.add_argument("--texture-downsample-scale-min", type=float, default=0.35)
+    parser.add_argument("--texture-downsample-scale-max", type=float, default=0.75)
+    parser.add_argument("--texture-noise-prob", type=float, default=0.35)
+    parser.add_argument("--texture-noise-std-min", type=float, default=0.005)
+    parser.add_argument("--texture-noise-std-max", type=float, default=0.03)
+    parser.add_argument(
+        "--degraded-noising-min-sigma",
+        type=float,
+        default=0.1,
+        help="Minimum sigma for samples whose noisy_model_input starts from a degraded target.",
+    )
+    parser.add_argument(
         "--uni-checkpoint-path", type=str, required=True,
         help="Path to UNI2-h ViT-Giant/14 checkpoint (pytorch_model.bin).",
     )
@@ -241,6 +266,25 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--regional-ip-adapter",
+        action="store_true",
+        help=(
+            "Use mask-guided regional IP-Adapter attention. Reference UNI spatial tokens "
+            "are labeled by reference tissue mask, and target image tokens can only attend "
+            "same-label reference tokens."
+        ),
+    )
+    parser.add_argument(
+        "--no-regional-ip-strict",
+        dest="regional_ip_strict",
+        action="store_false",
+        help=(
+            "Allow region-gated IP attention to fall back more permissively when labels are missing. "
+            "The default still falls back only for labels absent from the reference token bank."
+        ),
+    )
+    parser.set_defaults(regional_ip_strict=True)
+    parser.add_argument(
         "--self-reconstruction-warmup-steps",
         type=int,
         default=0,
@@ -347,6 +391,23 @@ def parse_args(input_args=None) -> argparse.Namespace:
         default=1,
         help="Compute perceptual loss every N optimizer steps. Use 0 to disable.",
     )
+    parser.add_argument(
+        "--reference-region-loss-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight for frozen UNI spatial feature-map region loss. It matches prediction "
+            "target regions to same-label reference regions in UNI patch-token space."
+        ),
+    )
+    parser.add_argument("--reference-region-loss-interval", type=int, default=1)
+    parser.add_argument("--reference-region-tissue-weight", type=float, default=1.0)
+    parser.add_argument("--reference-region-nuclei-weight", type=float, default=0.0)
+    parser.add_argument("--reference-region-mean-weight", type=float, default=1.0)
+    parser.add_argument("--reference-region-std-weight", type=float, default=0.5)
+    parser.add_argument("--reference-region-cosine-weight", type=float, default=0.25)
+    parser.add_argument("--reference-region-min-tokens", type=int, default=2)
+    parser.add_argument("--reference-region-max-regions-per-sample", type=int, default=None)
     parser.add_argument(
         "--reference-style-loss-weight",
         type=float,

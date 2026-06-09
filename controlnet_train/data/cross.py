@@ -309,24 +309,18 @@ class CrossReconstructionDataset(torch.utils.data.Dataset):
         target_image = load_image_tensor(record["target_image"])
         target_tissue_mask = load_tissue_mask(record["target_tissue_mask"])
         target_nuclei_mask = load_nuclei_mask(record["target_nuclei_mask"], remap=True)
+        reference_image = load_image_tensor(record["reference_image"])
+        reference_tissue_mask = load_tissue_mask(record["reference_tissue_mask"])
+        reference_nuclei_mask = load_nuclei_mask(record["reference_nuclei_mask"], remap=True)
+        reference_sample_id = record["reference_sample_id"]
+        distance = int(record["distance"])
         clean_image_for_noising = target_image
         uses_degraded_noising = self.noising_degradation != "none"
 
         if uses_degraded_noising:
-            reference_image = target_image
-            reference_tissue_mask = target_tissue_mask
-            reference_nuclei_mask = target_nuclei_mask
             clean_image_for_noising = self.appearance_degradation(target_image)
-            reference_sample_id = record["sample_id"]
-            distance = 0
             if sample_mode == "cross":
                 sample_mode = "appearance_degraded"
-        else:
-            reference_image = load_image_tensor(record["reference_image"])
-            reference_tissue_mask = load_tissue_mask(record["reference_tissue_mask"])
-            reference_nuclei_mask = load_nuclei_mask(record["reference_nuclei_mask"], remap=True)
-            reference_sample_id = record["reference_sample_id"]
-            distance = int(record["distance"])
 
         if self.hed_augment is not None and not uses_degraded_noising:
             reference_image, target_image = self.hed_augment.apply_pair(reference_image, target_image)

@@ -70,10 +70,13 @@ class CrossEvalMetricTests(unittest.TestCase):
                 "out",
                 "--ip-scale",
                 "2.0",
+                "--run-zero-ref-ablation",
             ]
         )
 
         self.assertEqual(args.ip_scale, 2.0)
+        self.assertTrue(args.run_zero_ref_ablation)
+        self.assertEqual(eval_cross_v1._reference_variants(True), ["with_ref", "zero_ref"])
 
     def test_compute_cross_metrics_reports_full_image_errors(self):
         prediction = np.array(

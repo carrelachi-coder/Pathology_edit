@@ -8,8 +8,10 @@ except ModuleNotFoundError:
 if torch is not None:
     from controlnet_train.training.cross_v1_losses import (
         RegionalStainStyleLossConfig,
+        RegionalFeatureLossConfig,
         per_sample_mse,
         ref_swap_sensitivity_loss,
+        regional_feature_map_loss,
         regional_stain_style_loss,
         self_reconstruction_l1_loss,
         uni_token_cosine_perceptual_loss,
@@ -34,12 +36,14 @@ if torch is not None:
         from controlnet_train.training.flux_phase5_cross_v1 import (
             collate_cross_batch,
             _configure_controlnet_trainable_params,
+            _build_region_attention_mask,
             _insert_self_reconstruction_samples,
             _use_random_reference,
         )
     except ModuleNotFoundError:
         collate_cross_batch = None
         _configure_controlnet_trainable_params = None
+        _build_region_attention_mask = None
         _insert_self_reconstruction_samples = None
         _use_random_reference = None
 
@@ -183,6 +187,53 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         )
 
         self.assertTrue(torch.allclose(loss, torch.tensor(0.0)))
+
+    def test_regional_feature_map_loss_matches_same_label_feature_regions(self):
+        prediction = torch.zeros(1, 4, 2)
+        reference = torch.zeros(1, 4, 2)
+        prediction[:, :2] = torch.tensor([1.0, 0.0])
+        reference[:, :2] = torch.tensor([0.0, 1.0])
+        tissue = torch.tensor([[[1, 1], [2, 2]]])
+
+        result = regional_feature_map_loss(
+            prediction_features=prediction,
+            reference_features=reference,
+            target_tissue_mask=tissue,
+            reference_tissue_mask=tissue,
+            config=RegionalFeatureLossConfig(
+                mean_weight=1.0,
+                std_weight=0.0,
+                pooled_cosine_weight=0.0,
+                min_tokens=1,
+            ),
+        )
+
+        self.assertEqual(result["tissue_regions"], 2)
+        self.assertGreater(result["total"].item(), 0.0)
+
+    def test_region_attention_mask_blocks_cross_label_ip_tokens(self):
+        if _build_region_attention_mask is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
+        query_labels = torch.tensor([[1, 2, 3]])
+        key_labels = torch.tensor([[1, 1, 2, 2]])
+
+        mask = _build_region_attention_mask(
+            query_region_labels=query_labels,
+            key_region_labels=key_labels,
+            batch_size=1,
+            query_len=3,
+            key_len=4,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+            strict=True,
+        )
+
+        self.assertIsNotNone(mask)
+        self.assertEqual(tuple(mask.shape), (1, 1, 3, 4))
+        self.assertEqual(float(mask[0, 0, 0, 0]), 0.0)
+        self.assertLess(float(mask[0, 0, 0, 2]), -1e20)
+        # Label 3 is absent in the reference token bank, so it falls back to all tokens.
+        self.assertTrue(torch.all(mask[0, 0, 2] == 0))
 
     def test_same_wsi_perceptual_loss_uses_masked_reference_texture_features(self):
         encoder = SameWSIAppearanceEncoder(
@@ -420,6 +471,8 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
                 "target_nuclei_mask": torch.ones(2, 2, dtype=torch.long),
                 "reference_tissue_mask": torch.zeros(2, 2, dtype=torch.long),
                 "reference_nuclei_mask": torch.zeros(2, 2, dtype=torch.long),
+                "clean_image_for_noising": torch.full((3, 2, 2), value + 20),
+                "uses_degraded_noising": True,
                 "prompt": "prompt",
             }
 
@@ -428,6 +481,8 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         )
 
         self.assertEqual(batch["target_image"].shape[0], 2)
+        self.assertEqual(batch["clean_image_for_noising"].shape[0], 2)
+        self.assertTrue(torch.equal(batch["uses_degraded_noising"], torch.tensor([True, True])))
         self.assertEqual(batch["sample_ids"], ["sample-1.0", "sample-2.0"])
         self.assertTrue(torch.equal(batch["target_tissue_mask"][0], batch["target_tissue_mask"][1]))
 
