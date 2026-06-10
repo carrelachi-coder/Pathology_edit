@@ -70,7 +70,13 @@ from controlnet_train.modules.cross_v1_conditioning import (
     build_cross_v1_condition,
     normalize_cross_v1_spatial_mode,
 )
-from controlnet_train.modules.reference_image_encoder import ReferenceImageEncoder, resize_mask_to_token_labels
+from controlnet_train.modules.reference_image_encoder import (
+    ReferenceImageEncoder,
+    build_region_ip_token_labels,
+    normalize_region_ip_label_mode,
+    normalize_region_ip_token_mode,
+    resize_mask_to_token_labels,
+)
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
 from controlnet_train.training.cross_v1_losses import (
     RegionalFeatureLossConfig,
@@ -104,8 +110,11 @@ class IPAdapterListProjection(nn.Module):
     def forward(self, image_embeds):
         target_dtype = next(self.proj.parameters()).dtype
         if isinstance(image_embeds, list):
-            return [self.proj(embed).to(dtype=target_dtype) for embed in image_embeds]
-        return self.proj(image_embeds).to(dtype=target_dtype)
+            return [
+                self.proj(embed.to(dtype=target_dtype)).to(dtype=target_dtype)
+                for embed in image_embeds
+            ]
+        return self.proj(image_embeds.to(dtype=target_dtype)).to(dtype=target_dtype)
 
 
 class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
@@ -139,6 +148,9 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         self.to_v_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in self.num_tokens]
         )
+        self.ip_null_tokens = nn.ParameterList(
+            [nn.Parameter(torch.zeros(1, 1, cross_attention_dim)) for _ in self.num_tokens]
+        )
 
     def __call__(
         self,
@@ -151,8 +163,11 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         ip_adapter_masks: torch.Tensor | dict | None = None,
         ip_region_token_labels: torch.Tensor | None = None,
         ip_query_region_labels: torch.Tensor | None = None,
+        ip_region_fallback_labels: torch.Tensor | None = None,
+        ip_query_fallback_labels: torch.Tensor | None = None,
         ip_region_strict: bool = True,
         txt_seq_len: int | None = None,
+        ip_debug_collector: dict | None = None,
     ) -> torch.Tensor:
         if encoder_hidden_states is not None:
             raise ValueError("FluxSingleIPAdapterAttnProcessor2_0 expects pre-concatenated single-stream states.")
@@ -188,9 +203,25 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         output = output.to(query.dtype)
 
         if ip_hidden_states:
-            packed_key_labels, packed_query_labels, packed_strict = _unpack_region_ip_adapter_masks(ip_adapter_masks)
+            (
+                packed_key_labels,
+                packed_query_labels,
+                packed_strict,
+                packed_key_fallback_labels,
+                packed_query_fallback_labels,
+            ) = _unpack_region_ip_adapter_masks(ip_adapter_masks)
             ip_region_token_labels = ip_region_token_labels if ip_region_token_labels is not None else packed_key_labels
             ip_query_region_labels = ip_query_region_labels if ip_query_region_labels is not None else packed_query_labels
+            ip_region_fallback_labels = (
+                ip_region_fallback_labels
+                if ip_region_fallback_labels is not None
+                else packed_key_fallback_labels
+            )
+            ip_query_fallback_labels = (
+                ip_query_fallback_labels
+                if ip_query_fallback_labels is not None
+                else packed_query_fallback_labels
+            )
             ip_region_strict = bool(ip_region_strict and packed_strict)
             txt_seq_len = int(txt_seq_len or 0)
             if txt_seq_len < 0 or txt_seq_len > output.shape[1]:
@@ -200,28 +231,41 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
             image_query = query[:, :, txt_seq_len:, :]
             if image_query.shape[2] > 0:
                 image_ip_output = output.new_zeros((batch_size, image_query.shape[2], output.shape[2]))
-                for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+                for current_ip_hidden_states, scale, to_k_ip, to_v_ip, ip_null_token in zip(
                     ip_hidden_states,
                     self.scale,
                     self.to_k_ip,
                     self.to_v_ip,
+                    self.ip_null_tokens,
                 ):
                     if scale == 0:
                         continue
-                    ip_key = to_k_ip(current_ip_hidden_states)
-                    ip_value = to_v_ip(current_ip_hidden_states)
-                    ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                    ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                    ip_attn_mask = _build_region_attention_mask(
+                    ip_input = current_ip_hidden_states.to(
+                        device=image_query.device,
+                        dtype=to_k_ip.weight.dtype,
+                    )
+                    ip_attn_mask, _, _ = _build_region_attention_mask_and_query_gate(
                         query_region_labels=ip_query_region_labels,
                         key_region_labels=ip_region_token_labels,
+                        query_fallback_labels=ip_query_fallback_labels,
+                        key_fallback_labels=ip_region_fallback_labels,
                         batch_size=batch_size,
                         query_len=image_query.shape[2],
-                        key_len=ip_key.shape[2],
+                        key_len=ip_input.shape[1],
                         device=image_query.device,
                         dtype=image_query.dtype,
                         strict=bool(ip_region_strict),
                     )
+                    if ip_attn_mask is not None and ip_attn_mask.shape[-1] == ip_input.shape[1] + 1:
+                        null_input = ip_null_token.to(
+                            device=ip_input.device,
+                            dtype=ip_input.dtype,
+                        ).expand(batch_size, -1, -1)
+                        ip_input = torch.cat([ip_input, null_input], dim=1)
+                    ip_key = to_k_ip(ip_input).to(dtype=image_query.dtype)
+                    ip_value = to_v_ip(ip_input).to(dtype=image_query.dtype)
+                    ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                    ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                     ip_attn = torch.nn.functional.scaled_dot_product_attention(
                         image_query,
                         ip_key,
@@ -232,6 +276,12 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
                     )
                     ip_attn = ip_attn.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
                     image_ip_output = image_ip_output + float(scale) * ip_attn.to(output.dtype)
+                _record_ip_attention_debug(
+                    ip_debug_collector if ip_debug_collector is not None else getattr(self, "_ip_debug_collector", None),
+                    getattr(self, "debug_name", "single_block"),
+                    output[:, txt_seq_len:, :],
+                    image_ip_output,
+                )
                 image_output = output[:, txt_seq_len:, :] + image_ip_output
                 if txt_seq_len > 0:
                     output = torch.cat([output[:, :txt_seq_len, :], image_output], dim=1)
@@ -262,10 +312,13 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
             raise ValueError("scale must have the same length as num_tokens.")
         self.scale = [float(value) for value in scale]
         self.to_k_ip = nn.ModuleList(
-            [nn.Linear(cross_attention_dim, hidden_size, bias=True) for _ in self.num_tokens]
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in self.num_tokens]
         )
         self.to_v_ip = nn.ModuleList(
-            [nn.Linear(cross_attention_dim, hidden_size, bias=True) for _ in self.num_tokens]
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in self.num_tokens]
+        )
+        self.ip_null_tokens = nn.ParameterList(
+            [nn.Parameter(torch.zeros(1, 1, cross_attention_dim)) for _ in self.num_tokens]
         )
 
     def __call__(
@@ -279,8 +332,11 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
         ip_adapter_masks: torch.Tensor | dict | None = None,
         ip_region_token_labels: torch.Tensor | None = None,
         ip_query_region_labels: torch.Tensor | None = None,
+        ip_region_fallback_labels: torch.Tensor | None = None,
+        ip_query_fallback_labels: torch.Tensor | None = None,
         ip_region_strict: bool = True,
         txt_seq_len: int | None = None,
+        ip_debug_collector: dict | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if encoder_hidden_states is None:
             raise ValueError("FluxRegionalIPAdapterJointAttnProcessor2_0 expects double-stream states.")
@@ -350,32 +406,61 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
 
         ip_attn_output = hidden_states.new_zeros(hidden_states.shape)
         if ip_hidden_states:
-            packed_key_labels, packed_query_labels, packed_strict = _unpack_region_ip_adapter_masks(ip_adapter_masks)
+            (
+                packed_key_labels,
+                packed_query_labels,
+                packed_strict,
+                packed_key_fallback_labels,
+                packed_query_fallback_labels,
+            ) = _unpack_region_ip_adapter_masks(ip_adapter_masks)
             ip_region_token_labels = ip_region_token_labels if ip_region_token_labels is not None else packed_key_labels
             ip_query_region_labels = ip_query_region_labels if ip_query_region_labels is not None else packed_query_labels
+            ip_region_fallback_labels = (
+                ip_region_fallback_labels
+                if ip_region_fallback_labels is not None
+                else packed_key_fallback_labels
+            )
+            ip_query_fallback_labels = (
+                ip_query_fallback_labels
+                if ip_query_fallback_labels is not None
+                else packed_query_fallback_labels
+            )
             ip_region_strict = bool(ip_region_strict and packed_strict)
-            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+            for current_ip_hidden_states, scale, to_k_ip, to_v_ip, ip_null_token in zip(
                 ip_hidden_states,
                 self.scale,
                 self.to_k_ip,
                 self.to_v_ip,
+                self.ip_null_tokens,
             ):
                 if scale == 0:
                     continue
-                ip_key = to_k_ip(current_ip_hidden_states)
-                ip_value = to_v_ip(current_ip_hidden_states)
-                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                ip_attn_mask = _build_region_attention_mask(
+                ip_input = current_ip_hidden_states.to(
+                    device=hidden_states_query_proj.device,
+                    dtype=to_k_ip.weight.dtype,
+                )
+                ip_attn_mask, _, _ = _build_region_attention_mask_and_query_gate(
                     query_region_labels=ip_query_region_labels,
                     key_region_labels=ip_region_token_labels,
+                    query_fallback_labels=ip_query_fallback_labels,
+                    key_fallback_labels=ip_region_fallback_labels,
                     batch_size=batch_size,
                     query_len=hidden_states_query_proj.shape[2],
-                    key_len=ip_key.shape[2],
+                    key_len=ip_input.shape[1],
                     device=hidden_states_query_proj.device,
                     dtype=hidden_states_query_proj.dtype,
                     strict=bool(ip_region_strict),
                 )
+                if ip_attn_mask is not None and ip_attn_mask.shape[-1] == ip_input.shape[1] + 1:
+                    null_input = ip_null_token.to(
+                        device=ip_input.device,
+                        dtype=ip_input.dtype,
+                    ).expand(batch_size, -1, -1)
+                    ip_input = torch.cat([ip_input, null_input], dim=1)
+                ip_key = to_k_ip(ip_input).to(dtype=hidden_states_query_proj.dtype)
+                ip_value = to_v_ip(ip_input).to(dtype=hidden_states_query_proj.dtype)
+                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 current_output = F.scaled_dot_product_attention(
                     hidden_states_query_proj,
                     ip_key,
@@ -387,6 +472,12 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
                 current_output = current_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
                 ip_attn_output = ip_attn_output + float(scale) * current_output.to(hidden_states.dtype)
 
+        _record_ip_attention_debug(
+            ip_debug_collector if ip_debug_collector is not None else getattr(self, "_ip_debug_collector", None),
+            getattr(self, "debug_name", "block"),
+            hidden_states,
+            ip_attn_output,
+        )
         return hidden_states, encoder_hidden_states, ip_attn_output
 
 
@@ -400,12 +491,68 @@ def _build_region_attention_mask(
     device: torch.device,
     dtype: torch.dtype,
     strict: bool,
+    query_fallback_labels: torch.Tensor | None = None,
+    key_fallback_labels: torch.Tensor | None = None,
 ) -> torch.Tensor | None:
-    """Build an additive SDP mask that only allows same-label IP attention."""
+    """Build an additive SDPA mask with an extra learned-null key column."""
+    mask, _, _ = _build_region_attention_mask_and_query_gate(
+        query_region_labels=query_region_labels,
+        key_region_labels=key_region_labels,
+        batch_size=batch_size,
+        query_len=query_len,
+        key_len=key_len,
+        device=device,
+        dtype=dtype,
+        strict=strict,
+        query_fallback_labels=query_fallback_labels,
+        key_fallback_labels=key_fallback_labels,
+    )
+    return mask
+
+
+def _build_region_attention_mask_and_query_gate(
+    *,
+    query_region_labels: torch.Tensor | None,
+    key_region_labels: torch.Tensor | None,
+    batch_size: int,
+    query_len: int,
+    key_len: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    strict: bool,
+    query_fallback_labels: torch.Tensor | None = None,
+    key_fallback_labels: torch.Tensor | None = None,
+) -> tuple[torch.Tensor | None, torch.Tensor | None, dict[str, float | int | bool]]:
+    """Build an additive SDP mask for regional IP attention plus a learned null token.
+
+    Internal ``allowed=True`` means "keep/attend". The returned additive mask uses
+    SDPA semantics: 0 keeps a pair and a large negative value blocks it. Strict
+    regional mode appends one learned null token column: queries with no exact
+    matching key and unlabeled queries attend only to that null token.
+    """
+    empty_stats: dict[str, float | int | bool] = {
+        "strict": bool(strict),
+        "has_labels": bool(query_region_labels is not None and key_region_labels is not None),
+        "query_tokens": int(query_len),
+        "key_tokens": int(key_len),
+        "valid_query_fraction": math.nan,
+        "valid_key_fraction": math.nan,
+        "allowed_pair_fraction": math.nan,
+        "allowed_valid_pair_fraction": math.nan,
+        "active_query_fraction": math.nan,
+        "missing_query_fraction": math.nan,
+        "fallback_query_fraction": math.nan,
+        "null_query_fraction": math.nan,
+        "allowed_tokens_per_query_mean": math.nan,
+        "allowed_tokens_per_query_min": 0,
+        "allowed_tokens_per_query_max": 0,
+        "unique_query_labels": 0,
+        "unique_key_labels": 0,
+    }
     if query_region_labels is None or key_region_labels is None:
-        return None
+        return None, None, empty_stats
     if not strict:
-        return None
+        return None, None, empty_stats
     query_labels = query_region_labels.to(device=device, dtype=torch.long)
     key_labels = key_region_labels.to(device=device, dtype=torch.long)
     if query_labels.ndim != 2 or key_labels.ndim != 2:
@@ -423,24 +570,155 @@ def _build_region_attention_mask(
             f"key region labels shape {tuple(key_labels.shape)} does not match "
             f"(B,K)=({batch_size},{key_len})"
         )
-    allowed = query_labels[:, :, None] == key_labels[:, None, :]
-    missing = ~allowed.any(dim=-1)
-    if bool(missing.any().item()):
-        allowed = allowed | missing[:, :, None]
-    if bool(allowed.all().item()):
-        return None
-    mask = torch.zeros((batch_size, 1, query_len, key_len), device=device, dtype=dtype)
-    mask = mask.masked_fill(~allowed[:, None, :, :], -torch.finfo(mask.dtype).max)
-    return mask
+    valid_query = query_labels >= 0
+    valid_key = key_labels >= 0
+    allowed = (
+        (query_labels[:, :, None] == key_labels[:, None, :])
+        & valid_query[:, :, None]
+        & valid_key[:, None, :]
+    )
+    exact_missing = valid_query & ~allowed.any(dim=-1)
+    fallback_used = torch.zeros_like(valid_query)
+    missing = exact_missing
+    null_query = (~valid_query) | missing
+    null_column = null_query[:, :, None]
+    allowed_with_null = torch.cat([allowed, null_column], dim=-1)
+    if not bool(allowed_with_null.any(dim=-1).all().item()):
+        raise RuntimeError("regional IP attention mask construction produced an all-masked query row")
+    stats = _region_attention_stats(
+        allowed=allowed,
+        valid_query=valid_query,
+        valid_key=valid_key,
+        missing=missing,
+        fallback_used=fallback_used,
+        null_query=null_query,
+        allowed_with_null=allowed_with_null,
+        query_labels=query_labels,
+        key_labels=key_labels,
+        strict=True,
+    )
+    mask = torch.zeros((batch_size, 1, query_len, key_len + 1), device=device, dtype=dtype)
+    mask = mask.masked_fill(~allowed_with_null[:, None, :, :], -torch.finfo(mask.dtype).max)
+    return mask, None, stats
 
 
-def _unpack_region_ip_adapter_masks(ip_adapter_masks: torch.Tensor | dict | None) -> tuple[torch.Tensor | None, torch.Tensor | None, bool]:
+def _region_attention_stats(
+    *,
+    allowed: torch.Tensor,
+    valid_query: torch.Tensor,
+    valid_key: torch.Tensor,
+    missing: torch.Tensor,
+    fallback_used: torch.Tensor,
+    null_query: torch.Tensor,
+    allowed_with_null: torch.Tensor,
+    query_labels: torch.Tensor,
+    key_labels: torch.Tensor,
+    strict: bool,
+) -> dict[str, float | int | bool]:
+    valid_pairs = valid_query[:, :, None] & valid_key[:, None, :]
+    valid_query_count = int(valid_query.sum().item())
+    valid_key_count = int(valid_key.sum().item())
+    valid_pair_count = int(valid_pairs.sum().item())
+
+    def fraction(mask: torch.Tensor, denom: int | None = None) -> float:
+        if denom is None:
+            return float(mask.detach().float().mean().item()) if mask.numel() else math.nan
+        if denom <= 0:
+            return 0.0
+        return float(mask.detach().float().sum().item() / denom)
+
+    query_valid_values = query_labels[valid_query]
+    key_valid_values = key_labels[valid_key]
+    allowed_counts = allowed_with_null.detach().sum(dim=-1)
+    valid_allowed_counts = allowed_counts[valid_query] if bool(valid_query.any().item()) else allowed_counts.flatten()
+    return {
+        "strict": bool(strict),
+        "has_labels": True,
+        "query_tokens": int(query_labels.shape[1]),
+        "key_tokens": int(key_labels.shape[1]),
+        "valid_query_fraction": fraction(valid_query),
+        "valid_key_fraction": fraction(valid_key),
+        "allowed_pair_fraction": fraction(allowed),
+        "allowed_valid_pair_fraction": fraction(allowed & valid_pairs, valid_pair_count),
+        "active_query_fraction": fraction(valid_query & ~missing, valid_query_count),
+        "missing_query_fraction": fraction(missing, valid_query_count),
+        "fallback_query_fraction": fraction(fallback_used, valid_query_count),
+        "null_query_fraction": fraction(null_query, int(null_query.numel())),
+        "allowed_tokens_per_query_mean": float(valid_allowed_counts.float().mean().item()) if valid_allowed_counts.numel() else 0.0,
+        "allowed_tokens_per_query_min": int(valid_allowed_counts.min().item()) if valid_allowed_counts.numel() else 0,
+        "allowed_tokens_per_query_max": int(valid_allowed_counts.max().item()) if valid_allowed_counts.numel() else 0,
+        "unique_query_labels": int(torch.unique(query_valid_values).numel()) if query_valid_values.numel() else 0,
+        "unique_key_labels": int(torch.unique(key_valid_values).numel()) if key_valid_values.numel() else 0,
+    }
+
+
+def _format_region_attention_stats(stats: dict[str, float | int | bool]) -> str:
+    return (
+        f"strict={bool(stats['strict'])} has_labels={bool(stats['has_labels'])} "
+        f"query_tokens={int(stats['query_tokens'])} key_tokens={int(stats['key_tokens'])} "
+        f"valid_q={float(stats['valid_query_fraction']):.3f} "
+        f"valid_k={float(stats['valid_key_fraction']):.3f} "
+        f"allowed_pairs={float(stats['allowed_valid_pair_fraction']):.5f} "
+        f"active_q={float(stats['active_query_fraction']):.3f} "
+        f"missing_q={float(stats['missing_query_fraction']):.3f} "
+        f"fallback_q={float(stats['fallback_query_fraction']):.3f} "
+        f"null_q={float(stats.get('null_query_fraction', math.nan)):.3f} "
+        f"allowed_per_q={float(stats.get('allowed_tokens_per_query_mean', math.nan)):.2f}/"
+        f"{int(stats.get('allowed_tokens_per_query_min', 0))}/"
+        f"{int(stats.get('allowed_tokens_per_query_max', 0))} "
+        f"unique_q={int(stats['unique_query_labels'])} "
+        f"unique_k={int(stats['unique_key_labels'])}"
+    )
+
+
+def _unpack_region_ip_adapter_masks(
+    ip_adapter_masks: torch.Tensor | dict | None,
+) -> tuple[
+    torch.Tensor | None,
+    torch.Tensor | None,
+    bool,
+    torch.Tensor | None,
+    torch.Tensor | None,
+]:
     if not isinstance(ip_adapter_masks, dict):
-        return None, None, True
+        return None, None, True, None, None
     key_labels = ip_adapter_masks.get("key_region_labels")
     query_labels = ip_adapter_masks.get("query_region_labels")
     strict = bool(ip_adapter_masks.get("strict", True))
-    return key_labels, query_labels, strict
+    key_fallback_labels = ip_adapter_masks.get("key_fallback_region_labels")
+    query_fallback_labels = ip_adapter_masks.get("query_fallback_region_labels")
+    return key_labels, query_labels, strict, key_fallback_labels, query_fallback_labels
+
+
+def _record_ip_attention_debug(
+    collector: dict | None,
+    block_name: str,
+    hidden_states: torch.Tensor,
+    scaled_ip_output: torch.Tensor,
+) -> None:
+    """Record detached IP residual magnitudes without keeping the graph alive."""
+    if collector is None:
+        return
+    with torch.no_grad():
+        hidden = hidden_states.detach().float()
+        ip_output = scaled_ip_output.detach().float()
+        hidden_norm = float(torch.linalg.vector_norm(hidden).item()) if hidden.numel() else 0.0
+        ip_norm = float(torch.linalg.vector_norm(ip_output).item()) if ip_output.numel() else 0.0
+        ratio = ip_norm / max(hidden_norm, 1e-12)
+        records = collector.setdefault("records", [])
+        records.append(
+            {
+                "block": str(block_name),
+                "hidden_norm": hidden_norm,
+                "ip_norm": ip_norm,
+                "ratio": ratio,
+            }
+        )
+        should_store = bool(collector.get("store_first_ip_output", False))
+        is_double_block = str(block_name).startswith("block_") or str(block_name) == "block"
+        if should_store and is_double_block and "first_ip_output" not in collector:
+            collector["first_ip_output"] = ip_output.cpu()
+            collector["first_ip_block"] = str(block_name)
 
 
 def install_flux_ip_adapter_attention(
@@ -454,30 +732,7 @@ def install_flux_ip_adapter_attention(
     regional: bool = False,
 ) -> None:
     """Install IP-Adapter attention processors on FLUX double and last-N single blocks."""
-    from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
     from diffusers.models.embeddings import IPAdapterFullImageProjection
-
-    class FluxIPAdapterJointAttnProcessorWithTxtSeqLen(FluxIPAdapterJointAttnProcessor2_0):
-        def __call__(
-            self,
-            attn,
-            hidden_states: torch.Tensor,
-            encoder_hidden_states: torch.Tensor | None = None,
-            attention_mask: torch.Tensor | None = None,
-            image_rotary_emb: torch.Tensor | None = None,
-            ip_hidden_states: list[torch.Tensor] | None = None,
-            ip_adapter_masks: torch.Tensor | None = None,
-            txt_seq_len: int | None = None,
-        ) -> torch.Tensor:
-            return super().__call__(
-                attn,
-                hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                image_rotary_emb=image_rotary_emb,
-                ip_hidden_states=ip_hidden_states,
-                ip_adapter_masks=ip_adapter_masks,
-            )
 
     raw_proj = IPAdapterFullImageProjection(
         image_embed_dim=cross_attention_dim,
@@ -485,22 +740,14 @@ def install_flux_ip_adapter_attention(
     )
     transformer.encoder_hid_proj = IPAdapterListProjection(raw_proj)
 
-    for block in transformer.transformer_blocks:
-        processor = (
-            FluxRegionalIPAdapterJointAttnProcessor2_0(
-                hidden_size=hidden_dim,
-                cross_attention_dim=cross_attention_dim,
-                num_tokens=(num_tokens,),
-                scale=[scale],
-            )
-            if regional
-            else FluxIPAdapterJointAttnProcessorWithTxtSeqLen(
-                hidden_size=hidden_dim,
-                cross_attention_dim=cross_attention_dim,
-                num_tokens=(num_tokens,),
-                scale=[scale],
-            )
+    for block_index, block in enumerate(transformer.transformer_blocks):
+        processor = FluxRegionalIPAdapterJointAttnProcessor2_0(
+            hidden_size=hidden_dim,
+            cross_attention_dim=cross_attention_dim,
+            num_tokens=(num_tokens,),
+            scale=[scale],
         )
+        processor.debug_name = f"block_{block_index}"
         for linear in processor.to_k_ip:
             _init_ip_adapter_linear(linear, gain=ip_init_gain)
         for linear in processor.to_v_ip:
@@ -509,13 +756,15 @@ def install_flux_ip_adapter_attention(
 
     single_blocks = list(getattr(transformer, "single_transformer_blocks", []))
     if num_single_layers > 0:
-        for block in single_blocks[-int(num_single_layers):]:
+        first_single_index = max(0, len(single_blocks) - int(num_single_layers))
+        for offset, block in enumerate(single_blocks[-int(num_single_layers):]):
             processor = FluxSingleIPAdapterAttnProcessor2_0(
                 hidden_size=hidden_dim,
                 cross_attention_dim=cross_attention_dim,
                 num_tokens=(num_tokens,),
                 scale=[scale],
             )
+            processor.debug_name = f"single_block_{first_single_index + offset}"
             for linear in processor.to_k_ip:
                 _init_ip_adapter_linear(linear, gain=ip_init_gain)
             for linear in processor.to_v_ip:
@@ -609,6 +858,301 @@ def _log_ip_adapter_initialization_stats(
     )
 
 
+def _grad_flow_stats(
+    named_parameters: list[tuple[str, nn.Parameter]],
+    *,
+    optimizer_param_ids: set[int],
+) -> dict[str, float | int]:
+    trainable = [(name, param) for name, param in named_parameters if param.requires_grad]
+    grad_tensors = 0
+    none_grad_tensors = 0
+    zero_grad_tensors = 0
+    finite_values = 0
+    total_values = 0
+    grad_sq_sum = 0.0
+    grad_max_abs = 0.0
+    for _, param in trainable:
+        grad = param.grad
+        if grad is None:
+            none_grad_tensors += 1
+            continue
+        grad_tensors += 1
+        value = grad.detach().float()
+        finite = torch.isfinite(value)
+        finite_values += int(finite.sum().item())
+        total_values += int(value.numel())
+        if not bool(finite.all().item()):
+            value = value[finite] if bool(finite.any().item()) else value.new_zeros((1,))
+        max_abs = float(value.abs().max().item()) if value.numel() else 0.0
+        grad_max_abs = max(grad_max_abs, max_abs)
+        grad_sq_sum += float(torch.sum(value * value).item())
+        if max_abs == 0.0:
+            zero_grad_tensors += 1
+    return {
+        "trainable_tensors": len(trainable),
+        "trainable_params": sum(param.numel() for _, param in trainable),
+        "optimizer_tensors": sum(id(param) in optimizer_param_ids for _, param in trainable),
+        "grad_tensors": grad_tensors,
+        "none_grad_tensors": none_grad_tensors,
+        "zero_grad_tensors": zero_grad_tensors,
+        "grad_norm": math.sqrt(grad_sq_sum),
+        "grad_max_abs": grad_max_abs,
+        "grad_finite_fraction": (
+            float(finite_values / total_values) if total_values > 0 else math.nan
+        ),
+    }
+
+
+def _format_grad_flow_stats(name: str, stats: dict[str, float | int]) -> str:
+    return (
+        f"{name}: trainable_tensors={int(stats['trainable_tensors'])} "
+        f"trainable_params={int(stats['trainable_params'])} "
+        f"in_optimizer={int(stats['optimizer_tensors'])} "
+        f"grad_tensors={int(stats['grad_tensors'])} "
+        f"none_grad={int(stats['none_grad_tensors'])} "
+        f"zero_grad={int(stats['zero_grad_tensors'])} "
+        f"grad_norm={float(stats['grad_norm']):.6e} "
+        f"grad_max_abs={float(stats['grad_max_abs']):.6e} "
+        f"finite={float(stats['grad_finite_fraction']):.3f}"
+    )
+
+
+def _clean_wrapped_parameter_name(name: str) -> str:
+    return name[7:] if name.startswith("module.") else name
+
+
+def _select_named_parameters(
+    params: list[tuple[str, nn.Parameter]],
+    predicate: Callable[[str], bool],
+) -> list[tuple[str, nn.Parameter]]:
+    return [
+        (name, param)
+        for name, param in params
+        if predicate(_clean_wrapped_parameter_name(name))
+    ]
+
+
+def _reference_ip_parameter_groups(
+    *,
+    ref_trainable_wrapper: nn.Module,
+    ip_trainable_wrapper: nn.Module,
+) -> dict[str, list[tuple[str, nn.Parameter]]]:
+    ref_params = list(ref_trainable_wrapper.named_parameters())
+    ip_params = list(ip_trainable_wrapper.named_parameters())
+    return {
+        "ref.proj_mlp": _select_named_parameters(
+            ref_params,
+            lambda name: name.startswith("proj_mlp."),
+        ),
+        "ref.latent_queries": _select_named_parameters(
+            ref_params,
+            lambda name: name == "latent_queries",
+        ),
+        "ref.perceiver": _select_named_parameters(
+            ref_params,
+            lambda name: name.startswith("perceiver_layers.") or name.startswith("perceiver_norm."),
+        ),
+        "ip.encoder_hid_proj": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("encoder_hid_proj."),
+        ),
+        "ip.double_to_k_ip": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("block_") and "_to_k_ip." in name,
+        ),
+        "ip.double_to_v_ip": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("block_") and "_to_v_ip." in name,
+        ),
+        "ip.double_null": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("block_") and "_ip_null_tokens." in name,
+        ),
+        "ip.single_to_k_ip": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("single_block_") and "_to_k_ip." in name,
+        ),
+        "ip.single_to_v_ip": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("single_block_") and "_to_v_ip." in name,
+        ),
+        "ip.single_null": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("single_block_") and "_ip_null_tokens." in name,
+        ),
+    }
+
+
+class IPTrainableHealthMonitor:
+    """Track grad-ever-nonzero and fp32 parameter deltas for IP/ref modules."""
+
+    def __init__(
+        self,
+        *,
+        ref_trainable_wrapper: nn.Module,
+        ip_trainable_wrapper: nn.Module,
+        accelerator: Accelerator,
+        warmup_steps: int,
+    ) -> None:
+        self.enabled = bool(accelerator.is_local_main_process)
+        self.warmup_steps = max(1, int(warmup_steps))
+        self.groups = (
+            _reference_ip_parameter_groups(
+                ref_trainable_wrapper=ref_trainable_wrapper,
+                ip_trainable_wrapper=ip_trainable_wrapper,
+            )
+            if self.enabled
+            else {}
+        )
+        self.initial: dict[str, list[tuple[str, torch.Tensor]]] = {}
+        self.grad_ever_nonzero: dict[str, bool] = {}
+        self._warned_zero_delta: set[str] = set()
+        self._warned_zero_grad: set[str] = set()
+        self._warned_dtype: set[str] = set()
+        if not self.enabled:
+            return
+        for group_name, params in self.groups.items():
+            self.initial[group_name] = [
+                (
+                    _clean_wrapped_parameter_name(name),
+                    param.detach().float().cpu().clone(),
+                )
+                for name, param in params
+                if param.requires_grad
+            ]
+            self.grad_ever_nonzero[group_name] = False
+
+    def record_after_backward(self) -> None:
+        if not self.enabled:
+            return
+        for group_name, params in self.groups.items():
+            for _, param in params:
+                grad = param.grad
+                if grad is None:
+                    continue
+                grad_value = grad.detach()
+                if grad_value.numel() and bool((grad_value != 0).any().item()):
+                    self.grad_ever_nonzero[group_name] = True
+                    break
+
+    def log_param_delta(self, *, step: int) -> dict[str, float]:
+        logs: dict[str, float] = {}
+        if not self.enabled:
+            return logs
+        logger.info("IP/ref param delta health step=%s", step)
+        for group_name, params in self.groups.items():
+            trainable_params = [
+                (_clean_wrapped_parameter_name(name), param)
+                for name, param in params
+                if param.requires_grad
+            ]
+            initial_by_name = dict(self.initial.get(group_name, []))
+            delta_sq_sum = 0.0
+            theta_sq_sum = 0.0
+            max_abs = 0.0
+            dtype_names = sorted({str(param.dtype).replace("torch.", "") for _, param in trainable_params})
+            for name, param in trainable_params:
+                initial = initial_by_name.get(name)
+                if initial is None:
+                    continue
+                current = param.detach().float().cpu()
+                delta = current - initial
+                delta_sq_sum += float(torch.sum(delta * delta).item())
+                theta_sq_sum += float(torch.sum(initial * initial).item())
+                max_abs = max(max_abs, float(current.abs().max().item()) if current.numel() else 0.0)
+            delta_norm = math.sqrt(delta_sq_sum)
+            initial_norm = math.sqrt(theta_sq_sum)
+            relative_delta = delta_norm / max(initial_norm, 1e-12)
+            ever_nonzero = bool(self.grad_ever_nonzero.get(group_name, False))
+            safe_key = group_name.replace(".", "_")
+            logs[f"ip_health_{safe_key}_param_delta"] = delta_norm
+            logs[f"ip_health_{safe_key}_relative_delta"] = relative_delta
+            logs[f"ip_health_{safe_key}_grad_ever_nonzero"] = float(ever_nonzero)
+            logger.info(
+                "IP/ref param delta health %s: tensors=%s params=%s dtypes=%s "
+                "delta_norm=%.6e relative_delta=%.6e max_abs=%.6e grad_ever_nonzero=%s",
+                group_name,
+                len(trainable_params),
+                sum(param.numel() for _, param in trainable_params),
+                ",".join(dtype_names) if dtype_names else "none",
+                delta_norm,
+                relative_delta,
+                max_abs,
+                ever_nonzero,
+            )
+            if trainable_params and dtype_names != ["float32"] and group_name not in self._warned_dtype:
+                logger.warning(
+                    "IP/ref param delta health: %s parameters are %s, expected float32. "
+                    "bf16/fp16 trainable weights can fall into the AdamW rounding dead zone.",
+                    group_name,
+                    ",".join(dtype_names),
+                )
+                self._warned_dtype.add(group_name)
+            if step >= self.warmup_steps and trainable_params and delta_norm == 0.0 and group_name not in self._warned_zero_delta:
+                logger.warning(
+                    "IP/ref param delta health: %s has zero ||theta_t - theta_0|| after %s steps. "
+                    "This is a strong sign that optimizer updates are not changing the weights.",
+                    group_name,
+                    step,
+                )
+                self._warned_zero_delta.add(group_name)
+            if step >= self.warmup_steps and trainable_params and not ever_nonzero and group_name not in self._warned_zero_grad:
+                logger.warning(
+                    "IP/ref param delta health: %s never received a nonzero gradient in the first %s steps.",
+                    group_name,
+                    step,
+                )
+                self._warned_zero_grad.add(group_name)
+        return logs
+
+
+def _log_gradient_flow_debug(
+    *,
+    ref_trainable_wrapper: nn.Module,
+    ip_trainable_wrapper: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    accelerator: Accelerator,
+    step: int,
+) -> None:
+    if not accelerator.is_local_main_process:
+        return
+    optimizer_param_ids = {
+        id(param)
+        for group in optimizer.param_groups
+        for param in group.get("params", [])
+    }
+    groups = _reference_ip_parameter_groups(
+        ref_trainable_wrapper=ref_trainable_wrapper,
+        ip_trainable_wrapper=ip_trainable_wrapper,
+    )
+    logger.info("Gradient flow debug step=%s", step)
+    for name, params in groups.items():
+        stats = _grad_flow_stats(params, optimizer_param_ids=optimizer_param_ids)
+        logger.info("Gradient flow debug %s", _format_grad_flow_stats(name, stats))
+        trainable_tensors = int(stats["trainable_tensors"])
+        if trainable_tensors <= 0:
+            continue
+        if int(stats["optimizer_tensors"]) != trainable_tensors:
+            logger.warning(
+                "Gradient flow debug: %s has %s/%s trainable tensors in the optimizer.",
+                name,
+                int(stats["optimizer_tensors"]),
+                trainable_tensors,
+            )
+        if int(stats["grad_tensors"]) == 0:
+            logger.info(
+                "Gradient flow debug: %s received no gradients on this backward; "
+                "the 100-step param-delta monitor is the hard health check.",
+                name,
+            )
+        elif float(stats["grad_norm"]) == 0.0:
+            logger.info(
+                "Gradient flow debug: %s gradients are exactly zero on this backward; "
+                "this can be valid for zero-initialized downstream projections.",
+                name,
+            )
+
+
 def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str, nn.Module]:
     """Collect all IP-Adapter trainable modules attached to the frozen transformer."""
     from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
@@ -621,12 +1165,56 @@ def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str
         if isinstance(processor, (FluxIPAdapterJointAttnProcessor2_0, FluxRegionalIPAdapterJointAttnProcessor2_0)):
             modules[f"block_{i}_to_k_ip"] = processor.to_k_ip
             modules[f"block_{i}_to_v_ip"] = processor.to_v_ip
+            if hasattr(processor, "ip_null_tokens"):
+                modules[f"block_{i}_ip_null_tokens"] = processor.ip_null_tokens
     for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
         processor = block.attn.processor
         if isinstance(processor, FluxSingleIPAdapterAttnProcessor2_0):
             modules[f"single_block_{i}_to_k_ip"] = processor.to_k_ip
             modules[f"single_block_{i}_to_v_ip"] = processor.to_v_ip
+            if hasattr(processor, "ip_null_tokens"):
+                modules[f"single_block_{i}_ip_null_tokens"] = processor.ip_null_tokens
     return modules
+
+
+@contextlib.contextmanager
+def _temporary_ip_debug_collector(
+    transformer: FluxTransformer2DModel,
+    collector: dict | None,
+):
+    """Attach debug collection only to IP processors, avoiding FluxAttnProcessor noise."""
+    processors: list[tuple[object, bool, dict | None]] = []
+    if collector is not None:
+        for block in transformer.transformer_blocks:
+            processor = block.attn.processor
+            if isinstance(processor, FluxRegionalIPAdapterJointAttnProcessor2_0):
+                processors.append(
+                    (
+                        processor,
+                        hasattr(processor, "_ip_debug_collector"),
+                        getattr(processor, "_ip_debug_collector", None),
+                    )
+                )
+                setattr(processor, "_ip_debug_collector", collector)
+        for block in getattr(transformer, "single_transformer_blocks", []):
+            processor = block.attn.processor
+            if isinstance(processor, FluxSingleIPAdapterAttnProcessor2_0):
+                processors.append(
+                    (
+                        processor,
+                        hasattr(processor, "_ip_debug_collector"),
+                        getattr(processor, "_ip_debug_collector", None),
+                    )
+                )
+                setattr(processor, "_ip_debug_collector", collector)
+    try:
+        yield
+    finally:
+        for processor, had_value, old_value in processors:
+            if had_value:
+                setattr(processor, "_ip_debug_collector", old_value)
+            elif hasattr(processor, "_ip_debug_collector"):
+                delattr(processor, "_ip_debug_collector")
 
 
 def _split_ip_adapter_module_groups(
@@ -707,15 +1295,21 @@ def _sync_ip_adapter_to_transformer(
     for i, block in enumerate(transformer.transformer_blocks):
         k_key = f"block_{i}_to_k_ip"
         v_key = f"block_{i}_to_v_ip"
+        null_key = f"block_{i}_ip_null_tokens"
         if hasattr(ip_wrapper, k_key):
             block.attn.processor.to_k_ip = getattr(ip_wrapper, k_key)
             block.attn.processor.to_v_ip = getattr(ip_wrapper, v_key)
+        if hasattr(ip_wrapper, null_key):
+            block.attn.processor.ip_null_tokens = getattr(ip_wrapper, null_key)
     for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
         k_key = f"single_block_{i}_to_k_ip"
         v_key = f"single_block_{i}_to_v_ip"
+        null_key = f"single_block_{i}_ip_null_tokens"
         if hasattr(ip_wrapper, k_key):
             block.attn.processor.to_k_ip = getattr(ip_wrapper, k_key)
             block.attn.processor.to_v_ip = getattr(ip_wrapper, v_key)
+        if hasattr(ip_wrapper, null_key):
+            block.attn.processor.ip_null_tokens = getattr(ip_wrapper, null_key)
 
 
 def patch_flux_single_ip_forward(transformer: FluxTransformer2DModel) -> None:
@@ -789,6 +1383,37 @@ class RefEncoderTrainableWrapper(nn.Module):
             ref_encoder.perceiver_layers = self.perceiver_layers
             ref_encoder.latent_queries = self.latent_queries
             ref_encoder.perceiver_norm = self.perceiver_norm
+
+
+def _move_reference_encoder(
+    ref_encoder: ReferenceImageEncoder,
+    *,
+    device: torch.device | str,
+    train_dtype: torch.dtype = torch.float32,
+) -> None:
+    """Move ref encoder while keeping frozen UNI and trainable ref modules in fp32."""
+    ref_encoder.to(device=device)
+    ref_encoder.proj_mlp.to(device=device, dtype=train_dtype)
+    ref_encoder.perceiver_layers.to(device=device, dtype=train_dtype)
+    ref_encoder.perceiver_norm.to(device=device, dtype=train_dtype)
+    ref_encoder.latent_queries.data = ref_encoder.latent_queries.data.to(
+        device=device,
+        dtype=train_dtype,
+    )
+    ref_encoder.uni.to(device=device, dtype=torch.float32)
+    ref_encoder._lock_uni_backbone()
+
+
+def _move_ip_adapter_modules(
+    ip_adapter_modules: dict[str, nn.Module],
+    *,
+    device: torch.device | str,
+    train_dtype: torch.dtype = torch.float32,
+) -> None:
+    """Keep trainable IP-Adapter parameters in fp32 under mixed-precision training."""
+    for module in ip_adapter_modules.values():
+        module.to(device=device, dtype=train_dtype)
+        module.requires_grad_(True)
 
 
 # ---------------------------------------------------------------------------
@@ -897,29 +1522,60 @@ def _build_ip_adapter_kwargs(
     regional: bool = False,
     query_token_count: int | None = None,
     strict: bool = True,
+    regional_token_mode: str = "spatial",
+    regional_label_mode: str = "tissue",
+    ip_debug_collector: dict | None = None,
 ) -> dict:
     """Build joint_attention_kwargs with pre-projected ip_hidden_states."""
     ref_encoder = modules["ref_encoder"]
     uni_dtype = next(ref_encoder.uni.parameters()).dtype
     reference_images = batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
     if regional:
+        regional_token_mode = normalize_region_ip_token_mode(regional_token_mode)
+        regional_label_mode = normalize_region_ip_label_mode(regional_label_mode)
+        reference_tissue_mask = batch["reference_tissue_mask"].to(device=accelerator.device)
+        reference_nuclei_mask = batch["reference_nuclei_mask"].to(device=accelerator.device)
+        target_tissue_mask = batch["target_tissue_mask"].to(device=accelerator.device)
+        target_nuclei_mask = batch["target_nuclei_mask"].to(device=accelerator.device)
         ref_ip_features, region_token_labels = ref_encoder.encode_region_ip_tokens(
             reference_images,
-            batch["reference_tissue_mask"].to(device=accelerator.device),
+            reference_tissue_mask,
+            nuclei_mask=reference_nuclei_mask,
+            token_mode=regional_token_mode,
+            label_mode=regional_label_mode,
         )
-        ref_ip_features = ref_ip_features.to(dtype=weight_dtype)
         if query_token_count is None:
             raise ValueError("query_token_count is required for regional IP-Adapter.")
-        query_region_labels = resize_mask_to_token_labels(
-            batch["target_tissue_mask"].to(device=accelerator.device),
+        query_region_labels = build_region_ip_token_labels(
+            tissue_mask=target_tissue_mask,
+            num_tokens=int(query_token_count),
+            nuclei_mask=target_nuclei_mask,
+            label_mode=regional_label_mode,
+        )
+        key_fallback_region_labels = _tissue_fallback_region_labels(
+            region_token_labels,
+            label_mode=regional_label_mode,
+        )
+        query_fallback_region_labels = resize_mask_to_token_labels(
+            target_tissue_mask,
             int(query_token_count),
         )
     else:
-        ref_ip_features = ref_encoder(reference_images).to(dtype=weight_dtype)
+        ref_ip_features = ref_encoder(reference_images)
         region_token_labels = None
         query_region_labels = None
+        key_fallback_region_labels = None
+        query_fallback_region_labels = None
+    ref_gate = ref_encoder.reference_presence_gate(
+        reference_images,
+        device=accelerator.device,
+        dtype=next(transformer.encoder_hid_proj.parameters()).dtype,
+    )
     ip_hidden_states = transformer.encoder_hid_proj([ref_ip_features])
-    ip_hidden_states = [hs.to(dtype=weight_dtype) for hs in ip_hidden_states]
+    ip_hidden_states = [
+        hs.to(device=accelerator.device) * ref_gate.to(device=accelerator.device, dtype=hs.dtype)
+        for hs in ip_hidden_states
+    ]
     kwargs = {"ip_hidden_states": ip_hidden_states}
     if regional:
         kwargs.update(
@@ -927,11 +1583,771 @@ def _build_ip_adapter_kwargs(
                 "ip_adapter_masks": {
                     "key_region_labels": region_token_labels.to(device=accelerator.device),
                     "query_region_labels": query_region_labels.to(device=accelerator.device),
+                    "key_fallback_region_labels": key_fallback_region_labels.to(device=accelerator.device),
+                    "query_fallback_region_labels": query_fallback_region_labels.to(device=accelerator.device),
                     "strict": bool(strict),
                 },
             }
         )
     return kwargs
+
+
+def _regional_ip_mask_stats_from_kwargs(
+    kwargs: dict,
+    *,
+    batch_size: int,
+    query_token_count: int,
+    dtype: torch.dtype,
+    device: torch.device,
+) -> dict[str, float | int | bool] | None:
+    masks = kwargs.get("ip_adapter_masks")
+    if not isinstance(masks, dict):
+        return None
+    key_region_labels = masks.get("key_region_labels")
+    query_region_labels = masks.get("query_region_labels")
+    if key_region_labels is None or query_region_labels is None:
+        return None
+    _, _, stats = _build_region_attention_mask_and_query_gate(
+        query_region_labels=query_region_labels,
+        key_region_labels=key_region_labels,
+        query_fallback_labels=masks.get("query_fallback_region_labels"),
+        key_fallback_labels=masks.get("key_fallback_region_labels"),
+        batch_size=batch_size,
+        query_len=int(query_token_count),
+        key_len=int(key_region_labels.shape[1]),
+        device=device,
+        dtype=dtype,
+        strict=bool(masks.get("strict", True)),
+    )
+    return stats
+
+
+def _tensor_signal_stats(tensor: torch.Tensor) -> dict[str, float | list[int]]:
+    value = tensor.detach().float()
+    if value.numel() == 0:
+        return {
+            "shape": list(tensor.shape),
+            "mean": math.nan,
+            "std": math.nan,
+            "min": math.nan,
+            "max": math.nan,
+            "abs_mean": math.nan,
+            "l2": math.nan,
+            "finite_fraction": math.nan,
+        }
+    finite = torch.isfinite(value)
+    finite_fraction = float(finite.float().mean().item())
+    value = value[finite] if bool(finite.any().item()) else value.reshape(-1)
+    return {
+        "shape": list(tensor.shape),
+        "mean": float(value.mean().item()),
+        "std": float(value.std(unbiased=False).item()),
+        "min": float(value.min().item()),
+        "max": float(value.max().item()),
+        "abs_mean": float(value.abs().mean().item()),
+        "l2": float(torch.linalg.vector_norm(value).item()),
+        "finite_fraction": finite_fraction,
+    }
+
+
+def _tensor_cosine_against(left: torch.Tensor, right: torch.Tensor) -> float:
+    if left.numel() == 0 or right.numel() == 0:
+        return math.nan
+    if left.shape == right.shape:
+        left_flat = left.detach().float().reshape(1, -1)
+        right_flat = right.detach().float().reshape(1, -1)
+        return float(F.cosine_similarity(left_flat, right_flat, dim=1, eps=1e-8).item())
+    if left.ndim == 3 and right.ndim == 3 and left.shape[0] == right.shape[0] and left.shape[-1] == right.shape[-1]:
+        left_flat = left.detach().float().mean(dim=1)
+        right_flat = right.detach().float().mean(dim=1)
+        cosine = F.cosine_similarity(left_flat, right_flat, dim=1, eps=1e-8)
+        return float(cosine.mean().item()) if cosine.numel() else math.nan
+    return math.nan
+
+
+def _format_signal_stats(name: str, stats: dict[str, float | list[int]], *, zero_cosine: float | None = None) -> str:
+    text = (
+        f"{name}: shape={stats['shape']} mean={float(stats['mean']):.5f} "
+        f"std={float(stats['std']):.5f} min={float(stats['min']):.5f} "
+        f"max={float(stats['max']):.5f} abs_mean={float(stats['abs_mean']):.5f} "
+        f"l2={float(stats['l2']):.5f} finite={float(stats['finite_fraction']):.3f}"
+    )
+    if zero_cosine is not None:
+        text += f" zero_cos={zero_cosine:.5f}"
+    return text
+
+
+def _log_sensitivity_warning(
+    *,
+    stage: str,
+    zero_cosine: float,
+    real_cosine: float,
+    warn_threshold: float = 0.99,
+) -> None:
+    if math.isfinite(zero_cosine) and zero_cosine >= warn_threshold:
+        logger.warning(
+            "Reference signal debug: %s normal-vs-zero cosine %.5f >= %.2f; "
+            "image information may already be invariant at this stage.",
+            stage,
+            zero_cosine,
+            warn_threshold,
+        )
+    if math.isfinite(real_cosine) and real_cosine >= warn_threshold:
+        logger.warning(
+            "Reference signal debug: %s real-vs-real cosine %.5f >= %.2f; "
+            "different real references look nearly identical at this stage.",
+            stage,
+            real_cosine,
+            warn_threshold,
+        )
+
+
+def _token_variation_stats(tensor: torch.Tensor) -> dict[str, float]:
+    if tensor.ndim < 3 or tensor.numel() == 0:
+        return {
+            "token_norm_mean": math.nan,
+            "token_norm_std": math.nan,
+            "token_norm_min": math.nan,
+            "token_norm_max": math.nan,
+            "within_sample_token_std": math.nan,
+        }
+    value = tensor.detach().float()
+    token_norm = torch.linalg.vector_norm(value, dim=-1)
+    centered = value - value.mean(dim=1, keepdim=True)
+    return {
+        "token_norm_mean": float(token_norm.mean().item()),
+        "token_norm_std": float(token_norm.std(unbiased=False).item()),
+        "token_norm_min": float(token_norm.min().item()),
+        "token_norm_max": float(token_norm.max().item()),
+        "within_sample_token_std": float(centered.std(unbiased=False).item()),
+    }
+
+
+def _format_token_variation_stats(name: str, tensor: torch.Tensor) -> str:
+    stats = _token_variation_stats(tensor)
+    return (
+        f"{name}: token_norm_mean={stats['token_norm_mean']:.5f} "
+        f"token_norm_std={stats['token_norm_std']:.5f} "
+        f"token_norm_min={stats['token_norm_min']:.5f} "
+        f"token_norm_max={stats['token_norm_max']:.5f} "
+        f"within_sample_token_std={stats['within_sample_token_std']:.5f}"
+    )
+
+
+def _format_sequence_values(values: list[str], *, limit: int = 4) -> str:
+    if not values:
+        return "[]"
+    shown = [str(value) for value in values[:limit]]
+    suffix = "" if len(values) <= limit else f", ... (+{len(values) - limit})"
+    return "[" + ", ".join(shown) + suffix + "]"
+
+
+def _log_reference_batch_data_debug(batch: dict, reference_images: torch.Tensor) -> None:
+    target_images = batch["target_image"].to(device=reference_images.device, dtype=reference_images.dtype)
+    sample_ids = [str(value) for value in batch.get("sample_ids", [])]
+    reference_ids = [str(value) for value in batch.get("reference_sample_ids", [])]
+    same_id_fraction = math.nan
+    if sample_ids and reference_ids and len(sample_ids) == len(reference_ids):
+        same_id_fraction = sum(a == b for a, b in zip(sample_ids, reference_ids)) / len(sample_ids)
+    ref_flat = reference_images.detach().float().flatten(1)
+    target_flat = target_images.detach().float().flatten(1)
+    cosine = F.cosine_similarity(ref_flat, target_flat, dim=1, eps=1e-8)
+    logger.info(
+        "Reference data debug: batch=%s sample_ids=%s reference_ids=%s "
+        "unique_samples=%s unique_references=%s same_id_fraction=%.3f "
+        "ref_target_cos_mean=%.5f ref_target_cos_min=%.5f ref_target_cos_max=%.5f",
+        int(reference_images.shape[0]),
+        _format_sequence_values(sample_ids),
+        _format_sequence_values(reference_ids),
+        len(set(sample_ids)) if sample_ids else 0,
+        len(set(reference_ids)) if reference_ids else 0,
+        same_id_fraction,
+        float(cosine.mean().item()) if cosine.numel() else math.nan,
+        float(cosine.min().item()) if cosine.numel() else math.nan,
+        float(cosine.max().item()) if cosine.numel() else math.nan,
+    )
+
+
+def _alternate_real_reference_batch(
+    batch: dict,
+    *,
+    random_batch: dict | None = None,
+) -> dict:
+    """Build a real-reference contrast batch with the same target/noise tensors."""
+    alternate = dict(batch)
+    bsz = int(batch["reference_image"].shape[0])
+    if random_batch is not None:
+        for key in ("reference_image", "reference_tissue_mask", "reference_nuclei_mask"):
+            if key not in random_batch:
+                raise KeyError(f"random reference batch is missing {key!r}")
+            alternate[key] = random_batch[key].to(device=batch[key].device)
+        return alternate
+    if bsz > 1:
+        order = torch.arange(bsz, device=batch["reference_image"].device).roll(1)
+        alternate["reference_image"] = batch["reference_image"].index_select(0, order)
+        alternate["reference_tissue_mask"] = batch["reference_tissue_mask"].index_select(0, order)
+        alternate["reference_nuclei_mask"] = batch["reference_nuclei_mask"].index_select(0, order)
+        return alternate
+    alternate["reference_image"] = batch["target_image"]
+    alternate["reference_tissue_mask"] = batch["target_tissue_mask"]
+    alternate["reference_nuclei_mask"] = batch["target_nuclei_mask"]
+    return alternate
+
+
+@torch.no_grad()
+def _log_reference_signal_debug(
+    *,
+    batch: dict,
+    modules: dict[str, torch.nn.Module],
+    accelerator: Accelerator,
+    weight_dtype: torch.dtype,
+    transformer: FluxTransformer2DModel,
+    regional: bool,
+    regional_strict: bool,
+    regional_token_mode: str,
+    regional_label_mode: str,
+    query_token_count: int | None,
+    step: int,
+    real_contrast_batch: dict | None = None,
+) -> None:
+    if not accelerator.is_local_main_process:
+        return
+
+    ref_encoder = modules["ref_encoder"]
+    uni_dtype = next(ref_encoder.uni.parameters()).dtype
+    reference_images = batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
+    zero_images = torch.zeros_like(reference_images)
+    reference_tissue_mask = batch["reference_tissue_mask"].to(device=accelerator.device)
+    reference_nuclei_mask = batch["reference_nuclei_mask"].to(device=accelerator.device)
+    if real_contrast_batch is None:
+        real_contrast_batch = _alternate_real_reference_batch(batch)
+    real_images = real_contrast_batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
+    real_tissue_mask = real_contrast_batch["reference_tissue_mask"].to(device=accelerator.device)
+    real_nuclei_mask = real_contrast_batch["reference_nuclei_mask"].to(device=accelerator.device)
+    _log_reference_batch_data_debug(batch, reference_images)
+
+    def encode_variant(
+        images: torch.Tensor,
+        tissue_mask: torch.Tensor,
+        nuclei_mask: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        uni_features = ref_encoder.extract_uni_features(images)
+        proj_dtype = next(ref_encoder.proj_mlp.parameters()).dtype
+        projected = ref_encoder.proj_mlp(uni_features.to(dtype=proj_dtype))
+        region_labels = None
+        if regional:
+            token_mode = normalize_region_ip_token_mode(regional_token_mode)
+            label_mode = normalize_region_ip_label_mode(regional_label_mode)
+            labels = build_region_ip_token_labels(
+                tissue_mask=tissue_mask,
+                num_tokens=int(projected.shape[1]),
+                nuclei_mask=nuclei_mask,
+                label_mode=label_mode,
+            ).to(device=accelerator.device)
+            if token_mode == "spatial":
+                ref_tokens = projected
+                region_labels = labels
+            else:
+                ref_tokens, region_labels = ref_encoder._resample_by_region_labels(projected, labels)
+        else:
+            ref_tokens = projected if ref_encoder.skip_perceiver else ref_encoder._resample(projected)
+        ref_gate = ref_encoder.reference_presence_gate(
+            images, device=ref_tokens.device, dtype=ref_tokens.dtype
+        )
+        ref_tokens = ref_tokens * ref_gate
+        projected_ip = transformer.encoder_hid_proj([ref_tokens])[0]
+        projected_ip = projected_ip * ref_gate.to(device=projected_ip.device, dtype=projected_ip.dtype)
+        zero_token_ip = transformer.encoder_hid_proj([torch.zeros_like(ref_tokens)])[0]
+        projected_ip_centered = projected_ip - zero_token_ip.to(
+            device=projected_ip.device,
+            dtype=projected_ip.dtype,
+        )
+        result = {
+            "images": images,
+            "uni": uni_features,
+            "projected": projected,
+            "ref_tokens": ref_tokens,
+            "encoder_hid_proj": projected_ip,
+            "encoder_hid_proj_zero_token": zero_token_ip,
+            "encoder_hid_proj_centered": projected_ip_centered,
+        }
+        if region_labels is not None:
+            result["region_token_labels"] = region_labels
+        return result
+
+    normal = encode_variant(reference_images, reference_tissue_mask, reference_nuclei_mask)
+    zero = encode_variant(zero_images, reference_tissue_mask, reference_nuclei_mask)
+    real = encode_variant(real_images, real_tissue_mask, real_nuclei_mask)
+    logger.info(
+        "Reference signal debug step=%s mode=%s regional=%s strict=%s token_mode=%s label_mode=%s "
+        "skip_perceiver=%s uni_training=%s uni_dtype=%s proj_dtype=%s query_tokens=%s",
+        step,
+        "train" if ref_encoder.training else "eval",
+        regional,
+        regional_strict,
+        normalize_region_ip_token_mode(regional_token_mode),
+        normalize_region_ip_label_mode(regional_label_mode),
+        bool(ref_encoder.skip_perceiver),
+        bool(ref_encoder.uni.training),
+        str(uni_dtype).replace("torch.", ""),
+        str(next(ref_encoder.proj_mlp.parameters()).dtype).replace("torch.", ""),
+        query_token_count,
+    )
+    encoder_hid_proj_dtype = next(transformer.encoder_hid_proj.parameters()).dtype
+    logger.info(
+        "Reference signal debug dtype: train_weight_dtype=%s encoder_hid_proj_dtype=%s "
+        "ref_tokens_dtype=%s ip_hidden_dtype=%s",
+        str(weight_dtype).replace("torch.", ""),
+        str(encoder_hid_proj_dtype).replace("torch.", ""),
+        str(normal["ref_tokens"].dtype).replace("torch.", ""),
+        str(normal["encoder_hid_proj"].dtype).replace("torch.", ""),
+    )
+    for name in ("images", "uni", "projected", "ref_tokens", "encoder_hid_proj"):
+        stats = _tensor_signal_stats(normal[name])
+        zero_cosine = _tensor_cosine_against(normal[name], zero[name])
+        real_cosine = _tensor_cosine_against(normal[name], real[name])
+        logger.info(
+            "Reference signal debug %s real_cos=%.5f",
+            _format_signal_stats(name, stats, zero_cosine=zero_cosine),
+            real_cosine,
+        )
+        if name in {"projected", "ref_tokens", "encoder_hid_proj"}:
+            logger.info("Reference token debug %s", _format_token_variation_stats(name, normal[name]))
+            _log_sensitivity_warning(
+                stage=name,
+                zero_cosine=zero_cosine,
+                real_cosine=real_cosine,
+            )
+
+    zero_token_basis = normal["encoder_hid_proj_zero_token"]
+    logger.info(
+        "Reference signal debug encoder_hid_proj_zero_token: %s normal_cos=%.5f real_cos=%.5f "
+        "centered_real_cos=%.5f",
+        _format_signal_stats(
+            "encoder_hid_proj_zero_token",
+            _tensor_signal_stats(zero_token_basis),
+            zero_cosine=None,
+        ),
+        _tensor_cosine_against(normal["encoder_hid_proj"], zero_token_basis),
+        _tensor_cosine_against(real["encoder_hid_proj"], real["encoder_hid_proj_zero_token"]),
+        _tensor_cosine_against(
+            normal["encoder_hid_proj_centered"],
+            real["encoder_hid_proj_centered"],
+        ),
+    )
+
+    if regional and "region_token_labels" in normal and query_token_count is not None:
+        label_mode = normalize_region_ip_label_mode(regional_label_mode)
+        query_region_labels = build_region_ip_token_labels(
+            tissue_mask=batch["target_tissue_mask"].to(device=accelerator.device),
+            num_tokens=int(query_token_count),
+            nuclei_mask=batch["target_nuclei_mask"].to(device=accelerator.device),
+            label_mode=label_mode,
+        ).to(device=accelerator.device)
+        key_fallback_region_labels = _tissue_fallback_region_labels(
+            normal["region_token_labels"],
+            label_mode=label_mode,
+        )
+        query_fallback_region_labels = resize_mask_to_token_labels(
+            batch["target_tissue_mask"].to(device=accelerator.device),
+            int(query_token_count),
+        ).to(device=accelerator.device)
+        _, _, region_stats = _build_region_attention_mask_and_query_gate(
+            query_region_labels=query_region_labels,
+            key_region_labels=normal["region_token_labels"],
+            query_fallback_labels=query_fallback_region_labels,
+            key_fallback_labels=key_fallback_region_labels,
+            batch_size=int(reference_images.shape[0]),
+            query_len=int(query_token_count),
+            key_len=int(normal["region_token_labels"].shape[1]),
+            device=accelerator.device,
+            dtype=weight_dtype,
+            strict=regional_strict,
+        )
+        logger.info(
+            "Reference region mask debug: %s",
+            _format_region_attention_stats(region_stats),
+        )
+        missing_fraction = float(region_stats["missing_query_fraction"])
+        active_fraction = float(region_stats["active_query_fraction"])
+        fallback_fraction = float(region_stats["fallback_query_fraction"])
+        allowed_fraction = float(region_stats["allowed_valid_pair_fraction"])
+        if regional_strict and active_fraction <= 0.0:
+            logger.warning(
+                "Reference region mask debug: no query tokens have a matching reference region; "
+                "regional IP output will be zeroed."
+            )
+        elif regional_strict and missing_fraction > 0.2:
+            logger.warning(
+                "Reference region mask debug: %.1f%% of valid query tokens have no matching "
+                "reference region and will receive no IP signal.",
+                100.0 * missing_fraction,
+            )
+        if regional_strict and fallback_fraction > 0.5:
+            logger.warning(
+                "Reference region mask debug: %.1f%% of valid query tokens used tissue fallback; "
+                "check whether tissue+nuclei labels are too sparse/mismatched.",
+                100.0 * fallback_fraction,
+            )
+        if regional_strict and allowed_fraction > 0.5:
+            logger.warning(
+                "Reference region mask debug: allowed pair fraction %.3f is very high; "
+                "region labels may be too coarse or mostly background.",
+                allowed_fraction,
+            )
+
+    uni_std = float(_tensor_signal_stats(normal["uni"])["std"])
+    projected_std = float(_tensor_signal_stats(normal["projected"])["std"])
+    if uni_std < 0.01:
+        logger.warning(
+            "Reference signal debug: UNI std %.6f is very low; check image range, UNI dtype, and eval state.",
+            uni_std,
+        )
+    if projected_std < 0.01:
+        logger.warning(
+            "Reference signal debug: projected std %.6f is very low; proj_mlp may have collapsed.",
+            projected_std,
+        )
+    if regional and normalize_region_ip_token_mode(regional_token_mode) == "spatial":
+        logger.warning(
+            "Reference signal debug: regional spatial mode feeds %s IP tokens directly. "
+            "If high IP scale produces outlines, retry with --regional-ip-token-mode perceiver.",
+            int(normal["ref_tokens"].shape[1]),
+        )
+
+
+def _summarize_ip_attention_collector(
+    collector: dict | None,
+    *,
+    step: int,
+    variant: str,
+    max_ratio_warn: float,
+    min_ratio_warn: float,
+    mask_stats: dict[str, float | int | bool] | None = None,
+) -> dict[str, float]:
+    logs: dict[str, float] = {}
+    safe_variant = str(variant).replace(".", "_")
+    if mask_stats is not None:
+        logs[f"ip_health_{safe_variant}_region_active_q"] = float(mask_stats["active_query_fraction"])
+        logs[f"ip_health_{safe_variant}_region_missing_q"] = float(mask_stats["missing_query_fraction"])
+        logs[f"ip_health_{safe_variant}_region_fallback_q"] = float(mask_stats["fallback_query_fraction"])
+        logs[f"ip_health_{safe_variant}_region_null_q"] = float(mask_stats["null_query_fraction"])
+        logs[f"ip_health_{safe_variant}_region_allowed_pairs"] = float(mask_stats["allowed_valid_pair_fraction"])
+        logs[f"ip_health_{safe_variant}_region_allowed_per_q"] = float(
+            mask_stats["allowed_tokens_per_query_mean"]
+        )
+        logger.info(
+            "IP attention health step=%s variant=%s region_mask: %s",
+            step,
+            variant,
+            _format_region_attention_stats(mask_stats),
+        )
+    if collector is None:
+        return logs
+    records = list(collector.get("records", []))
+    if not records:
+        logger.warning(
+            "IP attention health step=%s variant=%s: no IP attention records were collected.",
+            step,
+            variant,
+        )
+        return logs
+    ratios = [float(record.get("ratio", math.nan)) for record in records]
+    finite_ratios = [value for value in ratios if math.isfinite(value)]
+    if not finite_ratios:
+        logger.warning(
+            "IP attention health step=%s variant=%s: all IP ratios are non-finite.",
+            step,
+            variant,
+        )
+        return logs
+    ratio_min = min(finite_ratios)
+    ratio_max = max(finite_ratios)
+    ratio_mean = sum(finite_ratios) / len(finite_ratios)
+    logs[f"ip_health_{safe_variant}_ip_ratio_min"] = ratio_min
+    logs[f"ip_health_{safe_variant}_ip_ratio_mean"] = ratio_mean
+    logs[f"ip_health_{safe_variant}_ip_ratio_max"] = ratio_max
+    logger.info(
+        "IP attention health step=%s variant=%s: blocks=%s "
+        "ratio[min/mean/max]=%.6e/%.6e/%.6e",
+        step,
+        variant,
+        len(records),
+        ratio_min,
+        ratio_mean,
+        ratio_max,
+    )
+    for record in records:
+        logger.info(
+            "IP attention health step=%s variant=%s %s: "
+            "scale_ip_out_norm=%.6e hidden_norm=%.6e ratio=%.6e",
+            step,
+            variant,
+            record.get("block", "block"),
+            float(record.get("ip_norm", math.nan)),
+            float(record.get("hidden_norm", math.nan)),
+            float(record.get("ratio", math.nan)),
+        )
+    if ratio_max > max_ratio_warn:
+        logger.warning(
+            "IP attention health step=%s variant=%s: max ||scale*ip_out||/||hidden|| "
+            "%.6e exceeds %.6e; high IP scale may burn/outline the image.",
+            step,
+            variant,
+            ratio_max,
+            max_ratio_warn,
+        )
+    if ratio_max < min_ratio_warn:
+        if safe_variant == "zero":
+            logger.info(
+                "IP attention health step=%s variant=%s: all IP residual ratios are below %.6e "
+                "because zero-reference gating intentionally disables the IP branch.",
+                step,
+                variant,
+                min_ratio_warn,
+            )
+        elif mask_stats is not None and float(mask_stats["active_query_fraction"]) <= 0.0:
+            logger.warning(
+                "IP attention health step=%s variant=%s: all IP residual ratios are below %.6e "
+                "because strict regional masking routed every query to the learned null token. "
+                "Check label overlap before treating this as an ignored reference branch.",
+                step,
+                variant,
+                min_ratio_warn,
+            )
+        elif mask_stats is not None and float(mask_stats["missing_query_fraction"]) > 0.8:
+            logger.warning(
+                "IP attention health step=%s variant=%s: all IP residual ratios are below %.6e; "
+                "%.1f%% of valid query tokens have no matching reference region and route to the learned null token.",
+                step,
+                variant,
+                min_ratio_warn,
+                100.0 * float(mask_stats["missing_query_fraction"]),
+            )
+        else:
+            logger.warning(
+                "IP attention health step=%s variant=%s: all IP residual ratios are below %.6e; "
+                "the transformer may effectively ignore the reference branch.",
+                step,
+                variant,
+                min_ratio_warn,
+            )
+    return logs
+
+
+def _collector_first_ip_cosine(left: dict | None, right: dict | None) -> float:
+    if left is None or right is None:
+        return math.nan
+    left_output = left.get("first_ip_output")
+    right_output = right.get("first_ip_output")
+    if not torch.is_tensor(left_output) or not torch.is_tensor(right_output):
+        return math.nan
+    return _tensor_cosine_against(left_output, right_output)
+
+
+@torch.no_grad()
+def _run_ip_reference_health_diagnostics(
+    *,
+    step: int,
+    training_batch: dict,
+    real_contrast_batch: dict | None,
+    modules: dict[str, torch.nn.Module],
+    accelerator: Accelerator,
+    weight_dtype: torch.dtype,
+    transformer: FluxTransformer2DModel,
+    noisy_model_input: torch.Tensor,
+    timesteps: torch.Tensor,
+    guidance_vec: torch.Tensor | None,
+    batch_pooled: torch.Tensor,
+    batch_prompt: torch.Tensor,
+    text_ids: torch.Tensor,
+    latent_image_ids: torch.Tensor,
+    transformer_controlnet_block_samples: list[torch.Tensor] | None,
+    transformer_controlnet_single_block_samples: list[torch.Tensor] | None,
+    target_velocity: torch.Tensor,
+    regional: bool,
+    regional_strict: bool,
+    regional_token_mode: str,
+    regional_label_mode: str,
+    query_token_count: int,
+    warmup_steps: int,
+    min_ref_l2: float,
+    min_swap_loss_gap: float,
+    max_ip_ratio_warn: float,
+    min_ip_ratio_warn: float,
+) -> dict[str, float]:
+    logs: dict[str, float] = {}
+    if not accelerator.is_local_main_process:
+        return logs
+
+    normal_ip_collector = {"store_first_ip_output": True}
+    normal_kwargs = _build_ip_adapter_kwargs(
+        training_batch,
+        modules,
+        accelerator,
+        weight_dtype,
+        transformer,
+        regional=regional,
+        query_token_count=query_token_count,
+        strict=regional_strict,
+        regional_token_mode=regional_token_mode,
+        regional_label_mode=regional_label_mode,
+        ip_debug_collector=normal_ip_collector,
+    )
+    normal_mask_stats = _regional_ip_mask_stats_from_kwargs(
+        normal_kwargs,
+        batch_size=int(noisy_model_input.shape[0]),
+        query_token_count=query_token_count,
+        dtype=weight_dtype,
+        device=accelerator.device,
+    )
+    with _temporary_ip_debug_collector(transformer, normal_ip_collector):
+        normal_noise_pred = transformer(
+            hidden_states=noisy_model_input,
+            timestep=timesteps / 1000,
+            guidance=guidance_vec,
+            pooled_projections=batch_pooled,
+            encoder_hidden_states=batch_prompt,
+            controlnet_block_samples=[
+                sample.detach() for sample in transformer_controlnet_block_samples
+            ] if transformer_controlnet_block_samples is not None else None,
+            controlnet_single_block_samples=[
+                sample.detach() for sample in transformer_controlnet_single_block_samples
+            ] if transformer_controlnet_single_block_samples is not None else None,
+            txt_ids=text_ids,
+            img_ids=latent_image_ids,
+            joint_attention_kwargs=dict(normal_kwargs),
+            return_dict=False,
+        )[0]
+    normal_per_sample_loss = per_sample_mse(normal_noise_pred, target_velocity)
+    logs.update(
+        _summarize_ip_attention_collector(
+            normal_ip_collector,
+            step=step,
+            variant="normal",
+            max_ratio_warn=max_ip_ratio_warn,
+            min_ratio_warn=min_ip_ratio_warn,
+            mask_stats=normal_mask_stats,
+        )
+    )
+    variants = {
+        "zero": _use_zero_reference(training_batch),
+        "real": real_contrast_batch or _alternate_real_reference_batch(training_batch),
+    }
+    for variant_name, variant_batch in variants.items():
+        collector = {"store_first_ip_output": True}
+        variant_kwargs = _build_ip_adapter_kwargs(
+            variant_batch,
+            modules,
+            accelerator,
+            weight_dtype,
+            transformer,
+            regional=regional,
+            query_token_count=query_token_count,
+            strict=regional_strict,
+            regional_token_mode=regional_token_mode,
+            regional_label_mode=regional_label_mode,
+            ip_debug_collector=collector,
+        )
+        variant_mask_stats = _regional_ip_mask_stats_from_kwargs(
+            variant_kwargs,
+            batch_size=int(noisy_model_input.shape[0]),
+            query_token_count=query_token_count,
+            dtype=weight_dtype,
+            device=accelerator.device,
+        )
+        with _temporary_ip_debug_collector(transformer, collector):
+            variant_pred = transformer(
+                hidden_states=noisy_model_input,
+                timestep=timesteps / 1000,
+                guidance=guidance_vec,
+                pooled_projections=batch_pooled,
+                encoder_hidden_states=batch_prompt,
+                controlnet_block_samples=[
+                    sample.detach() for sample in transformer_controlnet_block_samples
+                ] if transformer_controlnet_block_samples is not None else None,
+                controlnet_single_block_samples=[
+                    sample.detach() for sample in transformer_controlnet_single_block_samples
+                ] if transformer_controlnet_single_block_samples is not None else None,
+                txt_ids=text_ids,
+                img_ids=latent_image_ids,
+                joint_attention_kwargs=dict(variant_kwargs),
+                return_dict=False,
+            )[0]
+        variant_loss = per_sample_mse(variant_pred, target_velocity)
+        pred_l2 = float(
+            torch.sqrt(
+                torch.mean((variant_pred.detach().float() - normal_noise_pred.detach().float()) ** 2)
+            ).item()
+        )
+        loss_gap = float((variant_loss.mean() - normal_per_sample_loss.detach().mean()).item())
+        ip_output_cosine = _collector_first_ip_cosine(normal_ip_collector, collector)
+        safe_variant = variant_name.replace(".", "_")
+        logs[f"ip_health_{safe_variant}_pred_l2"] = pred_l2
+        logs[f"ip_health_{safe_variant}_loss_gap"] = loss_gap
+        logs[f"ip_health_{safe_variant}_first_ip_output_cos"] = ip_output_cosine
+        logger.info(
+            "Reference health step=%s variant=%s: pred_l2=%.6e loss_gap=%.6e "
+            "first_double_ip_output_cos=%.6f",
+            step,
+            variant_name,
+            pred_l2,
+            loss_gap,
+            ip_output_cosine,
+        )
+        if step >= warmup_steps and pred_l2 <= min_ref_l2:
+            logger.warning(
+                "Reference health step=%s variant=%s: normal-vs-%s noise_pred L2 %.6e <= %.6e; "
+                "reference swaps are still not changing the output.",
+                step,
+                variant_name,
+                variant_name,
+                pred_l2,
+                min_ref_l2,
+            )
+        if (
+            step >= warmup_steps
+            and variant_name == "real"
+            and loss_gap <= min_swap_loss_gap
+        ):
+            logger.warning(
+                "Reference health step=%s: paired-ref vs shuffled/alternate-ref loss gap "
+                "%.6e <= %.6e; the model is not yet penalizing wrong references.",
+                step,
+                loss_gap,
+                min_swap_loss_gap,
+            )
+        if math.isfinite(ip_output_cosine) and ip_output_cosine >= 0.99:
+            logger.warning(
+                "Reference health step=%s variant=%s: first double-block IP output cosine "
+                "%.6f >= 0.99; IP attention output is nearly invariant to this reference change.",
+                step,
+                variant_name,
+                ip_output_cosine,
+            )
+        logs.update(
+            _summarize_ip_attention_collector(
+                collector,
+                step=step,
+                variant=variant_name,
+                max_ratio_warn=max_ip_ratio_warn,
+                min_ratio_warn=min_ip_ratio_warn,
+                mask_stats=variant_mask_stats,
+            )
+        )
+    return logs
+
+
+def _tissue_fallback_region_labels(labels: torch.Tensor, *, label_mode: str) -> torch.Tensor:
+    """Map exact IP labels back to tissue labels for strict fallback matching."""
+    label_mode = normalize_region_ip_label_mode(label_mode)
+    labels = labels.to(dtype=torch.long)
+    if label_mode == "tissue":
+        return labels
+    fallback = torch.full_like(labels, -1)
+    valid = labels >= 0
+    fallback[valid] = labels[valid] // 256
+    return fallback
 
 
 def _use_self_reconstruction_reference(batch: dict) -> dict:
@@ -1288,6 +2704,8 @@ def _save_condition_modules(
     save_dtype: torch.dtype,
     *,
     control_spec: CrossV1ControlSpec,
+    regional_ip_token_mode: str = "spatial",
+    regional_ip_label_mode: str = "tissue",
 ) -> None:
     state = {
         "cross_v1_spatial_mode": control_spec.spatial_mode,
@@ -1319,6 +2737,8 @@ def _save_condition_modules(
                 "perceiver_cross_gate_init": getattr(
                     unwrapped, "perceiver_cross_gate_init", None
                 ),
+                "regional_ip_token_mode": normalize_region_ip_token_mode(regional_ip_token_mode),
+                "regional_ip_label_mode": normalize_region_ip_label_mode(regional_ip_label_mode),
             }
             state["ref_encoder_proj_mlp"] = {
                 k: v.to(save_dtype) for k, v in unwrapped.proj_mlp.state_dict().items()
@@ -1347,6 +2767,8 @@ def _save_ip_adapter_modules(
     num_tokens: int,
     ip_init_gain: float,
     regional_ip_adapter: bool = False,
+    regional_ip_token_mode: str = "spatial",
+    regional_ip_label_mode: str = "tissue",
 ) -> None:
     unwrapped = unwrap_model(ip_wrapper)
     state = {
@@ -1358,6 +2780,8 @@ def _save_ip_adapter_modules(
     state["num_tokens"] = int(num_tokens)
     state["ip_init_gain"] = float(ip_init_gain)
     state["regional_ip_adapter"] = bool(regional_ip_adapter)
+    state["regional_ip_token_mode"] = normalize_region_ip_token_mode(regional_ip_token_mode)
+    state["regional_ip_label_mode"] = normalize_region_ip_label_mode(regional_ip_label_mode)
     single_block_indices = sorted(
         {
             int(name.split("_")[2])
@@ -1381,6 +2805,8 @@ def _save_cross_v1_artifacts(
     control_spec: CrossV1ControlSpec,
     ip_num_tokens: int | None = None,
     regional_ip_adapter: bool = False,
+    regional_ip_token_mode: str = "spatial",
+    regional_ip_label_mode: str = "tissue",
 ) -> None:
     save_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(
         args.save_weight_dtype, torch.float32,
@@ -1396,6 +2822,8 @@ def _save_cross_v1_artifacts(
         unwrap_model,
         save_dtype,
         control_spec=control_spec,
+        regional_ip_token_mode=regional_ip_token_mode,
+        regional_ip_label_mode=regional_ip_label_mode,
     )
     _save_ip_adapter_modules(
         output_dir,
@@ -1405,6 +2833,8 @@ def _save_cross_v1_artifacts(
         num_tokens=int(ip_num_tokens or args.reference_num_tokens),
         ip_init_gain=args.ip_init_gain,
         regional_ip_adapter=regional_ip_adapter,
+        regional_ip_token_mode=regional_ip_token_mode,
+        regional_ip_label_mode=regional_ip_label_mode,
     )
 
 
@@ -1575,11 +3005,23 @@ def _load_condition_modules_from_checkpoint(
         ref_encoder = modules["ref_encoder"]
         ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
         if not bool(getattr(ref_encoder, "skip_perceiver", False)):
-            ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
-            ref_encoder.latent_queries.data.copy_(
-                state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+            perceiver_keys = (
+                "ref_encoder_perceiver_layers",
+                "ref_encoder_latent_queries",
+                "ref_encoder_perceiver_norm",
             )
-            ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
+            if all(key in state for key in perceiver_keys):
+                ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
+                ref_encoder.latent_queries.data.copy_(
+                    state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+                )
+                ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
+            else:
+                logger.warning(
+                    "Conditioning checkpoint %s does not contain reference Perceiver "
+                    "weights; keeping the newly initialized Perceiver trainable.",
+                    state_path,
+                )
 
 
 def _resolve_phase5_conditioning_state_path(checkpoint_path: str | Path) -> Path:
@@ -1637,31 +3079,43 @@ def _load_ip_adapter_modules_from_checkpoint(
         return
     transformer.encoder_hid_proj.load_state_dict(state["encoder_hid_proj"])
     loaded_double = 0
+    loaded_double_null = 0
     for i, block in enumerate(transformer.transformer_blocks):
         k_key = f"block_{i}_to_k_ip"
         v_key = f"block_{i}_to_v_ip"
+        null_key = f"block_{i}_ip_null_tokens"
         if k_key not in state or v_key not in state:
             continue
         block.attn.processor.to_k_ip.load_state_dict(state[k_key])
         block.attn.processor.to_v_ip.load_state_dict(state[v_key])
+        if null_key in state and hasattr(block.attn.processor, "ip_null_tokens"):
+            block.attn.processor.ip_null_tokens.load_state_dict(state[null_key])
+            loaded_double_null += 1
         loaded_double += 1
 
     loaded_single = 0
+    loaded_single_null = 0
     if load_single_ip:
         for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
             k_key = f"single_block_{i}_to_k_ip"
             v_key = f"single_block_{i}_to_v_ip"
+            null_key = f"single_block_{i}_ip_null_tokens"
             if k_key not in state or v_key not in state:
                 continue
             block.attn.processor.to_k_ip.load_state_dict(state[k_key])
             block.attn.processor.to_v_ip.load_state_dict(state[v_key])
+            if null_key in state and hasattr(block.attn.processor, "ip_null_tokens"):
+                block.attn.processor.ip_null_tokens.load_state_dict(state[null_key])
+                loaded_single_null += 1
             loaded_single += 1
 
     logger.info(
-        "Loaded IP-Adapter checkpoint %s: double_blocks=%s single_blocks=%s",
+        "Loaded IP-Adapter checkpoint %s: double_blocks=%s double_null=%s single_blocks=%s single_null=%s",
         state_path,
         loaded_double,
+        loaded_double_null,
         loaded_single,
+        loaded_single_null,
     )
 
 
@@ -1738,6 +3192,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     perceptual_loss_interval = int(getattr(args, "perceptual_loss_interval", 1) or 0)
     regional_ip_adapter = bool(getattr(args, "regional_ip_adapter", False))
     regional_ip_strict = bool(getattr(args, "regional_ip_strict", True))
+    regional_ip_token_mode = normalize_region_ip_token_mode(
+        getattr(args, "regional_ip_token_mode", "spatial")
+    )
+    regional_ip_label_mode = normalize_region_ip_label_mode(
+        getattr(args, "regional_ip_label_mode", "tissue")
+    )
     degraded_noising_min_sigma = max(
         0.0,
         float(getattr(args, "degraded_noising_min_sigma", 0.1) or 0.0),
@@ -1752,6 +3212,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     reference_region_loss_config = RegionalFeatureLossConfig(
         tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
         nuclei_weight=float(getattr(args, "reference_region_nuclei_weight", 0.0) or 0.0),
+        composite_weight=float(getattr(args, "reference_region_composite_weight", 0.0) or 0.0),
         mean_weight=float(getattr(args, "reference_region_mean_weight", 1.0) or 0.0),
         std_weight=float(getattr(args, "reference_region_std_weight", 0.5) or 0.0),
         pooled_cosine_weight=float(getattr(args, "reference_region_cosine_weight", 0.25) or 0.0),
@@ -1774,11 +3235,19 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
     ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.02) or 0.0)
     ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero,random"))
+    ip_health_debug_interval = max(0, int(getattr(args, "ip_health_debug_interval", 0) or 0))
     random_reference_sampler = (
         RandomReferenceSampler(dataset.records, seed=args.seed)
-        if "random" in ref_swap_variants and args.train_batch_size <= 1
+        if (("random" in ref_swap_variants) or ip_health_debug_interval > 0)
+        and args.train_batch_size <= 1
         else None
     )
+
+    skip_reference_perceiver = bool(getattr(args, "skip_reference_perceiver", False))
+    if regional_ip_adapter and regional_ip_token_mode == "spatial":
+        skip_reference_perceiver = True
+    elif regional_ip_adapter and regional_ip_token_mode == "perceiver":
+        skip_reference_perceiver = False
 
     ref_encoder = ReferenceImageEncoder(
         uni_checkpoint_path=args.uni_checkpoint_path,
@@ -1789,9 +3258,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             getattr(args, "disable_reference_perceiver_self_attn", False)
         ),
         perceiver_cross_gate_init=getattr(args, "reference_perceiver_cross_gate_init", None),
-        skip_perceiver=bool(getattr(args, "skip_reference_perceiver", False)) or regional_ip_adapter,
+        skip_perceiver=skip_reference_perceiver,
     )
-    ip_num_tokens = ref_encoder.num_spatial_tokens if regional_ip_adapter else ref_encoder.num_output_tokens
+    ip_num_tokens = (
+        ref_encoder.num_spatial_tokens
+        if regional_ip_adapter and regional_ip_token_mode == "spatial"
+        else ref_encoder.num_output_tokens
+    )
 
     modules = {
         "hte": HierarchicalTissueEmbedding(embedding_dim=args.tissue_embedding_dim),
@@ -1894,9 +3367,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         )
     if regional_ip_adapter:
         logger.info(
-            "Using mask-guided regional IP-Adapter: tokens=%s strict=%s",
+            "Using mask-guided regional IP-Adapter: tokens=%s strict=%s token_mode=%s label_mode=%s",
             ip_num_tokens,
             regional_ip_strict,
+            regional_ip_token_mode,
+            regional_ip_label_mode,
         )
     if getattr(args, "noising_degradation", "none") != "none":
         logger.info(
@@ -1906,11 +3381,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         )
     if reference_region_loss_weight > 0.0:
         logger.info(
-            "Using frozen UNI spatial reference region loss: weight=%s interval=%s tissue=%s nuclei=%s mean/std/cos=%s/%s/%s",
+            "Using frozen UNI spatial reference region loss: weight=%s interval=%s tissue=%s nuclei=%s composite=%s mean/std/cos=%s/%s/%s",
             reference_region_loss_weight,
             reference_region_loss_interval,
             reference_region_loss_config.tissue_weight,
             reference_region_loss_config.nuclei_weight,
+            reference_region_loss_config.composite_weight,
             reference_region_loss_config.mean_weight,
             reference_region_loss_config.std_weight,
             reference_region_loss_config.pooled_cosine_weight,
@@ -1929,10 +3405,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         logger.info("Reference Perceiver is skipped; projected UNI patch tokens feed IP-Adapter directly.")
     if ref_encoder.perceiver_cross_gate_init is not None:
         logger.info(
-            "Reference Perceiver cross-attention gate enabled with init=%s "
-            "(sigmoid=%s)",
+            "Reference Perceiver uses cross-output-only mode; latent queries are not "
+            "residual output content. cross_out_scale_init=%s (scale=%s)",
             ref_encoder.perceiver_cross_gate_init,
-            torch.sigmoid(torch.tensor(ref_encoder.perceiver_cross_gate_init)).item(),
+            1.0 - torch.sigmoid(torch.tensor(ref_encoder.perceiver_cross_gate_init)).item(),
         )
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()
@@ -2042,11 +3518,12 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
     # ---- freeze transformer, re-enable IP-Adapter modules ----
     flux_transformer.to(accelerator.device, dtype=weight_dtype)
-    if hasattr(flux_transformer, 'encoder_hid_proj'):
-        flux_transformer.encoder_hid_proj.to(dtype=weight_dtype)
     flux_transformer.requires_grad_(False)
-    for module in ip_adapter_modules.values():
-        module.requires_grad_(True)
+    _move_ip_adapter_modules(
+        ip_adapter_modules,
+        device=accelerator.device,
+        train_dtype=torch.float32,
+    )
 
     vae.to(accelerator.device, dtype=weight_dtype)
     vae.eval()
@@ -2057,10 +3534,15 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         flux_controlnet.requires_grad_(False)
         controlnet_trainable_names: list[str] = []
         for name, module in modules.items():
-            module.to(accelerator.device, dtype=weight_dtype)
             if name == "ref_encoder":
+                _move_reference_encoder(
+                    module,
+                    device=accelerator.device,
+                    train_dtype=torch.float32,
+                )
                 module.train()
             else:
+                module.to(accelerator.device, dtype=weight_dtype)
                 module.eval()
                 module.requires_grad_(False)
     else:
@@ -2082,11 +3564,19 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             sum(p.numel() for p in flux_controlnet.parameters() if p.requires_grad),
             ", ".join(controlnet_trainable_names[:12]),
         )
-        for module in modules.values():
+        for name, module in modules.items():
+            if name == "ref_encoder":
+                _move_reference_encoder(
+                    module,
+                    device=accelerator.device,
+                    train_dtype=torch.float32,
+                )
+            else:
+                module.to(accelerator.device, dtype=weight_dtype)
             module.train()
-    # UNI2-h backbone inside ref_encoder stays frozen
-    modules["ref_encoder"].uni.requires_grad_(False)
-    modules["ref_encoder"].uni.eval()
+    # UNI2-h backbone inside ref_encoder stays frozen and fp32.
+    modules["ref_encoder"].uni.to(device=accelerator.device, dtype=torch.float32)
+    modules["ref_encoder"]._lock_uni_backbone()
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -2141,9 +3631,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
     # --- FIX 2: ref_encoder 可训练部分包成 wrapper ---
     ref_encoder_raw = modules.pop("ref_encoder")
-    ref_encoder_raw.to(accelerator.device)
-    # 冻结的 UNI backbone 手动放到 device，不过 DDP
-    ref_encoder_raw.uni.to(accelerator.device)
+    _move_reference_encoder(
+        ref_encoder_raw,
+        device=accelerator.device,
+        train_dtype=torch.float32,
+    )
 
     ref_trainable_wrapper = RefEncoderTrainableWrapper(ref_encoder_raw)
 
@@ -2329,6 +3821,22 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         desc="Steps",
         disable=not accelerator.is_local_main_process,
     )
+    ip_health_debug_warmup_steps = max(
+        1,
+        int(getattr(args, "ip_health_debug_warmup_steps", 100) or 100),
+    )
+    ip_health_min_ref_l2 = max(0.0, float(getattr(args, "ip_health_min_ref_l2", 1e-6) or 0.0))
+    ip_health_min_swap_loss_gap = float(getattr(args, "ip_health_min_swap_loss_gap", 0.0) or 0.0)
+    ip_health_max_ip_ratio = max(0.0, float(getattr(args, "ip_health_max_ip_ratio", 1.0) or 0.0))
+    ip_health_min_ip_ratio = max(0.0, float(getattr(args, "ip_health_min_ip_ratio", 1e-8) or 0.0))
+    ip_health_monitor = IPTrainableHealthMonitor(
+        ref_trainable_wrapper=ref_trainable_wrapper,
+        ip_trainable_wrapper=ip_trainable_wrapper,
+        accelerator=accelerator,
+        warmup_steps=ip_health_debug_warmup_steps,
+    )
+    reference_signal_debug_logged = False
+    gradient_flow_debug_logged = False
 
     def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
         sigmas = noise_scheduler_copy.sigmas.to(device=accelerator.device, dtype=dtype)
@@ -2345,6 +3853,15 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         for step, batch in enumerate(train_dataloader):
             accumulate_model = ip_trainable_wrapper if a1_lite else flux_controlnet
             with accelerator.accumulate(accumulate_model):
+                health_step = global_step + 1
+                should_run_ip_health = (
+                    ip_health_debug_interval > 0
+                    and accelerator.sync_gradients
+                    and (
+                        global_step == 0
+                        or health_step % ip_health_debug_interval == 0
+                    )
+                )
                 bsz = int(batch["target_image"].shape[0])
                 in_self_reconstruction_warmup = global_step < self_reconstruction_warmup_steps
                 self_reconstruction_sample_mask = torch.zeros(
@@ -2366,6 +3883,21 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     )
                 else:
                     training_batch = batch
+                health_real_contrast_batch = None
+                if should_run_ip_health:
+                    random_batch = (
+                        random_reference_sampler.sample_for_batch(
+                            training_batch,
+                            device=accelerator.device,
+                        )
+                        if random_reference_sampler is not None
+                        and int(training_batch["reference_image"].shape[0]) <= 1
+                        else None
+                    )
+                    health_real_contrast_batch = _alternate_real_reference_batch(
+                        training_batch,
+                        random_batch=random_batch,
+                    )
                 counterfactual_sample_mask = _batch_mode_mask(
                     training_batch,
                     "counterfactual",
@@ -2480,7 +4012,25 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     regional=regional_ip_adapter,
                     query_token_count=noisy_model_input.shape[1],
                     strict=regional_ip_strict,
+                    regional_token_mode=regional_ip_token_mode,
+                    regional_label_mode=regional_ip_label_mode,
                 )
+                if not reference_signal_debug_logged and not should_run_ip_health:
+                    _log_reference_signal_debug(
+                        batch=training_batch,
+                        modules=modules,
+                        accelerator=accelerator,
+                        weight_dtype=weight_dtype,
+                        transformer=flux_transformer,
+                        regional=regional_ip_adapter,
+                        regional_strict=regional_ip_strict,
+                        regional_token_mode=regional_ip_token_mode,
+                        regional_label_mode=regional_ip_label_mode,
+                        query_token_count=noisy_model_input.shape[1],
+                        step=health_step,
+                        real_contrast_batch=health_real_contrast_batch,
+                    )
+                    reference_signal_debug_logged = True
                 transformer_controlnet_block_samples = (
                     [sample.to(dtype=weight_dtype) for sample in controlnet_block_samples]
                     if controlnet_block_samples is not None else None
@@ -2525,8 +4075,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 reference_region_loss = noise_pred.new_zeros(())
                 reference_region_tissue_loss = noise_pred.new_zeros(())
                 reference_region_nuclei_loss = noise_pred.new_zeros(())
+                reference_region_composite_loss = noise_pred.new_zeros(())
                 reference_region_tissue_regions = 0
                 reference_region_nuclei_regions = 0
+                reference_region_composite_regions = 0
                 self_reconstruction_l1 = noise_pred.new_zeros(())
                 prediction_rgb = None
                 should_compute_style_loss = (
@@ -2599,8 +4151,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     reference_region_loss = reference_region_terms["total"].to(dtype=denoising_loss.dtype)
                     reference_region_tissue_loss = reference_region_terms["tissue"].to(dtype=denoising_loss.dtype)
                     reference_region_nuclei_loss = reference_region_terms["nuclei"].to(dtype=denoising_loss.dtype)
+                    reference_region_composite_loss = reference_region_terms["composite"].to(dtype=denoising_loss.dtype)
                     reference_region_tissue_regions = int(reference_region_terms["tissue_regions"])
                     reference_region_nuclei_regions = int(reference_region_terms["nuclei_regions"])
+                    reference_region_composite_regions = int(reference_region_terms["composite_regions"])
                 if should_compute_style_loss:
                     style_terms = regional_stain_style_loss(
                         prediction=prediction_rgb,
@@ -2634,6 +4188,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
                 swap_loss = noise_pred.new_zeros(())
                 ref_variant_loss_logs: dict[str, float] = {}
+                ip_health_logs: dict[str, float] = {}
                 should_compute_swap_loss = (
                     ref_swap_loss_weight > 0.0
                     and ref_swap_loss_interval > 0
@@ -2670,6 +4225,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                             regional=regional_ip_adapter,
                             query_token_count=noisy_model_input.shape[1],
                             strict=regional_ip_strict,
+                            regional_token_mode=regional_ip_token_mode,
+                            regional_label_mode=regional_ip_label_mode,
                         )
                         swapped_noise_pred = flux_transformer(
                             hidden_states=noisy_model_input,
@@ -2706,6 +4263,17 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
+                    ip_health_monitor.record_after_backward()
+                if accelerator.sync_gradients and not gradient_flow_debug_logged:
+                    _log_gradient_flow_debug(
+                        ref_trainable_wrapper=ref_trainable_wrapper,
+                        ip_trainable_wrapper=ip_trainable_wrapper,
+                        optimizer=optimizer,
+                        accelerator=accelerator,
+                        step=global_step,
+                    )
+                    gradient_flow_debug_logged = True
+                if accelerator.sync_gradients:
                     # ★ 梯度裁剪也要包含 wrapper 里的参数
                     if a1_lite:
                         all_trainable = [ref_trainable_wrapper, ip_trainable_wrapper]
@@ -2723,6 +4291,56 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                if should_run_ip_health:
+                    _log_reference_signal_debug(
+                        batch=training_batch,
+                        modules=modules,
+                        accelerator=accelerator,
+                        weight_dtype=weight_dtype,
+                        transformer=flux_transformer,
+                        regional=regional_ip_adapter,
+                        regional_strict=regional_ip_strict,
+                        regional_token_mode=regional_ip_token_mode,
+                        regional_label_mode=regional_ip_label_mode,
+                        query_token_count=noisy_model_input.shape[1],
+                        step=health_step,
+                        real_contrast_batch=health_real_contrast_batch,
+                    )
+                    reference_signal_debug_logged = True
+                    ip_health_logs.update(
+                        ip_health_monitor.log_param_delta(step=health_step)
+                    )
+                    ip_health_logs.update(
+                        _run_ip_reference_health_diagnostics(
+                            step=health_step,
+                            training_batch=training_batch,
+                            real_contrast_batch=health_real_contrast_batch,
+                            modules=modules,
+                            accelerator=accelerator,
+                            weight_dtype=weight_dtype,
+                            transformer=flux_transformer,
+                            noisy_model_input=noisy_model_input.detach(),
+                            timesteps=timesteps.detach(),
+                            guidance_vec=guidance_vec.detach() if guidance_vec is not None else None,
+                            batch_pooled=batch_pooled.detach(),
+                            batch_prompt=batch_prompt.detach(),
+                            text_ids=text_ids.detach(),
+                            latent_image_ids=latent_image_ids.detach(),
+                            transformer_controlnet_block_samples=transformer_controlnet_block_samples,
+                            transformer_controlnet_single_block_samples=transformer_controlnet_single_block_samples,
+                            target_velocity=target_velocity.detach(),
+                            regional=regional_ip_adapter,
+                            regional_strict=regional_ip_strict,
+                            regional_token_mode=regional_ip_token_mode,
+                            regional_label_mode=regional_ip_label_mode,
+                            query_token_count=int(noisy_model_input.shape[1]),
+                            warmup_steps=ip_health_debug_warmup_steps,
+                            min_ref_l2=ip_health_min_ref_l2,
+                            min_swap_loss_gap=ip_health_min_swap_loss_gap,
+                            max_ip_ratio_warn=ip_health_max_ip_ratio,
+                            min_ip_ratio_warn=ip_health_min_ip_ratio,
+                        )
+                    )
 
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -2739,6 +4357,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         control_spec=control_spec,
                         ip_num_tokens=ip_num_tokens,
                         regional_ip_adapter=regional_ip_adapter,
+                        regional_ip_token_mode=regional_ip_token_mode,
+                        regional_ip_label_mode=regional_ip_label_mode,
                     )
                     logger.info("Saved eval-ready Phase 5.3 cross-v1 artifacts to %s", save_path)
 
@@ -2753,8 +4373,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "reference_region_loss_weighted": (reference_region_loss_weight * reference_region_loss).detach().item(),
                 "reference_region_tissue_loss": reference_region_tissue_loss.detach().item(),
                 "reference_region_nuclei_loss": reference_region_nuclei_loss.detach().item(),
+                "reference_region_composite_loss": reference_region_composite_loss.detach().item(),
                 "reference_region_tissue_regions": reference_region_tissue_regions,
                 "reference_region_nuclei_regions": reference_region_nuclei_regions,
+                "reference_region_composite_regions": reference_region_composite_regions,
                 "style_loss": style_loss.detach().item(),
                 "style_tissue_loss": style_tissue_loss.detach().item(),
                 "style_nuclei_loss": style_nuclei_loss.detach().item(),
@@ -2771,6 +4393,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "lr": lr_scheduler.get_last_lr()[0],
             }
             logs.update(ref_variant_loss_logs)
+            logs.update(ip_health_logs)
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -2797,6 +4420,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             unwrap_model,
             save_dtype,
             control_spec=control_spec,
+            regional_ip_token_mode=regional_ip_token_mode,
+            regional_ip_label_mode=regional_ip_label_mode,
         )
         _save_ip_adapter_modules(
             args.output_dir,
@@ -2806,6 +4431,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             num_tokens=ip_num_tokens,
             ip_init_gain=args.ip_init_gain,
             regional_ip_adapter=regional_ip_adapter,
+            regional_ip_token_mode=regional_ip_token_mode,
+            regional_ip_label_mode=regional_ip_label_mode,
         )
         logger.info("Saved Phase 5.3 cross-v1 artifacts to %s", args.output_dir)
 

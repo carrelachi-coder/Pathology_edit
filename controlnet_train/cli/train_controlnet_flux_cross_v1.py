@@ -275,12 +275,44 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--regional-ip-token-mode",
+        type=str,
+        default="spatial",
+        choices=["spatial", "perceiver", "masked_perceiver", "region_perceiver"],
+        help=(
+            "Reference token bank for regional IP. 'spatial' feeds raw projected UNI patch "
+            "tokens; 'perceiver' compresses each mask label separately through the "
+            "reference Perceiver before IP attention."
+        ),
+    )
+    parser.add_argument(
+        "--regional-ip-label-mode",
+        type=str,
+        default="tissue",
+        choices=[
+            "tissue",
+            "tissue_only",
+            "tissue_nuclei",
+            "tissue-nuclei",
+            "tissue+nuclei",
+            "composite",
+            "nuclei",
+            "nuclei_aware",
+        ],
+        help=(
+            "Region labels used for regional IP attention. 'tissue' gates tumor/stroma "
+            "labels only; 'tissue-nuclei' builds composite tissue+nuclei labels so nuclei "
+            "classes are decoupled inside each tissue region."
+        ),
+    )
+    parser.add_argument(
         "--no-regional-ip-strict",
         dest="regional_ip_strict",
         action="store_false",
         help=(
-            "Allow region-gated IP attention to fall back more permissively when labels are missing. "
-            "The default still falls back only for labels absent from the reference token bank."
+            "Disable same-label region gating and let IP attention attend globally. "
+            "By default strict mode gates unmatched query regions to zero, with only "
+            "tissue-level fallback for composite tissue+nuclei labels."
         ),
     )
     parser.set_defaults(regional_ip_strict=True)
@@ -380,6 +412,46 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help="Install single-stream IP-Adapter processors on the last N FLUX single blocks.",
     )
     parser.add_argument(
+        "--ip-health-debug-interval",
+        type=int,
+        default=100,
+        help=(
+            "Every N optimizer steps, log IP/ref parameter deltas, normal-vs-zero and "
+            "real-vs-real sensitivity, per-block IP residual ratios, and swap-reference "
+            "health metrics. Use 0 to disable periodic health diagnostics."
+        ),
+    )
+    parser.add_argument(
+        "--ip-health-debug-warmup-steps",
+        type=int,
+        default=100,
+        help="Delay hard IP/ref health warnings until this many optimizer steps have completed.",
+    )
+    parser.add_argument(
+        "--ip-health-min-ref-l2",
+        type=float,
+        default=1e-6,
+        help="Warning threshold for normal-vs-swapped noise_pred RMS distance at health checks.",
+    )
+    parser.add_argument(
+        "--ip-health-min-swap-loss-gap",
+        type=float,
+        default=0.0,
+        help="Warning threshold for paired-ref minus shuffled-ref denoising-loss gap.",
+    )
+    parser.add_argument(
+        "--ip-health-max-ip-ratio",
+        type=float,
+        default=1.0,
+        help="Warn when any block has ||scale*ip_out|| / ||hidden|| above this value.",
+    )
+    parser.add_argument(
+        "--ip-health-min-ip-ratio",
+        type=float,
+        default=1e-8,
+        help="Warn when every block has ||scale*ip_out|| / ||hidden|| below this value.",
+    )
+    parser.add_argument(
         "--perceptual-loss-weight",
         type=float,
         default=0.5,
@@ -403,6 +475,15 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--reference-region-loss-interval", type=int, default=1)
     parser.add_argument("--reference-region-tissue-weight", type=float, default=1.0)
     parser.add_argument("--reference-region-nuclei-weight", type=float, default=0.0)
+    parser.add_argument(
+        "--reference-region-composite-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Extra UNI spatial region loss on composite tissue+nuclei labels. "
+            "This keeps nuclei texture matching inside the correct tissue class."
+        ),
+    )
     parser.add_argument("--reference-region-mean-weight", type=float, default=1.0)
     parser.add_argument("--reference-region-std-weight", type=float, default=0.5)
     parser.add_argument("--reference-region-cosine-weight", type=float, default=0.25)

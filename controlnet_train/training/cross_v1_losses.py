@@ -29,6 +29,7 @@ class RegionalFeatureLossConfig:
 
     tissue_weight: float = 1.0
     nuclei_weight: float = 0.0
+    composite_weight: float = 0.0
     mean_weight: float = 1.0
     std_weight: float = 0.5
     pooled_cosine_weight: float = 0.25
@@ -287,6 +288,31 @@ def regional_feature_map_loss(
             sample_mask=sample_mask,
             config=cfg,
         )
+    composite_loss = zero
+    composite_regions = 0
+    if (
+        cfg.composite_weight > 0.0
+        and target_nuclei_mask is not None
+        and reference_nuclei_mask is not None
+    ):
+        target_composite_mask = _combine_tissue_nuclei_masks(
+            target_tissue_mask,
+            target_nuclei_mask,
+            exclude_tissue_labels=cfg.exclude_labels,
+        )
+        reference_composite_mask = _combine_tissue_nuclei_masks(
+            reference_tissue_mask,
+            reference_nuclei_mask,
+            exclude_tissue_labels=cfg.exclude_labels,
+        )
+        composite_loss, composite_regions = _regional_feature_mask_loss(
+            prediction_features=prediction_features,
+            reference_features=reference_features,
+            target_mask=target_composite_mask,
+            reference_mask=reference_composite_mask,
+            sample_mask=sample_mask,
+            config=cfg,
+        )
 
     weighted = zero
     active_weight = 0.0
@@ -296,14 +322,19 @@ def regional_feature_map_loss(
     if nuclei_regions > 0 and cfg.nuclei_weight > 0.0:
         weighted = weighted + float(cfg.nuclei_weight) * nuclei_loss
         active_weight += float(cfg.nuclei_weight)
+    if composite_regions > 0 and cfg.composite_weight > 0.0:
+        weighted = weighted + float(cfg.composite_weight) * composite_loss
+        active_weight += float(cfg.composite_weight)
 
     total = weighted / active_weight if active_weight > 0.0 else zero
     return {
         "total": total,
         "tissue": tissue_loss,
         "nuclei": nuclei_loss,
+        "composite": composite_loss,
         "tissue_regions": tissue_regions,
         "nuclei_regions": nuclei_regions,
+        "composite_regions": composite_regions,
     }
 
 
@@ -537,6 +568,33 @@ def _resize_mask_to_image(mask: torch.Tensor, image_size: tuple[int, int]) -> to
         mode="nearest",
     )
     return resized[:, 0].to(dtype=torch.long)
+
+
+def _combine_tissue_nuclei_masks(
+    tissue_mask: torch.Tensor,
+    nuclei_mask: torch.Tensor,
+    *,
+    nuclei_stride: int = 256,
+    exclude_tissue_labels: tuple[int, ...] = (0,),
+) -> torch.Tensor:
+    """Build labels that separate nuclei classes inside each tissue class."""
+    if tissue_mask.ndim == 4 and tissue_mask.shape[1] == 1:
+        tissue_mask = tissue_mask[:, 0]
+    if nuclei_mask.ndim == 4 and nuclei_mask.shape[1] == 1:
+        nuclei_mask = nuclei_mask[:, 0]
+    if tissue_mask.ndim != 3 or nuclei_mask.ndim != 3:
+        raise ValueError(
+            "tissue/nuclei masks must have shape (B,H,W) or (B,1,H,W), "
+            f"got tissue={tuple(tissue_mask.shape)} nuclei={tuple(nuclei_mask.shape)}"
+        )
+    if tuple(int(v) for v in nuclei_mask.shape[-2:]) != tuple(int(v) for v in tissue_mask.shape[-2:]):
+        nuclei_mask = _resize_mask_to_image(nuclei_mask, tuple(int(v) for v in tissue_mask.shape[-2:]))
+    tissue = tissue_mask.to(dtype=torch.long)
+    nuclei = nuclei_mask.to(device=tissue.device, dtype=torch.long)
+    composite = tissue * int(nuclei_stride) + nuclei
+    for label in exclude_tissue_labels:
+        composite = torch.where(tissue == int(label), torch.zeros_like(composite), composite)
+    return composite
 
 
 def _infer_square_token_grid(num_tokens: int) -> tuple[int, int]:

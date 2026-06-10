@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 from pathlib import Path
@@ -40,7 +41,12 @@ from controlnet_train.inference.pipeline_cross_v2_1 import (
     _validate_source_latent_init_strength,
 )
 from controlnet_train.modules.cross_v2_1_conditioning import deterministic_latent_from_posterior
-from controlnet_train.modules.reference_image_encoder import resize_mask_to_token_labels
+from controlnet_train.modules.reference_image_encoder import (
+    build_region_ip_token_labels,
+    normalize_region_ip_label_mode,
+    normalize_region_ip_token_mode,
+    resize_mask_to_token_labels,
+)
 
 
 @dataclass
@@ -62,6 +68,8 @@ class CrossV1InferenceBundle:
     ref_encoder: ReferenceImageEncoder | None = None
     regional_ip_adapter: bool = False
     regional_ip_strict: bool = True
+    regional_ip_token_mode: str = "spatial"
+    regional_ip_label_mode: str = "tissue"
 
 
 def load_cross_v1_bundle(
@@ -99,6 +107,18 @@ def load_cross_v1_bundle(
     # Load IP-Adapter weights from checkpoint
     ip_state = _torch_load_weights(checkpoint / "phase5_ip_adapter.pt")
     regional_ip_adapter = bool(ip_state.get("regional_ip_adapter", False))
+    regional_ip_token_mode = normalize_region_ip_token_mode(
+        ip_state.get(
+            "regional_ip_token_mode",
+            ref_encoder_config.get("regional_ip_token_mode", "spatial"),
+        )
+    )
+    regional_ip_label_mode = normalize_region_ip_label_mode(
+        ip_state.get(
+            "regional_ip_label_mode",
+            ref_encoder_config.get("regional_ip_label_mode", "tissue"),
+        )
+    )
     install_flux_ip_adapter_attention(
         pipe.transformer,
         num_tokens=int(ip_state.get("num_tokens", ref_encoder_config.get("num_output_tokens", ref_encoder_config["num_tokens"]))),
@@ -110,12 +130,18 @@ def load_cross_v1_bundle(
     for i, block in enumerate(pipe.transformer.transformer_blocks):
         block.attn.processor.to_k_ip.load_state_dict(ip_state[f"block_{i}_to_k_ip"])
         block.attn.processor.to_v_ip.load_state_dict(ip_state[f"block_{i}_to_v_ip"])
+        null_key = f"block_{i}_ip_null_tokens"
+        if null_key in ip_state and hasattr(block.attn.processor, "ip_null_tokens"):
+            block.attn.processor.ip_null_tokens.load_state_dict(ip_state[null_key])
     for i, block in enumerate(getattr(pipe.transformer, "single_transformer_blocks", [])):
         k_key = f"single_block_{i}_to_k_ip"
         v_key = f"single_block_{i}_to_v_ip"
+        null_key = f"single_block_{i}_ip_null_tokens"
         if k_key in ip_state and v_key in ip_state:
             block.attn.processor.to_k_ip.load_state_dict(ip_state[k_key])
             block.attn.processor.to_v_ip.load_state_dict(ip_state[v_key])
+            if null_key in ip_state and hasattr(block.attn.processor, "ip_null_tokens"):
+                block.attn.processor.ip_null_tokens.load_state_dict(ip_state[null_key])
     _move_ip_adapter_modules(pipe.transformer, device=device, torch_dtype=dtype)
     set_ip_adapter_scale(pipe.transformer, ip_adapter_scale)
 
@@ -147,6 +173,8 @@ def load_cross_v1_bundle(
         ip_adapter_modules=ip_adapter_modules,
         ref_encoder=modules["ref_encoder"],
         regional_ip_adapter=regional_ip_adapter,
+        regional_ip_token_mode=regional_ip_token_mode,
+        regional_ip_label_mode=regional_ip_label_mode,
     )
 
 
@@ -190,6 +218,18 @@ def _packed_flux_image_token_count(image: torch.Tensor, pipe) -> int:
     return (latent_height // 2) * (latent_width // 2)
 
 
+def _tissue_fallback_region_labels(labels: torch.Tensor, *, label_mode: str) -> torch.Tensor:
+    """Map exact IP labels back to tissue labels for strict fallback matching."""
+    label_mode = normalize_region_ip_label_mode(label_mode)
+    labels = labels.to(dtype=torch.long)
+    if label_mode == "tissue":
+        return labels
+    fallback = torch.full_like(labels, -1)
+    valid = labels >= 0
+    fallback[valid] = labels[valid] // 256
+    return fallback
+
+
 @torch.inference_mode()
 def run_cross_v1_bundle(
     bundle: CrossV1InferenceBundle,
@@ -211,22 +251,47 @@ def run_cross_v1_bundle(
     # Encode reference image via UNI2-h + Perceiver resampler
     reference_batch = reference_image.unsqueeze(0).to(device=bundle.device, dtype=bundle.torch_dtype)
     if bundle.regional_ip_adapter:
+        reference_tissue_batch = reference_tissue_mask.unsqueeze(0).to(device=bundle.device)
+        reference_nuclei_batch = reference_nuclei_mask.unsqueeze(0).to(device=bundle.device)
+        target_tissue_batch = target_tissue_mask.unsqueeze(0).to(device=bundle.device)
+        target_nuclei_batch = target_nuclei_mask.unsqueeze(0).to(device=bundle.device)
         ref_features, region_token_labels = bundle.ref_encoder.encode_region_ip_tokens(
             reference_batch,
-            reference_tissue_mask.unsqueeze(0).to(device=bundle.device),
+            reference_tissue_batch,
+            nuclei_mask=reference_nuclei_batch,
+            token_mode=bundle.regional_ip_token_mode,
+            label_mode=bundle.regional_ip_label_mode,
         )
-        query_region_labels = resize_mask_to_token_labels(
-            target_tissue_mask.unsqueeze(0).to(device=bundle.device),
-            _packed_flux_image_token_count(reference_image, bundle.flux_pipeline),
+        query_token_count = _packed_flux_image_token_count(reference_image, bundle.flux_pipeline)
+        query_region_labels = build_region_ip_token_labels(
+            tissue_mask=target_tissue_batch,
+            num_tokens=query_token_count,
+            nuclei_mask=target_nuclei_batch,
+            label_mode=bundle.regional_ip_label_mode,
+        ).to(device=bundle.device)
+        key_fallback_region_labels = _tissue_fallback_region_labels(
+            region_token_labels,
+            label_mode=bundle.regional_ip_label_mode,
+        ).to(device=bundle.device)
+        query_fallback_region_labels = resize_mask_to_token_labels(
+            target_tissue_batch,
+            query_token_count,
         ).to(device=bundle.device)
     else:
         ref_features = bundle.ref_encoder(reference_batch)
         region_token_labels = None
         query_region_labels = None
-    ref_features = ref_features.to(device=bundle.device, dtype=bundle.torch_dtype)
+        key_fallback_region_labels = None
+        query_fallback_region_labels = None
+    ref_features = ref_features.to(device=bundle.device)
+    ref_gate = bundle.ref_encoder.reference_presence_gate(
+        reference_batch,
+        device=bundle.device,
+        dtype=next(bundle.flux_pipeline.transformer.encoder_hid_proj.parameters()).dtype,
+    )
     ip_hidden_states = bundle.flux_pipeline.transformer.encoder_hid_proj([ref_features])
     ip_hidden_states = [
-        hidden.to(device=bundle.device, dtype=bundle.torch_dtype)
+        hidden.to(device=bundle.device) * ref_gate.to(device=bundle.device, dtype=hidden.dtype)
         for hidden in ip_hidden_states
     ]
 
@@ -302,6 +367,8 @@ def run_cross_v1_bundle(
                 "ip_adapter_masks": {
                     "key_region_labels": region_token_labels.to(device=bundle.device),
                     "query_region_labels": query_region_labels,
+                    "key_fallback_region_labels": key_fallback_region_labels,
+                    "query_fallback_region_labels": query_fallback_region_labels,
                     "strict": bool(bundle.regional_ip_strict),
                 },
             }
@@ -393,18 +460,19 @@ def _validate_checkpoint_dir(checkpoint_path: str | Path) -> Path:
 
 
 def _move_ip_adapter_modules(transformer: nn.Module, *, device: str, torch_dtype: torch.dtype) -> None:
+    train_dtype = torch.float32
     if hasattr(transformer, "encoder_hid_proj"):
-        transformer.encoder_hid_proj.to(device=device, dtype=torch_dtype)
+        transformer.encoder_hid_proj.to(device=device, dtype=train_dtype)
     for blocks in (
         getattr(transformer, "transformer_blocks", []),
         getattr(transformer, "single_transformer_blocks", []),
     ):
         for block in blocks:
             processor = getattr(getattr(block, "attn", None), "processor", None)
-            for name in ("to_k_ip", "to_v_ip"):
+            for name in ("to_k_ip", "to_v_ip", "ip_null_tokens"):
                 module = getattr(processor, name, None)
                 if module is not None:
-                    module.to(device=device, dtype=torch_dtype)
+                    module.to(device=device, dtype=train_dtype)
 
 
 def _load_flux_controlnet_pipeline(
@@ -482,10 +550,11 @@ def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, Any]:
     state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
     config = dict(state.get("ref_encoder_config") or {})
     if "num_tokens" not in config:
-        config["num_tokens"] = int(state["ref_encoder_latent_queries"].shape[1])
+        latent_queries = state.get("ref_encoder_latent_queries")
+        config["num_tokens"] = int(latent_queries.shape[1]) if latent_queries is not None else 16
     if "num_perceiver_layers" not in config:
         config["num_perceiver_layers"] = _count_ref_perceiver_layers(
-            state["ref_encoder_perceiver_layers"]
+            state.get("ref_encoder_perceiver_layers", {})
         )
     config.setdefault("uni_embed_dim", 1536)
     config.setdefault("hidden_dim", 3072)
@@ -493,6 +562,8 @@ def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, Any]:
     config.setdefault("use_perceiver_self_attn", True)
     config.setdefault("skip_perceiver", False)
     config.setdefault("perceiver_cross_gate_init", None)
+    config.setdefault("regional_ip_token_mode", "spatial")
+    config.setdefault("regional_ip_label_mode", "tissue")
     return {
         "uni_embed_dim": int(config["uni_embed_dim"]),
         "hidden_dim": int(config["hidden_dim"]),
@@ -507,6 +578,8 @@ def _load_ref_encoder_config(checkpoint_path: Path) -> dict[str, Any]:
             if config["perceiver_cross_gate_init"] is None
             else float(config["perceiver_cross_gate_init"])
         ),
+        "regional_ip_token_mode": normalize_region_ip_token_mode(config["regional_ip_token_mode"]),
+        "regional_ip_label_mode": normalize_region_ip_label_mode(config["regional_ip_label_mode"]),
     }
 
 
@@ -594,12 +667,33 @@ def _load_condition_modules(
     )
     ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
     if not ref_encoder.skip_perceiver:
-        ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
-        ref_encoder.latent_queries.data.copy_(
-            state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+        perceiver_keys = (
+            "ref_encoder_perceiver_layers",
+            "ref_encoder_latent_queries",
+            "ref_encoder_perceiver_norm",
         )
-        ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
-    ref_encoder.to(device=device, dtype=torch_dtype)
+        if all(key in state for key in perceiver_keys):
+            ref_encoder.load_perceiver_layers_state_dict(state["ref_encoder_perceiver_layers"])
+            ref_encoder.latent_queries.data.copy_(
+                state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
+            )
+            ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
+        else:
+            warnings.warn(
+                "phase5_conditioning.pt does not contain reference Perceiver weights; "
+                "using the newly initialized Perceiver.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+    ref_encoder.to(device=device)
+    ref_encoder.proj_mlp.to(device=device, dtype=torch.float32)
+    ref_encoder.perceiver_layers.to(device=device, dtype=torch.float32)
+    ref_encoder.perceiver_norm.to(device=device, dtype=torch.float32)
+    ref_encoder.latent_queries.data = ref_encoder.latent_queries.data.to(
+        device=device,
+        dtype=torch.float32,
+    )
+    ref_encoder.uni.to(device=device, dtype=torch.float32)
     ref_encoder.eval()
     modules["ref_encoder"] = ref_encoder
 

@@ -150,7 +150,15 @@ def load_ref_encoder_from_checkpoint(
             state["ref_encoder_latent_queries"].to(ref_encoder.latent_queries.device)
         )
         ref_encoder.perceiver_norm.load_state_dict(state["ref_encoder_perceiver_norm"])
-    ref_encoder.to(device=device, dtype=dtype)
+    ref_encoder.to(device=device)
+    ref_encoder.proj_mlp.to(device=device, dtype=dtype)
+    ref_encoder.perceiver_layers.to(device=device, dtype=dtype)
+    ref_encoder.perceiver_norm.to(device=device, dtype=dtype)
+    ref_encoder.latent_queries.data = ref_encoder.latent_queries.data.to(
+        device=device,
+        dtype=dtype,
+    )
+    ref_encoder.uni.to(device=device, dtype=torch.float32)
     ref_encoder.eval()
     return ref_encoder, config
 
@@ -249,7 +257,15 @@ def encode_stages(
     stages["5_full_ref_encoder"] = full
 
     if encoder_hid_proj is not None:
-        stages["6_encoder_hid_proj"] = encoder_hid_proj([full])
+        gate = ref_encoder.reference_presence_gate(
+            image,
+            device=full.device,
+            dtype=full.dtype,
+        )
+        stages["6_encoder_hid_proj"] = [
+            tensor * gate.to(device=tensor.device, dtype=tensor.dtype)
+            for tensor in encoder_hid_proj([full])
+        ]
 
     return stages
 

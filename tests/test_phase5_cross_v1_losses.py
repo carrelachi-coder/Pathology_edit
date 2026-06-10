@@ -32,11 +32,13 @@ if torch is not None:
         normalize_vgg_loss_type,
         parse_vgg_layer_indices,
     )
+    from controlnet_train.modules.reference_image_encoder import build_region_ip_token_labels
     try:
         from controlnet_train.training.flux_phase5_cross_v1 import (
             collate_cross_batch,
             _configure_controlnet_trainable_params,
             _build_region_attention_mask,
+            _build_region_attention_mask_and_query_gate,
             _insert_self_reconstruction_samples,
             _use_random_reference,
         )
@@ -44,6 +46,7 @@ if torch is not None:
         collate_cross_batch = None
         _configure_controlnet_trainable_params = None
         _build_region_attention_mask = None
+        _build_region_attention_mask_and_query_gate = None
         _insert_self_reconstruction_samples = None
         _use_random_reference = None
 
@@ -211,13 +214,57 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertEqual(result["tissue_regions"], 2)
         self.assertGreater(result["total"].item(), 0.0)
 
-    def test_region_attention_mask_blocks_cross_label_ip_tokens(self):
-        if _build_region_attention_mask is None:
+    def test_regional_feature_map_loss_matches_tissue_nuclei_composite_regions(self):
+        prediction = torch.zeros(1, 4, 2)
+        reference = torch.zeros(1, 4, 2)
+        prediction[:, 1] = torch.tensor([1.0, 0.0])
+        reference[:, 1] = torch.tensor([0.0, 1.0])
+        tissue = torch.tensor([[[1, 1], [1, 1]]])
+        nuclei = torch.tensor([[[0, 3], [0, 3]]])
+
+        result = regional_feature_map_loss(
+            prediction_features=prediction,
+            reference_features=reference,
+            target_tissue_mask=tissue,
+            reference_tissue_mask=tissue,
+            target_nuclei_mask=nuclei,
+            reference_nuclei_mask=nuclei,
+            config=RegionalFeatureLossConfig(
+                tissue_weight=0.0,
+                nuclei_weight=0.0,
+                composite_weight=1.0,
+                mean_weight=1.0,
+                std_weight=0.0,
+                pooled_cosine_weight=0.0,
+                min_tokens=1,
+            ),
+        )
+
+        self.assertEqual(result["composite_regions"], 2)
+        self.assertGreater(result["composite"].item(), 0.0)
+        self.assertTrue(torch.allclose(result["total"], result["composite"]))
+
+    def test_build_region_ip_token_labels_combines_tissue_and_nuclei_labels(self):
+        tissue = torch.tensor([[[1, 1], [2, 2]]])
+        nuclei = torch.tensor([[[0, 3], [0, 4]]])
+
+        labels = build_region_ip_token_labels(
+            tissue_mask=tissue,
+            nuclei_mask=nuclei,
+            num_tokens=4,
+            label_mode="tissue_nuclei",
+        )
+
+        expected = torch.tensor([[256, 259, 512, 516]])
+        self.assertTrue(torch.equal(labels, expected))
+
+    def test_region_attention_mask_blocks_cross_label_ip_tokens_and_gates_missing_label(self):
+        if _build_region_attention_mask_and_query_gate is None:
             self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
         query_labels = torch.tensor([[1, 2, 3]])
         key_labels = torch.tensor([[1, 1, 2, 2]])
 
-        mask = _build_region_attention_mask(
+        mask, query_gate, stats = _build_region_attention_mask_and_query_gate(
             query_region_labels=query_labels,
             key_region_labels=key_labels,
             batch_size=1,
@@ -232,8 +279,53 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         self.assertEqual(tuple(mask.shape), (1, 1, 3, 4))
         self.assertEqual(float(mask[0, 0, 0, 0]), 0.0)
         self.assertLess(float(mask[0, 0, 0, 2]), -1e20)
-        # Label 3 is absent in the reference token bank, so it falls back to all tokens.
-        self.assertTrue(torch.all(mask[0, 0, 2] == 0))
+        # Label 3 is absent in the reference token bank. The mask keeps a single
+        # dummy key to avoid all-masked SDPA rows, then the gate zeros the IP output.
+        self.assertIsNotNone(query_gate)
+        self.assertEqual(float(query_gate[0, 0, 2, 0]), 0.0)
+        self.assertEqual(float(stats["active_query_fraction"]), 2 / 3)
+        self.assertEqual(float(stats["missing_query_fraction"]), 1 / 3)
+
+        legacy_mask = _build_region_attention_mask(
+            query_region_labels=query_labels,
+            key_region_labels=key_labels,
+            batch_size=1,
+            query_len=3,
+            key_len=4,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+            strict=True,
+        )
+        self.assertIsNotNone(legacy_mask)
+
+    def test_region_attention_mask_falls_back_to_same_tissue_for_missing_composite_label(self):
+        if _build_region_attention_mask is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
+        query_labels = torch.tensor([[259, 516]])
+        key_labels = torch.tensor([[256, 512, -1]])
+        query_fallback = torch.tensor([[1, 2]])
+        key_fallback = torch.tensor([[1, 2, -1]])
+
+        mask = _build_region_attention_mask(
+            query_region_labels=query_labels,
+            key_region_labels=key_labels,
+            query_fallback_labels=query_fallback,
+            key_fallback_labels=key_fallback,
+            batch_size=1,
+            query_len=2,
+            key_len=3,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+            strict=True,
+        )
+
+        self.assertIsNotNone(mask)
+        self.assertEqual(float(mask[0, 0, 0, 0]), 0.0)
+        self.assertLess(float(mask[0, 0, 0, 1]), -1e20)
+        self.assertLess(float(mask[0, 0, 0, 2]), -1e20)
+        self.assertLess(float(mask[0, 0, 1, 0]), -1e20)
+        self.assertEqual(float(mask[0, 0, 1, 1]), 0.0)
+        self.assertLess(float(mask[0, 0, 1, 2]), -1e20)
 
     def test_same_wsi_perceptual_loss_uses_masked_reference_texture_features(self):
         encoder = SameWSIAppearanceEncoder(
