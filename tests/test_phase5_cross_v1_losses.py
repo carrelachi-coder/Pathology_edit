@@ -258,7 +258,26 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         expected = torch.tensor([[256, 259, 512, 516]])
         self.assertTrue(torch.equal(labels, expected))
 
-    def test_region_attention_mask_blocks_cross_label_ip_tokens_and_gates_missing_label(self):
+    def test_build_region_ip_token_labels_routes_background_to_null_label(self):
+        tissue = torch.tensor([[[0, 1], [2, 0]]])
+        nuclei = torch.tensor([[[0, 3], [0, 4]]])
+
+        tissue_labels = build_region_ip_token_labels(
+            tissue_mask=tissue,
+            num_tokens=4,
+            label_mode="tissue",
+        )
+        composite_labels = build_region_ip_token_labels(
+            tissue_mask=tissue,
+            nuclei_mask=nuclei,
+            num_tokens=4,
+            label_mode="tissue_nuclei",
+        )
+
+        self.assertTrue(torch.equal(tissue_labels, torch.tensor([[-1, 1, 2, -1]])))
+        self.assertTrue(torch.equal(composite_labels, torch.tensor([[-1, 259, 512, -1]])))
+
+    def test_region_attention_mask_routes_missing_label_to_learned_null_token(self):
         if _build_region_attention_mask_and_query_gate is None:
             self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
         query_labels = torch.tensor([[1, 2, 3]])
@@ -276,15 +295,23 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(mask)
-        self.assertEqual(tuple(mask.shape), (1, 1, 3, 4))
+        self.assertEqual(tuple(mask.shape), (1, 1, 3, 5))
         self.assertEqual(float(mask[0, 0, 0, 0]), 0.0)
         self.assertLess(float(mask[0, 0, 0, 2]), -1e20)
-        # Label 3 is absent in the reference token bank. The mask keeps a single
-        # dummy key to avoid all-masked SDPA rows, then the gate zeros the IP output.
-        self.assertIsNotNone(query_gate)
-        self.assertEqual(float(query_gate[0, 0, 2, 0]), 0.0)
+        self.assertLess(float(mask[0, 0, 0, 4]), -1e20)
+        # Label 3 is absent in the reference token bank. Strict regional routing
+        # blocks all real reference keys and allows only the appended null token.
+        self.assertIsNone(query_gate)
+        self.assertLess(float(mask[0, 0, 2, 0]), -1e20)
+        self.assertLess(float(mask[0, 0, 2, 3]), -1e20)
+        self.assertEqual(float(mask[0, 0, 2, 4]), 0.0)
         self.assertEqual(float(stats["active_query_fraction"]), 2 / 3)
         self.assertEqual(float(stats["missing_query_fraction"]), 1 / 3)
+        self.assertEqual(float(stats["fallback_query_fraction"]), 0.0)
+        self.assertEqual(float(stats["null_query_fraction"]), 1 / 3)
+        self.assertAlmostEqual(float(stats["allowed_tokens_per_query_mean"]), 5 / 3)
+        self.assertEqual(int(stats["allowed_tokens_per_query_min"]), 1)
+        self.assertEqual(int(stats["allowed_tokens_per_query_max"]), 2)
 
         legacy_mask = _build_region_attention_mask(
             query_region_labels=query_labels,
@@ -297,16 +324,17 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
             strict=True,
         )
         self.assertIsNotNone(legacy_mask)
+        self.assertEqual(tuple(legacy_mask.shape), (1, 1, 3, 5))
 
-    def test_region_attention_mask_falls_back_to_same_tissue_for_missing_composite_label(self):
-        if _build_region_attention_mask is None:
+    def test_region_attention_mask_does_not_silently_fallback_to_same_tissue(self):
+        if _build_region_attention_mask_and_query_gate is None:
             self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
         query_labels = torch.tensor([[259, 516]])
         key_labels = torch.tensor([[256, 512, -1]])
         query_fallback = torch.tensor([[1, 2]])
         key_fallback = torch.tensor([[1, 2, -1]])
 
-        mask = _build_region_attention_mask(
+        mask, query_gate, stats = _build_region_attention_mask_and_query_gate(
             query_region_labels=query_labels,
             key_region_labels=key_labels,
             query_fallback_labels=query_fallback,
@@ -320,12 +348,107 @@ class CrossV1AuxiliaryLossTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(mask)
-        self.assertEqual(float(mask[0, 0, 0, 0]), 0.0)
+        self.assertIsNone(query_gate)
+        self.assertEqual(tuple(mask.shape), (1, 1, 2, 4))
+        self.assertLess(float(mask[0, 0, 0, 0]), -1e20)
         self.assertLess(float(mask[0, 0, 0, 1]), -1e20)
         self.assertLess(float(mask[0, 0, 0, 2]), -1e20)
+        self.assertEqual(float(mask[0, 0, 0, 3]), 0.0)
         self.assertLess(float(mask[0, 0, 1, 0]), -1e20)
-        self.assertEqual(float(mask[0, 0, 1, 1]), 0.0)
+        self.assertLess(float(mask[0, 0, 1, 1]), -1e20)
         self.assertLess(float(mask[0, 0, 1, 2]), -1e20)
+        self.assertEqual(float(mask[0, 0, 1, 3]), 0.0)
+        self.assertEqual(float(stats["missing_query_fraction"]), 1.0)
+        self.assertEqual(float(stats["fallback_query_fraction"]), 0.0)
+        self.assertEqual(float(stats["null_query_fraction"]), 1.0)
+
+    def test_region_attention_mask_all_miss_batch_is_finite_with_null_token(self):
+        if _build_region_attention_mask_and_query_gate is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
+        torch.manual_seed(7)
+        batch_size, heads, query_len, key_len, head_dim = 2, 2, 3, 4, 8
+        query_labels = torch.tensor([[9, 10, -1], [11, -1, 12]])
+        key_labels = torch.tensor([[1, 2, -1, -1], [3, 4, -1, -1]])
+
+        mask, query_gate, stats = _build_region_attention_mask_and_query_gate(
+            query_region_labels=query_labels,
+            key_region_labels=key_labels,
+            batch_size=batch_size,
+            query_len=query_len,
+            key_len=key_len,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+            strict=True,
+        )
+
+        self.assertIsNotNone(mask)
+        self.assertIsNone(query_gate)
+        self.assertEqual(tuple(mask.shape), (batch_size, 1, query_len, key_len + 1))
+        self.assertEqual(float(stats["active_query_fraction"]), 0.0)
+        self.assertTrue(torch.all(mask[:, :, :, :key_len] < -1e20))
+        self.assertTrue(torch.all(mask[:, :, :, key_len] == 0.0))
+
+        query = torch.randn(batch_size, heads, query_len, head_dim)
+        key = torch.randn(batch_size, heads, key_len + 1, head_dim)
+        value = torch.randn(batch_size, heads, key_len + 1, head_dim)
+        out = torch.nn.functional.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=mask,
+            dropout_p=0.0,
+            is_causal=False,
+        )
+        self.assertTrue(torch.isfinite(out).all())
+
+    def test_region_attention_mask_disallowed_garbage_keys_and_values_do_not_change_output(self):
+        if _build_region_attention_mask_and_query_gate is None:
+            self.skipTest("flux_phase5_cross_v1 optional dependencies are not installed")
+        torch.manual_seed(11)
+        batch_size, heads, query_len, key_len, head_dim = 2, 2, 3, 4, 8
+        query_labels = torch.tensor([[1, 2, 3], [4, -1, 5]])
+        key_labels = torch.tensor([[1, 1, 2, -1], [4, 6, -1, -1]])
+        mask, _, _ = _build_region_attention_mask_and_query_gate(
+            query_region_labels=query_labels,
+            key_region_labels=key_labels,
+            batch_size=batch_size,
+            query_len=query_len,
+            key_len=key_len,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+            strict=True,
+        )
+        self.assertIsNotNone(mask)
+
+        query = torch.randn(batch_size, heads, query_len, head_dim)
+        key = torch.randn(batch_size, heads, key_len + 1, head_dim)
+        value = torch.randn(batch_size, heads, key_len + 1, head_dim)
+        clean = torch.nn.functional.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=mask,
+            dropout_p=0.0,
+            is_causal=False,
+        )
+
+        for query_index in range(query_len):
+            query_slice = query[:, :, query_index : query_index + 1, :]
+            mask_slice = mask[:, :, query_index : query_index + 1, :]
+            garbage_key = key.clone()
+            garbage_value = value.clone()
+            blocked = (mask_slice[:, :, 0, :] < -1e20).expand(-1, heads, -1)
+            garbage_key[blocked] = torch.randn_like(garbage_key[blocked]) * 1e4
+            garbage_value[blocked] = torch.randn_like(garbage_value[blocked]) * 1e4
+            dirty = torch.nn.functional.scaled_dot_product_attention(
+                query_slice,
+                garbage_key,
+                garbage_value,
+                attn_mask=mask_slice,
+                dropout_p=0.0,
+                is_causal=False,
+            )
+            self.assertTrue(torch.allclose(dirty, clean[:, :, query_index : query_index + 1, :], atol=1e-5))
 
     def test_same_wsi_perceptual_loss_uses_masked_reference_texture_features(self):
         encoder = SameWSIAppearanceEncoder(

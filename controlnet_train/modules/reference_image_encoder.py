@@ -345,6 +345,8 @@ class ReferenceImageEncoder(nn.Module):
             region_tokens = []
             region_labels = []
             for label in unique_labels:
+                if int(label.item()) < 0:
+                    continue
                 region_mask = sample_labels == label
                 if not bool(region_mask.any().item()):
                     continue
@@ -359,13 +361,12 @@ class ReferenceImageEncoder(nn.Module):
                     )
                 )
             if not region_tokens:
-                pooled = self._resample(projected[sample_index : sample_index + 1])
+                pooled = projected.new_zeros((1, 1, projected.shape[-1]))
                 region_tokens.append(pooled[0])
-                fallback_label = int(sample_labels.flatten()[0].item()) if sample_labels.numel() else 0
                 region_labels.append(
                     torch.full(
                         (pooled.shape[1],),
-                        fallback_label,
+                        -1,
                         dtype=torch.long,
                         device=projected.device,
                     )
@@ -428,15 +429,22 @@ def build_region_ip_token_labels(
     nuclei_mask: torch.Tensor | None = None,
     label_mode: str = "tissue",
 ) -> torch.Tensor:
-    """Build tissue or tissue+nuclei labels on the UNI token grid."""
+    """Build tissue or tissue+nuclei labels on the UNI token grid.
+
+    Tissue label 0 is background/unlabeled in the training masks, so regional IP
+    attention represents it as -1. The attention mask builder treats only -1 as
+    the pad/null-route id.
+    """
     label_mode = normalize_region_ip_label_mode(label_mode)
     tissue_labels = resize_mask_to_token_labels(tissue_mask, num_tokens)
+    valid_tissue = tissue_labels > 0
     if label_mode == "tissue":
-        return tissue_labels
+        return torch.where(valid_tissue, tissue_labels, torch.full_like(tissue_labels, -1))
     if nuclei_mask is None:
         raise ValueError("nuclei_mask is required when regional IP label mode is tissue_nuclei.")
     nuclei_labels = resize_mask_to_token_labels(nuclei_mask, num_tokens)
-    return combine_tissue_nuclei_labels(tissue_labels, nuclei_labels)
+    combined = combine_tissue_nuclei_labels(tissue_labels, nuclei_labels)
+    return torch.where(valid_tissue, combined, torch.full_like(combined, -1))
 
 
 def combine_tissue_nuclei_labels(

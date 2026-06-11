@@ -1710,16 +1710,23 @@ def _token_variation_stats(tensor: torch.Tensor) -> dict[str, float]:
             "token_norm_min": math.nan,
             "token_norm_max": math.nan,
             "within_sample_token_std": math.nan,
+            "batch_centered_l2_mean": math.nan,
+            "batch_centered_l2_std": math.nan,
         }
     value = tensor.detach().float()
     token_norm = torch.linalg.vector_norm(value, dim=-1)
     centered = value - value.mean(dim=1, keepdim=True)
+    sample_pooled = value.mean(dim=1)
+    batch_centered = sample_pooled - sample_pooled.mean(dim=0, keepdim=True)
+    batch_centered_l2 = torch.linalg.vector_norm(batch_centered, dim=-1)
     return {
         "token_norm_mean": float(token_norm.mean().item()),
         "token_norm_std": float(token_norm.std(unbiased=False).item()),
         "token_norm_min": float(token_norm.min().item()),
         "token_norm_max": float(token_norm.max().item()),
         "within_sample_token_std": float(centered.std(unbiased=False).item()),
+        "batch_centered_l2_mean": float(batch_centered_l2.mean().item()),
+        "batch_centered_l2_std": float(batch_centered_l2.std(unbiased=False).item()),
     }
 
 
@@ -1730,7 +1737,9 @@ def _format_token_variation_stats(name: str, tensor: torch.Tensor) -> str:
         f"token_norm_std={stats['token_norm_std']:.5f} "
         f"token_norm_min={stats['token_norm_min']:.5f} "
         f"token_norm_max={stats['token_norm_max']:.5f} "
-        f"within_sample_token_std={stats['within_sample_token_std']:.5f}"
+        f"within_sample_token_std={stats['within_sample_token_std']:.5f} "
+        f"batch_centered_l2_mean={stats['batch_centered_l2_mean']:.5f} "
+        f"batch_centered_l2_std={stats['batch_centered_l2_std']:.5f}"
     )
 
 
@@ -1975,18 +1984,18 @@ def _log_reference_signal_debug(
         if regional_strict and active_fraction <= 0.0:
             logger.warning(
                 "Reference region mask debug: no query tokens have a matching reference region; "
-                "regional IP output will be zeroed."
+                "all strict regional queries will attend the learned null IP token."
             )
         elif regional_strict and missing_fraction > 0.2:
             logger.warning(
                 "Reference region mask debug: %.1f%% of valid query tokens have no matching "
-                "reference region and will receive no IP signal.",
+                "reference region and will attend the learned null IP token.",
                 100.0 * missing_fraction,
             )
         if regional_strict and fallback_fraction > 0.5:
             logger.warning(
-                "Reference region mask debug: %.1f%% of valid query tokens used tissue fallback; "
-                "check whether tissue+nuclei labels are too sparse/mismatched.",
+                "Reference region mask debug: %.1f%% of valid query tokens used legacy fallback; "
+                "strict null-token routing should normally keep this at 0.",
                 100.0 * fallback_fraction,
             )
         if regional_strict and allowed_fraction > 0.5:
@@ -2145,6 +2154,69 @@ def _collector_first_ip_cosine(left: dict | None, right: dict | None) -> float:
     return _tensor_cosine_against(left_output, right_output)
 
 
+def _mix_reference_variant_batch(
+    base_batch: dict,
+    contrast_batch: dict,
+    *,
+    swap_image: bool,
+    swap_labels: bool,
+) -> dict:
+    """Swap reference image and/or reference labels while keeping target/noise fixed."""
+    variant = dict(base_batch)
+    if swap_image:
+        variant["reference_image"] = contrast_batch["reference_image"].to(
+            device=base_batch["reference_image"].device,
+            dtype=base_batch["reference_image"].dtype,
+        )
+    if swap_labels:
+        for key in ("reference_tissue_mask", "reference_nuclei_mask"):
+            variant[key] = contrast_batch[key].to(device=base_batch[key].device)
+    return variant
+
+
+def _loss_gap_stats(values: torch.Tensor) -> dict[str, float]:
+    values = values.detach().float().flatten()
+    if values.numel() == 0:
+        return {"mean": math.nan, "std": math.nan, "stderr": math.nan, "n": 0.0}
+    std = values.std(unbiased=False)
+    return {
+        "mean": float(values.mean().item()),
+        "std": float(std.item()),
+        "stderr": float((std / math.sqrt(max(1, int(values.numel())))).item()),
+        "n": float(values.numel()),
+    }
+
+
+def _record_loss_gap_stats(
+    *,
+    logs: dict[str, float],
+    safe_variant: str,
+    gap_values: torch.Tensor,
+    timesteps: torch.Tensor,
+) -> dict[str, float]:
+    stats = _loss_gap_stats(gap_values)
+    logs[f"ip_health_{safe_variant}_loss_gap"] = stats["mean"]
+    logs[f"ip_health_{safe_variant}_loss_gap_std"] = stats["std"]
+    logs[f"ip_health_{safe_variant}_loss_gap_stderr"] = stats["stderr"]
+    logs[f"ip_health_{safe_variant}_loss_gap_n"] = stats["n"]
+
+    t = timesteps.detach().float().flatten()
+    flat_gap = gap_values.detach().float().flatten()
+    if t.numel() == flat_gap.numel():
+        if bool((t > 2.0).any().item()):
+            t = t / 1000.0
+        for bucket_name, mask in {
+            "low": t < (1.0 / 3.0),
+            "mid": (t >= (1.0 / 3.0)) & (t < (2.0 / 3.0)),
+            "high": t >= (2.0 / 3.0),
+        }.items():
+            bucket_stats = _loss_gap_stats(flat_gap[mask])
+            logs[f"ip_health_{safe_variant}_loss_gap_t_{bucket_name}"] = bucket_stats["mean"]
+            logs[f"ip_health_{safe_variant}_loss_gap_t_{bucket_name}_stderr"] = bucket_stats["stderr"]
+            logs[f"ip_health_{safe_variant}_loss_gap_t_{bucket_name}_n"] = bucket_stats["n"]
+    return stats
+
+
 @torch.no_grad()
 def _run_ip_reference_health_diagnostics(
     *,
@@ -2230,9 +2302,22 @@ def _run_ip_reference_health_diagnostics(
             mask_stats=normal_mask_stats,
         )
     )
+    real_contrast_batch = real_contrast_batch or _alternate_real_reference_batch(training_batch)
     variants = {
         "zero": _use_zero_reference(training_batch),
-        "real": real_contrast_batch or _alternate_real_reference_batch(training_batch),
+        "real_feature": _mix_reference_variant_batch(
+            training_batch,
+            real_contrast_batch,
+            swap_image=True,
+            swap_labels=False,
+        ),
+        "real_label": _mix_reference_variant_batch(
+            training_batch,
+            real_contrast_batch,
+            swap_image=False,
+            swap_labels=True,
+        ),
+        "real": real_contrast_batch,
     }
     for variant_name, variant_batch in variants.items():
         collector = {"store_first_ip_output": True}
@@ -2280,19 +2365,27 @@ def _run_ip_reference_health_diagnostics(
                 torch.mean((variant_pred.detach().float() - normal_noise_pred.detach().float()) ** 2)
             ).item()
         )
-        loss_gap = float((variant_loss.mean() - normal_per_sample_loss.detach().mean()).item())
+        loss_gap_values = variant_loss.detach() - normal_per_sample_loss.detach()
         ip_output_cosine = _collector_first_ip_cosine(normal_ip_collector, collector)
         safe_variant = variant_name.replace(".", "_")
+        gap_stats = _record_loss_gap_stats(
+            logs=logs,
+            safe_variant=safe_variant,
+            gap_values=loss_gap_values,
+            timesteps=timesteps,
+        )
+        loss_gap = float(gap_stats["mean"])
         logs[f"ip_health_{safe_variant}_pred_l2"] = pred_l2
-        logs[f"ip_health_{safe_variant}_loss_gap"] = loss_gap
         logs[f"ip_health_{safe_variant}_first_ip_output_cos"] = ip_output_cosine
         logger.info(
-            "Reference health step=%s variant=%s: pred_l2=%.6e loss_gap=%.6e "
-            "first_double_ip_output_cos=%.6f",
+            "Reference health step=%s variant=%s: pred_l2=%.6e "
+            "loss_gap=%.6e±%.6e n=%d first_double_ip_output_cos=%.6f",
             step,
             variant_name,
             pred_l2,
             loss_gap,
+            float(gap_stats["stderr"]),
+            int(gap_stats["n"]),
             ip_output_cosine,
         )
         if step >= warmup_steps and pred_l2 <= min_ref_l2:

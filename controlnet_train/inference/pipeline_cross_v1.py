@@ -245,6 +245,7 @@ def run_cross_v1_bundle(
     mask_chord_gate_dilate_radius: int = 0,
     mask_chord_gate_feather_radius: int = 0,
     mask_chord_gate_outside_scale: float = 0.0,
+    seed: int = 42,
 ) -> Image.Image:
     source_latent_init_strength = _validate_source_latent_init_strength(source_latent_init_strength)
     mask_chord_scale = _validate_nonnegative_float(mask_chord_scale, "mask_chord_scale")
@@ -394,6 +395,7 @@ def run_cross_v1_bundle(
         guidance_scale=bundle.guidance_scale,
         controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
         joint_attention_kwargs=joint_attention_kwargs,
+        seed=seed,
     )
 
 
@@ -732,6 +734,7 @@ def _sample_with_flux_controlnet(
     guidance_scale: float,
     controlnet_conditioning_scale: float,
     joint_attention_kwargs: dict | None = None,
+    seed: int = 42,
 ) -> Image.Image:
     from diffusers import FluxControlNetPipeline
     from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
@@ -761,7 +764,7 @@ def _sample_with_flux_controlnet(
     latents, latent_image_ids = pipe.prepare_latents(
         1, num_channels_latents, height, width,
         prompt_embeds.dtype, torch_device,
-        generator=torch.Generator(device=torch_device).manual_seed(42),
+        generator=torch.Generator(device=torch_device).manual_seed(int(seed)),
         latents=None,
     )
     sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)

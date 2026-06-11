@@ -311,8 +311,8 @@ def parse_args(input_args=None) -> argparse.Namespace:
         action="store_false",
         help=(
             "Disable same-label region gating and let IP attention attend globally. "
-            "By default strict mode gates unmatched query regions to zero, with only "
-            "tissue-level fallback for composite tissue+nuclei labels."
+            "By default strict mode routes unmatched or unlabeled query regions to "
+            "a learned null IP token instead of silently falling back to global attention."
         ),
     )
     parser.set_defaults(regional_ip_strict=True)

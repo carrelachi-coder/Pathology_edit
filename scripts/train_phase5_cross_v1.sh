@@ -92,6 +92,7 @@ IP_HEALTH_MIN_REF_L2="${IP_HEALTH_MIN_REF_L2:-1e-6}"
 IP_HEALTH_MIN_SWAP_LOSS_GAP="${IP_HEALTH_MIN_SWAP_LOSS_GAP:-0}"
 IP_HEALTH_MAX_IP_RATIO="${IP_HEALTH_MAX_IP_RATIO:-1.0}"
 IP_HEALTH_MIN_IP_RATIO="${IP_HEALTH_MIN_IP_RATIO:-1e-8}"
+TEXT_DROPOUT_PROB="${TEXT_DROPOUT_PROB:-0.2}"
 STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-none}"
 STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0}"
 NOISING_DEGRADATION="${NOISING_DEGRADATION:-none}"
@@ -134,6 +135,7 @@ echo "LOAD_IP_ADAPTER=${LOAD_IP_ADAPTER}"
 echo "REGIONAL_IP_TOKEN_MODE=${REGIONAL_IP_TOKEN_MODE}"
 echo "REGIONAL_IP_LABEL_MODE=${REGIONAL_IP_LABEL_MODE}"
 echo "REFERENCE_PERCEIVER_CROSS_GATE_INIT=${REFERENCE_PERCEIVER_CROSS_GATE_INIT}"
+echo "TEXT_DROPOUT_PROB=${TEXT_DROPOUT_PROB}"
 echo "TRAIN_LOG_FILE=${TRAIN_LOG_FILE}"
 
 cd "${PROJECT_ROOT}"
@@ -377,6 +379,7 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --ref-swap-variants "${REF_SWAP_VARIANTS}" \
   "${TRAIN_AUX_INTERVAL_ARGS[@]}" \
   --guidance-scale 3.5 \
+  --proportion-empty-prompts "${TEXT_DROPOUT_PROB}" \
   --report-to tensorboard \
   --tracker-project-name flux_controlnet_phase5_cross_v1_regional_ip_66k_pure_denoise_spatial_nobias \
   --prompt-source dataset
