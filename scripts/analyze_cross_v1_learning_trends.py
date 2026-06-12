@@ -30,6 +30,14 @@ REFERENCE_HEALTH_RE = re.compile(
     r"first_double_ip_output_cos=(?P<cos>[-+0-9.eE]+)"
 )
 CHECKPOINT_STEP_RE = re.compile(r"checkpoint-(\d+)")
+TB_LOSS_GAP_TAG_RE = re.compile(
+    r"ip_health_(?P<variant>[\w.]+)_loss_gap_t_(?P<bucket>low|mid|high)"
+    r"(?P<suffix>_stderr|_n)?$"
+)
+TEXT_LOSS_GAP_BUCKET_RE = re.compile(
+    r"ip_health_(?P<variant>[\w.]+)_loss_gap_t_(?P<bucket>low|mid|high)"
+    r"(?P<suffix>_stderr|_n)?=(?P<value>[-+0-9.eE]+|nan|inf|-inf)"
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -131,8 +139,23 @@ def main(argv: list[str] | None = None) -> int:
             if args.gap_start <= int(point["step"]) <= args.gap_end
         ]
         report["loss_gap_trend"] = summarize_gap_points(gap_points)
+        bucket_points = parse_t_bucket_gap_points(
+            log_file=log_file,
+            run_dir=Path(args.run_dir) if args.run_dir else None,
+            variant=args.gap_variant,
+        )
+        report["loss_gap_t_buckets"] = summarize_t_bucket_gap_points(
+            [
+                point for point in bucket_points
+                if args.gap_start <= int(point["step"]) <= args.gap_end
+            ]
+        )
     else:
         report["loss_gap_trend"] = {
+            "status": "missing",
+            "note": f"log file not found: {log_file}",
+        }
+        report["loss_gap_t_buckets"] = {
             "status": "missing",
             "note": f"log file not found: {log_file}",
         }
@@ -203,6 +226,102 @@ def parse_loss_gap_points(path: Path, *, variant: str) -> list[dict[str, float]]
     return points
 
 
+def parse_t_bucket_gap_points(
+    *,
+    log_file: Path,
+    run_dir: Path | None,
+    variant: str,
+) -> list[dict[str, float | str]]:
+    by_key: dict[tuple[int, str], dict[str, float | str]] = {}
+    if run_dir is not None:
+        for event_file in find_tensorboard_event_files(run_dir):
+            for point in read_t_bucket_points_from_event_file(event_file, variant=variant):
+                key = (int(point["step"]), str(point["bucket"]))
+                by_key.setdefault(key, {"step": key[0], "bucket": key[1]}).update(point)
+
+    for point in read_t_bucket_points_from_text_log(log_file, variant=variant):
+        key = (int(point["step"]), str(point["bucket"]))
+        by_key.setdefault(key, {"step": key[0], "bucket": key[1]}).update(point)
+
+    return [
+        by_key[key]
+        for key in sorted(by_key, key=lambda item: (item[0], item[1]))
+    ]
+
+
+def find_tensorboard_event_files(run_dir: Path) -> list[Path]:
+    log_root = run_dir / "logs"
+    if not log_root.exists():
+        return []
+    return sorted(
+        path for path in log_root.rglob("events.out.tfevents.*")
+        if path.is_file()
+    )
+
+
+def read_t_bucket_points_from_event_file(path: Path, *, variant: str) -> list[dict[str, float | str]]:
+    try:
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    except Exception:
+        return []
+    try:
+        accumulator = EventAccumulator(str(path), size_guidance={"scalars": 0})
+        accumulator.Reload()
+    except Exception:
+        return []
+
+    by_key: dict[tuple[int, str], dict[str, float | str]] = {}
+    for tag in accumulator.Tags().get("scalars", []):
+        match = TB_LOSS_GAP_TAG_RE.search(tag)
+        if not match or match.group("variant") != variant:
+            continue
+        bucket = match.group("bucket")
+        field = t_bucket_suffix_to_field(match.group("suffix"))
+        try:
+            events = accumulator.Scalars(tag)
+        except Exception:
+            continue
+        for event in events:
+            key = (int(event.step), bucket)
+            row = by_key.setdefault(key, {"step": int(event.step), "bucket": bucket})
+            row[field] = float(event.value)
+    return list(by_key.values())
+
+
+def read_t_bucket_points_from_text_log(path: Path, *, variant: str) -> list[dict[str, float | str]]:
+    if not path.exists():
+        return []
+    by_key: dict[tuple[int, str], dict[str, float | str]] = {}
+    current_step: int | None = None
+    for line in path.read_text(encoding="utf8", errors="replace").splitlines():
+        ref_match = REFERENCE_HEALTH_RE.search(line)
+        if ref_match:
+            current_step = int(ref_match.group("step"))
+        step = current_step
+        explicit_step = re.search(r"(?:step=|step\s+)(\d+)", line)
+        if explicit_step:
+            step = int(explicit_step.group(1))
+        if step is None:
+            continue
+        for match in TEXT_LOSS_GAP_BUCKET_RE.finditer(line):
+            if match.group("variant") != variant:
+                continue
+            bucket = match.group("bucket")
+            field = t_bucket_suffix_to_field(match.group("suffix"))
+            key = (int(step), bucket)
+            row = by_key.setdefault(key, {"step": int(step), "bucket": bucket})
+            row[field] = parse_float(match.group("value"))
+    return list(by_key.values())
+
+
+def t_bucket_suffix_to_field(suffix: str | None) -> str:
+    if suffix == "_stderr":
+        return "stderr"
+    if suffix == "_n":
+        return "n"
+    return "loss_gap"
+
+
 def summarize_gap_points(points: list[dict[str, float]]) -> dict[str, Any]:
     gaps = [float(point["loss_gap"]) for point in points if math.isfinite(float(point["loss_gap"]))]
     steps = [float(point["step"]) for point in points if math.isfinite(float(point["loss_gap"]))]
@@ -236,12 +355,84 @@ def summarize_gap_points(points: list[dict[str, float]]) -> dict[str, Any]:
     }
 
 
+def summarize_t_bucket_gap_points(points: list[dict[str, float | str]]) -> dict[str, Any]:
+    if not points:
+        return {
+            "status": "missing",
+            "note": "no timestep-bucket loss-gap scalars found in TensorBoard/text logs",
+        }
+    by_bucket: dict[str, list[dict[str, float | str]]] = defaultdict(list)
+    for point in points:
+        by_bucket[str(point.get("bucket", ""))].append(point)
+    buckets = {
+        bucket: summarize_single_t_bucket(items)
+        for bucket, items in sorted(by_bucket.items())
+    }
+    finite_buckets = [
+        item for item in buckets.values()
+        if item.get("status") != "missing"
+        and math.isfinite(float(item.get("mean", math.nan)))
+    ]
+    best_bucket = None
+    if finite_buckets:
+        best_bucket = max(finite_buckets, key=lambda item: float(item["mean"]))
+    return {
+        "status": "ok" if finite_buckets else "missing",
+        "bucket_count": len(finite_buckets),
+        "best_bucket": best_bucket.get("bucket") if best_bucket else None,
+        "buckets": buckets,
+    }
+
+
+def summarize_single_t_bucket(points: list[dict[str, float | str]]) -> dict[str, Any]:
+    finite_points = [
+        point for point in points
+        if math.isfinite(float(point.get("loss_gap", math.nan)))
+        and float(point.get("n", 0.0) or 0.0) > 0
+    ]
+    bucket = str(points[0].get("bucket", "")) if points else ""
+    if not finite_points:
+        return {
+            "status": "missing",
+            "bucket": bucket,
+            "n_points": 0,
+            "note": "no finite non-empty bucket points",
+        }
+    gaps = [float(point["loss_gap"]) for point in finite_points]
+    steps = [float(point["step"]) for point in finite_points]
+    positive = sum(1 for gap in gaps if gap > 0)
+    mean = finite_mean(gaps)
+    stderr = sample_stderr(gaps)
+    return {
+        "status": "ok",
+        "bucket": bucket,
+        "n_points": len(gaps),
+        "step_start": int(min(steps)),
+        "step_end": int(max(steps)),
+        "mean": mean,
+        "stderr": stderr,
+        "mean_minus_2stderr": mean - 2.0 * stderr if math.isfinite(stderr) else math.nan,
+        "positive": positive,
+        "positive_rate": positive / len(gaps),
+        "slope_per_1k_steps": linear_slope(steps, gaps) * 1000.0 if len(gaps) >= 2 else math.nan,
+        "mean_bucket_n": finite_mean([float(point.get("n", math.nan)) for point in finite_points]),
+        "points": finite_points,
+    }
+
+
 def parse_generation_dir(value: str) -> tuple[int | None, Path]:
     if ":" in value:
         maybe_step, path = value.split(":", 1)
         if maybe_step.strip().isdigit():
             return int(maybe_step.strip()), Path(path)
     return None, Path(value)
+
+
+def resolve_generation_metrics_path(path: Path) -> tuple[Path, str]:
+    directionality_path = path / "directionality_metrics.csv"
+    if directionality_path.exists():
+        return directionality_path, "descriptor_directionality"
+    return path / "generation_gate_metrics.csv", "l1_generation_gate"
 
 
 def summarize_generation_dirs(
@@ -261,7 +452,7 @@ def summarize_generation_dirs(
     group_series: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for forced_step, path in generation_dirs:
         step = forced_step if forced_step is not None else infer_generation_step(path)
-        metrics_path = path / "generation_gate_metrics.csv"
+        metrics_path, metrics_kind = resolve_generation_metrics_path(path)
         if not metrics_path.exists():
             per_step.append(
                 {
@@ -278,6 +469,7 @@ def summarize_generation_dirs(
                 step,
                 path,
                 rows,
+                metrics_kind=metrics_kind,
                 win_metric=win_metric,
                 group_by=group_by,
                 paired_win_threshold=paired_win_threshold,
@@ -324,6 +516,7 @@ def summarize_generation_step(
     path: Path,
     rows: list[dict[str, str]],
     *,
+    metrics_kind: str,
     win_metric: str,
     group_by: str,
     paired_win_threshold: float,
@@ -334,46 +527,14 @@ def summarize_generation_step(
     permutation_iters: int,
     permutation_seed: int,
 ) -> dict[str, Any]:
-    grouped_rows = group_generation_rows(rows, group_by=group_by)
-    comparisons = []
-    for group_key, group_rows in sorted(grouped_rows.items()):
-        by_pair: dict[tuple[str, str], dict[str, dict[str, str]]] = defaultdict(dict)
-        for row in group_rows:
-            key = (str(row.get("sample_id", "")), str(row.get("scale", "")))
-            by_pair[key][str(row.get("variant", ""))] = row
-
-        group_comparisons = []
-        for (sample_id, scale), variants in sorted(by_pair.items()):
-            paired = variants.get("paired")
-            alternate = variants.get("alternate_feature")
-            if not paired or not alternate:
-                continue
-            paired_value = parse_float(paired.get(win_metric))
-            alternate_value = parse_float(alternate.get(win_metric))
-            if not math.isfinite(paired_value) or not math.isfinite(alternate_value):
-                continue
-            advantage = alternate_value - paired_value
-            group_comparisons.append(
-                {
-                    "step": step,
-                    "path": str(path),
-                    "group": group_key,
-                    "sample_id": sample_id,
-                    "scale": parse_float(scale),
-                    "alternate_mode": str(paired.get("alternate_mode") or "same_dataset"),
-                    "prompt_mode": str(paired.get("prompt_mode") or "dataset"),
-                    "paired_reference_sample_id": str(paired.get("paired_reference_sample_id") or ""),
-                    "alternate_reference_sample_id": str(paired.get("alternate_reference_sample_id") or ""),
-                    "paired": paired_value,
-                    "alternate_feature": alternate_value,
-                    "paired_advantage": advantage,
-                    "paired_win": advantage > 0.0,
-                }
-            )
-        if group_comparisons:
-            comparisons.extend(
-                group_comparisons
-            )
+    comparisons = build_generation_comparisons(
+        rows,
+        step=step,
+        path=path,
+        metrics_kind=metrics_kind,
+        win_metric=win_metric,
+        group_by=group_by,
+    )
 
     if not comparisons:
         return {
@@ -462,6 +623,7 @@ def summarize_generation_step(
         "step": step,
         "path": str(path),
         "status": status,
+        "metrics_kind": metrics_kind,
         "group_by": group_by,
         "n": cluster_summary["n_observations"],
         "effective_sample_ids": len({str(item.get("sample_id", "")) for item in comparisons}),
@@ -692,6 +854,115 @@ def permutation_two_sided_pvalue(null_values: list[float], observed_value: float
     return float((exceed + 1) / (len(finite) + 1))
 
 
+def build_generation_comparisons(
+    rows: list[dict[str, str]],
+    *,
+    step: int | None,
+    path: Path,
+    metrics_kind: str,
+    win_metric: str,
+    group_by: str,
+) -> list[dict[str, Any]]:
+    if metrics_kind == "descriptor_directionality":
+        return build_descriptor_directionality_comparisons(
+            rows,
+            step=step,
+            path=path,
+            group_by=group_by,
+        )
+    return build_l1_generation_comparisons(
+        rows,
+        step=step,
+        path=path,
+        win_metric=win_metric,
+        group_by=group_by,
+    )
+
+
+def build_l1_generation_comparisons(
+    rows: list[dict[str, str]],
+    *,
+    step: int | None,
+    path: Path,
+    win_metric: str,
+    group_by: str,
+) -> list[dict[str, Any]]:
+    grouped_rows = group_generation_rows(rows, group_by=group_by)
+    comparisons = []
+    for group_key, group_rows in sorted(grouped_rows.items()):
+        by_pair: dict[tuple[str, str], dict[str, dict[str, str]]] = defaultdict(dict)
+        for row in group_rows:
+            key = (str(row.get("sample_id", "")), str(row.get("scale", "")))
+            by_pair[key][str(row.get("variant", ""))] = row
+
+        for (sample_id, scale), variants in sorted(by_pair.items()):
+            paired = variants.get("paired")
+            alternate = variants.get("alternate_feature")
+            if not paired or not alternate:
+                continue
+            paired_value = parse_float(paired.get(win_metric))
+            alternate_value = parse_float(alternate.get(win_metric))
+            if not math.isfinite(paired_value) or not math.isfinite(alternate_value):
+                continue
+            advantage = alternate_value - paired_value
+            comparisons.append(
+                {
+                    "step": step,
+                    "path": str(path),
+                    "group": group_key,
+                    "sample_id": sample_id,
+                    "scale": parse_float(scale),
+                    "alternate_mode": str(paired.get("alternate_mode") or "same_dataset"),
+                    "prompt_mode": str(paired.get("prompt_mode") or "dataset"),
+                    "paired_reference_sample_id": str(paired.get("paired_reference_sample_id") or ""),
+                    "alternate_reference_sample_id": str(paired.get("alternate_reference_sample_id") or ""),
+                    "paired": paired_value,
+                    "alternate_feature": alternate_value,
+                    "paired_advantage": advantage,
+                    "paired_win": advantage > 0.0,
+                }
+            )
+    return comparisons
+
+
+def build_descriptor_directionality_comparisons(
+    rows: list[dict[str, str]],
+    *,
+    step: int | None,
+    path: Path,
+    group_by: str,
+) -> list[dict[str, Any]]:
+    grouped_rows = group_generation_rows(rows, group_by=group_by)
+    comparisons = []
+    for group_key, group_rows in sorted(grouped_rows.items()):
+        for row in group_rows:
+            advantage = parse_float(row.get("paired_advantage"))
+            if not math.isfinite(advantage):
+                advantage = parse_float(row.get("cosine_margin"))
+            if not math.isfinite(advantage):
+                continue
+            comparisons.append(
+                {
+                    "step": step,
+                    "path": str(path),
+                    "group": group_key,
+                    "sample_id": str(row.get("sample_id", "")),
+                    "scale": parse_float(row.get("scale")),
+                    "alternate_mode": str(row.get("alternate_mode") or "same_dataset"),
+                    "prompt_mode": str(row.get("prompt_mode") or "dataset"),
+                    "paired_reference_sample_id": str(row.get("paired_reference_sample_id") or ""),
+                    "alternate_reference_sample_id": str(row.get("alternate_reference_sample_id") or ""),
+                    "paired": parse_float(row.get("paired_ref_cosine")),
+                    "alternate_feature": parse_float(row.get("alternate_ref_cosine")),
+                    "paired_advantage": advantage,
+                    "paired_win": advantage > 0.0,
+                    "target_cosine": parse_float(row.get("target_cosine")),
+                    "feature_stage": str(row.get("feature_stage") or ""),
+                }
+            )
+    return comparisons
+
+
 def group_generation_rows(rows: list[dict[str, str]], *, group_by: str) -> dict[str, list[dict[str, str]]]:
     grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in rows:
@@ -752,8 +1023,10 @@ def summarize_generation_trend(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def infer_generation_step(path: Path) -> int | None:
-    summary_path = path / "generation_gate_summary.json"
-    if summary_path.exists():
+    for summary_name in ("directionality_summary.json", "generation_gate_summary.json"):
+        summary_path = path / summary_name
+        if not summary_path.exists():
+            continue
         try:
             summary = json.loads(summary_path.read_text(encoding="utf8"))
             checkpoint = str(summary.get("checkpoint", ""))
@@ -917,6 +1190,32 @@ def format_report(report: dict[str, Any]) -> str:
             f"slope_per_1k={gap['slope_per_1k_steps']:.6e} "
             f"second-first={gap['second_minus_first']:.6e}"
         )
+
+    buckets = report.get("loss_gap_t_buckets", {})
+    lines.append("Loss gap t-buckets:")
+    if buckets.get("status") == "missing":
+        lines.append(f"  missing - {buckets.get('note', '')}")
+    else:
+        lines.append(
+            f"  status={buckets.get('status')} best_bucket={buckets.get('best_bucket')}"
+        )
+        for name in ("low", "mid", "high"):
+            item = (buckets.get("buckets") or {}).get(name)
+            if not item:
+                continue
+            if item.get("status") == "missing":
+                lines.append(f"  {name}: missing - {item.get('note', '')}")
+                continue
+            lines.append(
+                "  "
+                f"{name}: n_points={item.get('n_points')} "
+                f"mean={float(item.get('mean', math.nan)):.6e} "
+                f"se={float(item.get('stderr', math.nan)):.6e} "
+                f"mean-2se={float(item.get('mean_minus_2stderr', math.nan)):.6e} "
+                f"positive_rate={float(item.get('positive_rate', math.nan)):.3f} "
+                f"slope_per_1k={float(item.get('slope_per_1k_steps', math.nan)):.6e} "
+                f"mean_bucket_n={float(item.get('mean_bucket_n', math.nan)):.2f}"
+            )
 
     generation = report.get("generation_directionality", {})
     lines.append("Generation directionality:")

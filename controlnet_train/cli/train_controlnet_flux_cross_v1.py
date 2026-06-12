@@ -161,8 +161,26 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--lr-scheduler", type=str, default="cosine")
     parser.add_argument("--lr-warmup-steps", type=int, default=500)
-    parser.add_argument("--lr-num-cycles", type=int, default=1)
+    parser.add_argument("--lr-num-cycles", type=float, default=1.0)
     parser.add_argument("--lr-power", type=float, default=1.0)
+    parser.add_argument(
+        "--lr-min-factor",
+        type=float,
+        default=0.0,
+        help=(
+            "Minimum LR as a fraction of each optimizer group's initial LR. "
+            "Only used by --lr-scheduler cosine_with_min_lr."
+        ),
+    )
+    parser.add_argument(
+        "--lr-decay-start-step",
+        type=int,
+        default=0,
+        help=(
+            "Global optimizer step where cosine_with_min_lr starts decaying. "
+            "Use the resume checkpoint step for a phase-local cosine schedule."
+        ),
+    )
     parser.add_argument("--scale-lr", action="store_true", default=False)
     parser.add_argument(
         "--conditioning-learning-rate",
@@ -212,6 +230,19 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--adam-weight-decay", type=float, default=1e-2)
     parser.add_argument("--adam-epsilon", type=float, default=1e-8)
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
+    parser.add_argument(
+        "--ema-decay",
+        type=float,
+        default=0.0,
+        help="Enable EMA for trainable Cross V1 modules when > 0, e.g. 0.999.",
+    )
+    parser.add_argument(
+        "--ema-device",
+        type=str,
+        default="cpu",
+        choices=["cpu", "model"],
+        help="Keep EMA shadow weights on CPU for memory safety or beside model params for speed.",
+    )
     parser.add_argument("--dataloader-num-workers", type=int, default=0)
     parser.add_argument(
         "--dataloader-prefetch-factor",
@@ -234,6 +265,21 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--logit-std", type=float, default=1.0)
     parser.add_argument("--mode-scale", type=float, default=1.29)
     parser.add_argument("--proportion-empty-prompts", type=float, default=0.0)
+    parser.add_argument(
+        "--mask-augmentation",
+        type=str,
+        default="none",
+        choices=["none", "affine_coarse"],
+        help="Train-time label-mask augmentation for target/reference tissue and nuclei masks.",
+    )
+    parser.add_argument("--mask-augment-prob", type=float, default=0.0)
+    parser.add_argument("--mask-augment-translate", type=float, default=0.03)
+    parser.add_argument("--mask-augment-scale", type=float, default=0.04)
+    parser.add_argument("--mask-augment-rotate-degrees", type=float, default=3.0)
+    parser.add_argument("--mask-augment-boundary-jitter", type=float, default=0.0)
+    parser.add_argument("--mask-augment-boundary-grid", type=int, default=8)
+    parser.add_argument("--mask-augment-coarse-prob", type=float, default=0.0)
+    parser.add_argument("--mask-augment-coarse-factor", type=int, default=4)
     parser.add_argument("--report-to", type=str, default="tensorboard")
     parser.add_argument("--tracker-project-name", type=str, default="flux_controlnet_phase5_cross_v1")
     parser.add_argument("--prompt-batch-size", type=int, default=8)

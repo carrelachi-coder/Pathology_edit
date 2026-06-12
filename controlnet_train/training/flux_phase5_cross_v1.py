@@ -47,6 +47,7 @@ from diffusers.utils import is_wandb_available
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 from packaging import version
+from torch.optim.lr_scheduler import LambdaLR
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
@@ -96,6 +97,163 @@ if is_wandb_available():
 logger = get_logger(__name__)
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
+
+
+def _build_lr_scheduler(
+    args: argparse.Namespace,
+    optimizer: torch.optim.Optimizer,
+    *,
+    num_training_steps: int,
+    num_warmup_steps: int,
+):
+    scheduler_name = str(getattr(args, "lr_scheduler", "cosine") or "cosine")
+    if scheduler_name != "cosine_with_min_lr":
+        return get_scheduler(
+            scheduler_name,
+            optimizer=optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_training_steps,
+            num_cycles=args.lr_num_cycles,
+            power=args.lr_power,
+        )
+
+    min_factor = float(getattr(args, "lr_min_factor", 0.0) or 0.0)
+    if not 0.0 <= min_factor <= 1.0:
+        raise ValueError(f"--lr-min-factor must be in [0, 1], got {min_factor}.")
+    cycles = float(getattr(args, "lr_num_cycles", 0.5) or 0.5)
+    decay_start_step = max(0, int(getattr(args, "lr_decay_start_step", 0) or 0))
+    warmup_steps = max(0, int(num_warmup_steps))
+    total_steps = max(1, int(num_training_steps))
+
+    def lr_lambda(current_step: int) -> float:
+        if decay_start_step > 0:
+            if current_step < decay_start_step:
+                return 1.0
+            progress = float(current_step - decay_start_step) / float(max(1, total_steps - decay_start_step))
+            progress = min(max(progress, 0.0), 1.0)
+            cosine = 0.5 * (1.0 + math.cos(math.pi * 2.0 * cycles * progress))
+            return min_factor + (1.0 - min_factor) * cosine
+        if warmup_steps > 0 and current_step < warmup_steps:
+            return float(current_step) / float(max(1, warmup_steps))
+        progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+        progress = min(max(progress, 0.0), 1.0)
+        cosine = 0.5 * (1.0 + math.cos(math.pi * 2.0 * cycles * progress))
+        return min_factor + (1.0 - min_factor) * cosine
+
+    return LambdaLR(optimizer, lr_lambda)
+
+
+def _set_optimizer_group_lrs(optimizer: torch.optim.Optimizer, lrs: list[float]) -> None:
+    if len(optimizer.param_groups) != len(lrs):
+        raise ValueError(
+            f"Optimizer group count changed: {len(optimizer.param_groups)} vs {len(lrs)}"
+        )
+    for group, lr in zip(optimizer.param_groups, lrs):
+        group["lr"] = float(lr)
+        group["initial_lr"] = float(lr)
+
+
+def _advance_scheduler_to_step(scheduler, step: int) -> None:
+    target_step = max(0, int(step))
+    if hasattr(scheduler, "lr_lambdas") and hasattr(scheduler, "base_lrs"):
+        scheduler.last_epoch = target_step
+        for group, base_lr, lr_lambda in zip(
+            scheduler.optimizer.param_groups,
+            scheduler.base_lrs,
+            scheduler.lr_lambdas,
+        ):
+            group["lr"] = float(base_lr) * float(lr_lambda(target_step))
+        return
+    for _ in range(target_step):
+        scheduler.step()
+
+
+class TrainableEMA:
+    """EMA for the small trainable Cross V1 modules."""
+
+    def __init__(
+        self,
+        modules: list[nn.Module],
+        *,
+        decay: float,
+        device: str = "cpu",
+    ) -> None:
+        self.decay = float(decay)
+        self.device = str(device)
+        if not 0.0 < self.decay < 1.0:
+            raise ValueError(f"EMA decay must be in (0, 1), got {self.decay}.")
+        if self.device not in {"cpu", "model"}:
+            raise ValueError(f"EMA device must be 'cpu' or 'model', got {self.device!r}.")
+        self.shadow: dict[str, torch.Tensor] = {}
+        self.backup: dict[str, torch.Tensor] = {}
+        for name, param in self._named_params(modules):
+            target_device = torch.device("cpu") if self.device == "cpu" else param.device
+            self.shadow[name] = param.detach().float().to(device=target_device).clone()
+
+    @staticmethod
+    def _named_params(modules: list[nn.Module]):
+        for module_index, module in enumerate(modules):
+            for name, param in module.named_parameters():
+                if param.requires_grad:
+                    yield f"{module_index}.{name}", param
+
+    def update(self, modules: list[nn.Module]) -> None:
+        decay = self.decay
+        with torch.no_grad():
+            for name, param in self._named_params(modules):
+                if name not in self.shadow:
+                    target_device = torch.device("cpu") if self.device == "cpu" else param.device
+                    self.shadow[name] = param.detach().float().to(device=target_device).clone()
+                    continue
+                value = param.detach().float()
+                if self.device == "cpu":
+                    value = value.cpu()
+                else:
+                    value = value.to(device=self.shadow[name].device)
+                self.shadow[name].mul_(decay).add_(value, alpha=1.0 - decay)
+
+    def copy_to(self, modules: list[nn.Module]) -> None:
+        with torch.no_grad():
+            for name, param in self._named_params(modules):
+                if name not in self.shadow:
+                    continue
+                self.backup[name] = param.detach().clone()
+                param.copy_(self.shadow[name].to(device=param.device, dtype=param.dtype))
+
+    def restore(self, modules: list[nn.Module]) -> None:
+        if not self.backup:
+            return
+        with torch.no_grad():
+            for name, param in self._named_params(modules):
+                backup = self.backup.get(name)
+                if backup is not None:
+                    param.copy_(backup.to(device=param.device, dtype=param.dtype))
+        self.backup.clear()
+
+    def state_dict(self) -> dict[str, object]:
+        return {
+            "decay": self.decay,
+            "device": self.device,
+            "shadow": {name: value.cpu() for name, value in self.shadow.items()},
+        }
+
+    def load_state_dict(self, state: dict[str, object]) -> None:
+        shadow = state.get("shadow")
+        if not isinstance(shadow, dict):
+            raise ValueError("EMA state is missing shadow weights.")
+        target_device = torch.device("cpu") if self.device == "cpu" else None
+        loaded = {}
+        for name, value in shadow.items():
+            if not torch.is_tensor(value):
+                continue
+            loaded[str(name)] = (
+                value.detach().float().to(device=target_device).clone()
+                if target_device is not None
+                else value.detach().float().clone()
+            )
+        if not loaded:
+            raise ValueError("EMA state did not contain tensor shadow weights.")
+        self.shadow = loaded
 
 
 # ---------------------------------------------------------------------------
@@ -2492,6 +2650,152 @@ def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tens
     return values[mask].mean()
 
 
+def _apply_cross_v1_mask_augmentation(
+    batch: dict,
+    *,
+    mode: str,
+    prob: float,
+    translate: float,
+    scale: float,
+    rotate_degrees: float,
+    boundary_jitter: float,
+    boundary_grid: int,
+    coarse_prob: float,
+    coarse_factor: int,
+) -> dict:
+    mode = str(mode or "none").strip().lower()
+    prob = min(1.0, max(0.0, float(prob or 0.0)))
+    if mode == "none" or prob <= 0.0:
+        return batch
+    if mode != "affine_coarse":
+        raise ValueError(f"Unsupported mask augmentation mode {mode!r}.")
+    if random.random() >= prob:
+        return batch
+
+    augmented = dict(batch)
+    for tissue_key, nuclei_key in (
+        ("target_tissue_mask", "target_nuclei_mask"),
+        ("reference_tissue_mask", "reference_nuclei_mask"),
+    ):
+        if tissue_key not in batch or nuclei_key not in batch:
+            continue
+        tissue_aug, nuclei_aug = _augment_label_mask_group(
+            [batch[tissue_key], batch[nuclei_key]],
+            translate=float(translate or 0.0),
+            scale=float(scale or 0.0),
+            rotate_degrees=float(rotate_degrees or 0.0),
+            boundary_jitter=float(boundary_jitter or 0.0),
+            boundary_grid=int(boundary_grid or 1),
+            coarse_prob=float(coarse_prob or 0.0),
+            coarse_factor=int(coarse_factor or 1),
+        )
+        augmented[tissue_key] = tissue_aug
+        augmented[nuclei_key] = nuclei_aug
+    return augmented
+
+
+def _augment_label_mask_batch(
+    masks: torch.Tensor,
+    *,
+    translate: float,
+    scale: float,
+    rotate_degrees: float,
+    boundary_jitter: float,
+    boundary_grid: int,
+    coarse_prob: float,
+    coarse_factor: int,
+) -> torch.Tensor:
+    return _augment_label_mask_group(
+        [masks],
+        translate=translate,
+        scale=scale,
+        rotate_degrees=rotate_degrees,
+        boundary_jitter=boundary_jitter,
+        boundary_grid=boundary_grid,
+        coarse_prob=coarse_prob,
+        coarse_factor=coarse_factor,
+    )[0]
+
+
+def _augment_label_mask_group(
+    masks: list[torch.Tensor],
+    *,
+    translate: float,
+    scale: float,
+    rotate_degrees: float,
+    boundary_jitter: float,
+    boundary_grid: int,
+    coarse_prob: float,
+    coarse_factor: int,
+) -> list[torch.Tensor]:
+    if not masks:
+        return []
+    first = masks[0]
+    if first.ndim != 3:
+        raise ValueError(f"Expected mask batch [B,H,W], got {tuple(first.shape)}")
+    original_dtypes = [mask.dtype for mask in masks]
+    device = first.device
+    bsz, height, width = first.shape
+    for mask in masks:
+        if mask.ndim != 3 or mask.shape != first.shape:
+            raise ValueError(
+                "All grouped masks must have identical [B,H,W] shape, "
+                f"got {tuple(mask.shape)} vs {tuple(first.shape)}"
+            )
+    masks_float = torch.stack([mask.float() for mask in masks], dim=1)
+    theta = masks_float.new_zeros((bsz, 2, 3))
+    max_translate = max(0.0, float(translate))
+    max_scale = max(0.0, float(scale))
+    max_rotate = max(0.0, float(rotate_degrees))
+    for index in range(bsz):
+        angle = math.radians(random.uniform(-max_rotate, max_rotate)) if max_rotate > 0.0 else 0.0
+        zoom = 1.0 + (random.uniform(-max_scale, max_scale) if max_scale > 0.0 else 0.0)
+        zoom = max(0.5, zoom)
+        cos_a = math.cos(angle) / zoom
+        sin_a = math.sin(angle) / zoom
+        tx = random.uniform(-max_translate, max_translate) if max_translate > 0.0 else 0.0
+        ty = random.uniform(-max_translate, max_translate) if max_translate > 0.0 else 0.0
+        theta[index, 0, 0] = cos_a
+        theta[index, 0, 1] = -sin_a
+        theta[index, 1, 0] = sin_a
+        theta[index, 1, 1] = cos_a
+        theta[index, 0, 2] = tx
+        theta[index, 1, 2] = ty
+    grid = F.affine_grid(theta, size=masks_float.shape, align_corners=False)
+    jitter_strength = max(0.0, float(boundary_jitter or 0.0))
+    jitter_grid = max(2, int(boundary_grid or 2))
+    if jitter_strength > 0.0:
+        lowres = masks_float.new_empty((bsz, 2, jitter_grid, jitter_grid)).uniform_(
+            -jitter_strength,
+            jitter_strength,
+        )
+        displacement = F.interpolate(
+            lowres,
+            size=(height, width),
+            mode="bilinear",
+            align_corners=False,
+        ).permute(0, 2, 3, 1)
+        grid = (grid + displacement).clamp(-1.2, 1.2)
+    warped = F.grid_sample(
+        masks_float,
+        grid,
+        mode="nearest",
+        padding_mode="border",
+        align_corners=False,
+    )
+    coarse_prob = min(1.0, max(0.0, float(coarse_prob or 0.0)))
+    coarse_factor = max(1, int(coarse_factor or 1))
+    if coarse_factor > 1 and coarse_prob > 0.0 and random.random() < coarse_prob:
+        coarse_h = max(1, height // coarse_factor)
+        coarse_w = max(1, width // coarse_factor)
+        warped = F.interpolate(warped, size=(coarse_h, coarse_w), mode="nearest")
+        warped = F.interpolate(warped, size=(height, width), mode="nearest")
+    return [
+        warped[:, index].round().to(device=device, dtype=original_dtypes[index])
+        for index in range(len(masks))
+    ]
+
+
 def _sample_timestep_indices_with_degraded_floor(
     *,
     initial_indices: torch.Tensor,
@@ -3329,6 +3633,24 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     ref_swap_margin = float(getattr(args, "ref_swap_margin", 0.02) or 0.0)
     ref_swap_variants = _parse_ref_swap_variants(getattr(args, "ref_swap_variants", "zero,random"))
     ip_health_debug_interval = max(0, int(getattr(args, "ip_health_debug_interval", 0) or 0))
+    mask_augmentation_mode = str(getattr(args, "mask_augmentation", "none") or "none").strip().lower()
+    mask_augment_prob = min(1.0, max(0.0, float(getattr(args, "mask_augment_prob", 0.0) or 0.0)))
+    mask_augment_translate = max(0.0, float(getattr(args, "mask_augment_translate", 0.0) or 0.0))
+    mask_augment_scale = max(0.0, float(getattr(args, "mask_augment_scale", 0.0) or 0.0))
+    mask_augment_rotate_degrees = max(
+        0.0,
+        float(getattr(args, "mask_augment_rotate_degrees", 0.0) or 0.0),
+    )
+    mask_augment_boundary_jitter = max(
+        0.0,
+        float(getattr(args, "mask_augment_boundary_jitter", 0.0) or 0.0),
+    )
+    mask_augment_boundary_grid = max(2, int(getattr(args, "mask_augment_boundary_grid", 8) or 8))
+    mask_augment_coarse_prob = min(
+        1.0,
+        max(0.0, float(getattr(args, "mask_augment_coarse_prob", 0.0) or 0.0)),
+    )
+    mask_augment_coarse_factor = max(1, int(getattr(args, "mask_augment_coarse_factor", 1) or 1))
     random_reference_sampler = (
         RandomReferenceSampler(dataset.records, seed=args.seed)
         if (("random" in ref_swap_variants) or ip_health_debug_interval > 0)
@@ -3465,6 +3787,19 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             regional_ip_strict,
             regional_ip_token_mode,
             regional_ip_label_mode,
+        )
+    if mask_augmentation_mode != "none" and mask_augment_prob > 0.0:
+        logger.info(
+            "Using mask augmentation: mode=%s prob=%s translate=%s scale=%s rotate_deg=%s boundary_jitter=%s boundary_grid=%s coarse_prob=%s coarse_factor=%s",
+            mask_augmentation_mode,
+            mask_augment_prob,
+            mask_augment_translate,
+            mask_augment_scale,
+            mask_augment_rotate_degrees,
+            mask_augment_boundary_jitter,
+            mask_augment_boundary_grid,
+            mask_augment_coarse_prob,
+            mask_augment_coarse_factor,
         )
     if getattr(args, "noising_degradation", "none") != "none":
         logger.info(
@@ -3777,6 +4112,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     add_optimizer_group("ip_single", ip_single_lr_params, ip_single_learning_rate)
     if not optimizer_param_groups:
         raise ValueError("No trainable parameters were added to the optimizer.")
+    configured_group_lrs = [float(group["lr"]) for group in optimizer_param_groups]
     logger.info(
         (
             "Optimizer LR groups: controlnet_lr=%s params=%s, "
@@ -3818,14 +4154,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         len(train_dataloader) / args.gradient_accumulation_steps
     )
 
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler, optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=(
-            (args.max_train_steps or args.num_train_epochs * num_update_steps_per_epoch)
-            * accelerator.num_processes
-        ),
-        num_cycles=args.lr_num_cycles, power=args.lr_power,
+    lr_training_steps = (
+        (args.max_train_steps or args.num_train_epochs * num_update_steps_per_epoch)
+        * (1 if str(getattr(args, "lr_scheduler", "")) == "cosine_with_min_lr" else accelerator.num_processes)
+    )
+    lr_warmup_steps = args.lr_warmup_steps * (
+        1 if str(getattr(args, "lr_scheduler", "")) == "cosine_with_min_lr" else accelerator.num_processes
+    )
+    lr_scheduler = _build_lr_scheduler(
+        args,
+        optimizer=optimizer,
+        num_warmup_steps=lr_warmup_steps,
+        num_training_steps=lr_training_steps,
     )
 
     # ---- accelerator.prepare ----
@@ -3870,6 +4210,36 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     # ip_adapter: wrapper 的参数指回 transformer 的 processor
     _sync_ip_adapter_to_transformer(unwrap_model(ip_trainable_wrapper), flux_transformer)
 
+    ema_decay = float(getattr(args, "ema_decay", 0.0) or 0.0)
+    trainable_ema = None
+
+    def create_or_load_trainable_ema(checkpoint_path: str | None) -> TrainableEMA | None:
+        if ema_decay <= 0.0:
+            return None
+        ema = TrainableEMA(
+            [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)],
+            decay=ema_decay,
+            device=str(getattr(args, "ema_device", "cpu") or "cpu"),
+        )
+        ema_state_path = Path(args.output_dir) / "ema_state.pt"
+        if checkpoint_path:
+            candidate = Path(checkpoint_path) / "ema_state.pt"
+            if candidate.exists():
+                ema_state_path = candidate
+        if ema_state_path.exists():
+            try:
+                ema.load_state_dict(torch.load(ema_state_path, map_location="cpu"))
+                logger.info("Loaded EMA state from %s", ema_state_path)
+            except Exception as exc:
+                logger.warning("Could not load EMA state from %s: %s", ema_state_path, exc)
+        logger.info(
+            "Using trainable EMA: decay=%s device=%s shadow_tensors=%s",
+            ema.decay,
+            ema.device,
+            len(ema.shadow),
+        )
+        return ema
+
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
@@ -3897,16 +4267,38 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
 
     global_step = 0
     first_epoch = 0
+    loaded_checkpoint_path = None
     if args.resume_from_checkpoint:
-        checkpoint_path = (
-            os.path.join(args.output_dir, args.resume_from_checkpoint)
-            if args.resume_from_checkpoint != "latest"
-            else _latest_checkpoint(args.output_dir)
-        )
+        if args.resume_from_checkpoint == "latest":
+            checkpoint_path = _latest_checkpoint(args.output_dir)
+        else:
+            resume_path = Path(str(args.resume_from_checkpoint))
+            checkpoint_path = str(resume_path if resume_path.is_absolute() else Path(args.output_dir) / resume_path)
         if checkpoint_path is not None:
             accelerator.load_state(checkpoint_path)
+            loaded_checkpoint_path = checkpoint_path
             global_step = int(Path(checkpoint_path).name.split("-")[1])
             first_epoch = global_step // num_update_steps_per_epoch
+            _set_optimizer_group_lrs(optimizer, configured_group_lrs)
+            lr_scheduler = _build_lr_scheduler(
+                args,
+                optimizer=optimizer,
+                num_warmup_steps=lr_warmup_steps,
+                num_training_steps=lr_training_steps,
+            )
+            _advance_scheduler_to_step(
+                lr_scheduler,
+                global_step if str(getattr(args, "lr_scheduler", "")) == "cosine_with_min_lr"
+                else global_step * accelerator.num_processes,
+            )
+            logger.info(
+                "Resumed from %s at global_step=%s; reset optimizer LRs to %s and rebuilt %s scheduler.",
+                checkpoint_path,
+                global_step,
+                configured_group_lrs,
+                args.lr_scheduler,
+            )
+    trainable_ema = create_or_load_trainable_ema(loaded_checkpoint_path)
 
     progress_bar = tqdm(
         total=args.max_train_steps,
@@ -3976,6 +4368,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     )
                 else:
                     training_batch = batch
+                training_batch = _apply_cross_v1_mask_augmentation(
+                    training_batch,
+                    mode=mask_augmentation_mode,
+                    prob=mask_augment_prob,
+                    translate=mask_augment_translate,
+                    scale=mask_augment_scale,
+                    rotate_degrees=mask_augment_rotate_degrees,
+                    boundary_jitter=mask_augment_boundary_jitter,
+                    boundary_grid=mask_augment_boundary_grid,
+                    coarse_prob=mask_augment_coarse_prob,
+                    coarse_factor=mask_augment_coarse_factor,
+                )
                 health_real_contrast_batch = None
                 if should_run_ip_health:
                     random_batch = (
@@ -4383,6 +4787,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     )
                 optimizer.step()
                 lr_scheduler.step()
+                if accelerator.sync_gradients and trainable_ema is not None:
+                    trainable_ema.update(
+                        [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)]
+                    )
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
                 if should_run_ip_health:
                     _log_reference_signal_debug(
@@ -4453,7 +4861,34 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         regional_ip_token_mode=regional_ip_token_mode,
                         regional_ip_label_mode=regional_ip_label_mode,
                     )
-                    logger.info("Saved eval-ready Phase 5.3 cross-v1 artifacts to %s", save_path)
+                    if trainable_ema is not None:
+                        torch.save(trainable_ema.state_dict(), os.path.join(save_path, "ema_state.pt"))
+                        trainable_ema.copy_to(
+                            [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)]
+                        )
+                        unwrap_model(ref_trainable_wrapper).sync_back(ref_encoder_raw)
+                        _sync_ip_adapter_to_transformer(unwrap_model(ip_trainable_wrapper), flux_transformer)
+                        ema_save_path = os.path.join(save_path, "ema")
+                        _save_cross_v1_artifacts(
+                            ema_save_path,
+                            args,
+                            flux_controlnet=flux_controlnet,
+                            modules=modules,
+                            ip_trainable_wrapper=ip_trainable_wrapper,
+                            unwrap_model=unwrap_model,
+                            control_spec=control_spec,
+                            ip_num_tokens=ip_num_tokens,
+                            regional_ip_adapter=regional_ip_adapter,
+                            regional_ip_token_mode=regional_ip_token_mode,
+                            regional_ip_label_mode=regional_ip_label_mode,
+                        )
+                        trainable_ema.restore(
+                            [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)]
+                        )
+                        unwrap_model(ref_trainable_wrapper).sync_back(ref_encoder_raw)
+                        _sync_ip_adapter_to_transformer(unwrap_model(ip_trainable_wrapper), flux_transformer)
+                        logger.info("Saved EMA eval-ready Phase 5.3 cross-v1 artifacts to %s", ema_save_path)
+                    logger.info("Saved raw eval-ready Phase 5.3 cross-v1 artifacts to %s", save_path)
 
             logs = {
                 "loss": loss.detach().item(),
@@ -4527,6 +4962,33 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             regional_ip_token_mode=regional_ip_token_mode,
             regional_ip_label_mode=regional_ip_label_mode,
         )
-        logger.info("Saved Phase 5.3 cross-v1 artifacts to %s", args.output_dir)
+        if trainable_ema is not None:
+            torch.save(trainable_ema.state_dict(), os.path.join(args.output_dir, "ema_state.pt"))
+            trainable_ema.copy_to(
+                [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)]
+            )
+            unwrap_model(ref_trainable_wrapper).sync_back(ref_encoder_raw)
+            _sync_ip_adapter_to_transformer(unwrap_model(ip_trainable_wrapper), flux_transformer)
+            ema_output_dir = os.path.join(args.output_dir, "ema")
+            _save_cross_v1_artifacts(
+                ema_output_dir,
+                args,
+                flux_controlnet=flux_controlnet,
+                modules=modules,
+                ip_trainable_wrapper=ip_trainable_wrapper,
+                unwrap_model=unwrap_model,
+                control_spec=control_spec,
+                ip_num_tokens=ip_num_tokens,
+                regional_ip_adapter=regional_ip_adapter,
+                regional_ip_token_mode=regional_ip_token_mode,
+                regional_ip_label_mode=regional_ip_label_mode,
+            )
+            trainable_ema.restore(
+                [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)]
+            )
+            unwrap_model(ref_trainable_wrapper).sync_back(ref_encoder_raw)
+            _sync_ip_adapter_to_transformer(unwrap_model(ip_trainable_wrapper), flux_transformer)
+            logger.info("Saved EMA Phase 5.3 cross-v1 artifacts to %s", ema_output_dir)
+        logger.info("Saved raw Phase 5.3 cross-v1 artifacts to %s", args.output_dir)
 
     accelerator.end_training()

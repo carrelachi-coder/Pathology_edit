@@ -47,6 +47,8 @@ MIXED_PRECISION="${MIXED_PRECISION:-bf16}"
 IFS=',' read -r -a GPU_ID_ARRAY <<< "${GPU_IDS}"
 NUM_PROCESSES="${NUM_PROCESSES:-${#GPU_ID_ARRAY[@]}}"
 USE_8BIT_ADAM="${USE_8BIT_ADAM:-0}"
+TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-1}"
+GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-8}"
 GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
 
 # Reference-usage sanity losses. Keep RGB style/swap off for a clean attribution test.
@@ -85,6 +87,13 @@ CONTROLNET_TRAIN_LAST_N_SINGLE_BLOCKS="${CONTROLNET_TRAIN_LAST_N_SINGLE_BLOCKS:-
 CONDITIONING_LEARNING_RATE="${CONDITIONING_LEARNING_RATE:-5e-7}"
 IP_REF_LEARNING_RATE="${IP_REF_LEARNING_RATE:-1e-4}"
 IP_SINGLE_LEARNING_RATE="${IP_SINGLE_LEARNING_RATE:-1e-4}"
+LR_SCHEDULER="${LR_SCHEDULER:-constant_with_warmup}"
+LR_WARMUP_STEPS="${LR_WARMUP_STEPS:-500}"
+LR_NUM_CYCLES="${LR_NUM_CYCLES:-0.5}"
+LR_MIN_FACTOR="${LR_MIN_FACTOR:-0}"
+LR_DECAY_START_STEP="${LR_DECAY_START_STEP:-0}"
+EMA_DECAY="${EMA_DECAY:-0}"
+EMA_DEVICE="${EMA_DEVICE:-cpu}"
 IP_SINGLE_NUM_LAYERS="${IP_SINGLE_NUM_LAYERS:-0}"
 IP_HEALTH_DEBUG_INTERVAL="${IP_HEALTH_DEBUG_INTERVAL:-100}"
 IP_HEALTH_DEBUG_WARMUP_STEPS="${IP_HEALTH_DEBUG_WARMUP_STEPS:-100}"
@@ -93,6 +102,15 @@ IP_HEALTH_MIN_SWAP_LOSS_GAP="${IP_HEALTH_MIN_SWAP_LOSS_GAP:-0}"
 IP_HEALTH_MAX_IP_RATIO="${IP_HEALTH_MAX_IP_RATIO:-1.0}"
 IP_HEALTH_MIN_IP_RATIO="${IP_HEALTH_MIN_IP_RATIO:-1e-8}"
 TEXT_DROPOUT_PROB="${TEXT_DROPOUT_PROB:-0.2}"
+MASK_AUGMENTATION="${MASK_AUGMENTATION:-none}"
+MASK_AUGMENT_PROB="${MASK_AUGMENT_PROB:-0}"
+MASK_AUGMENT_TRANSLATE="${MASK_AUGMENT_TRANSLATE:-0.03}"
+MASK_AUGMENT_SCALE="${MASK_AUGMENT_SCALE:-0.04}"
+MASK_AUGMENT_ROTATE_DEGREES="${MASK_AUGMENT_ROTATE_DEGREES:-3.0}"
+MASK_AUGMENT_BOUNDARY_JITTER="${MASK_AUGMENT_BOUNDARY_JITTER:-0}"
+MASK_AUGMENT_BOUNDARY_GRID="${MASK_AUGMENT_BOUNDARY_GRID:-8}"
+MASK_AUGMENT_COARSE_PROB="${MASK_AUGMENT_COARSE_PROB:-0}"
+MASK_AUGMENT_COARSE_FACTOR="${MASK_AUGMENT_COARSE_FACTOR:-4}"
 STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-none}"
 STAIN_COUNTERFACTUAL_PROB="${STAIN_COUNTERFACTUAL_PROB:-0}"
 NOISING_DEGRADATION="${NOISING_DEGRADATION:-none}"
@@ -136,7 +154,37 @@ echo "REGIONAL_IP_TOKEN_MODE=${REGIONAL_IP_TOKEN_MODE}"
 echo "REGIONAL_IP_LABEL_MODE=${REGIONAL_IP_LABEL_MODE}"
 echo "REFERENCE_PERCEIVER_CROSS_GATE_INIT=${REFERENCE_PERCEIVER_CROSS_GATE_INIT}"
 echo "TEXT_DROPOUT_PROB=${TEXT_DROPOUT_PROB}"
+echo "TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE}"
+echo "GRADIENT_ACCUMULATION_STEPS=${GRADIENT_ACCUMULATION_STEPS}"
+echo "EFFECTIVE_BATCH_SIZE=$((TRAIN_BATCH_SIZE * NUM_PROCESSES * GRADIENT_ACCUMULATION_STEPS))"
+echo "LR_SCHEDULER=${LR_SCHEDULER}"
+echo "LR_NUM_CYCLES=${LR_NUM_CYCLES}"
+echo "LR_MIN_FACTOR=${LR_MIN_FACTOR}"
+echo "LR_DECAY_START_STEP=${LR_DECAY_START_STEP}"
+echo "EMA_DECAY=${EMA_DECAY}"
+echo "EMA_DEVICE=${EMA_DEVICE}"
+echo "MASK_AUGMENTATION=${MASK_AUGMENTATION}"
+echo "MASK_AUGMENT_BOUNDARY_JITTER=${MASK_AUGMENT_BOUNDARY_JITTER}"
+echo "MASK_AUGMENT_COARSE_PROB=${MASK_AUGMENT_COARSE_PROB}"
 echo "TRAIN_LOG_FILE=${TRAIN_LOG_FILE}"
+
+if [[ -n "${RESUME_FROM_CHECKPOINT}" ]]; then
+  RESUME_CHECKPOINT_PATH=""
+  if [[ "${RESUME_FROM_CHECKPOINT}" == "latest" ]]; then
+    RESUME_CHECKPOINT_PATH="$(find "${CROSS_V1_OUTPUT_DIR}" -maxdepth 1 -type d -name 'checkpoint-*' 2>/dev/null | sort -V | tail -n 1 || true)"
+  elif [[ "${RESUME_FROM_CHECKPOINT}" = /* ]]; then
+    RESUME_CHECKPOINT_PATH="${RESUME_FROM_CHECKPOINT}"
+  else
+    RESUME_CHECKPOINT_PATH="${CROSS_V1_OUTPUT_DIR}/${RESUME_FROM_CHECKPOINT}"
+  fi
+  if [[ -z "${RESUME_CHECKPOINT_PATH}" || ! -d "${RESUME_CHECKPOINT_PATH}" ]]; then
+    echo "ERROR: RESUME_FROM_CHECKPOINT does not exist: ${RESUME_CHECKPOINT_PATH:-${RESUME_FROM_CHECKPOINT}}" >&2
+    echo "Available checkpoints under ${CROSS_V1_OUTPUT_DIR}:" >&2
+    find "${CROSS_V1_OUTPUT_DIR}" -maxdepth 1 -type d -name 'checkpoint-*' 2>/dev/null | sort -V | tail -n 20 >&2 || true
+    exit 2
+  fi
+  echo "RESUME_CHECKPOINT_PATH=${RESUME_CHECKPOINT_PATH}"
+fi
 
 cd "${PROJECT_ROOT}"
 
@@ -332,8 +380,8 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   "${RESUME_ARGS[@]}" \
   --logging-dir logs \
   --seed 42 \
-  --train-batch-size 1 \
-  --gradient-accumulation-steps 8 \
+  --train-batch-size "${TRAIN_BATCH_SIZE}" \
+  --gradient-accumulation-steps "${GRADIENT_ACCUMULATION_STEPS}" \
   --num-train-epochs 10 \
   --max-train-steps "${MAX_TRAIN_STEPS}" \
   --self-reconstruction-warmup-steps "${SELF_RECONSTRUCTION_WARMUP_STEPS}" \
@@ -344,8 +392,13 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --conditioning-learning-rate "${CONDITIONING_LEARNING_RATE}" \
   --ip-ref-learning-rate "${IP_REF_LEARNING_RATE}" \
   --ip-single-learning-rate "${IP_SINGLE_LEARNING_RATE}" \
-  --lr-scheduler constant_with_warmup \
-  --lr-warmup-steps 500 \
+  --lr-scheduler "${LR_SCHEDULER}" \
+  --lr-warmup-steps "${LR_WARMUP_STEPS}" \
+  --lr-num-cycles "${LR_NUM_CYCLES}" \
+  --lr-min-factor "${LR_MIN_FACTOR}" \
+  --lr-decay-start-step "${LR_DECAY_START_STEP}" \
+  --ema-decay "${EMA_DECAY}" \
+  --ema-device "${EMA_DEVICE}" \
   --checkpointing-steps "${CHECKPOINTING_STEPS}" \
   --checkpoints-total-limit 5 \
   --mixed-precision "${MIXED_PRECISION}" \
@@ -380,6 +433,15 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   "${TRAIN_AUX_INTERVAL_ARGS[@]}" \
   --guidance-scale 3.5 \
   --proportion-empty-prompts "${TEXT_DROPOUT_PROB}" \
+  --mask-augmentation "${MASK_AUGMENTATION}" \
+  --mask-augment-prob "${MASK_AUGMENT_PROB}" \
+  --mask-augment-translate "${MASK_AUGMENT_TRANSLATE}" \
+  --mask-augment-scale "${MASK_AUGMENT_SCALE}" \
+  --mask-augment-rotate-degrees "${MASK_AUGMENT_ROTATE_DEGREES}" \
+  --mask-augment-boundary-jitter "${MASK_AUGMENT_BOUNDARY_JITTER}" \
+  --mask-augment-boundary-grid "${MASK_AUGMENT_BOUNDARY_GRID}" \
+  --mask-augment-coarse-prob "${MASK_AUGMENT_COARSE_PROB}" \
+  --mask-augment-coarse-factor "${MASK_AUGMENT_COARSE_FACTOR}" \
   --report-to tensorboard \
   --tracker-project-name flux_controlnet_phase5_cross_v1_regional_ip_66k_pure_denoise_spatial_nobias \
   --prompt-source dataset
