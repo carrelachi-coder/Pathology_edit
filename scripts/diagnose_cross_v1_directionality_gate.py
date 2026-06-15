@@ -18,6 +18,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import random
 import sys
 from collections import defaultdict
@@ -57,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--uni-checkpoint-path", required=True)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--selection-manifest", default=None)
+    parser.add_argument("--selection-manifest", default=os.environ.get("PROBE_SELECTION_MANIFEST"))
     parser.add_argument("--num-samples", type=int, default=128)
     parser.add_argument("--record-indices", default="")
     parser.add_argument("--selection-seed", type=int, default=20260611)
@@ -350,15 +351,26 @@ def select_records_from_manifest(
         for index, row in enumerate(records)
         if row.get("target_image") and row.get("reference_image")
     }
+    by_sample_ref = {
+        (record_sample_id(row), reference_sample_id(row)): (index, row)
+        for index, row in enumerate(records)
+        if row.get("target_image") and row.get("reference_image")
+    }
     by_ref: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_ref_sample_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in records:
         if row.get("reference_image"):
-            by_ref[path_key(row.get("reference_image"))].append(row)
+            ref_key = path_key(row.get("reference_image"))
+            by_ref[ref_key].append(row)
+            by_ref_sample_id[reference_sample_id(row)].append(row)
     selected = []
     for item in manifest:
         target_key = path_key(item.get("target_image"))
         paired_ref_key = path_key(item.get("paired_reference_image"))
         found = by_target_ref.get((target_key, paired_ref_key))
+        if found is None:
+            sample_key = (str(item.get("sample_id") or ""), str(item.get("paired_reference_sample_id") or ""))
+            found = by_sample_ref.get(sample_key)
         if found is None:
             raise ValueError(
                 f"manifest probe not found in metadata: target={item.get('target_image')} "
@@ -371,6 +383,8 @@ def select_records_from_manifest(
             if not payload:
                 continue
             candidates = by_ref.get(path_key(payload.get("reference_image"))) or []
+            if not candidates:
+                candidates = by_ref_sample_id.get(str(payload.get("reference_sample_id") or "")) or []
             if not candidates:
                 raise ValueError(f"manifest alternate not found in metadata: {payload}")
             alternates[mode] = candidates[0]

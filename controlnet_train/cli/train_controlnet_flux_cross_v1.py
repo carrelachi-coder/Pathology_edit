@@ -321,14 +321,42 @@ def parse_args(input_args=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--cross-v1-ip-architecture",
+        type=str,
+        default=None,
+        choices=[
+            "global",
+            "regional_hard",
+            "regional-hard",
+            "global_soft_bias",
+            "global-soft-bias",
+            "soft_bias",
+            "soft-bias",
+        ],
+        help=(
+            "Reference-attention architecture. 'global_soft_bias' uses global "
+            "dense IP attention with finite label-logit bias instead of hard "
+            "regional masking."
+        ),
+    )
+    parser.add_argument(
         "--regional-ip-token-mode",
         type=str,
         default="spatial",
-        choices=["spatial", "perceiver", "masked_perceiver", "region_perceiver"],
+        choices=[
+            "spatial",
+            "perceiver",
+            "masked_perceiver",
+            "region_perceiver",
+            "stats",
+            "mean_std",
+            "region_stats",
+        ],
         help=(
             "Reference token bank for regional IP. 'spatial' feeds raw projected UNI patch "
             "tokens; 'perceiver' compresses each mask label separately through the "
-            "reference Perceiver before IP attention."
+            "reference Perceiver before IP attention; 'stats' emits one mean+std "
+            "statistics token per tissue label."
         ),
     )
     parser.add_argument(
@@ -338,6 +366,11 @@ def parse_args(input_args=None) -> argparse.Namespace:
         choices=[
             "tissue",
             "tissue_only",
+            "coarse",
+            "coarse_tissue",
+            "coarse-tissue",
+            "parent_tissue",
+            "parent-tissue",
             "tissue_nuclei",
             "tissue-nuclei",
             "tissue+nuclei",
@@ -349,6 +382,16 @@ def parse_args(input_args=None) -> argparse.Namespace:
             "Region labels used for regional IP attention. 'tissue' gates tumor/stroma "
             "labels only; 'tissue-nuclei' builds composite tissue+nuclei labels so nuclei "
             "classes are decoupled inside each tissue region."
+        ),
+    )
+    parser.add_argument(
+        "--regional-ip-soft-bias-init",
+        type=float,
+        default=4.0,
+        help=(
+            "Initial finite same-label attention logit bias b for "
+            "--cross-v1-ip-architecture global_soft_bias. Same-label pairs get +b; "
+            "different-label pairs get -b."
         ),
     )
     parser.add_argument(
@@ -500,7 +543,7 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument(
         "--perceptual-loss-weight",
         type=float,
-        default=0.5,
+        default=0.0,
         help="Weight for frozen UNI token cosine perceptual loss against the target image.",
     )
     parser.add_argument(
@@ -514,11 +557,34 @@ def parse_args(input_args=None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help=(
-            "Weight for frozen UNI spatial feature-map region loss. It matches prediction "
-            "target regions to same-label reference regions in UNI patch-token space."
+            "Weight for class-matched reference region loss. With backend='uni', the "
+            "model prediction is VAE-decoded to RGB and compared to reference RGB through "
+            "frozen UNI region statistics."
+        ),
+    )
+    parser.add_argument(
+        "--reference-region-loss-backend",
+        type=str,
+        default="uni",
+        help=(
+            "Reference region loss descriptor backend. Use 'rgb_fft' for an independent "
+            "RGB/statistical + FFT descriptor, or 'uni' for decoded-RGB -> frozen-UNI "
+            "region mean/std/cosine statistics."
         ),
     )
     parser.add_argument("--reference-region-loss-interval", type=int, default=1)
+    parser.add_argument(
+        "--reference-region-loss-min-sigma",
+        type=float,
+        default=0.0,
+        help="Minimum sigma for reference-region loss timestep gating.",
+    )
+    parser.add_argument(
+        "--reference-region-loss-max-sigma",
+        type=float,
+        default=0.6,
+        help="Maximum sigma for reference-region loss timestep gating; default targets low/mid noise.",
+    )
     parser.add_argument("--reference-region-tissue-weight", type=float, default=1.0)
     parser.add_argument("--reference-region-nuclei-weight", type=float, default=0.0)
     parser.add_argument(
@@ -526,19 +592,23 @@ def parse_args(input_args=None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help=(
-            "Extra UNI spatial region loss on composite tissue+nuclei labels. "
+            "Extra reference region loss on composite tissue+nuclei labels. "
             "This keeps nuclei texture matching inside the correct tissue class."
         ),
     )
     parser.add_argument("--reference-region-mean-weight", type=float, default=1.0)
     parser.add_argument("--reference-region-std-weight", type=float, default=0.5)
+    parser.add_argument("--reference-region-fft-weight", type=float, default=0.25)
+    parser.add_argument("--reference-region-fft-bins", type=int, default=6)
+    parser.add_argument("--reference-region-fft-size", type=int, default=64)
     parser.add_argument("--reference-region-cosine-weight", type=float, default=0.25)
+    parser.add_argument("--reference-region-min-pixels", type=int, default=32)
     parser.add_argument("--reference-region-min-tokens", type=int, default=2)
     parser.add_argument("--reference-region-max-regions-per-sample", type=int, default=None)
     parser.add_argument(
         "--reference-style-loss-weight",
         type=float,
-        default=5.0,
+        default=0.0,
         help=(
             "Weight for region-level reference stain/style loss. The loss matches RGB "
             "mean/std/covariance on target/reference regions that share tissue or nuclei labels."
@@ -598,7 +668,7 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument(
         "--ref-swap-loss-weight",
         type=float,
-        default=0.1,
+        default=0.0,
         help=(
             "Weight for reference-swap sensitivity loss. It compares normal-reference denoising "
             "loss against zero/random-reference denoising losses with a margin."

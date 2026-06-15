@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from dataset_config import FINE_TO_PARENT
+
 
 UNI2H_KWARGS = {
     "model_name": "vit_giant_patch14_224",
@@ -299,7 +301,8 @@ class ReferenceImageEncoder(nn.Module):
         is passed directly to the IP-Adapter. ``token_mode='perceiver'`` runs the
         existing Perceiver independently inside each region label, which gives the
         IP-Adapter a region-level bottleneck instead of raw high-frequency patch
-        tokens.
+        tokens. ``token_mode='stats'`` emits two tokens per label: the mean and
+        standard deviation of projected patch tokens inside that label.
         """
         projected = self.encode_projected_patch_tokens(images)
         ref_gate = self.reference_presence_gate(
@@ -314,6 +317,13 @@ class ReferenceImageEncoder(nn.Module):
         token_mode = normalize_region_ip_token_mode(token_mode)
         if token_mode == "spatial":
             return projected * ref_gate, labels.to(device=projected.device)
+        if token_mode == "stats":
+            tokens, pooled_labels = self._stats_by_region_labels(
+                projected,
+                labels.to(device=projected.device),
+                background_label=int(background_label),
+            )
+            return tokens * ref_gate, pooled_labels.to(device=projected.device)
         tokens, pooled_labels = self._resample_by_region_labels(
             projected,
             labels.to(device=projected.device),
@@ -387,6 +397,74 @@ class ReferenceImageEncoder(nn.Module):
             padded_labels[sample_index, : token_labels.shape[0]] = token_labels
         return padded_tokens, padded_labels
 
+    def _stats_by_region_labels(
+        self,
+        projected: torch.Tensor,
+        labels: torch.Tensor,
+        *,
+        background_label: int = 0,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compress each mask label into mean and std statistics tokens."""
+        if projected.ndim != 3:
+            raise ValueError(f"projected tokens must have shape (B,T,C), got {tuple(projected.shape)}")
+        if labels.ndim != 2 or labels.shape[:2] != projected.shape[:2]:
+            raise ValueError(
+                "labels must have shape (B,T) matching projected tokens, "
+                f"got labels={tuple(labels.shape)} projected={tuple(projected.shape)}"
+            )
+        batch_tokens: list[torch.Tensor] = []
+        batch_labels: list[torch.Tensor] = []
+        for sample_index in range(projected.shape[0]):
+            sample_labels = labels[sample_index].to(dtype=torch.long)
+            unique_labels = torch.unique(sample_labels).sort().values
+
+            region_tokens = []
+            region_labels = []
+            for label in unique_labels:
+                label_value = int(label.item())
+                if label_value < 0 or label_value == int(background_label):
+                    continue
+                region_mask = sample_labels == label
+                if not bool(region_mask.any().item()):
+                    continue
+                region_values = projected[sample_index, region_mask, :]
+                mean_token = region_values.mean(dim=0)
+                std_token = region_values.float().std(dim=0, unbiased=False).to(dtype=projected.dtype)
+                region_tokens.append(torch.stack([mean_token, std_token], dim=0))
+                region_labels.append(
+                    torch.full(
+                        (2,),
+                        label_value,
+                        dtype=torch.long,
+                        device=projected.device,
+                    )
+                )
+            if not region_tokens:
+                region_tokens.append(projected.new_zeros((1, projected.shape[-1])))
+                region_labels.append(
+                    torch.full(
+                        (1,),
+                        -1,
+                        dtype=torch.long,
+                        device=projected.device,
+                    )
+                )
+            batch_tokens.append(torch.cat(region_tokens, dim=0))
+            batch_labels.append(torch.cat(region_labels, dim=0))
+
+        max_tokens = max(tokens.shape[0] for tokens in batch_tokens)
+        padded_tokens = projected.new_zeros((projected.shape[0], max_tokens, projected.shape[-1]))
+        padded_labels = torch.full(
+            (projected.shape[0], max_tokens),
+            -1,
+            dtype=torch.long,
+            device=projected.device,
+        )
+        for sample_index, (tokens, token_labels) in enumerate(zip(batch_tokens, batch_labels)):
+            padded_tokens[sample_index, : tokens.shape[0]] = tokens
+            padded_labels[sample_index, : token_labels.shape[0]] = token_labels
+        return padded_tokens, padded_labels
+
 
 def normalize_region_ip_token_mode(mode: str) -> str:
     mode = str(mode or "spatial").strip().lower().replace("-", "_")
@@ -400,9 +478,16 @@ def normalize_region_ip_token_mode(mode: str) -> str:
         "region_perceiver": "perceiver",
         "region_wise_perceiver": "perceiver",
         "regionwise_perceiver": "perceiver",
+        "stats": "stats",
+        "stat": "stats",
+        "statistics": "stats",
+        "mean_std": "stats",
+        "mean+std": "stats",
+        "region_stats": "stats",
+        "label_stats": "stats",
     }
     if mode not in aliases:
-        raise ValueError("regional IP token mode must be 'spatial' or 'perceiver'.")
+        raise ValueError("regional IP token mode must be 'spatial', 'perceiver', or 'stats'.")
     return aliases[mode]
 
 
@@ -411,6 +496,10 @@ def normalize_region_ip_label_mode(mode: str) -> str:
     aliases = {
         "tissue": "tissue",
         "tissue_only": "tissue",
+        "coarse": "coarse_tissue",
+        "coarse_tissue": "coarse_tissue",
+        "parent": "coarse_tissue",
+        "parent_tissue": "coarse_tissue",
         "tissue_nuclei": "tissue_nuclei",
         "tissue+nuclei": "tissue_nuclei",
         "composite": "tissue_nuclei",
@@ -418,7 +507,9 @@ def normalize_region_ip_label_mode(mode: str) -> str:
         "nuclei_aware": "tissue_nuclei",
     }
     if mode not in aliases:
-        raise ValueError("regional IP label mode must be 'tissue' or 'tissue_nuclei'.")
+        raise ValueError(
+            "regional IP label mode must be 'tissue', 'coarse_tissue', or 'tissue_nuclei'."
+        )
     return aliases[mode]
 
 
@@ -440,6 +531,18 @@ def build_region_ip_token_labels(
     valid_tissue = tissue_labels > 0
     if label_mode == "tissue":
         return torch.where(valid_tissue, tissue_labels, torch.full_like(tissue_labels, -1))
+    if label_mode == "coarse_tissue":
+        parent_lookup = torch.full(
+            (max(FINE_TO_PARENT) + 1,),
+            -1,
+            dtype=torch.long,
+            device=tissue_labels.device,
+        )
+        for fine_id, parent_id in FINE_TO_PARENT.items():
+            parent_lookup[int(fine_id)] = int(parent_id)
+        clamped = tissue_labels.clamp(min=0, max=parent_lookup.shape[0] - 1)
+        coarse_labels = parent_lookup[clamped]
+        return torch.where(valid_tissue, coarse_labels, torch.full_like(coarse_labels, -1))
     if nuclei_mask is None:
         raise ValueError("nuclei_mask is required when regional IP label mode is tissue_nuclei.")
     nuclei_labels = resize_mask_to_token_labels(nuclei_mask, num_tokens)

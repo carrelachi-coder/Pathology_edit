@@ -70,6 +70,9 @@ class CrossV1InferenceBundle:
     regional_ip_strict: bool = True
     regional_ip_token_mode: str = "spatial"
     regional_ip_label_mode: str = "tissue"
+    cross_v1_ip_architecture: str = "global"
+    regional_ip_use_soft_bias: bool = False
+    regional_ip_soft_bias_init: float = 4.0
 
 
 def load_cross_v1_bundle(
@@ -90,8 +93,11 @@ def load_cross_v1_bundle(
     control_spec = _load_cross_v1_control_spec(checkpoint)
     ref_encoder_config = _load_ref_encoder_config(checkpoint)
     from controlnet_train.training.flux_phase5_cross_v1 import (
+        CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+        CROSS_V1_IP_ARCH_REGIONAL_HARD,
         _collect_ip_adapter_modules,
         install_flux_ip_adapter_attention,
+        normalize_cross_v1_ip_architecture,
         patch_flux_single_ip_forward,
     )
 
@@ -106,7 +112,21 @@ def load_cross_v1_bundle(
 
     # Load IP-Adapter weights from checkpoint
     ip_state = _torch_load_weights(checkpoint / "phase5_ip_adapter.pt")
-    regional_ip_adapter = bool(ip_state.get("regional_ip_adapter", False))
+    if "cross_v1_ip_architecture" in ip_state:
+        cross_v1_ip_architecture = normalize_cross_v1_ip_architecture(
+            str(ip_state.get("cross_v1_ip_architecture"))
+        )
+    else:
+        cross_v1_ip_architecture = normalize_cross_v1_ip_architecture(
+            None,
+            regional_ip_adapter=bool(ip_state.get("regional_ip_adapter", False)),
+        )
+    regional_ip_adapter = cross_v1_ip_architecture in {
+        CROSS_V1_IP_ARCH_REGIONAL_HARD,
+        CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+    }
+    regional_ip_use_soft_bias = cross_v1_ip_architecture == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS
+    regional_ip_strict = cross_v1_ip_architecture == CROSS_V1_IP_ARCH_REGIONAL_HARD
     regional_ip_token_mode = normalize_region_ip_token_mode(
         ip_state.get(
             "regional_ip_token_mode",
@@ -119,11 +139,14 @@ def load_cross_v1_bundle(
             ref_encoder_config.get("regional_ip_label_mode", "tissue"),
         )
     )
+    regional_ip_soft_bias_init = float(ip_state.get("regional_ip_soft_bias_init", 4.0) or 0.0)
     install_flux_ip_adapter_attention(
         pipe.transformer,
         num_tokens=int(ip_state.get("num_tokens", ref_encoder_config.get("num_output_tokens", ref_encoder_config["num_tokens"]))),
         num_single_layers=_resolve_saved_single_ip_layer_count(ip_state),
         regional=regional_ip_adapter,
+        use_soft_bias=regional_ip_use_soft_bias,
+        soft_bias_init=regional_ip_soft_bias_init,
     )
     patch_flux_single_ip_forward(pipe.transformer)
     pipe.transformer.encoder_hid_proj.load_state_dict(ip_state["encoder_hid_proj"])
@@ -133,15 +156,25 @@ def load_cross_v1_bundle(
         null_key = f"block_{i}_ip_null_tokens"
         if null_key in ip_state and hasattr(block.attn.processor, "ip_null_tokens"):
             block.attn.processor.ip_null_tokens.load_state_dict(ip_state[null_key])
+        bias_key = f"block_{i}_ip_soft_bias"
+        if bias_key in ip_state and hasattr(block.attn.processor, "ip_soft_bias"):
+            block.attn.processor.ip_soft_bias.load_state_dict(ip_state[bias_key])
+        elif regional_ip_use_soft_bias:
+            raise RuntimeError(f"Missing soft-bias weights in Cross V1 IP checkpoint: {bias_key}")
     for i, block in enumerate(getattr(pipe.transformer, "single_transformer_blocks", [])):
         k_key = f"single_block_{i}_to_k_ip"
         v_key = f"single_block_{i}_to_v_ip"
         null_key = f"single_block_{i}_ip_null_tokens"
+        bias_key = f"single_block_{i}_ip_soft_bias"
         if k_key in ip_state and v_key in ip_state:
             block.attn.processor.to_k_ip.load_state_dict(ip_state[k_key])
             block.attn.processor.to_v_ip.load_state_dict(ip_state[v_key])
             if null_key in ip_state and hasattr(block.attn.processor, "ip_null_tokens"):
                 block.attn.processor.ip_null_tokens.load_state_dict(ip_state[null_key])
+            if bias_key in ip_state and hasattr(block.attn.processor, "ip_soft_bias"):
+                block.attn.processor.ip_soft_bias.load_state_dict(ip_state[bias_key])
+            elif regional_ip_use_soft_bias:
+                raise RuntimeError(f"Missing soft-bias weights in Cross V1 IP checkpoint: {bias_key}")
     _move_ip_adapter_modules(pipe.transformer, device=device, torch_dtype=dtype)
     set_ip_adapter_scale(pipe.transformer, ip_adapter_scale)
 
@@ -173,8 +206,12 @@ def load_cross_v1_bundle(
         ip_adapter_modules=ip_adapter_modules,
         ref_encoder=modules["ref_encoder"],
         regional_ip_adapter=regional_ip_adapter,
+        regional_ip_strict=regional_ip_strict,
         regional_ip_token_mode=regional_ip_token_mode,
         regional_ip_label_mode=regional_ip_label_mode,
+        cross_v1_ip_architecture=cross_v1_ip_architecture,
+        regional_ip_use_soft_bias=regional_ip_use_soft_bias,
+        regional_ip_soft_bias_init=regional_ip_soft_bias_init,
     )
 
 
@@ -222,7 +259,7 @@ def _tissue_fallback_region_labels(labels: torch.Tensor, *, label_mode: str) -> 
     """Map exact IP labels back to tissue labels for strict fallback matching."""
     label_mode = normalize_region_ip_label_mode(label_mode)
     labels = labels.to(dtype=torch.long)
-    if label_mode == "tissue":
+    if label_mode in {"tissue", "coarse_tissue"}:
         return labels
     fallback = torch.full_like(labels, -1)
     valid = labels >= 0
@@ -371,6 +408,7 @@ def run_cross_v1_bundle(
                     "key_fallback_region_labels": key_fallback_region_labels,
                     "query_fallback_region_labels": query_fallback_region_labels,
                     "strict": bool(bundle.regional_ip_strict),
+                    "use_soft_bias": bool(bundle.regional_ip_use_soft_bias),
                 },
             }
         )
@@ -471,7 +509,7 @@ def _move_ip_adapter_modules(transformer: nn.Module, *, device: str, torch_dtype
     ):
         for block in blocks:
             processor = getattr(getattr(block, "attn", None), "processor", None)
-            for name in ("to_k_ip", "to_v_ip", "ip_null_tokens"):
+            for name in ("to_k_ip", "to_v_ip", "ip_null_tokens", "ip_soft_bias"):
                 module = getattr(processor, name, None)
                 if module is not None:
                     module.to(device=device, dtype=train_dtype)

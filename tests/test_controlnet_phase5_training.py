@@ -150,14 +150,36 @@ class TrainingCliTests(unittest.TestCase):
                 "--reference-style-loss-weight",
                 "0.2",
                 "--regional-ip-adapter",
+                "--cross-v1-ip-architecture",
+                "global_soft_bias",
+                "--regional-ip-token-mode",
+                "stats",
+                "--regional-ip-label-mode",
+                "coarse-tissue",
+                "--regional-ip-soft-bias-init",
+                "1.25",
                 "--noising-degradation",
                 "hed_texture",
                 "--degraded-noising-min-sigma",
                 "0.2",
                 "--reference-region-loss-weight",
                 "0.4",
+                "--reference-region-loss-backend",
+                "rgb_fft",
+                "--reference-region-loss-min-sigma",
+                "0.1",
+                "--reference-region-loss-max-sigma",
+                "0.55",
                 "--reference-region-nuclei-weight",
                 "0.5",
+                "--reference-region-fft-weight",
+                "0.75",
+                "--reference-region-fft-bins",
+                "8",
+                "--reference-region-fft-size",
+                "32",
+                "--reference-region-min-pixels",
+                "16",
                 "--reference-style-tissue-weight",
                 "2.0",
                 "--reference-style-nuclei-weight",
@@ -188,17 +210,28 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.cross_v1_spatial_mode, "reference_target_delta")
         self.assertEqual(args.reference_style_loss_weight, 0.2)
         self.assertTrue(args.regional_ip_adapter)
+        self.assertEqual(args.cross_v1_ip_architecture, "global_soft_bias")
+        self.assertEqual(args.regional_ip_token_mode, "stats")
+        self.assertEqual(args.regional_ip_label_mode, "coarse-tissue")
+        self.assertEqual(args.regional_ip_soft_bias_init, 1.25)
         self.assertEqual(args.noising_degradation, "hed_texture")
         self.assertEqual(args.degraded_noising_min_sigma, 0.2)
         self.assertEqual(args.reference_region_loss_weight, 0.4)
+        self.assertEqual(args.reference_region_loss_backend, "rgb_fft")
+        self.assertEqual(args.reference_region_loss_min_sigma, 0.1)
+        self.assertEqual(args.reference_region_loss_max_sigma, 0.55)
         self.assertEqual(args.reference_region_nuclei_weight, 0.5)
+        self.assertEqual(args.reference_region_fft_weight, 0.75)
+        self.assertEqual(args.reference_region_fft_bins, 8)
+        self.assertEqual(args.reference_region_fft_size, 32)
+        self.assertEqual(args.reference_region_min_pixels, 16)
         self.assertEqual(args.reference_style_tissue_weight, 2.0)
         self.assertEqual(args.reference_style_nuclei_weight, 1.5)
         self.assertEqual(args.ref_swap_loss_weight, 0.3)
         self.assertEqual(args.ref_swap_margin, 0.04)
         self.assertEqual(args.ref_swap_variants, "zero,random")
 
-    def test_cross_v1_cli_uses_perceptual_defaults_and_disables_self_reconstruction_l1(self):
+    def test_cross_v1_cli_uses_pure_denoise_defaults_and_disables_self_reconstruction_l1(self):
         args = parse_cross_v1_args(
             [
                 "--pretrained_model_name_or_path",
@@ -212,14 +245,57 @@ class TrainingCliTests(unittest.TestCase):
 
         self.assertEqual(args.self_reconstruction_sample_prob, 0.0)
         self.assertEqual(args.self_reconstruction_l1_weight, 0.0)
-        self.assertEqual(args.perceptual_loss_weight, 0.5)
-        self.assertEqual(args.reference_style_loss_weight, 5.0)
-        self.assertEqual(args.ref_swap_loss_weight, 0.1)
+        self.assertEqual(args.perceptual_loss_weight, 0.0)
+        self.assertEqual(args.reference_style_loss_weight, 0.0)
+        self.assertEqual(args.ref_swap_loss_weight, 0.0)
         self.assertEqual(args.stain_counterfactual_prob, 0.0)
         self.assertEqual(args.ip_single_num_layers, 10)
+        self.assertEqual(args.regional_ip_soft_bias_init, 4.0)
         self.assertFalse(args.regional_ip_adapter)
         self.assertEqual(args.noising_degradation, "none")
         self.assertEqual(args.reference_region_loss_weight, 0.0)
+        self.assertEqual(args.reference_region_loss_backend, "uni")
+        self.assertEqual(args.reference_region_loss_min_sigma, 0.0)
+        self.assertEqual(args.reference_region_loss_max_sigma, 0.6)
+        self.assertEqual(args.reference_region_fft_weight, 0.25)
+        self.assertEqual(args.reference_region_fft_bins, 6)
+        self.assertEqual(args.reference_region_fft_size, 64)
+        self.assertEqual(args.reference_region_min_pixels, 32)
+
+    def test_cross_v1_cli_accepts_uni_region_loss_with_global_soft_bias_stats_tokens(self):
+        args = parse_cross_v1_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--uni-checkpoint-path",
+                "UNI-2h/pytorch_model.bin",
+                "--cross-v1-ip-architecture",
+                "global_soft_bias",
+                "--regional-ip-adapter",
+                "--regional-ip-token-mode",
+                "stats",
+                "--regional-ip-label-mode",
+                "coarse-tissue",
+                "--reference-region-loss-weight",
+                "0.4",
+                "--reference-region-loss-backend",
+                "uni",
+                "--reference-region-loss-interval",
+                "4",
+                "--reference-region-loss-max-sigma",
+                "0.6",
+            ]
+        )
+
+        self.assertEqual(args.cross_v1_ip_architecture, "global_soft_bias")
+        self.assertEqual(args.regional_ip_token_mode, "stats")
+        self.assertEqual(args.regional_ip_label_mode, "coarse-tissue")
+        self.assertEqual(args.reference_region_loss_weight, 0.4)
+        self.assertEqual(args.reference_region_loss_backend, "uni")
+        self.assertEqual(args.reference_region_loss_interval, 4)
+        self.assertEqual(args.reference_region_loss_max_sigma, 0.6)
 
     def test_cross_v2_1_cli_has_no_ip_adapter_or_uni_requirement(self):
         args = parse_cross_v2_1_args(

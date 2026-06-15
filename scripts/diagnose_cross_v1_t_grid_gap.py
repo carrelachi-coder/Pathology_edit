@@ -12,6 +12,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import random
 import sys
 from collections import defaultdict
@@ -44,6 +45,34 @@ class DeviceShim:
         self.device = torch.device(device)
 
 
+def stable_int_hash(value: str) -> int:
+    result = 0
+    for character in value:
+        result = (result * 131 + ord(character)) % 1_000_000_007
+    return result
+
+
+def bootstrap_stderr(values: list[float], *, iters: int, seed: int) -> float:
+    finite = [float(value) for value in values if math.isfinite(float(value))]
+    if len(finite) <= 1:
+        return math.nan
+    if iters <= 0:
+        mean = sum(finite) / len(finite)
+        variance = sum((value - mean) ** 2 for value in finite) / (len(finite) - 1)
+        return math.sqrt(variance) / math.sqrt(len(finite))
+    rng = random.Random(int(seed))
+    means = []
+    n = len(finite)
+    for _ in range(int(iters)):
+        total = 0.0
+        for _ in range(n):
+            total += finite[rng.randrange(n)]
+        means.append(total / n)
+    mean = sum(means) / len(means)
+    variance = sum((value - mean) ** 2 for value in means) / (len(means) - 1)
+    return math.sqrt(variance)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Cross V1 fixed-t forward loss-gap grid.")
     parser.add_argument("--pretrained-model-name-or-path", required=True)
@@ -51,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--uni-checkpoint-path", required=True)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--selection-manifest", default=None)
+    parser.add_argument("--selection-manifest", default=os.environ.get("PROBE_SELECTION_MANIFEST"))
     parser.add_argument("--num-samples", type=int, default=128)
     parser.add_argument("--record-indices", default="")
     parser.add_argument("--selection-seed", type=int, default=20260611)
@@ -69,6 +98,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument("--ip-adapter-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--deterministic-epsilon",
+        action="store_true",
+        help="Derive per-(probe,t) epsilon from stable hashes instead of one batch noise tensor.",
+    )
+    parser.add_argument(
+        "--bootstrap-iters",
+        type=int,
+        default=2000,
+        help="Bootstrap iterations for per-t summary stderr.",
+    )
+    parser.add_argument(
+        "--bootstrap-seed",
+        type=int,
+        default=20260611,
+        help="Bootstrap seed for per-t summary stderr.",
+    )
     parser.add_argument(
         "--dump-noisy-dir",
         default=None,
@@ -250,6 +296,17 @@ def run_t_grid_batch(
         mode: [item[2][mode] for item in batch_items]
         for mode in alternate_modes
     }
+    batch_probe_keys = [
+        "|".join(
+            [
+                str(batch_start + local_index),
+                record_sample_id(row),
+                reference_sample_id(row),
+                reference_case_id(row),
+            ]
+        )
+        for local_index, row in enumerate(paired_records)
+    ]
     base_batch = {
         "target_image": torch.stack([load_image_tensor(row["target_image"]) for row in paired_records]),
         "reference_image": torch.stack([load_image_tensor(row["reference_image"]) for row in paired_records]),
@@ -302,13 +359,6 @@ def run_t_grid_batch(
             control_tensor.shape[2],
             control_tensor.shape[3],
         )
-        generator = torch.Generator(device=device).manual_seed(int(args.noise_seed) + int(batch_start))
-        noise = torch.randn(
-            packed_pixel_latents.shape,
-            generator=generator,
-            device=packed_pixel_latents.device,
-            dtype=packed_pixel_latents.dtype,
-        )
         prompt_embeds, pooled_prompt_embeds, text_ids = bundle.flux_pipeline.encode_prompt(
             prompt=prompts,
             prompt_2=prompts,
@@ -342,6 +392,7 @@ def run_t_grid_batch(
             strict=bool(bundle.regional_ip_strict),
             regional_token_mode=bundle.regional_ip_token_mode,
             regional_label_mode=bundle.regional_ip_label_mode,
+            use_soft_bias=bool(getattr(bundle, "regional_ip_use_soft_bias", False)),
         )
         alt_kwargs_by_mode = {}
         for mode, alternate_records in alternates_by_mode.items():
@@ -361,6 +412,7 @@ def run_t_grid_batch(
                 strict=bool(bundle.regional_ip_strict),
                 regional_token_mode=bundle.regional_ip_token_mode,
                 regional_label_mode=bundle.regional_ip_label_mode,
+                use_soft_bias=bool(getattr(bundle, "regional_ip_use_soft_bias", False)),
             )
 
         output_rows: list[dict[str, Any]] = []
@@ -372,6 +424,30 @@ def run_t_grid_batch(
                 device=packed_pixel_latents.device,
                 dtype=packed_pixel_latents.dtype,
             )
+            if args.deterministic_epsilon:
+                noise = torch.stack(
+                    [
+                        torch.randn(
+                            packed_pixel_latents[i : i + 1].shape,
+                            generator=torch.Generator(device=device).manual_seed(
+                                int(args.noise_seed)
+                                + stable_int_hash(f"{batch_probe_keys[i]}|{t_value:g}")
+                            ),
+                            device=packed_pixel_latents.device,
+                            dtype=packed_pixel_latents.dtype,
+                        )[0]
+                        for i in range(bsz)
+                    ],
+                    dim=0,
+                )
+            else:
+                generator = torch.Generator(device=device).manual_seed(int(args.noise_seed) + int(batch_start))
+                noise = torch.randn(
+                    packed_pixel_latents.shape,
+                    generator=generator,
+                    device=packed_pixel_latents.device,
+                    dtype=packed_pixel_latents.dtype,
+                )
             noisy_model_input = (1.0 - sigma) * packed_noising_latents + sigma * noise
             if dump_noisy_dir is not None:
                 for local_index, row in enumerate(paired_records):
@@ -475,6 +551,7 @@ def run_t_grid_batch(
                             "loss_gap": gap,
                             "paired_win": gap > 0.0,
                             "pred_l2": float(pred_l2[local_index].detach().cpu().item()),
+                            "deterministic_epsilon": bool(args.deterministic_epsilon),
                         }
                     )
         return output_rows
@@ -541,16 +618,23 @@ def summarize_t_grid_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     gaps = [float(row["loss_gap"]) for row in rows if math.isfinite(float(row["loss_gap"]))]
     wins = [1.0 if bool(row["paired_win"]) else 0.0 for row in rows]
+    t_boot = [float(row["loss_gap"]) for row in rows if math.isfinite(float(row["loss_gap"]))]
     return {
         "n": len(rows),
         "mean_loss_gap": finite_mean(gaps),
         "stderr_loss_gap": sample_stderr(gaps),
+        "boot_se_loss_gap": bootstrap_stderr(
+            t_boot,
+            iters=2000,
+            seed=20260611 + stable_int_hash(str(rows[0].get("t", ""))) if rows else 20260611,
+        ),
         "mean_minus_2stderr": finite_mean(gaps) - 2.0 * sample_stderr(gaps) if len(gaps) > 1 else math.nan,
         "positive": int(sum(1 for gap in gaps if gap > 0.0)),
         "positive_rate": finite_mean(wins),
         "mean_pred_l2": finite_mean([float(row["pred_l2"]) for row in rows]),
         "mean_paired_loss": finite_mean([float(row["paired_loss"]) for row in rows]),
         "mean_alternate_feature_loss": finite_mean([float(row["alternate_feature_loss"]) for row in rows]),
+        "effective_probe_pairs": len({(row["metadata_index"], row["sample_id"]) for row in rows}),
     }
 
 

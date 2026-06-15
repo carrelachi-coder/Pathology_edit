@@ -429,6 +429,9 @@ def parse_generation_dir(value: str) -> tuple[int | None, Path]:
 
 
 def resolve_generation_metrics_path(path: Path) -> tuple[Path, str]:
+    t_grid_path = path / "t_grid_metrics.csv"
+    if t_grid_path.exists():
+        return t_grid_path, "t_grid_gap"
     directionality_path = path / "directionality_metrics.csv"
     if directionality_path.exists():
         return directionality_path, "descriptor_directionality"
@@ -527,6 +530,14 @@ def summarize_generation_step(
     permutation_iters: int,
     permutation_seed: int,
 ) -> dict[str, Any]:
+    if metrics_kind == "t_grid_gap":
+        return summarize_t_grid_generation_step(
+            step,
+            path,
+            rows,
+            bootstrap_iters=bootstrap_iters,
+            bootstrap_seed=bootstrap_seed,
+        )
     comparisons = build_generation_comparisons(
         rows,
         step=step,
@@ -646,6 +657,194 @@ def summarize_generation_step(
         "comparisons": comparisons,
         "clustered_probe_rows": cluster_summary["probe_rows"],
     }
+
+
+def summarize_t_grid_generation_step(
+    step: int | None,
+    path: Path,
+    rows: list[dict[str, str]],
+    *,
+    bootstrap_iters: int,
+    bootstrap_seed: int,
+) -> dict[str, Any]:
+    grouped_rows = group_generation_rows(rows, group_by="none")
+    by_t: dict[str, dict[str, Any]] = {}
+    all_probe_rows: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for group_rows in grouped_rows.values():
+        for row in group_rows:
+            key = (
+                str(row.get("sample_id", "")),
+                str(row.get("paired_reference_sample_id", "")),
+                str(row.get("alternate_reference_sample_id", "")),
+                str(row.get("prompt_mode", "")),
+            )
+            all_probe_rows[key].append(row)
+
+    for t_value in sorted({float(row["t"]) for row in rows if math.isfinite(parse_float(row.get("t")))}):
+        t_rows = [row for row in rows if math.isfinite(parse_float(row.get("t"))) and float(row["t"]) == t_value]
+        probe_rows = build_t_grid_probe_rows(t_rows)
+        win_rates = [float(row["probe_win_rate"]) for row in probe_rows if math.isfinite(float(row["probe_win_rate"]))]
+        advantages = [float(row["probe_mean_advantage"]) for row in probe_rows if math.isfinite(float(row["probe_mean_advantage"]))]
+        by_t[f"{t_value:g}"] = {
+            "n": len(t_rows),
+            "effective_probe_pairs": len(probe_rows),
+            "win_rate": finite_mean(win_rates),
+            "win_rate_se": bootstrap_stderr(
+                win_rates,
+                iters=bootstrap_iters,
+                seed=bootstrap_seed + stable_int_hash(f"{step}:{t_value:g}:win"),
+            ),
+            "win_rate_null_se": binomial_null_se(0.5, len(probe_rows)),
+            "mean_paired_advantage": finite_mean(advantages),
+            "stderr_paired_advantage": bootstrap_stderr(
+                advantages,
+                iters=bootstrap_iters,
+                seed=bootstrap_seed + stable_int_hash(f"{step}:{t_value:g}:adv"),
+            ),
+            "probe_rows": probe_rows,
+        }
+        by_t[f"{t_value:g}"]["win_rate_se_ratio_to_null"] = (
+            by_t[f"{t_value:g}"]["win_rate_se"] / by_t[f"{t_value:g}"]["win_rate_null_se"]
+            if math.isfinite(float(by_t[f"{t_value:g}"]["win_rate_se"]))
+            and math.isfinite(float(by_t[f"{t_value:g}"]["win_rate_null_se"]))
+            and float(by_t[f"{t_value:g}"]["win_rate_null_se"]) > 0
+            else math.nan
+        )
+        by_t[f"{t_value:g}"]["win_rate_z_vs_0.5"] = (
+            (by_t[f"{t_value:g}"]["win_rate"] - 0.5) / by_t[f"{t_value:g}"]["win_rate_null_se"]
+            if math.isfinite(float(by_t[f"{t_value:g}"]["win_rate"]))
+            and math.isfinite(float(by_t[f"{t_value:g}"]["win_rate_null_se"]))
+            and float(by_t[f"{t_value:g}"]["win_rate_null_se"]) > 0
+            else math.nan
+        )
+
+    if not by_t:
+        return {
+            "step": step,
+            "path": str(path),
+            "status": "missing",
+            "note": "no t-grid rows found",
+        }
+
+    t_values_sorted = sorted(by_t, key=float)
+    all_probe_rows = build_t_grid_probe_rows(rows)
+    all_win_rates = [
+        float(row["probe_win_rate"])
+        for row in all_probe_rows
+        if math.isfinite(float(row["probe_win_rate"]))
+    ]
+    all_advantages = [
+        float(row["probe_mean_advantage"])
+        for row in all_probe_rows
+        if math.isfinite(float(row["probe_mean_advantage"]))
+    ]
+    overall_win_rate = finite_mean(all_win_rates)
+    overall_advantage = finite_mean(all_advantages)
+    overall_win_rate_se = bootstrap_stderr(
+        all_win_rates,
+        iters=bootstrap_iters,
+        seed=bootstrap_seed + stable_int_hash(f"{step}:all:win"),
+    )
+    overall_advantage_se = bootstrap_stderr(
+        all_advantages,
+        iters=bootstrap_iters,
+        seed=bootstrap_seed + stable_int_hash(f"{step}:all:adv"),
+    )
+    overall_null_se = binomial_null_se(0.5, len(all_probe_rows))
+    overall_se_ratio = (
+        overall_win_rate_se / overall_null_se
+        if math.isfinite(overall_win_rate_se)
+        and math.isfinite(overall_null_se)
+        and overall_null_se > 0
+        else math.nan
+    )
+    overall_z = (
+        (overall_win_rate - 0.5) / overall_null_se
+        if math.isfinite(overall_win_rate)
+        and math.isfinite(overall_null_se)
+        and overall_null_se > 0
+        else math.nan
+    )
+    win_rates = [float(by_t[t]["win_rate"]) for t in t_values_sorted if math.isfinite(float(by_t[t]["win_rate"]))]
+    advantages = [float(by_t[t]["mean_paired_advantage"]) for t in t_values_sorted if math.isfinite(float(by_t[t]["mean_paired_advantage"]))]
+    steps = list(range(len(win_rates)))
+    trend = {
+        "status": "INFO" if len(win_rates) == 1 else ("TREND_UP" if win_rates and win_rates[-1] >= win_rates[0] else "WARN"),
+        "latest_step": step,
+        "latest_win_rate": win_rates[-1] if win_rates else math.nan,
+        "latest_mean_paired_advantage": advantages[-1] if advantages else math.nan,
+        "win_rate_slope_per_1k_steps": math.nan,
+        "advantage_slope_per_1k_steps": math.nan,
+    }
+    if len(win_rates) >= 2:
+        trend["win_rate_slope_per_1k_steps"] = linear_slope(steps, win_rates) * 1000.0
+    if len(advantages) >= 2:
+        trend["advantage_slope_per_1k_steps"] = linear_slope(steps, advantages) * 1000.0
+    return {
+        "step": step,
+        "path": str(path),
+        "status": "PASS" if any(float(v.get("win_rate", math.nan)) > 0.5 for v in by_t.values()) else "WARN",
+        "metrics_kind": "t_grid_gap",
+        "n": len(rows),
+        "effective_probe_pairs": len(all_probe_rows),
+        "wins": sum(1 for value in all_win_rates if value > 0.5),
+        "losses_or_ties": sum(1 for value in all_win_rates if value <= 0.5),
+        "win_rate": overall_win_rate,
+        "win_rate_se": overall_win_rate_se,
+        "win_rate_null_se": overall_null_se,
+        "win_rate_se_ratio_to_null": overall_se_ratio,
+        "win_rate_z_vs_0.5": overall_z,
+        "mean_paired_advantage": overall_advantage,
+        "stderr_paired_advantage": overall_advantage_se,
+        "clustered_probe_rows": all_probe_rows,
+        "trend": trend,
+        "by_t": by_t,
+    }
+
+
+def build_t_grid_probe_rows(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str, str], list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        key = (
+            str(row.get("sample_id", "")),
+            str(row.get("paired_reference_sample_id", "")),
+            str(row.get("alternate_reference_sample_id", "")),
+            str(row.get("alternate_mode", "")),
+            str(row.get("prompt_mode", "")),
+        )
+        grouped[key].append(row)
+    probe_rows = []
+    for (sample_id, paired_ref, alternate_ref, alternate_mode, prompt_mode), group_rows in sorted(grouped.items()):
+        t_values = sorted({float(row["t"]) for row in group_rows if math.isfinite(parse_float(row.get("t")))})
+        per_t = []
+        for t_value in t_values:
+            t_rows = [row for row in group_rows if math.isfinite(parse_float(row.get("t"))) and float(row["t"]) == t_value]
+            paired_wins = [1.0 if str(row.get("paired_win", "")).lower() in ("1", "true", "yes") else 0.0 for row in t_rows]
+            gaps = [parse_float(row.get("loss_gap")) for row in t_rows if math.isfinite(parse_float(row.get("loss_gap")))]
+            if not paired_wins:
+                continue
+            per_t.append(
+                {
+                    "t": t_value,
+                    "probe_win_rate": finite_mean(paired_wins),
+                    "probe_mean_advantage": finite_mean(gaps),
+                }
+            )
+        if not per_t:
+            continue
+        probe_rows.append(
+            {
+                "group": f"{alternate_mode}/{prompt_mode}",
+                "sample_id": sample_id,
+                "paired_reference_sample_id": paired_ref,
+                "alternate_reference_sample_id": alternate_ref,
+                "n_observations": len(group_rows),
+                "effective_t_points": len(per_t),
+                "probe_win_rate": finite_mean([float(item["probe_win_rate"]) for item in per_t]),
+                "probe_mean_advantage": finite_mean([float(item["probe_mean_advantage"]) for item in per_t]),
+            }
+        )
+    return probe_rows
 
 
 def summarize_clustered_comparisons(
@@ -1240,11 +1439,30 @@ def format_report(report: dict[str, Any]) -> str:
                 f"latest_advantage={float(group_trend.get('latest_mean_paired_advantage', math.nan)):.6e} "
                 f"win_rate_slope_per_1k={float(group_trend.get('win_rate_slope_per_1k_steps', math.nan)):.6e} "
                 f"advantage_slope_per_1k={float(group_trend.get('advantage_slope_per_1k_steps', math.nan)):.6e}"
-            )
+                )
         if generation.get("steps"):
             for item in generation.get("steps", []):
                 if item.get("status") == "missing":
                     lines.append(f"  step={item.get('step')} missing - {item.get('note')}")
+                    continue
+                if item.get("by_t"):
+                    lines.append(
+                        "  "
+                        f"step={item.get('step')} status={item.get('status')} "
+                        f"overall_win={float(item.get('win_rate', math.nan)):.3f} "
+                        f"overall_adv={float(item.get('mean_paired_advantage', math.nan)):.6e} "
+                        f"overall_se={float(item.get('win_rate_se', math.nan)):.3f}"
+                    )
+                    for t_key, t_item in sorted((item.get("by_t") or {}).items(), key=lambda kv: float(kv[0])):
+                        lines.append(
+                            "    "
+                            f"t={t_key} n={t_item.get('n')} eff_probe={t_item.get('effective_probe_pairs')} "
+                            f"win={float(t_item.get('win_rate', math.nan)):.3f}±{float(t_item.get('win_rate_se', math.nan)):.3f}boot "
+                            f"null_se={float(t_item.get('win_rate_null_se', math.nan)):.3f} "
+                            f"se_ratio={float(t_item.get('win_rate_se_ratio_to_null', math.nan)):.2f} "
+                            f"z={float(t_item.get('win_rate_z_vs_0.5', math.nan)):.2f} "
+                            f"adv={float(t_item.get('mean_paired_advantage', math.nan)):.6e}±{float(t_item.get('stderr_paired_advantage', math.nan)):.6e}boot"
+                        )
                     continue
                 by_group = item.get("by_group") or {}
                 if by_group:

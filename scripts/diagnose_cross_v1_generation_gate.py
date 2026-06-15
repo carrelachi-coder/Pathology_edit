@@ -18,6 +18,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import random
 import sys
 from collections import defaultdict
@@ -29,6 +30,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dataset_config import FINE_TO_PARENT
 
 
 VARIANTS = ("paired", "alternate_feature", "zero")
@@ -43,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--uni-checkpoint-path", required=True)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--selection-manifest", default=os.environ.get("PROBE_SELECTION_MANIFEST"))
     parser.add_argument("--num-samples", type=int, default=4)
     parser.add_argument(
         "--record-indices",
@@ -97,15 +101,22 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    selected = select_gate_records(
-        records,
-        record_indices=parse_indices(args.record_indices),
-        num_samples=args.num_samples,
-        seed=args.selection_seed,
-        tumor_label=args.tumor_label,
-        min_tumor_fraction=args.min_tumor_fraction,
-        alternate_modes=alternate_modes,
-    )
+    if args.selection_manifest:
+        selected = select_records_from_manifest(
+            Path(args.selection_manifest),
+            records,
+            alternate_modes=alternate_modes,
+        )
+    else:
+        selected = select_gate_records(
+            records,
+            record_indices=parse_indices(args.record_indices),
+            num_samples=args.num_samples,
+            seed=args.selection_seed,
+            tumor_label=args.tumor_label,
+            min_tumor_fraction=args.min_tumor_fraction,
+            alternate_modes=alternate_modes,
+        )
     manifest = [
         build_manifest_row(index, paired, alternates)
         for index, paired, alternates in selected
@@ -250,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
                         region_stats=region_stats,
                         target=target_pil,
                         target_tissue=np.asarray(target_tissue),
+                        reference_tissue=np.asarray(paired_ref_tissue),
+                        reference_image=paired_ref_pil,
                         tumor_label=args.tumor_label,
                         predictions=predictions,
                     )
@@ -386,6 +399,67 @@ def select_gate_records(
     return selected
 
 
+def select_records_from_manifest(
+    manifest_path: Path,
+    records: list[dict[str, Any]],
+    *,
+    alternate_modes: list[str],
+) -> list[tuple[int, dict[str, Any], dict[str, dict[str, Any]]]]:
+    manifest = json.loads(manifest_path.read_text(encoding="utf8"))
+    by_target_ref = {
+        (path_key(row.get("target_image")), path_key(row.get("reference_image"))): (index, row)
+        for index, row in enumerate(records)
+        if row.get("target_image") and row.get("reference_image")
+    }
+    by_sample_ref = {
+        (record_sample_id(row), reference_sample_id(row)): (index, row)
+        for index, row in enumerate(records)
+        if row.get("target_image") and row.get("reference_image")
+    }
+    by_ref: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_ref_sample_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in records:
+        if row.get("reference_image"):
+            by_ref[path_key(row.get("reference_image"))].append(row)
+            by_ref_sample_id[reference_sample_id(row)].append(row)
+    selected = []
+    for item in manifest:
+        target_key = path_key(item.get("target_image"))
+        paired_ref_key = path_key(item.get("paired_reference_image"))
+        found = by_target_ref.get((target_key, paired_ref_key))
+        if found is None:
+            sample_key = (
+                str(item.get("sample_id") or ""),
+                str(item.get("paired_reference_sample_id") or ""),
+            )
+            found = by_sample_ref.get(sample_key)
+        if found is None:
+            raise ValueError(
+                f"manifest probe not found in metadata: target={item.get('target_image')} "
+                f"paired_ref={item.get('paired_reference_image')}"
+            )
+        metadata_index, paired = found
+        alternates: dict[str, dict[str, Any]] = {}
+        for mode in alternate_modes:
+            payload = (item.get("alternates") or {}).get(mode)
+            if not payload:
+                raise ValueError(f"manifest missing alternate mode {mode!r}")
+            candidates = by_ref.get(path_key(payload.get("reference_image"))) or []
+            if not candidates:
+                candidates = by_ref_sample_id.get(str(payload.get("reference_sample_id") or "")) or []
+            if not candidates:
+                raise ValueError(f"manifest alternate not found in metadata: {payload}")
+            alternates[mode] = candidates[0]
+        selected.append((int(item.get("metadata_index", metadata_index)), paired, alternates))
+    return selected
+
+
+def path_key(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(Path(str(value).replace("\\", "/")).expanduser())
+
+
 def choose_alternate_reference(
     paired: dict[str, Any],
     candidates: list[tuple[int, dict[str, Any]]],
@@ -501,6 +575,8 @@ def compare_scale_outputs(
     region_stats: dict[str, float | int | bool],
     target: Image.Image,
     target_tissue: np.ndarray,
+    reference_tissue: np.ndarray,
+    reference_image: Image.Image,
     tumor_label: int,
     predictions: dict[tuple[float, str], Image.Image],
 ) -> list[dict[str, Any]]:
@@ -509,9 +585,25 @@ def compare_scale_outputs(
         for variant in VARIANTS
     }
     target_array = image_array(target)
+    reference_array = image_array(reference_image)
     tumor_mask = np.asarray(target_tissue) == int(tumor_label)
+    target_stroma_mask = coarse_label_mask(np.asarray(target_tissue), 2)
+    reference_tumor_mask = coarse_label_mask(np.asarray(reference_tissue), int(tumor_label))
+    reference_stroma_mask = coarse_label_mask(np.asarray(reference_tissue), 2)
     rows = []
     for variant in VARIANTS:
+        stroma_to_ref_tumor = descriptor_distance(
+            arrays[variant],
+            target_stroma_mask,
+            reference_array,
+            reference_tumor_mask,
+        )
+        stroma_to_ref_stroma = descriptor_distance(
+            arrays[variant],
+            target_stroma_mask,
+            reference_array,
+            reference_stroma_mask,
+        )
         rows.append(
             {
                 "metadata_index": metadata_index,
@@ -538,6 +630,13 @@ def compare_scale_outputs(
                     arrays[variant], arrays["paired"], tumor_mask
                 ),
                 "output_edge_energy": edge_energy(arrays[variant], tumor_mask),
+                "texture_probe_stroma_to_ref_tumor_l2": stroma_to_ref_tumor,
+                "texture_probe_stroma_to_ref_stroma_l2": stroma_to_ref_stroma,
+                "texture_probe_tumor_minus_stroma_margin": (
+                    stroma_to_ref_tumor - stroma_to_ref_stroma
+                    if math.isfinite(stroma_to_ref_tumor) and math.isfinite(stroma_to_ref_stroma)
+                    else math.nan
+                ),
             }
         )
     return rows
@@ -570,14 +669,15 @@ def compute_generation_region_stats(
     reference_nuclei = reference_nuclei_mask.unsqueeze(0).to(device=device)
     target_tissue = target_tissue_mask.unsqueeze(0).to(device=device)
     target_nuclei = target_nuclei_mask.unsqueeze(0).to(device=device)
-    key_len = int(getattr(bundle.ref_encoder, "num_spatial_tokens", 256))
     query_len = packed_flux_image_token_count(reference_image, bundle.flux_pipeline)
-    key_labels = build_region_ip_token_labels(
-        tissue_mask=reference_tissue,
-        num_tokens=key_len,
+    _, key_labels = bundle.ref_encoder.encode_region_ip_tokens(
+        reference_image.unsqueeze(0).to(device=device, dtype=bundle.torch_dtype),
+        reference_tissue,
         nuclei_mask=reference_nuclei,
+        token_mode=bundle.regional_ip_token_mode,
         label_mode=bundle.regional_ip_label_mode,
-    ).to(device=device)
+    )
+    key_labels = key_labels.to(device=device)
     query_labels = build_region_ip_token_labels(
         tissue_mask=target_tissue,
         num_tokens=query_len,
@@ -597,10 +697,12 @@ def compute_generation_region_stats(
         key_region_labels=key_labels,
         batch_size=1,
         query_len=query_len,
-        key_len=key_len,
+        key_len=int(key_labels.shape[1]),
         device=query_labels.device,
         dtype=bundle.torch_dtype,
         strict=bool(getattr(bundle, "regional_ip_strict", True)),
+        soft_bias=None,
+        use_soft_bias=bool(getattr(bundle, "regional_ip_use_soft_bias", False)),
         query_fallback_labels=query_fallback,
         key_fallback_labels=key_fallback,
     )
@@ -628,6 +730,38 @@ def edge_energy(image: np.ndarray, mask: np.ndarray | None) -> float:
     if mask is not None and np.any(mask):
         magnitude = magnitude[np.asarray(mask, dtype=bool)]
     return float(magnitude.mean())
+
+
+def coarse_label_mask(mask: np.ndarray, coarse_label: int) -> np.ndarray:
+    values = np.asarray(mask)
+    result = np.zeros(values.shape, dtype=bool)
+    for fine_label in np.unique(values):
+        fine_int = int(fine_label)
+        parent = int(FINE_TO_PARENT.get(fine_int, fine_int))
+        if parent == int(coarse_label):
+            result |= values == fine_label
+    return result
+
+
+def rgb_descriptor(image: np.ndarray, mask: np.ndarray) -> np.ndarray | None:
+    valid = np.asarray(mask, dtype=bool)
+    if not np.any(valid):
+        return None
+    pixels = np.asarray(image, dtype=np.float32)[valid]
+    return np.concatenate([pixels.mean(axis=0), pixels.std(axis=0)])
+
+
+def descriptor_distance(
+    left_image: np.ndarray,
+    left_mask: np.ndarray,
+    right_image: np.ndarray,
+    right_mask: np.ndarray,
+) -> float:
+    left = rgb_descriptor(left_image, left_mask)
+    right = rgb_descriptor(right_image, right_mask)
+    if left is None or right is None:
+        return math.nan
+    return float(np.linalg.norm(left - right))
 
 
 def write_metrics(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -682,6 +816,9 @@ def summarize_rows_by_scale(rows: list[dict[str, Any]]) -> dict[str, Any]:
                     "paired_output_full_l1",
                     "paired_output_tumor_l1",
                     "output_edge_energy",
+                    "texture_probe_stroma_to_ref_tumor_l2",
+                    "texture_probe_stroma_to_ref_stroma_l2",
+                    "texture_probe_tumor_minus_stroma_margin",
                 )
             }
         by_scale[str(scale)] = by_variant

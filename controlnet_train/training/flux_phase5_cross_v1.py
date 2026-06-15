@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import copy
+import hashlib
 import json
 import logging
 import math
@@ -81,10 +82,12 @@ from controlnet_train.modules.reference_image_encoder import (
 from controlnet_train.training.conditioning import patch_controlnet_x_embedder
 from controlnet_train.training.cross_v1_losses import (
     RegionalFeatureLossConfig,
+    RegionalRgbFftLossConfig,
     RegionalStainStyleLossConfig,
     per_sample_mse,
     ref_swap_sensitivity_loss,
     regional_feature_map_loss,
+    regional_rgb_fft_loss,
     regional_stain_style_loss,
     self_reconstruction_l1_loss,
     uni_token_cosine_perceptual_loss,
@@ -97,6 +100,89 @@ if is_wandb_available():
 logger = get_logger(__name__)
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
+
+
+CROSS_V1_IP_ARCH_GLOBAL = "global"
+CROSS_V1_IP_ARCH_REGIONAL_HARD = "regional_hard"
+CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS = "global_soft_bias"
+CROSS_V1_IP_ARCH_MODES = (
+    CROSS_V1_IP_ARCH_GLOBAL,
+    CROSS_V1_IP_ARCH_REGIONAL_HARD,
+    CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+)
+REFERENCE_REGION_LOSS_BACKEND_RGB_FFT = "rgb_fft"
+REFERENCE_REGION_LOSS_BACKEND_UNI = "uni"
+REFERENCE_REGION_LOSS_BACKENDS = (
+    REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
+    REFERENCE_REGION_LOSS_BACKEND_UNI,
+)
+
+
+def normalize_cross_v1_ip_architecture(
+    value: str | None,
+    *,
+    regional_ip_adapter: bool | None = None,
+) -> str:
+    raw = str(value or "").strip().lower().replace("-", "_")
+    aliases = {
+        "": CROSS_V1_IP_ARCH_REGIONAL_HARD if regional_ip_adapter else CROSS_V1_IP_ARCH_GLOBAL,
+        "global": CROSS_V1_IP_ARCH_GLOBAL,
+        "dense": CROSS_V1_IP_ARCH_GLOBAL,
+        "plain": CROSS_V1_IP_ARCH_GLOBAL,
+        "regional": CROSS_V1_IP_ARCH_REGIONAL_HARD,
+        "regional_hard": CROSS_V1_IP_ARCH_REGIONAL_HARD,
+        "hard": CROSS_V1_IP_ARCH_REGIONAL_HARD,
+        "hard_region": CROSS_V1_IP_ARCH_REGIONAL_HARD,
+        "hard_regional": CROSS_V1_IP_ARCH_REGIONAL_HARD,
+        "soft": CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+        "soft_bias": CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+        "global_soft": CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+        "global_soft_bias": CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+        "stats_soft_bias": CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+        "v1_global_soft_bias": CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS,
+    }
+    if raw not in aliases:
+        raise ValueError(
+            f"Unsupported Cross V1 IP architecture {value!r}; "
+            f"choose from {', '.join(CROSS_V1_IP_ARCH_MODES)}."
+        )
+    return aliases[raw]
+
+
+def _uses_soft_region_bias(architecture: str) -> bool:
+    return normalize_cross_v1_ip_architecture(architecture) == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS
+
+
+def normalize_reference_region_loss_backend(value: str | None) -> str:
+    raw = str(value or REFERENCE_REGION_LOSS_BACKEND_UNI).strip().lower().replace("-", "_")
+    aliases = {
+        "rgb_fft": REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
+        "rgbfft": REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
+        "rgb": REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
+        "fft": REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
+        "independent": REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
+        "uni": REFERENCE_REGION_LOSS_BACKEND_UNI,
+        "feature": REFERENCE_REGION_LOSS_BACKEND_UNI,
+        "features": REFERENCE_REGION_LOSS_BACKEND_UNI,
+        "feature_map": REFERENCE_REGION_LOSS_BACKEND_UNI,
+        "spatial_uni": REFERENCE_REGION_LOSS_BACKEND_UNI,
+    }
+    if raw not in aliases:
+        raise ValueError(
+            f"Unsupported reference region loss backend {value!r}; "
+            f"choose from {', '.join(REFERENCE_REGION_LOSS_BACKENDS)}."
+        )
+    return aliases[raw]
+
+
+def _reference_region_sigma_mask(
+    sigmas: torch.Tensor,
+    *,
+    min_sigma: float,
+    max_sigma: float,
+) -> torch.Tensor:
+    sigma_values = sigmas.detach().float().flatten()
+    return (sigma_values >= float(min_sigma)) & (sigma_values <= float(max_sigma))
 
 
 def _build_lr_scheduler(
@@ -290,6 +376,8 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         cross_attention_dim: int,
         num_tokens: int | tuple[int, ...] = (16,),
         scale: float | list[float] = 1.0,
+        soft_bias_init: float = 4.0,
+        use_soft_bias: bool = False,
     ) -> None:
         super().__init__()
         if not isinstance(num_tokens, (tuple, list)):
@@ -309,6 +397,10 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         self.ip_null_tokens = nn.ParameterList(
             [nn.Parameter(torch.zeros(1, 1, cross_attention_dim)) for _ in self.num_tokens]
         )
+        self.use_soft_bias = bool(use_soft_bias)
+        self.ip_soft_bias = nn.ParameterList(
+            [nn.Parameter(torch.tensor(float(soft_bias_init)))]
+        )
 
     def __call__(
         self,
@@ -324,6 +416,8 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
         ip_region_fallback_labels: torch.Tensor | None = None,
         ip_query_fallback_labels: torch.Tensor | None = None,
         ip_region_strict: bool = True,
+        ip_region_soft_bias: torch.Tensor | float | None = None,
+        ip_region_use_soft_bias: bool | None = None,
         txt_seq_len: int | None = None,
         ip_debug_collector: dict | None = None,
     ) -> torch.Tensor:
@@ -381,6 +475,19 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
                 else packed_query_fallback_labels
             )
             ip_region_strict = bool(ip_region_strict and packed_strict)
+            packed_use_soft_bias = (
+                ip_region_use_soft_bias
+                if ip_region_use_soft_bias is not None
+                else _unpack_region_ip_soft_bias_enabled(ip_adapter_masks)
+            )
+            soft_bias_value = (
+                ip_region_soft_bias
+                if ip_region_soft_bias is not None
+                else _unpack_region_ip_soft_bias_value(ip_adapter_masks)
+            )
+            if soft_bias_value is None:
+                soft_bias_value = self.ip_soft_bias[0]
+            use_soft_bias = bool(self.use_soft_bias or packed_use_soft_bias)
             txt_seq_len = int(txt_seq_len or 0)
             if txt_seq_len < 0 or txt_seq_len > output.shape[1]:
                 raise ValueError(
@@ -413,6 +520,8 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
                         device=image_query.device,
                         dtype=image_query.dtype,
                         strict=bool(ip_region_strict),
+                        soft_bias=soft_bias_value,
+                        use_soft_bias=use_soft_bias,
                     )
                     if ip_attn_mask is not None and ip_attn_mask.shape[-1] == ip_input.shape[1] + 1:
                         null_input = ip_null_token.to(
@@ -459,6 +568,8 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
         cross_attention_dim: int,
         num_tokens: int | tuple[int, ...] = (16,),
         scale: float | list[float] = 1.0,
+        soft_bias_init: float = 4.0,
+        use_soft_bias: bool = False,
     ) -> None:
         super().__init__()
         if not isinstance(num_tokens, (tuple, list)):
@@ -478,6 +589,10 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
         self.ip_null_tokens = nn.ParameterList(
             [nn.Parameter(torch.zeros(1, 1, cross_attention_dim)) for _ in self.num_tokens]
         )
+        self.use_soft_bias = bool(use_soft_bias)
+        self.ip_soft_bias = nn.ParameterList(
+            [nn.Parameter(torch.tensor(float(soft_bias_init)))]
+        )
 
     def __call__(
         self,
@@ -493,6 +608,8 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
         ip_region_fallback_labels: torch.Tensor | None = None,
         ip_query_fallback_labels: torch.Tensor | None = None,
         ip_region_strict: bool = True,
+        ip_region_soft_bias: torch.Tensor | float | None = None,
+        ip_region_use_soft_bias: bool | None = None,
         txt_seq_len: int | None = None,
         ip_debug_collector: dict | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -584,6 +701,19 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
                 else packed_query_fallback_labels
             )
             ip_region_strict = bool(ip_region_strict and packed_strict)
+            packed_use_soft_bias = (
+                ip_region_use_soft_bias
+                if ip_region_use_soft_bias is not None
+                else _unpack_region_ip_soft_bias_enabled(ip_adapter_masks)
+            )
+            soft_bias_value = (
+                ip_region_soft_bias
+                if ip_region_soft_bias is not None
+                else _unpack_region_ip_soft_bias_value(ip_adapter_masks)
+            )
+            if soft_bias_value is None:
+                soft_bias_value = self.ip_soft_bias[0]
+            use_soft_bias = bool(self.use_soft_bias or packed_use_soft_bias)
             for current_ip_hidden_states, scale, to_k_ip, to_v_ip, ip_null_token in zip(
                 ip_hidden_states,
                 self.scale,
@@ -608,6 +738,8 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
                     device=hidden_states_query_proj.device,
                     dtype=hidden_states_query_proj.dtype,
                     strict=bool(ip_region_strict),
+                    soft_bias=soft_bias_value,
+                    use_soft_bias=use_soft_bias,
                 )
                 if ip_attn_mask is not None and ip_attn_mask.shape[-1] == ip_input.shape[1] + 1:
                     null_input = ip_null_token.to(
@@ -651,6 +783,8 @@ def _build_region_attention_mask(
     strict: bool,
     query_fallback_labels: torch.Tensor | None = None,
     key_fallback_labels: torch.Tensor | None = None,
+    soft_bias: torch.Tensor | float | None = None,
+    use_soft_bias: bool = False,
 ) -> torch.Tensor | None:
     """Build an additive SDPA mask with an extra learned-null key column."""
     mask, _, _ = _build_region_attention_mask_and_query_gate(
@@ -664,6 +798,8 @@ def _build_region_attention_mask(
         strict=strict,
         query_fallback_labels=query_fallback_labels,
         key_fallback_labels=key_fallback_labels,
+        soft_bias=soft_bias,
+        use_soft_bias=use_soft_bias,
     )
     return mask
 
@@ -680,6 +816,8 @@ def _build_region_attention_mask_and_query_gate(
     strict: bool,
     query_fallback_labels: torch.Tensor | None = None,
     key_fallback_labels: torch.Tensor | None = None,
+    soft_bias: torch.Tensor | float | None = None,
+    use_soft_bias: bool = False,
 ) -> tuple[torch.Tensor | None, torch.Tensor | None, dict[str, float | int | bool]]:
     """Build an additive SDP mask for regional IP attention plus a learned null token.
 
@@ -706,10 +844,14 @@ def _build_region_attention_mask_and_query_gate(
         "allowed_tokens_per_query_max": 0,
         "unique_query_labels": 0,
         "unique_key_labels": 0,
+        "soft_bias_enabled": False,
+        "soft_bias": math.nan,
+        "same_label_pair_fraction": math.nan,
+        "other_label_pair_fraction": math.nan,
     }
     if query_region_labels is None or key_region_labels is None:
         return None, None, empty_stats
-    if not strict:
+    if not strict and not use_soft_bias:
         return None, None, empty_stats
     query_labels = query_region_labels.to(device=device, dtype=torch.long)
     key_labels = key_region_labels.to(device=device, dtype=torch.long)
@@ -735,6 +877,21 @@ def _build_region_attention_mask_and_query_gate(
         & valid_query[:, :, None]
         & valid_key[:, None, :]
     )
+    if use_soft_bias:
+        return _build_soft_region_attention_bias(
+            query_labels=query_labels,
+            key_labels=key_labels,
+            allowed=allowed,
+            valid_query=valid_query,
+            valid_key=valid_key,
+            batch_size=batch_size,
+            query_len=query_len,
+            key_len=key_len,
+            device=device,
+            dtype=dtype,
+            soft_bias=soft_bias,
+            strict=bool(strict),
+        )
     exact_missing = valid_query & ~allowed.any(dim=-1)
     fallback_used = torch.zeros_like(valid_query)
     missing = exact_missing
@@ -758,6 +915,76 @@ def _build_region_attention_mask_and_query_gate(
     mask = torch.zeros((batch_size, 1, query_len, key_len + 1), device=device, dtype=dtype)
     mask = mask.masked_fill(~allowed_with_null[:, None, :, :], -torch.finfo(mask.dtype).max)
     return mask, None, stats
+
+
+def _build_soft_region_attention_bias(
+    *,
+    query_labels: torch.Tensor,
+    key_labels: torch.Tensor,
+    allowed: torch.Tensor,
+    valid_query: torch.Tensor,
+    valid_key: torch.Tensor,
+    batch_size: int,
+    query_len: int,
+    key_len: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    soft_bias: torch.Tensor | float | None,
+    strict: bool,
+) -> tuple[torch.Tensor, None, dict[str, float | int | bool]]:
+    if soft_bias is None:
+        soft_bias_tensor = torch.tensor(1.0, device=device, dtype=dtype)
+    elif torch.is_tensor(soft_bias):
+        soft_bias_tensor = soft_bias.to(device=device, dtype=dtype)
+    else:
+        soft_bias_tensor = torch.tensor(float(soft_bias), device=device, dtype=dtype)
+    soft_bias_tensor = soft_bias_tensor.reshape(())
+    same = allowed
+    valid_pairs = valid_query[:, :, None] & valid_key[:, None, :]
+    other = valid_pairs & ~same
+    bias = torch.zeros((batch_size, query_len, key_len), device=device, dtype=dtype)
+    bias = bias + same.to(dtype=dtype) * soft_bias_tensor
+    bias = bias - other.to(dtype=dtype) * soft_bias_tensor
+    has_valid_key = valid_key.any(dim=-1)
+    if bool(has_valid_key.any().item()):
+        invalid_key = ~valid_key[:, None, :]
+        key_padding = invalid_key & has_valid_key[:, None, None]
+        bias = bias.masked_fill(key_padding, -torch.finfo(dtype).max)
+    stats = _region_attention_stats(
+        allowed=allowed,
+        valid_query=valid_query,
+        valid_key=valid_key,
+        missing=valid_query & ~allowed.any(dim=-1),
+        fallback_used=torch.zeros_like(valid_query),
+        null_query=torch.zeros_like(valid_query),
+        allowed_with_null=valid_pairs,
+        query_labels=query_labels,
+        key_labels=key_labels,
+        strict=strict,
+    )
+    valid_pair_count = int(valid_pairs.sum().item())
+    same_pair_count = int(same.sum().item())
+    other_pair_count = int(other.sum().item())
+    stats.update(
+        {
+            "soft_bias_enabled": True,
+            "soft_bias": float(soft_bias_tensor.detach().float().item()),
+            "same_label_pair_fraction": (
+                float(same_pair_count / valid_pair_count) if valid_pair_count > 0 else 0.0
+            ),
+            "other_label_pair_fraction": (
+                float(other_pair_count / valid_pair_count) if valid_pair_count > 0 else 0.0
+            ),
+            "allowed_tokens_per_query_mean": float(valid_key.detach().sum(dim=-1).float().mean().item()),
+            "allowed_tokens_per_query_min": int(valid_key.detach().sum(dim=-1).min().item()),
+            "allowed_tokens_per_query_max": int(valid_key.detach().sum(dim=-1).max().item()),
+            "active_query_fraction": (
+                float(valid_query.detach().float().mean().item()) if valid_query.numel() else math.nan
+            ),
+            "null_query_fraction": 0.0,
+        }
+    )
+    return bias[:, None, :, :], None, stats
 
 
 def _region_attention_stats(
@@ -811,7 +1038,7 @@ def _region_attention_stats(
 
 
 def _format_region_attention_stats(stats: dict[str, float | int | bool]) -> str:
-    return (
+    base = (
         f"strict={bool(stats['strict'])} has_labels={bool(stats['has_labels'])} "
         f"query_tokens={int(stats['query_tokens'])} key_tokens={int(stats['key_tokens'])} "
         f"valid_q={float(stats['valid_query_fraction']):.3f} "
@@ -826,6 +1053,50 @@ def _format_region_attention_stats(stats: dict[str, float | int | bool]) -> str:
         f"{int(stats.get('allowed_tokens_per_query_max', 0))} "
         f"unique_q={int(stats['unique_query_labels'])} "
         f"unique_k={int(stats['unique_key_labels'])}"
+    )
+    if bool(stats.get("soft_bias_enabled", False)):
+        base += (
+            f" soft_bias={float(stats.get('soft_bias', math.nan)):.6f} "
+            f"same_pairs={float(stats.get('same_label_pair_fraction', math.nan)):.5f} "
+            f"other_pairs={float(stats.get('other_label_pair_fraction', math.nan)):.5f}"
+        )
+    return base
+
+
+def _format_region_token_label_summary(
+    labels: torch.Tensor,
+    *,
+    max_samples: int = 4,
+    max_labels: int = 12,
+) -> str:
+    label_values = labels.detach().to(device="cpu", dtype=torch.long)
+    batch, token_slots = label_values.shape
+    valid = label_values >= 0
+    unique_valid = torch.unique(label_values[valid]).numel() if bool(valid.any().item()) else 0
+    sample_parts = []
+    for sample_index in range(min(batch, int(max_samples))):
+        sample = label_values[sample_index]
+        sample_valid = sample[sample >= 0]
+        if sample_valid.numel():
+            values, counts = torch.unique(sample_valid, sorted=True, return_counts=True)
+            entries = [
+                f"{int(value.item())}:{int(count.item())}"
+                for value, count in zip(values[:max_labels], counts[:max_labels])
+            ]
+            if values.numel() > max_labels:
+                entries.append("...")
+            label_counts = ",".join(entries)
+        else:
+            label_counts = "none"
+        sample_parts.append(
+            f"s{sample_index}[valid={int(sample_valid.numel())}/{int(token_slots)} labels={label_counts}]"
+        )
+    if batch > max_samples:
+        sample_parts.append("...")
+    return (
+        f"batch={int(batch)} token_slots={int(token_slots)} "
+        f"valid={int(valid.sum().item())}/{int(label_values.numel())} "
+        f"unique_labels={int(unique_valid)} samples=" + "; ".join(sample_parts)
     )
 
 
@@ -846,6 +1117,20 @@ def _unpack_region_ip_adapter_masks(
     key_fallback_labels = ip_adapter_masks.get("key_fallback_region_labels")
     query_fallback_labels = ip_adapter_masks.get("query_fallback_region_labels")
     return key_labels, query_labels, strict, key_fallback_labels, query_fallback_labels
+
+
+def _unpack_region_ip_soft_bias_enabled(ip_adapter_masks: torch.Tensor | dict | None) -> bool:
+    if not isinstance(ip_adapter_masks, dict):
+        return False
+    return bool(ip_adapter_masks.get("use_soft_bias", False))
+
+
+def _unpack_region_ip_soft_bias_value(
+    ip_adapter_masks: torch.Tensor | dict | None,
+) -> torch.Tensor | float | None:
+    if not isinstance(ip_adapter_masks, dict):
+        return None
+    return ip_adapter_masks.get("soft_bias")
 
 
 def _record_ip_attention_debug(
@@ -888,6 +1173,8 @@ def install_flux_ip_adapter_attention(
     ip_init_gain: float = 0.1,
     num_single_layers: int = 0,
     regional: bool = False,
+    use_soft_bias: bool = False,
+    soft_bias_init: float = 4.0,
 ) -> None:
     """Install IP-Adapter attention processors on FLUX double and last-N single blocks."""
     from diffusers.models.embeddings import IPAdapterFullImageProjection
@@ -904,6 +1191,8 @@ def install_flux_ip_adapter_attention(
             cross_attention_dim=cross_attention_dim,
             num_tokens=(num_tokens,),
             scale=[scale],
+            use_soft_bias=use_soft_bias,
+            soft_bias_init=soft_bias_init,
         )
         processor.debug_name = f"block_{block_index}"
         for linear in processor.to_k_ip:
@@ -921,6 +1210,8 @@ def install_flux_ip_adapter_attention(
                 cross_attention_dim=cross_attention_dim,
                 num_tokens=(num_tokens,),
                 scale=[scale],
+                use_soft_bias=use_soft_bias,
+                soft_bias_init=soft_bias_init,
             )
             processor.debug_name = f"single_block_{first_single_index + offset}"
             for linear in processor.to_k_ip:
@@ -1013,6 +1304,162 @@ def _log_ip_adapter_initialization_stats(
         min(l2_values),
         sum(l2_values) / len(l2_values),
         max(l2_values),
+    )
+
+
+def _named_parameter_norm_hash(
+    named_parameters: list[tuple[str, nn.Parameter]],
+) -> dict[str, float | int | str]:
+    hasher = hashlib.sha256()
+    param_count = 0
+    tensor_count = 0
+    square_sum = 0.0
+    max_abs = 0.0
+    dtypes: set[str] = set()
+    for name, param in sorted(named_parameters, key=lambda item: item[0]):
+        value = param.detach().cpu().contiguous()
+        tensor_count += 1
+        param_count += int(value.numel())
+        dtypes.add(str(value.dtype).replace("torch.", ""))
+        value_float = value.float()
+        if value_float.numel():
+            square_sum += float(torch.sum(value_float * value_float).item())
+            max_abs = max(max_abs, float(value_float.abs().max().item()))
+        hasher.update(str(name).encode("utf8"))
+        hasher.update(str(tuple(value.shape)).encode("utf8"))
+        hasher.update(str(value.dtype).encode("utf8"))
+        hasher.update(value_float.contiguous().numpy().tobytes())
+    return {
+        "tensors": tensor_count,
+        "params": param_count,
+        "l2": math.sqrt(square_sum),
+        "max_abs": max_abs,
+        "dtypes": ",".join(sorted(dtypes)) if dtypes else "none",
+        "sha256": hasher.hexdigest()[:16],
+    }
+
+
+def _collect_ip_soft_bias_values(transformer: FluxTransformer2DModel) -> list[float]:
+    values: list[float] = []
+    for blocks in (
+        getattr(transformer, "transformer_blocks", []),
+        getattr(transformer, "single_transformer_blocks", []),
+    ):
+        for block in blocks:
+            processor = getattr(getattr(block, "attn", None), "processor", None)
+            soft_bias = getattr(processor, "ip_soft_bias", None)
+            if soft_bias is None:
+                continue
+            for param in soft_bias:
+                if torch.is_tensor(param):
+                    values.append(float(param.detach().float().mean().item()))
+    return values
+
+
+def _ip_soft_bias_summary(transformer: FluxTransformer2DModel) -> dict[str, float | int]:
+    values = _collect_ip_soft_bias_values(transformer)
+    if not values:
+        return {
+            "count": 0,
+            "min": math.nan,
+            "mean": math.nan,
+            "max": math.nan,
+        }
+    return {
+        "count": len(values),
+        "min": min(values),
+        "mean": sum(values) / len(values),
+        "max": max(values),
+    }
+
+
+def _ip_soft_bias_log_values(transformer: FluxTransformer2DModel) -> dict[str, float]:
+    summary = _ip_soft_bias_summary(transformer)
+    if int(summary["count"]) <= 0:
+        return {}
+    return {
+        "soft_bias_min": float(summary["min"]),
+        "soft_bias_mean": float(summary["mean"]),
+        "soft_bias_max": float(summary["max"]),
+    }
+
+
+def _ip_soft_bias_value_for_probe(transformer: FluxTransformer2DModel) -> torch.Tensor | float | None:
+    values = _collect_ip_soft_bias_values(transformer)
+    if not values:
+        return None
+    return torch.tensor(float(values[0]), device=next(transformer.parameters()).device)
+
+
+def _log_cross_v1_step0_adapter_assert(
+    *,
+    accelerator: Accelerator,
+    ref_trainable_wrapper: nn.Module,
+    ip_trainable_wrapper: nn.Module,
+    transformer: FluxTransformer2DModel,
+    architecture: str,
+    regional_ip_adapter: bool,
+    regional_ip_strict: bool,
+    regional_ip_token_mode: str,
+    regional_ip_label_mode: str,
+    use_soft_bias: bool,
+    soft_bias_init: float,
+    loaded_ip_adapter_checkpoint: str | Path | None,
+    loaded_resume_checkpoint: str | Path | None,
+) -> None:
+    if not accelerator.is_local_main_process:
+        return
+    ref_stats = _named_parameter_norm_hash(
+        [
+            (_clean_wrapped_parameter_name(name), param)
+            for name, param in ref_trainable_wrapper.named_parameters()
+            if param.requires_grad
+        ]
+    )
+    ip_stats = _named_parameter_norm_hash(
+        [
+            (_clean_wrapped_parameter_name(name), param)
+            for name, param in ip_trainable_wrapper.named_parameters()
+            if param.requires_grad
+        ]
+    )
+    soft_summary = _ip_soft_bias_summary(transformer)
+    logger.info(
+        "STEP0_ADAPTER_ASSERT architecture=%s regional_ip_adapter=%s strict=%s "
+        "token_mode=%s label_mode=%s use_soft_bias=%s soft_bias_init=%.6f "
+        "soft_bias[count/min/mean/max]=%s/%.6f/%.6f/%.6f "
+        "ip_loaded_from=%s resume_loaded_from=%s",
+        normalize_cross_v1_ip_architecture(architecture),
+        bool(regional_ip_adapter),
+        bool(regional_ip_strict),
+        normalize_region_ip_token_mode(regional_ip_token_mode),
+        normalize_region_ip_label_mode(regional_ip_label_mode),
+        bool(use_soft_bias),
+        float(soft_bias_init),
+        int(soft_summary["count"]),
+        float(soft_summary["min"]),
+        float(soft_summary["mean"]),
+        float(soft_summary["max"]),
+        str(loaded_ip_adapter_checkpoint) if loaded_ip_adapter_checkpoint else "fresh",
+        str(loaded_resume_checkpoint) if loaded_resume_checkpoint else "none",
+    )
+    logger.info(
+        "STEP0_ADAPTER_ASSERT ip_adapter tensors=%s params=%s dtypes=%s l2=%.6e max_abs=%.6e hash=%s",
+        int(ip_stats["tensors"]),
+        int(ip_stats["params"]),
+        str(ip_stats["dtypes"]),
+        float(ip_stats["l2"]),
+        float(ip_stats["max_abs"]),
+        str(ip_stats["sha256"]),
+    )
+    logger.info(
+        "STEP0_ADAPTER_ASSERT ref_encoder_trainable tensors=%s params=%s dtypes=%s l2=%.6e max_abs=%.6e hash=%s",
+        int(ref_stats["tensors"]),
+        int(ref_stats["params"]),
+        str(ref_stats["dtypes"]),
+        float(ref_stats["l2"]),
+        float(ref_stats["max_abs"]),
+        str(ref_stats["sha256"]),
     )
 
 
@@ -1126,6 +1573,10 @@ def _reference_ip_parameter_groups(
             ip_params,
             lambda name: name.startswith("block_") and "_ip_null_tokens." in name,
         ),
+        "ip.double_soft_bias": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("block_") and "_ip_soft_bias." in name,
+        ),
         "ip.single_to_k_ip": _select_named_parameters(
             ip_params,
             lambda name: name.startswith("single_block_") and "_to_k_ip." in name,
@@ -1137,6 +1588,10 @@ def _reference_ip_parameter_groups(
         "ip.single_null": _select_named_parameters(
             ip_params,
             lambda name: name.startswith("single_block_") and "_ip_null_tokens." in name,
+        ),
+        "ip.single_soft_bias": _select_named_parameters(
+            ip_params,
+            lambda name: name.startswith("single_block_") and "_ip_soft_bias." in name,
         ),
     }
 
@@ -1226,9 +1681,10 @@ class IPTrainableHealthMonitor:
             logs[f"ip_health_{safe_key}_param_delta"] = delta_norm
             logs[f"ip_health_{safe_key}_relative_delta"] = relative_delta
             logs[f"ip_health_{safe_key}_grad_ever_nonzero"] = float(ever_nonzero)
+            current_stats = _named_parameter_norm_hash(trainable_params)
             logger.info(
                 "IP/ref param delta health %s: tensors=%s params=%s dtypes=%s "
-                "delta_norm=%.6e relative_delta=%.6e max_abs=%.6e grad_ever_nonzero=%s",
+                "delta_norm=%.6e relative_delta=%.6e max_abs=%.6e hash=%s grad_ever_nonzero=%s",
                 group_name,
                 len(trainable_params),
                 sum(param.numel() for _, param in trainable_params),
@@ -1236,6 +1692,7 @@ class IPTrainableHealthMonitor:
                 delta_norm,
                 relative_delta,
                 max_abs,
+                str(current_stats["sha256"]),
                 ever_nonzero,
             )
             if trainable_params and dtype_names != ["float32"] and group_name not in self._warned_dtype:
@@ -1325,6 +1782,8 @@ def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str
             modules[f"block_{i}_to_v_ip"] = processor.to_v_ip
             if hasattr(processor, "ip_null_tokens"):
                 modules[f"block_{i}_ip_null_tokens"] = processor.ip_null_tokens
+            if bool(getattr(processor, "use_soft_bias", False)) and hasattr(processor, "ip_soft_bias"):
+                modules[f"block_{i}_ip_soft_bias"] = processor.ip_soft_bias
     for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
         processor = block.attn.processor
         if isinstance(processor, FluxSingleIPAdapterAttnProcessor2_0):
@@ -1332,6 +1791,8 @@ def _collect_ip_adapter_modules(transformer: FluxTransformer2DModel) -> dict[str
             modules[f"single_block_{i}_to_v_ip"] = processor.to_v_ip
             if hasattr(processor, "ip_null_tokens"):
                 modules[f"single_block_{i}_ip_null_tokens"] = processor.ip_null_tokens
+            if bool(getattr(processor, "use_soft_bias", False)) and hasattr(processor, "ip_soft_bias"):
+                modules[f"single_block_{i}_ip_soft_bias"] = processor.ip_soft_bias
     return modules
 
 
@@ -1454,20 +1915,26 @@ def _sync_ip_adapter_to_transformer(
         k_key = f"block_{i}_to_k_ip"
         v_key = f"block_{i}_to_v_ip"
         null_key = f"block_{i}_ip_null_tokens"
+        bias_key = f"block_{i}_ip_soft_bias"
         if hasattr(ip_wrapper, k_key):
             block.attn.processor.to_k_ip = getattr(ip_wrapper, k_key)
             block.attn.processor.to_v_ip = getattr(ip_wrapper, v_key)
         if hasattr(ip_wrapper, null_key):
             block.attn.processor.ip_null_tokens = getattr(ip_wrapper, null_key)
+        if hasattr(ip_wrapper, bias_key):
+            block.attn.processor.ip_soft_bias = getattr(ip_wrapper, bias_key)
     for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
         k_key = f"single_block_{i}_to_k_ip"
         v_key = f"single_block_{i}_to_v_ip"
         null_key = f"single_block_{i}_ip_null_tokens"
+        bias_key = f"single_block_{i}_ip_soft_bias"
         if hasattr(ip_wrapper, k_key):
             block.attn.processor.to_k_ip = getattr(ip_wrapper, k_key)
             block.attn.processor.to_v_ip = getattr(ip_wrapper, v_key)
         if hasattr(ip_wrapper, null_key):
             block.attn.processor.ip_null_tokens = getattr(ip_wrapper, null_key)
+        if hasattr(ip_wrapper, bias_key):
+            block.attn.processor.ip_soft_bias = getattr(ip_wrapper, bias_key)
 
 
 def patch_flux_single_ip_forward(transformer: FluxTransformer2DModel) -> None:
@@ -1597,7 +2064,7 @@ def _decode_packed_model_prediction(
     latent_width: int,
     weight_dtype: torch.dtype,
 ) -> torch.Tensor:
-    """Decode one-step denoised model output to RGB in [0, 1] for style losses."""
+    """Decode one-step denoised model output to RGB in [0, 1] for RGB-space losses."""
     pred_original = packed_noisy_latents - sigmas * noise_pred
     pred_latents = _unpack_flux_packed_latents(
         pred_original,
@@ -1682,6 +2149,8 @@ def _build_ip_adapter_kwargs(
     strict: bool = True,
     regional_token_mode: str = "spatial",
     regional_label_mode: str = "tissue",
+    use_soft_bias: bool = False,
+    soft_bias: torch.Tensor | float | None = None,
     ip_debug_collector: dict | None = None,
 ) -> dict:
     """Build joint_attention_kwargs with pre-projected ip_hidden_states."""
@@ -1736,15 +2205,19 @@ def _build_ip_adapter_kwargs(
     ]
     kwargs = {"ip_hidden_states": ip_hidden_states}
     if regional:
+        mask_payload = {
+            "key_region_labels": region_token_labels.to(device=accelerator.device),
+            "query_region_labels": query_region_labels.to(device=accelerator.device),
+            "key_fallback_region_labels": key_fallback_region_labels.to(device=accelerator.device),
+            "query_fallback_region_labels": query_fallback_region_labels.to(device=accelerator.device),
+            "strict": bool(strict),
+            "use_soft_bias": bool(use_soft_bias),
+        }
+        if soft_bias is not None:
+            mask_payload["soft_bias"] = soft_bias
         kwargs.update(
             {
-                "ip_adapter_masks": {
-                    "key_region_labels": region_token_labels.to(device=accelerator.device),
-                    "query_region_labels": query_region_labels.to(device=accelerator.device),
-                    "key_fallback_region_labels": key_fallback_region_labels.to(device=accelerator.device),
-                    "query_fallback_region_labels": query_fallback_region_labels.to(device=accelerator.device),
-                    "strict": bool(strict),
-                },
+                "ip_adapter_masks": mask_payload,
             }
         )
     return kwargs
@@ -1776,6 +2249,8 @@ def _regional_ip_mask_stats_from_kwargs(
         device=device,
         dtype=dtype,
         strict=bool(masks.get("strict", True)),
+        soft_bias=masks.get("soft_bias"),
+        use_soft_bias=bool(masks.get("use_soft_bias", False)),
     )
     return stats
 
@@ -1973,6 +2448,8 @@ def _log_reference_signal_debug(
     regional_strict: bool,
     regional_token_mode: str,
     regional_label_mode: str,
+    use_soft_bias: bool,
+    soft_bias: torch.Tensor | float | None,
     query_token_count: int | None,
     step: int,
     real_contrast_batch: dict | None = None,
@@ -2014,6 +2491,8 @@ def _log_reference_signal_debug(
             if token_mode == "spatial":
                 ref_tokens = projected
                 region_labels = labels
+            elif token_mode == "stats":
+                ref_tokens, region_labels = ref_encoder._stats_by_region_labels(projected, labels)
             else:
                 ref_tokens, region_labels = ref_encoder._resample_by_region_labels(projected, labels)
         else:
@@ -2047,13 +2526,20 @@ def _log_reference_signal_debug(
     real = encode_variant(real_images, real_tissue_mask, real_nuclei_mask)
     logger.info(
         "Reference signal debug step=%s mode=%s regional=%s strict=%s token_mode=%s label_mode=%s "
-        "skip_perceiver=%s uni_training=%s uni_dtype=%s proj_dtype=%s query_tokens=%s",
+        "use_soft_bias=%s soft_bias=%s skip_perceiver=%s uni_training=%s uni_dtype=%s "
+        "proj_dtype=%s query_tokens=%s",
         step,
         "train" if ref_encoder.training else "eval",
         regional,
         regional_strict,
         normalize_region_ip_token_mode(regional_token_mode),
         normalize_region_ip_label_mode(regional_label_mode),
+        bool(use_soft_bias),
+        (
+            f"{float(soft_bias.detach().float().mean().item()):.6f}"
+            if torch.is_tensor(soft_bias)
+            else ("none" if soft_bias is None else f"{float(soft_bias):.6f}")
+        ),
         bool(ref_encoder.skip_perceiver),
         bool(ref_encoder.uni.training),
         str(uni_dtype).replace("torch.", ""),
@@ -2085,6 +2571,13 @@ def _log_reference_signal_debug(
                 zero_cosine=zero_cosine,
                 real_cosine=real_cosine,
             )
+    if regional and "region_token_labels" in normal:
+        logger.info(
+            "Reference region token debug: token_mode=%s label_mode=%s %s",
+            normalize_region_ip_token_mode(regional_token_mode),
+            normalize_region_ip_label_mode(regional_label_mode),
+            _format_region_token_label_summary(normal["region_token_labels"]),
+        )
 
     zero_token_basis = normal["encoder_hid_proj_zero_token"]
     logger.info(
@@ -2105,6 +2598,7 @@ def _log_reference_signal_debug(
 
     if regional and "region_token_labels" in normal and query_token_count is not None:
         label_mode = normalize_region_ip_label_mode(regional_label_mode)
+        probe_soft_bias = _ip_soft_bias_value_for_probe(transformer)
         query_region_labels = build_region_ip_token_labels(
             tissue_mask=batch["target_tissue_mask"].to(device=accelerator.device),
             num_tokens=int(query_token_count),
@@ -2130,6 +2624,8 @@ def _log_reference_signal_debug(
             device=accelerator.device,
             dtype=weight_dtype,
             strict=regional_strict,
+            soft_bias=probe_soft_bias,
+            use_soft_bias=use_soft_bias,
         )
         logger.info(
             "Reference region mask debug: %s",
@@ -2399,6 +2895,8 @@ def _run_ip_reference_health_diagnostics(
     regional_strict: bool,
     regional_token_mode: str,
     regional_label_mode: str,
+    use_soft_bias: bool,
+    soft_bias: torch.Tensor | float | None,
     query_token_count: int,
     warmup_steps: int,
     min_ref_l2: float,
@@ -2411,6 +2909,7 @@ def _run_ip_reference_health_diagnostics(
         return logs
 
     normal_ip_collector = {"store_first_ip_output": True}
+    probe_soft_bias = _ip_soft_bias_value_for_probe(transformer)
     normal_kwargs = _build_ip_adapter_kwargs(
         training_batch,
         modules,
@@ -2422,6 +2921,8 @@ def _run_ip_reference_health_diagnostics(
         strict=regional_strict,
         regional_token_mode=regional_token_mode,
         regional_label_mode=regional_label_mode,
+        use_soft_bias=use_soft_bias,
+        soft_bias=probe_soft_bias,
         ip_debug_collector=normal_ip_collector,
     )
     normal_mask_stats = _regional_ip_mask_stats_from_kwargs(
@@ -2490,6 +2991,8 @@ def _run_ip_reference_health_diagnostics(
             strict=regional_strict,
             regional_token_mode=regional_token_mode,
             regional_label_mode=regional_label_mode,
+            use_soft_bias=use_soft_bias,
+            soft_bias=probe_soft_bias,
             ip_debug_collector=collector,
         )
         variant_mask_stats = _regional_ip_mask_stats_from_kwargs(
@@ -2593,7 +3096,7 @@ def _tissue_fallback_region_labels(labels: torch.Tensor, *, label_mode: str) -> 
     """Map exact IP labels back to tissue labels for strict fallback matching."""
     label_mode = normalize_region_ip_label_mode(label_mode)
     labels = labels.to(dtype=torch.long)
-    if label_mode == "tissue":
+    if label_mode in {"tissue", "coarse_tissue"}:
         return labels
     fallback = torch.full_like(labels, -1)
     valid = labels >= 0
@@ -3101,11 +3604,15 @@ def _save_condition_modules(
     save_dtype: torch.dtype,
     *,
     control_spec: CrossV1ControlSpec,
+    cross_v1_ip_architecture: str = CROSS_V1_IP_ARCH_GLOBAL,
     regional_ip_token_mode: str = "spatial",
     regional_ip_label_mode: str = "tissue",
+    regional_ip_soft_bias_init: float = 4.0,
 ) -> None:
     state = {
         "cross_v1_spatial_mode": control_spec.spatial_mode,
+        "cross_v1_ip_architecture": normalize_cross_v1_ip_architecture(cross_v1_ip_architecture),
+        "regional_ip_soft_bias_init": float(regional_ip_soft_bias_init),
         "cross_v1_control_spec": {
             "tissue_channels": int(control_spec.tissue_channels),
             "nuclei_channels": int(control_spec.nuclei_channels),
@@ -3136,6 +3643,8 @@ def _save_condition_modules(
                 ),
                 "regional_ip_token_mode": normalize_region_ip_token_mode(regional_ip_token_mode),
                 "regional_ip_label_mode": normalize_region_ip_label_mode(regional_ip_label_mode),
+                "cross_v1_ip_architecture": normalize_cross_v1_ip_architecture(cross_v1_ip_architecture),
+                "regional_ip_soft_bias_init": float(regional_ip_soft_bias_init),
             }
             state["ref_encoder_proj_mlp"] = {
                 k: v.to(save_dtype) for k, v in unwrapped.proj_mlp.state_dict().items()
@@ -3163,9 +3672,11 @@ def _save_ip_adapter_modules(
     *,
     num_tokens: int,
     ip_init_gain: float,
+    cross_v1_ip_architecture: str = CROSS_V1_IP_ARCH_GLOBAL,
     regional_ip_adapter: bool = False,
     regional_ip_token_mode: str = "spatial",
     regional_ip_label_mode: str = "tissue",
+    regional_ip_soft_bias_init: float = 4.0,
 ) -> None:
     unwrapped = unwrap_model(ip_wrapper)
     state = {
@@ -3176,9 +3687,11 @@ def _save_ip_adapter_modules(
     state["scale"] = 1.0
     state["num_tokens"] = int(num_tokens)
     state["ip_init_gain"] = float(ip_init_gain)
+    state["cross_v1_ip_architecture"] = normalize_cross_v1_ip_architecture(cross_v1_ip_architecture)
     state["regional_ip_adapter"] = bool(regional_ip_adapter)
     state["regional_ip_token_mode"] = normalize_region_ip_token_mode(regional_ip_token_mode)
     state["regional_ip_label_mode"] = normalize_region_ip_label_mode(regional_ip_label_mode)
+    state["regional_ip_soft_bias_init"] = float(regional_ip_soft_bias_init)
     single_block_indices = sorted(
         {
             int(name.split("_")[2])
@@ -3201,9 +3714,11 @@ def _save_cross_v1_artifacts(
     unwrap_model: Callable,
     control_spec: CrossV1ControlSpec,
     ip_num_tokens: int | None = None,
+    cross_v1_ip_architecture: str = CROSS_V1_IP_ARCH_GLOBAL,
     regional_ip_adapter: bool = False,
     regional_ip_token_mode: str = "spatial",
     regional_ip_label_mode: str = "tissue",
+    regional_ip_soft_bias_init: float = 4.0,
 ) -> None:
     save_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(
         args.save_weight_dtype, torch.float32,
@@ -3219,8 +3734,10 @@ def _save_cross_v1_artifacts(
         unwrap_model,
         save_dtype,
         control_spec=control_spec,
+        cross_v1_ip_architecture=cross_v1_ip_architecture,
         regional_ip_token_mode=regional_ip_token_mode,
         regional_ip_label_mode=regional_ip_label_mode,
+        regional_ip_soft_bias_init=regional_ip_soft_bias_init,
     )
     _save_ip_adapter_modules(
         output_dir,
@@ -3229,9 +3746,11 @@ def _save_cross_v1_artifacts(
         save_dtype,
         num_tokens=int(ip_num_tokens or args.reference_num_tokens),
         ip_init_gain=args.ip_init_gain,
+        cross_v1_ip_architecture=cross_v1_ip_architecture,
         regional_ip_adapter=regional_ip_adapter,
         regional_ip_token_mode=regional_ip_token_mode,
         regional_ip_label_mode=regional_ip_label_mode,
+        regional_ip_soft_bias_init=regional_ip_soft_bias_init,
     )
 
 
@@ -3453,13 +3972,23 @@ def _resolve_ip_adapter_checkpoint_path(args: argparse.Namespace) -> Path | None
     return checkpoint if state_path.exists() else None
 
 
+def _saved_ip_architecture_from_state(state: dict[str, object]) -> str:
+    if "cross_v1_ip_architecture" in state:
+        return normalize_cross_v1_ip_architecture(str(state.get("cross_v1_ip_architecture")))
+    return normalize_cross_v1_ip_architecture(
+        None,
+        regional_ip_adapter=bool(state.get("regional_ip_adapter", False)),
+    )
+
+
 def _load_ip_adapter_modules_from_checkpoint(
     transformer: FluxTransformer2DModel,
     checkpoint_path: str | Path,
     *,
     load_single_ip: bool = False,
     expected_regional_ip_adapter: bool | None = None,
-) -> None:
+    expected_cross_v1_ip_architecture: str | None = None,
+) -> Path:
     checkpoint = Path(checkpoint_path)
     state_path = checkpoint / "phase5_ip_adapter.pt" if checkpoint.is_dir() else checkpoint
     if not state_path.exists():
@@ -3467,20 +3996,30 @@ def _load_ip_adapter_modules_from_checkpoint(
 
     state = _torch_load_weights(state_path)
     if expected_regional_ip_adapter is not None and bool(state.get("regional_ip_adapter", False)) != bool(expected_regional_ip_adapter):
-        logger.warning(
-            "Skipping IP-Adapter checkpoint %s because regional_ip_adapter=%s does not match expected %s.",
-            state_path,
-            bool(state.get("regional_ip_adapter", False)),
-            bool(expected_regional_ip_adapter),
+        raise RuntimeError(
+            "IP-Adapter checkpoint architecture mismatch: "
+            f"{state_path} has regional_ip_adapter={bool(state.get('regional_ip_adapter', False))}, "
+            f"expected {bool(expected_regional_ip_adapter)}. Refusing to cold-start silently."
         )
-        return
+    saved_architecture = _saved_ip_architecture_from_state(state)
+    if expected_cross_v1_ip_architecture is not None:
+        expected_architecture = normalize_cross_v1_ip_architecture(expected_cross_v1_ip_architecture)
+        if saved_architecture != expected_architecture:
+            raise RuntimeError(
+                "IP-Adapter checkpoint architecture mismatch: "
+                f"{state_path} has cross_v1_ip_architecture={saved_architecture!r}, "
+                f"expected {expected_architecture!r}. Refusing to cold-start silently."
+            )
     transformer.encoder_hid_proj.load_state_dict(state["encoder_hid_proj"])
     loaded_double = 0
     loaded_double_null = 0
+    loaded_double_soft_bias = 0
+    missing_soft_bias: list[str] = []
     for i, block in enumerate(transformer.transformer_blocks):
         k_key = f"block_{i}_to_k_ip"
         v_key = f"block_{i}_to_v_ip"
         null_key = f"block_{i}_ip_null_tokens"
+        bias_key = f"block_{i}_ip_soft_bias"
         if k_key not in state or v_key not in state:
             continue
         block.attn.processor.to_k_ip.load_state_dict(state[k_key])
@@ -3488,15 +4027,23 @@ def _load_ip_adapter_modules_from_checkpoint(
         if null_key in state and hasattr(block.attn.processor, "ip_null_tokens"):
             block.attn.processor.ip_null_tokens.load_state_dict(state[null_key])
             loaded_double_null += 1
+        if hasattr(block.attn.processor, "ip_soft_bias"):
+            if bias_key in state:
+                block.attn.processor.ip_soft_bias.load_state_dict(state[bias_key])
+                loaded_double_soft_bias += 1
+            elif saved_architecture == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS:
+                missing_soft_bias.append(bias_key)
         loaded_double += 1
 
     loaded_single = 0
     loaded_single_null = 0
+    loaded_single_soft_bias = 0
     if load_single_ip:
         for i, block in enumerate(getattr(transformer, "single_transformer_blocks", [])):
             k_key = f"single_block_{i}_to_k_ip"
             v_key = f"single_block_{i}_to_v_ip"
             null_key = f"single_block_{i}_ip_null_tokens"
+            bias_key = f"single_block_{i}_ip_soft_bias"
             if k_key not in state or v_key not in state:
                 continue
             block.attn.processor.to_k_ip.load_state_dict(state[k_key])
@@ -3504,16 +4051,32 @@ def _load_ip_adapter_modules_from_checkpoint(
             if null_key in state and hasattr(block.attn.processor, "ip_null_tokens"):
                 block.attn.processor.ip_null_tokens.load_state_dict(state[null_key])
                 loaded_single_null += 1
+            if hasattr(block.attn.processor, "ip_soft_bias"):
+                if bias_key in state:
+                    block.attn.processor.ip_soft_bias.load_state_dict(state[bias_key])
+                    loaded_single_soft_bias += 1
+                elif saved_architecture == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS:
+                    missing_soft_bias.append(bias_key)
             loaded_single += 1
+    if missing_soft_bias:
+        raise RuntimeError(
+            "IP-Adapter checkpoint is marked global_soft_bias but is missing soft-bias weights: "
+            f"{missing_soft_bias[:8]}{'...' if len(missing_soft_bias) > 8 else ''}"
+        )
 
     logger.info(
-        "Loaded IP-Adapter checkpoint %s: double_blocks=%s double_null=%s single_blocks=%s single_null=%s",
+        "Loaded IP-Adapter checkpoint %s: architecture=%s double_blocks=%s double_null=%s "
+        "double_soft_bias=%s single_blocks=%s single_null=%s single_soft_bias=%s",
         state_path,
+        saved_architecture,
         loaded_double,
         loaded_double_null,
+        loaded_double_soft_bias,
         loaded_single,
         loaded_single_null,
+        loaded_single_soft_bias,
     )
+    return state_path
 
 
 # ---------------------------------------------------------------------------
@@ -3589,12 +4152,36 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     perceptual_loss_interval = int(getattr(args, "perceptual_loss_interval", 1) or 0)
     regional_ip_adapter = bool(getattr(args, "regional_ip_adapter", False))
     regional_ip_strict = bool(getattr(args, "regional_ip_strict", True))
+    cross_v1_ip_architecture = normalize_cross_v1_ip_architecture(
+        getattr(args, "cross_v1_ip_architecture", None),
+        regional_ip_adapter=regional_ip_adapter,
+    )
     regional_ip_token_mode = normalize_region_ip_token_mode(
         getattr(args, "regional_ip_token_mode", "spatial")
     )
     regional_ip_label_mode = normalize_region_ip_label_mode(
         getattr(args, "regional_ip_label_mode", "tissue")
     )
+    regional_ip_soft_bias_init = float(
+        getattr(args, "regional_ip_soft_bias_init", 4.0) or 0.0
+    )
+    if cross_v1_ip_architecture == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS:
+        regional_ip_adapter = True
+        regional_ip_strict = False
+        regional_ip_token_mode = "stats"
+        regional_ip_label_mode = "coarse_tissue"
+    elif cross_v1_ip_architecture == CROSS_V1_IP_ARCH_REGIONAL_HARD:
+        regional_ip_adapter = True
+    elif cross_v1_ip_architecture == CROSS_V1_IP_ARCH_GLOBAL:
+        regional_ip_adapter = False
+        regional_ip_strict = False
+    regional_ip_use_soft_bias = _uses_soft_region_bias(cross_v1_ip_architecture)
+    args.cross_v1_ip_architecture = cross_v1_ip_architecture
+    args.regional_ip_adapter = regional_ip_adapter
+    args.regional_ip_strict = regional_ip_strict
+    args.regional_ip_token_mode = regional_ip_token_mode
+    args.regional_ip_label_mode = regional_ip_label_mode
+    args.regional_ip_soft_bias_init = regional_ip_soft_bias_init
     degraded_noising_min_sigma = max(
         0.0,
         float(getattr(args, "degraded_noising_min_sigma", 0.1) or 0.0),
@@ -3606,16 +4193,48 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     reference_region_loss_interval = int(
         getattr(args, "reference_region_loss_interval", 1) or 0
     )
-    reference_region_loss_config = RegionalFeatureLossConfig(
-        tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
-        nuclei_weight=float(getattr(args, "reference_region_nuclei_weight", 0.0) or 0.0),
-        composite_weight=float(getattr(args, "reference_region_composite_weight", 0.0) or 0.0),
-        mean_weight=float(getattr(args, "reference_region_mean_weight", 1.0) or 0.0),
-        std_weight=float(getattr(args, "reference_region_std_weight", 0.5) or 0.0),
-        pooled_cosine_weight=float(getattr(args, "reference_region_cosine_weight", 0.25) or 0.0),
-        min_tokens=max(1, int(getattr(args, "reference_region_min_tokens", 2) or 1)),
-        max_regions_per_sample=getattr(args, "reference_region_max_regions_per_sample", None),
+    reference_region_loss_min_sigma = max(
+        0.0,
+        float(getattr(args, "reference_region_loss_min_sigma", 0.0) or 0.0),
     )
+    reference_region_loss_max_sigma = float(
+        getattr(args, "reference_region_loss_max_sigma", 0.6)
+    )
+    if reference_region_loss_max_sigma < reference_region_loss_min_sigma:
+        raise ValueError(
+            "--reference-region-loss-max-sigma must be >= "
+            "--reference-region-loss-min-sigma."
+        )
+    args.reference_region_loss_min_sigma = reference_region_loss_min_sigma
+    args.reference_region_loss_max_sigma = reference_region_loss_max_sigma
+    reference_region_loss_backend = normalize_reference_region_loss_backend(
+        getattr(args, "reference_region_loss_backend", REFERENCE_REGION_LOSS_BACKEND_UNI)
+    )
+    args.reference_region_loss_backend = reference_region_loss_backend
+    if reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_UNI:
+        reference_region_loss_config = RegionalFeatureLossConfig(
+            tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
+            nuclei_weight=float(getattr(args, "reference_region_nuclei_weight", 0.0) or 0.0),
+            composite_weight=float(getattr(args, "reference_region_composite_weight", 0.0) or 0.0),
+            mean_weight=float(getattr(args, "reference_region_mean_weight", 1.0) or 0.0),
+            std_weight=float(getattr(args, "reference_region_std_weight", 0.5) or 0.0),
+            pooled_cosine_weight=float(getattr(args, "reference_region_cosine_weight", 0.25) or 0.0),
+            min_tokens=max(1, int(getattr(args, "reference_region_min_tokens", 2) or 1)),
+            max_regions_per_sample=getattr(args, "reference_region_max_regions_per_sample", None),
+        )
+    else:
+        reference_region_loss_config = RegionalRgbFftLossConfig(
+            tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
+            nuclei_weight=float(getattr(args, "reference_region_nuclei_weight", 0.0) or 0.0),
+            composite_weight=float(getattr(args, "reference_region_composite_weight", 0.0) or 0.0),
+            mean_weight=float(getattr(args, "reference_region_mean_weight", 1.0) or 0.0),
+            std_weight=float(getattr(args, "reference_region_std_weight", 0.5) or 0.0),
+            fft_weight=float(getattr(args, "reference_region_fft_weight", 0.25) or 0.0),
+            fft_bins=max(1, int(getattr(args, "reference_region_fft_bins", 6) or 1)),
+            fft_size=max(4, int(getattr(args, "reference_region_fft_size", 64) or 4)),
+            min_pixels=max(1, int(getattr(args, "reference_region_min_pixels", 32) or 1)),
+            max_regions_per_sample=getattr(args, "reference_region_max_regions_per_sample", None),
+        )
     reference_style_loss_interval = int(
         getattr(args, "reference_style_loss_interval", 1) or 0
     )
@@ -3659,7 +4278,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     )
 
     skip_reference_perceiver = bool(getattr(args, "skip_reference_perceiver", False))
-    if regional_ip_adapter and regional_ip_token_mode == "spatial":
+    if regional_ip_adapter and regional_ip_token_mode in {"spatial", "stats"}:
         skip_reference_perceiver = True
     elif regional_ip_adapter and regional_ip_token_mode == "perceiver":
         skip_reference_perceiver = False
@@ -3808,17 +4427,38 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             degraded_noising_min_sigma,
         )
     if reference_region_loss_weight > 0.0:
-        logger.info(
-            "Using frozen UNI spatial reference region loss: weight=%s interval=%s tissue=%s nuclei=%s composite=%s mean/std/cos=%s/%s/%s",
-            reference_region_loss_weight,
-            reference_region_loss_interval,
-            reference_region_loss_config.tissue_weight,
-            reference_region_loss_config.nuclei_weight,
-            reference_region_loss_config.composite_weight,
-            reference_region_loss_config.mean_weight,
-            reference_region_loss_config.std_weight,
-            reference_region_loss_config.pooled_cosine_weight,
-        )
+        if reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_UNI:
+            logger.info(
+                "Using decode->frozen-UNI reference region loss: prediction RGB is VAE-decoded before UNI; "
+                "reference RGB is encoded by frozen UNI; region stats weight=%s interval=%s sigma=[%s,%s] "
+                "tissue=%s nuclei=%s composite=%s mean/std/cos=%s/%s/%s",
+                reference_region_loss_weight,
+                reference_region_loss_interval,
+                reference_region_loss_min_sigma,
+                reference_region_loss_max_sigma,
+                reference_region_loss_config.tissue_weight,
+                reference_region_loss_config.nuclei_weight,
+                reference_region_loss_config.composite_weight,
+                reference_region_loss_config.mean_weight,
+                reference_region_loss_config.std_weight,
+                reference_region_loss_config.pooled_cosine_weight,
+            )
+        else:
+            logger.info(
+                "Using independent RGB+FFT reference region loss: weight=%s interval=%s sigma=[%s,%s] tissue=%s nuclei=%s composite=%s mean/std/fft=%s/%s/%s fft_bins=%s fft_size=%s",
+                reference_region_loss_weight,
+                reference_region_loss_interval,
+                reference_region_loss_min_sigma,
+                reference_region_loss_max_sigma,
+                reference_region_loss_config.tissue_weight,
+                reference_region_loss_config.nuclei_weight,
+                reference_region_loss_config.composite_weight,
+                reference_region_loss_config.mean_weight,
+                reference_region_loss_config.std_weight,
+                reference_region_loss_config.fft_weight,
+                reference_region_loss_config.fft_bins,
+                reference_region_loss_config.fft_size,
+            )
     if ref_swap_loss_weight > 0.0:
         logger.info(
             "Using ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
@@ -3831,6 +4471,40 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         logger.info("Reference Perceiver self-attention is disabled.")
     if ref_encoder.skip_perceiver:
         logger.info("Reference Perceiver is skipped; projected UNI patch tokens feed IP-Adapter directly.")
+    logger.info(
+        "Using Cross V1 IP architecture %s: regional=%s strict=%s token_mode=%s "
+        "label_mode=%s use_soft_bias=%s soft_bias_init=%s",
+        cross_v1_ip_architecture,
+        regional_ip_adapter,
+        regional_ip_strict,
+        regional_ip_token_mode,
+        regional_ip_label_mode,
+        regional_ip_use_soft_bias,
+        regional_ip_soft_bias_init,
+    )
+    logger.info(
+        "Loss configuration: denoise=1 perceptual=%s region=%s style=%s "
+        "ref_swap=%s self_recon_l1=%s",
+        perceptual_loss_weight,
+        reference_region_loss_weight,
+        reference_style_loss_weight,
+        ref_swap_loss_weight,
+        self_reconstruction_l1_weight,
+    )
+    if cross_v1_ip_architecture == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS and any(
+        value > 0.0
+        for value in (
+            perceptual_loss_weight,
+            reference_region_loss_weight,
+            reference_style_loss_weight,
+            ref_swap_loss_weight,
+            self_reconstruction_l1_weight,
+        )
+    ):
+        logger.info(
+            "Cross V1 global_soft_bias has auxiliary losses enabled; this run is no longer "
+            "a pure-denoise attribution probe."
+        )
     if ref_encoder.perceiver_cross_gate_init is not None:
         logger.info(
             "Reference Perceiver uses cross-output-only mode; latent queries are not "
@@ -3902,15 +4576,19 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         ip_init_gain=args.ip_init_gain,
         num_single_layers=max(0, int(getattr(args, "ip_single_num_layers", 0) or 0)),
         regional=regional_ip_adapter,
+        use_soft_bias=regional_ip_use_soft_bias,
+        soft_bias_init=regional_ip_soft_bias_init,
     )
     patch_flux_single_ip_forward(flux_transformer)
     ip_adapter_checkpoint = _resolve_ip_adapter_checkpoint_path(args)
+    loaded_ip_adapter_checkpoint: Path | None = None
     if ip_adapter_checkpoint is not None:
-        _load_ip_adapter_modules_from_checkpoint(
+        loaded_ip_adapter_checkpoint = _load_ip_adapter_modules_from_checkpoint(
             flux_transformer,
             ip_adapter_checkpoint,
             load_single_ip=bool(getattr(args, "load_single_ip_from_checkpoint", False)),
             expected_regional_ip_adapter=regional_ip_adapter,
+            expected_cross_v1_ip_architecture=cross_v1_ip_architecture,
         )
     _log_ip_adapter_initialization_stats(
         flux_transformer,
@@ -4298,6 +4976,24 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 configured_group_lrs,
                 args.lr_scheduler,
             )
+    unwrap_model(ref_trainable_wrapper).sync_back(ref_encoder_raw)
+    modules["ref_encoder"] = ref_encoder_raw
+    _sync_ip_adapter_to_transformer(unwrap_model(ip_trainable_wrapper), flux_transformer)
+    _log_cross_v1_step0_adapter_assert(
+        accelerator=accelerator,
+        ref_trainable_wrapper=ref_trainable_wrapper,
+        ip_trainable_wrapper=ip_trainable_wrapper,
+        transformer=flux_transformer,
+        architecture=cross_v1_ip_architecture,
+        regional_ip_adapter=regional_ip_adapter,
+        regional_ip_strict=regional_ip_strict,
+        regional_ip_token_mode=regional_ip_token_mode,
+        regional_ip_label_mode=regional_ip_label_mode,
+        use_soft_bias=regional_ip_use_soft_bias,
+        soft_bias_init=regional_ip_soft_bias_init,
+        loaded_ip_adapter_checkpoint=loaded_ip_adapter_checkpoint,
+        loaded_resume_checkpoint=loaded_checkpoint_path,
+    )
     trainable_ema = create_or_load_trainable_ema(loaded_checkpoint_path)
 
     progress_bar = tqdm(
@@ -4511,6 +5207,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     strict=regional_ip_strict,
                     regional_token_mode=regional_ip_token_mode,
                     regional_label_mode=regional_ip_label_mode,
+                    use_soft_bias=regional_ip_use_soft_bias,
                 )
                 if not reference_signal_debug_logged and not should_run_ip_health:
                     _log_reference_signal_debug(
@@ -4523,6 +5220,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         regional_strict=regional_ip_strict,
                         regional_token_mode=regional_ip_token_mode,
                         regional_label_mode=regional_ip_label_mode,
+                        use_soft_bias=regional_ip_use_soft_bias,
+                        soft_bias=None,
                         query_token_count=noisy_model_input.shape[1],
                         step=health_step,
                         real_contrast_batch=health_real_contrast_batch,
@@ -4576,6 +5275,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 reference_region_tissue_regions = 0
                 reference_region_nuclei_regions = 0
                 reference_region_composite_regions = 0
+                reference_region_sigma_mask = _reference_region_sigma_mask(
+                    sigmas,
+                    min_sigma=reference_region_loss_min_sigma,
+                    max_sigma=reference_region_loss_max_sigma,
+                ).to(device=accelerator.device, dtype=torch.bool)
                 self_reconstruction_l1 = noise_pred.new_zeros(())
                 prediction_rgb = None
                 should_compute_style_loss = (
@@ -4592,6 +5296,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     reference_region_loss_weight > 0.0
                     and reference_region_loss_interval > 0
                     and global_step % reference_region_loss_interval == 0
+                    and bool(reference_region_sigma_mask.any().item())
                 )
                 should_compute_self_reconstruction_l1 = bool(
                     self_reconstruction_sample_mask.any().item()
@@ -4627,24 +5332,40 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         target_features=target_features,
                     ).to(dtype=denoising_loss.dtype)
                 if should_compute_reference_region_loss:
-                    ref_encoder = modules["ref_encoder"]
-                    uni_dtype = next(ref_encoder.uni.parameters()).dtype
-                    prediction_features = ref_encoder.extract_uni_features(
-                        prediction_rgb.to(device=accelerator.device, dtype=uni_dtype),
-                        allow_input_grad=True,
-                    )
-                    reference_features = ref_encoder.extract_uni_features(
-                        training_batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype),
-                    )
-                    reference_region_terms = regional_feature_map_loss(
-                        prediction_features=prediction_features,
-                        reference_features=reference_features,
-                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
-                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
-                        target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
-                        reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
-                        config=reference_region_loss_config,
-                    )
+                    if reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_UNI:
+                        ref_encoder = modules["ref_encoder"]
+                        uni_dtype = next(ref_encoder.uni.parameters()).dtype
+                        prediction_features = ref_encoder.extract_uni_features(
+                            prediction_rgb.to(device=accelerator.device, dtype=uni_dtype),
+                            allow_input_grad=True,
+                        )
+                        reference_features = ref_encoder.extract_uni_features(
+                            training_batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype),
+                        )
+                        reference_region_terms = regional_feature_map_loss(
+                            prediction_features=prediction_features,
+                            reference_features=reference_features,
+                            target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                            reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                            target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                            reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                            sample_mask=reference_region_sigma_mask,
+                            config=reference_region_loss_config,
+                        )
+                    else:
+                        reference_region_terms = regional_rgb_fft_loss(
+                            prediction=prediction_rgb,
+                            reference=training_batch["reference_image"].to(
+                                device=accelerator.device,
+                                dtype=prediction_rgb.dtype,
+                            ),
+                            target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                            reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                            target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                            reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                            sample_mask=reference_region_sigma_mask,
+                            config=reference_region_loss_config,
+                        )
                     reference_region_loss = reference_region_terms["total"].to(dtype=denoising_loss.dtype)
                     reference_region_tissue_loss = reference_region_terms["tissue"].to(dtype=denoising_loss.dtype)
                     reference_region_nuclei_loss = reference_region_terms["nuclei"].to(dtype=denoising_loss.dtype)
@@ -4724,6 +5445,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                             strict=regional_ip_strict,
                             regional_token_mode=regional_ip_token_mode,
                             regional_label_mode=regional_ip_label_mode,
+                            use_soft_bias=regional_ip_use_soft_bias,
                         )
                         swapped_noise_pred = flux_transformer(
                             hidden_states=noisy_model_input,
@@ -4803,6 +5525,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         regional_strict=regional_ip_strict,
                         regional_token_mode=regional_ip_token_mode,
                         regional_label_mode=regional_ip_label_mode,
+                        use_soft_bias=regional_ip_use_soft_bias,
+                        soft_bias=None,
                         query_token_count=noisy_model_input.shape[1],
                         step=health_step,
                         real_contrast_batch=health_real_contrast_batch,
@@ -4834,6 +5558,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                             regional_strict=regional_ip_strict,
                             regional_token_mode=regional_ip_token_mode,
                             regional_label_mode=regional_ip_label_mode,
+                            use_soft_bias=regional_ip_use_soft_bias,
+                            soft_bias=None,
                             query_token_count=int(noisy_model_input.shape[1]),
                             warmup_steps=ip_health_debug_warmup_steps,
                             min_ref_l2=ip_health_min_ref_l2,
@@ -4857,9 +5583,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         unwrap_model=unwrap_model,
                         control_spec=control_spec,
                         ip_num_tokens=ip_num_tokens,
+                        cross_v1_ip_architecture=cross_v1_ip_architecture,
                         regional_ip_adapter=regional_ip_adapter,
                         regional_ip_token_mode=regional_ip_token_mode,
                         regional_ip_label_mode=regional_ip_label_mode,
+                        regional_ip_soft_bias_init=regional_ip_soft_bias_init,
                     )
                     if trainable_ema is not None:
                         torch.save(trainable_ema.state_dict(), os.path.join(save_path, "ema_state.pt"))
@@ -4878,9 +5606,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                             unwrap_model=unwrap_model,
                             control_spec=control_spec,
                             ip_num_tokens=ip_num_tokens,
+                            cross_v1_ip_architecture=cross_v1_ip_architecture,
                             regional_ip_adapter=regional_ip_adapter,
                             regional_ip_token_mode=regional_ip_token_mode,
                             regional_ip_label_mode=regional_ip_label_mode,
+                            regional_ip_soft_bias_init=regional_ip_soft_bias_init,
                         )
                         trainable_ema.restore(
                             [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)]
@@ -4905,6 +5635,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "reference_region_tissue_regions": reference_region_tissue_regions,
                 "reference_region_nuclei_regions": reference_region_nuclei_regions,
                 "reference_region_composite_regions": reference_region_composite_regions,
+                "reference_region_sigma_gated_samples": int(
+                    reference_region_sigma_mask.sum().detach().item()
+                ),
                 "style_loss": style_loss.detach().item(),
                 "style_tissue_loss": style_tissue_loss.detach().item(),
                 "style_nuclei_loss": style_nuclei_loss.detach().item(),
@@ -4922,6 +5655,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             }
             logs.update(ref_variant_loss_logs)
             logs.update(ip_health_logs)
+            logs.update(_ip_soft_bias_log_values(flux_transformer))
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -4948,8 +5682,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             unwrap_model,
             save_dtype,
             control_spec=control_spec,
+            cross_v1_ip_architecture=cross_v1_ip_architecture,
             regional_ip_token_mode=regional_ip_token_mode,
             regional_ip_label_mode=regional_ip_label_mode,
+            regional_ip_soft_bias_init=regional_ip_soft_bias_init,
         )
         _save_ip_adapter_modules(
             args.output_dir,
@@ -4958,9 +5694,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             save_dtype,
             num_tokens=ip_num_tokens,
             ip_init_gain=args.ip_init_gain,
+            cross_v1_ip_architecture=cross_v1_ip_architecture,
             regional_ip_adapter=regional_ip_adapter,
             regional_ip_token_mode=regional_ip_token_mode,
             regional_ip_label_mode=regional_ip_label_mode,
+            regional_ip_soft_bias_init=regional_ip_soft_bias_init,
         )
         if trainable_ema is not None:
             torch.save(trainable_ema.state_dict(), os.path.join(args.output_dir, "ema_state.pt"))
@@ -4979,9 +5717,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 unwrap_model=unwrap_model,
                 control_spec=control_spec,
                 ip_num_tokens=ip_num_tokens,
+                cross_v1_ip_architecture=cross_v1_ip_architecture,
                 regional_ip_adapter=regional_ip_adapter,
                 regional_ip_token_mode=regional_ip_token_mode,
                 regional_ip_label_mode=regional_ip_label_mode,
+                regional_ip_soft_bias_init=regional_ip_soft_bias_init,
             )
             trainable_ema.restore(
                 [unwrap_model(ref_trainable_wrapper), unwrap_model(ip_trainable_wrapper)]
