@@ -297,6 +297,37 @@ class TrainingCliTests(unittest.TestCase):
         self.assertEqual(args.reference_region_loss_interval, 4)
         self.assertEqual(args.reference_region_loss_max_sigma, 0.6)
 
+    def test_cross_v1_cli_accepts_conch_region_loss_backend(self):
+        args = parse_cross_v1_args(
+            [
+                "--pretrained_model_name_or_path",
+                "flux-dev",
+                "--train-metadata",
+                "phase5_runs/cross_meta/metadata_cross_train.json",
+                "--uni-checkpoint-path",
+                "UNI-2h/pytorch_model.bin",
+                "--conch-root",
+                "CONCH-main",
+                "--conch-checkpoint-path",
+                "CONCH-main/checkpoints/conch/pytorch_model.bin",
+                "--reference-region-loss-weight",
+                "0.4",
+                "--reference-region-loss-backend",
+                "conch",
+                "--reference-region-loss-interval",
+                "4",
+            ]
+        )
+
+        self.assertEqual(args.conch_root, "CONCH-main")
+        self.assertEqual(
+            args.conch_checkpoint_path,
+            "CONCH-main/checkpoints/conch/pytorch_model.bin",
+        )
+        self.assertEqual(args.reference_region_loss_weight, 0.4)
+        self.assertEqual(args.reference_region_loss_backend, "conch")
+        self.assertEqual(args.reference_region_loss_interval, 4)
+
     def test_cross_v2_1_cli_has_no_ip_adapter_or_uni_requirement(self):
         args = parse_cross_v2_1_args(
             [

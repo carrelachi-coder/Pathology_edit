@@ -140,6 +140,24 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help="Path to UNI2-h ViT-Giant/14 checkpoint (pytorch_model.bin).",
     )
     parser.add_argument(
+        "--conch-checkpoint-path",
+        type=str,
+        default=None,
+        help=(
+            "Path to CONCH checkpoint (pytorch_model.bin). Required when "
+            "--reference-region-loss-backend=conch and region loss weight > 0."
+        ),
+    )
+    parser.add_argument(
+        "--conch-root",
+        type=str,
+        default=None,
+        help=(
+            "Path to local CONCH repository root. If omitted, it is inferred from "
+            "--conch-checkpoint-path."
+        ),
+    )
+    parser.add_argument(
         "--prompt-source", type=str, default="dataset",
         choices=["dataset", "metadata"],
         help="Use dataset-level default prompts or the prompt stored in metadata.",
@@ -557,9 +575,9 @@ def parse_args(input_args=None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help=(
-            "Weight for class-matched reference region loss. With backend='uni', the "
-            "model prediction is VAE-decoded to RGB and compared to reference RGB through "
-            "frozen UNI region statistics."
+            "Weight for class-matched reference region loss. With feature-map backends "
+            "('uni' or 'conch'), the model prediction is VAE-decoded to RGB and compared "
+            "to reference RGB through frozen encoder region statistics."
         ),
     )
     parser.add_argument(
@@ -569,6 +587,7 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help=(
             "Reference region loss descriptor backend. Use 'rgb_fft' for an independent "
             "RGB/statistical + FFT descriptor, or 'uni' for decoded-RGB -> frozen-UNI "
+            "region mean/std/cosine statistics, or 'conch' for decoded-RGB -> frozen-CONCH "
             "region mean/std/cosine statistics."
         ),
     )

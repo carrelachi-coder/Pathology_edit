@@ -64,6 +64,7 @@ from controlnet_train.modules import (
     NucleiConditionEncoder,
     TissueConditionDownsampler,
 )
+from controlnet_train.modules.conch_feature_encoder import ConchFeatureEncoder
 from controlnet_train.modules.cross_v1_conditioning import (
     CROSS_V1_SPATIAL_REFERENCE_TARGET,
     CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
@@ -112,9 +113,11 @@ CROSS_V1_IP_ARCH_MODES = (
 )
 REFERENCE_REGION_LOSS_BACKEND_RGB_FFT = "rgb_fft"
 REFERENCE_REGION_LOSS_BACKEND_UNI = "uni"
+REFERENCE_REGION_LOSS_BACKEND_CONCH = "conch"
 REFERENCE_REGION_LOSS_BACKENDS = (
     REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
     REFERENCE_REGION_LOSS_BACKEND_UNI,
+    REFERENCE_REGION_LOSS_BACKEND_CONCH,
 )
 
 
@@ -162,6 +165,8 @@ def normalize_reference_region_loss_backend(value: str | None) -> str:
         "fft": REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
         "independent": REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
         "uni": REFERENCE_REGION_LOSS_BACKEND_UNI,
+        "conch": REFERENCE_REGION_LOSS_BACKEND_CONCH,
+        "conch_vit": REFERENCE_REGION_LOSS_BACKEND_CONCH,
         "feature": REFERENCE_REGION_LOSS_BACKEND_UNI,
         "features": REFERENCE_REGION_LOSS_BACKEND_UNI,
         "feature_map": REFERENCE_REGION_LOSS_BACKEND_UNI,
@@ -4211,7 +4216,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         getattr(args, "reference_region_loss_backend", REFERENCE_REGION_LOSS_BACKEND_UNI)
     )
     args.reference_region_loss_backend = reference_region_loss_backend
-    if reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_UNI:
+    if reference_region_loss_backend in {REFERENCE_REGION_LOSS_BACKEND_UNI, REFERENCE_REGION_LOSS_BACKEND_CONCH}:
         reference_region_loss_config = RegionalFeatureLossConfig(
             tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
             nuclei_weight=float(getattr(args, "reference_region_nuclei_weight", 0.0) or 0.0),
@@ -4282,6 +4287,16 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         skip_reference_perceiver = True
     elif regional_ip_adapter and regional_ip_token_mode == "perceiver":
         skip_reference_perceiver = False
+
+    conch_region_encoder = None
+    if reference_region_loss_weight > 0.0 and reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_CONCH:
+        conch_checkpoint_path = getattr(args, "conch_checkpoint_path", None)
+        if not conch_checkpoint_path:
+            raise ValueError("--conch-checkpoint-path is required when --reference-region-loss-backend conch")
+        conch_region_encoder = ConchFeatureEncoder(
+            conch_checkpoint_path,
+            conch_root=getattr(args, "conch_root", None),
+        )
 
     ref_encoder = ReferenceImageEncoder(
         uni_checkpoint_path=args.uni_checkpoint_path,
@@ -4442,6 +4457,23 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 reference_region_loss_config.mean_weight,
                 reference_region_loss_config.std_weight,
                 reference_region_loss_config.pooled_cosine_weight,
+            )
+        elif reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_CONCH:
+            logger.info(
+                "Using decode->frozen-CONCH reference region loss: prediction RGB is VAE-decoded before CONCH; "
+                "reference RGB is encoded by frozen CONCH; region stats weight=%s interval=%s sigma=[%s,%s] "
+                "tissue=%s nuclei=%s composite=%s mean/std/cos=%s/%s/%s checkpoint=%s",
+                reference_region_loss_weight,
+                reference_region_loss_interval,
+                reference_region_loss_min_sigma,
+                reference_region_loss_max_sigma,
+                reference_region_loss_config.tissue_weight,
+                reference_region_loss_config.nuclei_weight,
+                reference_region_loss_config.composite_weight,
+                reference_region_loss_config.mean_weight,
+                reference_region_loss_config.std_weight,
+                reference_region_loss_config.pooled_cosine_weight,
+                getattr(args, "conch_checkpoint_path", None),
             )
         else:
             logger.info(
@@ -4683,6 +4715,10 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     # UNI2-h backbone inside ref_encoder stays frozen and fp32.
     modules["ref_encoder"].uni.to(device=accelerator.device, dtype=torch.float32)
     modules["ref_encoder"]._lock_uni_backbone()
+    if conch_region_encoder is not None:
+        conch_region_encoder.to(device=accelerator.device, dtype=torch.float32)
+        conch_region_encoder.eval()
+        conch_region_encoder.requires_grad_(False)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -5341,6 +5377,32 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         )
                         reference_features = ref_encoder.extract_uni_features(
                             training_batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype),
+                        )
+                        reference_region_terms = regional_feature_map_loss(
+                            prediction_features=prediction_features,
+                            reference_features=reference_features,
+                            target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                            reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                            target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                            reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                            sample_mask=reference_region_sigma_mask,
+                            config=reference_region_loss_config,
+                        )
+                    elif reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_CONCH:
+                        if conch_region_encoder is None:
+                            raise RuntimeError(
+                                "CONCH region loss backend requires conch_region_encoder."
+                            )
+                        conch_dtype = next(conch_region_encoder.parameters()).dtype
+                        prediction_features = conch_region_encoder.extract_features(
+                            prediction_rgb.to(device=accelerator.device, dtype=conch_dtype),
+                            allow_input_grad=True,
+                        )
+                        reference_features = conch_region_encoder.extract_features(
+                            training_batch["reference_image"].to(
+                                device=accelerator.device,
+                                dtype=conch_dtype,
+                            ),
                         )
                         reference_region_terms = regional_feature_map_loss(
                             prediction_features=prediction_features,

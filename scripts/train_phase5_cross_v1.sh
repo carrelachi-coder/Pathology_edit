@@ -21,13 +21,18 @@ MODEL_DIR="${MODEL_DIR:-/data/huggingface/FLUX.1-dev}"
 
 # UNI2-h checkpoint — absolute path to pytorch_model.bin
 UNI_CHECKPOINT="${UNI_CHECKPOINT:-${PROJECT_ROOT}/UNI-2h/pytorch_model.bin}"
+CONCH_ROOT="${CONCH_ROOT:-${PROJECT_ROOT}/CONCH-main}"
+CONCH_CHECKPOINT="${CONCH_CHECKPOINT:-${CONCH_ROOT}/checkpoints/conch/pytorch_model.bin}"
+if [[ ! -f "${CONCH_CHECKPOINT}" && -f "${CONCH_ROOT}/checkpoints/pytorch_model.bin" ]]; then
+  CONCH_CHECKPOINT="${CONCH_ROOT}/checkpoints/pytorch_model.bin"
+fi
 
 # Cross V1 training metadata (165K pairs, already built)
 CROSS_META="${CROSS_META:-${PROJECT_ROOT}/phase5_runs/cross_meta/metadata_cross_train.json}"
 SOURCE_CROSS_V1_OUTPUT_DIR="${SOURCE_CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_expB_outputs_weak_hed}"
 CONTROLNET_CHECKPOINT="${CONTROLNET_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}/checkpoint-66000}"
 CONDITIONING_CHECKPOINT="${CONDITIONING_CHECKPOINT:-${SOURCE_CROSS_V1_OUTPUT_DIR}}"
-CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_global_soft_bias_stats_uni_region_loss}"
+CROSS_V1_OUTPUT_DIR="${CROSS_V1_OUTPUT_DIR:-/data/wqx/flowedit/controlnet_cross_v1_global_soft_bias_stats_conch_region_loss}"
 TRAIN_LOG_DIR="${TRAIN_LOG_DIR:-${CROSS_V1_OUTPUT_DIR}/logs}"
 TRAIN_LOG_FILE="${TRAIN_LOG_FILE:-}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
@@ -54,12 +59,12 @@ TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-1}"
 GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-8}"
 GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
 
-# Reference-usage sanity losses. Keep RGB style/swap off; use decoded-RGB -> frozen-UNI
-# region stats to force generated pixels toward same-label reference appearance.
+# Reference-usage sanity losses. Keep RGB style/swap off; use decoded-RGB -> frozen-CONCH
+# region stats so the scorer is independent from the UNI stats-token injection path.
 PERCEPTUAL_LOSS_WEIGHT="${PERCEPTUAL_LOSS_WEIGHT:-0}"
 PERCEPTUAL_LOSS_INTERVAL="${PERCEPTUAL_LOSS_INTERVAL:-1}"
 REFERENCE_REGION_LOSS_WEIGHT="${REFERENCE_REGION_LOSS_WEIGHT:-0.4}"
-REFERENCE_REGION_LOSS_BACKEND="${REFERENCE_REGION_LOSS_BACKEND:-uni}"
+REFERENCE_REGION_LOSS_BACKEND="${REFERENCE_REGION_LOSS_BACKEND:-conch}"
 REFERENCE_REGION_LOSS_INTERVAL="${REFERENCE_REGION_LOSS_INTERVAL:-4}"
 REFERENCE_REGION_LOSS_MIN_SIGMA="${REFERENCE_REGION_LOSS_MIN_SIGMA:-0.0}"
 REFERENCE_REGION_LOSS_MAX_SIGMA="${REFERENCE_REGION_LOSS_MAX_SIGMA:-0.6}"
@@ -167,6 +172,9 @@ echo "PROJECT_ROOT=${PROJECT_ROOT}"
 echo "CROSS_V1_OUTPUT_DIR=${CROSS_V1_OUTPUT_DIR}"
 echo "CONTROLNET_CHECKPOINT=${CONTROLNET_CHECKPOINT}"
 echo "CONDITIONING_CHECKPOINT=${CONDITIONING_CHECKPOINT}"
+echo "UNI_CHECKPOINT=${UNI_CHECKPOINT}"
+echo "CONCH_ROOT=${CONCH_ROOT}"
+echo "CONCH_CHECKPOINT=${CONCH_CHECKPOINT}"
 echo "RESUME_FROM_CHECKPOINT=${RESUME_FROM_CHECKPOINT}"
 echo "LOAD_IP_ADAPTER=${LOAD_IP_ADAPTER}"
 echo "IP_ADAPTER_CHECKPOINT=${IP_ADAPTER_CHECKPOINT:-<auto>}"
@@ -428,6 +436,8 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   "${TRAIN_MODE_ARGS[@]}" \
   "${TRAIN_HED_ARGS[@]}" \
   --uni-checkpoint-path "${UNI_CHECKPOINT}" \
+  --conch-root "${CONCH_ROOT}" \
+  --conch-checkpoint-path "${CONCH_CHECKPOINT}" \
   "${TRAIN_CHECKPOINT_ARGS[@]}" \
   --output-dir "${CROSS_V1_OUTPUT_DIR}" \
   "${RESUME_ARGS[@]}" \
@@ -496,5 +506,5 @@ accelerate launch --multi_gpu --num_processes="${NUM_PROCESSES}" --gpu_ids="${GP
   --mask-augment-coarse-prob "${MASK_AUGMENT_COARSE_PROB}" \
   --mask-augment-coarse-factor "${MASK_AUGMENT_COARSE_FACTOR}" \
   --report-to tensorboard \
-  --tracker-project-name flux_controlnet_phase5_cross_v1_global_soft_bias_uni_region_loss \
+  --tracker-project-name flux_controlnet_phase5_cross_v1_global_soft_bias_conch_region_loss \
   --prompt-source dataset
