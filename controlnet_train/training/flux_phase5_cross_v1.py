@@ -75,6 +75,7 @@ from controlnet_train.modules.cross_v1_conditioning import (
 )
 from controlnet_train.modules.reference_image_encoder import (
     ReferenceImageEncoder,
+    ReferenceVaeLatentEncoder,
     build_region_ip_token_labels,
     normalize_region_ip_label_mode,
     normalize_region_ip_token_mode,
@@ -93,6 +94,10 @@ from controlnet_train.training.cross_v1_losses import (
     self_reconstruction_l1_loss,
     uni_token_cosine_perceptual_loss,
     unpack_flux_packed_latents,
+)
+from controlnet_train.training.vgg_perceptual import (
+    build_vgg16_perceptual_loss,
+    vgg_perceptual_loss,
 )
 
 if is_wandb_available():
@@ -118,6 +123,12 @@ REFERENCE_REGION_LOSS_BACKENDS = (
     REFERENCE_REGION_LOSS_BACKEND_RGB_FFT,
     REFERENCE_REGION_LOSS_BACKEND_UNI,
     REFERENCE_REGION_LOSS_BACKEND_CONCH,
+)
+REFERENCE_IP_EMBEDDING_BACKEND_UNI = "uni"
+REFERENCE_IP_EMBEDDING_BACKEND_VAE_LATENT = "vae_latent"
+REFERENCE_IP_EMBEDDING_BACKENDS = (
+    REFERENCE_IP_EMBEDDING_BACKEND_UNI,
+    REFERENCE_IP_EMBEDDING_BACKEND_VAE_LATENT,
 )
 
 
@@ -156,6 +167,25 @@ def _uses_soft_region_bias(architecture: str) -> bool:
     return normalize_cross_v1_ip_architecture(architecture) == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS
 
 
+def normalize_reference_ip_embedding_backend(value: str | None) -> str:
+    raw = str(value or REFERENCE_IP_EMBEDDING_BACKEND_UNI).strip().lower().replace("-", "_")
+    aliases = {
+        "uni": REFERENCE_IP_EMBEDDING_BACKEND_UNI,
+        "uni_final": REFERENCE_IP_EMBEDDING_BACKEND_UNI,
+        "uni_spatial": REFERENCE_IP_EMBEDDING_BACKEND_UNI,
+        "vae": REFERENCE_IP_EMBEDDING_BACKEND_VAE_LATENT,
+        "vae_latent": REFERENCE_IP_EMBEDDING_BACKEND_VAE_LATENT,
+        "latent": REFERENCE_IP_EMBEDDING_BACKEND_VAE_LATENT,
+        "z_ref": REFERENCE_IP_EMBEDDING_BACKEND_VAE_LATENT,
+    }
+    if raw not in aliases:
+        raise ValueError(
+            f"Unsupported reference IP embedding backend {value!r}; "
+            f"choose from {', '.join(REFERENCE_IP_EMBEDDING_BACKENDS)}."
+        )
+    return aliases[raw]
+
+
 def normalize_reference_region_loss_backend(value: str | None) -> str:
     raw = str(value or REFERENCE_REGION_LOSS_BACKEND_UNI).strip().lower().replace("-", "_")
     aliases = {
@@ -178,6 +208,15 @@ def normalize_reference_region_loss_backend(value: str | None) -> str:
             f"choose from {', '.join(REFERENCE_REGION_LOSS_BACKENDS)}."
         )
     return aliases[raw]
+
+
+def _optional_positive_int(value: object, *, name: str) -> int | None:
+    if value is None:
+        return None
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError(f"{name} must be a positive 1-based layer index, got {parsed}.")
+    return parsed
 
 
 def _reference_region_sigma_mask(
@@ -500,7 +539,20 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
                 )
             image_query = query[:, :, txt_seq_len:, :]
             if image_query.shape[2] > 0:
+                debug_collector = (
+                    ip_debug_collector
+                    if ip_debug_collector is not None
+                    else getattr(self, "_ip_debug_collector", None)
+                )
+                collect_attention_pooling = bool(
+                    isinstance(debug_collector, dict)
+                    and debug_collector.get("store_attention_pooling", False)
+                )
                 image_ip_output = output.new_zeros((batch_size, image_query.shape[2], output.shape[2]))
+                debug_uniform_ip_output = None
+                debug_label_uniform_ip_output = None
+                debug_attention_stats: list[dict[str, float | int]] = []
+                debug_key_masses: list[torch.Tensor] = []
                 for current_ip_hidden_states, scale, to_k_ip, to_v_ip, ip_null_token in zip(
                     ip_hidden_states,
                     self.scale,
@@ -547,12 +599,48 @@ class FluxSingleIPAdapterAttnProcessor2_0(nn.Module):
                         is_causal=False,
                     )
                     ip_attn = ip_attn.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                    image_ip_output = image_ip_output + float(scale) * ip_attn.to(output.dtype)
+                    scaled_ip_attn = float(scale) * ip_attn.to(output.dtype)
+                    image_ip_output = image_ip_output + scaled_ip_attn
+                    if collect_attention_pooling:
+                        pooling_debug = _summarize_ip_attention_pooling_debug(
+                            query=image_query,
+                            key=ip_key,
+                            value=ip_value,
+                            attn_mask=ip_attn_mask,
+                            output=ip_attn,
+                            query_region_labels=ip_query_region_labels,
+                            key_region_labels=ip_region_token_labels,
+                        )
+                        debug_attention_stats.append(pooling_debug["stats"])
+                        debug_key_masses.append(pooling_debug["key_mass"])
+                        uniform_output = float(scale) * pooling_debug["uniform_output"].to(output.dtype)
+                        debug_uniform_ip_output = (
+                            uniform_output
+                            if debug_uniform_ip_output is None
+                            else debug_uniform_ip_output + uniform_output
+                        )
+                        label_uniform_output = pooling_debug.get("label_uniform_output")
+                        if torch.is_tensor(label_uniform_output):
+                            label_uniform_output = float(scale) * label_uniform_output.to(output.dtype)
+                            debug_label_uniform_ip_output = (
+                                label_uniform_output
+                                if debug_label_uniform_ip_output is None
+                                else debug_label_uniform_ip_output + label_uniform_output
+                            )
+                debug_payload = None
+                if collect_attention_pooling:
+                    debug_payload = _merge_ip_attention_pooling_debug(
+                        debug_attention_stats,
+                        debug_key_masses,
+                        debug_uniform_ip_output,
+                        debug_label_uniform_ip_output,
+                    )
                 _record_ip_attention_debug(
-                    ip_debug_collector if ip_debug_collector is not None else getattr(self, "_ip_debug_collector", None),
+                    debug_collector,
                     getattr(self, "debug_name", "single_block"),
                     output[:, txt_seq_len:, :],
                     image_ip_output,
+                    debug_payload=debug_payload,
                 )
                 image_output = output[:, txt_seq_len:, :] + image_ip_output
                 if txt_seq_len > 0:
@@ -684,7 +772,20 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
         hidden_states = attn.to_out[1](hidden_states)
         encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
+        debug_collector = (
+            ip_debug_collector
+            if ip_debug_collector is not None
+            else getattr(self, "_ip_debug_collector", None)
+        )
+        collect_attention_pooling = bool(
+            isinstance(debug_collector, dict)
+            and debug_collector.get("store_attention_pooling", False)
+        )
         ip_attn_output = hidden_states.new_zeros(hidden_states.shape)
+        debug_uniform_ip_output = None
+        debug_label_uniform_ip_output = None
+        debug_attention_stats: list[dict[str, float | int]] = []
+        debug_key_masses: list[torch.Tensor] = []
         if ip_hidden_states:
             (
                 packed_key_labels,
@@ -765,13 +866,49 @@ class FluxRegionalIPAdapterJointAttnProcessor2_0(nn.Module):
                     is_causal=False,
                 )
                 current_output = current_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                ip_attn_output = ip_attn_output + float(scale) * current_output.to(hidden_states.dtype)
+                scaled_current_output = float(scale) * current_output.to(hidden_states.dtype)
+                ip_attn_output = ip_attn_output + scaled_current_output
+                if collect_attention_pooling:
+                    pooling_debug = _summarize_ip_attention_pooling_debug(
+                        query=hidden_states_query_proj,
+                        key=ip_key,
+                        value=ip_value,
+                        attn_mask=ip_attn_mask,
+                        output=current_output,
+                        query_region_labels=ip_query_region_labels,
+                        key_region_labels=ip_region_token_labels,
+                    )
+                    debug_attention_stats.append(pooling_debug["stats"])
+                    debug_key_masses.append(pooling_debug["key_mass"])
+                    uniform_output = float(scale) * pooling_debug["uniform_output"].to(hidden_states.dtype)
+                    debug_uniform_ip_output = (
+                        uniform_output
+                        if debug_uniform_ip_output is None
+                        else debug_uniform_ip_output + uniform_output
+                    )
+                    label_uniform_output = pooling_debug.get("label_uniform_output")
+                    if torch.is_tensor(label_uniform_output):
+                        label_uniform_output = float(scale) * label_uniform_output.to(hidden_states.dtype)
+                        debug_label_uniform_ip_output = (
+                            label_uniform_output
+                            if debug_label_uniform_ip_output is None
+                            else debug_label_uniform_ip_output + label_uniform_output
+                        )
 
+        debug_payload = None
+        if collect_attention_pooling:
+            debug_payload = _merge_ip_attention_pooling_debug(
+                debug_attention_stats,
+                debug_key_masses,
+                debug_uniform_ip_output,
+                debug_label_uniform_ip_output,
+            )
         _record_ip_attention_debug(
-            ip_debug_collector if ip_debug_collector is not None else getattr(self, "_ip_debug_collector", None),
+            debug_collector,
             getattr(self, "debug_name", "block"),
             hidden_states,
             ip_attn_output,
+            debug_payload=debug_payload,
         )
         return hidden_states, encoder_hidden_states, ip_attn_output
 
@@ -807,6 +944,146 @@ def _build_region_attention_mask(
         use_soft_bias=use_soft_bias,
     )
     return mask
+
+
+def _summarize_ip_attention_pooling_debug(
+    *,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None,
+    output: torch.Tensor,
+    query_region_labels: torch.Tensor | None = None,
+    key_region_labels: torch.Tensor | None = None,
+) -> dict[str, object]:
+    """Compute lightweight diagnostics for whether IP attention is averaging V tokens."""
+    with torch.no_grad():
+        q = query.detach().float()
+        k = key.detach().float()
+        v = value.detach().float()
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(max(1, int(q.shape[-1])))
+        if attn_mask is not None:
+            mask = attn_mask.detach().float()
+            scores = scores + mask
+            allowed = mask > -1.0e4
+        else:
+            allowed = torch.ones_like(scores, dtype=torch.bool)
+        scores = scores.masked_fill(~allowed, -torch.inf)
+        probs = torch.softmax(scores, dim=-1)
+        probs = probs.masked_fill(~allowed, 0.0)
+        allowed_counts = allowed.sum(dim=-1).clamp_min(1)
+        uniform_probs = allowed.float() / allowed_counts.unsqueeze(-1).float()
+        uniform_probs_expanded = uniform_probs.expand_as(probs)
+
+        probs_safe = probs.clamp_min(1.0e-12)
+        entropy = -(probs_safe * probs_safe.log()).sum(dim=-1)
+        denom = allowed_counts.float().clamp_min(2.0).log()
+        entropy_normalized = entropy / denom
+        effective_tokens = entropy.exp()
+        max_weight = probs.max(dim=-1).values
+        tv_from_uniform = 0.5 * (probs - uniform_probs_expanded).abs().sum(dim=-1)
+        prob_uniform_cosine = F.cosine_similarity(
+            probs.reshape(1, -1),
+            uniform_probs_expanded.reshape(1, -1),
+            dim=-1,
+        )
+
+        uniform_output = torch.matmul(uniform_probs, v)
+        uniform_output = uniform_output.transpose(1, 2).reshape(
+            output.shape[0],
+            output.shape[1],
+            -1,
+        )
+        output_flat = output.detach().float().reshape(1, -1)
+        uniform_flat = uniform_output.detach().float().reshape(1, -1)
+        output_uniform_cosine = F.cosine_similarity(output_flat, uniform_flat, dim=-1)
+        label_uniform_output = None
+        output_label_uniform_cosine = torch.tensor(math.nan, device=output_flat.device)
+        label_uniform_token_fraction = torch.tensor(math.nan, device=output_flat.device)
+        if query_region_labels is not None and key_region_labels is not None:
+            q_labels = query_region_labels.detach().to(device=q.device, dtype=torch.long)
+            k_labels = key_region_labels.detach().to(device=q.device, dtype=torch.long)
+            if q_labels.ndim == 2 and k_labels.ndim == 2 and q_labels.shape[:1] == q.shape[:1]:
+                if q_labels.shape[1] == q.shape[2] and k_labels.shape[1] <= k.shape[2]:
+                    if k_labels.shape[1] < k.shape[2]:
+                        pad = k_labels.new_full((k_labels.shape[0], k.shape[2] - k_labels.shape[1]), -1)
+                        k_labels = torch.cat([k_labels, pad], dim=1)
+                    same_label = (
+                        (q_labels[:, :, None] == k_labels[:, None, :])
+                        & (q_labels[:, :, None] >= 0)
+                        & (k_labels[:, None, :] >= 0)
+                    )
+                    same_label = same_label[:, None, :, :] & allowed
+                    has_same_label = same_label.any(dim=-1, keepdim=True)
+                    label_allowed = torch.where(has_same_label, same_label, allowed)
+                    label_counts = label_allowed.sum(dim=-1).clamp_min(1)
+                    label_uniform_probs = label_allowed.float() / label_counts.unsqueeze(-1).float()
+                    label_uniform_output = torch.matmul(label_uniform_probs, v)
+                    label_uniform_output = label_uniform_output.transpose(1, 2).reshape(
+                        output.shape[0],
+                        output.shape[1],
+                        -1,
+                    )
+                    label_flat = label_uniform_output.detach().float().reshape(1, -1)
+                    output_label_uniform_cosine = F.cosine_similarity(output_flat, label_flat, dim=-1)
+                    label_uniform_token_fraction = (label_counts.float() / allowed_counts.float()).mean()
+
+        key_mass = probs.sum(dim=(0, 1, 2)).detach().float()
+        key_mass = key_mass / key_mass.sum().clamp_min(1.0e-12)
+        key_mass_safe = key_mass.clamp_min(1.0e-12)
+        key_mass_entropy = -(key_mass_safe * key_mass_safe.log()).sum()
+
+        return {
+            "stats": {
+                "attention_allowed_tokens_per_query_mean": float(allowed_counts.float().mean().item()),
+                "attention_allowed_tokens_per_query_min": int(allowed_counts.min().item()),
+                "attention_allowed_tokens_per_query_max": int(allowed_counts.max().item()),
+                "attention_entropy_mean": float(entropy.mean().item()),
+                "attention_entropy_normalized_mean": float(entropy_normalized.mean().item()),
+                "attention_effective_tokens_mean": float(effective_tokens.mean().item()),
+                "attention_max_weight_mean": float(max_weight.mean().item()),
+                "attention_max_weight_max": float(max_weight.max().item()),
+                "attention_tv_from_uniform_mean": float(tv_from_uniform.mean().item()),
+                "attention_prob_uniform_cosine": float(prob_uniform_cosine.item()),
+                "attention_output_uniform_flat_cosine": float(output_uniform_cosine.item()),
+                "attention_output_label_uniform_flat_cosine": float(output_label_uniform_cosine.item()),
+                "attention_label_uniform_token_fraction": float(label_uniform_token_fraction.item()),
+                "attention_key_mass_entropy": float(key_mass_entropy.item()),
+                "attention_key_mass_effective_tokens": float(key_mass_entropy.exp().item()),
+                "attention_key_mass_top1": float(key_mass.max().item()),
+            },
+            "key_mass": key_mass.cpu(),
+            "uniform_output": uniform_output.detach().cpu(),
+            "label_uniform_output": label_uniform_output.detach().cpu() if torch.is_tensor(label_uniform_output) else None,
+        }
+
+
+def _merge_ip_attention_pooling_debug(
+    stats_list: list[dict[str, float | int]],
+    key_masses: list[torch.Tensor],
+    uniform_ip_output: torch.Tensor | None,
+    label_uniform_ip_output: torch.Tensor | None = None,
+) -> dict[str, object] | None:
+    if not stats_list and uniform_ip_output is None and label_uniform_ip_output is None:
+        return None
+    merged: dict[str, object] = {"attention_branch_count": int(len(stats_list))}
+    if stats_list:
+        keys = sorted({key for stats in stats_list for key in stats})
+        for key in keys:
+            values = [float(stats[key]) for stats in stats_list if key in stats]
+            if values:
+                merged[key] = float(sum(values) / len(values))
+    if key_masses:
+        first_shape = tuple(key_masses[0].shape)
+        if all(tuple(value.shape) == first_shape for value in key_masses):
+            key_mass = torch.stack([value.detach().float().cpu() for value in key_masses], dim=0).mean(dim=0)
+            key_mass = key_mass / key_mass.sum().clamp_min(1.0e-12)
+            merged["attention_key_mass"] = key_mass
+    if torch.is_tensor(uniform_ip_output):
+        merged["uniform_ip_output"] = uniform_ip_output.detach().float().cpu()
+    if torch.is_tensor(label_uniform_ip_output):
+        merged["label_uniform_ip_output"] = label_uniform_ip_output.detach().float().cpu()
+    return merged
 
 
 def _build_region_attention_mask_and_query_gate(
@@ -1143,6 +1420,7 @@ def _record_ip_attention_debug(
     block_name: str,
     hidden_states: torch.Tensor,
     scaled_ip_output: torch.Tensor,
+    debug_payload: dict[str, object] | None = None,
 ) -> None:
     """Record detached IP residual magnitudes without keeping the graph alive."""
     if collector is None:
@@ -1154,14 +1432,20 @@ def _record_ip_attention_debug(
         ip_norm = float(torch.linalg.vector_norm(ip_output).item()) if ip_output.numel() else 0.0
         ratio = ip_norm / max(hidden_norm, 1e-12)
         records = collector.setdefault("records", [])
-        records.append(
-            {
-                "block": str(block_name),
-                "hidden_norm": hidden_norm,
-                "ip_norm": ip_norm,
-                "ratio": ratio,
-            }
-        )
+        record = {
+            "block": str(block_name),
+            "hidden_norm": hidden_norm,
+            "ip_norm": ip_norm,
+            "ratio": ratio,
+        }
+        if debug_payload:
+            record.update({key: value for key, value in debug_payload.items() if not torch.is_tensor(value)})
+        records.append(record)
+        if debug_payload and bool(collector.get("store_attention_pooling", False)):
+            for key in ("uniform_ip_output", "label_uniform_ip_output", "attention_key_mass"):
+                value = debug_payload.get(key)
+                if torch.is_tensor(value):
+                    record[key] = value.detach().float().cpu()
         should_store = bool(collector.get("store_first_ip_output", False))
         is_double_block = str(block_name).startswith("block_") or str(block_name) == "block"
         if should_store and is_double_block and "first_ip_output" not in collector:
@@ -1997,7 +2281,7 @@ class RefEncoderTrainableWrapper(nn.Module):
     and perceiver_norm go through accelerator.prepare().
     """
 
-    def __init__(self, ref_encoder: ReferenceImageEncoder):
+    def __init__(self, ref_encoder: nn.Module):
         super().__init__()
         self.proj_mlp = ref_encoder.proj_mlp
         self.skip_perceiver = bool(getattr(ref_encoder, "skip_perceiver", False))
@@ -2006,7 +2290,7 @@ class RefEncoderTrainableWrapper(nn.Module):
             self.latent_queries = nn.Parameter(ref_encoder.latent_queries.data)
             self.perceiver_norm = ref_encoder.perceiver_norm
 
-    def sync_back(self, ref_encoder: ReferenceImageEncoder) -> None:
+    def sync_back(self, ref_encoder: nn.Module) -> None:
         """After prepare(), point ref_encoder's trainable parts to our (DDP-managed) params."""
         ref_encoder.proj_mlp = self.proj_mlp
         if not self.skip_perceiver:
@@ -2016,12 +2300,12 @@ class RefEncoderTrainableWrapper(nn.Module):
 
 
 def _move_reference_encoder(
-    ref_encoder: ReferenceImageEncoder,
+    ref_encoder: nn.Module,
     *,
     device: torch.device | str,
     train_dtype: torch.dtype = torch.float32,
 ) -> None:
-    """Move ref encoder while keeping frozen UNI and trainable ref modules in fp32."""
+    """Move ref encoder while keeping frozen backbones and trainable ref modules in fp32."""
     ref_encoder.to(device=device)
     ref_encoder.proj_mlp.to(device=device, dtype=train_dtype)
     ref_encoder.perceiver_layers.to(device=device, dtype=train_dtype)
@@ -2030,8 +2314,9 @@ def _move_reference_encoder(
         device=device,
         dtype=train_dtype,
     )
-    ref_encoder.uni.to(device=device, dtype=torch.float32)
-    ref_encoder._lock_uni_backbone()
+    if hasattr(ref_encoder, "uni"):
+        ref_encoder.uni.to(device=device, dtype=torch.float32)
+        ref_encoder._lock_uni_backbone()
 
 
 def _move_ip_adapter_modules(
@@ -2055,6 +2340,23 @@ def _encode_images_to_latents(vae: AutoencoderKL, images: torch.Tensor, dtype: t
     images = images.to(device=device, dtype=dtype)
     images = images * 2.0 - 1.0
     latents = vae.encode(images).latent_dist.sample()
+    return (latents - vae.config.shift_factor) * vae.config.scaling_factor
+
+
+def _deterministic_latent_from_posterior(posterior) -> torch.Tensor:
+    return posterior.mode() if hasattr(posterior, "mode") else posterior.mean
+
+
+def _encode_images_to_deterministic_latents(
+    vae: AutoencoderKL,
+    images: torch.Tensor,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    device = next(vae.parameters()).device
+    images = images.to(device=device, dtype=dtype)
+    images = images * 2.0 - 1.0
+    posterior = vae.encode(images).latent_dist
+    latents = _deterministic_latent_from_posterior(posterior)
     return (latents - vae.config.shift_factor) * vae.config.scaling_factor
 
 
@@ -2095,6 +2397,35 @@ def _unpack_flux_packed_latents(
         height=height,
         width=width,
     )
+
+
+def _encode_reference_ip_source(
+    *,
+    batch: dict,
+    ref_encoder: nn.Module,
+    accelerator: Accelerator,
+    weight_dtype: torch.dtype,
+    vae: AutoencoderKL | None,
+    reference_ip_embedding_backend: str,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    backend = normalize_reference_ip_embedding_backend(reference_ip_embedding_backend)
+    if backend == REFERENCE_IP_EMBEDDING_BACKEND_UNI:
+        if not hasattr(ref_encoder, "uni"):
+            raise RuntimeError("UNI reference IP backend requires ReferenceImageEncoder with a UNI backbone.")
+        uni_dtype = next(ref_encoder.uni.parameters()).dtype
+        reference_images = batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
+        return reference_images, reference_images
+    if vae is None:
+        raise RuntimeError("VAE-latent reference IP backend requires the frozen VAE.")
+    vae_dtype = next(vae.parameters()).dtype
+    reference_images = batch["reference_image"].to(device=accelerator.device, dtype=vae_dtype)
+    with torch.no_grad():
+        reference_latents = _encode_images_to_deterministic_latents(
+            vae,
+            batch["reference_image"],
+            vae_dtype,
+        )
+    return reference_images, reference_latents
 
 
 def _build_cross_v1_control_batch(
@@ -2148,20 +2479,28 @@ def _build_ip_adapter_kwargs(
     accelerator: Accelerator,
     weight_dtype: torch.dtype,
     transformer: FluxTransformer2DModel,
+    vae: AutoencoderKL | None = None,
     *,
     regional: bool = False,
     query_token_count: int | None = None,
     strict: bool = True,
     regional_token_mode: str = "spatial",
     regional_label_mode: str = "tissue",
+    reference_ip_embedding_backend: str = REFERENCE_IP_EMBEDDING_BACKEND_UNI,
     use_soft_bias: bool = False,
     soft_bias: torch.Tensor | float | None = None,
     ip_debug_collector: dict | None = None,
 ) -> dict:
     """Build joint_attention_kwargs with pre-projected ip_hidden_states."""
     ref_encoder = modules["ref_encoder"]
-    uni_dtype = next(ref_encoder.uni.parameters()).dtype
-    reference_images = batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
+    reference_images, reference_source = _encode_reference_ip_source(
+        batch=batch,
+        ref_encoder=ref_encoder,
+        accelerator=accelerator,
+        weight_dtype=weight_dtype,
+        vae=vae,
+        reference_ip_embedding_backend=reference_ip_embedding_backend,
+    )
     if regional:
         regional_token_mode = normalize_region_ip_token_mode(regional_token_mode)
         regional_label_mode = normalize_region_ip_label_mode(regional_label_mode)
@@ -2170,11 +2509,12 @@ def _build_ip_adapter_kwargs(
         target_tissue_mask = batch["target_tissue_mask"].to(device=accelerator.device)
         target_nuclei_mask = batch["target_nuclei_mask"].to(device=accelerator.device)
         ref_ip_features, region_token_labels = ref_encoder.encode_region_ip_tokens(
-            reference_images,
+            reference_source,
             reference_tissue_mask,
             nuclei_mask=reference_nuclei_mask,
             token_mode=regional_token_mode,
             label_mode=regional_label_mode,
+            reference_images=reference_images,
         )
         if query_token_count is None:
             raise ValueError("query_token_count is required for regional IP-Adapter.")
@@ -2193,7 +2533,7 @@ def _build_ip_adapter_kwargs(
             int(query_token_count),
         )
     else:
-        ref_ip_features = ref_encoder(reference_images)
+        ref_ip_features = ref_encoder(reference_source, reference_images=reference_images)
         region_token_labels = None
         query_region_labels = None
         key_fallback_region_labels = None
@@ -2449,6 +2789,8 @@ def _log_reference_signal_debug(
     accelerator: Accelerator,
     weight_dtype: torch.dtype,
     transformer: FluxTransformer2DModel,
+    vae: AutoencoderKL | None = None,
+    reference_ip_embedding_backend: str = REFERENCE_IP_EMBEDDING_BACKEND_UNI,
     regional: bool,
     regional_strict: bool,
     regional_token_mode: str,
@@ -2463,26 +2805,47 @@ def _log_reference_signal_debug(
         return
 
     ref_encoder = modules["ref_encoder"]
-    uni_dtype = next(ref_encoder.uni.parameters()).dtype
-    reference_images = batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
-    zero_images = torch.zeros_like(reference_images)
+    backend = normalize_reference_ip_embedding_backend(reference_ip_embedding_backend)
+    reference_images, reference_source = _encode_reference_ip_source(
+        batch=batch,
+        ref_encoder=ref_encoder,
+        accelerator=accelerator,
+        weight_dtype=weight_dtype,
+        vae=vae,
+        reference_ip_embedding_backend=backend,
+    )
+    zero_batch = _use_zero_reference(batch)
+    zero_images, zero_source = _encode_reference_ip_source(
+        batch=zero_batch,
+        ref_encoder=ref_encoder,
+        accelerator=accelerator,
+        weight_dtype=weight_dtype,
+        vae=vae,
+        reference_ip_embedding_backend=backend,
+    )
     reference_tissue_mask = batch["reference_tissue_mask"].to(device=accelerator.device)
     reference_nuclei_mask = batch["reference_nuclei_mask"].to(device=accelerator.device)
     if real_contrast_batch is None:
         real_contrast_batch = _alternate_real_reference_batch(batch)
-    real_images = real_contrast_batch["reference_image"].to(device=accelerator.device, dtype=uni_dtype)
+    real_images, real_source = _encode_reference_ip_source(
+        batch=real_contrast_batch,
+        ref_encoder=ref_encoder,
+        accelerator=accelerator,
+        weight_dtype=weight_dtype,
+        vae=vae,
+        reference_ip_embedding_backend=backend,
+    )
     real_tissue_mask = real_contrast_batch["reference_tissue_mask"].to(device=accelerator.device)
     real_nuclei_mask = real_contrast_batch["reference_nuclei_mask"].to(device=accelerator.device)
     _log_reference_batch_data_debug(batch, reference_images)
 
     def encode_variant(
         images: torch.Tensor,
+        source: torch.Tensor,
         tissue_mask: torch.Tensor,
         nuclei_mask: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        uni_features = ref_encoder.extract_uni_features(images)
-        proj_dtype = next(ref_encoder.proj_mlp.parameters()).dtype
-        projected = ref_encoder.proj_mlp(uni_features.to(dtype=proj_dtype))
+        projected = ref_encoder.encode_projected_patch_tokens(source)
         region_labels = None
         if regional:
             token_mode = normalize_region_ip_token_mode(regional_token_mode)
@@ -2515,7 +2878,7 @@ def _log_reference_signal_debug(
         )
         result = {
             "images": images,
-            "uni": uni_features,
+            "source": source,
             "projected": projected,
             "ref_tokens": ref_tokens,
             "encoder_hid_proj": projected_ip,
@@ -2526,19 +2889,22 @@ def _log_reference_signal_debug(
             result["region_token_labels"] = region_labels
         return result
 
-    normal = encode_variant(reference_images, reference_tissue_mask, reference_nuclei_mask)
-    zero = encode_variant(zero_images, reference_tissue_mask, reference_nuclei_mask)
-    real = encode_variant(real_images, real_tissue_mask, real_nuclei_mask)
+    normal = encode_variant(reference_images, reference_source, reference_tissue_mask, reference_nuclei_mask)
+    zero = encode_variant(zero_images, zero_source, reference_tissue_mask, reference_nuclei_mask)
+    real = encode_variant(real_images, real_source, real_tissue_mask, real_nuclei_mask)
+    backbone = getattr(ref_encoder, "uni", None)
+    backbone_training = bool(getattr(backbone, "training", False))
     logger.info(
         "Reference signal debug step=%s mode=%s regional=%s strict=%s token_mode=%s label_mode=%s "
-        "use_soft_bias=%s soft_bias=%s skip_perceiver=%s uni_training=%s uni_dtype=%s "
-        "proj_dtype=%s query_tokens=%s",
+        "backend=%s use_soft_bias=%s soft_bias=%s skip_perceiver=%s backbone_training=%s "
+        "source_dtype=%s proj_dtype=%s query_tokens=%s",
         step,
         "train" if ref_encoder.training else "eval",
         regional,
         regional_strict,
         normalize_region_ip_token_mode(regional_token_mode),
         normalize_region_ip_label_mode(regional_label_mode),
+        backend,
         bool(use_soft_bias),
         (
             f"{float(soft_bias.detach().float().mean().item()):.6f}"
@@ -2546,8 +2912,8 @@ def _log_reference_signal_debug(
             else ("none" if soft_bias is None else f"{float(soft_bias):.6f}")
         ),
         bool(ref_encoder.skip_perceiver),
-        bool(ref_encoder.uni.training),
-        str(uni_dtype).replace("torch.", ""),
+        backbone_training,
+        str(reference_source.dtype).replace("torch.", ""),
         str(next(ref_encoder.proj_mlp.parameters()).dtype).replace("torch.", ""),
         query_token_count,
     )
@@ -2560,7 +2926,7 @@ def _log_reference_signal_debug(
         str(normal["ref_tokens"].dtype).replace("torch.", ""),
         str(normal["encoder_hid_proj"].dtype).replace("torch.", ""),
     )
-    for name in ("images", "uni", "projected", "ref_tokens", "encoder_hid_proj"):
+    for name in ("images", "source", "projected", "ref_tokens", "encoder_hid_proj"):
         stats = _tensor_signal_stats(normal[name])
         zero_cosine = _tensor_cosine_against(normal[name], zero[name])
         real_cosine = _tensor_cosine_against(normal[name], real[name])
@@ -2664,12 +3030,13 @@ def _log_reference_signal_debug(
                 allowed_fraction,
             )
 
-    uni_std = float(_tensor_signal_stats(normal["uni"])["std"])
+    source_std = float(_tensor_signal_stats(normal["source"])["std"])
     projected_std = float(_tensor_signal_stats(normal["projected"])["std"])
-    if uni_std < 0.01:
+    if source_std < 0.01:
         logger.warning(
-            "Reference signal debug: UNI std %.6f is very low; check image range, UNI dtype, and eval state.",
-            uni_std,
+            "Reference signal debug: %s source std %.6f is very low; check image range/backend encoding.",
+            backend,
+            source_std,
         )
     if projected_std < 0.01:
         logger.warning(
@@ -2886,6 +3253,8 @@ def _run_ip_reference_health_diagnostics(
     accelerator: Accelerator,
     weight_dtype: torch.dtype,
     transformer: FluxTransformer2DModel,
+    vae: AutoencoderKL | None = None,
+    reference_ip_embedding_backend: str = REFERENCE_IP_EMBEDDING_BACKEND_UNI,
     noisy_model_input: torch.Tensor,
     timesteps: torch.Tensor,
     guidance_vec: torch.Tensor | None,
@@ -2921,11 +3290,13 @@ def _run_ip_reference_health_diagnostics(
         accelerator,
         weight_dtype,
         transformer,
+        vae=vae,
         regional=regional,
         query_token_count=query_token_count,
         strict=regional_strict,
         regional_token_mode=regional_token_mode,
         regional_label_mode=regional_label_mode,
+        reference_ip_embedding_backend=reference_ip_embedding_backend,
         use_soft_bias=use_soft_bias,
         soft_bias=probe_soft_bias,
         ip_debug_collector=normal_ip_collector,
@@ -2991,11 +3362,13 @@ def _run_ip_reference_health_diagnostics(
             accelerator,
             weight_dtype,
             transformer,
+            vae=vae,
             regional=regional,
             query_token_count=query_token_count,
             strict=regional_strict,
             regional_token_mode=regional_token_mode,
             regional_label_mode=regional_label_mode,
+            reference_ip_embedding_backend=reference_ip_embedding_backend,
             use_soft_bias=use_soft_bias,
             soft_bias=probe_soft_bias,
             ip_debug_collector=collector,
@@ -3107,6 +3480,149 @@ def _tissue_fallback_region_labels(labels: torch.Tensor, *, label_mode: str) -> 
     valid = labels >= 0
     fallback[valid] = labels[valid] // 256
     return fallback
+
+
+def _combine_tissue_nuclei_texture_mask(
+    tissue_mask: torch.Tensor,
+    nuclei_mask: torch.Tensor,
+    *,
+    nuclei_stride: int = 256,
+) -> torch.Tensor:
+    """Composite label map for region-wise texture matching."""
+    if tissue_mask.ndim == 4 and tissue_mask.shape[1] == 1:
+        tissue_mask = tissue_mask[:, 0]
+    if nuclei_mask.ndim == 4 and nuclei_mask.shape[1] == 1:
+        nuclei_mask = nuclei_mask[:, 0]
+    if tissue_mask.shape != nuclei_mask.shape:
+        raise ValueError(
+            "tissue/nuclei masks must have identical shapes for composite texture loss: "
+            f"tissue={tuple(tissue_mask.shape)} nuclei={tuple(nuclei_mask.shape)}"
+        )
+    tissue = tissue_mask.to(dtype=torch.long)
+    nuclei = nuclei_mask.to(device=tissue.device, dtype=torch.long)
+    combined = tissue * int(nuclei_stride) + nuclei
+    return torch.where(tissue > 0, combined, torch.zeros_like(combined))
+
+
+def _reference_vgg_texture_loss(
+    *,
+    encoder: nn.Module,
+    prediction: torch.Tensor,
+    reference: torch.Tensor,
+    target_tissue_mask: torch.Tensor,
+    reference_tissue_mask: torch.Tensor,
+    target_nuclei_mask: torch.Tensor | None = None,
+    reference_nuclei_mask: torch.Tensor | None = None,
+    sample_mask: torch.Tensor | None = None,
+    tissue_weight: float = 1.0,
+    nuclei_weight: float = 0.0,
+    composite_weight: float = 0.0,
+    min_pixels: int = 8,
+) -> dict[str, torch.Tensor | int]:
+    """Region-wise VGG low-level texture loss.
+
+    The VGG module compares class-matched masked Gram matrices, so region pixels
+    are treated as unordered sets rather than spatially aligned coordinates.
+    """
+    zero = prediction.new_zeros(())
+    if sample_mask is not None:
+        active = sample_mask.to(device=prediction.device, dtype=torch.bool).flatten()
+        if active.shape[0] != prediction.shape[0]:
+            raise ValueError(
+                f"sample_mask shape {tuple(active.shape)} does not match batch size {prediction.shape[0]}"
+            )
+        if not bool(active.any().item()):
+            return {
+                "total": zero,
+                "tissue": zero,
+                "nuclei": zero,
+                "composite": zero,
+                "tissue_terms": 0,
+                "nuclei_terms": 0,
+                "composite_terms": 0,
+            }
+        prediction = prediction[active]
+        reference = reference[active]
+        target_tissue_mask = target_tissue_mask[active]
+        reference_tissue_mask = reference_tissue_mask[active]
+        if target_nuclei_mask is not None:
+            target_nuclei_mask = target_nuclei_mask[active]
+        if reference_nuclei_mask is not None:
+            reference_nuclei_mask = reference_nuclei_mask[active]
+
+    tissue_loss = zero
+    nuclei_loss = zero
+    composite_loss = zero
+    tissue_terms = 0
+    nuclei_terms = 0
+    composite_terms = 0
+    weighted = zero
+    active_weight = 0.0
+
+    if tissue_weight > 0.0:
+        tissue_loss, tissue_terms = vgg_perceptual_loss(
+            encoder=encoder,
+            prediction=prediction,
+            reference=reference,
+            target_tissue_mask=target_tissue_mask,
+            reference_tissue_mask=reference_tissue_mask,
+            min_pixels=min_pixels,
+        )
+        if tissue_terms > 0:
+            weighted = weighted + float(tissue_weight) * tissue_loss
+            active_weight += float(tissue_weight)
+
+    if (
+        nuclei_weight > 0.0
+        and target_nuclei_mask is not None
+        and reference_nuclei_mask is not None
+    ):
+        nuclei_loss, nuclei_terms = vgg_perceptual_loss(
+            encoder=encoder,
+            prediction=prediction,
+            reference=reference,
+            target_tissue_mask=target_nuclei_mask,
+            reference_tissue_mask=reference_nuclei_mask,
+            min_pixels=min_pixels,
+        )
+        if nuclei_terms > 0:
+            weighted = weighted + float(nuclei_weight) * nuclei_loss
+            active_weight += float(nuclei_weight)
+
+    if (
+        composite_weight > 0.0
+        and target_nuclei_mask is not None
+        and reference_nuclei_mask is not None
+    ):
+        target_composite = _combine_tissue_nuclei_texture_mask(
+            target_tissue_mask,
+            target_nuclei_mask,
+        )
+        reference_composite = _combine_tissue_nuclei_texture_mask(
+            reference_tissue_mask,
+            reference_nuclei_mask,
+        )
+        composite_loss, composite_terms = vgg_perceptual_loss(
+            encoder=encoder,
+            prediction=prediction,
+            reference=reference,
+            target_tissue_mask=target_composite,
+            reference_tissue_mask=reference_composite,
+            min_pixels=min_pixels,
+        )
+        if composite_terms > 0:
+            weighted = weighted + float(composite_weight) * composite_loss
+            active_weight += float(composite_weight)
+
+    return {
+        "total": weighted / active_weight if active_weight > 0.0 else zero,
+        "tissue": tissue_loss,
+        "nuclei": nuclei_loss,
+        "composite": composite_loss,
+        "tissue_terms": int(tissue_terms),
+        "nuclei_terms": int(nuclei_terms),
+        "composite_terms": int(composite_terms),
+    }
 
 
 def _use_self_reconstruction_reference(batch: dict) -> dict:
@@ -3609,6 +4125,7 @@ def _save_condition_modules(
     save_dtype: torch.dtype,
     *,
     control_spec: CrossV1ControlSpec,
+    reference_ip_embedding_backend: str = REFERENCE_IP_EMBEDDING_BACKEND_UNI,
     cross_v1_ip_architecture: str = CROSS_V1_IP_ARCH_GLOBAL,
     regional_ip_token_mode: str = "spatial",
     regional_ip_label_mode: str = "tissue",
@@ -3616,6 +4133,7 @@ def _save_condition_modules(
 ) -> None:
     state = {
         "cross_v1_spatial_mode": control_spec.spatial_mode,
+        "reference_ip_embedding_backend": normalize_reference_ip_embedding_backend(reference_ip_embedding_backend),
         "cross_v1_ip_architecture": normalize_cross_v1_ip_architecture(cross_v1_ip_architecture),
         "regional_ip_soft_bias_init": float(regional_ip_soft_bias_init),
         "cross_v1_control_spec": {
@@ -3631,7 +4149,15 @@ def _save_condition_modules(
         if name == "ref_encoder":
             # Only save trainable parts, skip frozen UNI2-h backbone (~4GB)
             state["ref_encoder_config"] = {
+                "reference_ip_embedding_backend": normalize_reference_ip_embedding_backend(
+                    getattr(unwrapped, "reference_ip_embedding_backend", reference_ip_embedding_backend)
+                ),
                 "uni_embed_dim": int(getattr(unwrapped, "uni_embed_dim", 1536)),
+                "latent_channels": int(getattr(unwrapped, "latent_channels", 0)),
+                "feature_layer": getattr(unwrapped, "feature_layer", None),
+                "token_grid_size": int(getattr(unwrapped, "token_grid_size", 0)),
+                "pack_factor": int(getattr(unwrapped, "pack_factor", 1)),
+                "input_dim": int(getattr(unwrapped, "input_dim", getattr(unwrapped, "uni_embed_dim", 1536))),
                 "hidden_dim": int(getattr(unwrapped, "hidden_dim", 3072)),
                 "num_tokens": int(getattr(unwrapped, "num_tokens", 16)),
                 "num_output_tokens": int(getattr(unwrapped, "num_output_tokens", getattr(unwrapped, "num_tokens", 16))),
@@ -3677,6 +4203,7 @@ def _save_ip_adapter_modules(
     *,
     num_tokens: int,
     ip_init_gain: float,
+    reference_ip_embedding_backend: str = REFERENCE_IP_EMBEDDING_BACKEND_UNI,
     cross_v1_ip_architecture: str = CROSS_V1_IP_ARCH_GLOBAL,
     regional_ip_adapter: bool = False,
     regional_ip_token_mode: str = "spatial",
@@ -3692,6 +4219,7 @@ def _save_ip_adapter_modules(
     state["scale"] = 1.0
     state["num_tokens"] = int(num_tokens)
     state["ip_init_gain"] = float(ip_init_gain)
+    state["reference_ip_embedding_backend"] = normalize_reference_ip_embedding_backend(reference_ip_embedding_backend)
     state["cross_v1_ip_architecture"] = normalize_cross_v1_ip_architecture(cross_v1_ip_architecture)
     state["regional_ip_adapter"] = bool(regional_ip_adapter)
     state["regional_ip_token_mode"] = normalize_region_ip_token_mode(regional_ip_token_mode)
@@ -3719,6 +4247,7 @@ def _save_cross_v1_artifacts(
     unwrap_model: Callable,
     control_spec: CrossV1ControlSpec,
     ip_num_tokens: int | None = None,
+    reference_ip_embedding_backend: str = REFERENCE_IP_EMBEDDING_BACKEND_UNI,
     cross_v1_ip_architecture: str = CROSS_V1_IP_ARCH_GLOBAL,
     regional_ip_adapter: bool = False,
     regional_ip_token_mode: str = "spatial",
@@ -3739,6 +4268,7 @@ def _save_cross_v1_artifacts(
         unwrap_model,
         save_dtype,
         control_spec=control_spec,
+        reference_ip_embedding_backend=reference_ip_embedding_backend,
         cross_v1_ip_architecture=cross_v1_ip_architecture,
         regional_ip_token_mode=regional_ip_token_mode,
         regional_ip_label_mode=regional_ip_label_mode,
@@ -3751,6 +4281,7 @@ def _save_cross_v1_artifacts(
         save_dtype,
         num_tokens=int(ip_num_tokens or args.reference_num_tokens),
         ip_init_gain=args.ip_init_gain,
+        reference_ip_embedding_backend=reference_ip_embedding_backend,
         cross_v1_ip_architecture=cross_v1_ip_architecture,
         regional_ip_adapter=regional_ip_adapter,
         regional_ip_token_mode=regional_ip_token_mode,
@@ -3924,6 +4455,31 @@ def _load_condition_modules_from_checkpoint(
 
     if load_ref_encoder:
         ref_encoder = modules["ref_encoder"]
+        saved_ref_config = state.get("ref_encoder_config") or {}
+        saved_backend = normalize_reference_ip_embedding_backend(
+            saved_ref_config.get(
+                "reference_ip_embedding_backend",
+                state.get("reference_ip_embedding_backend", REFERENCE_IP_EMBEDDING_BACKEND_UNI),
+            )
+        )
+        current_backend = normalize_reference_ip_embedding_backend(
+            getattr(ref_encoder, "reference_ip_embedding_backend", REFERENCE_IP_EMBEDDING_BACKEND_UNI)
+        )
+        if saved_backend != current_backend:
+            raise RuntimeError(
+                "Reference encoder checkpoint backend mismatch: "
+                f"{state_path} has {saved_backend!r}, current run expects {current_backend!r}. "
+                "Do not load UNI ref_encoder weights into VAE-latent ref tokens or vice versa."
+            )
+        saved_feature_layer = saved_ref_config.get("feature_layer", None)
+        current_feature_layer = getattr(ref_encoder, "feature_layer", None)
+        if saved_feature_layer != current_feature_layer:
+            raise RuntimeError(
+                "Reference encoder checkpoint feature-layer mismatch: "
+                f"{state_path} has feature_layer={saved_feature_layer!r}, "
+                f"current run expects {current_feature_layer!r}. "
+                "Do not load final-token ref_encoder projection weights into layer-specific UNI tokens."
+            )
         ref_encoder.proj_mlp.load_state_dict(state["ref_encoder_proj_mlp"])
         if not bool(getattr(ref_encoder, "skip_perceiver", False)):
             perceiver_keys = (
@@ -3993,6 +4549,7 @@ def _load_ip_adapter_modules_from_checkpoint(
     load_single_ip: bool = False,
     expected_regional_ip_adapter: bool | None = None,
     expected_cross_v1_ip_architecture: str | None = None,
+    expected_reference_ip_embedding_backend: str | None = None,
 ) -> Path:
     checkpoint = Path(checkpoint_path)
     state_path = checkpoint / "phase5_ip_adapter.pt" if checkpoint.is_dir() else checkpoint
@@ -4000,6 +4557,18 @@ def _load_ip_adapter_modules_from_checkpoint(
         raise FileNotFoundError(f"Missing phase5_ip_adapter.pt: {state_path}")
 
     state = _torch_load_weights(state_path)
+    if expected_reference_ip_embedding_backend is not None:
+        saved_backend = normalize_reference_ip_embedding_backend(
+            state.get("reference_ip_embedding_backend", REFERENCE_IP_EMBEDDING_BACKEND_UNI)
+        )
+        expected_backend = normalize_reference_ip_embedding_backend(expected_reference_ip_embedding_backend)
+        if saved_backend != expected_backend:
+            raise RuntimeError(
+                "IP-Adapter checkpoint reference backend mismatch: "
+                f"{state_path} has reference_ip_embedding_backend={saved_backend!r}, "
+                f"expected {expected_backend!r}. Start a fresh IP-Adapter for changed "
+                "reference token backends."
+            )
     if expected_regional_ip_adapter is not None and bool(state.get("regional_ip_adapter", False)) != bool(expected_regional_ip_adapter):
         raise RuntimeError(
             "IP-Adapter checkpoint architecture mismatch: "
@@ -4016,6 +4585,11 @@ def _load_ip_adapter_modules_from_checkpoint(
                 f"expected {expected_architecture!r}. Refusing to cold-start silently."
             )
     transformer.encoder_hid_proj.load_state_dict(state["encoder_hid_proj"])
+
+    def _load_state_dict_ignoring_legacy_bias(module: nn.Module, state_dict: dict[str, torch.Tensor]) -> None:
+        cleaned_state = {key: value for key, value in state_dict.items() if not str(key).endswith(".bias")}
+        module.load_state_dict(cleaned_state)
+
     loaded_double = 0
     loaded_double_null = 0
     loaded_double_soft_bias = 0
@@ -4027,8 +4601,8 @@ def _load_ip_adapter_modules_from_checkpoint(
         bias_key = f"block_{i}_ip_soft_bias"
         if k_key not in state or v_key not in state:
             continue
-        block.attn.processor.to_k_ip.load_state_dict(state[k_key])
-        block.attn.processor.to_v_ip.load_state_dict(state[v_key])
+        _load_state_dict_ignoring_legacy_bias(block.attn.processor.to_k_ip, state[k_key])
+        _load_state_dict_ignoring_legacy_bias(block.attn.processor.to_v_ip, state[v_key])
         if null_key in state and hasattr(block.attn.processor, "ip_null_tokens"):
             block.attn.processor.ip_null_tokens.load_state_dict(state[null_key])
             loaded_double_null += 1
@@ -4051,8 +4625,8 @@ def _load_ip_adapter_modules_from_checkpoint(
             bias_key = f"single_block_{i}_ip_soft_bias"
             if k_key not in state or v_key not in state:
                 continue
-            block.attn.processor.to_k_ip.load_state_dict(state[k_key])
-            block.attn.processor.to_v_ip.load_state_dict(state[v_key])
+            _load_state_dict_ignoring_legacy_bias(block.attn.processor.to_k_ip, state[k_key])
+            _load_state_dict_ignoring_legacy_bias(block.attn.processor.to_v_ip, state[v_key])
             if null_key in state and hasattr(block.attn.processor, "ip_null_tokens"):
                 block.attn.processor.ip_null_tokens.load_state_dict(state[null_key])
                 loaded_single_null += 1
@@ -4091,8 +4665,6 @@ def _load_ip_adapter_modules_from_checkpoint(
 def run_cross_v1_training(args: argparse.Namespace) -> None:
     if args.cross_version.lower() != "v1":
         raise NotImplementedError("This module implements only cross V1.")
-    if args.uni_checkpoint_path is None:
-        raise ValueError("--uni-checkpoint-path is required for cross V1")
     a1_lite = bool(getattr(args, "a1_lite", False))
     if a1_lite and not args.controlnet_model_name_or_path:
         raise ValueError("--a1-lite requires --controlnet_model_name_or_path with an existing Cross V1 checkpoint.")
@@ -4155,6 +4727,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         float(getattr(args, "perceptual_loss_weight", 0.0) or 0.0),
     )
     perceptual_loss_interval = int(getattr(args, "perceptual_loss_interval", 1) or 0)
+    reference_ip_embedding_backend = normalize_reference_ip_embedding_backend(
+        getattr(args, "reference_ip_embedding_backend", REFERENCE_IP_EMBEDDING_BACKEND_UNI)
+    )
+    args.reference_ip_embedding_backend = reference_ip_embedding_backend
+    reference_uni_feature_layer = _optional_positive_int(
+        getattr(args, "reference_uni_feature_layer", None),
+        name="--reference-uni-feature-layer",
+    )
+    reference_region_conch_layer = _optional_positive_int(
+        getattr(args, "reference_region_conch_layer", None),
+        name="--reference-region-conch-layer",
+    )
     regional_ip_adapter = bool(getattr(args, "regional_ip_adapter", False))
     regional_ip_strict = bool(getattr(args, "regional_ip_strict", True))
     cross_v1_ip_architecture = normalize_cross_v1_ip_architecture(
@@ -4173,8 +4757,6 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
     if cross_v1_ip_architecture == CROSS_V1_IP_ARCH_GLOBAL_SOFT_BIAS:
         regional_ip_adapter = True
         regional_ip_strict = False
-        regional_ip_token_mode = "stats"
-        regional_ip_label_mode = "coarse_tissue"
     elif cross_v1_ip_architecture == CROSS_V1_IP_ARCH_REGIONAL_HARD:
         regional_ip_adapter = True
     elif cross_v1_ip_architecture == CROSS_V1_IP_ARCH_GLOBAL:
@@ -4216,6 +4798,40 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         getattr(args, "reference_region_loss_backend", REFERENCE_REGION_LOSS_BACKEND_UNI)
     )
     args.reference_region_loss_backend = reference_region_loss_backend
+    needs_uni_checkpoint = reference_ip_embedding_backend == REFERENCE_IP_EMBEDDING_BACKEND_UNI
+    needs_uni_checkpoint = needs_uni_checkpoint or (
+        perceptual_loss_weight > 0.0 and perceptual_loss_interval > 0
+    )
+    needs_uni_checkpoint = needs_uni_checkpoint or (
+        reference_region_loss_weight > 0.0
+        and reference_region_loss_interval > 0
+        and reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_UNI
+    )
+    if needs_uni_checkpoint and not getattr(args, "uni_checkpoint_path", None):
+        raise ValueError(
+            "--uni-checkpoint-path is required when using UNI reference IP, "
+            "UNI perceptual loss, or UNI reference region loss."
+        )
+    if (
+        reference_ip_embedding_backend != REFERENCE_IP_EMBEDDING_BACKEND_UNI
+        and perceptual_loss_weight > 0.0
+        and perceptual_loss_interval > 0
+    ):
+        raise ValueError(
+            "UNI perceptual loss currently uses the injection ref_encoder. "
+            "Disable --perceptual-loss-weight or use --reference-ip-embedding-backend uni."
+        )
+    if (
+        reference_ip_embedding_backend != REFERENCE_IP_EMBEDDING_BACKEND_UNI
+        and reference_region_loss_weight > 0.0
+        and reference_region_loss_interval > 0
+        and reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_UNI
+    ):
+        raise ValueError(
+            "UNI reference region loss currently uses the injection ref_encoder. "
+            "Use --reference-region-loss-backend conch/rgb_fft, or use "
+            "--reference-ip-embedding-backend uni."
+        )
     if reference_region_loss_backend in {REFERENCE_REGION_LOSS_BACKEND_UNI, REFERENCE_REGION_LOSS_BACKEND_CONCH}:
         reference_region_loss_config = RegionalFeatureLossConfig(
             tissue_weight=float(getattr(args, "reference_region_tissue_weight", 1.0) or 0.0),
@@ -4224,6 +4840,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             mean_weight=float(getattr(args, "reference_region_mean_weight", 1.0) or 0.0),
             std_weight=float(getattr(args, "reference_region_std_weight", 0.5) or 0.0),
             pooled_cosine_weight=float(getattr(args, "reference_region_cosine_weight", 0.25) or 0.0),
+            gram_weight=float(getattr(args, "reference_region_gram_weight", 0.0) or 0.0),
             min_tokens=max(1, int(getattr(args, "reference_region_min_tokens", 2) or 1)),
             max_regions_per_sample=getattr(args, "reference_region_max_regions_per_sample", None),
         )
@@ -4251,6 +4868,50 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         covariance_weight=float(getattr(args, "reference_style_cov_weight", 0.25) or 0.0),
         min_pixels=max(1, int(getattr(args, "reference_style_min_pixels", 32) or 1)),
         max_regions_per_sample=getattr(args, "reference_style_max_regions_per_sample", None),
+    )
+    reference_texture_loss_weight = max(
+        0.0,
+        float(getattr(args, "reference_texture_loss_weight", 0.0) or 0.0),
+    )
+    reference_texture_loss_interval = int(
+        getattr(args, "reference_texture_loss_interval", 1) or 0
+    )
+    reference_texture_loss_min_sigma = max(
+        0.0,
+        float(getattr(args, "reference_texture_loss_min_sigma", 0.0) or 0.0),
+    )
+    reference_texture_loss_max_sigma = float(
+        getattr(args, "reference_texture_loss_max_sigma", 0.6)
+    )
+    if reference_texture_loss_max_sigma < reference_texture_loss_min_sigma:
+        raise ValueError(
+            "--reference-texture-loss-max-sigma must be >= "
+            "--reference-texture-loss-min-sigma."
+        )
+    reference_texture_tissue_weight = float(
+        getattr(args, "reference_texture_tissue_weight", 1.0) or 0.0
+    )
+    reference_texture_nuclei_weight = float(
+        getattr(args, "reference_texture_nuclei_weight", 0.25) or 0.0
+    )
+    reference_texture_composite_weight = float(
+        getattr(args, "reference_texture_composite_weight", 0.0) or 0.0
+    )
+    reference_texture_min_pixels = max(
+        1,
+        int(getattr(args, "reference_texture_min_pixels", 8) or 1),
+    )
+    reference_vgg_weights = str(getattr(args, "reference_vgg_weights", "imagenet") or "imagenet")
+    reference_vgg_weights_path = getattr(args, "reference_vgg_weights_path", None)
+    reference_vgg_layers = str(
+        getattr(args, "reference_vgg_layers", "relu1_1,relu1_2,relu2_1,relu2_2")
+        or "relu1_1,relu1_2,relu2_1,relu2_2"
+    )
+    reference_vgg_loss_type = str(getattr(args, "reference_vgg_loss_type", "gram") or "gram")
+    reference_vgg_grayscale = not bool(getattr(args, "reference_vgg_rgb", False))
+    reference_vgg_input_size = max(
+        16,
+        int(getattr(args, "reference_vgg_input_size", 256) or 0),
     )
     ref_swap_loss_weight = max(0.0, float(getattr(args, "ref_swap_loss_weight", 0.0) or 0.0))
     ref_swap_loss_interval = int(getattr(args, "ref_swap_loss_interval", 1) or 0)
@@ -4296,19 +4957,47 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         conch_region_encoder = ConchFeatureEncoder(
             conch_checkpoint_path,
             conch_root=getattr(args, "conch_root", None),
+            feature_layer=reference_region_conch_layer,
         )
 
-    ref_encoder = ReferenceImageEncoder(
-        uni_checkpoint_path=args.uni_checkpoint_path,
-        num_tokens=args.reference_num_tokens,
-        num_perceiver_layers=args.reference_num_perceiver_layers,
-        perceiver_heads=args.reference_perceiver_heads,
-        use_perceiver_self_attn=not bool(
-            getattr(args, "disable_reference_perceiver_self_attn", False)
-        ),
-        perceiver_cross_gate_init=getattr(args, "reference_perceiver_cross_gate_init", None),
-        skip_perceiver=skip_reference_perceiver,
-    )
+    texture_ref_encoder = None
+    if reference_texture_loss_weight > 0.0 and reference_texture_loss_interval > 0:
+        texture_ref_encoder = build_vgg16_perceptual_loss(
+            weights=reference_vgg_weights,
+            weights_path=reference_vgg_weights_path,
+            layers=reference_vgg_layers,
+            loss_type=reference_vgg_loss_type,
+            grayscale=reference_vgg_grayscale,
+            input_size=reference_vgg_input_size,
+        )
+
+    if reference_ip_embedding_backend == REFERENCE_IP_EMBEDDING_BACKEND_UNI:
+        ref_encoder = ReferenceImageEncoder(
+            uni_checkpoint_path=args.uni_checkpoint_path,
+            num_tokens=args.reference_num_tokens,
+            num_perceiver_layers=args.reference_num_perceiver_layers,
+            perceiver_heads=args.reference_perceiver_heads,
+            use_perceiver_self_attn=not bool(
+                getattr(args, "disable_reference_perceiver_self_attn", False)
+            ),
+            perceiver_cross_gate_init=getattr(args, "reference_perceiver_cross_gate_init", None),
+            skip_perceiver=skip_reference_perceiver,
+            feature_layer=reference_uni_feature_layer,
+        )
+    else:
+        ref_encoder = ReferenceVaeLatentEncoder(
+            latent_channels=max(1, int(getattr(args, "reference_vae_latent_channels", 16) or 16)),
+            token_grid_size=max(1, int(getattr(args, "reference_vae_token_grid_size", 32) or 32)),
+            pack_factor=max(1, int(getattr(args, "reference_vae_pack_factor", 2) or 2)),
+            num_tokens=args.reference_num_tokens,
+            num_perceiver_layers=args.reference_num_perceiver_layers,
+            perceiver_heads=args.reference_perceiver_heads,
+            use_perceiver_self_attn=not bool(
+                getattr(args, "disable_reference_perceiver_self_attn", False)
+            ),
+            perceiver_cross_gate_init=getattr(args, "reference_perceiver_cross_gate_init", None),
+            skip_perceiver=skip_reference_perceiver,
+        )
     ip_num_tokens = (
         ref_encoder.num_spatial_tokens
         if regional_ip_adapter and regional_ip_token_mode == "spatial"
@@ -4414,6 +5103,24 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             perceptual_loss_weight,
             perceptual_loss_interval,
         )
+    logger.info(
+        "Reference IP embedding backend: %s uni_layer=%s hidden_dim=%s spatial_tokens=%s output_tokens=%s",
+        reference_ip_embedding_backend,
+        reference_uni_feature_layer if reference_uni_feature_layer is not None else "final",
+        int(getattr(ref_encoder, "hidden_dim", 3072)),
+        int(getattr(ref_encoder, "num_spatial_tokens", ref_encoder.num_output_tokens)),
+        int(getattr(ref_encoder, "num_output_tokens", args.reference_num_tokens)),
+    )
+    if reference_ip_embedding_backend == REFERENCE_IP_EMBEDDING_BACKEND_VAE_LATENT:
+        logger.info(
+            "Using ref VAE latent tokens for IP injection: latent_channels=%s token_grid=%sx%s "
+            "pack_factor=%s input_dim=%s",
+            int(getattr(ref_encoder, "latent_channels", -1)),
+            int(getattr(ref_encoder, "token_grid_size", -1)),
+            int(getattr(ref_encoder, "token_grid_size", -1)),
+            int(getattr(ref_encoder, "pack_factor", -1)),
+            int(getattr(ref_encoder, "input_dim", -1)),
+        )
     if regional_ip_adapter:
         logger.info(
             "Using mask-guided regional IP-Adapter: tokens=%s strict=%s token_mode=%s label_mode=%s",
@@ -4446,7 +5153,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             logger.info(
                 "Using decode->frozen-UNI reference region loss: prediction RGB is VAE-decoded before UNI; "
                 "reference RGB is encoded by frozen UNI; region stats weight=%s interval=%s sigma=[%s,%s] "
-                "tissue=%s nuclei=%s composite=%s mean/std/cos=%s/%s/%s",
+                "tissue=%s nuclei=%s composite=%s mean/std/cos/gram=%s/%s/%s/%s",
                 reference_region_loss_weight,
                 reference_region_loss_interval,
                 reference_region_loss_min_sigma,
@@ -4457,12 +5164,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 reference_region_loss_config.mean_weight,
                 reference_region_loss_config.std_weight,
                 reference_region_loss_config.pooled_cosine_weight,
+                reference_region_loss_config.gram_weight,
             )
         elif reference_region_loss_backend == REFERENCE_REGION_LOSS_BACKEND_CONCH:
             logger.info(
                 "Using decode->frozen-CONCH reference region loss: prediction RGB is VAE-decoded before CONCH; "
                 "reference RGB is encoded by frozen CONCH; region stats weight=%s interval=%s sigma=[%s,%s] "
-                "tissue=%s nuclei=%s composite=%s mean/std/cos=%s/%s/%s checkpoint=%s",
+                "tissue=%s nuclei=%s composite=%s mean/std/cos/gram=%s/%s/%s/%s conch_layer=%s checkpoint=%s",
                 reference_region_loss_weight,
                 reference_region_loss_interval,
                 reference_region_loss_min_sigma,
@@ -4473,6 +5181,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 reference_region_loss_config.mean_weight,
                 reference_region_loss_config.std_weight,
                 reference_region_loss_config.pooled_cosine_weight,
+                reference_region_loss_config.gram_weight,
+                reference_region_conch_layer if reference_region_conch_layer is not None else "final",
                 getattr(args, "conch_checkpoint_path", None),
             )
         else:
@@ -4491,6 +5201,26 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 reference_region_loss_config.fft_bins,
                 reference_region_loss_config.fft_size,
             )
+    if reference_texture_loss_weight > 0.0:
+        logger.info(
+            "Using regional VGG texture loss: weight=%s interval=%s sigma=[%s,%s] "
+            "tissue=%s nuclei=%s composite=%s min_pixels=%s vgg_weights=%s "
+            "vgg_weights_path=%s layers=%s loss_type=%s grayscale=%s input_size=%s",
+            reference_texture_loss_weight,
+            reference_texture_loss_interval,
+            reference_texture_loss_min_sigma,
+            reference_texture_loss_max_sigma,
+            reference_texture_tissue_weight,
+            reference_texture_nuclei_weight,
+            reference_texture_composite_weight,
+            reference_texture_min_pixels,
+            reference_vgg_weights,
+            reference_vgg_weights_path or "<torchvision>",
+            reference_vgg_layers,
+            reference_vgg_loss_type,
+            reference_vgg_grayscale,
+            reference_vgg_input_size,
+        )
     if ref_swap_loss_weight > 0.0:
         logger.info(
             "Using ref-swap sensitivity loss: weight=%s interval=%s margin=%s variants=%s",
@@ -4515,10 +5245,11 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
         regional_ip_soft_bias_init,
     )
     logger.info(
-        "Loss configuration: denoise=1 perceptual=%s region=%s style=%s "
+        "Loss configuration: denoise=1 perceptual=%s region=%s texture=%s style=%s "
         "ref_swap=%s self_recon_l1=%s",
         perceptual_loss_weight,
         reference_region_loss_weight,
+        reference_texture_loss_weight,
         reference_style_loss_weight,
         ref_swap_loss_weight,
         self_reconstruction_l1_weight,
@@ -4621,6 +5352,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             load_single_ip=bool(getattr(args, "load_single_ip_from_checkpoint", False)),
             expected_regional_ip_adapter=regional_ip_adapter,
             expected_cross_v1_ip_architecture=cross_v1_ip_architecture,
+            expected_reference_ip_embedding_backend=reference_ip_embedding_backend,
         )
     _log_ip_adapter_initialization_stats(
         flux_transformer,
@@ -4712,13 +5444,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             else:
                 module.to(accelerator.device, dtype=weight_dtype)
             module.train()
-    # UNI2-h backbone inside ref_encoder stays frozen and fp32.
-    modules["ref_encoder"].uni.to(device=accelerator.device, dtype=torch.float32)
-    modules["ref_encoder"]._lock_uni_backbone()
+    # Frozen backbones inside ref_encoder stay frozen and fp32 when present.
+    if hasattr(modules["ref_encoder"], "uni"):
+        modules["ref_encoder"].uni.to(device=accelerator.device, dtype=torch.float32)
+        modules["ref_encoder"]._lock_uni_backbone()
     if conch_region_encoder is not None:
         conch_region_encoder.to(device=accelerator.device, dtype=torch.float32)
         conch_region_encoder.eval()
         conch_region_encoder.requires_grad_(False)
+    if texture_ref_encoder is not None:
+        texture_ref_encoder.to(device=accelerator.device, dtype=torch.float32)
+        texture_ref_encoder.eval()
+        texture_ref_encoder.requires_grad_(False)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -5238,11 +5975,13 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     accelerator,
                     weight_dtype,
                     flux_transformer,
+                    vae=vae,
                     regional=regional_ip_adapter,
                     query_token_count=noisy_model_input.shape[1],
                     strict=regional_ip_strict,
                     regional_token_mode=regional_ip_token_mode,
                     regional_label_mode=regional_ip_label_mode,
+                    reference_ip_embedding_backend=reference_ip_embedding_backend,
                     use_soft_bias=regional_ip_use_soft_bias,
                 )
                 if not reference_signal_debug_logged and not should_run_ip_health:
@@ -5252,6 +5991,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         accelerator=accelerator,
                         weight_dtype=weight_dtype,
                         transformer=flux_transformer,
+                        vae=vae,
+                        reference_ip_embedding_backend=reference_ip_embedding_backend,
                         regional=regional_ip_adapter,
                         regional_strict=regional_ip_strict,
                         regional_token_mode=regional_ip_token_mode,
@@ -5308,6 +6049,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 reference_region_tissue_loss = noise_pred.new_zeros(())
                 reference_region_nuclei_loss = noise_pred.new_zeros(())
                 reference_region_composite_loss = noise_pred.new_zeros(())
+                reference_region_gram_loss = noise_pred.new_zeros(())
                 reference_region_tissue_regions = 0
                 reference_region_nuclei_regions = 0
                 reference_region_composite_regions = 0
@@ -5315,6 +6057,18 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     sigmas,
                     min_sigma=reference_region_loss_min_sigma,
                     max_sigma=reference_region_loss_max_sigma,
+                ).to(device=accelerator.device, dtype=torch.bool)
+                reference_texture_loss = noise_pred.new_zeros(())
+                reference_texture_tissue_loss = noise_pred.new_zeros(())
+                reference_texture_nuclei_loss = noise_pred.new_zeros(())
+                reference_texture_composite_loss = noise_pred.new_zeros(())
+                reference_texture_tissue_terms = 0
+                reference_texture_nuclei_terms = 0
+                reference_texture_composite_terms = 0
+                reference_texture_sigma_mask = _reference_region_sigma_mask(
+                    sigmas,
+                    min_sigma=reference_texture_loss_min_sigma,
+                    max_sigma=reference_texture_loss_max_sigma,
                 ).to(device=accelerator.device, dtype=torch.bool)
                 self_reconstruction_l1 = noise_pred.new_zeros(())
                 prediction_rgb = None
@@ -5334,25 +6088,51 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     and global_step % reference_region_loss_interval == 0
                     and bool(reference_region_sigma_mask.any().item())
                 )
+                should_compute_reference_texture_loss = (
+                    reference_texture_loss_weight > 0.0
+                    and reference_texture_loss_interval > 0
+                    and global_step % reference_texture_loss_interval == 0
+                    and bool(reference_texture_sigma_mask.any().item())
+                )
                 should_compute_self_reconstruction_l1 = bool(
                     self_reconstruction_sample_mask.any().item()
                 )
-                if (
+                should_compute_swap_loss = (
+                    ref_swap_loss_weight > 0.0
+                    and ref_swap_loss_interval > 0
+                    and global_step % ref_swap_loss_interval == 0
+                    and bool(ref_swap_variants)
+                )
+                should_compute_swap_monitor = bool(ref_swap_variants) and (
+                    should_compute_swap_loss
+                    or (
+                        ip_health_debug_interval > 0
+                        and global_step % ip_health_debug_interval == 0
+                    )
+                )
+                swap_loss = noise_pred.new_zeros(())
+                ref_variant_loss_logs: dict[str, float] = {}
+                ip_health_logs: dict[str, float] = {}
+                needs_grad_prediction_rgb = (
                     should_compute_style_loss
                     or should_compute_perceptual_loss
                     or should_compute_reference_region_loss
+                    or should_compute_reference_texture_loss
                     or should_compute_self_reconstruction_l1
-                ):
-                    prediction_rgb = _decode_packed_model_prediction(
-                        vae=vae,
-                        packed_noisy_latents=noisy_model_input,
-                        noise_pred=noise_pred,
-                        sigmas=sigmas,
-                        latent_channels=pixel_latents.shape[1],
-                        latent_height=pixel_latents.shape[2],
-                        latent_width=pixel_latents.shape[3],
-                        weight_dtype=weight_dtype,
-                    )
+                )
+                if needs_grad_prediction_rgb or should_compute_swap_monitor:
+                    decode_context = contextlib.nullcontext() if needs_grad_prediction_rgb else torch.no_grad()
+                    with decode_context:
+                        prediction_rgb = _decode_packed_model_prediction(
+                            vae=vae,
+                            packed_noisy_latents=noisy_model_input,
+                            noise_pred=noise_pred,
+                            sigmas=sigmas,
+                            latent_channels=pixel_latents.shape[1],
+                            latent_height=pixel_latents.shape[2],
+                            latent_width=pixel_latents.shape[3],
+                            weight_dtype=weight_dtype,
+                        )
                 if should_compute_perceptual_loss:
                     ref_encoder = modules["ref_encoder"]
                     uni_dtype = next(ref_encoder.uni.parameters()).dtype
@@ -5432,6 +6212,9 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     reference_region_tissue_loss = reference_region_terms["tissue"].to(dtype=denoising_loss.dtype)
                     reference_region_nuclei_loss = reference_region_terms["nuclei"].to(dtype=denoising_loss.dtype)
                     reference_region_composite_loss = reference_region_terms["composite"].to(dtype=denoising_loss.dtype)
+                    reference_region_gram_loss = reference_region_terms.get("gram", reference_region_gram_loss).to(
+                        dtype=denoising_loss.dtype
+                    )
                     reference_region_tissue_regions = int(reference_region_terms["tissue_regions"])
                     reference_region_nuclei_regions = int(reference_region_terms["nuclei_regions"])
                     reference_region_composite_regions = int(reference_region_terms["composite_regions"])
@@ -5453,6 +6236,33 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                     style_nuclei_loss = style_terms["nuclei"].to(dtype=denoising_loss.dtype)
                     style_tissue_regions = int(style_terms["tissue_regions"])
                     style_nuclei_regions = int(style_terms["nuclei_regions"])
+                if should_compute_reference_texture_loss:
+                    if texture_ref_encoder is None:
+                        raise RuntimeError("Reference texture loss requires texture_ref_encoder.")
+                    texture_terms = _reference_vgg_texture_loss(
+                        encoder=texture_ref_encoder,
+                        prediction=prediction_rgb,
+                        reference=training_batch["reference_image"].to(
+                            device=accelerator.device,
+                            dtype=prediction_rgb.dtype,
+                        ),
+                        target_tissue_mask=training_batch["target_tissue_mask"].to(accelerator.device),
+                        reference_tissue_mask=training_batch["reference_tissue_mask"].to(accelerator.device),
+                        target_nuclei_mask=training_batch["target_nuclei_mask"].to(accelerator.device),
+                        reference_nuclei_mask=training_batch["reference_nuclei_mask"].to(accelerator.device),
+                        sample_mask=reference_texture_sigma_mask,
+                        tissue_weight=reference_texture_tissue_weight,
+                        nuclei_weight=reference_texture_nuclei_weight,
+                        composite_weight=reference_texture_composite_weight,
+                        min_pixels=reference_texture_min_pixels,
+                    )
+                    reference_texture_loss = texture_terms["total"].to(dtype=denoising_loss.dtype)
+                    reference_texture_tissue_loss = texture_terms["tissue"].to(dtype=denoising_loss.dtype)
+                    reference_texture_nuclei_loss = texture_terms["nuclei"].to(dtype=denoising_loss.dtype)
+                    reference_texture_composite_loss = texture_terms["composite"].to(dtype=denoising_loss.dtype)
+                    reference_texture_tissue_terms = int(texture_terms["tissue_terms"])
+                    reference_texture_nuclei_terms = int(texture_terms["nuclei_terms"])
+                    reference_texture_composite_terms = int(texture_terms["composite_terms"])
                 if should_compute_self_reconstruction_l1:
                     self_reconstruction_l1 = self_reconstruction_l1_loss(
                         prediction=prediction_rgb,
@@ -5465,17 +6275,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 self_reconstruction_l1_weighted = (
                     self_reconstruction_l1_weight * self_reconstruction_l1
                 )
-
-                swap_loss = noise_pred.new_zeros(())
-                ref_variant_loss_logs: dict[str, float] = {}
-                ip_health_logs: dict[str, float] = {}
-                should_compute_swap_loss = (
-                    ref_swap_loss_weight > 0.0
-                    and ref_swap_loss_interval > 0
-                    and global_step % ref_swap_loss_interval == 0
-                    and bool(ref_swap_variants)
-                )
-                if should_compute_swap_loss:
+                if should_compute_swap_monitor:
                     swapped_per_sample_losses = []
                     for variant in ref_swap_variants:
                         if variant == "zero":
@@ -5502,42 +6302,71 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                             accelerator,
                             weight_dtype,
                             flux_transformer,
+                            vae=vae,
                             regional=regional_ip_adapter,
                             query_token_count=noisy_model_input.shape[1],
                             strict=regional_ip_strict,
                             regional_token_mode=regional_ip_token_mode,
                             regional_label_mode=regional_ip_label_mode,
+                            reference_ip_embedding_backend=reference_ip_embedding_backend,
                             use_soft_bias=regional_ip_use_soft_bias,
                         )
-                        swapped_noise_pred = flux_transformer(
-                            hidden_states=noisy_model_input,
-                            timestep=timesteps / 1000,
-                            guidance=guidance_vec,
-                            pooled_projections=batch_pooled,
-                            encoder_hidden_states=batch_prompt,
-                            controlnet_block_samples=transformer_controlnet_block_samples,
-                            controlnet_single_block_samples=transformer_controlnet_single_block_samples,
-                            txt_ids=text_ids,
-                            img_ids=latent_image_ids,
-                            joint_attention_kwargs=dict(swapped_kwargs),
-                            return_dict=False,
-                        )[0]
-                        swapped_per_sample_losses.append(
-                            per_sample_mse(swapped_noise_pred, target_velocity)
-                        )
-                        ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = (
-                            swapped_per_sample_losses[-1].mean().detach().item()
-                        )
-                    swap_loss = ref_swap_sensitivity_loss(
-                        normal_per_sample_loss,
-                        swapped_per_sample_losses,
-                        margin=ref_swap_margin,
-                    ).to(dtype=denoising_loss.dtype)
+                        swap_forward_context = contextlib.nullcontext() if should_compute_swap_loss else torch.no_grad()
+                        with swap_forward_context:
+                            swapped_noise_pred = flux_transformer(
+                                hidden_states=noisy_model_input,
+                                timestep=timesteps / 1000,
+                                guidance=guidance_vec,
+                                pooled_projections=batch_pooled,
+                                encoder_hidden_states=batch_prompt,
+                                controlnet_block_samples=transformer_controlnet_block_samples,
+                                controlnet_single_block_samples=transformer_controlnet_single_block_samples,
+                                txt_ids=text_ids,
+                                img_ids=latent_image_ids,
+                                joint_attention_kwargs=dict(swapped_kwargs),
+                                return_dict=False,
+                            )[0]
+                        if prediction_rgb is not None:
+                            with torch.no_grad():
+                                swapped_prediction_rgb = _decode_packed_model_prediction(
+                                    vae=vae,
+                                    packed_noisy_latents=noisy_model_input,
+                                    noise_pred=swapped_noise_pred,
+                                    sigmas=sigmas,
+                                    latent_channels=pixel_latents.shape[1],
+                                    latent_height=pixel_latents.shape[2],
+                                    latent_width=pixel_latents.shape[3],
+                                    weight_dtype=weight_dtype,
+                                )
+                                rgb_l1 = (
+                                    swapped_prediction_rgb.float() - prediction_rgb.float()
+                                ).abs().flatten(1).mean(dim=1)
+                                rgb_mse = per_sample_mse(swapped_prediction_rgb, prediction_rgb)
+                            ref_variant_loss_logs[f"ref_{variant}_prediction_rgb_l1"] = (
+                                rgb_l1.mean().detach().item()
+                            )
+                            ref_variant_loss_logs[f"ref_{variant}_prediction_rgb_mse"] = (
+                                rgb_mse.mean().detach().item()
+                            )
+                        if should_compute_swap_loss:
+                            swapped_per_sample_losses.append(
+                                per_sample_mse(swapped_noise_pred, target_velocity)
+                            )
+                            ref_variant_loss_logs[f"ref_{variant}_denoise_loss"] = (
+                                swapped_per_sample_losses[-1].mean().detach().item()
+                            )
+                    if should_compute_swap_loss:
+                        swap_loss = ref_swap_sensitivity_loss(
+                            normal_per_sample_loss,
+                            swapped_per_sample_losses,
+                            margin=ref_swap_margin,
+                        ).to(dtype=denoising_loss.dtype)
 
                 loss = (
                     denoising_loss
                     + perceptual_loss_weight * perceptual_loss
                     + reference_region_loss_weight * reference_region_loss
+                    + reference_texture_loss_weight * reference_texture_loss
                     + reference_style_loss_weight * style_loss
                     + ref_swap_loss_weight * swap_loss
                     + self_reconstruction_l1_weighted
@@ -5583,6 +6412,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         accelerator=accelerator,
                         weight_dtype=weight_dtype,
                         transformer=flux_transformer,
+                        vae=vae,
+                        reference_ip_embedding_backend=reference_ip_embedding_backend,
                         regional=regional_ip_adapter,
                         regional_strict=regional_ip_strict,
                         regional_token_mode=regional_ip_token_mode,
@@ -5606,6 +6437,8 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                             accelerator=accelerator,
                             weight_dtype=weight_dtype,
                             transformer=flux_transformer,
+                            vae=vae,
+                            reference_ip_embedding_backend=reference_ip_embedding_backend,
                             noisy_model_input=noisy_model_input.detach(),
                             timesteps=timesteps.detach(),
                             guidance_vec=guidance_vec.detach() if guidance_vec is not None else None,
@@ -5645,6 +6478,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                         unwrap_model=unwrap_model,
                         control_spec=control_spec,
                         ip_num_tokens=ip_num_tokens,
+                        reference_ip_embedding_backend=reference_ip_embedding_backend,
                         cross_v1_ip_architecture=cross_v1_ip_architecture,
                         regional_ip_adapter=regional_ip_adapter,
                         regional_ip_token_mode=regional_ip_token_mode,
@@ -5668,6 +6502,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                             unwrap_model=unwrap_model,
                             control_spec=control_spec,
                             ip_num_tokens=ip_num_tokens,
+                            reference_ip_embedding_backend=reference_ip_embedding_backend,
                             cross_v1_ip_architecture=cross_v1_ip_architecture,
                             regional_ip_adapter=regional_ip_adapter,
                             regional_ip_token_mode=regional_ip_token_mode,
@@ -5694,11 +6529,39 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 "reference_region_tissue_loss": reference_region_tissue_loss.detach().item(),
                 "reference_region_nuclei_loss": reference_region_nuclei_loss.detach().item(),
                 "reference_region_composite_loss": reference_region_composite_loss.detach().item(),
+                "reference_region_gram_loss": reference_region_gram_loss.detach().item(),
+                "reference_region_gram_loss_weighted": (
+                    reference_region_loss_weight
+                    * (
+                        float(getattr(reference_region_loss_config, "gram_weight", 0.0))
+                        / max(
+                            1e-12,
+                            float(getattr(reference_region_loss_config, "mean_weight", 0.0))
+                            + float(getattr(reference_region_loss_config, "std_weight", 0.0))
+                            + float(getattr(reference_region_loss_config, "pooled_cosine_weight", 0.0))
+                            + float(getattr(reference_region_loss_config, "gram_weight", 0.0)),
+                        )
+                    )
+                    * reference_region_gram_loss
+                ).detach().item(),
                 "reference_region_tissue_regions": reference_region_tissue_regions,
                 "reference_region_nuclei_regions": reference_region_nuclei_regions,
                 "reference_region_composite_regions": reference_region_composite_regions,
                 "reference_region_sigma_gated_samples": int(
                     reference_region_sigma_mask.sum().detach().item()
+                ),
+                "reference_texture_loss": reference_texture_loss.detach().item(),
+                "reference_texture_loss_weighted": (
+                    reference_texture_loss_weight * reference_texture_loss
+                ).detach().item(),
+                "reference_texture_tissue_loss": reference_texture_tissue_loss.detach().item(),
+                "reference_texture_nuclei_loss": reference_texture_nuclei_loss.detach().item(),
+                "reference_texture_composite_loss": reference_texture_composite_loss.detach().item(),
+                "reference_texture_tissue_terms": reference_texture_tissue_terms,
+                "reference_texture_nuclei_terms": reference_texture_nuclei_terms,
+                "reference_texture_composite_terms": reference_texture_composite_terms,
+                "reference_texture_sigma_gated_samples": int(
+                    reference_texture_sigma_mask.sum().detach().item()
                 ),
                 "style_loss": style_loss.detach().item(),
                 "style_tissue_loss": style_tissue_loss.detach().item(),
@@ -5744,6 +6607,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             unwrap_model,
             save_dtype,
             control_spec=control_spec,
+            reference_ip_embedding_backend=reference_ip_embedding_backend,
             cross_v1_ip_architecture=cross_v1_ip_architecture,
             regional_ip_token_mode=regional_ip_token_mode,
             regional_ip_label_mode=regional_ip_label_mode,
@@ -5756,6 +6620,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
             save_dtype,
             num_tokens=ip_num_tokens,
             ip_init_gain=args.ip_init_gain,
+            reference_ip_embedding_backend=reference_ip_embedding_backend,
             cross_v1_ip_architecture=cross_v1_ip_architecture,
             regional_ip_adapter=regional_ip_adapter,
             regional_ip_token_mode=regional_ip_token_mode,
@@ -5779,6 +6644,7 @@ def run_cross_v1_training(args: argparse.Namespace) -> None:
                 unwrap_model=unwrap_model,
                 control_spec=control_spec,
                 ip_num_tokens=ip_num_tokens,
+                reference_ip_embedding_backend=reference_ip_embedding_backend,
                 cross_v1_ip_architecture=cross_v1_ip_architecture,
                 regional_ip_adapter=regional_ip_adapter,
                 regional_ip_token_mode=regional_ip_token_mode,

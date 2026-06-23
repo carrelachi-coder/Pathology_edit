@@ -71,16 +71,36 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-tumor-tokens", type=int, default=1)
     parser.add_argument(
         "--feature-stage",
-        choices=("uni", "projected", "encoder_hid_proj"),
+        choices=("uni", "projected", "encoder_hid_proj", "conch"),
         default="uni",
         help="Descriptor space for generated/ref tumor-region comparison.",
     )
+    parser.add_argument(
+        "--conch-checkpoint-path",
+        default=os.environ.get("CONCH_CHECKPOINT"),
+        help="CONCH pytorch_model.bin path. Required when --feature-stage conch.",
+    )
+    parser.add_argument(
+        "--conch-root",
+        default=os.environ.get("CONCH_ROOT"),
+        help="Local CONCH repo root. If omitted, inferred from --conch-checkpoint-path.",
+    )
+    parser.add_argument("--conch-model-cfg", default="conch_ViT-B-16")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--torch-dtype", choices=("bf16", "fp16", "fp32"), default="bf16")
     parser.add_argument("--descriptor-dtype", choices=("bf16", "fp16", "fp32"), default="fp32")
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--regional-ip-soft-bias",
+        type=float,
+        default=None,
+        help=(
+            "Optional inference-time override for global_soft_bias IP routing. "
+            "Same-label pairs get +b and other-label pairs get -b. Omit to use checkpoint weights."
+        ),
+    )
     parser.add_argument("--prompt-source", choices=("metadata", "dataset"), default="dataset")
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--source-latent-init-strength", type=float, default=0.0)
@@ -142,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         load_cross_v1_bundle,
         run_cross_v1_bundle,
         set_ip_adapter_scale,
+        set_ip_soft_bias,
     )
     from controlnet_train.modules.reference_image_encoder import resize_mask_to_token_labels
 
@@ -161,7 +182,33 @@ def main(argv: list[str] | None = None) -> int:
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
         ip_adapter_scale=scales[0],
     )
+    soft_bias_override = None
+    if args.regional_ip_soft_bias is not None:
+        soft_bias_override = set_ip_soft_bias(
+            bundle.flux_pipeline.transformer,
+            args.regional_ip_soft_bias,
+        )
+        print(
+            "regional_ip_soft_bias override "
+            f"requested={soft_bias_override['requested']:g} "
+            f"applied={soft_bias_override['applied']} "
+            f"params={soft_bias_override['parameter_count']}"
+        )
     descriptor_dtype = dtype_by_name[args.descriptor_dtype]
+    conch_encoder = None
+    if args.feature_stage == "conch":
+        if not args.conch_checkpoint_path:
+            raise ValueError("--conch-checkpoint-path or CONCH_CHECKPOINT is required with --feature-stage conch")
+        from controlnet_train.modules.conch_feature_encoder import ConchFeatureEncoder
+
+        conch_encoder = ConchFeatureEncoder(
+            args.conch_checkpoint_path,
+            conch_root=args.conch_root,
+            model_cfg=args.conch_model_cfg,
+        )
+        conch_encoder.to(device=bundle.device, dtype=descriptor_dtype)
+        conch_encoder.eval()
+        conch_encoder.requires_grad_(False)
 
     descriptor_cache: dict[tuple[str, str], torch.Tensor] = {}
     metric_rows: list[dict[str, Any]] = []
@@ -187,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
             image=paired_ref_tensor,
             tissue_mask=paired_ref_tissue,
             bundle=bundle,
+            conch_encoder=conch_encoder,
             resize_mask_to_token_labels=resize_mask_to_token_labels,
             feature_stage=args.feature_stage,
             tumor_label=args.tumor_label,
@@ -199,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
             image=load_image_tensor(paired["target_image"]),
             tissue_mask=target_tissue,
             bundle=bundle,
+            conch_encoder=conch_encoder,
             resize_mask_to_token_labels=resize_mask_to_token_labels,
             feature_stage=args.feature_stage,
             tumor_label=args.tumor_label,
@@ -216,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
                 image=alternate_ref_tensor,
                 tissue_mask=alternate_ref_tissue,
                 bundle=bundle,
+                conch_encoder=conch_encoder,
                 resize_mask_to_token_labels=resize_mask_to_token_labels,
                 feature_stage=args.feature_stage,
                 tumor_label=args.tumor_label,
@@ -259,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
                     prediction,
                     tissue_mask=target_tissue,
                     bundle=bundle,
+                    conch_encoder=conch_encoder,
                     resize_mask_to_token_labels=resize_mask_to_token_labels,
                     feature_stage=args.feature_stage,
                     tumor_label=args.tumor_label,
@@ -291,6 +342,14 @@ def main(argv: list[str] | None = None) -> int:
                             "paired_advantage": margin,
                             "paired_win": margin > 0.0,
                             "generation_seed": args.generation_seed,
+                            "regional_ip_soft_bias": (
+                                float(args.regional_ip_soft_bias)
+                                if args.regional_ip_soft_bias is not None
+                                else math.nan
+                            ),
+                            "regional_ip_soft_bias_applied": bool(
+                                soft_bias_override and soft_bias_override.get("applied", False)
+                            ),
                         }
                     )
             panel = make_directionality_panel(
@@ -314,6 +373,10 @@ def main(argv: list[str] | None = None) -> int:
             "generation_seed": int(args.generation_seed),
             "selection_seed": int(args.selection_seed),
             "scales": scales,
+            "regional_ip_soft_bias": (
+                float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else None
+            ),
+            "regional_ip_soft_bias_override": soft_bias_override,
             "alternate_modes": alternate_modes,
             "prompt_modes": prompt_modes,
             "num_samples": len(selected),
@@ -327,6 +390,14 @@ def main(argv: list[str] | None = None) -> int:
             },
         }
     )
+    if args.feature_stage == "conch":
+        summary.update(
+            {
+                "conch_checkpoint_path": str(args.conch_checkpoint_path),
+                "conch_root": str(args.conch_root) if args.conch_root else None,
+                "conch_model_cfg": str(args.conch_model_cfg),
+            }
+        )
     (output_dir / "directionality_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, allow_nan=True),
         encoding="utf8",
@@ -405,6 +476,7 @@ def cached_descriptor(
     image: torch.Tensor,
     tissue_mask: torch.Tensor,
     bundle,
+    conch_encoder,
     resize_mask_to_token_labels,
     feature_stage: str,
     tumor_label: int,
@@ -416,6 +488,7 @@ def cached_descriptor(
             image,
             tissue_mask=tissue_mask,
             bundle=bundle,
+            conch_encoder=conch_encoder,
             resize_mask_to_token_labels=resize_mask_to_token_labels,
             feature_stage=feature_stage,
             tumor_label=tumor_label,
@@ -430,6 +503,7 @@ def descriptor_from_pil(
     *,
     tissue_mask: torch.Tensor,
     bundle,
+    conch_encoder,
     resize_mask_to_token_labels,
     feature_stage: str,
     tumor_label: int,
@@ -440,6 +514,7 @@ def descriptor_from_pil(
         pil_to_tensor(image),
         tissue_mask=tissue_mask,
         bundle=bundle,
+        conch_encoder=conch_encoder,
         resize_mask_to_token_labels=resize_mask_to_token_labels,
         feature_stage=feature_stage,
         tumor_label=tumor_label,
@@ -453,6 +528,7 @@ def descriptor_from_tensor(
     *,
     tissue_mask: torch.Tensor,
     bundle,
+    conch_encoder,
     resize_mask_to_token_labels,
     feature_stage: str,
     tumor_label: int,
@@ -478,6 +554,13 @@ def descriptor_from_tensor(
             encoder_hid_proj = bundle.flux_pipeline.transformer.encoder_hid_proj
             tokens = encoder_hid_proj([projected])[0]
             tokens = (tokens * gate.to(device=tokens.device, dtype=tokens.dtype)).float().cpu()
+        elif feature_stage == "conch":
+            if conch_encoder is None:
+                raise ValueError("CONCH descriptor requested but conch_encoder was not loaded.")
+            conch_dtype = next(conch_encoder.parameters()).dtype
+            tokens = conch_encoder.extract_features(
+                image_batch.to(device=bundle.device, dtype=conch_dtype)
+            ).float().cpu()
         else:
             raise ValueError(f"unknown feature_stage: {feature_stage}")
     labels = resize_mask_to_token_labels(mask_batch, int(tokens.shape[1]))

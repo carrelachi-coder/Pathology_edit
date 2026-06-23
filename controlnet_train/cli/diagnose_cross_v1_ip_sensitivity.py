@@ -61,9 +61,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated IP-Adapter scale values.",
     )
     parser.add_argument(
+        "--regional-ip-soft-bias",
+        type=float,
+        default=None,
+        help=(
+            "Optional inference-time override for global_soft_bias IP routing. "
+            "Same-label pairs get +b and other-label pairs get -b. Omit to use checkpoint weights."
+        ),
+    )
+    parser.add_argument(
         "--reference-variants",
         default="normal,zero,random",
         help="Comma-separated variants from: normal, zero, random.",
+    )
+    parser.add_argument(
+        "--signal-probe",
+        action="store_true",
+        help=(
+            "Write a one-pass reference-signal probe with reference_presence_gate, "
+            "perceiver_cross_gate, and IP attention norm summaries."
+        ),
     )
     parser.add_argument(
         "--replace-reference-masks",
@@ -160,7 +177,7 @@ def main(argv=None) -> int:
 
     import torch
 
-    from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
+    from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle, set_ip_soft_bias
 
     dtype_by_name = {
         "bf16": torch.bfloat16,
@@ -178,6 +195,18 @@ def main(argv=None) -> int:
         controlnet_conditioning_scale=controlnet_scales[0],
         ip_adapter_scale=scales[0],
     )
+    soft_bias_override = None
+    if args.regional_ip_soft_bias is not None:
+        soft_bias_override = set_ip_soft_bias(
+            bundle.flux_pipeline.transformer,
+            args.regional_ip_soft_bias,
+        )
+        print(
+            "regional_ip_soft_bias override "
+            f"requested={soft_bias_override['requested']:g} "
+            f"applied={soft_bias_override['applied']} "
+            f"params={soft_bias_override['parameter_count']}"
+        )
 
     weight_norms = collect_ip_weight_norms(bundle.flux_pipeline.transformer)
     (output_dir / "ip_weight_norms.json").write_text(
@@ -205,6 +234,13 @@ def main(argv=None) -> int:
             replace_reference_masks=args.replace_reference_masks,
             thumbnail_size=args.thumbnail_size,
         )
+        for row in sample_rows:
+            row["regional_ip_soft_bias"] = (
+                float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else math.nan
+            )
+            row["regional_ip_soft_bias_applied"] = bool(
+                soft_bias_override and soft_bias_override.get("applied", False)
+            )
         rows.extend(sample_rows)
         if panel_path is not None and len(panel_paths) < args.overview_max_samples:
             panel_paths.append(panel_path)
@@ -218,6 +254,10 @@ def main(argv=None) -> int:
     summary["ip_weight_norms"] = weight_norms["summary"]
     summary["scales"] = scales
     summary["ip_scales"] = scales
+    summary["regional_ip_soft_bias"] = (
+        float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else None
+    )
+    summary["regional_ip_soft_bias_override"] = soft_bias_override
     summary["controlnet_conditioning_scales"] = controlnet_scales
     summary["reference_variants"] = variants
     summary["replace_reference_masks"] = bool(args.replace_reference_masks)
@@ -649,6 +689,114 @@ def collect_ip_weight_norms(transformer) -> dict[str, Any]:
             "max_abs": float(max((stats["max_abs"] for stats in trainable_modules), default=0.0)),
         },
         "by_module": by_module,
+    }
+
+
+def _tensor_summary(value) -> dict[str, float | int]:
+    import torch
+
+    if not torch.is_tensor(value):
+        value = torch.as_tensor(value)
+    flat = value.detach().float().reshape(-1)
+    if flat.numel() == 0:
+        return {"numel": 0, "mean": math.nan, "min": math.nan, "max": math.nan, "l2": math.nan}
+    return {
+        "numel": int(flat.numel()),
+        "mean": float(flat.mean().item()),
+        "min": float(flat.min().item()),
+        "max": float(flat.max().item()),
+        "l2": float(torch.linalg.vector_norm(flat).item()),
+    }
+
+
+def _module_scalar_value(module) -> float | None:
+    import torch
+
+    if module is None:
+        return None
+    if isinstance(module, (list, tuple)):
+        if not module:
+            return None
+        module = module[0]
+    if torch.is_tensor(module):
+        flat = module.detach().float().reshape(-1)
+        return float(flat.mean().item()) if flat.numel() else None
+    if hasattr(module, "item"):
+        try:
+            return float(module.item())
+        except Exception:
+            return None
+    try:
+        return float(module)
+    except Exception:
+        return None
+
+
+def collect_reference_signal_probe(
+    *,
+    bundle,
+    reference_image: torch.Tensor,
+    collector: dict[str, Any] | None,
+) -> dict[str, Any]:
+    import torch
+
+    ref_encoder = bundle.ref_encoder
+    transformer = bundle.flux_pipeline.transformer
+    device = bundle.device
+    ref_dtype = next(ref_encoder.uni.parameters()).dtype
+    ip_proj_dtype = next(transformer.encoder_hid_proj.parameters()).dtype
+    reference_batch = reference_image.unsqueeze(0).to(device=device, dtype=ref_dtype)
+    reference_gate = ref_encoder.reference_presence_gate(
+        reference_batch,
+        device=device,
+        dtype=ip_proj_dtype,
+    )
+    perceiver_cross_gates = [
+        float(torch.sigmoid(layer.cross_gate).detach().float().item())
+        for layer in getattr(ref_encoder, "perceiver_layers", [])
+        if getattr(layer, "cross_gate", None) is not None
+    ]
+
+    ip_processors: list[dict[str, Any]] = []
+    for blocks_name, blocks in (
+        ("double", getattr(transformer, "transformer_blocks", [])),
+        ("single", getattr(transformer, "single_transformer_blocks", [])),
+    ):
+        for index, block in enumerate(blocks):
+            processor = getattr(getattr(block, "attn", None), "processor", None)
+            if processor is None:
+                continue
+            scale = getattr(processor, "scale", None)
+            ip_soft_bias = getattr(processor, "ip_soft_bias", None)
+            ip_processors.append(
+                {
+                    "block_type": blocks_name,
+                    "block_index": int(index),
+                    "processor_type": processor.__class__.__name__,
+                    "scale": scale if isinstance(scale, (list, tuple, float, int)) else str(type(scale).__name__),
+                    "scale_values": [float(v) for v in scale] if isinstance(scale, (list, tuple)) else (
+                        [float(scale)] if isinstance(scale, (int, float)) else None
+                    ),
+                    "use_soft_bias": bool(getattr(processor, "use_soft_bias", False)),
+                    "ip_soft_bias": _module_scalar_value(ip_soft_bias),
+                }
+            )
+
+    records = list((collector or {}).get("records", []))
+    first_record = records[0] if records else {}
+
+    return {
+        "reference_presence_gate": _tensor_summary(reference_gate),
+        "perceiver_cross_gates": perceiver_cross_gates,
+        "ip_processors": ip_processors,
+        "ip_attention_records": records,
+        "ip_attention_first_record": first_record,
+        "stored_first_ip_block": (collector or {}).get("first_ip_block"),
+        "stored_first_ip_output_norm": (
+            tensor_l2_norm((collector or {}).get("first_ip_output"))
+            if (collector or {}).get("first_ip_output") is not None
+            else math.nan
+        ),
     }
 
 

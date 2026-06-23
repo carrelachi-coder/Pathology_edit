@@ -33,6 +33,7 @@ class RegionalFeatureLossConfig:
     mean_weight: float = 1.0
     std_weight: float = 0.5
     pooled_cosine_weight: float = 0.25
+    gram_weight: float = 0.0
     min_tokens: int = 2
     max_regions_per_sample: int | None = None
     exclude_labels: tuple[int, ...] = (0,)
@@ -286,7 +287,7 @@ def regional_feature_map_loss(
     _validate_feature_tokens(prediction_features, reference_features)
     zero = prediction_features.new_zeros(())
 
-    tissue_loss, tissue_regions = _regional_feature_mask_loss(
+    tissue_loss, tissue_regions, tissue_gram_loss = _regional_feature_mask_loss(
         prediction_features=prediction_features,
         reference_features=reference_features,
         target_mask=target_tissue_mask,
@@ -295,9 +296,10 @@ def regional_feature_map_loss(
         config=cfg,
     )
     nuclei_loss = zero
+    nuclei_gram_loss = zero
     nuclei_regions = 0
     if target_nuclei_mask is not None and reference_nuclei_mask is not None:
-        nuclei_loss, nuclei_regions = _regional_feature_mask_loss(
+        nuclei_loss, nuclei_regions, nuclei_gram_loss = _regional_feature_mask_loss(
             prediction_features=prediction_features,
             reference_features=reference_features,
             target_mask=target_nuclei_mask,
@@ -306,6 +308,7 @@ def regional_feature_map_loss(
             config=cfg,
         )
     composite_loss = zero
+    composite_gram_loss = zero
     composite_regions = 0
     if (
         cfg.composite_weight > 0.0
@@ -322,7 +325,7 @@ def regional_feature_map_loss(
             reference_nuclei_mask,
             exclude_tissue_labels=cfg.exclude_labels,
         )
-        composite_loss, composite_regions = _regional_feature_mask_loss(
+        composite_loss, composite_regions, composite_gram_loss = _regional_feature_mask_loss(
             prediction_features=prediction_features,
             reference_features=reference_features,
             target_mask=target_composite_mask,
@@ -332,23 +335,29 @@ def regional_feature_map_loss(
         )
 
     weighted = zero
+    weighted_gram = zero
     active_weight = 0.0
     if tissue_regions > 0 and cfg.tissue_weight > 0.0:
         weighted = weighted + float(cfg.tissue_weight) * tissue_loss
+        weighted_gram = weighted_gram + float(cfg.tissue_weight) * tissue_gram_loss
         active_weight += float(cfg.tissue_weight)
     if nuclei_regions > 0 and cfg.nuclei_weight > 0.0:
         weighted = weighted + float(cfg.nuclei_weight) * nuclei_loss
+        weighted_gram = weighted_gram + float(cfg.nuclei_weight) * nuclei_gram_loss
         active_weight += float(cfg.nuclei_weight)
     if composite_regions > 0 and cfg.composite_weight > 0.0:
         weighted = weighted + float(cfg.composite_weight) * composite_loss
+        weighted_gram = weighted_gram + float(cfg.composite_weight) * composite_gram_loss
         active_weight += float(cfg.composite_weight)
 
     total = weighted / active_weight if active_weight > 0.0 else zero
+    gram = weighted_gram / active_weight if active_weight > 0.0 and cfg.gram_weight > 0.0 else zero
     return {
         "total": total,
         "tissue": tissue_loss,
         "nuclei": nuclei_loss,
         "composite": composite_loss,
+        "gram": gram,
         "tissue_regions": tissue_regions,
         "nuclei_regions": nuclei_regions,
         "composite_regions": composite_regions,
@@ -537,6 +546,7 @@ def _regional_feature_mask_loss(
             )
 
     losses = []
+    gram_losses = []
     exclude = set(int(label) for label in config.exclude_labels)
     min_tokens = max(1, int(config.min_tokens))
     prediction_map = prediction_features.reshape(
@@ -572,18 +582,24 @@ def _regional_feature_mask_loss(
                 continue
             if int(reference_region.sum().item()) < min_tokens:
                 continue
-            losses.append(
-                _region_feature_loss(
-                    prediction_map[batch_index],
-                    reference_map[batch_index],
-                    target_region,
-                    reference_region,
-                    config=config,
-                )
+            region_loss, gram_loss = _region_feature_loss(
+                prediction_map[batch_index],
+                reference_map[batch_index],
+                target_region,
+                reference_region,
+                config=config,
             )
+            losses.append(region_loss)
+            if config.gram_weight > 0.0:
+                gram_losses.append(gram_loss)
     if not losses:
-        return prediction_features.new_zeros(()), 0
-    return torch.stack(losses).mean(), len(losses)
+        return prediction_features.new_zeros(()), 0, prediction_features.new_zeros(())
+    gram_loss = (
+        torch.stack(gram_losses).mean()
+        if gram_losses
+        else prediction_features.new_zeros(())
+    )
+    return torch.stack(losses).mean(), len(losses), gram_loss
 
 
 def _regional_rgb_fft_mask_loss(
@@ -687,7 +703,7 @@ def _region_feature_loss(
     reference_region: torch.Tensor,
     *,
     config: RegionalFeatureLossConfig,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, torch.Tensor]:
     pred_values = prediction[target_region].float()
     ref_values = reference.detach()[reference_region].float()
     if pred_values.ndim != 2 or ref_values.ndim != 2:
@@ -709,7 +725,23 @@ def _region_feature_loss(
         cosine = F.cosine_similarity(pred_mean, ref_mean, dim=0, eps=1e-6)
         total = total + float(config.pooled_cosine_weight) * (1.0 - cosine)
         normalizer += float(config.pooled_cosine_weight)
-    return total / normalizer if normalizer > 0.0 else total
+    gram_loss = prediction.new_zeros(())
+    if config.gram_weight > 0.0:
+        pred_gram = _feature_gram_matrix(pred_values)
+        ref_gram = _feature_gram_matrix(ref_values)
+        gram_loss = F.l1_loss(pred_gram, ref_gram)
+        total = total + float(config.gram_weight) * gram_loss
+        normalizer += float(config.gram_weight)
+    return total / normalizer if normalizer > 0.0 else total, gram_loss
+
+
+def _feature_gram_matrix(values: torch.Tensor) -> torch.Tensor:
+    """Return channel-correlation Gram matrix averaged over region tokens."""
+    if values.ndim != 2:
+        raise ValueError(f"Gram features must have shape (tokens, channels), got {tuple(values.shape)}")
+    values = values.float()
+    denom = max(1, int(values.shape[0]))
+    return values.transpose(0, 1).matmul(values) / float(denom)
 
 
 def _region_rgb_fft_loss(

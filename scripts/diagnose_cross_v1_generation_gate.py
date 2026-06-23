@@ -22,11 +22,12 @@ import os
 import random
 import sys
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageCms, ImageDraw, ImageFont
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -37,6 +38,7 @@ from dataset_config import FINE_TO_PARENT
 VARIANTS = ("paired", "alternate_feature", "zero")
 ALTERNATE_MODES = ("same_dataset", "different_dataset")
 PROMPT_MODES = ("dataset", "empty")
+NUCLEI_STAIN_LABEL_OFFSET = 256
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,6 +77,56 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--regional-ip-soft-bias",
+        type=float,
+        default=None,
+        help=(
+            "Optional inference-time override for global_soft_bias IP routing. "
+            "Same-label pairs get +b and other-label pairs get -b. Omit to use checkpoint weights."
+        ),
+    )
+    parser.add_argument(
+        "--color-match",
+        choices=("none", "lab", "macenko", "hed", "hd"),
+        default="lab",
+        help=(
+            "Postprocess predictions with stain normalization. "
+            "'lab' matches mean/std in Lab space; 'macenko' matches H&E stain "
+            "statistics to the paired reference. 'hed'/'hd' are aliases for "
+            "macenko."
+        ),
+    )
+    parser.add_argument(
+        "--color-match-scope",
+        choices=("region", "global"),
+        default="region",
+        help=(
+            "For Macenko stain matching, match by target/reference "
+            "tissue+nuclei composite masks or over all non-background tissue."
+        ),
+    )
+    parser.add_argument("--color-match-strength", type=float, default=1.0)
+    parser.add_argument(
+        "--color-match-concentration-stat",
+        choices=("p99", "mean-std"),
+        default="p99",
+        help=(
+            "For Macenko, match stain concentrations by p99 scaling or by "
+            "mean/std affine statistics. mean-std usually tracks global stain "
+            "tone and contrast more aggressively."
+        ),
+    )
+    parser.add_argument("--color-match-background-label", type=int, default=0)
+    parser.add_argument(
+        "--color-match-fallback",
+        choices=("pooled", "skip"),
+        default="pooled",
+        help="Fallback for regional stain labels missing from the paired reference mask.",
+    )
+    parser.add_argument("--color-match-macenko-io", type=float, default=240.0)
+    parser.add_argument("--color-match-macenko-beta", type=float, default=0.15)
+    parser.add_argument("--color-match-macenko-alpha", type=float, default=1.0)
     parser.add_argument("--prompt-source", choices=("metadata", "dataset"), default="dataset")
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--source-latent-init-strength", type=float, default=0.0)
@@ -154,6 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         load_cross_v1_bundle,
         run_cross_v1_bundle,
         set_ip_adapter_scale,
+        set_ip_soft_bias,
     )
     from controlnet_train.modules.reference_image_encoder import build_region_ip_token_labels
     from controlnet_train.training.flux_phase5_cross_v1 import (
@@ -177,6 +230,26 @@ def main(argv: list[str] | None = None) -> int:
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
         ip_adapter_scale=scales[0],
     )
+    soft_bias_override = None
+    if args.regional_ip_soft_bias is not None:
+        soft_bias_override = set_ip_soft_bias(
+            bundle.flux_pipeline.transformer,
+            args.regional_ip_soft_bias,
+        )
+        print(
+            "regional_ip_soft_bias override "
+            f"requested={soft_bias_override['requested']:g} "
+            f"applied={soft_bias_override['applied']} "
+            f"params={soft_bias_override['parameter_count']}"
+        )
+    if args.color_match != "none":
+        print(
+            "color_match "
+            f"method={normalize_color_match_method(args.color_match)} "
+            f"requested={args.color_match} "
+            f"scope={args.color_match_scope} "
+            "reference=paired_reference"
+        )
 
     metric_rows: list[dict[str, Any]] = []
     panel_paths: list[Path] = []
@@ -247,6 +320,17 @@ def main(argv: list[str] | None = None) -> int:
                             source_latent_init_strength=args.source_latent_init_strength,
                             seed=args.generation_seed,
                         )
+                        raw_path = combo_dir / f"prediction_scale_{scale:g}_{variant}_raw.png"
+                        prediction.save(raw_path)
+                        prediction = apply_prediction_color_match(
+                            args=args,
+                            source=prediction,
+                            reference=paired_ref_pil,
+                            target_tissue_mask=target_tissue,
+                            target_nuclei_mask=target_nuclei,
+                            reference_tissue_mask=paired_ref_tissue,
+                            reference_nuclei_mask=paired_ref_nuclei,
+                        )
                         predictions[(scale, variant)] = prediction
                         prediction.save(combo_dir / f"prediction_scale_{scale:g}_{variant}.png")
 
@@ -266,6 +350,24 @@ def main(argv: list[str] | None = None) -> int:
                         tumor_label=args.tumor_label,
                         predictions=predictions,
                     )
+                    for row in rows:
+                        row["regional_ip_soft_bias"] = (
+                            float(args.regional_ip_soft_bias)
+                            if args.regional_ip_soft_bias is not None
+                            else math.nan
+                        )
+                        row["regional_ip_soft_bias_applied"] = bool(
+                            soft_bias_override and soft_bias_override.get("applied", False)
+                        )
+                        row["color_match_method"] = args.color_match
+                        row["color_match_normalized_method"] = normalize_color_match_method(
+                            args.color_match
+                        )
+                        row["color_match_applied"] = bool(args.color_match != "none")
+                        row["color_match_reference_mode"] = "paired_reference"
+                        row["color_match_scope"] = args.color_match_scope
+                        row["color_match_strength"] = float(args.color_match_strength)
+                        row["color_match_concentration_stat"] = args.color_match_concentration_stat
                     metric_rows.extend(rows)
 
                 panel = make_probe_panel(
@@ -289,6 +391,24 @@ def main(argv: list[str] | None = None) -> int:
             "generation_seed": int(args.generation_seed),
             "selection_seed": int(args.selection_seed),
             "scales": scales,
+            "color_match": {
+                "method": args.color_match,
+                "normalized_method": normalize_color_match_method(args.color_match),
+                "applied": args.color_match != "none",
+                "reference_mode": "paired_reference",
+                "scope": args.color_match_scope,
+                "strength": float(args.color_match_strength),
+                "concentration_stat": args.color_match_concentration_stat,
+                "background_label": int(args.color_match_background_label),
+                "fallback": args.color_match_fallback,
+                "macenko_io": float(args.color_match_macenko_io),
+                "macenko_beta": float(args.color_match_macenko_beta),
+                "macenko_alpha": float(args.color_match_macenko_alpha),
+            },
+            "regional_ip_soft_bias": (
+                float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else None
+            ),
+            "regional_ip_soft_bias_override": soft_bias_override,
             "alternate_modes": alternate_modes,
             "prompt_modes": prompt_modes,
             "num_samples": len(selected),
@@ -640,6 +760,523 @@ def compare_scale_outputs(
             }
         )
     return rows
+
+
+def _match_image_color_to_reference(
+    *,
+    source: Image.Image,
+    reference: Image.Image,
+    method: str,
+) -> Image.Image:
+    method = normalize_color_match_method(method)
+    if method == "lab":
+        return _mean_std_transfer_pil_lab(source=source, reference=reference)
+    raise ValueError(f"Unsupported color match method: {method}")
+
+
+def normalize_color_match_method(method: str) -> str:
+    normalized = str(method or "none").strip().lower()
+    if normalized in {"hed", "hd"}:
+        return "macenko"
+    return normalized
+
+
+def apply_prediction_color_match(
+    *,
+    args: argparse.Namespace,
+    source: Image.Image,
+    reference: Image.Image,
+    target_tissue_mask: Any,
+    target_nuclei_mask: Any,
+    reference_tissue_mask: Any,
+    reference_nuclei_mask: Any,
+) -> Image.Image:
+    method = normalize_color_match_method(args.color_match)
+    source_rgb = source.convert("RGB")
+    reference_rgb = reference.convert("RGB")
+    if method == "none":
+        return source_rgb
+    if method == "lab":
+        matched = _mean_std_transfer_pil_lab(source=source_rgb, reference=reference_rgb)
+    elif method == "macenko":
+        matched = macenko_match_prediction_to_reference(
+            source=source_rgb,
+            reference=reference_rgb,
+            target_tissue_mask=target_tissue_mask,
+            target_nuclei_mask=target_nuclei_mask,
+            reference_tissue_mask=reference_tissue_mask,
+            reference_nuclei_mask=reference_nuclei_mask,
+            scope=args.color_match_scope,
+            background_label=args.color_match_background_label,
+            fallback=args.color_match_fallback,
+            concentration_stat=args.color_match_concentration_stat,
+            io=args.color_match_macenko_io,
+            beta=args.color_match_macenko_beta,
+            alpha=args.color_match_macenko_alpha,
+        )
+    else:
+        raise ValueError(f"Unsupported color match method: {args.color_match}")
+    return blend_images(
+        base=source_rgb,
+        edited=matched,
+        strength=float(args.color_match_strength),
+    )
+
+
+def macenko_match_prediction_to_reference(
+    *,
+    source: Image.Image,
+    reference: Image.Image,
+    target_tissue_mask: Any,
+    target_nuclei_mask: Any,
+    reference_tissue_mask: Any,
+    reference_nuclei_mask: Any,
+    scope: str,
+    background_label: int,
+    fallback: str,
+    concentration_stat: str,
+    io: float,
+    beta: float,
+    alpha: float,
+) -> Image.Image:
+    source_rgb = source.convert("RGB")
+    reference_rgb = reference.convert("RGB")
+    source_array = np.asarray(source_rgb, dtype=np.uint8)
+    reference_array = np.asarray(reference_rgb, dtype=np.uint8)
+    normalized_scope = str(scope or "region").strip().lower()
+    if normalized_scope == "region":
+        target_mask = composite_stain_mask(
+            target_tissue_mask,
+            target_nuclei_mask,
+            size=source_rgb.size,
+        )
+        reference_mask = composite_stain_mask(
+            reference_tissue_mask,
+            reference_nuclei_mask,
+            size=reference_rgb.size,
+        )
+        matched_array = macenko_stain_transfer_by_mask(
+            source_array,
+            reference_array,
+            target_mask,
+            reference_mask,
+            background_label=int(background_label),
+            fallback=fallback,
+            concentration_stat=concentration_stat,
+            io=float(io),
+            beta=float(beta),
+            alpha=float(alpha),
+        )
+    elif normalized_scope == "global":
+        target_tissue = mask_to_numpy(target_tissue_mask, size=source_rgb.size)
+        reference_tissue = mask_to_numpy(reference_tissue_mask, size=reference_rgb.size)
+        bg = int(background_label)
+        matched_array = macenko_stain_transfer(
+            source_array,
+            reference_array,
+            source_mask=target_tissue != bg,
+            reference_mask=reference_tissue != bg,
+            concentration_stat=concentration_stat,
+            io=float(io),
+            beta=float(beta),
+            alpha=float(alpha),
+        )
+    else:
+        raise ValueError(f"Unsupported color-match scope: {scope}")
+    return Image.fromarray(matched_array, mode="RGB")
+
+
+def blend_images(*, base: Image.Image, edited: Image.Image, strength: float) -> Image.Image:
+    alpha = float(np.clip(strength, 0.0, 1.0))
+    if alpha >= 1.0:
+        return edited.convert("RGB")
+    if alpha <= 0.0:
+        return base.convert("RGB")
+    base_array = np.asarray(base.convert("RGB"), dtype=np.float32)
+    edited_array = np.asarray(edited.convert("RGB"), dtype=np.float32)
+    if base_array.shape != edited_array.shape:
+        edited_array = np.asarray(
+            edited.convert("RGB").resize(base.size, Image.Resampling.BICUBIC),
+            dtype=np.float32,
+        )
+    output = base_array * (1.0 - alpha) + edited_array * alpha
+    return Image.fromarray(np.clip(output.round(), 0, 255).astype(np.uint8), mode="RGB")
+
+
+def composite_stain_mask(
+    tissue_mask: Any,
+    nuclei_mask: Any,
+    *,
+    size: tuple[int, int],
+) -> np.ndarray:
+    tissue = mask_to_numpy(tissue_mask, size=size).copy()
+    nuclei = mask_to_numpy(nuclei_mask, size=size)
+    nuclei_pixels = nuclei != 0
+    tissue[nuclei_pixels] = nuclei[nuclei_pixels] + NUCLEI_STAIN_LABEL_OFFSET
+    return tissue
+
+
+def mask_to_numpy(mask: Any, *, size: tuple[int, int]) -> np.ndarray:
+    import torch
+
+    if torch.is_tensor(mask):
+        array = mask.detach().cpu().numpy()
+    else:
+        array = np.asarray(mask)
+    if array.ndim == 3 and array.shape[0] == 1:
+        array = array[0]
+    if array.ndim == 3:
+        array = array[..., 0]
+    array = np.asarray(array)
+    target_width, target_height = tuple(size)
+    if array.shape != (target_height, target_width):
+        if array.size == 0 or int(np.nanmax(array)) <= 255:
+            image_array = array.astype(np.uint8, copy=False)
+        else:
+            image_array = array.astype(np.uint16, copy=False)
+        resized = Image.fromarray(image_array).resize(size, Image.Resampling.NEAREST)
+        array = np.asarray(resized)
+    return array.astype(np.int64, copy=False)
+
+
+def macenko_stain_transfer_by_mask(
+    source: np.ndarray,
+    reference: np.ndarray,
+    target_mask: np.ndarray,
+    reference_mask: np.ndarray,
+    *,
+    background_label: int = 0,
+    fallback: str = "pooled",
+    concentration_stat: str = "p99",
+    io: float = 240.0,
+    beta: float = 0.15,
+    alpha: float = 1.0,
+    min_region_pixels: int = 10,
+) -> np.ndarray:
+    source = np.asarray(source, dtype=np.uint8)
+    reference = np.asarray(reference, dtype=np.uint8)
+    output = np.asarray(source, dtype=np.uint8).copy()
+    target_mask = np.asarray(target_mask)
+    reference_mask = np.asarray(reference_mask)
+    pooled_source = target_mask != int(background_label)
+    pooled_reference = reference_mask != int(background_label)
+    he_source = estimate_macenko_stain_matrix(
+        source,
+        mask=pooled_source,
+        io=io,
+        beta=beta,
+        alpha=alpha,
+    )
+    he_reference = estimate_macenko_stain_matrix(
+        reference,
+        mask=pooled_reference,
+        io=io,
+        beta=beta,
+        alpha=alpha,
+    )
+    conc_source = macenko_concentrations(source, he_source, io=io)
+    conc_reference = macenko_concentrations(reference, he_reference, io=io)
+    target_labels = [
+        int(label)
+        for label in np.unique(target_mask)
+        if int(label) != int(background_label)
+    ]
+    reference_labels = {
+        int(label)
+        for label in np.unique(reference_mask)
+        if int(label) != int(background_label)
+    }
+    pooled_reference = reference_mask != int(background_label)
+    fallback_mode = str(fallback or "pooled").strip().lower()
+    for label in sorted(target_labels):
+        source_region = target_mask == int(label)
+        if int(source_region.sum()) < int(min_region_pixels):
+            continue
+        if label in reference_labels and int((reference_mask == label).sum()) >= int(min_region_pixels):
+            reference_region = reference_mask == label
+        elif fallback_mode == "pooled" and int(pooled_reference.sum()) >= int(min_region_pixels):
+            reference_region = pooled_reference
+        else:
+            continue
+        transferred = macenko_apply_concentration_match(
+            source,
+            conc_source,
+            conc_reference,
+            he_reference,
+            source_mask=source_region,
+            reference_mask=reference_region,
+            concentration_stat=concentration_stat,
+            io=io,
+        )
+        output[source_region] = transferred[source_region]
+    return output
+
+
+def macenko_apply_concentration_match(
+    source: np.ndarray,
+    conc_source: np.ndarray,
+    conc_reference: np.ndarray,
+    reference_stain_matrix: np.ndarray,
+    *,
+    source_mask: np.ndarray,
+    reference_mask: np.ndarray,
+    concentration_stat: str = "p99",
+    io: float = 240.0,
+) -> np.ndarray:
+    source = np.asarray(source, dtype=np.uint8)
+    h, w, _ = source.shape
+    source_select = valid_bool_mask(source_mask, (h, w))
+    if source_select is None:
+        return source.copy()
+    reference_select = np.asarray(reference_mask, dtype=bool)
+    if not np.any(reference_select):
+        return source.copy()
+    source_flat_mask = source_select.reshape(-1)
+    reference_flat_mask = reference_select.reshape(-1)
+    if int(source_flat_mask.sum()) < 1 or int(reference_flat_mask.sum()) < 1:
+        return source.copy()
+    region_conc = match_stain_concentrations(
+        conc_source[source_flat_mask],
+        conc_reference[reference_flat_mask],
+        concentration_stat=concentration_stat,
+    )
+    region_rgb = od_to_rgb(region_conc @ reference_stain_matrix, io=io)
+    output = source.copy().reshape(-1, 3)
+    output[source_flat_mask] = region_rgb
+    return output.reshape(h, w, 3)
+
+
+def macenko_stain_transfer(
+    source: np.ndarray,
+    reference: np.ndarray,
+    *,
+    source_mask: np.ndarray | None = None,
+    reference_mask: np.ndarray | None = None,
+    concentration_stat: str = "p99",
+    io: float = 240.0,
+    beta: float = 0.15,
+    alpha: float = 1.0,
+) -> np.ndarray:
+    source = np.asarray(source, dtype=np.uint8)
+    reference = np.asarray(reference, dtype=np.uint8)
+    h, w, _ = source.shape
+    source_select = valid_bool_mask(source_mask, (h, w))
+    reference_select = valid_bool_mask(reference_mask, reference.shape[:2])
+    he_source = estimate_macenko_stain_matrix(
+        source,
+        mask=source_select,
+        io=io,
+        beta=beta,
+        alpha=alpha,
+    )
+    he_reference = estimate_macenko_stain_matrix(
+        reference,
+        mask=reference_select,
+        io=io,
+        beta=beta,
+        alpha=alpha,
+    )
+    conc_source = macenko_concentrations(source, he_source, io=io)
+    conc_reference = macenko_concentrations(reference, he_reference, io=io)
+    source_flat_mask = (
+        source_select.reshape(-1)
+        if source_select is not None
+        else np.ones((h * w,), dtype=bool)
+    )
+    reference_flat_mask = (
+        reference_select.reshape(-1)
+        if reference_select is not None
+        else np.ones((reference.shape[0] * reference.shape[1],), dtype=bool)
+    )
+    if int(source_flat_mask.sum()) < 1 or int(reference_flat_mask.sum()) < 1:
+        return source.copy()
+    conc_matched = conc_source.copy()
+    conc_matched[source_flat_mask] = match_stain_concentrations(
+        conc_source[source_flat_mask],
+        conc_reference[reference_flat_mask],
+        concentration_stat=concentration_stat,
+    )
+    od_new = conc_matched @ he_reference
+    rgb_new = od_to_rgb(od_new.reshape(h, w, 3), io=io)
+    output = source.copy()
+    if source_select is None:
+        output = rgb_new
+    else:
+        output[source_select] = rgb_new[source_select]
+    return output
+
+
+def match_stain_concentrations(
+    source_conc: np.ndarray,
+    reference_conc: np.ndarray,
+    *,
+    concentration_stat: str = "p99",
+) -> np.ndarray:
+    source = np.asarray(source_conc, dtype=np.float64)
+    reference = np.asarray(reference_conc, dtype=np.float64)
+    if source.size == 0 or reference.size == 0:
+        return source.copy()
+    mode = str(concentration_stat or "p99").strip().lower()
+    if mode == "p99":
+        max_source = np.percentile(source, 99, axis=0)
+        max_reference = np.percentile(reference, 99, axis=0)
+        max_source = np.where(max_source < 1e-6, 1e-6, max_source)
+        return np.clip(source * (max_reference / max_source)[None, :], 0.0, None)
+    if mode == "mean-std":
+        source_mean = source.mean(axis=0)
+        source_std = source.std(axis=0)
+        reference_mean = reference.mean(axis=0)
+        reference_std = reference.std(axis=0)
+        source_std = np.where(source_std < 1e-6, 1.0, source_std)
+        matched = (source - source_mean[None, :]) * (reference_std / source_std)[None, :]
+        matched = matched + reference_mean[None, :]
+        reference_cap = np.percentile(reference, 99.5, axis=0)
+        reference_cap = np.maximum(reference_cap, reference_mean + 3.0 * reference_std)
+        return np.clip(matched, 0.0, reference_cap[None, :])
+    raise ValueError(
+        "--color-match-concentration-stat must be one of: p99, mean-std"
+    )
+
+
+def rgb_to_od(image: np.ndarray, io: float = 240.0) -> np.ndarray:
+    image = np.asarray(image, dtype=np.float64)
+    return -np.log((image + 1.0) / float(io))
+
+
+def od_to_rgb(od: np.ndarray, io: float = 240.0) -> np.ndarray:
+    rgb = float(io) * np.exp(-np.asarray(od, dtype=np.float64))
+    return np.clip(rgb, 0, 255).astype(np.uint8)
+
+
+def estimate_macenko_stain_matrix(
+    image: np.ndarray,
+    *,
+    mask: np.ndarray | None = None,
+    io: float = 240.0,
+    beta: float = 0.15,
+    alpha: float = 1.0,
+) -> np.ndarray:
+    od = rgb_to_od(image, io=io).reshape(-1, 3)
+    if mask is not None:
+        od = od[np.asarray(mask, dtype=bool).reshape(-1)]
+    od = od[np.all(np.isfinite(od), axis=1)]
+    if od.shape[0] < 3:
+        return default_he_matrix()
+    od = np.clip(od, 0.0, None)
+    stain_strength = np.linalg.norm(od, axis=1)
+    od_hat = od[stain_strength > float(beta)]
+    if od_hat.shape[0] < 10:
+        relaxed_threshold = max(float(beta) * 0.25, 1e-6)
+        od_hat = od[stain_strength > relaxed_threshold]
+    if od_hat.shape[0] < 3:
+        return default_he_matrix()
+    try:
+        cov = np.cov(od_hat.T)
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        if not np.all(np.isfinite(eigvals)) or not np.all(np.isfinite(eigvecs)):
+            return default_he_matrix()
+        order = np.argsort(eigvals)[::-1][:2]
+        v = eigvecs[:, order]
+        if v[0, 0] < 0:
+            v[:, 0] *= -1
+        if v[0, 1] < 0:
+            v[:, 1] *= -1
+        projection = od_hat @ v
+        phi = np.arctan2(projection[:, 1], projection[:, 0])
+        min_phi = np.percentile(phi, float(alpha))
+        max_phi = np.percentile(phi, 100.0 - float(alpha))
+        v1 = v @ np.array([np.cos(min_phi), np.sin(min_phi)])
+        v2 = v @ np.array([np.cos(max_phi), np.sin(max_phi)])
+        he = np.array([v1, v2]) if v1[0] > v2[0] else np.array([v2, v1])
+        he = np.clip(he, 1e-6, None)
+        norms = np.linalg.norm(he, axis=1, keepdims=True)
+        if np.any(norms < 1e-8) or not np.all(np.isfinite(he)):
+            return default_he_matrix()
+        return he / norms
+    except np.linalg.LinAlgError:
+        return default_he_matrix()
+
+
+def macenko_concentrations(
+    image: np.ndarray,
+    stain_matrix: np.ndarray,
+    *,
+    io: float = 240.0,
+) -> np.ndarray:
+    od = rgb_to_od(image, io=io).reshape(-1, 3)
+    concentrations = np.linalg.lstsq(stain_matrix.T, od.T, rcond=None)[0].T
+    return np.clip(concentrations, 0.0, None)
+
+
+def default_he_matrix() -> np.ndarray:
+    he = np.array(
+        [
+            [0.65, 0.70, 0.29],
+            [0.07, 0.99, 0.11],
+        ],
+        dtype=np.float64,
+    )
+    return he / np.linalg.norm(he, axis=1, keepdims=True)
+
+
+def valid_bool_mask(mask: np.ndarray | None, shape: tuple[int, int]) -> np.ndarray | None:
+    if mask is None:
+        return None
+    value = np.asarray(mask, dtype=bool)
+    if value.shape != tuple(shape):
+        return None
+    if not np.any(value):
+        return None
+    return value
+
+
+@lru_cache(maxsize=1)
+def _lab_color_transforms() -> tuple[Any, Any]:
+    srgb_profile = ImageCms.createProfile("sRGB")
+    lab_profile = ImageCms.createProfile("LAB")
+    rgb_to_lab = ImageCms.buildTransformFromOpenProfiles(srgb_profile, lab_profile, "RGB", "LAB")
+    lab_to_rgb = ImageCms.buildTransformFromOpenProfiles(lab_profile, srgb_profile, "LAB", "RGB")
+    return rgb_to_lab, lab_to_rgb
+
+
+def _mean_std_transfer_pil_lab(*, source: Image.Image, reference: Image.Image) -> Image.Image:
+    rgb_to_lab, lab_to_rgb = _lab_color_transforms()
+    source_rgb_image = source.convert("RGB")
+    reference_rgb_image = reference.convert("RGB")
+    source_rgb = np.asarray(source_rgb_image, dtype=np.uint8)
+    reference_rgb = np.asarray(reference_rgb_image, dtype=np.uint8)
+    source_lab = np.asarray(ImageCms.applyTransform(source_rgb_image, rgb_to_lab), dtype=np.float32)
+    reference_lab = np.asarray(ImageCms.applyTransform(reference_rgb_image, rgb_to_lab), dtype=np.float32)
+    source_mask = _tissue_mask_from_rgb(source_rgb.astype(np.float32) / 255.0)
+    reference_mask = _tissue_mask_from_rgb(reference_rgb.astype(np.float32) / 255.0)
+
+    if not np.any(source_mask) or not np.any(reference_mask):
+        return source_rgb_image
+
+    matched_lab = source_lab.copy()
+    for channel in range(3):
+        source_values = source_lab[..., channel][source_mask]
+        reference_values = reference_lab[..., channel][reference_mask]
+        source_std = float(source_values.std())
+        reference_std = float(reference_values.std())
+        matched_lab[..., channel][source_mask] = (
+            (source_values - float(source_values.mean()))
+            * (reference_std / max(source_std, 1e-6))
+            + float(reference_values.mean())
+        )
+
+    matched_lab = np.clip(matched_lab, 0.0, 255.0).round().astype(np.uint8)
+    matched_rgb = np.asarray(
+        ImageCms.applyTransform(Image.fromarray(matched_lab, mode="LAB"), lab_to_rgb),
+        dtype=np.uint8,
+    )
+    output = source_rgb.copy()
+    output[source_mask] = matched_rgb[source_mask]
+    return Image.fromarray(output, mode="RGB")
+
+
+def _tissue_mask_from_rgb(rgb_float: np.ndarray, threshold: float = 0.85) -> np.ndarray:
+    return rgb_float.mean(axis=-1) < threshold
 
 
 def compute_generation_region_stats(

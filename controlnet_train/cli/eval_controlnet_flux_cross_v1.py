@@ -36,6 +36,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument("--ip-scale", type=float, default=1.0)
     parser.add_argument(
+        "--regional-ip-soft-bias",
+        type=float,
+        default=None,
+        help=(
+            "Optional inference-time override for global_soft_bias IP routing. "
+            "Same-label pairs get +b and other-label pairs get -b. Omit to use checkpoint weights."
+        ),
+    )
+    parser.add_argument(
         "--run-zero-ref-ablation",
         action="store_true",
         help=(
@@ -189,6 +198,7 @@ def main(argv=None) -> int:
     from controlnet_train.inference.pipeline_cross_v1 import (
         load_cross_v1_bundle,
         run_cross_v1_bundle,
+        set_ip_soft_bias,
     )
 
     dtype_by_name = {
@@ -208,6 +218,18 @@ def main(argv=None) -> int:
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
         ip_adapter_scale=args.ip_scale,
     )
+    soft_bias_override = None
+    if args.regional_ip_soft_bias is not None:
+        soft_bias_override = set_ip_soft_bias(
+            bundle.flux_pipeline.transformer,
+            args.regional_ip_soft_bias,
+        )
+        print(
+            "regional_ip_soft_bias override "
+            f"requested={soft_bias_override['requested']:g} "
+            f"applied={soft_bias_override['applied']} "
+            f"params={soft_bias_override['parameter_count']}"
+        )
 
     metric_rows: list[dict[str, Any]] = []
     panel_paths: list[Path] = []
@@ -307,6 +329,14 @@ def main(argv=None) -> int:
                 "area_coverage_ratio": float(record.get("area_coverage_ratio", math.nan)),
                 "color_match_applied": args.color_match != "none",
                 "ip_scale": float(args.ip_scale),
+                "regional_ip_soft_bias": (
+                    float(args.regional_ip_soft_bias)
+                    if args.regional_ip_soft_bias is not None
+                    else math.nan
+                ),
+                "regional_ip_soft_bias_applied": bool(
+                    soft_bias_override and soft_bias_override.get("applied", False)
+                ),
                 "controlnet_conditioning_scale": float(args.controlnet_conditioning_scale),
                 "source_latent_init_strength": float(args.source_latent_init_strength),
                 "mask_chord_scale": float(args.mask_chord_scale),
@@ -407,6 +437,10 @@ def main(argv=None) -> int:
     _write_metrics(output_dir, metric_rows)
     summary = aggregate_metrics(metric_rows)
     summary["ip_scale"] = float(args.ip_scale)
+    summary["regional_ip_soft_bias"] = (
+        float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else None
+    )
+    summary["regional_ip_soft_bias_override"] = soft_bias_override
     summary["controlnet_conditioning_scale"] = float(args.controlnet_conditioning_scale)
     summary["source_latent_init_strength"] = float(args.source_latent_init_strength)
     summary["mask_chord_scale"] = float(args.mask_chord_scale)

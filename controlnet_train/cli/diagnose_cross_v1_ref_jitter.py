@@ -75,6 +75,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional comma-separated IP scale sweep. If omitted, uses --ip-scale.",
     )
+    parser.add_argument(
+        "--regional-ip-soft-bias",
+        type=float,
+        default=None,
+        help=(
+            "Optional inference-time override for global_soft_bias IP routing. "
+            "Same-label pairs get +b and other-label pairs get -b. Omit to use checkpoint weights."
+        ),
+    )
     parser.add_argument("--prompt-source", choices=["metadata", "dataset"], default="dataset")
     parser.add_argument("--prompt", default=None, help="Override every sample with one prompt.")
     parser.add_argument(
@@ -144,7 +153,7 @@ def main(argv=None) -> int:
 
     import torch
 
-    from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
+    from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle, set_ip_soft_bias
 
     dtype_by_name = {
         "bf16": torch.bfloat16,
@@ -163,6 +172,18 @@ def main(argv=None) -> int:
         ip_adapter_scale=ip_scales[0],
     )
     set_ip_adapter_scale(bundle.flux_pipeline.transformer, ip_scales[0])
+    soft_bias_override = None
+    if args.regional_ip_soft_bias is not None:
+        soft_bias_override = set_ip_soft_bias(
+            bundle.flux_pipeline.transformer,
+            args.regional_ip_soft_bias,
+        )
+        print(
+            "regional_ip_soft_bias override "
+            f"requested={soft_bias_override['requested']:g} "
+            f"applied={soft_bias_override['applied']} "
+            f"params={soft_bias_override['parameter_count']}"
+        )
 
     rows: list[dict[str, Any]] = []
     panel_paths: list[Path] = []
@@ -193,6 +214,13 @@ def main(argv=None) -> int:
             },
             thumbnail_size=args.thumbnail_size,
         )
+        for row in sample_rows:
+            row["regional_ip_soft_bias"] = (
+                float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else math.nan
+            )
+            row["regional_ip_soft_bias_applied"] = bool(
+                soft_bias_override and soft_bias_override.get("applied", False)
+            )
         rows.extend(sample_rows)
         if panel_path is not None and len(panel_paths) < args.overview_max_samples:
             panel_paths.append(panel_path)
@@ -202,6 +230,10 @@ def main(argv=None) -> int:
     summary = aggregate_jitter_rows(rows)
     summary["ip_scale"] = float(ip_scales[0]) if len(ip_scales) == 1 else None
     summary["ip_scales"] = ip_scales
+    summary["regional_ip_soft_bias"] = (
+        float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else None
+    )
+    summary["regional_ip_soft_bias_override"] = soft_bias_override
     summary["controlnet_conditioning_scales"] = controlnet_scales
     summary["jitter_types"] = jitter_types
     summary["jitters_per_type"] = int(args.jitters_per_type)

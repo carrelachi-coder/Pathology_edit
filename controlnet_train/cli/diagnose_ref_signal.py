@@ -6,6 +6,9 @@ This traces the reference encoding chain:
 
 At each stage, the script compares normal / zero / random reference inputs
 against the normal input with cosine similarity and distance metrics.
+If a second reference image is provided, it also runs a pairwise comparison
+so you can check whether the projected tokens collapse before the downstream
+attention path ever sees them.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -43,7 +47,42 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Diagnose Cross V1 reference signal collapse.")
     parser.add_argument("--checkpoint", type=str, required=True, help="Checkpoint dir with phase5_conditioning.pt.")
     parser.add_argument("--uni-checkpoint-path", type=str, required=True)
-    parser.add_argument("--reference-image", type=str, required=True, help="A real reference patch image.")
+    parser.add_argument(
+        "--metadata",
+        type=str,
+        default=None,
+        help=(
+            "Optional cross metadata JSON/JSONL path. If --reference-image is omitted, "
+            "the script picks two distinct refs from metadata automatically."
+        ),
+    )
+    parser.add_argument(
+        "--reference-image",
+        type=str,
+        default=None,
+        help="A real reference patch image. Omit when using --metadata auto-selection.",
+    )
+    parser.add_argument(
+        "--reference-image-b",
+        type=str,
+        default=None,
+        help=(
+            "Optional second reference image. If omitted with --metadata, the script "
+            "picks a second ref automatically."
+        ),
+    )
+    parser.add_argument(
+        "--reference-selection-mode",
+        choices=("farthest_distance", "random"),
+        default="farthest_distance",
+        help="How to choose two refs from metadata when explicit image paths are omitted.",
+    )
+    parser.add_argument(
+        "--reference-selection-seed",
+        type=int,
+        default=42,
+        help="Seed used when --reference-selection-mode=random.",
+    )
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--torch-dtype", choices=["bf16", "fp16", "fp32"], default="bf16")
     parser.add_argument(
@@ -62,8 +101,136 @@ def parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         help="Temporarily bypass the reference Perceiver during this diagnosis.",
     )
+    parser.add_argument(
+        "--pairwise-collapse-relative-l2-threshold",
+        type=float,
+        default=0.02,
+        help="Relative-L2 threshold used to call a stage collapsed in pairwise mode.",
+    )
     parser.add_argument("--output-json", type=str, default=None)
     return parser.parse_args(argv)
+
+
+def read_cross_metadata(path: str | Path) -> list[dict[str, Any]]:
+    return read_metadata_records(path)
+
+
+def read_metadata_records(path: str | Path) -> list[dict[str, Any]]:
+    path = Path(path)
+    text = path.read_text(encoding="utf8")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        records: list[dict[str, Any]] = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if line:
+                records.append(json.loads(line))
+        if not records:
+            raise ValueError(f"metadata file is empty: {path}")
+        return records
+    return normalize_cross_records(payload)
+
+
+def normalize_cross_records(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        records = payload.get("pairs")
+        if not isinstance(records, list):
+            raise ValueError("cross metadata dict must contain a 'pairs' list")
+        return records
+    if isinstance(payload, list):
+        return payload
+    raise TypeError(f"unsupported cross metadata payload type: {type(payload)!r}")
+
+
+def reference_record_id(record: dict[str, Any]) -> str:
+    if record.get("reference_sample_id"):
+        return str(record["reference_sample_id"])
+    for key in ("sample_id", "reference_image", "image"):
+        value = record.get(key)
+        if value:
+            return Path(str(value).replace("\\", "/")).stem
+    raise KeyError("record is missing both reference_sample_id and reference_image")
+
+
+def reference_record_label(record: dict[str, Any]) -> str:
+    if record.get("reference_sample_id"):
+        return str(record["reference_sample_id"])
+    if record.get("sample_id"):
+        return str(record["sample_id"])
+    for key in ("reference_image", "image"):
+        value = record.get(key)
+        if value:
+            return Path(str(value).replace("\\", "/")).stem
+    return "reference"
+
+
+def unique_reference_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not records:
+        raise ValueError("metadata contains no records")
+    seen: set[str] = set()
+    output: list[dict[str, Any]] = []
+    for record in records:
+        ref_id = reference_record_id(record)
+        if ref_id in seen:
+            continue
+        seen.add(ref_id)
+        output.append({**record, "reference_sample_id": ref_id})
+    return output
+
+
+def _reference_distance(record: dict[str, Any]) -> float:
+    try:
+        value = float(
+            record.get("distance", record.get("pair_distance", record.get("manhattan_distance", math.nan)))
+        )
+    except (TypeError, ValueError):
+        return -math.inf
+    return value if math.isfinite(value) else -math.inf
+
+
+def select_reference_records(
+    records: list[dict[str, Any]],
+    *,
+    selection_mode: str,
+    seed: int,
+) -> list[dict[str, Any]]:
+    candidates = unique_reference_records(records)
+    if len(candidates) < 2:
+        raise ValueError("metadata must contain at least two unique reference records")
+
+    if selection_mode == "random":
+        return random.Random(seed).sample(candidates, 2)
+
+    if selection_mode == "farthest_distance":
+        finite_candidates = [record for record in candidates if math.isfinite(_reference_distance(record))]
+        pool = finite_candidates if len(finite_candidates) >= 2 else candidates
+        if len(finite_candidates) < 2:
+            return random.Random(seed).sample(pool, 2)
+        return sorted(
+            pool,
+            key=lambda record: (
+                -_reference_distance(record),
+                str(record.get("case_id") or ""),
+                reference_record_id(record),
+            ),
+        )[:2]
+
+    raise ValueError(f"unsupported selection_mode {selection_mode!r}")
+
+
+def resolve_metadata_path(path_value: str | Path, *, metadata_path: Path | None = None) -> Path:
+    candidate = Path(str(path_value).replace("\\", "/"))
+    if candidate.is_absolute() or metadata_path is None:
+        return candidate
+    return metadata_path.parent / candidate
+
+
+def reference_image_path(record: dict[str, Any], *, metadata_path: Path | None = None) -> Path:
+    raw_path = record.get("reference_image") or record.get("image")
+    if raw_path is None:
+        raise KeyError("record is missing both reference_image and image")
+    return resolve_metadata_path(raw_path, metadata_path=metadata_path)
 
 
 def torch_load_weights(path: Path) -> dict[str, Any]:
@@ -216,18 +383,39 @@ def tensor_l2_norm(value) -> float:
     return float(torch.linalg.vector_norm(flat).item())
 
 
-def compare_to_normal(normal, current) -> dict[str, float]:
-    left = flatten_tensors(normal)
-    right = flatten_tensors(current)
-    if left.numel() == 0 or left.numel() != right.numel():
-        return {"cosine": math.nan, "l1": math.nan, "rmse": math.nan, "l2": math.nan}
-    diff = left - right
+def tensor_pair_metrics(left, right) -> dict[str, float]:
+    left_flat = flatten_tensors(left)
+    right_flat = flatten_tensors(right)
+    if left_flat.numel() == 0 or right_flat.numel() == 0 or left_flat.numel() != right_flat.numel():
+        return {
+            "left_norm": math.nan,
+            "right_norm": math.nan,
+            "cosine": math.nan,
+            "l1": math.nan,
+            "rmse": math.nan,
+            "l2": math.nan,
+            "relative_l2": math.nan,
+        }
+
+    diff = left_flat - right_flat
+    left_norm = float(torch.linalg.vector_norm(left_flat).item())
+    right_norm = float(torch.linalg.vector_norm(right_flat).item())
+    l2 = float(torch.linalg.vector_norm(diff).item())
+    denom = max((left_norm + right_norm) * 0.5, 1e-12)
     return {
-        "cosine": float(F.cosine_similarity(left.unsqueeze(0), right.unsqueeze(0)).item()),
+        "left_norm": left_norm,
+        "right_norm": right_norm,
+        "cosine": float(F.cosine_similarity(left_flat.unsqueeze(0), right_flat.unsqueeze(0)).item()),
         "l1": float(diff.abs().mean().item()),
         "rmse": float(torch.sqrt(torch.mean(diff * diff)).item()),
-        "l2": float(torch.linalg.vector_norm(diff).item()),
+        "l2": l2,
+        "relative_l2": float(l2 / denom),
     }
+
+
+def compare_to_normal(normal, current) -> dict[str, float]:
+    pair_metrics = tensor_pair_metrics(normal, current)
+    return {key: pair_metrics[key] for key in ("cosine", "l1", "rmse", "l2")}
 
 
 @torch.no_grad()
@@ -241,6 +429,8 @@ def encode_stages(
     uni = ref_encoder.extract_uni_features(image)
     stages["1_uni"] = uni
 
+    proj_dtype = next(ref_encoder.proj_mlp.parameters()).dtype
+    uni = uni.to(dtype=proj_dtype)
     projected = ref_encoder.proj_mlp(uni)
     stages["2_proj_mlp"] = projected
 
@@ -304,6 +494,22 @@ def diagnose(
     return results
 
 
+@torch.no_grad()
+def diagnose_pairwise(
+    ref_encoder,
+    encoder_hid_proj: nn.Module | None,
+    reference_img_a: torch.Tensor,
+    reference_img_b: torch.Tensor,
+) -> dict[str, Any]:
+    encoded_a = encode_stages(ref_encoder, encoder_hid_proj, reference_img_a)
+    encoded_b = encode_stages(ref_encoder, encoder_hid_proj, reference_img_b)
+
+    results: dict[str, Any] = {}
+    for stage_name in encoded_a.keys():
+        results[stage_name] = tensor_pair_metrics(encoded_a[stage_name], encoded_b[stage_name])
+    return results
+
+
 def print_table(results: dict[str, Any]) -> None:
     print(
         f"{'Stage':<28} {'norm':>10} {'zero_cos':>10} {'rand_cos':>10} "
@@ -320,6 +526,24 @@ def print_table(results: dict[str, Any]) -> None:
             f"{random_noise['cosine']:>10.6f} "
             f"{zero['l2']:>10.2f} "
             f"{random_noise['l2']:>10.2f}"
+        )
+
+
+def print_pairwise_table(results: dict[str, Any], *, label_a: str, label_b: str) -> None:
+    print(f"Pairwise comparison: {label_a} vs {label_b}")
+    print(
+        f"{'Stage':<28} {'rel_l2':>10} {'l2':>10} {'cosine':>10} "
+        f"{'a_norm':>10} {'b_norm':>10}"
+    )
+    print("-" * 84)
+    for stage_name, metrics in results.items():
+        print(
+            f"{stage_name:<28} "
+            f"{metrics['relative_l2']:>10.6f} "
+            f"{metrics['l2']:>10.2f} "
+            f"{metrics['cosine']:>10.6f} "
+            f"{metrics['left_norm']:>10.2f} "
+            f"{metrics['right_norm']:>10.2f}"
         )
 
 
@@ -348,9 +572,92 @@ def print_interpretation(results: dict[str, Any]) -> None:
             )
 
 
+def pairwise_verdict(
+    results: dict[str, Any],
+    *,
+    collapse_relative_l2_threshold: float,
+) -> tuple[str, str | None]:
+    stage_order = (
+        "2_proj_mlp",
+        "3_perceiver_layer_1",
+        "4_perceiver_norm",
+        "5_full_ref_encoder",
+        "6_encoder_hid_proj",
+    )
+
+    proj_metrics = results.get("2_proj_mlp")
+    if proj_metrics and _stage_is_collapsed(proj_metrics, collapse_relative_l2_threshold):
+        return "proj_collapsed", None
+
+    for stage_name in stage_order[1:]:
+        metrics = results.get(stage_name)
+        if metrics and _stage_is_collapsed(metrics, collapse_relative_l2_threshold):
+            return "downstream_collapsed", stage_name
+
+    return "proj_informative", None
+
+
+def _stage_is_collapsed(metrics: dict[str, Any], collapse_relative_l2_threshold: float) -> bool:
+    relative_l2 = float(metrics.get("relative_l2", math.nan))
+    cosine = float(metrics.get("cosine", math.nan))
+    if not math.isfinite(relative_l2):
+        return False
+    if relative_l2 <= collapse_relative_l2_threshold:
+        return True
+    return math.isfinite(cosine) and cosine >= 0.999
+
+
+def print_pairwise_interpretation(
+    results: dict[str, Any],
+    *,
+    collapse_relative_l2_threshold: float,
+) -> None:
+    print("\n== Interpretation ==")
+    for stage_name in (
+        "2_proj_mlp",
+        "3_perceiver_layer_1",
+        "4_perceiver_norm",
+        "5_full_ref_encoder",
+        "6_encoder_hid_proj",
+    ):
+        metrics = results.get(stage_name)
+        if not metrics:
+            continue
+        status = "COLLAPSED" if _stage_is_collapsed(metrics, collapse_relative_l2_threshold) else "SEPARATED"
+        print(
+            f"  {stage_name}: {status} "
+            f"rel_l2={float(metrics['relative_l2']):.6f} cosine={float(metrics['cosine']):.6f}"
+        )
+
+    verdict, stage_name = pairwise_verdict(
+        results,
+        collapse_relative_l2_threshold=collapse_relative_l2_threshold,
+    )
+    if verdict == "proj_collapsed":
+        print(
+            "  >>> proj_mlp is effectively constant across the two refs. "
+            "Check proj_mlp/soft_bias; this usually means the projection path has "
+            "degenerated and likely needs lower bias + retraining."
+        )
+    elif verdict == "downstream_collapsed":
+        downstream_label = stage_name or "downstream"
+        print(
+            f"  >>> proj_mlp separates the refs, but {downstream_label} collapses them. "
+            "The projected token still carries signal; the loss is likely downstream "
+            "(attention / soft_bias / routing)."
+        )
+    else:
+        print(
+            "  >>> proj_mlp remains separated across the two refs. The injected token "
+            "has signal; if outputs still ignore the reference difference, focus on "
+            "downstream attention / soft_bias."
+        )
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     dtype = resolve_dtype(args.torch_dtype, args.device)
+    metadata_path = Path(args.metadata) if args.metadata else None
 
     print(f"Loading ref_encoder from: {args.checkpoint}")
     ref_encoder, config = load_ref_encoder_from_checkpoint(
@@ -372,19 +679,60 @@ def main(argv=None) -> int:
     )
     print(f"encoder_hid_proj loaded: {encoder_hid_proj is not None}")
 
-    print(f"Loading reference image: {args.reference_image}")
-    normal_img = load_image_as_tensor(args.reference_image, args.device, dtype)
-    print(f"Image shape: {tuple(normal_img.shape)}")
-
-    results = diagnose(ref_encoder, encoder_hid_proj, normal_img)
-    print_table(results)
-    print_interpretation(results)
+    if args.reference_image is None:
+        if metadata_path is None:
+            raise ValueError("--metadata is required when --reference-image is omitted.")
+        metadata_records = read_metadata_records(metadata_path)
+        selected_records = select_reference_records(
+            metadata_records,
+            selection_mode=args.reference_selection_mode,
+            seed=args.reference_selection_seed,
+        )
+        reference_record_a, reference_record_b = selected_records
+        reference_image_a = reference_image_path(reference_record_a, metadata_path=metadata_path)
+        reference_image_b = reference_image_path(reference_record_b, metadata_path=metadata_path)
+        label_a = reference_record_label(reference_record_a)
+        label_b = reference_record_label(reference_record_b)
+        print(
+            "Auto-selected refs from metadata: "
+            f"A={label_a} -> {reference_image_a} | B={label_b} -> {reference_image_b}"
+        )
+        normal_img = load_image_as_tensor(reference_image_a, args.device, dtype)
+        print(f"Image A shape: {tuple(normal_img.shape)}")
+        print(f"Loading second reference image: {reference_image_b}")
+        reference_img_b = load_image_as_tensor(reference_image_b, args.device, dtype)
+        print(f"Image B shape: {tuple(reference_img_b.shape)}")
+        results = diagnose_pairwise(ref_encoder, encoder_hid_proj, normal_img, reference_img_b)
+        print_pairwise_table(results, label_a=label_a, label_b=label_b)
+        print_pairwise_interpretation(
+            results,
+            collapse_relative_l2_threshold=float(args.pairwise_collapse_relative_l2_threshold),
+        )
+    else:
+        print(f"Loading reference image: {args.reference_image}")
+        normal_img = load_image_as_tensor(args.reference_image, args.device, dtype)
+        print(f"Image A shape: {tuple(normal_img.shape)}")
+        results = diagnose(ref_encoder, encoder_hid_proj, normal_img)
+        print_table(results)
+        print_interpretation(results)
 
     if args.output_json:
-        Path(args.output_json).write_text(
-            json.dumps(results, indent=2, ensure_ascii=False, allow_nan=True),
-            encoding="utf8",
-        )
+        payload: dict[str, Any]
+        if args.reference_image is None:
+            payload = {
+                "mode": "pairwise",
+                "reference_image_a": str(reference_image_a),
+                "reference_image_b": str(reference_image_b),
+                "reference_sample_id_a": label_a,
+                "reference_sample_id_b": label_b,
+                "selection_mode": args.reference_selection_mode,
+                "selection_seed": int(args.reference_selection_seed),
+                "collapse_relative_l2_threshold": float(args.pairwise_collapse_relative_l2_threshold),
+                "stage_results": results,
+            }
+        else:
+            payload = results
+        Path(args.output_json).write_text(json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=True), encoding="utf8")
         print(f"\nResults saved to {args.output_json}")
     return 0
 

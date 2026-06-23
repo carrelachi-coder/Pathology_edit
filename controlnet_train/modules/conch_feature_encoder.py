@@ -24,8 +24,10 @@ class ConchFeatureEncoder(nn.Module):
         *,
         conch_root: str | Path | None = None,
         model_cfg: str = "conch_ViT-B-16",
+        feature_layer: int | None = None,
     ) -> None:
         super().__init__()
+        self.feature_layer = None if feature_layer is None else int(feature_layer)
         checkpoint = Path(checkpoint_path)
         root = Path(conch_root) if conch_root is not None else _infer_conch_root(checkpoint)
         if str(root) not in sys.path:
@@ -50,6 +52,7 @@ class ConchFeatureEncoder(nn.Module):
         image_std = getattr(self.model.visual, "image_std", (0.26862954, 0.26130258, 0.27577711))
         self.register_buffer("mean", torch.tensor(image_mean, dtype=torch.float32).view(1, 3, 1, 1))
         self.register_buffer("std", torch.tensor(image_std, dtype=torch.float32).view(1, 3, 1, 1))
+        self._validate_feature_layer()
 
     def train(self, mode: bool = True):
         super().train(False)
@@ -60,15 +63,116 @@ class ConchFeatureEncoder(nn.Module):
         def _extract() -> torch.Tensor:
             self.model.eval()
             x = self._prepare_input(images)
-            tokens = self.model.visual.trunk(x)
-            if tokens.ndim != 3:
-                raise ValueError(f"CONCH visual trunk must return (B,T,C), got {tuple(tokens.shape)}")
-            return tokens[:, 1:, :] if tokens.shape[1] > self.num_spatial_tokens else tokens
+            if self.feature_layer is None:
+                tokens = self.model.visual.trunk(x)
+            else:
+                tokens = self._extract_intermediate_features(x, self.feature_layer)
+            return self._normalize_token_output(tokens)
 
         if allow_input_grad:
             return _extract()
         with torch.no_grad():
             return _extract()
+
+    def _validate_feature_layer(self) -> None:
+        if self.feature_layer is None:
+            return
+        if self.feature_layer <= 0:
+            raise ValueError(f"CONCH feature_layer must be 1-based and positive, got {self.feature_layer}.")
+        blocks = self._find_blocks(required=False)
+        if blocks is not None and self.feature_layer > len(blocks):
+            raise ValueError(f"CONCH feature_layer exceeds backbone depth {len(blocks)}: {self.feature_layer}.")
+
+    def _extract_intermediate_features(self, x: torch.Tensor, layer_number: int) -> torch.Tensor:
+        block_index = int(layer_number) - 1
+        trunk = self.model.visual.trunk
+        if hasattr(trunk, "get_intermediate_layers"):
+            return self._call_get_intermediate_layers(x, block_index=block_index, layer_number=layer_number)
+        return self._extract_layer_with_hook(x, block_index=block_index, layer_number=layer_number)
+
+    def _call_get_intermediate_layers(
+        self,
+        x: torch.Tensor,
+        *,
+        block_index: int,
+        layer_number: int,
+    ) -> torch.Tensor:
+        trunk = self.model.visual.trunk
+        attempts = (
+            {"n": [block_index], "reshape": False, "return_prefix_tokens": False},
+            {"n": [block_index], "reshape": False},
+            {"n": [block_index]},
+        )
+        last_error: Exception | None = None
+        for kwargs in attempts:
+            try:
+                outputs = trunk.get_intermediate_layers(x, **kwargs)
+                break
+            except TypeError as exc:
+                last_error = exc
+        else:
+            raise RuntimeError("CONCH trunk.get_intermediate_layers call failed") from last_error
+        if torch.is_tensor(outputs):
+            return outputs
+        if isinstance(outputs, (tuple, list)) and outputs:
+            features = outputs[0]
+            if isinstance(features, (tuple, list)) and features:
+                features = features[0]
+            if torch.is_tensor(features):
+                return features
+        raise RuntimeError(f"CONCH get_intermediate_layers returned no tensor for layer {layer_number}.")
+
+    def _extract_layer_with_hook(
+        self,
+        x: torch.Tensor,
+        *,
+        block_index: int,
+        layer_number: int,
+    ) -> torch.Tensor:
+        blocks = self._find_blocks(required=True)
+        if block_index >= len(blocks):
+            raise ValueError(f"CONCH feature_layer exceeds backbone depth {len(blocks)}: {layer_number}.")
+        captured: dict[str, torch.Tensor] = {}
+
+        def hook(_module, _inputs, output):
+            tensor = output[0] if isinstance(output, (tuple, list)) else output
+            if not torch.is_tensor(tensor):
+                raise TypeError(f"CONCH block {layer_number} hook output is not a tensor: {type(output)!r}")
+            captured["features"] = tensor
+
+        handle = blocks[block_index].register_forward_hook(hook)
+        try:
+            _ = self.model.visual.trunk(x)
+        finally:
+            handle.remove()
+        if "features" not in captured:
+            raise RuntimeError(f"CONCH block hook did not capture layer {layer_number}.")
+        return captured["features"]
+
+    def _find_blocks(self, *, required: bool) -> object | None:
+        trunk = self.model.visual.trunk
+        candidates = (
+            getattr(trunk, "blocks", None),
+            getattr(getattr(trunk, "transformer", None), "resblocks", None),
+            getattr(trunk, "resblocks", None),
+            getattr(getattr(trunk, "model", None), "blocks", None),
+        )
+        for blocks in candidates:
+            if blocks is not None and hasattr(blocks, "__len__") and len(blocks) > 0:
+                return blocks
+        if required:
+            raise RuntimeError(
+                "Could not find CONCH visual transformer blocks. Expected trunk.blocks, "
+                "trunk.transformer.resblocks, trunk.resblocks, or trunk.model.blocks."
+            )
+        return None
+
+    def _normalize_token_output(self, tokens: torch.Tensor) -> torch.Tensor:
+        if tokens.ndim == 4:
+            tokens = tokens.flatten(2).transpose(1, 2)
+        if tokens.ndim != 3:
+            raise ValueError(f"CONCH visual trunk must return (B,T,C) or (B,C,H,W), got {tuple(tokens.shape)}")
+        return tokens[:, -self.num_spatial_tokens :, :] if tokens.shape[1] > self.num_spatial_tokens else tokens
 
     @property
     def num_spatial_tokens(self) -> int:

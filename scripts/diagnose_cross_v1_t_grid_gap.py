@@ -99,6 +99,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument("--ip-adapter-scale", type=float, default=1.0)
     parser.add_argument(
+        "--regional-ip-soft-bias",
+        type=float,
+        default=None,
+        help=(
+            "Optional inference-time override for global_soft_bias IP routing. "
+            "Same-label pairs get +b and other-label pairs get -b. Omit to use checkpoint weights."
+        ),
+    )
+    parser.add_argument(
         "--deterministic-epsilon",
         action="store_true",
         help="Derive per-(probe,t) epsilon from stable hashes instead of one batch noise tensor.",
@@ -178,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         load_nuclei_mask,
         load_tissue_mask,
     )
-    from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
+    from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle, set_ip_soft_bias
     from controlnet_train.training.flux_phase5_cross_v1 import (
         _build_cross_v1_control_batch,
         _build_ip_adapter_kwargs,
@@ -202,6 +211,18 @@ def main(argv: list[str] | None = None) -> int:
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
         ip_adapter_scale=args.ip_adapter_scale,
     )
+    soft_bias_override = None
+    if args.regional_ip_soft_bias is not None:
+        soft_bias_override = set_ip_soft_bias(
+            bundle.flux_pipeline.transformer,
+            args.regional_ip_soft_bias,
+        )
+        print(
+            "regional_ip_soft_bias override "
+            f"requested={soft_bias_override['requested']:g} "
+            f"applied={soft_bias_override['applied']} "
+            f"params={soft_bias_override['parameter_count']}"
+        )
     bundle.flux_pipeline.transformer.eval()
     bundle.controlnet.eval()
     for module in bundle.condition_modules.values():
@@ -244,6 +265,10 @@ def main(argv: list[str] | None = None) -> int:
             "selection_manifest": str(args.selection_manifest) if args.selection_manifest else None,
             "num_probes": len(selected),
             "t_values": t_values,
+            "regional_ip_soft_bias": (
+                float(args.regional_ip_soft_bias) if args.regional_ip_soft_bias is not None else None
+            ),
+            "regional_ip_soft_bias_override": soft_bias_override,
             "alternate_modes": alternate_modes,
             "prompt_mode": args.prompt_mode,
             "noise_seed": args.noise_seed,

@@ -136,8 +136,11 @@ def parse_args(input_args=None) -> argparse.Namespace:
         help="Minimum sigma for samples whose noisy_model_input starts from a degraded target.",
     )
     parser.add_argument(
-        "--uni-checkpoint-path", type=str, required=True,
-        help="Path to UNI2-h ViT-Giant/14 checkpoint (pytorch_model.bin).",
+        "--uni-checkpoint-path", type=str, default=None,
+        help=(
+            "Path to UNI2-h ViT-Giant/14 checkpoint (pytorch_model.bin). Required only "
+            "when using UNI reference IP, UNI perceptual loss, or UNI region loss."
+        ),
     )
     parser.add_argument(
         "--conch-checkpoint-path",
@@ -301,6 +304,47 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--report-to", type=str, default="tensorboard")
     parser.add_argument("--tracker-project-name", type=str, default="flux_controlnet_phase5_cross_v1")
     parser.add_argument("--prompt-batch-size", type=int, default=8)
+    parser.add_argument(
+        "--reference-ip-embedding-backend",
+        type=str,
+        default="uni",
+        choices=["uni", "vae", "vae_latent", "latent"],
+        help=(
+            "Reference embedding source for IP-Adapter injection. 'uni' uses frozen UNI "
+            "spatial tokens; 'vae_latent' encodes the reference image through the frozen "
+            "FLUX VAE and projects packed latent cells into IP tokens."
+        ),
+    )
+    parser.add_argument(
+        "--reference-vae-latent-channels",
+        type=int,
+        default=16,
+        help="Channel count expected from the frozen FLUX VAE latent grid for ref VAE tokens.",
+    )
+    parser.add_argument(
+        "--reference-vae-token-grid-size",
+        type=int,
+        default=32,
+        help=(
+            "Square token grid for ref VAE latent tokens. For 512px images and 64x64 VAE "
+            "latents, 32 with pack factor 2 gives 1024 reference tokens."
+        ),
+    )
+    parser.add_argument(
+        "--reference-vae-pack-factor",
+        type=int,
+        default=2,
+        help="Local latent grid pack factor before projecting ref VAE latent tokens.",
+    )
+    parser.add_argument(
+        "--reference-uni-feature-layer",
+        type=int,
+        default=None,
+        help=(
+            "Use a 1-based UNI transformer block output for reference IP tokens instead "
+            "of final UNI tokens. For the layer-06 texture run, set this to 6."
+        ),
+    )
     parser.add_argument("--reference-num-tokens", type=int, default=16)
     parser.add_argument("--reference-num-perceiver-layers", type=int, default=2)
     parser.add_argument("--reference-perceiver-heads", type=int, default=8)
@@ -617,6 +661,24 @@ def parse_args(input_args=None) -> argparse.Namespace:
     )
     parser.add_argument("--reference-region-mean-weight", type=float, default=1.0)
     parser.add_argument("--reference-region-std-weight", type=float, default=0.5)
+    parser.add_argument(
+        "--reference-region-gram-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight for regional feature Gram-matrix matching in UNI/CONCH region loss. "
+            "Use a small value because Gram is a channel-correlation statistic."
+        ),
+    )
+    parser.add_argument(
+        "--reference-region-conch-layer",
+        type=int,
+        default=None,
+        help=(
+            "Use a 1-based CONCH visual transformer block output for CONCH region loss "
+            "instead of final CONCH tokens. For CONCH layer-06 mean/std+Gram, set this to 6."
+        ),
+    )
     parser.add_argument("--reference-region-fft-weight", type=float, default=0.25)
     parser.add_argument("--reference-region-fft-bins", type=int, default=6)
     parser.add_argument("--reference-region-fft-size", type=int, default=64)
@@ -624,6 +686,54 @@ def parse_args(input_args=None) -> argparse.Namespace:
     parser.add_argument("--reference-region-min-pixels", type=int, default=32)
     parser.add_argument("--reference-region-min-tokens", type=int, default=2)
     parser.add_argument("--reference-region-max-regions-per-sample", type=int, default=None)
+    parser.add_argument(
+        "--reference-texture-loss-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight for regional VGG low-level texture loss. This compares masked VGG "
+            "Gram matrices between decoded prediction regions and reference regions."
+        ),
+    )
+    parser.add_argument("--reference-texture-loss-interval", type=int, default=1)
+    parser.add_argument("--reference-texture-loss-min-sigma", type=float, default=0.0)
+    parser.add_argument("--reference-texture-loss-max-sigma", type=float, default=0.6)
+    parser.add_argument("--reference-texture-tissue-weight", type=float, default=1.0)
+    parser.add_argument("--reference-texture-nuclei-weight", type=float, default=0.25)
+    parser.add_argument("--reference-texture-composite-weight", type=float, default=0.0)
+    parser.add_argument("--reference-texture-min-pixels", type=int, default=8)
+    parser.add_argument(
+        "--reference-vgg-weights",
+        type=str,
+        default="imagenet",
+        choices=["imagenet", "default", "pretrained", "none", "random", "untrained"],
+        help="Weights for regional VGG texture loss.",
+    )
+    parser.add_argument(
+        "--reference-vgg-weights-path",
+        type=str,
+        default=None,
+        help="Optional local VGG16 weights file for regional VGG texture loss.",
+    )
+    parser.add_argument(
+        "--reference-vgg-layers",
+        type=str,
+        default="relu1_1,relu1_2,relu2_1,relu2_2",
+        help="Comma-separated VGG16 feature layers for regional VGG texture loss.",
+    )
+    parser.add_argument(
+        "--reference-vgg-loss-type",
+        type=str,
+        default="gram",
+        choices=["gram", "style", "feature_l1", "l1", "feature"],
+        help="VGG regional texture comparison type. 'gram' is position-independent.",
+    )
+    parser.add_argument(
+        "--reference-vgg-rgb",
+        action="store_true",
+        help="Use RGB VGG inputs instead of grayscale replication for texture loss.",
+    )
+    parser.add_argument("--reference-vgg-input-size", type=int, default=256)
     parser.add_argument(
         "--reference-style-loss-weight",
         type=float,
