@@ -18,6 +18,13 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, Subset
 from torch.utils.data.distributed import DistributedSampler
 
+from .adversarial import (
+    RegionAwarePatchDiscriminator,
+    discriminator_hinge_loss,
+    discriminator_logit_stats,
+    generator_hinge_loss,
+    patch_mask_from_region,
+)
 from .dataset import I0ReferenceTextureDataset
 from .dataset import load_rgb as load_rgb_neg1
 from .losses import Pix2PixTransferLoss
@@ -97,6 +104,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda-perc", type=float, default=1.0)
     parser.add_argument("--lambda-gram", type=float, default=1.0)
     parser.add_argument("--lambda-contextual", type=float, default=1.0)
+    parser.add_argument(
+        "--lambda-adv",
+        type=float,
+        default=0.0,
+        help="Weight for region-aware PatchGAN generator loss. 0 disables GAN training.",
+    )
+    parser.add_argument(
+        "--adv-warmup-steps",
+        type=int,
+        default=1000,
+        help="Do not train/use PatchGAN before this global step.",
+    )
+    parser.add_argument(
+        "--adv-mask-mode",
+        choices=("non_background", "all"),
+        default="non_background",
+        help="Where to apply patch adversarial loss. non_background ignores white/background patches.",
+    )
+    parser.add_argument("--d-lr", type=float, default=None, help="Discriminator LR; defaults to --lr.")
+    parser.add_argument("--d-weight-decay", type=float, default=0.0)
+    parser.add_argument("--d-base-channels", type=int, default=64)
+    parser.add_argument("--d-max-channels", type=int, default=512)
+    parser.add_argument("--d-num-layers", type=int, default=3)
+    parser.add_argument(
+        "--no-d-spectral-norm",
+        action="store_true",
+        help="Disable spectral normalization in the PatchGAN discriminator.",
+    )
     parser.add_argument(
         "--l1-blur-sigma",
         type=float,
@@ -492,6 +527,13 @@ def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
     return model.module if isinstance(model, DistributedDataParallel) else model
 
 
+def set_requires_grad(model: torch.nn.Module | None, value: bool) -> None:
+    if model is None:
+        return
+    for parameter in model.parameters():
+        parameter.requires_grad_(value)
+
+
 def main() -> int:
     args = parse_args()
     device, local_rank, rank, world_size = setup_distributed(args)
@@ -573,6 +615,7 @@ def main() -> int:
         print(f"fixed eval metadata indices: {eval_indices}")
 
     in_ch = 3 + 16 + 6
+    region_condition_channels = in_ch - 3
     model = Pix2PixCrossAttnUNet(
         in_ch=in_ch,
         out_ch=3,
@@ -586,6 +629,30 @@ def main() -> int:
     if rank == 0:
         print(f"model trainable params: {model_parameter_count(model):,}")
         print(f"decoder upsample mode: {args.upsample_mode} + conv")
+
+    discriminator = None
+    d_optimizer = None
+    if args.lambda_adv > 0.0:
+        discriminator = RegionAwarePatchDiscriminator(
+            image_channels=3,
+            condition_channels=region_condition_channels,
+            base_channels=args.d_base_channels,
+            max_channels=args.d_max_channels,
+            num_layers=args.d_num_layers,
+            spectral_norm=not args.no_d_spectral_norm,
+        ).to(device)
+        d_optimizer = torch.optim.AdamW(
+            discriminator.parameters(),
+            lr=args.d_lr if args.d_lr is not None else args.lr,
+            betas=(0.5, 0.999),
+            weight_decay=args.d_weight_decay,
+        )
+        if rank == 0:
+            print(
+                "region-aware PatchGAN enabled: "
+                f"lambda_adv={args.lambda_adv:g} warmup={args.adv_warmup_steps} "
+                f"mask={args.adv_mask_mode} params={model_parameter_count(discriminator):,}"
+            )
 
     criterion = Pix2PixTransferLoss(
         lambda_l1=args.lambda_l1,
@@ -622,6 +689,13 @@ def main() -> int:
         optimizer.load_state_dict(ckpt["optimizer"])
         if "loss_normalizer" in ckpt:
             criterion.normalizer.load_state_dict(ckpt["loss_normalizer"])
+        if discriminator is not None:
+            if "discriminator" in ckpt:
+                discriminator.load_state_dict(ckpt["discriminator"], strict=True)
+            elif rank == 0:
+                print("resume checkpoint has no discriminator state; PatchGAN starts fresh")
+            if d_optimizer is not None and "d_optimizer" in ckpt:
+                d_optimizer.load_state_dict(ckpt["d_optimizer"])
         start_epoch = int(ckpt.get("epoch", -1)) + 1
         global_step = int(ckpt.get("global_step", 0))
         if rank == 0:
@@ -629,6 +703,8 @@ def main() -> int:
 
     if world_size > 1:
         model = DistributedDataParallel(model, device_ids=[local_rank])
+        if discriminator is not None:
+            discriminator = DistributedDataParallel(discriminator, device_ids=[local_rank])
 
     i0_generator = (
         LazyI0Generator(args, device, rank=rank)
@@ -649,6 +725,7 @@ def main() -> int:
             target = batch["target_image"].to(device, non_blocking=True)
             target_region = batch["target_region"].to(device, non_blocking=True)
             reference_region = batch["reference_region"].to(device, non_blocking=True)
+            region_condition = target_cond[:, 3:].detach()
 
             optimizer.zero_grad(set_to_none=True)
             with autocast_context(device, args.mixed_precision):
@@ -666,6 +743,59 @@ def main() -> int:
                     reference_region=reference_region,
                 )
 
+            logs["sup_total"] = logs["total"]
+            logs["adv_g"] = 0.0
+            logs["adv_d"] = 0.0
+            logs["d_real"] = 0.0
+            logs["d_fake"] = 0.0
+            logs["adv_active"] = 0.0
+            adv_active = (
+                discriminator is not None
+                and d_optimizer is not None
+                and args.lambda_adv > 0.0
+                and global_step >= int(args.adv_warmup_steps)
+            )
+            if adv_active:
+                d_optimizer.zero_grad(set_to_none=True)
+                set_requires_grad(discriminator, True)
+                with autocast_context(device, args.mixed_precision):
+                    real_logits = discriminator(target.detach(), region_condition)
+                    fake_logits = discriminator(pred.detach(), region_condition)
+                    adv_mask = patch_mask_from_region(
+                        target_region,
+                        real_logits,
+                        mode=args.adv_mask_mode,
+                    )
+                    d_loss = discriminator_hinge_loss(
+                        real_logits,
+                        fake_logits,
+                        mask=adv_mask,
+                    )
+                    d_real, d_fake = discriminator_logit_stats(
+                        real_logits,
+                        fake_logits,
+                        mask=adv_mask,
+                    )
+                if scaler.is_enabled():
+                    scaler.scale(d_loss).backward()
+                    scaler.step(d_optimizer)
+                else:
+                    d_loss.backward()
+                    d_optimizer.step()
+
+                set_requires_grad(discriminator, False)
+                with autocast_context(device, args.mixed_precision):
+                    fake_logits_for_g = discriminator(pred, region_condition)
+                    adv_g_loss = generator_hinge_loss(fake_logits_for_g, mask=adv_mask)
+                    loss = loss + float(args.lambda_adv) * adv_g_loss
+
+                logs["adv_g"] = float(adv_g_loss.detach().float().item())
+                logs["adv_d"] = float(d_loss.detach().float().item())
+                logs["d_real"] = float(d_real.detach().float().item())
+                logs["d_fake"] = float(d_fake.detach().float().item())
+                logs["adv_active"] = 1.0
+            logs["total"] = float(loss.detach().float().item())
+
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
                 if args.grad_clip > 0:
@@ -678,6 +808,9 @@ def main() -> int:
                 if args.grad_clip > 0:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
                 optimizer.step()
+
+            if adv_active:
+                set_requires_grad(discriminator, True)
 
 
             if rank == 0 and global_step % args.log_every == 0:
@@ -703,6 +836,14 @@ def main() -> int:
                     f"norm_gram={logs['norm_gram']:.3f} "
                     f"norm_contextual={logs['norm_contextual']:.3f}"
                 )
+                if discriminator is not None:
+                    print(
+                        "  [patchgan] "
+                        f"active={int(logs['adv_active'])} "
+                        f"lambda_adv={args.lambda_adv:g} "
+                        f"g_adv={logs['adv_g']:.5f} d_loss={logs['adv_d']:.5f} "
+                        f"d_real={logs['d_real']:.5f} d_fake={logs['d_fake']:.5f}"
+                    )
 
             if rank == 0 and global_step % args.sample_every == 0:
                 cpu_batch = {
@@ -739,17 +880,19 @@ def main() -> int:
             print(f"saved eval panel epoch {epoch + 1}")
 
         if rank == 0 and (epoch + 1) % args.save_every == 0:
-            torch.save(
-                {
-                    "model": unwrap_model(model).state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "loss_normalizer": criterion.normalizer.state_dict(),
-                    "epoch": epoch,
-                    "global_step": global_step,
-                    "args": vars(args),
-                },
-                output_dir / "ckpt" / f"epoch{epoch + 1:04d}.pt",
-            )
+            checkpoint = {
+                "model": unwrap_model(model).state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "loss_normalizer": criterion.normalizer.state_dict(),
+                "epoch": epoch,
+                "global_step": global_step,
+                "args": vars(args),
+            }
+            if discriminator is not None:
+                checkpoint["discriminator"] = unwrap_model(discriminator).state_dict()
+            if d_optimizer is not None:
+                checkpoint["d_optimizer"] = d_optimizer.state_dict()
+            torch.save(checkpoint, output_dir / "ckpt" / f"epoch{epoch + 1:04d}.pt")
             print(f"saved checkpoint epoch {epoch + 1}")
 
         if world_size > 1:

@@ -4,6 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from controlnet_train.pix2pix_transfer.adversarial import (
+    RegionAwarePatchDiscriminator,
+    discriminator_hinge_loss,
+    generator_hinge_loss,
+    patch_mask_from_region,
+)
 from controlnet_train.pix2pix_transfer.losses import (
     EMALossNormalizer,
     Pix2PixTransferLoss,
@@ -170,6 +176,51 @@ class Pix2PixTextureLossTests(unittest.TestCase):
 
         self.assertEqual(nearest_model.upsample_mode, "nearest")
         self.assertEqual(tuple(out.shape), (1, 3, 32, 32))
+
+    def test_region_aware_patchgan_outputs_patch_logits(self):
+        discriminator = RegionAwarePatchDiscriminator(
+            condition_channels=22,
+            base_channels=8,
+            max_channels=32,
+            num_layers=2,
+            spectral_norm=False,
+        )
+        image = torch.randn(2, 3, 64, 64)
+        region_condition = torch.randn(2, 22, 64, 64)
+
+        logits = discriminator(image, region_condition)
+
+        self.assertEqual(logits.shape[0], 2)
+        self.assertEqual(logits.shape[1], 1)
+        self.assertLess(logits.shape[-1], image.shape[-1])
+
+    def test_masked_hinge_gan_loss_has_image_gradient(self):
+        discriminator = RegionAwarePatchDiscriminator(
+            condition_channels=22,
+            base_channels=8,
+            max_channels=32,
+            num_layers=2,
+            spectral_norm=False,
+        )
+        real = torch.randn(2, 3, 64, 64)
+        fake = torch.randn(2, 3, 64, 64, requires_grad=True)
+        region_condition = torch.randn(2, 22, 64, 64)
+        target_region = torch.ones(2, 1, 64, 64, dtype=torch.long)
+        target_region[:, :, :8, :8] = 0
+
+        real_logits = discriminator(real, region_condition)
+        fake_logits = discriminator(fake.detach(), region_condition)
+        mask = patch_mask_from_region(target_region, real_logits)
+        d_loss = discriminator_hinge_loss(real_logits, fake_logits, mask=mask)
+
+        g_logits = discriminator(fake, region_condition)
+        g_loss = generator_hinge_loss(g_logits, mask=mask)
+        g_loss.backward()
+
+        self.assertTrue(torch.isfinite(d_loss))
+        self.assertTrue(torch.isfinite(g_loss))
+        self.assertIsNotNone(fake.grad)
+        self.assertTrue(torch.isfinite(fake.grad).all())
 
     def test_combined_loss_has_finite_end_to_end_gradient(self):
         criterion = Pix2PixTransferLoss(
