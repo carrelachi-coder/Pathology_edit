@@ -535,6 +535,7 @@ def _sample_with_flux_controlnet(
     guidance_scale: float,
     controlnet_conditioning_scale: float,
     joint_attention_kwargs: dict | None = None,
+    seed: int = 42,
 ) -> Image.Image:
     from diffusers import FluxControlNetPipeline
     from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
@@ -555,7 +556,7 @@ def _sample_with_flux_controlnet(
     latents, latent_image_ids = pipe.prepare_latents(
         1, num_channels_latents, height, width,
         prompt_embeds.dtype, torch_device,
-        generator=torch.Generator(device=torch_device).manual_seed(42),
+        generator=torch.Generator(device=torch_device).manual_seed(int(seed)),
         latents=None,
     )
     sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
