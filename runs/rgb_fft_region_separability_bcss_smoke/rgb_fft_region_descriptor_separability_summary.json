@@ -1,0 +1,79 @@
+{
+  "status": "insufficient_valid_descriptors",
+  "metadata": "edit_datasets/BCSS/metadata.jsonl",
+  "label_mode": "coarse_tissue",
+  "label_a": 1,
+  "label_b": 2,
+  "counts": {
+    "1": 0,
+    "2": 0
+  },
+  "candidate_entries": 8,
+  "scanned_entries": 0,
+  "skipped_preview": [
+    {
+      "index": 6121,
+      "sample_id": "TCGA-AC-A2QH_x42173_y16859_py3584_px4096",
+      "image_path": "edit_datasets/BCSS/images/TCGA-AC-A2QH_x42173_y16859_py3584_px4096.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-AC-A2QH_x42173_y16859_py3584_px4096.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-AC-A2QH_x42173_y16859_py3584_px4096.png'"
+    },
+    {
+      "index": 15388,
+      "sample_id": "TCGA-D8-A1JG_x15677_y69205_py2816_px1024",
+      "image_path": "edit_datasets/BCSS/images/TCGA-D8-A1JG_x15677_y69205_py2816_px1024.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-D8-A1JG_x15677_y69205_py2816_px1024.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-D8-A1JG_x15677_y69205_py2816_px1024.png'"
+    },
+    {
+      "index": 9499,
+      "sample_id": "TCGA-AR-A0U4_x41141_y69786_py1024_px4096",
+      "image_path": "edit_datasets/BCSS/images/TCGA-AR-A0U4_x41141_y69786_py1024_px4096.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-AR-A0U4_x41141_y69786_py1024_px4096.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-AR-A0U4_x41141_y69786_py1024_px4096.png'"
+    },
+    {
+      "index": 5237,
+      "sample_id": "TCGA-A7-A6VW_x69350_y15716_py2048_px768",
+      "image_path": "edit_datasets/BCSS/images/TCGA-A7-A6VW_x69350_y15716_py2048_px768.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-A7-A6VW_x69350_y15716_py2048_px768.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-A7-A6VW_x69350_y15716_py2048_px768.png'"
+    },
+    {
+      "index": 10789,
+      "sample_id": "TCGA-BH-A0BW_x42346_y30843_py0_px1024",
+      "image_path": "edit_datasets/BCSS/images/TCGA-BH-A0BW_x42346_y30843_py0_px1024.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-BH-A0BW_x42346_y30843_py0_px1024.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-BH-A0BW_x42346_y30843_py0_px1024.png'"
+    },
+    {
+      "index": 13591,
+      "sample_id": "TCGA-C8-A27B_x52632_y11349_py256_px6400",
+      "image_path": "edit_datasets/BCSS/images/TCGA-C8-A27B_x52632_y11349_py256_px6400.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-C8-A27B_x52632_y11349_py256_px6400.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-C8-A27B_x52632_y11349_py256_px6400.png'"
+    },
+    {
+      "index": 19825,
+      "sample_id": "TCGA-EW-A1P1_x50567_y38988_py1280_px1280",
+      "image_path": "edit_datasets/BCSS/images/TCGA-EW-A1P1_x50567_y38988_py1280_px1280.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-EW-A1P1_x50567_y38988_py1280_px1280.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-EW-A1P1_x50567_y38988_py1280_px1280.png'"
+    },
+    {
+      "index": 390,
+      "sample_id": "TCGA-A2-A04P_x104246_y48517_py2048_px1280",
+      "image_path": "edit_datasets/BCSS/images/TCGA-A2-A04P_x104246_y48517_py2048_px1280.png",
+      "mask_path": "edit_datasets/BCSS/tissue_masks/TCGA-A2-A04P_x104246_y48517_py2048_px1280.png",
+      "reason": "load_failed:FileNotFoundError",
+      "detail": "[Errno 2] No such file or directory: '/Users/wangqinxin/Documents/GitHub/Pathology_edit/edit_datasets/BCSS/images/TCGA-A2-A04P_x104246_y48517_py2048_px1280.png'"
+    }
+  ]
+}

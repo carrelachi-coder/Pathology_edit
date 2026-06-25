@@ -137,6 +137,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional y-axis limits for loss plots, formatted as min,max.",
     )
     parser.add_argument(
+        "--loss-ylims-by-tag",
+        default=None,
+        help=(
+            "Optional per-loss y-axis limits for individual loss subplots, formatted as "
+            "'tag=min,max;other_tag=min,max'. These are ignored for tags covered by "
+            "--loss-ylim because the global limit takes precedence."
+        ),
+    )
+    parser.add_argument(
         "--grad-tags",
         default=None,
         help=(
@@ -198,6 +207,27 @@ def parse_ylim(value: str | None) -> tuple[float, float] | None:
     if not math.isfinite(low) or not math.isfinite(high) or low >= high:
         raise ValueError(f"--loss-ylim requires finite min < max, got {value!r}.")
     return low, high
+
+
+def parse_ylims_by_tag(value: str | None) -> dict[str, tuple[float, float]]:
+    if value is None or not value.strip():
+        return {}
+    result: dict[str, tuple[float, float]] = {}
+    for raw_part in value.split(";"):
+        part = raw_part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError(
+                "--loss-ylims-by-tag entries must be formatted as tag=min,max; "
+                f"got {part!r}."
+            )
+        tag, limits = part.split("=", 1)
+        tag = normalize_tag(tag.strip())
+        if not tag:
+            raise ValueError(f"Empty tag in --loss-ylims-by-tag entry {part!r}.")
+        result[tag] = parse_ylim(limits)
+    return result
 
 
 def auto_ylim_for_points(points: Iterable[FilteredPoint]) -> tuple[float, float] | None:
@@ -849,6 +879,10 @@ def main(argv=None) -> int:
     after_step = args.after_step if args.after_step is not None else default_after_step
     sample_tags = parse_tag_list(args.sample_tags)
     loss_ylim = parse_ylim(args.loss_ylim)
+    loss_ylims_by_tag = {
+        **default_loss_ylims_by_tag,
+        **parse_ylims_by_tag(args.loss_ylims_by_tag),
+    }
     grad_ylim = parse_ylim(args.grad_ylim)
     grouped = group_by_tag(rows)
     points_by_tag = build_filtered_loss_points(
@@ -891,7 +925,7 @@ def main(argv=None) -> int:
         rolling_window=max(1, args.rolling_window),
         draw_raw=not args.no_raw,
         ylim=loss_ylim,
-        ylims_by_tag=default_loss_ylims_by_tag,
+        ylims_by_tag=loss_ylims_by_tag,
         dpi=args.dpi,
         ylabel="loss",
         title_prefix="Filtered loss",

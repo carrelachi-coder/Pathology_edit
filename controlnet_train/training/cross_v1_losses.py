@@ -23,6 +23,39 @@ class RegionalStainStyleLossConfig:
     exclude_labels: tuple[int, ...] = (0,)
 
 
+@dataclass(frozen=True)
+class RegionalFeatureLossConfig:
+    """Weights for class-matched spatial feature-map region loss."""
+
+    tissue_weight: float = 1.0
+    nuclei_weight: float = 0.0
+    composite_weight: float = 0.0
+    mean_weight: float = 1.0
+    std_weight: float = 0.5
+    pooled_cosine_weight: float = 0.25
+    gram_weight: float = 0.0
+    min_tokens: int = 2
+    max_regions_per_sample: int | None = None
+    exclude_labels: tuple[int, ...] = (0,)
+
+
+@dataclass(frozen=True)
+class RegionalRgbFftLossConfig:
+    """Weights for independent RGB+FFT region descriptors."""
+
+    tissue_weight: float = 1.0
+    nuclei_weight: float = 0.0
+    composite_weight: float = 0.0
+    mean_weight: float = 1.0
+    std_weight: float = 0.5
+    fft_weight: float = 0.25
+    fft_bins: int = 6
+    fft_size: int = 64
+    min_pixels: int = 32
+    max_regions_per_sample: int | None = None
+    exclude_labels: tuple[int, ...] = (0,)
+
+
 def per_sample_mse(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """Return one denoising MSE value per batch item."""
     if prediction.shape != target.shape:
@@ -232,6 +265,190 @@ def regional_stain_style_loss(
     }
 
 
+def regional_feature_map_loss(
+    *,
+    prediction_features: torch.Tensor,
+    reference_features: torch.Tensor,
+    target_tissue_mask: torch.Tensor,
+    reference_tissue_mask: torch.Tensor,
+    target_nuclei_mask: torch.Tensor | None = None,
+    reference_nuclei_mask: torch.Tensor | None = None,
+    sample_mask: torch.Tensor | None = None,
+    config: RegionalFeatureLossConfig | None = None,
+) -> dict[str, torch.Tensor | int]:
+    """Match frozen pathology feature-map statistics in class-aligned regions.
+
+    ``prediction_features`` and ``reference_features`` are spatial token maps
+    flattened as ``(B, T, C)``. Masks are nearest-resized to the square token
+    grid and regions are matched by label ID, so target/ref patches need not be
+    spatially aligned.
+    """
+    cfg = config or RegionalFeatureLossConfig()
+    _validate_feature_tokens(prediction_features, reference_features)
+    zero = prediction_features.new_zeros(())
+
+    tissue_loss, tissue_regions, tissue_gram_loss = _regional_feature_mask_loss(
+        prediction_features=prediction_features,
+        reference_features=reference_features,
+        target_mask=target_tissue_mask,
+        reference_mask=reference_tissue_mask,
+        sample_mask=sample_mask,
+        config=cfg,
+    )
+    nuclei_loss = zero
+    nuclei_gram_loss = zero
+    nuclei_regions = 0
+    if target_nuclei_mask is not None and reference_nuclei_mask is not None:
+        nuclei_loss, nuclei_regions, nuclei_gram_loss = _regional_feature_mask_loss(
+            prediction_features=prediction_features,
+            reference_features=reference_features,
+            target_mask=target_nuclei_mask,
+            reference_mask=reference_nuclei_mask,
+            sample_mask=sample_mask,
+            config=cfg,
+        )
+    composite_loss = zero
+    composite_gram_loss = zero
+    composite_regions = 0
+    if (
+        cfg.composite_weight > 0.0
+        and target_nuclei_mask is not None
+        and reference_nuclei_mask is not None
+    ):
+        target_composite_mask = _combine_tissue_nuclei_masks(
+            target_tissue_mask,
+            target_nuclei_mask,
+            exclude_tissue_labels=cfg.exclude_labels,
+        )
+        reference_composite_mask = _combine_tissue_nuclei_masks(
+            reference_tissue_mask,
+            reference_nuclei_mask,
+            exclude_tissue_labels=cfg.exclude_labels,
+        )
+        composite_loss, composite_regions, composite_gram_loss = _regional_feature_mask_loss(
+            prediction_features=prediction_features,
+            reference_features=reference_features,
+            target_mask=target_composite_mask,
+            reference_mask=reference_composite_mask,
+            sample_mask=sample_mask,
+            config=cfg,
+        )
+
+    weighted = zero
+    weighted_gram = zero
+    active_weight = 0.0
+    if tissue_regions > 0 and cfg.tissue_weight > 0.0:
+        weighted = weighted + float(cfg.tissue_weight) * tissue_loss
+        weighted_gram = weighted_gram + float(cfg.tissue_weight) * tissue_gram_loss
+        active_weight += float(cfg.tissue_weight)
+    if nuclei_regions > 0 and cfg.nuclei_weight > 0.0:
+        weighted = weighted + float(cfg.nuclei_weight) * nuclei_loss
+        weighted_gram = weighted_gram + float(cfg.nuclei_weight) * nuclei_gram_loss
+        active_weight += float(cfg.nuclei_weight)
+    if composite_regions > 0 and cfg.composite_weight > 0.0:
+        weighted = weighted + float(cfg.composite_weight) * composite_loss
+        weighted_gram = weighted_gram + float(cfg.composite_weight) * composite_gram_loss
+        active_weight += float(cfg.composite_weight)
+
+    total = weighted / active_weight if active_weight > 0.0 else zero
+    gram = weighted_gram / active_weight if active_weight > 0.0 and cfg.gram_weight > 0.0 else zero
+    return {
+        "total": total,
+        "tissue": tissue_loss,
+        "nuclei": nuclei_loss,
+        "composite": composite_loss,
+        "gram": gram,
+        "tissue_regions": tissue_regions,
+        "nuclei_regions": nuclei_regions,
+        "composite_regions": composite_regions,
+    }
+
+
+def regional_rgb_fft_loss(
+    *,
+    prediction: torch.Tensor,
+    reference: torch.Tensor,
+    target_tissue_mask: torch.Tensor,
+    reference_tissue_mask: torch.Tensor,
+    target_nuclei_mask: torch.Tensor | None = None,
+    reference_nuclei_mask: torch.Tensor | None = None,
+    sample_mask: torch.Tensor | None = None,
+    config: RegionalRgbFftLossConfig | None = None,
+) -> dict[str, torch.Tensor | int]:
+    """Match independent RGB and FFT descriptors inside class-aligned regions."""
+    cfg = config or RegionalRgbFftLossConfig()
+    _validate_images(prediction, reference)
+    zero = prediction.new_zeros(())
+
+    tissue_loss, tissue_regions = _regional_rgb_fft_mask_loss(
+        prediction=prediction,
+        reference=reference,
+        target_mask=target_tissue_mask,
+        reference_mask=reference_tissue_mask,
+        sample_mask=sample_mask,
+        config=cfg,
+    )
+    nuclei_loss = zero
+    nuclei_regions = 0
+    if target_nuclei_mask is not None and reference_nuclei_mask is not None:
+        nuclei_loss, nuclei_regions = _regional_rgb_fft_mask_loss(
+            prediction=prediction,
+            reference=reference,
+            target_mask=target_nuclei_mask,
+            reference_mask=reference_nuclei_mask,
+            sample_mask=sample_mask,
+            config=cfg,
+        )
+    composite_loss = zero
+    composite_regions = 0
+    if (
+        cfg.composite_weight > 0.0
+        and target_nuclei_mask is not None
+        and reference_nuclei_mask is not None
+    ):
+        target_composite_mask = _combine_tissue_nuclei_masks(
+            target_tissue_mask,
+            target_nuclei_mask,
+            exclude_tissue_labels=cfg.exclude_labels,
+        )
+        reference_composite_mask = _combine_tissue_nuclei_masks(
+            reference_tissue_mask,
+            reference_nuclei_mask,
+            exclude_tissue_labels=cfg.exclude_labels,
+        )
+        composite_loss, composite_regions = _regional_rgb_fft_mask_loss(
+            prediction=prediction,
+            reference=reference,
+            target_mask=target_composite_mask,
+            reference_mask=reference_composite_mask,
+            sample_mask=sample_mask,
+            config=cfg,
+        )
+
+    weighted = zero
+    active_weight = 0.0
+    if tissue_regions > 0 and cfg.tissue_weight > 0.0:
+        weighted = weighted + float(cfg.tissue_weight) * tissue_loss
+        active_weight += float(cfg.tissue_weight)
+    if nuclei_regions > 0 and cfg.nuclei_weight > 0.0:
+        weighted = weighted + float(cfg.nuclei_weight) * nuclei_loss
+        active_weight += float(cfg.nuclei_weight)
+    if composite_regions > 0 and cfg.composite_weight > 0.0:
+        weighted = weighted + float(cfg.composite_weight) * composite_loss
+        active_weight += float(cfg.composite_weight)
+
+    total = weighted / active_weight if active_weight > 0.0 else zero
+    return {
+        "total": total,
+        "tissue": tissue_loss,
+        "nuclei": nuclei_loss,
+        "composite": composite_loss,
+        "tissue_regions": tissue_regions,
+        "nuclei_regions": nuclei_regions,
+        "composite_regions": composite_regions,
+    }
+
+
 def _regional_mask_loss(
     *,
     prediction: torch.Tensor,
@@ -299,6 +516,159 @@ def _regional_mask_loss(
     return torch.stack(losses).mean(), len(losses)
 
 
+def _regional_feature_mask_loss(
+    *,
+    prediction_features: torch.Tensor,
+    reference_features: torch.Tensor,
+    target_mask: torch.Tensor,
+    reference_mask: torch.Tensor,
+    sample_mask: torch.Tensor | None,
+    config: RegionalFeatureLossConfig,
+) -> tuple[torch.Tensor, int]:
+    token_grid = _infer_square_token_grid(prediction_features.shape[1])
+    target_mask = _resize_mask_to_image(target_mask, token_grid)
+    reference_mask = _resize_mask_to_image(reference_mask, token_grid)
+    if target_mask.shape != reference_mask.shape:
+        raise ValueError(
+            f"target/reference mask batch shapes differ: {tuple(target_mask.shape)} vs {tuple(reference_mask.shape)}"
+        )
+    if target_mask.shape[0] != prediction_features.shape[0]:
+        raise ValueError(
+            f"mask batch size {target_mask.shape[0]} does not match feature batch size {prediction_features.shape[0]}"
+        )
+    if sample_mask is None:
+        active_samples = torch.ones(prediction_features.shape[0], device=prediction_features.device, dtype=torch.bool)
+    else:
+        active_samples = sample_mask.to(device=prediction_features.device, dtype=torch.bool).flatten()
+        if active_samples.shape[0] != prediction_features.shape[0]:
+            raise ValueError(
+                f"sample_mask shape {tuple(active_samples.shape)} does not match batch size {prediction_features.shape[0]}"
+            )
+
+    losses = []
+    gram_losses = []
+    exclude = set(int(label) for label in config.exclude_labels)
+    min_tokens = max(1, int(config.min_tokens))
+    prediction_map = prediction_features.reshape(
+        prediction_features.shape[0],
+        token_grid[0],
+        token_grid[1],
+        prediction_features.shape[-1],
+    )
+    reference_map = reference_features.reshape(
+        reference_features.shape[0],
+        token_grid[0],
+        token_grid[1],
+        reference_features.shape[-1],
+    )
+    for batch_index in range(prediction_features.shape[0]):
+        if not bool(active_samples[batch_index].item()):
+            continue
+        labels = _shared_labels(
+            target_mask[batch_index],
+            reference_mask[batch_index],
+            exclude_labels=exclude,
+        )
+        if config.max_regions_per_sample is not None and len(labels) > config.max_regions_per_sample:
+            labels = _largest_labels(
+                labels,
+                target_mask[batch_index],
+                max_regions=int(config.max_regions_per_sample),
+            )
+        for label in labels:
+            target_region = target_mask[batch_index] == label
+            reference_region = reference_mask[batch_index] == label
+            if int(target_region.sum().item()) < min_tokens:
+                continue
+            if int(reference_region.sum().item()) < min_tokens:
+                continue
+            region_loss, gram_loss = _region_feature_loss(
+                prediction_map[batch_index],
+                reference_map[batch_index],
+                target_region,
+                reference_region,
+                config=config,
+            )
+            losses.append(region_loss)
+            if config.gram_weight > 0.0:
+                gram_losses.append(gram_loss)
+    if not losses:
+        return prediction_features.new_zeros(()), 0, prediction_features.new_zeros(())
+    gram_loss = (
+        torch.stack(gram_losses).mean()
+        if gram_losses
+        else prediction_features.new_zeros(())
+    )
+    return torch.stack(losses).mean(), len(losses), gram_loss
+
+
+def _regional_rgb_fft_mask_loss(
+    *,
+    prediction: torch.Tensor,
+    reference: torch.Tensor,
+    target_mask: torch.Tensor,
+    reference_mask: torch.Tensor,
+    sample_mask: torch.Tensor | None,
+    config: RegionalRgbFftLossConfig,
+) -> tuple[torch.Tensor, int]:
+    image_size = tuple(int(v) for v in prediction.shape[-2:])
+    target_mask = _resize_mask_to_image(target_mask, image_size)
+    reference_mask = _resize_mask_to_image(reference_mask, image_size)
+    if target_mask.shape != reference_mask.shape:
+        raise ValueError(
+            f"target/reference mask batch shapes differ: {tuple(target_mask.shape)} vs {tuple(reference_mask.shape)}"
+        )
+    if target_mask.shape[0] != prediction.shape[0]:
+        raise ValueError(
+            f"mask batch size {target_mask.shape[0]} does not match image batch size {prediction.shape[0]}"
+        )
+    if sample_mask is None:
+        active_samples = torch.ones(prediction.shape[0], device=prediction.device, dtype=torch.bool)
+    else:
+        active_samples = sample_mask.to(device=prediction.device, dtype=torch.bool).flatten()
+        if active_samples.shape[0] != prediction.shape[0]:
+            raise ValueError(
+                f"sample_mask shape {tuple(active_samples.shape)} does not match batch size {prediction.shape[0]}"
+            )
+
+    losses = []
+    exclude = set(int(label) for label in config.exclude_labels)
+    min_pixels = max(1, int(config.min_pixels))
+    for batch_index in range(prediction.shape[0]):
+        if not bool(active_samples[batch_index].item()):
+            continue
+        labels = _shared_labels(
+            target_mask[batch_index],
+            reference_mask[batch_index],
+            exclude_labels=exclude,
+        )
+        if config.max_regions_per_sample is not None and len(labels) > config.max_regions_per_sample:
+            labels = _largest_labels(
+                labels,
+                target_mask[batch_index],
+                max_regions=int(config.max_regions_per_sample),
+            )
+        for label in labels:
+            target_region = target_mask[batch_index] == label
+            reference_region = reference_mask[batch_index] == label
+            if int(target_region.sum().item()) < min_pixels:
+                continue
+            if int(reference_region.sum().item()) < min_pixels:
+                continue
+            losses.append(
+                _region_rgb_fft_loss(
+                    prediction[batch_index],
+                    reference[batch_index],
+                    target_region,
+                    reference_region,
+                    config=config,
+                )
+            )
+    if not losses:
+        return prediction.new_zeros(()), 0
+    return torch.stack(losses).mean(), len(losses)
+
+
 def _region_stain_style_loss(
     prediction: torch.Tensor,
     reference: torch.Tensor,
@@ -326,6 +696,166 @@ def _region_stain_style_loss(
     return total / normalizer if normalizer > 0.0 else total
 
 
+def _region_feature_loss(
+    prediction: torch.Tensor,
+    reference: torch.Tensor,
+    target_region: torch.Tensor,
+    reference_region: torch.Tensor,
+    *,
+    config: RegionalFeatureLossConfig,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    pred_values = prediction[target_region].float()
+    ref_values = reference.detach()[reference_region].float()
+    if pred_values.ndim != 2 or ref_values.ndim != 2:
+        raise ValueError("feature regions must select token-by-channel matrices")
+    pred_mean = pred_values.mean(dim=0)
+    ref_mean = ref_values.mean(dim=0)
+    pred_std = torch.sqrt(pred_values.var(dim=0, unbiased=False) + 1e-6)
+    ref_std = torch.sqrt(ref_values.var(dim=0, unbiased=False) + 1e-6)
+
+    total = prediction.new_zeros(())
+    normalizer = 0.0
+    if config.mean_weight > 0.0:
+        total = total + float(config.mean_weight) * F.l1_loss(pred_mean, ref_mean)
+        normalizer += float(config.mean_weight)
+    if config.std_weight > 0.0:
+        total = total + float(config.std_weight) * F.l1_loss(pred_std, ref_std)
+        normalizer += float(config.std_weight)
+    if config.pooled_cosine_weight > 0.0:
+        cosine = F.cosine_similarity(pred_mean, ref_mean, dim=0, eps=1e-6)
+        total = total + float(config.pooled_cosine_weight) * (1.0 - cosine)
+        normalizer += float(config.pooled_cosine_weight)
+    gram_loss = prediction.new_zeros(())
+    if config.gram_weight > 0.0:
+        pred_gram = _feature_gram_matrix(pred_values)
+        ref_gram = _feature_gram_matrix(ref_values)
+        gram_loss = F.l1_loss(pred_gram, ref_gram)
+        total = total + float(config.gram_weight) * gram_loss
+        normalizer += float(config.gram_weight)
+    return total / normalizer if normalizer > 0.0 else total, gram_loss
+
+
+def _feature_gram_matrix(values: torch.Tensor) -> torch.Tensor:
+    """Return channel-correlation Gram matrix averaged over region tokens."""
+    if values.ndim != 2:
+        raise ValueError(f"Gram features must have shape (tokens, channels), got {tuple(values.shape)}")
+    values = values.float()
+    denom = max(1, int(values.shape[0]))
+    return values.transpose(0, 1).matmul(values) / float(denom)
+
+
+def _region_rgb_fft_loss(
+    prediction: torch.Tensor,
+    reference: torch.Tensor,
+    target_region: torch.Tensor,
+    reference_region: torch.Tensor,
+    *,
+    config: RegionalRgbFftLossConfig,
+) -> torch.Tensor:
+    pred_desc = _region_rgb_fft_descriptor(prediction, target_region, config=config)
+    ref_desc = _region_rgb_fft_descriptor(reference.detach(), reference_region, config=config)
+
+    total = prediction.float().new_zeros(())
+    normalizer = 0.0
+    if config.mean_weight > 0.0:
+        total = total + float(config.mean_weight) * F.l1_loss(pred_desc["mean"], ref_desc["mean"])
+        normalizer += float(config.mean_weight)
+    if config.std_weight > 0.0:
+        total = total + float(config.std_weight) * F.l1_loss(pred_desc["std"], ref_desc["std"])
+        normalizer += float(config.std_weight)
+    if config.fft_weight > 0.0:
+        total = total + float(config.fft_weight) * F.l1_loss(pred_desc["fft"], ref_desc["fft"])
+        normalizer += float(config.fft_weight)
+    return total / normalizer if normalizer > 0.0 else total
+
+
+def _region_rgb_fft_descriptor(
+    image: torch.Tensor,
+    region: torch.Tensor,
+    *,
+    config: RegionalRgbFftLossConfig,
+) -> dict[str, torch.Tensor]:
+    values = image[:, region].float()
+    if values.ndim != 2 or values.shape[1] == 0:
+        raise ValueError("region must select at least one pixel")
+    mean = values.mean(dim=1)
+    variance = (values - mean[:, None]).square().mean(dim=1)
+    std = torch.sqrt(variance + 1e-6)
+    fft = _region_fft_radial_spectrum(
+        image.float(),
+        region,
+        fft_size=max(4, int(config.fft_size)),
+        fft_bins=max(1, int(config.fft_bins)),
+        fill_mean=mean,
+    )
+    return {"mean": mean, "std": std, "fft": fft}
+
+
+def _region_fft_radial_spectrum(
+    image: torch.Tensor,
+    region: torch.Tensor,
+    *,
+    fft_size: int,
+    fft_bins: int,
+    fill_mean: torch.Tensor,
+) -> torch.Tensor:
+    if image.ndim != 3:
+        raise ValueError(f"image must have shape (C,H,W), got {tuple(image.shape)}")
+    region = region.to(device=image.device, dtype=torch.bool)
+    coords = torch.where(region)
+    if coords[0].numel() == 0:
+        raise ValueError("region must select at least one pixel")
+
+    y0 = int(coords[0].min().item())
+    y1 = int(coords[0].max().item()) + 1
+    x0 = int(coords[1].min().item())
+    x1 = int(coords[1].max().item()) + 1
+    crop = image[:, y0:y1, x0:x1].float().unsqueeze(0)
+    mask = region[y0:y1, x0:x1].float().unsqueeze(0).unsqueeze(0)
+    if crop.shape[-2:] != (fft_size, fft_size):
+        crop = F.interpolate(
+            crop,
+            size=(fft_size, fft_size),
+            mode="bilinear",
+            align_corners=False,
+        )
+        mask = F.interpolate(mask, size=(fft_size, fft_size), mode="nearest")
+
+    fill = fill_mean.to(device=image.device, dtype=crop.dtype).view(1, image.shape[0], 1, 1)
+    filled = crop * mask + fill * (1.0 - mask)
+    luma_weights = crop.new_tensor([0.299, 0.587, 0.114]).view(1, 3, 1, 1)
+    if image.shape[0] != 3:
+        luma = filled.mean(dim=1)
+    else:
+        luma = (filled * luma_weights).sum(dim=1)
+    luma = luma - luma.mean(dim=(-2, -1), keepdim=True)
+
+    spectrum = torch.fft.rfft2(luma, norm="ortho")
+    magnitude = torch.log1p(torch.abs(spectrum))[0]
+    fy = torch.fft.fftfreq(fft_size, device=image.device, dtype=torch.float32)
+    fx = torch.fft.rfftfreq(fft_size, device=image.device, dtype=torch.float32)
+    radius = torch.sqrt(fy[:, None].square() + fx[None, :].square())
+    edges = torch.linspace(
+        0.0,
+        float(radius.max().item()),
+        steps=fft_bins + 1,
+        device=image.device,
+        dtype=torch.float32,
+    )
+    bands = []
+    for index in range(fft_bins):
+        if index == fft_bins - 1:
+            band_mask = (radius >= edges[index]) & (radius <= edges[index + 1])
+        else:
+            band_mask = (radius >= edges[index]) & (radius < edges[index + 1])
+        if bool(band_mask.any().item()):
+            bands.append(magnitude[band_mask].mean())
+        else:
+            bands.append(magnitude.new_zeros(()))
+    radial = torch.stack(bands)
+    return radial / radial.mean().clamp_min(1e-6)
+
+
 def _region_color_stats(image: torch.Tensor, region: torch.Tensor) -> dict[str, torch.Tensor]:
     values = image[:, region].float()
     if values.ndim != 2 or values.shape[1] == 0:
@@ -351,6 +881,53 @@ def _resize_mask_to_image(mask: torch.Tensor, image_size: tuple[int, int]) -> to
         mode="nearest",
     )
     return resized[:, 0].to(dtype=torch.long)
+
+
+def _combine_tissue_nuclei_masks(
+    tissue_mask: torch.Tensor,
+    nuclei_mask: torch.Tensor,
+    *,
+    nuclei_stride: int = 256,
+    exclude_tissue_labels: tuple[int, ...] = (0,),
+) -> torch.Tensor:
+    """Build labels that separate nuclei classes inside each tissue class."""
+    if tissue_mask.ndim == 4 and tissue_mask.shape[1] == 1:
+        tissue_mask = tissue_mask[:, 0]
+    if nuclei_mask.ndim == 4 and nuclei_mask.shape[1] == 1:
+        nuclei_mask = nuclei_mask[:, 0]
+    if tissue_mask.ndim != 3 or nuclei_mask.ndim != 3:
+        raise ValueError(
+            "tissue/nuclei masks must have shape (B,H,W) or (B,1,H,W), "
+            f"got tissue={tuple(tissue_mask.shape)} nuclei={tuple(nuclei_mask.shape)}"
+        )
+    if tuple(int(v) for v in nuclei_mask.shape[-2:]) != tuple(int(v) for v in tissue_mask.shape[-2:]):
+        nuclei_mask = _resize_mask_to_image(nuclei_mask, tuple(int(v) for v in tissue_mask.shape[-2:]))
+    tissue = tissue_mask.to(dtype=torch.long)
+    nuclei = nuclei_mask.to(device=tissue.device, dtype=torch.long)
+    composite = tissue * int(nuclei_stride) + nuclei
+    for label in exclude_tissue_labels:
+        composite = torch.where(tissue == int(label), torch.zeros_like(composite), composite)
+    return composite
+
+
+def _infer_square_token_grid(num_tokens: int) -> tuple[int, int]:
+    side = int(round(float(num_tokens) ** 0.5))
+    if side * side != int(num_tokens):
+        raise ValueError(f"expected square feature token grid, got {num_tokens} tokens")
+    return side, side
+
+
+def _validate_feature_tokens(prediction_features: torch.Tensor, reference_features: torch.Tensor) -> None:
+    if prediction_features.shape != reference_features.shape:
+        raise ValueError(
+            "prediction_features and reference_features shapes differ: "
+            f"{tuple(prediction_features.shape)} vs {tuple(reference_features.shape)}"
+        )
+    if prediction_features.ndim != 3:
+        raise ValueError(
+            "features must have shape (B,T,C), "
+            f"got {tuple(prediction_features.shape)}"
+        )
 
 
 def _shared_labels(

@@ -37,6 +37,7 @@ from controlnet_train.modules.cross_v3_conditioning import (
 from controlnet_train.modules.fixed_tissue_encoder import FixedOneHotTissueEncoder
 from controlnet_train.modules.hte_embedding import HierarchicalTissueEmbedding
 from controlnet_train.modules.nuclei_condition_encoder import NucleiConditionEncoder
+from controlnet_train.modules.reference_image_encoder import PerceiverCrossAttentionLayer
 from controlnet_train.modules.tissue_condition_downsampler import TissueConditionDownsampler
 
 _Z_REF_DIAG_PATH = Path(__file__).resolve().parents[1] / "scripts" / "diagnose_cross_v2_1_z_ref.py"
@@ -168,6 +169,29 @@ class ChangeMaskEncoderTests(unittest.TestCase):
         out = module(x)
 
         self.assertEqual(out.shape, (2, 4, 8, 8))
+
+
+class ReferencePerceiverTests(unittest.TestCase):
+    def test_cross_attention_output_does_not_residual_latent_queries(self):
+        layer = PerceiverCrossAttentionLayer(
+            latent_dim=8,
+            input_dim=8,
+            num_heads=2,
+            use_self_attn=False,
+        )
+        with torch.no_grad():
+            for param in layer.cross_attn.parameters():
+                param.zero_()
+            for param in layer.ff.parameters():
+                param.zero_()
+
+        latents = torch.randn(2, 3, 8)
+        inputs = torch.randn(2, 5, 8)
+
+        out = layer(latents, inputs)
+
+        self.assertTrue(torch.allclose(out, torch.zeros_like(out)))
+        self.assertFalse(torch.allclose(out, latents))
 
 
 class NucleiConditionEncoderTests(unittest.TestCase):

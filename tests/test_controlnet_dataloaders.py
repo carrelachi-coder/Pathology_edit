@@ -1389,8 +1389,8 @@ class CrossDatasetTests(unittest.TestCase):
 
                 self.assertEqual(sample["sample_mode"], "appearance_degraded")
                 self.assertTrue(sample["uses_degraded_noising"])
-                self.assertEqual(sample["reference_sample_id"], sample["sample_id"])
-                self.assertTrue(torch.equal(sample["reference_image"], sample["target_image"]))
+                self.assertNotEqual(sample["reference_sample_id"], sample["sample_id"])
+                self.assertFalse(torch.equal(sample["reference_image"], sample["target_image"]))
                 self.assertFalse(torch.equal(sample["clean_image_for_noising"], sample["target_image"]))
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
