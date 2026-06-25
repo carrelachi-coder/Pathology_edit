@@ -12,7 +12,7 @@ ControlNet Train
   - `tissue_condition_downsampler.py`: 把 full-resolution HTE 特征下采样到 FLUX latent resolution。
   - `nuclei_condition_encoder.py`: 把 `nuclei_mask` 的 raw ID map 编码成 learned nuclei condition feature。
   - `change_mask_encoder.py`: 把 binary `change_region_mask` 投影成轻量 4-channel learned feature。
-  - `conditioning.py`: 放置 Phase 5 条件拼接辅助函数；当前已提供 `cross V0` 的单路 spatial concat helper。
+  - `conditioning.py`: 放置 Phase 5 条件拼接辅助函数；当前保留通用 inpaint / cross 条件 helper。
 - `data/`
   Phase 5 的新数据层。
   - `common.py`: 共享 layered patch 读取、prompt、nuclei remap、train/val split
@@ -71,8 +71,8 @@ Phase 5 推荐后续落位
    依据多数据集 patch / WSI 分组逻辑，生成 cross-reconstruction pairs。
 3. `cli/train_controlnet_flux_inpaint.py`
    用 `ref_image + ref_mask(HTE) + target_mask(HTE)` 训练新的 ControlNet。
-4. `cli/train_controlnet_flux_cross.py`
-   用 `reference_image + reference_tissue_mask + reference_nuclei_mask + target_*mask` 训练 `cross V0` baseline。
+4. `scripts/generate_cross_v1_no_ip_strict.py`
+   使用已训练的 Cross V1 ControlNet 生成 Stage 1 图像；该最终推理入口不加载 IP-Adapter 或 UNI-2h。
 
 当前实现范围
 ------------
@@ -84,20 +84,16 @@ Phase 5 推荐后续落位
   - `TissueConditionDownsampler`
   - `NucleiConditionEncoder`
   - `ChangeMaskEncoder`
-  - `cross V0 spatial concat baseline` 的公共拼接 helper
+  - `cross V1 no-IP strict inference` 的最终推理脚本
   - `build_inpaint_condition` 的公共拼接 helper
   - `cli/train_controlnet_flux_inpaint.py`
-  - `cli/train_controlnet_flux_cross.py`
+  - `scripts/generate_cross_v1_no_ip_strict.py`
   - `training/conditioning.py`
   - `training/flux_phase5.py`
 - 暂未实现：
-  - `ReferenceMorphologyEncoder`
-  - `cross V1 reference branch`
-  - `Phase 5` 验证 / 推理脚本
+  - 旧 `cross V0/V2/V3` 实验入口
 
-也就是说，当前 `cross controlnet` 先按计划里的 `V0` 收敛：把
-`reference_image_latent + reference_tissue_feat + reference_nuclei_feat + target_tissue_feat + target_nuclei_feat`
-拼成单一路 `controlnet_cond`。
+也就是说，当前 GitHub 主线只保留最终 `Cross V1 no-IP + pix2pix` 工作流；旧 `cross V0/V2/V3` 实验入口不再作为主线代码发布。
 
 数据准备
 --------
@@ -255,13 +251,14 @@ python controlnet_train/cli/train_controlnet_flux_inpaint.py ^
   --output-dir phase5_runs\\controlnet_inpaint
 ```
 
-cross V0 训练：
+Cross V1 no-IP 生成：
 
 ```bash
-python controlnet_train/cli/train_controlnet_flux_cross.py ^
-  --pretrained_model_name_or_path black-forest-labs/FLUX.1-dev ^
-  --train-metadata phase5_runs\\cross_meta\\metadata_cross_train.json ^
-  --output-dir phase5_runs\\controlnet_cross
+python scripts/generate_cross_v1_no_ip_strict.py ^
+  --pretrained-model black-forest-labs/FLUX.1-dev ^
+  --checkpoint phase5_runs\\controlnet_cross_v1\\checkpoint-40000 ^
+  --metadata phase5_runs\\cross_meta\\metadata_cross_val.json ^
+  --output phase5_runs\\cross_v1_no_ip.png
 ```
 
 Phase 5.3 架构说明
