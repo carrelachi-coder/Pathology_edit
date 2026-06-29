@@ -59,7 +59,7 @@ from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 
 _INPAINT_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
 _CROSS_V0_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
-_CROSS_V1_BUNDLE_CACHE: dict[tuple[str, str, str, str, str, int, float, float], Any] = {}
+_CROSS_V1_NO_IP_CACHE: dict[tuple[str, str, str, str, int, float, float], Any] = {}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         target_mask_rgb=np.asarray(Image.open(stage_paths["target_mask_rgb"]).convert("RGB")),
         generated_image=np.asarray(Image.open(generated_path).convert("RGB")),
         title=f"Phase3 {args.mode} / {generation_info['generation_mode']}",
-        prompt=result.prompt,
+        prompt=str(generation_info.get("prompt") or ""),
     )
 
     summary = {
@@ -551,13 +551,14 @@ def _run_generation_stage(
         required["--cross-checkpoint"] = args.cross_checkpoint
     else:
         required["--cross-v1-checkpoint"] = args.cross_v1_checkpoint
-        required["--uni-checkpoint"] = args.uni_checkpoint
+        if getattr(args, "pix2pix_checkpoint", None):
+            required["--pix2pix-checkpoint"] = args.pix2pix_checkpoint
     missing = [name for name, value in required.items() if value is None]
     if missing:
         raise SystemExit(f"{', '.join(missing)} required with --generation-mode {args.generation_mode}")
 
     cross_bundle = object()
-    cross_runner = _run_cross_v1_loaded_bundle
+    cross_runner = run_cross_v0_bundle
     if selected_mode == "cross-v0":
         cross_bundle = _cached_cross_v0_bundle(
             pretrained_model_name_or_path=args.pretrained_model_name_or_path,
@@ -566,18 +567,53 @@ def _run_generation_stage(
         )
         cross_runner = run_cross_v0_bundle
     elif selected_mode == "cross-v1":
-        torch_dtype = _parse_torch_dtype(getattr(args, "torch_dtype", "bf16"))
-        cross_bundle = _cached_cross_v1_bundle(
+        prompt = _resolve_cross_v1_prompt(
+            prompt_override=args.prompt,
+            prompt_source=getattr(args, "prompt_source", "dataset"),
+            dataset=args.profile,
+        )
+        image, raw_image, no_ip_info = _run_cross_v1_no_ip_generation(
             pretrained_model_name_or_path=args.pretrained_model_name_or_path,
             checkpoint_path=args.cross_v1_checkpoint,
-            uni_checkpoint_path=args.uni_checkpoint,
+            pix2pix_checkpoint_path=getattr(args, "pix2pix_checkpoint", None),
+            reference_image_path=args.reference_image,
+            reference_tissue_mask_path=args.reference_tissue_mask,
+            reference_nuclei_mask_path=args.reference_nuclei_mask,
+            target_tissue_mask_path=target_tissue_path,
+            target_nuclei_mask_path=target_nuclei_path,
+            prompt=prompt,
+            output_dir=output_dir / "controlnet_cross_v1_no_ip",
             device=args.device,
-            torch_dtype=torch_dtype,
+            torch_dtype=_parse_torch_dtype(getattr(args, "torch_dtype", "bf16")),
             num_inference_steps=getattr(args, "num_inference_steps", 28),
             guidance_scale=getattr(args, "guidance_scale", 3.5),
             controlnet_conditioning_scale=getattr(args, "controlnet_conditioning_scale", 1.0),
-            ip_adapter_scale=getattr(args, "ip_scale", 1.0),
+            seed=getattr(args, "seed", 42),
+            pix2pix_base_channels=getattr(args, "pix2pix_base_channels", 64),
+            pix2pix_num_heads=getattr(args, "pix2pix_num_heads", 4),
+            pix2pix_cross_attn_scales=getattr(args, "pix2pix_cross_attn_scales", "1/4,1/8,1/16"),
+            pix2pix_upsample_mode=getattr(args, "pix2pix_upsample_mode", "bilinear"),
+            pix2pix_region_label_mode=getattr(args, "pix2pix_region_label_mode", "tissue_nuclei"),
         )
+        generated = output_dir / "generated_image.png"
+        raw_generated = output_dir / "generated_image_raw.png"
+        raw_image.save(raw_generated)
+        image.save(generated)
+        info = {
+            "generation_mode": args.generation_mode,
+            "status": "generated",
+            "generated_image": str(generated),
+            "raw_generated_image": str(raw_generated),
+            "controlnet_output_dir": str(output_dir / "controlnet_cross_v1_no_ip"),
+            "selected_mode": selected_mode,
+            "change_ratio": change_ratio,
+            "route_threshold": args.route_threshold,
+            "prompt": prompt,
+            "color_match": {"method": "none", "applied": False, "reference": str(args.reference_image)},
+            "cross_v1": no_ip_info,
+        }
+        save_metadata(info, output_dir / "generation_info.json")
+        return generated, info
 
     controlnet_dir = output_dir / f"controlnet_{selected_mode.replace('-', '_')}"
     with torch.inference_mode():
@@ -696,44 +732,175 @@ def _cached_cross_v0_bundle(
     return _CROSS_V0_BUNDLE_CACHE[key]
 
 
-def _cached_cross_v1_bundle(
+def _cached_cross_v1_no_ip_components(
     *,
     pretrained_model_name_or_path: str | Path,
     checkpoint_path: str | Path,
-    uni_checkpoint_path: str | Path,
     device: str,
     torch_dtype: torch.dtype,
     num_inference_steps: int,
     guidance_scale: float,
     controlnet_conditioning_scale: float,
-    ip_adapter_scale: float,
 ):
     key = (
         str(pretrained_model_name_or_path),
         str(checkpoint_path),
-        str(uni_checkpoint_path),
         str(device),
         str(torch_dtype),
         int(num_inference_steps),
         float(guidance_scale),
         float(controlnet_conditioning_scale),
-        float(ip_adapter_scale),
     )
-    if key not in _CROSS_V1_BUNDLE_CACHE:
-        from controlnet_train.inference.pipeline_cross_v1 import load_cross_v1_bundle
+    if key not in _CROSS_V1_NO_IP_CACHE:
+        from controlnet_train.inference.pipeline_cross_v1 import (
+            _load_cross_v1_control_spec,
+            _load_flux_controlnet_pipeline,
+            _validate_checkpoint_dir,
+        )
+        from scripts.generate_cross_v1_no_ip_strict import _load_condition_modules_no_ref
 
-        _CROSS_V1_BUNDLE_CACHE[key] = load_cross_v1_bundle(
+        checkpoint = _validate_checkpoint_dir(checkpoint_path)
+        control_spec = _load_cross_v1_control_spec(checkpoint)
+        pipe, controlnet = _load_flux_controlnet_pipeline(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
-            checkpoint_path=checkpoint_path,
-            uni_checkpoint_path=uni_checkpoint_path,
+            checkpoint_path=checkpoint,
+            packed_channels=control_spec.packed_channels,
             device=device,
             torch_dtype=torch_dtype,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            controlnet_conditioning_scale=controlnet_conditioning_scale,
-            ip_adapter_scale=ip_adapter_scale,
         )
-    return _CROSS_V1_BUNDLE_CACHE[key]
+        modules = _load_condition_modules_no_ref(
+            checkpoint_path=checkpoint,
+            device=device,
+            torch_dtype=torch_dtype,
+        )
+        _CROSS_V1_NO_IP_CACHE[key] = (pipe, controlnet, modules, control_spec)
+    return _CROSS_V1_NO_IP_CACHE[key]
+
+
+@torch.inference_mode()
+def _run_cross_v1_no_ip_generation(
+    *,
+    pretrained_model_name_or_path: str | Path,
+    checkpoint_path: str | Path,
+    pix2pix_checkpoint_path: str | Path | None,
+    reference_image_path: str | Path,
+    reference_tissue_mask_path: str | Path,
+    reference_nuclei_mask_path: str | Path,
+    target_tissue_mask_path: str | Path,
+    target_nuclei_mask_path: str | Path,
+    prompt: str,
+    output_dir: Path,
+    device: str,
+    torch_dtype: torch.dtype,
+    num_inference_steps: int,
+    guidance_scale: float,
+    controlnet_conditioning_scale: float,
+    seed: int,
+    pix2pix_base_channels: int,
+    pix2pix_num_heads: int,
+    pix2pix_cross_attn_scales: str,
+    pix2pix_upsample_mode: str,
+    pix2pix_region_label_mode: str,
+) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
+    from controlnet_train.data.common import load_nuclei_mask, load_tissue_mask
+    from controlnet_train.inference.pipeline_cross_v1 import _sample_with_flux_controlnet
+    from controlnet_train.modules.cross_v1_conditioning import build_cross_v1_condition
+    from scripts.generate_cross_v1_no_ip_strict import _run_pix2pix_transfer
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pipe, controlnet, modules, control_spec = _cached_cross_v1_no_ip_components(
+        pretrained_model_name_or_path=pretrained_model_name_or_path,
+        checkpoint_path=checkpoint_path,
+        device=device,
+        torch_dtype=torch_dtype,
+        num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale,
+        controlnet_conditioning_scale=controlnet_conditioning_scale,
+    )
+
+    target_tissue_mask = load_tissue_mask(target_tissue_mask_path)
+    target_nuclei_mask = load_nuclei_mask(target_nuclei_mask_path)
+    target_tissue_feat = modules["tissue_downsampler"](
+        modules["hte"](target_tissue_mask.unsqueeze(0).to(device=device))
+    ).to(dtype=torch_dtype)
+    target_nuclei_feat = modules["nuclei_encoder"](
+        target_nuclei_mask.unsqueeze(0).to(device=device)
+    ).to(dtype=torch_dtype)
+
+    reference_tissue_feat = None
+    reference_nuclei_feat = None
+    stage1_reference_mask_mode = "target"
+    if control_spec.spatial_mode in {"reference_target", "reference_target_delta"}:
+        reference_tissue_feat = target_tissue_feat
+        reference_nuclei_feat = target_nuclei_feat
+
+    control_tensor = build_cross_v1_condition(
+        reference_tissue_feat=reference_tissue_feat,
+        reference_nuclei_feat=reference_nuclei_feat,
+        target_tissue_feat=target_tissue_feat,
+        target_nuclei_feat=target_nuclei_feat,
+        spatial_mode=control_spec.spatial_mode,
+    )
+    output_size = tuple(int(v) for v in target_tissue_mask.shape[-2:])
+    stage1_image = _sample_with_flux_controlnet(
+        pipe=pipe,
+        controlnet=controlnet,
+        prompt=prompt,
+        control_tensor=control_tensor,
+        output_size=output_size,
+        device=device,
+        torch_dtype=torch_dtype,
+        num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale,
+        controlnet_conditioning_scale=controlnet_conditioning_scale,
+        joint_attention_kwargs=None,
+        seed=seed,
+    )
+    stage1_path = output_dir / "stage1_no_ip.png"
+    stage1_image.save(stage1_path)
+
+    final_image = stage1_image
+    pix2pix_output_path = None
+    if pix2pix_checkpoint_path:
+        pix2pix_output_path = output_dir / "stage2_pix2pix.png"
+        record = {
+            "reference_image": str(reference_image_path),
+            "reference_tissue_mask": str(reference_tissue_mask_path),
+            "reference_nuclei_mask": str(reference_nuclei_mask_path),
+            "target_tissue_mask": str(target_tissue_mask_path),
+            "target_nuclei_mask": str(target_nuclei_mask_path),
+        }
+        _run_pix2pix_transfer(
+            i0_image=stage1_image,
+            record=record,
+            checkpoint_path=pix2pix_checkpoint_path,
+            output_path=pix2pix_output_path,
+            device=device,
+            torch_dtype=torch_dtype,
+            image_size=int(output_size[0]),
+            base_channels=pix2pix_base_channels,
+            num_heads=pix2pix_num_heads,
+            cross_attn_scales=pix2pix_cross_attn_scales,
+            upsample_mode=pix2pix_upsample_mode,
+            region_label_mode=pix2pix_region_label_mode,
+        )
+        final_image = Image.open(pix2pix_output_path).convert("RGB")
+
+    info = {
+        "backend": "cross-v1-no-ip-pix2pix" if pix2pix_checkpoint_path else "cross-v1-no-ip",
+        "loads_ip_adapter": False,
+        "loads_uni": False,
+        "checkpoint": str(checkpoint_path),
+        "stage1_no_ip_image": str(stage1_path),
+        "stage1_reference_mask_mode": stage1_reference_mask_mode,
+        "pix2pix_checkpoint": str(pix2pix_checkpoint_path) if pix2pix_checkpoint_path else None,
+        "pix2pix_output": str(pix2pix_output_path) if pix2pix_output_path else None,
+        "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
+        "num_inference_steps": int(num_inference_steps),
+        "guidance_scale": float(guidance_scale),
+        "seed": int(seed),
+    }
+    return final_image, stage1_image, info
 
 
 def _change_area_fraction(change_region: np.ndarray) -> float:
@@ -753,22 +920,6 @@ def _select_generation_mode(
     if generation_mode in {"inpaint", "cross-v0", "cross-v1"}:
         return generation_mode
     return "dry-run"
-
-
-def _run_cross_v1_loaded_bundle(bundle, inputs, prompt: str):
-    from controlnet_train.inference.pipeline_cross_v1 import run_cross_v1_bundle
-
-    return run_cross_v1_bundle(
-        bundle,
-        reference_image=inputs.reference_image,
-        reference_tissue_mask=inputs.reference_tissue_mask,
-        reference_nuclei_mask=inputs.reference_nuclei_mask,
-        target_tissue_mask=inputs.target_tissue_mask,
-        target_nuclei_mask=inputs.target_nuclei_mask,
-        prompt=prompt,
-    )
-
-
 def _save_compare_panel(
     path: Path,
     *,
@@ -979,7 +1130,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--inpaint-checkpoint", type=Path)
     parser.add_argument("--cross-checkpoint", type=Path)
     parser.add_argument("--cross-v1-checkpoint", type=Path)
-    parser.add_argument("--uni-checkpoint", type=Path)
+    parser.add_argument("--uni-checkpoint", type=Path, help="Deprecated; cross-v1 no-IP generation does not load UNI.")
+    parser.add_argument("--pix2pix-checkpoint", type=Path)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--prompt-source", choices=("metadata", "dataset"), default="dataset")
@@ -987,7 +1139,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
-    parser.add_argument("--ip-scale", type=float, default=1.0)
+    parser.add_argument("--ip-scale", type=float, default=1.0, help="Deprecated; cross-v1 no-IP generation ignores this value.")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--pix2pix-base-channels", type=int, default=64)
+    parser.add_argument("--pix2pix-num-heads", type=int, default=4)
+    parser.add_argument("--pix2pix-cross-attn-scales", default="1/4,1/8,1/16")
+    parser.add_argument("--pix2pix-upsample-mode", choices=("bilinear", "nearest"), default="bilinear")
+    parser.add_argument(
+        "--pix2pix-region-label-mode",
+        choices=("tissue", "nuclei", "tissue_nuclei"),
+        default="tissue_nuclei",
+    )
     parser.add_argument(
         "--color-match",
         choices=("none", "lab"),

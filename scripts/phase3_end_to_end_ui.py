@@ -95,6 +95,10 @@ DEFAULT_QWEN_DEVICE = "cuda:0"
 DEFAULT_CELLVIT_SCRIPT = REPO_ROOT / "scripts" / "run_cellvit_single_patch.py"
 DEFAULT_CELLVIT_MODEL = r"D:\path\to\CellViT-SAM-H-x40-AMP-001.pth"
 DEFAULT_CELLVIT_DEVICE = "cuda:0"
+DEFAULT_SEGMENTATOR_ENV = "pathology-segmentator-mmseg"
+DEFAULT_SEGMENTATOR_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/segmentator_runs/stage4_mask2former_multidataset_a800_v2/best_mIoU.pt"
+DEFAULT_SEGMENTATOR_DECODER = "mask2former"
+DEFAULT_SEGMENTATOR_DEVICE = "cuda:0"
 DEFAULT_PROBNET_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/checkpoints/best.pt"
 DEFAULT_NUCLEI_LIBRARY_TEMPLATE = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/nuclei_library/{profile}"
 DEFAULT_DENSITY_SCALE_TEMPLATE = (
@@ -105,7 +109,7 @@ DEFAULT_PRETRAINED_MODEL = "/data/huggingface/FLUX.1-dev"
 DEFAULT_INPAINT_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_inpaint_all"
 DEFAULT_CROSS_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross"
 DEFAULT_CROSS_V1_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1/checkpoint-40000"
-DEFAULT_UNI_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorch_model.bin"
+DEFAULT_PIX2PIX_CHECKPOINT = "/data/wqx/flowedit/pix2pix_texture_transfer_lazy_ver4/ckpt/epoch0014.pt"
 DEFAULT_LARGE_BCSS_STEM = "TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500"
 DEFAULT_LARGE_BCSS_IMAGE = Path(r"D:\WQX\datasets\BCSS\rgbs") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
 DEFAULT_LARGE_BCSS_TISSUE_MASK = Path(r"D:\WQX\datasets\BCSS\masks") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
@@ -208,6 +212,16 @@ def _copy_input(value: Any, output_dir: Path, filename: str) -> Path:
     return target
 
 
+def _copy_optional_input(value: Any, output_dir: Path, filename: str) -> Path | None:
+    source = _file_path(value)
+    if source is None:
+        return None
+    target = output_dir / "inputs" / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    return target
+
+
 def _copy_input_path(path_value: str | Path | None, output_dir: Path, filename: str) -> Path:
     text = str(path_value or "").strip().strip('"')
     if not text:
@@ -219,6 +233,76 @@ def _copy_input_path(path_value: str | Path | None, output_dir: Path, filename: 
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
     return target
+
+
+def _copy_optional_input_path(path_value: str | Path | None, output_dir: Path, filename: str) -> Path | None:
+    text = str(path_value or "").strip().strip('"')
+    if not text:
+        return None
+    source = Path(text)
+    if not source.exists():
+        raise gr.Error(f"Input path not found: {source}")
+    target = output_dir / "inputs" / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    return target
+
+
+def _run_segmentator_tissue_mask(
+    *,
+    image_path: Path,
+    output_dir: Path,
+    conda_env: str,
+    checkpoint: str,
+    decoder: str,
+    device: str,
+) -> Path:
+    checkpoint_path = Path(_defaulted_text(checkpoint, DEFAULT_SEGMENTATOR_CHECKPOINT))
+    if not checkpoint_path.exists():
+        raise gr.Error(f"Segmentator checkpoint not found: {checkpoint_path}")
+    env_name = _defaulted_text(conda_env, DEFAULT_SEGMENTATOR_ENV)
+    output_path = output_dir / "inputs" / "source_tissue_mask.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        "conda",
+        "run",
+        "-n",
+        env_name,
+        "python",
+        str(REPO_ROOT / "scripts" / "predict_segmentator_mask.py"),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--input",
+        str(image_path),
+        "--output",
+        str(output_path),
+        "--decoder",
+        decoder or DEFAULT_SEGMENTATOR_DECODER,
+        "--device",
+        device or DEFAULT_SEGMENTATOR_DEVICE,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise gr.Error("conda not found in PATH; cannot run segmentator environment.") from exc
+    except subprocess.CalledProcessError as exc:
+        log_path = output_dir / "segmentator_error.log"
+        log_path.write_text(_format_subprocess_error(exc, label="Segmentator"), encoding="utf-8")
+        raise gr.Error(_format_subprocess_error(exc, label="Segmentator")) from exc
+    log_text = "\n".join(
+        part for part in [(result.stdout or "").strip(), (result.stderr or "").strip()] if part
+    )
+    if log_text:
+        (output_dir / "segmentator.log").write_text(log_text, encoding="utf-8")
+    if not output_path.exists():
+        raise gr.Error(f"Segmentator finished but did not write {output_path}")
+    return output_path
 
 
 def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
@@ -245,7 +329,7 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
         "inpaint_checkpoint": None,
         "cross_checkpoint": None,
         "cross_v1_checkpoint": None,
-        "uni_checkpoint": None,
+        "pix2pix_checkpoint": None,
         "device": "cuda",
         "prompt": None,
         "prompt_source": "dataset",
@@ -1350,6 +1434,10 @@ def load_inputs(
     source_image,
     source_tissue_mask,
     source_cell_mask,
+    segmentator_env: str,
+    segmentator_checkpoint: str,
+    segmentator_decoder: str,
+    segmentator_device: str,
     cellvit_script: str,
     cellvit_model: str,
     cellvit_root: str,
@@ -1360,7 +1448,18 @@ def load_inputs(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     image_path = _copy_input(source_image, output_dir, "source_image.png")
-    tissue_path = _copy_input(source_tissue_mask, output_dir, "source_tissue_mask.png")
+    tissue_path = _copy_optional_input(source_tissue_mask, output_dir, "source_tissue_mask.png")
+    tissue_source = "uploaded"
+    if tissue_path is None:
+        tissue_path = _run_segmentator_tissue_mask(
+            image_path=image_path,
+            output_dir=output_dir,
+            conda_env=segmentator_env,
+            checkpoint=segmentator_checkpoint,
+            decoder=segmentator_decoder,
+            device=segmentator_device,
+        )
+        tissue_source = "segmentator"
     nuclei_path = _file_path(source_cell_mask)
     if nuclei_path is None:
         nuclei_path = output_dir / "inputs" / "source_cell_mask.png"
@@ -1428,8 +1527,9 @@ def load_inputs(
         "reference_nuclei_mask": str(nuclei_path),
         "source_mask_rgb": str(source_rgb),
         "target_mask_rgb": str(source_rgb),
+        "reference_tissue_mask_source": tissue_source,
     }
-    return state, _json_text({"status": "loaded", "output_dir": str(output_dir)}), str(image_path), source_rgb
+    return state, _json_text({"status": "loaded", "output_dir": str(output_dir), "tissue_mask_source": tissue_source}), str(image_path), source_rgb
 
 
 def load_inputs_from_paths(
@@ -1437,14 +1537,74 @@ def load_inputs_from_paths(
     source_image_path: str,
     source_tissue_mask_path: str,
     source_cell_mask_path: str,
+    segmentator_env: str,
+    segmentator_checkpoint: str,
+    segmentator_decoder: str,
+    segmentator_device: str,
+    cellvit_script: str,
+    cellvit_model: str,
+    cellvit_root: str,
+    cellvit_device: str,
 ) -> tuple[dict[str, Any], str, str | None, str | None]:
     run_id = time.strftime("%Y%m%d_%H%M%S")
     output_dir = DEFAULT_OUTPUT_ROOT / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
     image_path = _copy_input_path(source_image_path, output_dir, "source_image.png")
-    tissue_path = _copy_input_path(source_tissue_mask_path, output_dir, "source_tissue_mask.png")
-    nuclei_path = _copy_input_path(source_cell_mask_path, output_dir, "source_cell_mask.png")
+    tissue_path = _copy_optional_input_path(source_tissue_mask_path, output_dir, "source_tissue_mask.png")
+    tissue_source = "local_path"
+    if tissue_path is None:
+        tissue_path = _run_segmentator_tissue_mask(
+            image_path=image_path,
+            output_dir=output_dir,
+            conda_env=segmentator_env,
+            checkpoint=segmentator_checkpoint,
+            decoder=segmentator_decoder,
+            device=segmentator_device,
+        )
+        tissue_source = "segmentator"
+    nuclei_path = _copy_optional_input_path(source_cell_mask_path, output_dir, "source_cell_mask.png")
+    nuclei_source = "local_path"
+    if nuclei_path is None:
+        nuclei_path = output_dir / "inputs" / "source_cell_mask.png"
+        nuclei_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path = Path(_defaulted_text(cellvit_script, str(DEFAULT_CELLVIT_SCRIPT)))
+        model_path = Path(_defaulted_text(cellvit_model, DEFAULT_CELLVIT_MODEL))
+        root_path = Path(_defaulted_text(cellvit_root, str(DEFAULT_CELLVIT_ROOT)))
+        command = [
+            sys.executable,
+            str(script_path),
+            "--image",
+            str(image_path),
+            "--output-mask",
+            str(nuclei_path),
+            "--model",
+            str(model_path),
+            "--cellvit-root",
+            str(root_path),
+            "--gpu",
+            str(_cuda_index(cellvit_device)),
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            log_path = output_dir / "cellvit_error.log"
+            log_path.write_text(_format_subprocess_error(exc, label="CellViT"), encoding="utf-8")
+            raise gr.Error(_format_subprocess_error(exc, label="CellViT")) from exc
+        log_text = "\n".join(
+            part for part in [(result.stdout or "").strip(), (result.stderr or "").strip()] if part
+        )
+        if log_text:
+            (output_dir / "cellvit.log").write_text(log_text, encoding="utf-8")
+        if not nuclei_path.exists():
+            raise gr.Error(f"CellViT finished but did not write {nuclei_path}")
+        nuclei_source = "cellvit"
 
     image = _load_rgb_image(image_path)
     tissue = load_id_mask(tissue_path)
@@ -1471,6 +1631,8 @@ def load_inputs_from_paths(
         "source_mask_rgb": str(source_rgb),
         "target_mask_rgb": str(source_rgb),
         "large_patch_source": True,
+        "reference_tissue_mask_source": tissue_source,
+        "reference_nuclei_mask_source": nuclei_source,
     }
     info = {
         "status": "loaded",
@@ -1478,6 +1640,8 @@ def load_inputs_from_paths(
         "source_image": str(image_path),
         "source_tissue_mask": str(tissue_path),
         "source_cell_mask": str(nuclei_path),
+        "tissue_mask_source": tissue_source,
+        "nuclei_mask_source": nuclei_source,
         "shape": list(tissue.shape),
     }
     return state, _json_text(info), str(image_path), source_rgb
@@ -2713,7 +2877,7 @@ def run_generation_stage(
     inpaint_checkpoint: str,
     cross_checkpoint: str,
     cross_v1_checkpoint: str,
-    uni_checkpoint: str,
+    pix2pix_checkpoint: str,
     device: str,
 ) -> tuple[dict[str, Any], str, str, str]:
     if not state or not state.get("target_nuclei_mask"):
@@ -2730,7 +2894,7 @@ def run_generation_stage(
         inpaint_checkpoint=Path(_defaulted_text(inpaint_checkpoint, DEFAULT_INPAINT_CHECKPOINT)),
         cross_checkpoint=Path(_defaulted_text(cross_checkpoint, DEFAULT_CROSS_CHECKPOINT)),
         cross_v1_checkpoint=Path(_defaulted_text(cross_v1_checkpoint, DEFAULT_CROSS_V1_CHECKPOINT)),
-        uni_checkpoint=Path(_defaulted_text(uni_checkpoint, DEFAULT_UNI_CHECKPOINT)),
+        pix2pix_checkpoint=Path(_defaulted_text(pix2pix_checkpoint, DEFAULT_PIX2PIX_CHECKPOINT)),
         device=device or GENERATION_DEVICE_CHOICES[0],
         prompt=None,
     )
@@ -2787,7 +2951,7 @@ def run_large_patch_stitch_generation(
     inpaint_checkpoint: str,
     cross_checkpoint: str,
     cross_v1_checkpoint: str,
-    uni_checkpoint: str,
+    pix2pix_checkpoint: str,
     device: str,
     cell_fill_mode: str,
     crossing_cell_policy: str,
@@ -2848,7 +3012,7 @@ def run_large_patch_stitch_generation(
         inpaint_checkpoint=Path(_defaulted_text(inpaint_checkpoint, DEFAULT_INPAINT_CHECKPOINT)),
         cross_checkpoint=Path(_defaulted_text(cross_checkpoint, DEFAULT_CROSS_CHECKPOINT)),
         cross_v1_checkpoint=Path(_defaulted_text(cross_v1_checkpoint, DEFAULT_CROSS_V1_CHECKPOINT)),
-        uni_checkpoint=Path(_defaulted_text(uni_checkpoint, DEFAULT_UNI_CHECKPOINT)),
+        pix2pix_checkpoint=Path(_defaulted_text(pix2pix_checkpoint, DEFAULT_PIX2PIX_CHECKPOINT)),
         device=device or GENERATION_DEVICE_CHOICES[0],
         cell_fill_mode=cell_fill_mode,
         crossing_cell_policy=crossing_cell_policy,
@@ -3296,7 +3460,9 @@ def _validate_generation_paths(args: SimpleNamespace, selected_mode: str) -> Non
         required_paths["cross-v0 checkpoint"] = Path(args.cross_checkpoint)
     elif selected_mode == "cross-v1":
         required_paths["cross-v1 checkpoint"] = Path(args.cross_v1_checkpoint)
-        required_paths["UNI checkpoint"] = Path(args.uni_checkpoint)
+        pix2pix_checkpoint = getattr(args, "pix2pix_checkpoint", None)
+        if pix2pix_checkpoint:
+            required_paths["pix2pix checkpoint"] = Path(pix2pix_checkpoint)
 
     missing = [f"{label}: {path}" for label, path in required_paths.items() if not path.exists()]
     if missing:
@@ -3682,6 +3848,7 @@ def build_ui() -> gr.Blocks:
 
         with gr.Row():
             profile = gr.Dropdown(["BCSS", "PANDA", "GlaS", "IGNITE", "PUMA", "ORCA"], value="BCSS", label="profile")
+        gr.Markdown("Upload `src_tissue_mask` if available. If it is empty, the selected profile/organ plus the segmentator settings below are used to auto-generate the tissue mask in a separate conda env.")
         gr.Markdown("### Tissue mask edit")
         edit_mode = gr.Radio(
             EDIT_MODE_CHOICES,
@@ -3690,7 +3857,7 @@ def build_ui() -> gr.Blocks:
         )
         with gr.Row():
             source_image = gr.File(label="src_image", file_types=["image"], type="filepath")
-            source_tissue = gr.File(label="src_tissue_mask", file_types=["image"], type="filepath")
+            source_tissue = gr.File(label="src_tissue_mask (optional; auto segment if empty)", file_types=["image"], type="filepath")
             source_cell = gr.File(label="src_cell_mask / CellViT output", file_types=["image"], type="filepath")
         with gr.Accordion("Load local large patch paths", open=False):
             local_image_path = gr.Textbox(value=str(DEFAULT_LARGE_BCSS_IMAGE), label="local src_image path")
@@ -3728,6 +3895,12 @@ def build_ui() -> gr.Blocks:
                 with gr.Row():
                     cellvit_root = gr.Textbox(value=str(DEFAULT_CELLVIT_ROOT), label="CellViT source root")
                     cellvit_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_CELLVIT_DEVICE, label="CellViT device")
+                with gr.Row():
+                    segmentator_env = gr.Textbox(value=DEFAULT_SEGMENTATOR_ENV, label="segmentator conda env")
+                    segmentator_checkpoint = gr.Textbox(value=DEFAULT_SEGMENTATOR_CHECKPOINT, label="segmentator checkpoint")
+                with gr.Row():
+                    segmentator_decoder = gr.Dropdown(["mask2former", "upernet"], value=DEFAULT_SEGMENTATOR_DECODER, label="segmentator decoder")
+                    segmentator_device = gr.Dropdown(GENERATION_DEVICE_CHOICES, value=DEFAULT_SEGMENTATOR_DEVICE, label="segmentator device")
 
         instruction_panel = gr.Column(visible=False)
         with instruction_panel:
@@ -3841,7 +4014,7 @@ def build_ui() -> gr.Blocks:
                 cross_checkpoint = gr.Textbox(value=DEFAULT_CROSS_CHECKPOINT, label="cross-v0 checkpoint")
                 cross_v1_checkpoint = gr.Textbox(value=DEFAULT_CROSS_V1_CHECKPOINT, label="cross-v1 checkpoint")
             with gr.Row():
-                uni_checkpoint = gr.Textbox(value=DEFAULT_UNI_CHECKPOINT, label="UNI checkpoint")
+                pix2pix_checkpoint = gr.Textbox(value=DEFAULT_PIX2PIX_CHECKPOINT, label="pix2pix checkpoint (optional)")
         generate_button = gr.Button("4. Route + generate")
         with gr.Accordion("Large patch stitch experiment", open=False):
             with gr.Row():
@@ -3869,6 +4042,10 @@ def build_ui() -> gr.Blocks:
                 source_image,
                 source_tissue,
                 source_cell,
+                segmentator_env,
+                segmentator_checkpoint,
+                segmentator_decoder,
+                segmentator_device,
                 cellvit_script,
                 cellvit_model,
                 cellvit_root,
@@ -3896,7 +4073,20 @@ def build_ui() -> gr.Blocks:
         )
         local_load_button.click(
             load_inputs_from_paths,
-            inputs=[profile, local_image_path, local_tissue_path, local_cell_path],
+            inputs=[
+                profile,
+                local_image_path,
+                local_tissue_path,
+                local_cell_path,
+                segmentator_env,
+                segmentator_checkpoint,
+                segmentator_decoder,
+                segmentator_device,
+                cellvit_script,
+                cellvit_model,
+                cellvit_root,
+                cellvit_device,
+            ],
             outputs=[state, load_log, src_image_preview, src_tissue_preview],
         ).then(
             _refresh_edit_mode_panels,
@@ -4103,7 +4293,7 @@ def build_ui() -> gr.Blocks:
                 inpaint_checkpoint,
                 cross_checkpoint,
                 cross_v1_checkpoint,
-                uni_checkpoint,
+                pix2pix_checkpoint,
                 device,
             ],
             outputs=[state, generation_log, generated_preview, panel_preview],
@@ -4119,7 +4309,7 @@ def build_ui() -> gr.Blocks:
                 inpaint_checkpoint,
                 cross_checkpoint,
                 cross_v1_checkpoint,
-                uni_checkpoint,
+                pix2pix_checkpoint,
                 device,
                 cell_fill,
                 crossing_policy,
