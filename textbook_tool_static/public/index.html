@@ -10,10 +10,18 @@
     <header class="topbar">
       <div>
         <h1>Pathology Patch Annotation</h1>
-        <p>Images stay in this browser. Download the zip before closing the page.</p>
+        <p>Images stay in this browser. Masks auto-download every 10 images. Progress is saved locally for resume.</p>
       </div>
-      <button id="downloadZip" class="primary" disabled>Download mask</button>
+      <div class="topbarActions">
+        <span id="progressBadge" class="progressBadge">0 done</span>
+        <button id="skipToPending" disabled>Skip to next pending</button>
+        <button id="downloadZip" class="primary" disabled>Download masks</button>
+      </div>
     </header>
+
+    <div id="downloadBanner" class="downloadBanner" hidden>
+      <strong>Download required:</strong> You have 10 confirmed masks. Downloading now to free memory and save progress…
+    </div>
 
     <main class="layout">
       <aside class="panel">
@@ -64,7 +72,7 @@
           <h2>2. Tissue</h2>
           <div class="segmented" id="tissueLabels"></div>
           <p class="hint">Click to place polygon points. Double-click or press Enter to close the polygon. Backspace/Delete removes the last point; Esc clears the current polygon.</p>
-          <p class="hint">Confirmed masks stay in memory and can be downloaded anytime as one batch zip. A practical batch size is up to 50 images.</p>
+          <p class="hint">Masks auto-download every 10 confirmed images. Already-downloaded images are skipped on resume. Use "Skip to next pending" to jump forward.</p>
           <div class="buttonRow">
             <button id="clearTissue">Clear last polygon</button>
             <button id="confirmTissue" class="primary">Confirm tissue</button>
@@ -92,6 +100,6 @@
       </section>
     </main>
 
-    <script type="module" src="./src/app.js?v=20260530-mask-rgb"></script>
+    <script type="module" src="./src/app.js?v=20260629-resume-v1"></script>
   </body>
 </html>

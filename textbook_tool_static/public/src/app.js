@@ -12,10 +12,18 @@ const tissueLabels = [
   ["other", 7, "#667085"]
 ];
 
+const AUTO_DOWNLOAD_THRESHOLD = 10;
+const STORAGE_KEY = "pathology_annotation_progress";
+const STORAGE_BATCH_KEY = "pathology_annotation_batch_id";
+
 const state = {
   batchFiles: [],
   batchManifest: emptySelectionManifest(),
   completedMasks: new Map(),
+  downloadedNames: new Set(),
+  batchId: "",
+  masksSinceDownload: 0,
+  downloadBlocked: false,
   currentMetadata: null,
   currentIndex: -1,
   image: null,
@@ -36,6 +44,9 @@ const state = {
 const els = {};
 for (const id of [
   "downloadZip",
+  "skipToPending",
+  "progressBadge",
+  "downloadBanner",
   "imageInput",
   "folderInput",
   "imageSelector",
@@ -91,7 +102,8 @@ function bindEvents() {
   els.confirmTissue.addEventListener("click", confirmTissue);
   els.tissueMode.addEventListener("click", () => setMode("tissue"));
   els.zoomMode.addEventListener("click", toggleZoomMode);
-  els.downloadZip.addEventListener("click", downloadZip);
+  els.downloadZip.addEventListener("click", handleManualDownload);
+  els.skipToPending.addEventListener("click", skipToNextPending);
   els.mainCanvas.addEventListener("pointerdown", handlePointerDown);
   els.mainCanvas.addEventListener("dblclick", handleCanvasDoubleClick);
   els.canvasWrap.addEventListener("wheel", handleWheelZoom, { passive: false });
@@ -152,14 +164,22 @@ async function handleFolderInput(event) {
       ? parseSelectionManifest(await readFileAsText(manifestFile))
       : emptySelectionManifest();
     state.batchFiles = sortFiles(files);
+    state.batchId = computeBatchId(state.batchFiles);
+    loadProgress();
     state.completedMasks.clear();
     refreshImageSelector();
-    await loadBatchIndex(0);
+    updateProgressBadge();
+    const firstPending = state.batchFiles.findIndex(
+      (f) => !state.downloadedNames.has(f.name)
+    );
+    await loadBatchIndex(firstPending >= 0 ? firstPending : 0);
     const matchedRows = state.batchFiles.filter((file) => getSelectionMetadataForFile(state.batchManifest, file)).length;
     const manifestStatus = manifestFile
       ? ` Matched ${matchedRows}/${state.batchFiles.length} images to ${manifestFile.name}.`
       : " No CSV manifest found in this folder.";
-    setStatus(`Loaded batch with ${state.batchFiles.length} images.${manifestStatus} Recommended batch size: up to 50 images to keep browser memory and review flow comfortable.`);
+    const skippedCount = state.batchFiles.filter((f) => state.downloadedNames.has(f.name)).length;
+    const resumeMsg = skippedCount > 0 ? ` Resuming: ${skippedCount} already downloaded, starting at first pending.` : "";
+    setStatus(`Loaded batch with ${state.batchFiles.length} images.${manifestStatus}${resumeMsg}`);
   } catch (error) {
     setStatus(`Could not load batch folder: ${formatErrorMessage(error)}`);
   }
@@ -189,7 +209,7 @@ async function loadImageFile(file, options = {}) {
   state.tissueMask.fill(state.baseLabel);
   state.tissuePolygons = [];
   state.currentPolygon = [];
-  state.tissueLocked = false;
+  state.tissueLocked = state.downloadedNames.has(file.name);
   state.viewZoom = 1;
   els.imageId.value = state.imageId;
   els.baseLabel.value = String(state.baseLabel);
@@ -203,7 +223,11 @@ async function loadImageFile(file, options = {}) {
   if (!options.keepBatch) {
     refreshImageSelector();
   }
-  setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}). Base tissue is ${currentLabelName(state.baseLabel)}.`);
+  if (state.downloadedNames.has(file.name)) {
+    setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}). This image is already downloaded; use Skip to next pending to continue.`);
+  } else {
+    setStatus(`Loaded ${file.name} (${state.image.width}x${state.image.height}). Base tissue is ${currentLabelName(state.baseLabel)}.`);
+  }
 }
 
 function refreshImageSelector() {
@@ -226,14 +250,21 @@ function updateImageSelectorOptions() {
   if (!state.batchFiles.length) return;
   els.imageSelector.replaceChildren();
   const pending = [];
-  const done = [];
+  const inMemory = [];
+  const downloaded = [];
   state.batchFiles.forEach((file, index) => {
-    const bucket = state.completedMasks.has(file.name) ? done : pending;
-    bucket.push({ file, index });
+    if (state.completedMasks.has(file.name)) {
+      inMemory.push({ file, index });
+    } else if (state.downloadedNames.has(file.name)) {
+      downloaded.push({ file, index });
+    } else {
+      pending.push({ file, index });
+    }
   });
   const groups = [
     ["Pending", pending],
-    ["Completed", done]
+    ["Confirmed (not downloaded)", inMemory],
+    ["Downloaded", downloaded]
   ];
   for (const [label, items] of groups) {
     if (!items.length) continue;
@@ -313,8 +344,8 @@ function clearLastTissuePolygon() {
   setStatus(`Removed last ${currentLabelName(state.tissueLabel)} polygon.`);
 }
 
-function confirmTissue() {
-  if (!state.imageBitmap || state.tissueLocked) return;
+async function confirmTissue() {
+  if (!state.imageBitmap || state.tissueLocked || state.downloadBlocked) return;
   completeCurrentPolygon();
   state.tissueLocked = true;
   state.completedMasks.set(state.imageName, {
@@ -322,13 +353,125 @@ function confirmTissue() {
     width: state.image.width,
     height: state.image.height
   });
+  state.masksSinceDownload += 1;
+  updateProgressBadge();
   updateTissueLockUI();
   setStatus(`Tissue annotation confirmed for ${state.imageName}.`);
+
+  if (state.masksSinceDownload >= AUTO_DOWNLOAD_THRESHOLD) {
+    const downloaded = await autoDownloadMasks();
+    if (!downloaded) return;
+  }
+  if (state.downloadBlocked) return;
   if (state.currentIndex + 1 < state.batchFiles.length) {
     loadBatchIndex(state.currentIndex + 1);
   } else {
     setStatus(`Tissue annotation confirmed for ${state.imageName}. Batch complete.`);
   }
+}
+
+function updateProgressBadge() {
+  const done = state.downloadedNames.size + state.completedMasks.size;
+  const total = state.batchFiles.length;
+  if (els.progressBadge) {
+    els.progressBadge.textContent = `${done}/${total} done`;
+  }
+  if (els.skipToPending) {
+    els.skipToPending.disabled = !state.batchFiles.length || done >= total;
+  }
+}
+
+async function autoDownloadMasks() {
+  if (state.completedMasks.size === 0) return true;
+  state.downloadBlocked = true;
+  if (els.downloadBanner) els.downloadBanner.hidden = false;
+  setStatus(`Download required: preparing ${state.completedMasks.size} masks. Please allow the browser download to continue.`);
+  try {
+    await downloadZip();
+    markCompletedMasksDownloaded();
+    setStatus(`Downloaded and saved progress. ${state.downloadedNames.size} images completed so far.`);
+    return true;
+  } catch (error) {
+    setStatus(`Download failed: ${formatErrorMessage(error)}. Click "Download masks" manually before continuing.`);
+    return false;
+  } finally {
+    state.downloadBlocked = false;
+    if (els.downloadBanner) els.downloadBanner.hidden = true;
+  }
+}
+
+async function handleManualDownload() {
+  if (state.completedMasks.size === 0) return;
+  state.downloadBlocked = true;
+  try {
+    await downloadZip();
+    markCompletedMasksDownloaded();
+    setStatus(`Downloaded and saved progress. ${state.downloadedNames.size} images completed so far.`);
+    skipToNextPending();
+  } catch (error) {
+    setStatus(`Download failed: ${formatErrorMessage(error)}.`);
+  } finally {
+    state.downloadBlocked = false;
+  }
+}
+
+function markCompletedMasksDownloaded() {
+  for (const name of state.completedMasks.keys()) {
+    state.downloadedNames.add(name);
+  }
+  state.completedMasks.clear();
+  state.masksSinceDownload = 0;
+  saveProgress();
+  updateProgressBadge();
+  updateImageSelectorOptions();
+  updateTissueLockUI();
+}
+
+function saveProgress() {
+  try {
+    const data = {
+      batchId: state.batchId,
+      downloaded: [...state.downloadedNames]
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (error) {
+    // localStorage may be full or disabled; progress just won't persist.
+  }
+}
+
+function loadProgress() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data?.batchId !== state.batchId) {
+      state.downloadedNames = new Set();
+      return;
+    }
+    if (data?.downloaded && Array.isArray(data.downloaded)) {
+      state.downloadedNames = new Set(data.downloaded);
+    }
+  } catch (error) {
+    state.downloadedNames = new Set();
+  }
+}
+
+function computeBatchId(files) {
+  const names = files.map((f) => f.name).sort();
+  return String(names.length) + ":" + (names.slice(0, 3).join(",") || "") + ":" + (names.slice(-3).join(",") || "");
+}
+
+function skipToNextPending() {
+  if (!state.batchFiles.length) return;
+  for (let i = 0; i < state.batchFiles.length; i += 1) {
+    const name = state.batchFiles[i].name;
+    if (!state.completedMasks.has(name) && !state.downloadedNames.has(name)) {
+      loadBatchIndex(i);
+      setStatus(`Skipped to next pending image: ${name}.`);
+      return;
+    }
+  }
+  setStatus("All images are completed. Download any remaining masks to finish.");
 }
 
 function rebuildTissueMask() {
@@ -515,7 +658,8 @@ async function downloadZip() {
   const zip = await buildZip(files);
   const link = document.createElement("a");
   link.href = URL.createObjectURL(zip);
-  link.download = `tissue_masks_batch.zip`;
+  const batchNum = Math.floor(state.downloadedNames.size / AUTO_DOWNLOAD_THRESHOLD) + 1;
+  link.download = `tissue_masks_batch_${batchNum}.zip`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -555,12 +699,43 @@ function maskToRgbCanvas(mask, width, height) {
 }
 
 async function canvasToUint8Array(canvas) {
-  const blob = await canvasToBlob(canvas);
-  return new Uint8Array(await blob.arrayBuffer());
+  const dataUrl = canvas.toDataURL("image/png");
+  const base64 = dataUrl.split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 function canvasToBlob(canvas) {
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
+  return new Promise((resolve) => {
+    let resolved = false;
+    const done = (blob) => { if (!resolved) { resolved = true; resolve(blob); } };
+    const timer = setTimeout(() => {
+      // fallback: encode via toDataURL if toBlob never fires
+      try {
+        const dataUrl = canvas.toDataURL("image/png");
+        const base64 = dataUrl.split(",")[1];
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        done(new Blob([bytes], { type: "image/png" }));
+      } catch (e) {
+        done(new Blob([], { type: "image/png" }));
+      }
+    }, 3000);
+    try {
+      canvas.toBlob((blob) => {
+        clearTimeout(timer);
+        done(blob);
+      }, "image/png");
+    } catch (e) {
+      clearTimeout(timer);
+      done(null);
+    }
+  });
 }
 
 function cloneMask(mask) {

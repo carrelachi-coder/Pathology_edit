@@ -235,3 +235,51 @@ button:disabled {
     max-height: none;
   }
 }
+
+/* progress badge + skip button + download banner */
+.topbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressBadge {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475467;
+  background: #f2f4f7;
+  border: 1px solid #eaecf0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+#skipToPending {
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+#skipToPending:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.downloadBanner {
+  background: #fff7ed;
+  border-bottom: 2px solid #fb923c;
+  color: #9a3412;
+  padding: 8px 20px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.downloadBanner[hidden] {
+  display: none;
+}
+
+/* mark downloaded images dimmed in selector */
+#imageSelector option {
+  color: inherit;
+}
