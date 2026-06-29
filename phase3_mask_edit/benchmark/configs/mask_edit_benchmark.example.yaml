@@ -1,0 +1,37 @@
+# Example config for building the mask-edit semantic fidelity benchmark.
+# Point data_root to the amax2 data mount on the machine that runs the build.
+data_root: /path/to/amax2
+output_dir: runs/mask_edit_semantic_benchmark
+patches_per_combo: 20
+seed: 13
+strengths: [mild, moderate, significant, xlarge_deid]
+# Leave empty to include every executable atomic primitive in each profile recipe.
+allowed_primitives: []
+excluded_primitives: []
+# Optional speed cap while debugging; remove or set null for full build.
+max_masks_per_profile: null
+profiles:
+  - organ: breast
+    profile: BCSS
+    mask_globs: ["BCSS/**/*mask*.png", "bcss/**/*mask*.png"]
+    image_globs: ["BCSS/**/*.png", "bcss/**/*.png"]
+  - organ: prostate
+    profile: PANDA
+    mask_globs: ["PANDA/**/*mask*.png", "panda/**/*mask*.png"]
+    image_globs: ["PANDA/**/*.png", "panda/**/*.png"]
+  - organ: colorectal
+    profile: GlaS
+    mask_globs: ["GlaS/**/*mask*.png", "glas/**/*mask*.png"]
+    image_globs: ["GlaS/**/*.png", "glas/**/*.png"]
+  - organ: lung
+    profile: IGNITE
+    mask_globs: ["IGNITE/**/*mask*.png", "ignite/**/*mask*.png"]
+    image_globs: ["IGNITE/**/*.png", "ignite/**/*.png"]
+  - organ: melanoma
+    profile: PUMA
+    mask_globs: ["PUMA/**/*mask*.png", "puma/**/*mask*.png"]
+    image_globs: ["PUMA/**/*.png", "puma/**/*.png"]
+  - organ: oral
+    profile: ORCA
+    mask_globs: ["ORCA/**/*mask*.png", "orca/**/*mask*.png"]
+    image_globs: ["ORCA/**/*.png", "orca/**/*.png"]

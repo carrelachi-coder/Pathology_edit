@@ -13,6 +13,9 @@
 !textbook_tool_static/src/pathologyFacts.js
 !textbook_tool_static/public/src/pathologyFacts.js
 !textbook_tool_static/tests/pathologyFacts.test.js
+!textbook_tool_static/src/maskReview.js
+!textbook_tool_static/public/src/maskReview.js
+!textbook_tool_static/tests/maskReview.test.js
 
 # 3. 允许上传 .gitignore 文件本身（建议保留）
 !.gitignore

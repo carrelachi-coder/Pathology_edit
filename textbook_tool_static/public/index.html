@@ -10,7 +10,7 @@
     <header class="topbar">
       <div>
         <h1>Pathology Patch Annotation</h1>
-        <p>Images stay in this browser. Masks auto-download every 10 images. Progress is saved locally for resume.</p>
+        <p>Images stay in this browser. Masks auto-download every 10 images. Review mode can load images + CSV + masks for inspection.</p>
       </div>
       <div class="topbarActions">
         <span id="progressBadge" class="progressBadge">0 done</span>
@@ -35,6 +35,12 @@
             <span>Batch folder</span>
             <input id="folderInput" type="file" webkitdirectory directory multiple />
           </label>
+          <label class="field">
+            <span>Review masks folder</span>
+            <input id="reviewMaskInput" type="file" webkitdirectory directory multiple />
+          </label>
+          <p class="hint">For review: first choose the original image/CSV folder above, then choose a folder containing *_mask.png files.</p>
+          <div id="reviewSummary" class="reviewSummary" hidden></div>
           <label class="field">
             <span>Image in batch</span>
             <select id="imageSelector" disabled></select>
@@ -77,6 +83,19 @@
             <button id="clearTissue">Clear last polygon</button>
             <button id="confirmTissue" class="primary">Confirm tissue</button>
           </div>
+        </section>
+
+        <section id="reviewSection" hidden>
+          <h2>Review masks</h2>
+          <label class="field compactField">
+            <span>Overlay opacity</span>
+            <input id="reviewOpacity" type="range" min="0" max="100" value="45" />
+          </label>
+          <label class="toggleField">
+            <input id="reviewShowMissing" type="checkbox" checked />
+            <span>Show images missing masks</span>
+          </label>
+          <div id="reviewLabels" class="legend"></div>
         </section>
       </aside>
 

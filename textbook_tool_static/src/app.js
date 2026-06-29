@@ -1,5 +1,12 @@
 import { buildMaskFromPolygons, removeLastPolygonForLabel } from "./tissuePolygons.js";
 import { buildZip } from "./zip.js";
+import {
+  buildReviewItems,
+  emptyManifest as emptySelectionManifest,
+  getSelectionMetadataForFile,
+  parseSelectionManifest,
+  summarizeReviewItems
+} from "./maskReview.js";
 
 const tissueLabels = [
   ["background", 0, "#000000"],
@@ -38,7 +45,13 @@ const state = {
   tissueLabel: 1,
   zoomEnabled: false,
   viewZoom: 1,
-  canvasPadding: 0
+  canvasPadding: 0,
+  mode: "annotate",
+  reviewItems: [],
+  reviewIndex: -1,
+  reviewMask: null,
+  reviewOpacity: 0.45,
+  reviewShowMissing: true
 };
 
 const els = {};
@@ -49,6 +62,8 @@ for (const id of [
   "downloadBanner",
   "imageInput",
   "folderInput",
+  "reviewMaskInput",
+  "reviewSummary",
   "imageSelector",
   "imageId",
   "selectionMetadata",
@@ -56,6 +71,10 @@ for (const id of [
   "selectionCaption",
   "baseLabel",
   "tissueSection",
+  "reviewSection",
+  "reviewOpacity",
+  "reviewShowMissing",
+  "reviewLabels",
   "tissueLabels",
   "clearTissue",
   "confirmTissue",
@@ -86,6 +105,8 @@ function bindEvents() {
   els.imageInput.addEventListener("change", handleSingleImageInput);
   els.folderInput.addEventListener("click", clearFileInput);
   els.folderInput.addEventListener("change", handleFolderInput);
+  els.reviewMaskInput.addEventListener("click", clearFileInput);
+  els.reviewMaskInput.addEventListener("change", handleReviewMaskInput);
   els.imageSelector.addEventListener("change", handleImageSelectionChange);
   els.imageId.addEventListener("input", () => {
     state.imageId = sanitize(els.imageId.value);
@@ -102,6 +123,14 @@ function bindEvents() {
   els.confirmTissue.addEventListener("click", confirmTissue);
   els.tissueMode.addEventListener("click", () => setMode("tissue"));
   els.zoomMode.addEventListener("click", toggleZoomMode);
+  els.reviewOpacity.addEventListener("input", () => {
+    state.reviewOpacity = Number(els.reviewOpacity.value) / 100;
+    drawMainCanvas();
+  });
+  els.reviewShowMissing.addEventListener("change", () => {
+    state.reviewShowMissing = els.reviewShowMissing.checked;
+    updateImageSelectorOptions();
+  });
   els.downloadZip.addEventListener("click", handleManualDownload);
   els.skipToPending.addEventListener("click", skipToNextPending);
   els.mainCanvas.addEventListener("pointerdown", handlePointerDown);
@@ -133,6 +162,7 @@ async function handleSingleImageInput(event) {
   try {
     const file = event.target.files?.[0];
     if (!file) return;
+    enterAnnotationMode();
     setStatus(`Loading ${file.name}...`);
     state.batchFiles = [file];
     state.batchManifest = emptySelectionManifest();
@@ -158,6 +188,7 @@ async function handleFolderInput(event) {
       setStatus(`Folder picker returned ${selectedFiles.length} files, but no PNG/image files were recognized. First files: ${sampleNames}`);
       return;
     }
+    enterAnnotationMode();
     setStatus(`Loading batch folder: ${selectedFiles.length} files selected, ${files.length} images, ${csvCount} CSV files...`);
     const manifestFile = pickSelectionManifestFile(selectedFiles);
     state.batchManifest = manifestFile
@@ -185,8 +216,60 @@ async function handleFolderInput(event) {
   }
 }
 
+async function handleReviewMaskInput(event) {
+  try {
+    const selectedFiles = [...(event.target.files || [])];
+    if (!selectedFiles.length) {
+      setStatus("No mask files were received from the review folder picker.");
+      return;
+    }
+    if (!state.batchFiles.length) {
+      setStatus("Load the original image/CSV batch folder first, then choose the review masks folder.");
+      return;
+    }
+    const maskFiles = selectedFiles.filter(isImageFile);
+    if (!maskFiles.length) {
+      setStatus("The review folder does not contain any image mask files.");
+      return;
+    }
+    enterReviewMode(maskFiles);
+    const firstMatched = state.reviewItems.findIndex((item) => item.idMask);
+    await loadReviewIndex(firstMatched >= 0 ? firstMatched : 0);
+    const summary = summarizeReviewItems(state.reviewItems);
+    setStatus(`Review loaded: ${summary.matched}/${summary.total} images have ID masks. Use Image in batch to inspect results.`);
+  } catch (error) {
+    setStatus(`Could not load review masks: ${formatErrorMessage(error)}`);
+  }
+}
+
+function enterAnnotationMode() {
+  state.mode = "annotate";
+  state.reviewItems = [];
+  state.reviewIndex = -1;
+  state.reviewMask = null;
+  if (els.reviewSummary) els.reviewSummary.hidden = true;
+  updateModeUI();
+}
+
+function enterReviewMode(maskFiles) {
+  state.mode = "review";
+  state.reviewItems = buildReviewItems(state.batchFiles, maskFiles, state.batchManifest);
+  state.reviewIndex = -1;
+  state.reviewMask = null;
+  state.tissueLocked = true;
+  state.currentPolygon = [];
+  updateModeUI();
+  renderReviewSummary();
+  updateImageSelectorOptions();
+}
+
 function handleImageSelectionChange() {
   const index = Number(els.imageSelector.value);
+  if (state.mode === "review") {
+    if (Number.isNaN(index) || index < 0 || index >= state.reviewItems.length) return;
+    loadReviewIndex(index);
+    return;
+  }
   if (Number.isNaN(index) || index < 0 || index >= state.batchFiles.length) return;
   loadBatchIndex(index);
 }
@@ -230,8 +313,40 @@ async function loadImageFile(file, options = {}) {
   }
 }
 
+async function loadReviewIndex(index) {
+  if (index < 0 || index >= state.reviewItems.length) return;
+  const item = state.reviewItems[index];
+  state.reviewIndex = index;
+  state.currentIndex = state.batchFiles.indexOf(item.imageFile);
+  state.imageName = item.imageFile.name;
+  state.imageId = item.imageFile.name.replace(/\.[^.]+$/, "");
+  state.currentMetadata = item.metadata;
+  state.imageBitmap = await loadDrawableImage(item.imageFile);
+  state.image = state.imageBitmap;
+  state.tissuePolygons = [];
+  state.currentPolygon = [];
+  state.tissueLocked = true;
+  state.viewZoom = 1;
+  state.reviewMask = item.idMask ? await loadMaskFromFile(item.idMask, state.image.width, state.image.height) : null;
+  state.tissueMask = state.reviewMask;
+  els.imageId.value = state.imageId;
+  renderSelectionMetadata();
+  resizeCanvas(state.image.width, state.image.height, 96);
+  resizePreviewCanvas(state.image.width, state.image.height);
+  updateTissueLockUI();
+  updateImageSelectorOptions();
+  els.imageSelector.value = String(index);
+  drawMainCanvas();
+  const maskStatus = item.idMask ? `Mask: ${item.idMask.name}` : "No matching *_mask.png found";
+  setStatus(`Reviewing ${item.imageFile.name}. ${maskStatus}.`);
+}
+
 function refreshImageSelector() {
   els.imageSelector.replaceChildren();
+  if (state.mode === "review") {
+    updateImageSelectorOptions();
+    return;
+  }
   if (!state.batchFiles.length) {
     const option = document.createElement("option");
     option.value = "-1";
@@ -247,6 +362,10 @@ function refreshImageSelector() {
 }
 
 function updateImageSelectorOptions() {
+  if (state.mode === "review") {
+    updateReviewSelectorOptions();
+    return;
+  }
   if (!state.batchFiles.length) return;
   els.imageSelector.replaceChildren();
   const pending = [];
@@ -281,6 +400,41 @@ function updateImageSelectorOptions() {
   }
   if (state.currentIndex >= 0) {
     els.imageSelector.value = String(state.currentIndex);
+  }
+}
+
+function updateReviewSelectorOptions() {
+  els.imageSelector.replaceChildren();
+  if (!state.reviewItems.length) {
+    const option = document.createElement("option");
+    option.value = "-1";
+    option.textContent = "No review loaded";
+    els.imageSelector.appendChild(option);
+    els.imageSelector.disabled = true;
+    return;
+  }
+  els.imageSelector.disabled = false;
+  const groups = [
+    ["Matched masks", state.reviewItems.filter((item) => item.idMask)],
+    ["Missing masks", state.reviewShowMissing ? state.reviewItems.filter((item) => !item.idMask) : []]
+  ];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = `${label} (${items.length})`;
+    for (const item of items) {
+      const index = state.reviewItems.indexOf(item);
+      const option = document.createElement("option");
+      option.value = String(index);
+      const metadata = item.metadata;
+      const suffix = item.idMask ? "" : " - missing mask";
+      option.textContent = metadata?.organZh ? `${item.imageFile.name} - ${metadata.organZh}${suffix}` : `${item.imageFile.name}${suffix}`;
+      group.appendChild(option);
+    }
+    els.imageSelector.appendChild(group);
+  }
+  if (state.reviewIndex >= 0) {
+    els.imageSelector.value = String(state.reviewIndex);
   }
 }
 
@@ -371,6 +525,10 @@ async function confirmTissue() {
 }
 
 function updateProgressBadge() {
+  if (state.mode === "review") {
+    updateModeUI();
+    return;
+  }
   const done = state.downloadedNames.size + state.completedMasks.size;
   const total = state.batchFiles.length;
   if (els.progressBadge) {
@@ -462,6 +620,10 @@ function computeBatchId(files) {
 }
 
 function skipToNextPending() {
+  if (state.mode === "review") {
+    skipToNextReviewIssue();
+    return;
+  }
   if (!state.batchFiles.length) return;
   for (let i = 0; i < state.batchFiles.length; i += 1) {
     const name = state.batchFiles[i].name;
@@ -472,6 +634,18 @@ function skipToNextPending() {
     }
   }
   setStatus("All images are completed. Download any remaining masks to finish.");
+}
+
+function skipToNextReviewIssue() {
+  if (!state.reviewItems.length) return;
+  const start = Math.max(state.reviewIndex + 1, 0);
+  const nextMissing = state.reviewItems.findIndex((item, index) => index >= start && !item.idMask);
+  if (nextMissing >= 0) {
+    loadReviewIndex(nextMissing);
+    setStatus(`Skipped to missing mask: ${state.reviewItems[nextMissing].imageFile.name}.`);
+    return;
+  }
+  setStatus("No later images are missing masks.");
 }
 
 function rebuildTissueMask() {
@@ -521,19 +695,59 @@ function handleWheelZoom(event) {
 }
 
 function setMode(mode) {
+  if (state.mode === "review" && mode === "tissue") return;
   if (mode === "tissue" && state.tissueLocked) return;
   els.tissueMode.classList.toggle("active", mode === "tissue");
   drawMainCanvas();
 }
 
 function updateTissueLockUI() {
+  updateModeUI();
   els.tissueSection.classList.toggle("locked", state.tissueLocked);
   els.clearTissue.disabled = state.tissueLocked;
   els.confirmTissue.disabled = state.tissueLocked;
   els.tissueMode.disabled = state.tissueLocked;
   renderLabelButtons();
   updateImageSelectorOptions();
-  els.downloadZip.disabled = state.completedMasks.size === 0;
+  els.downloadZip.disabled = state.mode === "review" || state.completedMasks.size === 0;
+}
+
+function updateModeUI() {
+  const isReview = state.mode === "review";
+  if (els.reviewSection) els.reviewSection.hidden = !isReview;
+  if (els.tissueSection) els.tissueSection.hidden = isReview;
+  if (els.baseLabel) els.baseLabel.disabled = isReview;
+  if (els.imageId) els.imageId.disabled = isReview;
+  if (els.downloadZip) els.downloadZip.disabled = isReview || state.completedMasks.size === 0;
+  if (els.skipToPending) els.skipToPending.textContent = isReview ? "Next missing mask" : "Skip to next pending";
+  if (els.progressBadge && isReview) {
+    const summary = summarizeReviewItems(state.reviewItems);
+    els.progressBadge.textContent = `${summary.matched}/${summary.total} masks`;
+  }
+  renderReviewLegend();
+}
+
+function renderReviewSummary() {
+  if (!els.reviewSummary) return;
+  const summary = summarizeReviewItems(state.reviewItems);
+  els.reviewSummary.hidden = state.mode !== "review";
+  els.reviewSummary.textContent = `Review: ${summary.matched}/${summary.total} masks matched, ${summary.missing} missing.`;
+}
+
+function renderReviewLegend() {
+  if (!els.reviewLabels) return;
+  els.reviewLabels.replaceChildren();
+  for (const [name, value, color] of tissueLabels) {
+    const item = document.createElement("div");
+    item.className = "legendItem";
+    const swatch = document.createElement("span");
+    swatch.className = "legendSwatch";
+    swatch.style.background = color;
+    const text = document.createElement("span");
+    text.textContent = `${name} (${value})`;
+    item.append(swatch, text);
+    els.reviewLabels.appendChild(item);
+  }
 }
 
 function drawMainCanvas() {
@@ -557,15 +771,17 @@ function drawTissueOverlay(offset) {
   if (!state.tissueMask || !state.imageBitmap) return;
   const width = state.image.width;
   const height = state.image.height;
+  const opacity = state.mode === "review" ? state.reviewOpacity : 0.3;
+  if (opacity <= 0) return;
   const imageData = ctx.getImageData(offset.x, offset.y, width, height);
   for (let i = 0; i < state.tissueMask.length; i += 1) {
     const value = state.tissueMask[i];
     if (value === 0) continue;
     const [r, g, b] = hexToRgb(colorForTissue(value));
     const idx = i * 4;
-    imageData.data[idx] = Math.round(imageData.data[idx] * 0.7 + r * 0.3);
-    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * 0.7 + g * 0.3);
-    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * 0.7 + b * 0.3);
+    imageData.data[idx] = Math.round(imageData.data[idx] * (1 - opacity) + r * opacity);
+    imageData.data[idx + 1] = Math.round(imageData.data[idx + 1] * (1 - opacity) + g * opacity);
+    imageData.data[idx + 2] = Math.round(imageData.data[idx + 2] * (1 - opacity) + b * opacity);
   }
   ctx.putImageData(imageData, offset.x, offset.y);
 }
@@ -698,6 +914,30 @@ function maskToRgbCanvas(mask, width, height) {
   return canvas;
 }
 
+async function loadMaskFromFile(file, expectedWidth, expectedHeight) {
+  const image = await loadDrawableImage(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const maskCtx = canvas.getContext("2d", { willReadFrequently: true });
+  maskCtx.drawImage(image, 0, 0);
+  const imageData = maskCtx.getImageData(0, 0, image.width, image.height);
+  const source = imageData.data;
+  const mask = new Uint8Array(expectedWidth * expectedHeight);
+  const copyWidth = Math.min(expectedWidth, image.width);
+  const copyHeight = Math.min(expectedHeight, image.height);
+  for (let y = 0; y < copyHeight; y += 1) {
+    for (let x = 0; x < copyWidth; x += 1) {
+      const sourceIndex = (y * image.width + x) * 4;
+      mask[y * expectedWidth + x] = source[sourceIndex];
+    }
+  }
+  if (image.width !== expectedWidth || image.height !== expectedHeight) {
+    setStatus(`Mask size ${image.width}x${image.height} does not match image ${expectedWidth}x${expectedHeight}; showing overlapping area only.`);
+  }
+  return mask;
+}
+
 async function canvasToUint8Array(canvas) {
   const dataUrl = canvas.toDataURL("image/png");
   const base64 = dataUrl.split(",")[1] || "";
@@ -762,145 +1002,7 @@ function sortFiles(files) {
 }
 
 function isImageFile(file) {
-  return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name || "");
-}
-
-function emptySelectionManifest() {
-  return { byFileKey: new Map(), rowCount: 0 };
-}
-
-function pickSelectionManifestFile(files) {
-  const csvFiles = files.filter(isCsvFile);
-  return csvFiles.find((file) => file.name.toLowerCase() === "selection_manifest_zh.csv")
-    || csvFiles.find((file) => file.name.toLowerCase().includes("manifest"))
-    || csvFiles[0]
-    || null;
-}
-
-function parseSelectionManifest(text) {
-  const rows = parseCsvRows(String(text || ""));
-  if (rows.length === 0) return emptySelectionManifest();
-
-  const headers = rows[0].map((header) => normalizeHeader(header));
-  const byFileKey = new Map();
-  let rowCount = 0;
-
-  for (const row of rows.slice(1)) {
-    if (row.every((cell) => String(cell || "").trim() === "")) continue;
-    rowCount += 1;
-
-    const pngFile = valueFor(row, headers, "png_file");
-    const baseName = valueFor(row, headers, "base_name");
-    const metadata = {
-      pngFile,
-      baseName,
-      organZh: valueFor(row, headers, "organ_zh"),
-      captionZh: valueFor(row, headers, "caption_zh")
-    };
-
-    for (const key of manifestKeys(pngFile, baseName)) {
-      if (!byFileKey.has(key)) byFileKey.set(key, metadata);
-    }
-  }
-
-  return { byFileKey, rowCount };
-}
-
-function getSelectionMetadataForFile(manifest, file) {
-  if (!manifest?.byFileKey || !file) return null;
-  const candidates = [
-    file.name,
-    file.webkitRelativePath,
-    basename(file.webkitRelativePath || ""),
-    withoutExtension(file.name || ""),
-    withoutExtension(basename(file.webkitRelativePath || ""))
-  ];
-
-  for (const candidate of candidates) {
-    const metadata = manifest.byFileKey.get(normalizeFileKey(candidate));
-    if (metadata) return metadata;
-  }
-  return null;
-}
-
-function parseCsvRows(text) {
-  const rows = [];
-  let row = [];
-  let cell = "";
-  let inQuotes = false;
-  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
-
-  for (; i < text.length; i += 1) {
-    const char = text[i];
-    if (inQuotes) {
-      if (char === "\"") {
-        if (text[i + 1] === "\"") {
-          cell += "\"";
-          i += 1;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cell += char;
-      }
-      continue;
-    }
-
-    if (char === "\"") {
-      inQuotes = true;
-    } else if (char === ",") {
-      row.push(cell);
-      cell = "";
-    } else if (char === "\n" || char === "\r") {
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-      if (char === "\r" && text[i + 1] === "\n") i += 1;
-    } else {
-      cell += char;
-    }
-  }
-
-  if (cell !== "" || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function manifestKeys(pngFile, baseName) {
-  const values = [
-    pngFile,
-    basename(pngFile),
-    withoutExtension(pngFile),
-    withoutExtension(basename(pngFile)),
-    baseName,
-    baseName ? `${baseName}.png` : ""
-  ];
-  return [...new Set(values.map(normalizeFileKey).filter(Boolean))];
-}
-
-function valueFor(row, headers, name) {
-  const index = headers.indexOf(name);
-  return index >= 0 ? String(row[index] || "").trim() : "";
-}
-
-function normalizeHeader(value) {
-  return String(value || "").replace(/^\ufeff/, "").trim().toLowerCase();
-}
-
-function normalizeFileKey(value) {
-  return basename(String(value || "").trim()).toLowerCase();
-}
-
-function basename(value) {
-  return String(value || "").split(/[\\/]/).pop() || "";
-}
-
-function withoutExtension(value) {
-  return String(value || "").replace(/\.[^.\\/]+$/, "");
+  return String(file.type || "").startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name || "");
 }
 
 function isCsvFile(file) {
