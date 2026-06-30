@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
@@ -16,10 +17,13 @@ from phase3_mask_edit.benchmark.intents import (
 from phase3_mask_edit.benchmark.metrics import evaluate_mask_edit
 from phase3_mask_edit.benchmark.models import BenchmarkIntent, read_intents_jsonl, write_intents_jsonl
 from phase3_mask_edit.benchmark.prompts import semantic_diff_for_intent, template_prompt_for_intent
+from phase3_mask_edit.benchmark.runner import GT_MODE, run_benchmark_sample
+from phase3_mask_edit.backends.llm_agent import LLMContourAgentResult, LLMContourAttempt, STATUS_VALIDATED
 from phase3_mask_edit.core.config import load_recipe
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import save_id_mask
+from phase3_mask_edit.generic.tumor_burden import PrimitiveEditResult
 
 
 class MaskEditBenchmarkTests(unittest.TestCase):
@@ -139,6 +143,67 @@ class MaskEditBenchmarkTests(unittest.TestCase):
         self.assertEqual(len(intents), 1)
         self.assertEqual(intents[0].primitive, "necrosis_appearance")
         self.assertFalse(summary["shortfalls"])
+
+    def test_direct_gt_runner_bypasses_prompt_and_planner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = np.ones((32, 32), dtype=np.int64)
+            mask_path = root / "mask.png"
+            save_id_mask(source, mask_path)
+            gt = BenchmarkIntent(
+                sample_id="s1",
+                organ="breast",
+                profile="BCSS",
+                image_path=None,
+                mask_path=str(mask_path),
+                primitive="necrosis_appearance",
+                strength="mild",
+                region_hint={"bbox_xyxy": [6, 6, 18, 18], "centroid_xy": [12, 12]},
+                source_labels=("Tumor",),
+                target_label="Necrosis",
+                expected_direction="increase",
+                expected_area_bucket=(0.04, 0.20),
+                seed=1,
+            )
+
+            def fake_execute(**kwargs):
+                target = kwargs["old_mask"].copy()
+                target[8:16, 8:16] = 3
+                edit_result = PrimitiveEditResult(
+                    target_mask=target,
+                    change_region=target != kwargs["old_mask"],
+                    changed_area_fraction=float(np.mean(target != kwargs["old_mask"])),
+                    selected_pixels=int(np.count_nonzero(target != kwargs["old_mask"])),
+                    warnings=(),
+                    ops_log={},
+                )
+                attempt = LLMContourAttempt(
+                    attempt_index=1,
+                    status=STATUS_VALIDATED,
+                    edit_result=edit_result,
+                )
+                return LLMContourAgentResult(
+                    status=STATUS_VALIDATED,
+                    source_mask=kwargs["old_mask"],
+                    attempts=(attempt,),
+                    final_attempt=attempt,
+                    context={"intent": kwargs["intent"].to_metadata()},
+                    artifact_paths={},
+                )
+
+            with mock.patch("phase3_mask_edit.benchmark.runner.execute_llm_contour_agent", side_effect=fake_execute):
+                row = run_benchmark_sample(
+                    gt,
+                    mode=GT_MODE,
+                    output_dir=root / "out",
+                    contour_provider="api-text",
+                    contour_model="dummy",
+                )
+
+        self.assertEqual(row["status"], "completed")
+        self.assertEqual(row["mode"], GT_MODE)
+        self.assertEqual(row["planned_primitive"], "necrosis_appearance")
+        self.assertTrue(row["all_ok"])
 
 
 if __name__ == "__main__":

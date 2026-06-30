@@ -18,6 +18,7 @@ from phase3_mask_edit.core.applicability import assess_edit_applicability
 from phase3_mask_edit.core.config import default_recipe_path_for_profile, load_recipe
 from phase3_mask_edit.core.context import MaskEditContext
 from phase3_mask_edit.core.intent import EditIntent
+from phase3_mask_edit.core.intent import IntentValidationError, validate_intent_against_recipe
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit.core.mask_io import load_id_mask
 from phase3_mask_edit.specialized.catalog import specialized_primitive_names
@@ -55,6 +56,7 @@ class BuildConfig:
     excluded_primitives: tuple[str, ...] = ()
     seed: int = 13
     max_masks_per_profile: int | None = None
+    early_stop_when_full: bool = True
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "BuildConfig":
@@ -78,6 +80,7 @@ class BuildConfig:
                 if payload.get("max_masks_per_profile") is not None
                 else None
             ),
+            early_stop_when_full=bool(payload.get("early_stop_when_full", True)),
         )
 
 
@@ -100,13 +103,36 @@ def build_benchmark_intents(config: BuildConfig) -> tuple[list[BenchmarkIntent],
             "candidate_counts": defaultdict(int),
             "load_errors": [],
         }
+        wanted_keys = {
+            (source.organ, str(primitive_config.get("name")), strength)
+            for primitive_config in primitive_configs
+            for strength in _primitive_strengths(primitive_config)
+            if strength in config.strengths
+            if _primitive_possible_for_schema(
+                primitive_config,
+                strength=strength,
+                profile=schema.reference_profile,
+                recipe=recipe,
+                schema=schema,
+            )
+        }
         for mask_path in masks:
+            if config.early_stop_when_full and wanted_keys and _all_quotas_full(
+                grouped,
+                wanted_keys=wanted_keys,
+                quota=config.patches_per_combo,
+            ):
+                profile_summary["stopped_early_after_masks"] = profile_summary.get(
+                    "scanned_masks", 0
+                )
+                break
+            profile_summary["scanned_masks"] = int(profile_summary.get("scanned_masks", 0)) + 1
             try:
                 mask = load_id_mask(mask_path)
             except Exception as exc:
                 profile_summary["load_errors"].append({"mask_path": str(mask_path), "error": str(exc)})
                 continue
-            context = MaskEditContext.from_mask(mask, schema)
+            context = _fast_context_from_mask(mask, schema)
             image_path = _match_image_path(mask_path, source.image_globs, data_root=config.data_root)
             for primitive_config in primitive_configs:
                 primitive_name = str(primitive_config.get("name"))
@@ -470,6 +496,15 @@ def _iter_primitive_configs(recipe: Mapping[str, Any], *, allowed: set[str], exc
         yield primitive
 
 
+def _all_quotas_full(
+    grouped: Mapping[tuple[str, str, str], list[BenchmarkIntent]],
+    *,
+    wanted_keys: set[tuple[str, str, str]],
+    quota: int,
+) -> bool:
+    return all(len(grouped.get(key, ())) >= quota for key in wanted_keys)
+
+
 def _defaulted_intent(*, primitive_name: str, strength: str, profile: str, primitive_config: Mapping[str, Any], schema: MaskProfileSchema) -> EditIntent:
     source, target = source_target_labels_for_primitive(primitive_config, schema)
     if not source:
@@ -488,6 +523,47 @@ def _defaulted_intent(*, primitive_name: str, strength: str, profile: str, primi
         source_labels=source,
         target_label=target,
     )
+
+
+def _primitive_possible_for_schema(
+    primitive_config: Mapping[str, Any],
+    *,
+    strength: str,
+    profile: str,
+    recipe: Mapping[str, Any],
+    schema: MaskProfileSchema,
+) -> bool:
+    required = primitive_config.get("required_tissue_labels", ())
+    if isinstance(required, list):
+        for label in required:
+            if not isinstance(label, str):
+                continue
+            if label not in schema.readable_labels or label not in schema.writable_labels:
+                return False
+    operation = primitive_config.get("mask_operation", {})
+    operation = operation if isinstance(operation, Mapping) else {}
+    for key in ("source", "target"):
+        label = operation.get(key)
+        if isinstance(label, str) and label not in schema.readable_labels:
+            return False
+    for key in ("target_priority", "backfill_priority", "primary_sources", "secondary_sources"):
+        labels = labels_from_operation(operation.get(key))
+        if labels and not any(label in schema.readable_labels for label in labels):
+            return False
+    try:
+        validate_intent_against_recipe(
+            _defaulted_intent(
+                primitive_name=str(primitive_config["name"]),
+                strength=strength,
+                profile=profile,
+                primitive_config=primitive_config,
+                schema=schema,
+            ),
+            recipe,
+        )
+    except (IntentValidationError, Exception):
+        return False
+    return True
 
 
 def _primitive_strengths(primitive_config: Mapping[str, Any]) -> tuple[str, ...]:
@@ -569,6 +645,43 @@ def _profile_sources(payload: Any, *, data_root: Path) -> list[ProfileSource]:
         if not source.mask_globs:
             raise ValueError(f"Profile {source.profile} has no mask_globs in config rooted at {data_root}.")
     return sources
+
+
+def _fast_context_from_mask(mask: np.ndarray, schema: MaskProfileSchema) -> MaskEditContext:
+    """Build the subset of MaskEditContext needed for benchmark feasibility.
+
+    The full context computes Python connected components for every present
+    label, which is useful for executor planning but too slow when scanning
+    tens of thousands of benchmark candidate masks. Applicability gates used
+    here only need present labels, normalized mask, and risk flags.
+    """
+
+    normalized = np.asarray(mask)
+    total = int(normalized.size) or 1
+    label_counts: dict[str, int] = {}
+    fine_fractions: dict[int, float] = {}
+    for fine_id, count in zip(*np.unique(normalized, return_counts=True)):
+        fine_id_int = int(fine_id)
+        count_int = int(count)
+        fine_fractions[fine_id_int] = count_int / total
+        if fine_id_int in schema.skip_fine_ids:
+            continue
+        for label, fine_ids in schema.label_to_fine_ids.items():
+            if fine_id_int in fine_ids:
+                label_counts[label] = label_counts.get(label, 0) + count_int
+                break
+    return MaskEditContext(
+        reference_profile=schema.reference_profile,
+        mask_shape=tuple(int(dim) for dim in normalized.shape),
+        present_labels=frozenset(label_counts),
+        label_area_fractions={label: count / total for label, count in label_counts.items()},
+        fine_id_area_fractions=fine_fractions,
+        adjacency={},
+        component_counts={},
+        normalized_mask=normalized,
+        risk_flags=(),
+        semantic_warnings=dict(schema.semantic_warnings),
+    )
 
 
 def _resolve_path(value: Any, *, base_dir: Path) -> Path:

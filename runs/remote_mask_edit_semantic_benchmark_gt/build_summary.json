@@ -1,0 +1,306 @@
+{
+  "profiles": {
+    "BCSS": {
+      "mask_count": 100,
+      "candidate_counts": {
+        "breast|tumor_burden_increase|mild": 84,
+        "breast|tumor_burden_increase|moderate": 79,
+        "breast|tumor_burden_increase|significant": 72,
+        "breast|tumor_burden_increase|xlarge_deid": 60,
+        "breast|tumor_burden_decrease|mild": 85,
+        "breast|tumor_burden_decrease|moderate": 85,
+        "breast|tumor_burden_decrease|significant": 85,
+        "breast|tumor_burden_decrease|xlarge_deid": 85,
+        "breast|necrosis_appearance|mild": 85,
+        "breast|necrosis_appearance|moderate": 85,
+        "breast|necrosis_appearance|significant": 85,
+        "breast|necrosis_appearance|xlarge_deid": 85,
+        "breast|necrosis_resolution|mild": 41,
+        "breast|necrosis_resolution|moderate": 41,
+        "breast|necrosis_resolution|significant": 41,
+        "breast|necrosis_resolution|xlarge_deid": 41,
+        "breast|stromal_immune_infiltration|mild": 90,
+        "breast|stromal_immune_infiltration|moderate": 89,
+        "breast|stromal_immune_infiltration|significant": 89,
+        "breast|intratumoral_immune_infiltration|mild": 85,
+        "breast|intratumoral_immune_infiltration|moderate": 85,
+        "breast|intratumoral_immune_infiltration|significant": 85,
+        "breast|immune_infiltration_decrease|mild": 35,
+        "breast|immune_infiltration_decrease|moderate": 35,
+        "breast|immune_infiltration_decrease|significant": 35,
+        "breast|immune_infiltration_decrease|xlarge_deid": 35,
+        "breast|stromal_desmoplasia|mild": 15,
+        "breast|stromal_desmoplasia|moderate": 13,
+        "breast|stromal_desmoplasia|significant": 11,
+        "breast|stromal_desmoplasia|xlarge_deid": 8,
+        "breast|stroma_decrease|mild": 85,
+        "breast|stroma_decrease|moderate": 85,
+        "breast|stroma_decrease|significant": 85,
+        "breast|stroma_decrease|xlarge_deid": 85
+      },
+      "load_errors": [],
+      "scanned_masks": 100
+    },
+    "PANDA": {
+      "mask_count": 100,
+      "candidate_counts": {
+        "prostate|tumor_burden_increase|mild": 100,
+        "prostate|tumor_burden_increase|moderate": 100,
+        "prostate|tumor_burden_increase|significant": 100,
+        "prostate|tumor_burden_increase|xlarge_deid": 99,
+        "prostate|tumor_burden_decrease|mild": 100,
+        "prostate|tumor_burden_decrease|moderate": 100,
+        "prostate|tumor_burden_decrease|significant": 100,
+        "prostate|tumor_burden_decrease|xlarge_deid": 100,
+        "prostate|stroma_decrease|mild": 100,
+        "prostate|stroma_decrease|moderate": 100,
+        "prostate|stroma_decrease|significant": 100,
+        "prostate|stroma_decrease|xlarge_deid": 100,
+        "prostate|gleason_upgrade_4to5|mild": 100,
+        "prostate|gleason_upgrade_4to5|moderate": 100,
+        "prostate|gleason_upgrade_4to5|significant": 100,
+        "prostate|gleason_downgrade_4to3|mild": 100,
+        "prostate|gleason_downgrade_4to3|moderate": 100,
+        "prostate|gleason_downgrade_4to3|significant": 100
+      },
+      "load_errors": [],
+      "scanned_masks": 100
+    },
+    "GlaS": {
+      "mask_count": 100,
+      "candidate_counts": {
+        "colorectal|stroma_decrease|mild": 98,
+        "colorectal|stroma_decrease|moderate": 98,
+        "colorectal|stroma_decrease|significant": 98,
+        "colorectal|stroma_decrease|xlarge_deid": 98,
+        "colorectal|normal_to_adenomatous|mild": 24,
+        "colorectal|normal_to_adenomatous|moderate": 24,
+        "colorectal|normal_to_adenomatous|significant": 24,
+        "colorectal|tumor_burden_increase|mild": 72,
+        "colorectal|tumor_burden_increase|moderate": 71,
+        "colorectal|tumor_burden_increase|significant": 71,
+        "colorectal|tumor_burden_decrease|mild": 74,
+        "colorectal|tumor_burden_decrease|moderate": 74,
+        "colorectal|tumor_burden_decrease|significant": 74,
+        "colorectal|tumor_burden_decrease|xlarge_deid": 74,
+        "colorectal|treatment_dedifferentiation|mild": 15,
+        "colorectal|treatment_dedifferentiation|moderate": 15,
+        "colorectal|treatment_dedifferentiation|significant": 15,
+        "colorectal|tumor_burden_increase|xlarge_deid": 68,
+        "colorectal|grade_upgrade|mild": 61,
+        "colorectal|grade_upgrade|moderate": 61,
+        "colorectal|grade_upgrade|significant": 61
+      },
+      "load_errors": [],
+      "scanned_masks": 100
+    },
+    "IGNITE": {
+      "mask_count": 100,
+      "candidate_counts": {
+        "lung|tumor_burden_increase|mild": 40,
+        "lung|tumor_burden_increase|moderate": 33,
+        "lung|tumor_burden_increase|significant": 31,
+        "lung|tumor_burden_decrease|mild": 53,
+        "lung|tumor_burden_decrease|moderate": 53,
+        "lung|tumor_burden_decrease|significant": 53,
+        "lung|tumor_burden_decrease|xlarge_deid": 53,
+        "lung|necrosis_appearance|mild": 61,
+        "lung|necrosis_appearance|moderate": 61,
+        "lung|necrosis_appearance|significant": 61,
+        "lung|necrosis_appearance|xlarge_deid": 61,
+        "lung|stromal_immune_infiltration|mild": 87,
+        "lung|stromal_immune_infiltration|moderate": 84,
+        "lung|stromal_immune_infiltration|significant": 81,
+        "lung|intratumoral_immune_infiltration|mild": 61,
+        "lung|intratumoral_immune_infiltration|moderate": 61,
+        "lung|intratumoral_immune_infiltration|significant": 61,
+        "lung|stroma_decrease|mild": 81,
+        "lung|stroma_decrease|moderate": 81,
+        "lung|stroma_decrease|significant": 81,
+        "lung|stroma_decrease|xlarge_deid": 81,
+        "lung|immune_infiltration_decrease|mild": 24,
+        "lung|immune_infiltration_decrease|moderate": 24,
+        "lung|immune_infiltration_decrease|significant": 24,
+        "lung|immune_infiltration_decrease|xlarge_deid": 24,
+        "lung|stromal_desmoplasia|mild": 14,
+        "lung|stromal_desmoplasia|moderate": 14,
+        "lung|stromal_desmoplasia|significant": 14,
+        "lung|stromal_desmoplasia|xlarge_deid": 14,
+        "lung|tumor_burden_increase|xlarge_deid": 25
+      },
+      "load_errors": [],
+      "scanned_masks": 100
+    },
+    "PUMA": {
+      "mask_count": 100,
+      "candidate_counts": {
+        "melanoma|necrosis_appearance|mild": 100,
+        "melanoma|necrosis_appearance|moderate": 100,
+        "melanoma|necrosis_appearance|significant": 100,
+        "melanoma|necrosis_appearance|xlarge_deid": 100,
+        "melanoma|necrosis_resolution|mild": 11,
+        "melanoma|necrosis_resolution|moderate": 11,
+        "melanoma|necrosis_resolution|significant": 11,
+        "melanoma|necrosis_resolution|xlarge_deid": 11,
+        "melanoma|tumor_burden_decrease|mild": 36,
+        "melanoma|tumor_burden_decrease|moderate": 36,
+        "melanoma|tumor_burden_decrease|significant": 36,
+        "melanoma|tumor_burden_decrease|xlarge_deid": 36,
+        "melanoma|stroma_decrease|mild": 36,
+        "melanoma|stroma_decrease|moderate": 36,
+        "melanoma|stroma_decrease|significant": 36,
+        "melanoma|stroma_decrease|xlarge_deid": 36,
+        "melanoma|tumor_burden_increase|mild": 23,
+        "melanoma|tumor_burden_increase|moderate": 14,
+        "melanoma|tumor_burden_increase|significant": 10,
+        "melanoma|tumor_burden_increase|xlarge_deid": 6
+      },
+      "load_errors": [],
+      "scanned_masks": 100
+    },
+    "ORCA": {
+      "mask_count": 100,
+      "candidate_counts": {
+        "oral|tumor_burden_increase|mild": 29,
+        "oral|tumor_burden_increase|moderate": 28,
+        "oral|tumor_burden_increase|significant": 26,
+        "oral|tumor_burden_increase|xlarge_deid": 20,
+        "oral|tumor_burden_decrease|mild": 46,
+        "oral|tumor_burden_decrease|moderate": 46,
+        "oral|tumor_burden_decrease|significant": 46,
+        "oral|tumor_burden_decrease|xlarge_deid": 46
+      },
+      "load_errors": [],
+      "scanned_masks": 46,
+      "stopped_early_after_masks": 46
+    }
+  },
+  "shortfalls": [
+    {
+      "organ": "breast",
+      "primitive": "stromal_desmoplasia",
+      "strength": "mild",
+      "available": 15,
+      "requested": 20
+    },
+    {
+      "organ": "breast",
+      "primitive": "stromal_desmoplasia",
+      "strength": "moderate",
+      "available": 13,
+      "requested": 20
+    },
+    {
+      "organ": "breast",
+      "primitive": "stromal_desmoplasia",
+      "strength": "significant",
+      "available": 11,
+      "requested": 20
+    },
+    {
+      "organ": "breast",
+      "primitive": "stromal_desmoplasia",
+      "strength": "xlarge_deid",
+      "available": 8,
+      "requested": 20
+    },
+    {
+      "organ": "colorectal",
+      "primitive": "treatment_dedifferentiation",
+      "strength": "mild",
+      "available": 15,
+      "requested": 20
+    },
+    {
+      "organ": "colorectal",
+      "primitive": "treatment_dedifferentiation",
+      "strength": "moderate",
+      "available": 15,
+      "requested": 20
+    },
+    {
+      "organ": "colorectal",
+      "primitive": "treatment_dedifferentiation",
+      "strength": "significant",
+      "available": 15,
+      "requested": 20
+    },
+    {
+      "organ": "lung",
+      "primitive": "stromal_desmoplasia",
+      "strength": "mild",
+      "available": 14,
+      "requested": 20
+    },
+    {
+      "organ": "lung",
+      "primitive": "stromal_desmoplasia",
+      "strength": "moderate",
+      "available": 14,
+      "requested": 20
+    },
+    {
+      "organ": "lung",
+      "primitive": "stromal_desmoplasia",
+      "strength": "significant",
+      "available": 14,
+      "requested": 20
+    },
+    {
+      "organ": "lung",
+      "primitive": "stromal_desmoplasia",
+      "strength": "xlarge_deid",
+      "available": 14,
+      "requested": 20
+    },
+    {
+      "organ": "melanoma",
+      "primitive": "necrosis_resolution",
+      "strength": "mild",
+      "available": 11,
+      "requested": 20
+    },
+    {
+      "organ": "melanoma",
+      "primitive": "necrosis_resolution",
+      "strength": "moderate",
+      "available": 11,
+      "requested": 20
+    },
+    {
+      "organ": "melanoma",
+      "primitive": "necrosis_resolution",
+      "strength": "significant",
+      "available": 11,
+      "requested": 20
+    },
+    {
+      "organ": "melanoma",
+      "primitive": "necrosis_resolution",
+      "strength": "xlarge_deid",
+      "available": 11,
+      "requested": 20
+    },
+    {
+      "organ": "melanoma",
+      "primitive": "tumor_burden_increase",
+      "strength": "moderate",
+      "available": 14,
+      "requested": 20
+    },
+    {
+      "organ": "melanoma",
+      "primitive": "tumor_burden_increase",
+      "strength": "significant",
+      "available": 10,
+      "requested": 20
+    },
+    {
+      "organ": "melanoma",
+      "primitive": "tumor_burden_increase",
+      "strength": "xlarge_deid",
+      "available": 6,
+      "requested": 20
+    }
+  ]
+}

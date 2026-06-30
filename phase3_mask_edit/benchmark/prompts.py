@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,11 +54,10 @@ def generate_prompts(
 
 
 def template_prompt_for_intent(intent: BenchmarkIntent) -> BenchmarkPrompt:
-    old_prompt = _baseline_prompt(intent)
+    old_prompt, new_prompt = _template_report_pair(intent)
     phrase = _edit_phrase(intent)
     location = _location_phrase(intent.region_hint)
     strength = _strength_phrase(intent.strength)
-    new_prompt = f"{old_prompt} Edit request: {phrase} with {strength} magnitude in the {location}; preserve unrelated tissue compartments."
     instruction = f"{phrase} with {strength} magnitude in the {location}, while preserving unrelated tissue compartments."
     return BenchmarkPrompt(
         sample_id=intent.sample_id,
@@ -72,6 +72,18 @@ def template_prompt_for_intent(intent: BenchmarkIntent) -> BenchmarkPrompt:
 
 
 def check_prompt_with_llm(intent: BenchmarkIntent, prompt: BenchmarkPrompt, checker: LLMConfig) -> BenchmarkPrompt:
+    report_violation = validate_report_pair_language(prompt)
+    if report_violation:
+        return BenchmarkPrompt(
+            sample_id=prompt.sample_id,
+            old_prompt=prompt.old_prompt,
+            new_prompt=prompt.new_prompt,
+            instruction=prompt.instruction,
+            generator_model=prompt.generator_model,
+            checker_model=checker.model,
+            checker_status="rejected",
+            checker_reason=report_violation,
+        )
     payload = {
         "sample_id": intent.sample_id,
         "gt": _checker_gt(intent),
@@ -83,9 +95,20 @@ def check_prompt_with_llm(intent: BenchmarkIntent, prompt: BenchmarkPrompt, chec
         {
             "role": "system",
             "content": (
-                "You audit pathology mask-edit benchmark prompts. Return JSON only with "
-                "status accepted/rejected, reason, primitive, strength, location, direction. "
-                "Accept only if both the old/new prompt and instruction express the GT edit."
+            "You audit pathology mask-edit benchmark prompts. Return JSON only with "
+                "status accepted/rejected, reason, primitive, strength, location, direction, organ. "
+                "Accept only if old_prompt and new_prompt are standalone pathology reports, "
+                "not edit commands, and their report-level semantic difference matches the GT edit. "
+                "The organ/site must match the GT exactly or use a direct synonym; reject reports that "
+                "switch to another organ. The strength should match the GT magnitude, not a larger or smaller change. "
+                "Reject if old_prompt or new_prompt uses imperative/edit wording such as edit, modify, "
+                "change, increase, decrease, reduce, add, remove, make, or convert. These restrictions "
+                "apply only to old_prompt and new_prompt. The instruction field is expected to be an edit "
+                "command, so do not reject it for imperative wording; only check whether its edit semantics "
+                "match the GT. Also reject old_prompt/new_prompt if either contains cross-report comparison "
+                "or preservation wording such as unchanged, stable, remains, compared, prior, previously, "
+                "surrounding tissue unchanged, no additional, no other, transition from, or preserving. "
+                "Each report must read as an independent descriptive finding."
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
@@ -202,14 +225,56 @@ def semantic_diff_for_intent(intent: BenchmarkIntent) -> dict[str, Any]:
 def _generate_one_with_llm(intent: BenchmarkIntent, generator: LLMConfig) -> BenchmarkPrompt:
     payload = {
         "gt": _checker_gt(intent),
+        "sample_id": intent.sample_id,
+        "organ": intent.organ,
+        "profile": intent.profile,
+        "strength_guidance": _strength_report_guidance(intent.strength),
+        "report_generation_contract": {
+            "old_prompt": "A standalone descriptive pathology report for the reference image only.",
+            "new_prompt": "A standalone descriptive pathology report for the target image only.",
+            "critical_rule": (
+                "The two reports must not talk about each other. They must not describe an edit, "
+                "a change, a comparison, preservation, or what stayed the same. Each report only "
+                "states what is visible in that single image."
+            ),
+        },
+        "few_shot_examples": _report_pair_few_shots(),
         "instructions": (
-            "Generate benchmark prompts for a pathology mask edit. Return JSON with "
-            "old_prompt, new_prompt, instruction. The prompts must include category, "
-            "direction, strength, and location, but must not mention internal primitive names."
+            "Generate prompts for a pathology mask-edit semantic fidelity benchmark. "
+            "Return JSON with exactly old_prompt, new_prompt, instruction. "
+            f"Use the exact organ/site '{intent.organ}' from the GT; do not substitute another organ. "
+            "old_prompt and new_prompt must be two independent, standalone pathology-style reports. "
+            "old_prompt describes only the reference image state. new_prompt describes only the target image state. "
+            "Write them as if two different pathologists independently dictated two reports for two separate images. "
+            "The reports must not mention ref, target, before, after, editing, or that one report differs from the other. "
+            "The parser will infer the edit later from the semantic difference, but the reports themselves must not explain that difference. "
+            "instruction must be a direct user edit instruction, not a meta-instruction about modifying prompts. "
+            "The old/new reports should be 2-4 sentences each, written like concise pathology findings. "
+            "Both reports must mention the exact organ/site, the relevant tissue category, and the GT location. "
+            "Do not add sentences about other areas being unchanged/stable/preserved. Do not mention internal primitive names, "
+            "JSON fields, masks, GT, or benchmark. Do not use imperative/edit words in old_prompt or new_prompt: "
+            "avoid edit, modify, change, increase, decrease, reduce, add, remove, make, convert. "
+            "Also avoid any cross-report/comparison/preservation wording in old_prompt/new_prompt: unchanged, stable, "
+            "remains, compared, prior, previously, preserved, additional, other areas, surrounding tissue unchanged, "
+            "transition from, transitioned, more, less, larger, smaller, higher, lower, no longer, newly, and while. "
+            "Each report should only describe its own image state. "
+            "Use state-only descriptions: for low abundance say sparse/rare/scant/minimal; for high abundance say conspicuous/abundant/dense/prominent. "
+            "Do not say 'more sparse', 'less conspicuous', 'more prominent', 'larger', 'smaller', or similar comparative phrases. "
+            "For transition edits, old_prompt reports the source phenotype as an observation; new_prompt reports the target phenotype as an observation. "
+            "Do not say 'transition from', 'replacing', or 'previously observed' in either report. "
+            "Forbidden in old_prompt/new_prompt: increase, increased, decrease, decreased, reduce, reduced, enhance, enhanced, more, less, fewer, greater, lower, higher, larger, smaller, unchanged, stable, remains, compared, prior, previously, preserving, transition, replace. "
+            "Allowed state-only wording examples: 'sparse lymphocytic infiltrate', 'mild focal lymphocytic infiltrate', 'prominent tumor nests', 'scattered tumor cells', 'central Gleason pattern 4 glands', 'central Gleason pattern 5 solid sheets'. "
+            "Bad report wording examples: 'mild increase in immune infiltrate', 'tumor cells are less conspicuous', 'other areas are unchanged', 'transitioning from pattern 4'."
         ),
     }
     messages = [
-        {"role": "system", "content": "You write concise pathology mask-edit prompts. Return JSON only."},
+        {
+            "role": "system",
+            "content": (
+                "You write concise pathology image edit prompts. Return strict JSON only. "
+                "Do not write meta-prompts such as 'modify the prompt'."
+            ),
+        },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
     response = _chat_json(messages, generator)
@@ -250,6 +315,59 @@ def _chat_json(messages: list[dict[str, Any]], config: LLMConfig) -> dict[str, A
 def _baseline_prompt(intent: BenchmarkIntent) -> str:
     organ = intent.organ.replace("_", " ")
     return f"H&E stained {organ} pathology patch with existing tumor and surrounding tissue compartments."
+
+
+def _template_report_pair(intent: BenchmarkIntent) -> tuple[str, str]:
+    organ = intent.organ.replace("_", " ")
+    location = _location_phrase(intent.region_hint)
+    primitive = intent.primitive
+    if primitive == "immune_infiltration_decrease":
+        return (
+            f"H&E stained {organ} pathology report. The {location} region shows conspicuous immune infiltrate within the tissue compartment.",
+            f"H&E stained {organ} pathology report. The {location} region shows sparse residual immune infiltrate within a stromal background.",
+        )
+    if primitive in {"stromal_immune_infiltration", "intratumoral_immune_infiltration"}:
+        compartment = "stromal" if primitive == "stromal_immune_infiltration" else "intratumoral"
+        return (
+            f"H&E stained {organ} pathology report. The {location} region has limited {compartment} lymphocytic infiltrate.",
+            f"H&E stained {organ} pathology report. The {location} region contains conspicuous {compartment} lymphocytic infiltrate.",
+        )
+    if primitive == "necrosis_appearance":
+        return (
+            f"H&E stained {organ} pathology report. The {location} tumor region is predominantly viable with little necrotic debris.",
+            f"H&E stained {organ} pathology report. The {location} tumor region contains evident necrotic debris within the tumor.",
+        )
+    if primitive == "necrosis_resolution":
+        return (
+            f"H&E stained {organ} pathology report. The {location} tumor region contains evident necrotic debris.",
+            f"H&E stained {organ} pathology report. The {location} tumor region is largely viable or stromal with limited residual necrotic debris.",
+        )
+    if primitive == "tumor_burden_increase":
+        return (
+            f"H&E stained {organ} pathology report. The {location} region contains non-neoplastic supporting tissue adjacent to tumor.",
+            f"H&E stained {organ} pathology report. The {location} region contains a larger tumor component occupying the local tissue compartment.",
+        )
+    if primitive == "tumor_burden_decrease":
+        return (
+            f"H&E stained {organ} pathology report. The {location} region contains a prominent tumor component.",
+            f"H&E stained {organ} pathology report. The {location} region contains small residual tumor nests with non-neoplastic supporting tissue.",
+        )
+    if primitive == "stromal_desmoplasia":
+        return (
+            f"H&E stained {organ} pathology report. The {location} region has loose non-desmoplastic stroma around tumor.",
+            f"H&E stained {organ} pathology report. The {location} region has dense collagenous desmoplastic stroma around tumor.",
+        )
+    if primitive in {"stroma_decrease", "stromal_reduction"}:
+        return (
+            f"H&E stained {organ} pathology report. The {location} region contains abundant stromal tissue.",
+            f"H&E stained {organ} pathology report. The {location} region contains limited stromal tissue with adjacent non-stromal tissue occupying the area.",
+        )
+    if intent.expected_direction == "transition":
+        return (
+            f"H&E stained {organ} pathology report. The {location} region shows the source glandular or tumor phenotype specified by the case context.",
+            f"H&E stained {organ} pathology report. The {location} region shows the target glandular or tumor phenotype specified by the case context.",
+        )
+    return (_baseline_prompt(intent), _baseline_prompt(intent))
 
 
 def _edit_phrase(intent: BenchmarkIntent) -> str:
@@ -329,7 +447,227 @@ def _checker_gt(intent: BenchmarkIntent) -> dict[str, Any]:
 
 
 def _checker_response_matches(intent: BenchmarkIntent, response: Mapping[str, Any]) -> bool:
-    primitive = str(response.get("primitive") or "")
     strength = str(response.get("strength") or "")
     direction = str(response.get("direction") or "")
-    return primitive in {"", intent.primitive} and strength in {"", intent.strength} and direction in {"", intent.expected_direction}
+    organ = _normalize_checker_text(response.get("organ"))
+    expected_organ = _normalize_checker_text(intent.organ)
+    organ_ok = (
+        not organ
+        or organ == expected_organ
+        or expected_organ in organ
+        or organ in expected_organ
+    )
+    return strength in {"", intent.strength} and direction in {"", intent.expected_direction} and organ_ok
+
+
+REPORT_FORBIDDEN_TERMS = (
+    "increase",
+    "increased",
+    "decrease",
+    "decreased",
+    "reduce",
+    "reduced",
+    "enhance",
+    "enhanced",
+    "more",
+    "less",
+    "fewer",
+    "greater",
+    "larger",
+    "smaller",
+    "unchanged",
+    "stable",
+    "remains",
+    "remain ",
+    "compared",
+    "prior",
+    "previously",
+    "preserving",
+    "transition",
+    "transitioning",
+    "replace",
+    "replacing",
+    "converted",
+    "while",
+    "other areas",
+    "additional",
+)
+
+REPORT_FORBIDDEN_PATTERNS = tuple(
+    re.compile(rf"(?<![A-Za-z]){re.escape(term)}(?![A-Za-z])")
+    for term in REPORT_FORBIDDEN_TERMS
+)
+
+
+def validate_report_pair_language(prompt: BenchmarkPrompt) -> str | None:
+    """Reject old/new report wording that leaks edit/comparison semantics."""
+
+    for field_name, text in (
+        ("old_prompt", prompt.old_prompt),
+        ("new_prompt", prompt.new_prompt),
+    ):
+        normalized = str(text).lower()
+        for term, pattern in zip(REPORT_FORBIDDEN_TERMS, REPORT_FORBIDDEN_PATTERNS):
+            if pattern.search(normalized):
+                return f"report_language_violation:{field_name} contains forbidden term {term!r}"
+    return None
+
+
+def _strength_report_guidance(strength: str) -> str:
+    return {
+        "mild": "Use a subtle/small report-level difference, e.g. conspicuous to slightly less conspicuous; do not describe a dramatic change.",
+        "moderate": "Use a clear but not extreme report-level difference.",
+        "significant": "Use a marked report-level difference.",
+        "xlarge_deid": "Use a very large/extensive report-level difference.",
+    }.get(strength, "Use a report-level difference matching the GT strength.")
+
+
+def _report_pair_few_shots() -> list[dict[str, str]]:
+    """Few-shot report pairs that avoid edit/comparison language in A-mode reports."""
+
+    return [
+        {
+            "gt_summary": "breast, tumor burden decrease, mild, center",
+            "old_prompt": (
+                "The breast specimen shows several compact tumor nests in the central stromal compartment. "
+                "The tumor cells form small epithelial clusters with mild nuclear atypia. "
+                "Fibrous stroma is visible between the tumor nests."
+            ),
+            "new_prompt": (
+                "The breast specimen shows a few scattered small tumor nests in the central stromal compartment. "
+                "The tumor cells appear as limited epithelial clusters with mild nuclear atypia. "
+                "Fibrous stroma is visible around the small tumor nests."
+            ),
+            "instruction": "Reduce the tumor burden mildly in the central stromal compartment of the breast specimen.",
+        },
+        {
+            "gt_summary": "oral, tumor burden increase, mild, upper right peripheral",
+            "old_prompt": (
+                "The oral mucosal specimen shows scant tumor cells in the upper right peripheral region. "
+                "The tumor component is focal and composed of rare atypical epithelial nests. "
+                "The local connective tissue contains a loose stromal background."
+            ),
+            "new_prompt": (
+                "The oral mucosal specimen shows mild focal tumor burden in the upper right peripheral region. "
+                "Atypical epithelial nests are conspicuous within the local connective tissue. "
+                "The tumor component occupies a small peripheral stromal compartment."
+            ),
+            "instruction": "Increase the tumor burden mildly in the upper right peripheral region of the oral mucosa.",
+        },
+        {
+            "gt_summary": "breast, necrosis appearance, mild, center",
+            "old_prompt": (
+                "The breast tumor shows predominantly viable tumor cells in the central region. "
+                "Only rare necrotic debris is present among compact tumor nests. "
+                "The central tumor compartment has preserved cellular detail."
+            ),
+            "new_prompt": (
+                "The breast tumor shows a mild focal necrotic area in the central region. "
+                "Necrotic debris is visible among adjacent viable tumor nests. "
+                "The central tumor compartment contains a small pale necrotic focus."
+            ),
+            "instruction": "Add mild focal necrosis in the central region of the breast tumor.",
+        },
+        {
+            "gt_summary": "melanoma, necrosis resolution, mild, upper left",
+            "old_prompt": (
+                "The melanoma specimen shows focal necrotic debris in the upper left region. "
+                "The necrotic compartment contains pale acellular material and fragmented nuclei. "
+                "Adjacent stromal tissue is present at the edge of the necrotic focus."
+            ),
+            "new_prompt": (
+                "The melanoma specimen shows collagenous stromal tissue intermingled with limited necrotic debris in the upper left region. "
+                "The local compartment contains small foci of fragmented nuclei. "
+                "Viable tissue elements are present around the residual necrotic material."
+            ),
+            "instruction": "Resolve a mild amount of necrosis in the upper left region of the melanoma specimen.",
+        },
+        {
+            "gt_summary": "lung, stromal immune infiltration increase, mild, upper",
+            "old_prompt": (
+                "The lung specimen shows scant lymphocytic infiltrate in the upper stromal compartment. "
+                "The stroma contains rare scattered immune cells between collagen bundles. "
+                "Tumor-adjacent stromal tissue is lightly cellular."
+            ),
+            "new_prompt": (
+                "The lung specimen shows mild focal lymphocytic infiltrate in the upper stromal compartment. "
+                "Small clusters of immune cells are present between collagen bundles. "
+                "Tumor-adjacent stromal tissue contains a visible inflammatory component."
+            ),
+            "instruction": "Add mild focal immune infiltrate in the upper stromal compartment of the lung specimen.",
+        },
+        {
+            "gt_summary": "lung, intratumoral immune infiltration increase, mild, center",
+            "old_prompt": (
+                "The lung tumor shows scant immune cells in the central tumor compartment. "
+                "Tumor nests are the dominant component in the center. "
+                "Only rare lymphocytes are interspersed among tumor cells."
+            ),
+            "new_prompt": (
+                "The lung tumor shows mild focal immune cells in the central tumor compartment. "
+                "Small lymphocytic clusters are interspersed among tumor cells. "
+                "The center contains a visible intratumoral inflammatory component."
+            ),
+            "instruction": "Add mild intratumoral immune infiltrate in the center of the lung tumor.",
+        },
+        {
+            "gt_summary": "lung, immune infiltration decrease, mild, lower left",
+            "old_prompt": (
+                "The lung specimen shows mild lymphocytic infiltrate in the lower left stromal compartment. "
+                "Immune cells form small loose aggregates among collagen bundles. "
+                "The lower left stroma has a lightly inflammatory appearance."
+            ),
+            "new_prompt": (
+                "The lung specimen shows scant lymphocytic infiltrate in the lower left stromal compartment. "
+                "Scattered immune cells are present among collagen bundles. "
+                "The lower left stroma has a mildly cellular appearance."
+            ),
+            "instruction": "Reduce the immune infiltrate mildly in the lower left stromal compartment of the lung specimen.",
+        },
+        {
+            "gt_summary": "prostate, Gleason 4 to 5, mild, center",
+            "old_prompt": (
+                "The prostate specimen shows central tumor glands with predominant Gleason pattern 4 morphology. "
+                "The glands are fused and poorly formed in the central tumor focus. "
+                "Nuclear atypia is present within the malignant epithelial cells."
+            ),
+            "new_prompt": (
+                "The prostate specimen shows central tumor with a small focus of Gleason pattern 5 morphology. "
+                "Solid sheets and single malignant cells are present within part of the central tumor focus. "
+                "Gleason pattern 4 glands are also visible in the central malignant component."
+            ),
+            "instruction": "Convert a mild portion of the central prostate tumor from Gleason pattern 4 to Gleason pattern 5 morphology.",
+        },
+        {
+            "gt_summary": "prostate, Gleason 4 to 3, mild, center",
+            "old_prompt": (
+                "The prostate specimen shows central tumor with a focal Gleason pattern 4 component. "
+                "Fused glands and poorly formed glandular structures are present in the central focus. "
+                "The malignant glands show moderate architectural complexity."
+            ),
+            "new_prompt": (
+                "The prostate specimen shows central tumor with a small Gleason pattern 3 component. "
+                "Well-formed individual glands are present in part of the central focus. "
+                "Some fused glands remain visible within the malignant component."
+            ),
+            "instruction": "Convert a mild portion of the central prostate tumor from Gleason pattern 4 to Gleason pattern 3 morphology.",
+        },
+        {
+            "gt_summary": "colorectal, normal epithelium to adenomatous, mild, center",
+            "old_prompt": (
+                "The colorectal specimen shows central normal glandular epithelium. "
+                "The glands have regular architecture and uniform epithelial nuclei. "
+                "The central mucosa has a non-dysplastic appearance."
+            ),
+            "new_prompt": (
+                "The colorectal specimen shows a small central focus of adenomatous glandular epithelium. "
+                "The glands have mild crowding and elongated hyperchromatic nuclei. "
+                "Adjacent central glands have regular low-grade architecture."
+            ),
+            "instruction": "Convert central normal colorectal epithelium into mild adenomatous glandular epithelium.",
+        },
+    ]
+
+
+def _normalize_checker_text(value: object) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")

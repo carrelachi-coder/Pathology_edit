@@ -1,4 +1,4 @@
-"""Run accepted benchmark prompts through Phase3 mask edit and report metrics."""
+"""Run benchmark GT intents through Phase3 mask edit and report metrics."""
 
 from __future__ import annotations
 
@@ -10,18 +10,38 @@ from pathlib import Path
 from typing import Any
 
 from phase3_mask_edit.benchmark.models import read_intents_jsonl, read_prompts_csv, write_eval_csv
-from phase3_mask_edit.benchmark.runner import INSTRUCTION_MODE, PROMPT_MODE, run_benchmark_sample
+from phase3_mask_edit.benchmark.runner import GT_MODE, INSTRUCTION_MODE, PROMPT_MODE, run_benchmark_sample
 from phase3_mask_edit.core.mask_io import save_metadata
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--intents", required=True, type=Path)
-    parser.add_argument("--prompts", required=True, type=Path)
+    parser.add_argument(
+        "--prompts",
+        type=Path,
+        help="Optional prompt CSV for legacy prompt/instruction parser benchmarks.",
+    )
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--modes", nargs="+", default=[PROMPT_MODE, INSTRUCTION_MODE], choices=[PROMPT_MODE, INSTRUCTION_MODE])
-    parser.add_argument("--prompt-parser", default="gt", choices=["gt", "api"])
-    parser.add_argument("--instruction-parser", default="gt", choices=["gt", "rule-based", "api"])
+    parser.add_argument(
+        "--modes",
+        nargs="+",
+        default=[GT_MODE],
+        choices=[GT_MODE, PROMPT_MODE, INSTRUCTION_MODE],
+        help="Use gt for the direct structured-intent benchmark; prompt/instruction are legacy parser modes.",
+    )
+    parser.add_argument(
+        "--prompt-parser",
+        default="api",
+        choices=["api", "gt"],
+        help="Use api for formal benchmark runs; gt is only for local smoke/debug.",
+    )
+    parser.add_argument(
+        "--instruction-parser",
+        default="api",
+        choices=["api", "gt", "rule-based"],
+        help="Use api for formal benchmark runs; gt/rule-based are only for local smoke/debug.",
+    )
     parser.add_argument("--parser-model", default="")
     parser.add_argument("--parser-api-base-url", default="https://api.openai.com/v1")
     parser.add_argument("--parser-api-key-env", default="OPENAI_API_KEY")
@@ -38,14 +58,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--print-summary", action="store_true")
     args = parser.parse_args(argv)
 
+    legacy_modes = {PROMPT_MODE, INSTRUCTION_MODE}.intersection(args.modes)
+    if legacy_modes and args.prompts is None:
+        parser.error("--prompts is required when running prompt or instruction modes")
+    if legacy_modes and (args.prompt_parser == "api" or args.instruction_parser == "api") and not args.parser_model:
+        parser.error("--parser-model is required when prompt/instruction parser is api")
+
     intents = read_intents_jsonl(args.intents)
-    prompts = read_prompts_csv(args.prompts)
+    prompts = read_prompts_csv(args.prompts) if args.prompts else {}
     rows: list[dict[str, Any]] = []
     for intent in intents[: args.limit]:
-        prompt = prompts.get(intent.sample_id)
-        if prompt is None or prompt.checker_status.lower() != "accepted":
-            continue
         for mode in args.modes:
+            prompt = prompts.get(intent.sample_id)
+            if mode != GT_MODE and (prompt is None or prompt.checker_status.lower() != "accepted"):
+                continue
             rows.append(
                 run_benchmark_sample(
                     intent,

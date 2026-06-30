@@ -1,4 +1,4 @@
-"""Batch runner for accepted mask-edit semantic benchmark prompts."""
+"""Batch runner for mask-edit semantic benchmark intents."""
 
 from __future__ import annotations
 
@@ -32,16 +32,17 @@ from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 
 PROMPT_MODE = "prompt"
 INSTRUCTION_MODE = "instruction"
+GT_MODE = "gt"
 
 
 def run_benchmark_sample(
     intent: BenchmarkIntent,
-    prompt: BenchmarkPrompt,
+    prompt: BenchmarkPrompt | None = None,
     *,
     mode: str,
     output_dir: str | Path,
-    prompt_parser: str = "gt",
-    instruction_parser: str = "gt",
+    prompt_parser: str = "api",
+    instruction_parser: str = "api",
     parser_api_base_url: str = "https://api.openai.com/v1",
     parser_api_key_env: str = "OPENAI_API_KEY",
     parser_model: str = "",
@@ -61,51 +62,73 @@ def run_benchmark_sample(
     schema = MaskProfileSchema.from_reference_profile(intent.profile)
     recipe = load_recipe(default_recipe_path_for_profile(intent.profile))
     try:
-        semantic_diff = _resolve_semantic_diff(
-            intent,
-            prompt,
-            mode=mode,
-            prompt_parser=prompt_parser,
-            instruction_parser=instruction_parser,
-            api_base_url=parser_api_base_url,
-            api_key_env=parser_api_key_env,
-            parser_model=parser_model,
-            output_dir=sample_dir,
-        )
-        save_semantic_diff(semantic_diff, sample_dir / "semantic_diff.json")
-        plan = plan_edit_intents(
-            semantic_diff,
-            reference_profile=intent.profile,
-            old_prompt=prompt.old_prompt,
-            new_prompt=prompt.new_prompt if mode == PROMPT_MODE else prompt.instruction,
-            old_mask=source_mask,
-            recipe=recipe,
-        )
-        executable = [item for item in getattr(plan, "items", ()) if getattr(item, "intent", None) is not None]
-        allow_gt_override = _uses_gt_parser(
-            mode=mode,
-            prompt_parser=prompt_parser,
-            instruction_parser=instruction_parser,
-        )
-        if executable:
-            planned_base = executable[0].intent
-        elif allow_gt_override:
-            planned_base = _intent_from_gt(intent)
+        if mode == GT_MODE:
+            semantic_diff = _gt_record_for_intent(intent)
+            save_metadata(semantic_diff, sample_dir / "gt_intent.json")
+            planned_intent = _select_or_override_planned_intent(
+                intent,
+                _intent_from_gt(intent),
+                recipe,
+                schema,
+                allow_gt_override=True,
+            )
+            save_metadata(
+                {
+                    "mode": GT_MODE,
+                    "planner_bypassed": True,
+                    "intent": planned_intent.to_metadata(),
+                },
+                sample_dir / "planning_summary.json",
+            )
         else:
-            raise RuntimeError("planner produced no executable intents")
-        planned_intent = _select_or_override_planned_intent(
-            intent,
-            planned_base,
-            recipe,
-            schema,
-            allow_gt_override=allow_gt_override,
-        )
+            if prompt is None:
+                raise RuntimeError(f"prompt is required for mode={mode}")
+            semantic_diff = _resolve_semantic_diff(
+                intent,
+                prompt,
+                mode=mode,
+                prompt_parser=prompt_parser,
+                instruction_parser=instruction_parser,
+                api_base_url=parser_api_base_url,
+                api_key_env=parser_api_key_env,
+                parser_model=parser_model,
+                output_dir=sample_dir,
+            )
+            save_semantic_diff(semantic_diff, sample_dir / "semantic_diff.json")
+            plan = plan_edit_intents(
+                semantic_diff,
+                reference_profile=intent.profile,
+                old_prompt=prompt.old_prompt,
+                new_prompt=prompt.new_prompt if mode == PROMPT_MODE else prompt.instruction,
+                old_mask=source_mask,
+                recipe=recipe,
+            )
+            executable = [item for item in getattr(plan, "items", ()) if getattr(item, "intent", None) is not None]
+            allow_gt_override = _uses_gt_parser(
+                mode=mode,
+                prompt_parser=prompt_parser,
+                instruction_parser=instruction_parser,
+            )
+            if executable:
+                planned_base = executable[0].intent
+            elif allow_gt_override:
+                planned_base = _intent_from_gt(intent)
+            else:
+                raise RuntimeError("planner produced no executable intents")
+            planned_intent = _select_or_override_planned_intent(
+                intent,
+                planned_base,
+                recipe,
+                schema,
+                allow_gt_override=allow_gt_override,
+            )
         primitive_config = primitive_config_by_name(recipe, planned_intent.primitive)
-        source_labels, target_label = source_target_labels_for_primitive(primitive_config, schema)
-        if not source_labels:
-            source_labels = tuple(planned_intent.source_labels)
-        if not target_label:
-            target_label = planned_intent.target_label
+        source_labels, target_label = _execution_labels(
+            primitive_config,
+            schema,
+            planned_intent,
+            prefer_intent_labels=mode == GT_MODE,
+        )
         provider = _build_contour_provider(
             contour_provider,
             api_base_url=contour_api_base_url,
@@ -128,7 +151,8 @@ def run_benchmark_sample(
             projection_mode=PROJECTION_MODE_ORGANIC_V2,
             organic_seed=intent.seed,
         )
-        save_metadata(plan.to_metadata(), sample_dir / "planning_summary.json")
+        if mode != GT_MODE:
+            save_metadata(plan.to_metadata(), sample_dir / "planning_summary.json")
         if result.status != STATUS_VALIDATED or result.edit_result is None:
             raise RuntimeError(result.error or f"contour execution failed: {result.status}")
         target_mask = result.edit_result.target_mask
@@ -241,6 +265,9 @@ def _select_or_override_planned_intent(
     planned = inject_region_hint(planned, gt.region_hint)
     primitive_config = primitive_config_by_name(recipe, planned.primitive)
     source_labels, target_label = source_target_labels_for_primitive(primitive_config, schema)
+    if allow_gt_override:
+        source_labels = tuple(gt.source_labels) or source_labels
+        target_label = gt.target_label or target_label
     payload = planned.to_metadata()
     if source_labels:
         payload["source_labels"] = list(source_labels)
@@ -250,10 +277,45 @@ def _select_or_override_planned_intent(
     return EditIntent.from_mapping(payload)
 
 
+def _execution_labels(
+    primitive_config: Mapping[str, Any],
+    schema: MaskProfileSchema,
+    intent: EditIntent,
+    *,
+    prefer_intent_labels: bool,
+) -> tuple[tuple[str, ...], str | None]:
+    recipe_source_labels, recipe_target_label = source_target_labels_for_primitive(primitive_config, schema)
+    intent_source_labels = tuple(intent.source_labels)
+    intent_target_label = intent.target_label
+    if prefer_intent_labels:
+        return intent_source_labels or recipe_source_labels, intent_target_label or recipe_target_label
+    return recipe_source_labels or intent_source_labels, recipe_target_label or intent_target_label
+
+
 def _uses_gt_parser(*, mode: str, prompt_parser: str, instruction_parser: str) -> bool:
     return (mode == PROMPT_MODE and prompt_parser == "gt") or (
         mode == INSTRUCTION_MODE and instruction_parser == "gt"
     )
+
+
+def _gt_record_for_intent(gt: BenchmarkIntent) -> dict[str, Any]:
+    return {
+        "sample_id": gt.sample_id,
+        "organ": gt.organ,
+        "profile": gt.profile,
+        "mask_path": gt.mask_path,
+        "image_path": gt.image_path,
+        "primitive": gt.primitive,
+        "strength": gt.strength,
+        "region_hint": gt.region_hint,
+        "source_labels": list(gt.source_labels),
+        "target_label": gt.target_label,
+        "expected_direction": gt.expected_direction,
+        "expected_area_bucket": list(gt.expected_area_bucket) if gt.expected_area_bucket else None,
+        "seed": gt.seed,
+        "specialized": gt.specialized,
+        "metadata": gt.metadata,
+    }
 
 
 def _intent_from_gt(gt: BenchmarkIntent) -> EditIntent:
