@@ -265,7 +265,7 @@ def _select_or_override_planned_intent(
     planned = inject_region_hint(planned, gt.region_hint)
     primitive_config = primitive_config_by_name(recipe, planned.primitive)
     source_labels, target_label = source_target_labels_for_primitive(primitive_config, schema)
-    if allow_gt_override:
+    if allow_gt_override and gt.primitive != "tumor_burden_increase":
         source_labels = tuple(gt.source_labels) or source_labels
         target_label = gt.target_label or target_label
     payload = planned.to_metadata()
@@ -273,6 +273,14 @@ def _select_or_override_planned_intent(
         payload["source_labels"] = list(source_labels)
     if target_label:
         payload["target_label"] = target_label
+    anchor_labels = _anchor_labels_from_gt(gt)
+    if anchor_labels:
+        parameters = dict(payload.get("parameters") or {})
+        parameters["anchor_labels"] = list(anchor_labels)
+        payload["parameters"] = parameters
+        region_hint = dict(payload.get("region_hint") or {})
+        region_hint.setdefault("anchor_labels", list(anchor_labels))
+        payload["region_hint"] = region_hint
     payload["seed"] = gt.seed
     return EditIntent.from_mapping(payload)
 
@@ -287,9 +295,23 @@ def _execution_labels(
     recipe_source_labels, recipe_target_label = source_target_labels_for_primitive(primitive_config, schema)
     intent_source_labels = tuple(intent.source_labels)
     intent_target_label = intent.target_label
+    if primitive_config.get("name") == "tumor_burden_increase":
+        return recipe_source_labels or intent_source_labels, recipe_target_label or intent_target_label
     if prefer_intent_labels:
         return intent_source_labels or recipe_source_labels, intent_target_label or recipe_target_label
     return recipe_source_labels or intent_source_labels, recipe_target_label or intent_target_label
+
+
+def _anchor_labels_from_gt(gt: BenchmarkIntent) -> tuple[str, ...]:
+    metadata_labels = gt.metadata.get("anchor_labels") if isinstance(gt.metadata, Mapping) else None
+    if isinstance(metadata_labels, (list, tuple)):
+        return tuple(str(label) for label in metadata_labels if str(label))
+    region_labels = gt.region_hint.get("anchor_labels") if isinstance(gt.region_hint, Mapping) else None
+    if isinstance(region_labels, (list, tuple)):
+        return tuple(str(label) for label in region_labels if str(label))
+    if gt.primitive == "tumor_burden_increase":
+        return ("Tumor",)
+    return ()
 
 
 def _uses_gt_parser(*, mode: str, prompt_parser: str, instruction_parser: str) -> bool:

@@ -69,6 +69,17 @@ def build_mask_context(
         schema=schema,
         source_labels=allowed_source_labels,
     )
+    anchor_labels = tuple(
+        str(label)
+        for label in intent.parameters.get("anchor_labels", intent.region_hint.get("anchor_labels", ()))
+        if str(label)
+    )
+    anchor_spatial_hints = _build_source_spatial_hints(
+        arr,
+        schema=schema,
+        source_labels=anchor_labels,
+        grid_spacing_px=grid_spacing_px,
+    ) if anchor_labels else []
     llm_task_requirements = _build_llm_task_requirements(
         primitive_config,
         target_area_hint=target_area_hint,
@@ -87,6 +98,7 @@ def build_mask_context(
         "strength": intent.strength,
         "target_label": target_label,
         "allowed_source_labels": list(allowed_source_labels),
+        "anchor_labels": list(anchor_labels),
         "label_areas": label_areas,
         "label_palette_rgb": llm_palette_legend(),
         "visual_label_legend": _visual_label_legend(),
@@ -113,6 +125,7 @@ def build_mask_context(
         "llm_task_requirements": llm_task_requirements,
         "contour_style_hint": contour_style_hint,
         "source_spatial_hints": source_spatial_hints,
+        "anchor_spatial_hints": anchor_spatial_hints,
         "source_contour_context": source_contour_context,
         "primitive_policy": {
             "name": primitive_config.get("name", intent.primitive),
@@ -1193,6 +1206,7 @@ def _visual_label_legend() -> dict[str, str]:
 
 def _source_label_visual_instruction(context: Mapping[str, Any]) -> str:
     allowed = context.get("allowed_source_labels", [])
+    anchors = context.get("anchor_labels", [])
     target = context.get("target_label", "")
     legend = context.get("visual_label_legend", {})
     if not isinstance(allowed, list) or not allowed:
@@ -1217,6 +1231,16 @@ def _source_label_visual_instruction(context: Mapping[str, Any]) -> str:
             " Avoid drawing mainly on "
             + ", ".join(forbidden_examples)
             + " because those pixels will be removed by projection."
+        )
+    if isinstance(anchors, list) and anchors:
+        anchor_descriptions = []
+        for label in anchors:
+            color = legend.get(label, "its legend color") if isinstance(legend, Mapping) else "its legend color"
+            anchor_descriptions.append(f"{label} ({color})")
+        message += (
+            " Use "
+            + ", ".join(anchor_descriptions)
+            + " as spatial anchors only; do not place the template mainly inside anchor tissue unless it is also an allowed source label."
         )
     return message
 

@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 import yaml
+from scipy import ndimage
 
 from phase3_mask_edit.benchmark.models import BenchmarkIntent
 from phase3_mask_edit.core.applicability import assess_edit_applicability
@@ -155,6 +156,14 @@ def build_benchmark_intents(config: BuildConfig) -> tuple[list[BenchmarkIntent],
                     if not region_hint:
                         continue
                     sample_seed = _stable_seed(config.seed, mask_path, primitive_name, strength, len(grouped))
+                    metadata = {
+                        "capacity": feasibility,
+                        "applicability": decision.status,
+                        "present_labels": sorted(context.present_labels),
+                    }
+                    anchor_labels = anchor_labels_for_primitive(primitive_config, schema)
+                    if anchor_labels:
+                        metadata["anchor_labels"] = list(anchor_labels)
                     gt = BenchmarkIntent(
                         sample_id=_sample_id(source.profile, primitive_name, strength, sample_seed),
                         organ=source.organ,
@@ -170,11 +179,7 @@ def build_benchmark_intents(config: BuildConfig) -> tuple[list[BenchmarkIntent],
                         expected_area_bucket=strength_interval(primitive_config, strength),
                         seed=sample_seed,
                         specialized=primitive_name in SPECIALIZED_NAMES,
-                        metadata={
-                            "capacity": feasibility,
-                            "applicability": decision.status,
-                            "present_labels": sorted(context.present_labels),
-                        },
+                        metadata=metadata,
                     )
                     key = (source.organ, primitive_name, strength)
                     grouped[key].append(gt)
@@ -211,6 +216,7 @@ def estimate_capacity(
     interval = strength_interval(primitive_config, intent.strength)
     denominator = strength_denominator_pixels(mask, primitive_config, schema)
     legal_pixels = recommendation_legal_pixels(mask, primitive_config, schema)
+    feasible_pixels = _feasible_legal_pixels(mask, primitive_config, schema)
     failed: list[str] = []
     if denominator <= 0:
         failed.append("capacity failed: no denominator pixels in current mask.")
@@ -221,9 +227,10 @@ def estimate_capacity(
         lower, upper = interval
         lower_pixels = int(np.ceil(denominator * lower))
         upper_pixels = int(np.floor(denominator * upper))
-        if legal_pixels < lower_pixels:
+        lower_pixels = max(lower_pixels, _minimum_pixels_for_strength(primitive_config, intent.strength))
+        if feasible_pixels < lower_pixels:
             failed.append(
-                f"capacity failed: legal_pixels={legal_pixels} below {intent.strength} minimum {lower_pixels}."
+                f"capacity failed: feasible_pixels={feasible_pixels} below {intent.strength} minimum {lower_pixels}."
             )
     else:
         lower_pixels = 1 if denominator > 0 else 0
@@ -233,7 +240,7 @@ def estimate_capacity(
         if legal_pixels > 0
         else 0
     )
-    achievable_pixels = min(target_pixels, legal_pixels)
+    achievable_pixels = min(target_pixels, feasible_pixels)
     fraction = achievable_pixels / denominator if denominator > 0 else None
     return {
         "status": "executable" if not failed else "capacity_failed",
@@ -244,6 +251,7 @@ def estimate_capacity(
         "strength_range": list(interval) if interval is not None else None,
         "selected_pixels": int(achievable_pixels),
         "legal_pixels": int(legal_pixels),
+        "feasible_pixels": int(feasible_pixels),
         "denominator_pixels": int(denominator),
         "notes": ["static_mask_capacity_estimate_only"],
     }
@@ -266,7 +274,7 @@ def recommend_region_hint(
     quadrant = _quadrant(centroid_x, centroid_y, width=width, height=height)
     relation = _region_relation(centroid_x, centroid_y, width=width, height=height)
     bbox = [int(cols.min()), int(rows.min()), int(cols.max()) + 1, int(rows.max()) + 1]
-    return {
+    hint = {
         "type": "auto_recommended_mask_region",
         "location": quadrant,
         "relation": relation,
@@ -279,6 +287,11 @@ def recommend_region_hint(
             "Inject into EditIntent.region_hint; prompt text should describe this location."
         ),
     }
+    anchor_labels = anchor_labels_for_primitive(primitive_config, schema)
+    if anchor_labels:
+        hint["anchor_labels"] = list(anchor_labels)
+        hint["description"] = f"{relation} {quadrant} editable region adjacent to {'/'.join(anchor_labels)}"
+    return hint
 
 
 def inject_region_hint(intent: EditIntent, region_hint: Mapping[str, Any]) -> EditIntent:
@@ -326,7 +339,11 @@ def strength_interval(primitive_config: Mapping[str, Any], strength: str) -> tup
 
 def strength_denominator_pixels(mask: np.ndarray, primitive_config: Mapping[str, Any], schema: MaskProfileSchema) -> int:
     name = primitive_config.get("name")
-    if name in {"tumor_burden_increase", "tumor_burden_decrease"}:
+    if name == "tumor_burden_increase":
+        return int(mask.size)
+    if name == "tumor_burden_decrease":
+        return int(mask.size)
+    if name == "tumor_burden_decrease_tumor_relative":
         return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     if name in {"necrosis_appearance", "intratumoral_immune_infiltration"}:
         return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
@@ -383,7 +400,7 @@ def legal_pixel_mask(mask: np.ndarray, primitive_config: Mapping[str, Any], sche
             *labels_from_operation(operation.get("secondary_sources")),
         ]:
             legal |= safe_schema_label_mask(mask, schema, label)
-        return legal
+        return _desmoplasia_policy_legal_mask(mask, primitive_config, schema, legal)
     source_ids = operation.get("source_fine_ids")
     if isinstance(source_ids, int):
         return mask == source_ids
@@ -393,6 +410,60 @@ def legal_pixel_mask(mask: np.ndarray, primitive_config: Mapping[str, Any], sche
     if isinstance(source, str):
         return safe_schema_label_mask(mask, schema, source)
     return ~np.isin(mask, tuple(schema.skip_fine_ids))
+
+
+def _feasible_legal_pixels(mask: np.ndarray, primitive_config: Mapping[str, Any], schema: MaskProfileSchema) -> int:
+    legal = legal_pixel_mask(mask, primitive_config, schema)
+    if primitive_config.get("name") != "stromal_desmoplasia":
+        return int(np.count_nonzero(legal))
+    ranges = primitive_config.get("parameter_ranges", {})
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    constraints = spatial_pattern.get("immune_to_stroma_constraints", {}) if isinstance(spatial_pattern, Mapping) else {}
+    constraints = constraints if isinstance(constraints, Mapping) else {}
+    max_immune_fraction = float(constraints.get("max_fraction_of_total_desmoplasia_delta", 0.30))
+    immune = safe_schema_label_mask(mask, schema, "Immune infiltrate") & legal
+    immune_pixels = int(np.count_nonzero(immune))
+    non_immune_pixels = int(np.count_nonzero(legal & ~immune))
+    if max_immune_fraction <= 0:
+        return non_immune_pixels
+    if max_immune_fraction >= 1:
+        return non_immune_pixels + immune_pixels
+    feasible_total_by_ratio = int(np.floor(non_immune_pixels / (1.0 - max_immune_fraction)))
+    return max(0, min(non_immune_pixels + immune_pixels, feasible_total_by_ratio))
+
+
+def _minimum_pixels_for_strength(primitive_config: Mapping[str, Any], strength: str) -> int:
+    if primitive_config.get("name") != "stromal_desmoplasia":
+        return 0
+    ranges = primitive_config.get("parameter_ranges", {})
+    floor = ranges.get("min_stroma_area_delta_pixels", {}) if isinstance(ranges, Mapping) else {}
+    if isinstance(floor, Mapping):
+        value = floor.get(strength, 0)
+    else:
+        value = floor
+    return int(value) if isinstance(value, (int, float)) and value > 0 else 0
+
+
+def _desmoplasia_policy_legal_mask(
+    mask: np.ndarray,
+    primitive_config: Mapping[str, Any],
+    schema: MaskProfileSchema,
+    base_legal: np.ndarray,
+) -> np.ndarray:
+    ranges = primitive_config.get("parameter_ranges", {})
+    tumor = np.isin(mask, schema.tumor_fine_ids)
+    stroma = safe_schema_label_mask(mask, schema, "Stroma")
+    immune = safe_schema_label_mask(mask, schema, "Immune infiltrate")
+    max_distance = float(ranges.get("max_distance_from_tumor_px", 64.0)) if isinstance(ranges, Mapping) else 64.0
+    dist_to_tumor = ndimage.distance_transform_edt(~tumor)
+    legal = np.asarray(base_legal, dtype=bool) & (dist_to_tumor <= max_distance) & ~tumor
+    spatial_pattern = primitive_config.get("spatial_pattern", {})
+    constraints = spatial_pattern.get("immune_to_stroma_constraints", {}) if isinstance(spatial_pattern, Mapping) else {}
+    constraints = constraints if isinstance(constraints, Mapping) else {}
+    if bool(constraints.get("require_direct_stroma_adjacency", True)) and np.any(immune):
+        stroma_neighbors = ndimage.binary_dilation(stroma, structure=np.ones((3, 3), dtype=bool))
+        legal &= (~immune) | stroma_neighbors
+    return legal
 
 
 def recommendation_dependency_failures(mask: np.ndarray, primitive_config: Mapping[str, Any], schema: MaskProfileSchema) -> list[str]:
@@ -438,6 +509,22 @@ def expected_direction_for_primitive(primitive_config: Mapping[str, Any]) -> str
 def source_target_labels_for_primitive(primitive_config: Mapping[str, Any], schema: MaskProfileSchema) -> tuple[tuple[str, ...], str | None]:
     operation = primitive_config.get("mask_operation", {})
     operation = operation if isinstance(operation, Mapping) else {}
+    if primitive_config.get("name") == "tumor_burden_increase":
+        source = tuple(filter_schema_labels(labels_from_operation(operation.get("target_priority")), schema))
+        target = "Tumor" if "Tumor" in schema.readable_labels else None
+        return source, target
+    if primitive_config.get("name") == "stromal_desmoplasia":
+        source = tuple(
+            filter_schema_labels(
+                [
+                    *labels_from_operation(operation.get("primary_sources")),
+                    *labels_from_operation(operation.get("secondary_sources")),
+                ],
+                schema,
+            )
+        )
+        target = operation.get("target") if isinstance(operation.get("target"), str) else None
+        return source, target if target in schema.readable_labels else None
     source = tuple(filter_schema_labels(labels_from_operation(operation.get("source")), schema))
     if not source:
         source = tuple(filter_schema_labels(labels_from_operation(operation.get("primary_sources")), schema))
@@ -447,6 +534,15 @@ def source_target_labels_for_primitive(primitive_config: Mapping[str, Any], sche
     if target not in schema.readable_labels:
         target = "Tumor" if primitive_config.get("name") == "tumor_burden_increase" and "Tumor" in schema.readable_labels else None
     return source, target
+
+
+def anchor_labels_for_primitive(primitive_config: Mapping[str, Any], schema: MaskProfileSchema) -> tuple[str, ...]:
+    operation = primitive_config.get("mask_operation", {})
+    operation = operation if isinstance(operation, Mapping) else {}
+    if primitive_config.get("name") == "tumor_burden_increase":
+        anchors = tuple(filter_schema_labels(labels_from_operation(operation.get("source")), schema))
+        return anchors or (("Tumor",) if "Tumor" in schema.readable_labels else ())
+    return ()
 
 
 def safe_schema_label_mask(mask: np.ndarray, schema: MaskProfileSchema, label: str | None) -> np.ndarray:

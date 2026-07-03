@@ -176,7 +176,16 @@ def _check_change_area_range(
         and schema is not None
     ):
         return _check_stromal_immune_compartment_relative_change_area(
-            src_mask, change_region, schema, ranges
+            src_mask, change_region, schema, ranges, strength=strength
+        )
+    if (
+        primitive_config.get("name") == "immune_infiltration_decrease"
+        and src_mask is not None
+        and change_region is not None
+        and schema is not None
+    ):
+        return _check_immune_decrease_relative_change_area(
+            src_mask, change_region, schema, ranges, strength=strength
         )
     if (
         primitive_config.get("name") == "intratumoral_immune_infiltration"
@@ -403,6 +412,8 @@ def _check_stromal_immune_compartment_relative_change_area(
     change_region: np.ndarray,
     schema: MaskProfileSchema,
     ranges: Mapping[str, Any],
+    *,
+    strength: str,
 ) -> ValidationCheck:
     if "Stroma" not in schema.readable_labels:
         return ValidationCheck(
@@ -430,10 +441,11 @@ def _check_stromal_immune_compartment_relative_change_area(
         )
 
     changed_fraction = int(np.count_nonzero(change_region)) / reference_pixels
-    min_fraction = _min_interval_lower_bound(
-        ranges.get("immune_area_delta_fraction", {})
+    interval = _interval_for_strength(
+        ranges.get("immune_area_delta_fraction", {}), strength=strength
     )
-    max_fraction = float(ranges.get("max_changed_area_fraction", 0.40))
+    min_fraction = interval[0] if interval is not None else None
+    max_fraction = interval[1] if interval is not None else float(ranges.get("max_changed_area_fraction", 0.40))
     if min_fraction is None:
         min_fraction = 0.0
 
@@ -448,6 +460,50 @@ def _check_stromal_immune_compartment_relative_change_area(
         "change_area_within_range",
         False,
         f"changed_stroma_immune_fraction={changed_fraction:.4f} outside "
+        f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _check_immune_decrease_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    schema: MaskProfileSchema,
+    ranges: Mapping[str, Any],
+    *,
+    strength: str,
+) -> ValidationCheck:
+    if "Immune infiltrate" not in schema.readable_labels:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "Immune label not in schema for immune decrease change area.",
+        )
+    immune_pixels = int(
+        np.count_nonzero(np.isin(src_mask, schema.resolve_fine_ids("Immune infiltrate")))
+    )
+    if immune_pixels == 0:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            "no immune pixels for immune-relative decrease change area.",
+        )
+    changed_fraction = int(np.count_nonzero(change_region)) / immune_pixels
+    interval = _interval_for_strength(
+        ranges.get("immune_area_decrease_fraction", {}), strength=strength
+    )
+    min_fraction = interval[0] if interval is not None else 0.0
+    max_fraction = interval[1] if interval is not None else 0.70
+    if min_fraction <= changed_fraction <= max_fraction:
+        return ValidationCheck(
+            "change_area_within_range",
+            True,
+            f"changed_immune_fraction={changed_fraction:.4f} in "
+            f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+        )
+    return ValidationCheck(
+        "change_area_within_range",
+        False,
+        f"changed_immune_fraction={changed_fraction:.4f} outside "
         f"[{min_fraction:.2f}, {max_fraction:.2f}]",
     )
 
@@ -1720,6 +1776,25 @@ def _min_interval_lower_bound(value: Any) -> float | None:
         lower_bounds.append(float(value[0]))
 
     return min(lower_bounds) if lower_bounds else None
+
+
+def _interval_for_strength(value: Any, *, strength: str) -> tuple[float, float] | None:
+    if isinstance(value, Mapping):
+        candidate = value.get(strength)
+        if (
+            isinstance(candidate, list)
+            and len(candidate) == 2
+            and all(isinstance(item, (int, float)) for item in candidate)
+        ):
+            return float(candidate[0]), float(candidate[1])
+        return None
+    if (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(isinstance(item, (int, float)) for item in value)
+    ):
+        return float(value[0]), float(value[1])
+    return None
 
 
 def _max_interval_upper_bound(value: Any) -> float | None:

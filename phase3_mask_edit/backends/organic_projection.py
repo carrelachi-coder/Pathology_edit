@@ -3849,7 +3849,7 @@ def _target_pixels_from_config(
     name = primitive_config.get("name")
     ranges = primitive_config.get("parameter_ranges", {})
     if name == "stromal_immune_infiltration":
-        bucket = _first_interval(ranges.get("immune_area_delta_fraction"))
+        bucket = _first_interval(ranges.get("immune_area_delta_fraction"), strength=strength)
         stroma = np.isin(mask, schema.resolve_fine_ids("Stroma"))
         immune = np.isin(mask, schema.resolve_fine_ids("Immune infiltrate"))
         reference_pixels = int(np.count_nonzero(stroma | immune))
@@ -3869,7 +3869,7 @@ def _target_pixels_from_config(
         )
         reference_pixels = int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     elif name == "stromal_desmoplasia":
-        bucket = _first_interval(ranges.get("stroma_area_delta_fraction"))
+        bucket = _first_interval(ranges.get("stroma_area_delta_fraction"), strength=strength)
         reference_pixels = int(
             np.count_nonzero(np.isin(mask, schema.resolve_fine_ids("Stroma")))
         )
@@ -4479,6 +4479,125 @@ def _empty_result(
         changed_area_fraction=0.0,
         selected_pixels=0,
         warnings=tuple(dict.fromkeys(("proposal_projected_region_empty", *extra_warnings))),
+        ops_log=ops_log,
+    )
+
+
+def _fallback_projection_result(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    target_label: str,
+    source_labels: Sequence[str],
+    preserve_labels: Sequence[str],
+    forbidden_labels: Sequence[str],
+    primitive_name: str,
+    raw_candidate: np.ndarray,
+    raw_candidate_pixels: int,
+    legal_pixels: int,
+    target_pixels: int,
+    seed: int,
+    component_policy: OrganicProjectionPolicy,
+    raw_legal_overlap: int,
+    min_overlap_fraction: float,
+    reason: str,
+) -> PrimitiveEditResult:
+    legal_domain = np.asarray(component_policy.legal_domain, dtype=bool)
+    selected_target_pixels = min(max(int(target_pixels), 0), int(np.count_nonzero(legal_domain)))
+    if selected_target_pixels <= 0:
+        return _empty_result(
+            mask,
+            schema=schema,
+            target_label=target_label,
+            source_labels=source_labels,
+            preserve_labels=preserve_labels,
+            forbidden_labels=forbidden_labels,
+            primitive_name=primitive_name,
+            raw_candidate_pixels=raw_candidate_pixels,
+            legal_pixels=legal_pixels,
+            target_pixels=target_pixels,
+            seed=seed,
+            component_policy=component_policy,
+            raw_legal_overlap=raw_legal_overlap,
+            extra_warnings=(reason, "organic_projection_fallback_empty_target"),
+        )
+
+    raw_template = np.asarray(raw_candidate, dtype=bool)
+    template_distance = ndimage.distance_transform_edt(~raw_template)
+    template_score = -template_distance
+    spatial_score = np.asarray(component_policy.spatial_score, dtype=float)
+    if spatial_score.shape != mask.shape:
+        spatial_score = np.zeros(mask.shape, dtype=float)
+    final_score = (
+        0.75 * _normalize_on_domain(spatial_score, legal_domain)
+        + 0.25 * _normalize_on_domain(template_score, legal_domain)
+    )
+    final_score[~legal_domain] = -np.inf
+    selected = _top_k_mask_for_refill(
+        final_score,
+        legal_domain=legal_domain,
+        k=selected_target_pixels,
+    )
+
+    target_ids = schema.resolve_fine_ids(target_label)
+    target_mask = np.array(mask, copy=True)
+    if primitive_name == "tumor_burden_increase":
+        tumor = np.isin(mask, schema.tumor_fine_ids)
+        target_mask[selected] = _nearest_source_fine_ids(mask, tumor, selected)
+    else:
+        target_mask[selected] = int(target_ids[0])
+
+    selected_pixels = int(np.count_nonzero(selected))
+    selected_template_intersection = int(np.count_nonzero(selected & raw_template))
+    selected_template_union = int(np.count_nonzero(selected | raw_template))
+    selected_template_iou = (
+        selected_template_intersection / selected_template_union
+        if selected_template_union
+        else 0.0
+    )
+    changed_area_fraction = selected_pixels / int(mask.size) if mask.size else 0.0
+    ops_log = {
+        "backend": ORGANIC_PROJECTION_BACKEND,
+        "method": "organic_score_projection_fallback",
+        "primitive": primitive_name,
+        "reference_profile": schema.reference_profile,
+        "source_labels": list(source_labels),
+        "target_label": target_label,
+        "target_fine_id": int(target_ids[0]),
+        "preserve_labels": list(preserve_labels),
+        "forbidden_labels": list(forbidden_labels),
+        "raw_candidate_pixels": int(raw_candidate_pixels),
+        "candidate_pixels": int(raw_candidate_pixels),
+        "raw_candidate_legal_overlap_pixels": int(raw_legal_overlap),
+        "template_overlap_with_legal_domain": (
+            raw_legal_overlap / raw_candidate_pixels if raw_candidate_pixels else 0.0
+        ),
+        "min_fallback_overlap_fraction": float(min_overlap_fraction),
+        "legal_domain_pixels": int(legal_pixels),
+        "target_pixels": int(target_pixels),
+        "projected_pixels": selected_pixels,
+        "selected_pixels": selected_pixels,
+        "selected_raw_template_intersection_pixels": selected_template_intersection,
+        "selected_raw_template_union_pixels": selected_template_union,
+        "selected_raw_template_iou": selected_template_iou,
+        "area_shortfall": int(max(target_pixels - selected_pixels, 0)),
+        "changed_area_fraction": changed_area_fraction,
+        "projection_backend": ORGANIC_PROJECTION_BACKEND,
+        "noise_seed": int(seed),
+        "component_policy": {
+            "policy_name": component_policy.policy_name,
+            "params": component_policy.policy_params,
+            "spatial_score_stats": _score_stats(spatial_score, legal_domain),
+        },
+        "fallback_reason": reason,
+        "fallback_used": True,
+    }
+    return PrimitiveEditResult(
+        target_mask=target_mask,
+        change_region=selected,
+        changed_area_fraction=changed_area_fraction,
+        selected_pixels=selected_pixels,
+        warnings=(reason, "organic_projection_fallback_used"),
         ops_log=ops_log,
     )
 
