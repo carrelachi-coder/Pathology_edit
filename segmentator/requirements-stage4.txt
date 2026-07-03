@@ -3,6 +3,9 @@ torchvision
 timm
 pillow
 numpy
+pyyaml
+scikit-image
+opencv-python
 tqdm
 mmengine
 mmcv

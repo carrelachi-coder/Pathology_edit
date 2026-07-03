@@ -33,6 +33,11 @@ fi
 EPOCHS="${EPOCHS:-20}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-latest}"
 VAL_FRACTION="${VAL_FRACTION:-0.1}"
+STAIN_AUGMENTATION="${STAIN_AUGMENTATION:-randstainna}"
+STAIN_AUGMENTATION_PROB="${STAIN_AUGMENTATION_PROB:-0.7}"
+RANDSTAINNA_ROOT="${RANDSTAINNA_ROOT:-third_party/RandStainNA}"
+RANDSTAINNA_STD_HYPER="${RANDSTAINNA_STD_HYPER:--0.3}"
+RANDSTAINNA_DISTRIBUTION="${RANDSTAINNA_DISTRIBUTION:-normal}"
 MAX_PER_DATASET_ARGS=()
 if [[ -n "${MAX_PER_DATASET:-}" ]]; then
   MAX_PER_DATASET_ARGS+=(--max-per-dataset "$MAX_PER_DATASET")
@@ -73,12 +78,17 @@ TRAIN_ARGS=(
   --epochs "$EPOCHS" \
   --balanced-datasets \
   --class-weighting none \
+  --stain-augmentation "$STAIN_AUGMENTATION" \
+  --stain-augmentation-prob "$STAIN_AUGMENTATION_PROB" \
+  --randstainna-root "$RANDSTAINNA_ROOT" \
+  --randstainna-std-hyper "$RANDSTAINNA_STD_HYPER" \
+  --randstainna-distribution "$RANDSTAINNA_DISTRIBUTION" \
   --no-amp \
   "${RESUME_ARGS[@]}" \
   "${DISABLE_CUDNN_ARGS[@]}"
 )
 
-echo "Launching Mask2Former: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES NUM_GPUS=$NUM_GPUS batch_per_gpu=$BATCH_SIZE grad_accum=$GRAD_ACCUM_STEPS effective_batch=$((BATCH_SIZE * GRAD_ACCUM_STEPS * NUM_GPUS)) resume=${RESUME_FROM_CHECKPOINT:-none}"
+echo "Launching Mask2Former: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES NUM_GPUS=$NUM_GPUS batch_per_gpu=$BATCH_SIZE grad_accum=$GRAD_ACCUM_STEPS effective_batch=$((BATCH_SIZE * GRAD_ACCUM_STEPS * NUM_GPUS)) resume=${RESUME_FROM_CHECKPOINT:-none} stain=${STAIN_AUGMENTATION} stain_prob=${STAIN_AUGMENTATION_PROB}"
 if (( NUM_GPUS > 1 )); then
   torchrun --standalone --nnodes=1 --nproc_per_node "$NUM_GPUS" -m segmentator.cli "${TRAIN_ARGS[@]}"
 else

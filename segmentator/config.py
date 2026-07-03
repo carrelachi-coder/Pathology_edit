@@ -52,6 +52,12 @@ class BaselineConfig:
     amp: bool = True
     disable_cudnn: bool = False
     class_weighting: str = "none"
+    stain_augmentation: str = "none"
+    stain_augmentation_prob: float = 0.0
+    randstainna_root: Path = field(default_factory=lambda: Path("third_party/RandStainNA"))
+    randstainna_yaml: Path | None = None
+    randstainna_std_hyper: float = -0.3
+    randstainna_distribution: str = "normal"
     export_val_predictions: bool = False
     export_val_tensors: bool = False
     boundary_width: int = 2

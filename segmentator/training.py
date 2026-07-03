@@ -23,6 +23,7 @@ from .data import TissueSegmentationDataset, build_manifest, dataset_balanced_we
 from .losses import segmentation_loss
 from .metrics import segmentation_metrics
 from .model import BaselineSegmenter
+from .stain_augmentation import StainAugmentationConfig
 
 
 def _ddp_env() -> tuple[bool, int, int, int]:
@@ -394,6 +395,14 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         remap_invalid_to=config.remap_invalid_to,
         ignore_index=config.ignore_index,
         mask_remap=config.mask_remap,
+        stain_augmentation=StainAugmentationConfig(
+            mode=config.stain_augmentation,
+            probability=config.stain_augmentation_prob,
+            randstainna_root=config.randstainna_root,
+            randstainna_yaml=config.randstainna_yaml,
+            randstainna_std_hyper=config.randstainna_std_hyper,
+            randstainna_distribution=config.randstainna_distribution,
+        ),
     )
     val_ds = TissueSegmentationDataset(
         list(manifest.val),
@@ -409,6 +418,13 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             f"[rank {rank}] datasets ready train={len(train_ds)} val={len(val_ds)} class_weighting={config.class_weighting}",
             flush=True,
         )
+        if config.stain_augmentation != "none":
+            print(
+                f"[rank {rank}] stain augmentation mode={config.stain_augmentation} "
+                f"prob={config.stain_augmentation_prob} "
+                f"randstainna_root={config.randstainna_root}",
+                flush=True,
+            )
     class_weights, class_weight_metadata = compute_class_weights(
         train_ds,
         config.num_classes,

@@ -35,6 +35,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mask2former-queries", type=int, default=100)
     parser.add_argument("--mask2former-ignore-index", type=int, default=255)
     parser.add_argument("--class-weighting", choices=["none", "inverse_sqrt"], default="none")
+    parser.add_argument("--stain-augmentation", choices=["none", "randstainna"], default="none")
+    parser.add_argument("--stain-augmentation-prob", type=float, default=0.0)
+    parser.add_argument("--randstainna-root", type=Path, default=Path("third_party/RandStainNA"))
+    parser.add_argument("--randstainna-yaml", type=Path, default=None)
+    parser.add_argument("--randstainna-std-hyper", type=float, default=-0.3)
+    parser.add_argument("--randstainna-distribution", choices=["normal", "laplace", "uniform"], default="normal")
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--disable-cudnn", action="store_true")
     parser.add_argument("--export-val-predictions", action="store_true")
@@ -66,6 +72,12 @@ def main(argv: list[str] | None = None) -> int:
         amp=args.amp,
         disable_cudnn=args.disable_cudnn,
         class_weighting=args.class_weighting,
+        stain_augmentation=args.stain_augmentation,
+        stain_augmentation_prob=args.stain_augmentation_prob,
+        randstainna_root=args.randstainna_root,
+        randstainna_yaml=args.randstainna_yaml,
+        randstainna_std_hyper=args.randstainna_std_hyper,
+        randstainna_distribution=args.randstainna_distribution,
         export_val_predictions=args.export_val_predictions or args.export_val_tensors,
         export_val_tensors=args.export_val_tensors,
         boundary_width=args.boundary_width,

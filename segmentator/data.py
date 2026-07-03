@@ -14,6 +14,7 @@ from torch.utils.data import Dataset
 import torchvision.transforms.functional as TF
 
 from .config import DatasetManifest, SampleRecord
+from .stain_augmentation import StainAugmentationConfig, build_stain_augmenter, maybe_apply_stain_augmentation
 from dataset_config.unified_labels import FINE_TO_PARENT
 
 
@@ -94,6 +95,7 @@ class TissueSegmentationDataset(Dataset):
         remap_invalid_to: int = 7,
         ignore_index: int = 255,
         mask_remap: str = "auto",
+        stain_augmentation: StainAugmentationConfig | None = None,
     ) -> None:
         self.records = records
         self.image_size = image_size
@@ -103,6 +105,8 @@ class TissueSegmentationDataset(Dataset):
         self.ignore_index = ignore_index
         self.mask_remap = mask_remap
         self._remap_table = coarse_remap_table(mask_remap, num_classes=num_classes, ignore_index=ignore_index)
+        self.stain_augmentation = stain_augmentation or StainAugmentationConfig()
+        self._stain_augmenter = build_stain_augmenter(self.stain_augmentation) if augment else None
 
     def __len__(self) -> int:
         return len(self.records)
@@ -136,6 +140,13 @@ class TissueSegmentationDataset(Dataset):
 
         image = TF.resize(image, [self.image_size, self.image_size])
         mask = TF.resize(mask, [self.image_size, self.image_size], interpolation=TF.InterpolationMode.NEAREST)
+
+        if self.augment:
+            image = maybe_apply_stain_augmentation(
+                image,
+                self._stain_augmenter,
+                self.stain_augmentation.probability,
+            )
 
         image_t = normalize_image_tensor(TF.to_tensor(image))
         mask_t = torch.from_numpy(np.array(mask, dtype=np.int64))
