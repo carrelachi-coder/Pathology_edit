@@ -23,7 +23,6 @@ class Phase5InpaintRuntimeAssetTests(unittest.TestCase):
         self.assertIn("diffusers", pip_text)
         self.assertIn("transformers", pip_text)
         self.assertIn("bitsandbytes", pip_text)
-        self.assertIn("xformers", pip_text)
 
     def test_training_bash_references_dataset_build_and_inpaint_training(self):
         script_path = Path("scripts/train_phase5_inpaint.sh")

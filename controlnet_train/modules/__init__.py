@@ -1,7 +1,7 @@
 """Conditioning modules for Phase 5 ControlNet training."""
 
 from .change_mask_encoder import ChangeMaskEncoder
-from .conditioning import build_cross_v0_condition, build_inpaint_condition
+from .conditioning import build_inpaint_condition
 from .fixed_tissue_encoder import FixedOneHotTissueEncoder
 from .hte_embedding import HierarchicalTissueEmbedding
 from .nuclei_condition_encoder import NucleiConditionEncoder
@@ -13,6 +13,5 @@ __all__ = [
     "HierarchicalTissueEmbedding",
     "NucleiConditionEncoder",
     "TissueConditionDownsampler",
-    "build_cross_v0_condition",
     "build_inpaint_condition",
 ]

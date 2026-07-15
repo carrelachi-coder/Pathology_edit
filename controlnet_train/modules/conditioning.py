@@ -18,42 +18,6 @@ def _validate_same_shape_prefix(reference_name: str, reference: torch.Tensor, ot
         )
 
 
-def build_cross_v0_condition(
-    *,
-    reference_image_latent: torch.Tensor,
-    reference_tissue_feat: torch.Tensor,
-    reference_nuclei_feat: torch.Tensor,
-    target_tissue_feat: torch.Tensor,
-    target_nuclei_feat: torch.Tensor,
-) -> torch.Tensor:
-    """Concatenate V0 cross-ControlNet conditions in plan order."""
-
-    features = {
-        "reference_image_latent": reference_image_latent,
-        "reference_tissue_feat": reference_tissue_feat,
-        "reference_nuclei_feat": reference_nuclei_feat,
-        "target_tissue_feat": target_tissue_feat,
-        "target_nuclei_feat": target_nuclei_feat,
-    }
-    for name, value in features.items():
-        _validate_spatial_feature(name, value)
-
-    reference = reference_image_latent
-    for name, value in features.items():
-        _validate_same_shape_prefix("reference_image_latent", reference, name, value)
-
-    return torch.cat(
-        [
-            reference_image_latent,
-            reference_tissue_feat,
-            reference_nuclei_feat,
-            target_tissue_feat,
-            target_nuclei_feat,
-        ],
-        dim=1,
-    )
-
-
 def build_inpaint_condition(
     *,
     source_image_latent: torch.Tensor,

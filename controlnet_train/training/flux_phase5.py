@@ -35,18 +35,17 @@ from packaging import version
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, T5EncoderModel
 
-from controlnet_train.data import CrossReconstructionDataset, InpaintDataset
+from controlnet_train.data import InpaintDataset
 from controlnet_train.data.common import default_prompt_for_dataset
 from controlnet_train.modules import (
     ChangeMaskEncoder,
     HierarchicalTissueEmbedding,
     NucleiConditionEncoder,
     TissueConditionDownsampler,
-    build_cross_v0_condition,
 )
 from controlnet_train.modules.conditioning import build_inpaint_condition
 
-from .conditioning import CrossV0ControlSpec, InpaintControlSpec, patch_controlnet_x_embedder
+from .conditioning import InpaintControlSpec, patch_controlnet_x_embedder
 
 if is_wandb_available():
     import wandb  # noqa: F401
@@ -63,18 +62,6 @@ def collate_inpaint_batch(examples: list[dict]) -> dict:
         "target_tissue_mask": torch.stack([item["target_tissue_mask"] for item in examples]),
         "target_nuclei_mask": torch.stack([item["target_nuclei_mask"] for item in examples]),
         "change_region_mask": torch.stack([item["change_region_mask"] for item in examples]),
-        "prompts": [item["prompt"] for item in examples],
-    }
-
-
-def collate_cross_batch(examples: list[dict]) -> dict:
-    return {
-        "target_image": torch.stack([item["target_image"] for item in examples]),
-        "reference_image": torch.stack([item["reference_image"] for item in examples]),
-        "target_tissue_mask": torch.stack([item["target_tissue_mask"] for item in examples]),
-        "target_nuclei_mask": torch.stack([item["target_nuclei_mask"] for item in examples]),
-        "reference_tissue_mask": torch.stack([item["reference_tissue_mask"] for item in examples]),
-        "reference_nuclei_mask": torch.stack([item["reference_nuclei_mask"] for item in examples]),
         "prompts": [item["prompt"] for item in examples],
     }
 
@@ -110,46 +97,6 @@ def run_inpaint_training(args: argparse.Namespace) -> None:
         control_spec=control_spec,
         modules=modules,
         control_builder=lambda batch, modules, vae, weight_dtype: _build_inpaint_control_batch(
-            batch=batch,
-            modules=modules,
-            vae=vae,
-            weight_dtype=weight_dtype,
-        ),
-    )
-
-
-def run_cross_v0_training(args: argparse.Namespace) -> None:
-    if args.cross_version.lower() != "v0":
-        raise NotImplementedError("Phase 5.3 currently implements only cross V0.")
-
-    dataset = CrossReconstructionDataset(args.train_metadata)
-    if args.max_train_samples is not None:
-        dataset.records = dataset.records[: args.max_train_samples]
-    control_spec = CrossV0ControlSpec(
-        tissue_channels=args.tissue_out_channels,
-        nuclei_channels=args.nuclei_out_channels,
-    )
-    modules = {
-        "hte": HierarchicalTissueEmbedding(embedding_dim=args.tissue_embedding_dim),
-        "tissue_downsampler": TissueConditionDownsampler(
-            in_channels=args.tissue_embedding_dim,
-            hidden_channels=args.tissue_out_channels,
-            num_blocks=args.condition_downsample_blocks,
-        ),
-        "nuclei_encoder": NucleiConditionEncoder(
-            embedding_dim=args.nuclei_embedding_dim,
-            out_channels=args.nuclei_out_channels,
-            num_blocks=args.condition_downsample_blocks,
-        ),
-    }
-    _run_training(
-        args=args,
-        task_name="cross-v0",
-        dataset=dataset,
-        collate_fn=collate_cross_batch,
-        control_spec=control_spec,
-        modules=modules,
-        control_builder=lambda batch, modules, vae, weight_dtype: _build_cross_v0_control_batch(
             batch=batch,
             modules=modules,
             vae=vae,
@@ -736,40 +683,6 @@ def _build_inpaint_control_batch(
         target_tissue_feat=target_tissue_feat,
         target_nuclei_feat=target_nuclei_feat,
         change_mask_feat=change_mask_feat,
-    )
-    return target_image_latent, control_tensor
-
-
-def _build_cross_v0_control_batch(
-    *,
-    batch: dict,
-    modules: dict[str, torch.nn.Module],
-    vae: AutoencoderKL,
-    weight_dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    device = next(vae.parameters()).device
-    target_image_latent = _encode_images_to_latents(vae, batch["target_image"], weight_dtype)
-    reference_image_latent = _encode_images_to_latents(vae, batch["reference_image"], weight_dtype)
-
-    target_tissue_feat = modules["tissue_downsampler"](
-        modules["hte"](batch["target_tissue_mask"].to(device=device))
-    ).to(dtype=weight_dtype)
-    target_nuclei_feat = modules["nuclei_encoder"](
-        batch["target_nuclei_mask"].to(device=device)
-    ).to(dtype=weight_dtype)
-    reference_tissue_feat = modules["tissue_downsampler"](
-        modules["hte"](batch["reference_tissue_mask"].to(device=device))
-    ).to(dtype=weight_dtype)
-    reference_nuclei_feat = modules["nuclei_encoder"](
-        batch["reference_nuclei_mask"].to(device=device)
-    ).to(dtype=weight_dtype)
-
-    control_tensor = build_cross_v0_condition(
-        reference_image_latent=reference_image_latent,
-        reference_tissue_feat=reference_tissue_feat,
-        reference_nuclei_feat=reference_nuclei_feat,
-        target_tissue_feat=target_tissue_feat,
-        target_nuclei_feat=target_nuclei_feat,
     )
     return target_image_latent, control_tensor
 

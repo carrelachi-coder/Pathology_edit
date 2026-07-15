@@ -3,7 +3,6 @@ import unittest
 import torch
 
 from controlnet_train.modules.change_mask_encoder import ChangeMaskEncoder
-from controlnet_train.modules.conditioning import build_cross_v0_condition
 from controlnet_train.modules.cross_v1_conditioning import (
     CROSS_V1_SPATIAL_REFERENCE_TARGET_DELTA,
     CrossV1ControlSpec,
@@ -92,30 +91,6 @@ class NucleiConditionEncoderTests(unittest.TestCase):
         self.assertEqual(remapped.min().item(), 0)
         self.assertEqual(remapped.max().item(), 5)
         self.assertEqual(out.shape, (1, 16, 1, 1))
-
-
-class CrossV0ConditioningTests(unittest.TestCase):
-    def test_build_cross_v0_condition_uses_plan_channel_order(self):
-        ref_image = torch.randn(2, 16, 8, 8)
-        ref_tissue = torch.randn(2, 64, 8, 8)
-        ref_nuclei = torch.randn(2, 16, 8, 8)
-        target_tissue = torch.randn(2, 64, 8, 8)
-        target_nuclei = torch.randn(2, 16, 8, 8)
-
-        out = build_cross_v0_condition(
-            reference_image_latent=ref_image,
-            reference_tissue_feat=ref_tissue,
-            reference_nuclei_feat=ref_nuclei,
-            target_tissue_feat=target_tissue,
-            target_nuclei_feat=target_nuclei,
-        )
-
-        self.assertEqual(out.shape, (2, 176, 8, 8))
-        self.assertTrue(torch.equal(out[:, :16], ref_image))
-        self.assertTrue(torch.equal(out[:, 16:80], ref_tissue))
-        self.assertTrue(torch.equal(out[:, 80:96], ref_nuclei))
-        self.assertTrue(torch.equal(out[:, 96:160], target_tissue))
-        self.assertTrue(torch.equal(out[:, 160:176], target_nuclei))
 
 
 class CrossV1ConditioningTests(unittest.TestCase):

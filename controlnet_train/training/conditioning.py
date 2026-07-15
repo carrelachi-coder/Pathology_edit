@@ -35,21 +35,6 @@ class InpaintControlSpec:
         return packed_control_channels(self.raw_channels)
 
 
-@dataclass(frozen=True)
-class CrossV0ControlSpec:
-    image_latent_channels: int = 16
-    tissue_channels: int = 64
-    nuclei_channels: int = 16
-
-    @property
-    def raw_channels(self) -> int:
-        return self.image_latent_channels + self.tissue_channels + self.nuclei_channels + self.tissue_channels + self.nuclei_channels
-
-    @property
-    def packed_channels(self) -> int:
-        return packed_control_channels(self.raw_channels)
-
-
 def patch_controlnet_x_embedder(controlnet: nn.Module, packed_control_channels: int) -> nn.Module:
     if not hasattr(controlnet, "controlnet_x_embedder"):
         raise AttributeError("controlnet must expose a controlnet_x_embedder module.")

@@ -14,7 +14,6 @@ from .modules import (
     HierarchicalTissueEmbedding,
     NucleiConditionEncoder,
     TissueConditionDownsampler,
-    build_cross_v0_condition,
     build_inpaint_condition,
 )
 
@@ -28,7 +27,6 @@ __all__ = [
     "NucleiConditionEncoder",
     "TissueConditionDownsampler",
     "build_cross_metadata",
-    "build_cross_v0_condition",
     "build_inpaint_condition",
     "build_inpaint_metadata",
     "build_synthetic_inpaint_metadata",
