@@ -306,6 +306,8 @@ class I0ReferenceTextureDataset(Dataset):
             "reference_nuclei_mask": reference_nuclei,
             "sample_id": str(record.get("sample_id") or index),
             "reference_sample_id": str(record.get("reference_sample_id") or ""),
+            "case_id": str(record.get("case_id") or record.get("wsi_id") or ""),
+            "pair_difficulty": str(record.get("pair_difficulty") or "full"),
             "dataset": str(record.get("dataset") or ""),
             "prompt": str(record.get("prompt") or ""),
             "metadata_index": metadata_cache_id(record, index),

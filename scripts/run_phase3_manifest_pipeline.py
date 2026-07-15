@@ -494,9 +494,8 @@ def _run_generation_stage(
             profile,
         ),
         _format_profile_path(_option(args.inpaint_checkpoint, model_paths.get("inpaint_checkpoint"), ""), profile),
-        _format_profile_path(_option(args.cross_checkpoint, model_paths.get("cross_checkpoint"), ""), profile),
         _format_profile_path(_option(args.cross_v1_checkpoint, model_paths.get("cross_v1_checkpoint"), ""), profile),
-        _format_profile_path(_option(args.uni_checkpoint, model_paths.get("uni_checkpoint"), ""), profile),
+        _format_profile_path(_option(args.pix2pix_checkpoint, model_paths.get("pix2pix_checkpoint"), ""), profile),
         _option(args.device, generation_cfg.get("device"), "cuda"),
     )
     return state, _loads_maybe(generation_log)
@@ -997,15 +996,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probnet-device")
     parser.add_argument("--probnet-gamma-values")
 
-    parser.add_argument("--generation-mode", choices=("dry-run", "auto", "inpaint", "cross-v0", "cross-v1"))
-    parser.add_argument("--cross-backend", choices=("cross-v0", "cross-v1"))
+    parser.add_argument("--generation-mode", choices=("agentic", "dry-run", "auto", "inpaint", "cross-v1"))
+    parser.add_argument("--cross-backend", choices=("cross-v1",))
     parser.add_argument("--route-threshold", type=float)
     parser.add_argument("--device")
     parser.add_argument("--pretrained-model-name-or-path")
     parser.add_argument("--inpaint-checkpoint")
-    parser.add_argument("--cross-checkpoint")
     parser.add_argument("--cross-v1-checkpoint")
-    parser.add_argument("--uni-checkpoint")
+    parser.add_argument("--pix2pix-checkpoint")
     return parser
 
 

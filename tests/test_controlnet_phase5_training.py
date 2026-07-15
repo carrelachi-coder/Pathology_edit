@@ -7,7 +7,6 @@ from controlnet_train.cli.train_controlnet_flux_cross_v1 import parse_args as pa
 from controlnet_train.cli.train_controlnet_flux_inpaint import parse_args as parse_inpaint_args
 from controlnet_train.modules.conditioning import build_inpaint_condition
 from controlnet_train.training.conditioning import (
-    CrossV0ControlSpec,
     InpaintControlSpec,
     patch_controlnet_x_embedder,
 )
@@ -38,8 +37,6 @@ class ControlSpecTests(unittest.TestCase):
     def test_default_channel_specs_match_phase5_plan(self):
         self.assertEqual(InpaintControlSpec().raw_channels, 100)
         self.assertEqual(InpaintControlSpec().packed_channels, 400)
-        self.assertEqual(CrossV0ControlSpec().raw_channels, 176)
-        self.assertEqual(CrossV0ControlSpec().packed_channels, 704)
 
     def test_patch_controlnet_x_embedder_expands_to_packed_channels(self):
         controlnet = nn.Module()

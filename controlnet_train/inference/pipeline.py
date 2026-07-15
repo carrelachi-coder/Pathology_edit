@@ -24,16 +24,15 @@ from controlnet_train.modules import (
     HierarchicalTissueEmbedding,
     NucleiConditionEncoder,
     TissueConditionDownsampler,
-    build_cross_v0_condition,
     build_inpaint_condition,
 )
 from controlnet_train.training.conditioning import (
-    CrossV0ControlSpec,
     InpaintControlSpec,
     patch_controlnet_x_embedder,
 )
 
 from .router import EditRoutingConfig, EditRoutingDecision, route_edit_request
+from .torch_compat import install_sdpa_enable_gqa_compat
 
 GenericRunner = Callable[..., Image.Image]
 
@@ -96,21 +95,6 @@ class InpaintInferenceBundle:
     control_spec: InpaintControlSpec = field(default_factory=InpaintControlSpec)
 
 
-@dataclass
-class CrossV0InferenceBundle:
-    pretrained_model_name_or_path: str | Path
-    checkpoint_path: Path
-    device: str = "cuda"
-    torch_dtype: torch.dtype = torch.bfloat16
-    num_inference_steps: int = 28
-    guidance_scale: float = 3.5
-    controlnet_conditioning_scale: float = 1.0
-    flux_pipeline: object | None = None
-    controlnet: object | None = None
-    condition_modules: dict[str, torch.nn.Module] = field(default_factory=dict)
-    control_spec: CrossV0ControlSpec = field(default_factory=CrossV0ControlSpec)
-
-
 def resolve_prompt(prompt: str | None, dataset: str | None) -> str:
     if prompt:
         return prompt
@@ -123,7 +107,7 @@ def run_edit_pipeline(
     *,
     inputs: EditPipelineInputs,
     inpaint_bundle: InpaintInferenceBundle | object,
-    cross_bundle: CrossV0InferenceBundle | object,
+    cross_bundle: object,
     inpaint_runner: GenericRunner,
     cross_runner: GenericRunner,
     routing_config: EditRoutingConfig | None = None,
@@ -187,49 +171,8 @@ def load_inpaint_bundle(
         checkpoint_path=checkpoint,
         device=device,
         torch_dtype=dtype,
-        include_change_encoder=True,
     )
     return InpaintInferenceBundle(
-        pretrained_model_name_or_path=pretrained_model_name_or_path,
-        checkpoint_path=checkpoint,
-        device=device,
-        torch_dtype=dtype,
-        num_inference_steps=num_inference_steps,
-        guidance_scale=guidance_scale,
-        controlnet_conditioning_scale=controlnet_conditioning_scale,
-        flux_pipeline=pipe,
-        controlnet=controlnet,
-        condition_modules=modules,
-    )
-
-
-def load_cross_bundle(
-    *,
-    pretrained_model_name_or_path: str | Path,
-    checkpoint_path: str | Path,
-    device: str = "cuda",
-    torch_dtype: torch.dtype | None = None,
-    num_inference_steps: int = 28,
-    guidance_scale: float = 3.5,
-    controlnet_conditioning_scale: float = 1.0,
-) -> CrossV0InferenceBundle:
-    device = _resolve_device(device)
-    dtype = _resolve_torch_dtype(torch_dtype, device)
-    checkpoint = _validate_checkpoint_dir(checkpoint_path)
-    pipe, controlnet = _load_flux_controlnet_pipeline(
-        pretrained_model_name_or_path=pretrained_model_name_or_path,
-        checkpoint_path=checkpoint,
-        packed_channels=CrossV0ControlSpec().packed_channels,
-        device=device,
-        torch_dtype=dtype,
-    )
-    modules = _load_condition_modules(
-        checkpoint_path=checkpoint,
-        device=device,
-        torch_dtype=dtype,
-        include_change_encoder=False,
-    )
-    return CrossV0InferenceBundle(
         pretrained_model_name_or_path=pretrained_model_name_or_path,
         checkpoint_path=checkpoint,
         device=device,
@@ -280,54 +223,6 @@ def run_inpaint_bundle(
         target_tissue_feat=target_tissue_feat,
         target_nuclei_feat=target_nuclei_feat,
         change_mask_feat=change_mask_feat,
-    )
-    return _sample_with_flux_controlnet(
-        pipe=bundle.flux_pipeline,
-        controlnet=bundle.controlnet,
-        prompt=prompt,
-        control_tensor=control_tensor,
-        output_size=tuple(int(v) for v in inputs.reference_image.shape[1:]),
-        device=bundle.device,
-        torch_dtype=bundle.torch_dtype,
-        num_inference_steps=bundle.num_inference_steps,
-        guidance_scale=bundle.guidance_scale,
-        controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
-    )
-
-
-def run_cross_v0_bundle(
-    bundle: CrossV0InferenceBundle,
-    inputs: LoadedEditInputs,
-    prompt: str,
-) -> Image.Image:
-    reference_image = inputs.reference_image.unsqueeze(0)
-    reference_latent = _encode_images_to_latents(
-        bundle.flux_pipeline.vae,
-        reference_image,
-        bundle.torch_dtype,
-    )
-    reference_tissue_feat = bundle.condition_modules["tissue_downsampler"](
-        bundle.condition_modules["hte"](
-            inputs.reference_tissue_mask.unsqueeze(0).to(device=bundle.device)
-        )
-    ).to(dtype=bundle.torch_dtype)
-    reference_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
-        inputs.reference_nuclei_mask.unsqueeze(0).to(device=bundle.device)
-    ).to(dtype=bundle.torch_dtype)
-    target_tissue_feat = bundle.condition_modules["tissue_downsampler"](
-        bundle.condition_modules["hte"](
-            inputs.target_tissue_mask.unsqueeze(0).to(device=bundle.device)
-        )
-    ).to(dtype=bundle.torch_dtype)
-    target_nuclei_feat = bundle.condition_modules["nuclei_encoder"](
-        inputs.target_nuclei_mask.unsqueeze(0).to(device=bundle.device)
-    ).to(dtype=bundle.torch_dtype)
-    control_tensor = build_cross_v0_condition(
-        reference_image_latent=reference_latent,
-        reference_tissue_feat=reference_tissue_feat,
-        reference_nuclei_feat=reference_nuclei_feat,
-        target_tissue_feat=target_tissue_feat,
-        target_nuclei_feat=target_nuclei_feat,
     )
     return _sample_with_flux_controlnet(
         pipe=bundle.flux_pipeline,
@@ -511,6 +406,7 @@ def _load_flux_controlnet_pipeline(
     device: str,
     torch_dtype: torch.dtype,
 ) -> tuple[object, object]:
+    install_sdpa_enable_gqa_compat()
     from diffusers import FluxControlNetModel, FluxControlNetPipeline
 
     controlnet_config = FluxControlNetModel.load_config(checkpoint_path)
@@ -585,7 +481,6 @@ def _load_condition_modules(
     checkpoint_path: Path,
     device: str,
     torch_dtype: torch.dtype,
-    include_change_encoder: bool,
 ) -> dict[str, torch.nn.Module]:
     state = _torch_load_weights(checkpoint_path / "phase5_conditioning.pt")
     hte_state = state["hte"]
@@ -614,10 +509,9 @@ def _load_condition_modules(
             num_blocks=nuclei_blocks,
         ),
     }
-    if include_change_encoder:
-        change_state = state["change_encoder"]
-        change_out = change_state["encoder.0.weight"].shape[0]
-        modules["change_encoder"] = ChangeMaskEncoder(out_channels=change_out)
+    change_state = state["change_encoder"]
+    change_out = change_state["encoder.0.weight"].shape[0]
+    modules["change_encoder"] = ChangeMaskEncoder(out_channels=change_out)
 
     for name, module in modules.items():
         module.load_state_dict(state[name])

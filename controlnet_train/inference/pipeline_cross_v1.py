@@ -38,6 +38,8 @@ from controlnet_train.training.flux_phase5_cross_v1 import (
     _sync_ip_adapter_to_transformer,
 )
 
+from .torch_compat import install_sdpa_enable_gqa_compat
+
 
 @dataclass
 class CrossV1InferenceBundle:
@@ -322,6 +324,7 @@ def _load_flux_controlnet_pipeline(
     device: str,
     torch_dtype: torch.dtype,
 ) -> tuple:
+    install_sdpa_enable_gqa_compat()
     from diffusers import FluxControlNetModel, FluxControlNetPipeline
 
     controlnet_config = FluxControlNetModel.load_config(checkpoint_path)
@@ -631,7 +634,3 @@ def _calculate_shift(
     slope = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     intercept = base_shift - slope * base_seq_len
     return image_seq_len * slope + intercept
-
-'''
-python -m controlnet_train.cli.eval_controlnet_flux_cross_v1   --pretrained-model-name-or-path /data/huggingface/FLUX.1-dev   --checkpoint /home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1/checkpoint-40000   --uni-checkpoint-path /home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorch_model.bin   --metadata /home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/cross_meta/metadata_cross_val.json   --output-dir /home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/cross_v1_eval_10cases   --num-samples 10   --device cuda   --torch-dtype bf16   --prompt-source dataset
-'''

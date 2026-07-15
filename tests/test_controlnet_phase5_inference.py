@@ -3,14 +3,15 @@ import shutil
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from PIL import Image
 
 from controlnet_train import EditPipelineInputs as ExportedEditPipelineInputs
 from controlnet_train import run_edit_pipeline as exported_run_edit_pipeline
-from controlnet_train.cli.edit_pipeline import parse_args
 from controlnet_train.inference import (
     EditPipelineInputs,
     EditPipelineResult,
@@ -20,9 +21,30 @@ from controlnet_train.inference import (
     run_edit_pipeline,
     route_edit_request,
 )
+from controlnet_train.inference.torch_compat import install_sdpa_enable_gqa_compat
 
 _TMP_ROOT = Path.cwd() / ".tmp_testdata"
 _TMP_ROOT.mkdir(exist_ok=True)
+
+
+class TorchCompatibilityTests(unittest.TestCase):
+    def test_sdpa_compat_drops_unsupported_false_enable_gqa(self):
+        calls = []
+
+        def legacy_sdpa(query, key, value, **kwargs):
+            calls.append(kwargs)
+            return query
+
+        legacy_sdpa.__doc__ = "legacy scaled dot product attention"
+        query = torch.zeros((1, 2, 4, 8))
+        with patch.object(F, "scaled_dot_product_attention", legacy_sdpa):
+            self.assertTrue(install_sdpa_enable_gqa_compat())
+            result = F.scaled_dot_product_attention(
+                query, query, query, enable_gqa=False
+            )
+
+        self.assertIs(result, query)
+        self.assertNotIn("enable_gqa", calls[0])
 
 
 def _write_rgb(path: Path, value: int) -> None:
@@ -235,70 +257,6 @@ class PipelineTests(unittest.TestCase):
                 )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-class EditPipelineCliTests(unittest.TestCase):
-    def test_parse_args_accepts_required_inputs_and_optional_dataset(self):
-        args = parse_args(
-            [
-                "--reference-image",
-                "ref.png",
-                "--reference-tissue-mask",
-                "ref_tissue.png",
-                "--reference-nuclei-mask",
-                "ref_nuclei.png",
-                "--target-tissue-mask",
-                "target_tissue.png",
-                "--target-nuclei-mask",
-                "target_nuclei.png",
-                "--pretrained-model-name-or-path",
-                "flux-dev",
-                "--inpaint-checkpoint",
-                "runs/inpaint",
-                "--cross-checkpoint",
-                "runs/cross",
-                "--output-dir",
-                "outputs",
-                "--dataset",
-                "BCSS",
-                "--save-debug-artifacts",
-            ]
-        )
-
-        self.assertEqual(args.dataset, "BCSS")
-        self.assertTrue(args.save_debug_artifacts)
-        self.assertIsNone(args.prompt)
-
-    def test_parse_args_accepts_force_mode_and_prompt(self):
-        args = parse_args(
-            [
-                "--reference-image",
-                "ref.png",
-                "--reference-tissue-mask",
-                "ref_tissue.png",
-                "--reference-nuclei-mask",
-                "ref_nuclei.png",
-                "--target-tissue-mask",
-                "target_tissue.png",
-                "--target-nuclei-mask",
-                "target_nuclei.png",
-                "--pretrained-model-name-or-path",
-                "flux-dev",
-                "--inpaint-checkpoint",
-                "runs/inpaint",
-                "--cross-checkpoint",
-                "runs/cross",
-                "--output-dir",
-                "outputs",
-                "--force-mode",
-                "cross",
-                "--prompt",
-                "custom prompt",
-            ]
-        )
-
-        self.assertEqual(args.force_mode, "cross")
-        self.assertEqual(args.prompt, "custom prompt")
 
 
 class ExportTests(unittest.TestCase):

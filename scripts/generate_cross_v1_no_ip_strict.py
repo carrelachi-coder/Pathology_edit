@@ -17,6 +17,55 @@ import torch.nn as nn
 from PIL import Image
 
 
+_PIX2PIX_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
+
+
+def _install_torch24_sdpa_gqa_compat() -> None:
+    """Backport the Torch 2.5 SDPA keyword used by recent diffusers."""
+
+    version_parts = torch.__version__.split("+", 1)[0].split(".")[:2]
+    if tuple(int(part) for part in version_parts) >= (2, 5):
+        return
+    functional = torch.nn.functional
+    original = functional.scaled_dot_product_attention
+    if getattr(original, "_pathology_edit_gqa_compat", False):
+        return
+
+    def compatible_sdpa(*args: Any, **kwargs: Any) -> torch.Tensor:
+        enable_gqa = bool(kwargs.pop("enable_gqa", False))
+        if enable_gqa:
+            positional = list(args)
+            query = kwargs.get("query", positional[0] if len(positional) > 0 else None)
+            key = kwargs.get("key", positional[1] if len(positional) > 1 else None)
+            value = kwargs.get("value", positional[2] if len(positional) > 2 else None)
+            if query is None or key is None or value is None:
+                raise ValueError("GQA compatibility requires query, key, and value tensors")
+            query_heads = int(query.shape[-3])
+            key_heads = int(key.shape[-3])
+            value_heads = int(value.shape[-3])
+            if key_heads != value_heads or query_heads % key_heads != 0:
+                raise ValueError(
+                    f"Invalid GQA heads: query={query_heads} key={key_heads} value={value_heads}"
+                )
+            repeats = query_heads // key_heads
+            key = key.repeat_interleave(repeats, dim=-3)
+            value = value.repeat_interleave(repeats, dim=-3)
+            if "key" in kwargs:
+                kwargs["key"] = key
+                kwargs["value"] = value
+            else:
+                positional[1] = key
+                positional[2] = value
+                args = tuple(positional)
+        return original(*args, **kwargs)
+
+    compatible_sdpa._pathology_edit_gqa_compat = True  # type: ignore[attr-defined]
+    functional.scaled_dot_product_attention = compatible_sdpa
+
+
+_install_torch24_sdpa_gqa_compat()
+
+
 def _read_metadata_records(path: str | Path) -> list[dict[str, Any]]:
     payload = json.loads(Path(path).read_text())
     if isinstance(payload, dict) and "pairs" in payload:
@@ -135,82 +184,43 @@ def _run_pix2pix_transfer(
     device: str,
     torch_dtype: torch.dtype,
     image_size: int,
-    base_channels: int,
-    num_heads: int,
-    cross_attn_scales: str,
-    upsample_mode: str,
-    region_label_mode: str,
-) -> None:
-    from controlnet_train.pix2pix_transfer.dataset import (
-        NUM_CELL_CLASSES,
-        NUM_FINE,
-        load_label_mask,
-        load_rgb,
-        one_hot_mask,
-        remap_nuclei_mask,
-        tissue_nuclei_region_labels,
+) -> dict[str, Any]:
+    from controlnet_train.pix2pix_transfer.inference import (
+        load_pix2pix_postprocessor,
+        run_pix2pix_postprocess,
     )
-    from controlnet_train.pix2pix_transfer.regional_cross_attention import Pix2PixCrossAttnUNet
 
-    ckpt = torch.load(checkpoint_path, map_location="cpu")
-    model = Pix2PixCrossAttnUNet(
-        in_ch=3 + NUM_FINE + (NUM_CELL_CLASSES + 1),
-        out_ch=3,
-        base=base_channels,
-        num_heads=num_heads,
-        use_region_mask=True,
-        residual_output=True,
-        cross_attn_scales=cross_attn_scales,
-        upsample_mode=upsample_mode,
-    ).to(device=device)
-    model.load_state_dict(ckpt["model"], strict=True)
-    model.to(dtype=torch_dtype)
-    model.eval()
-
-    i0 = _pil_to_neg1_tensor(i0_image, image_size, device, torch_dtype)
-    reference = load_rgb(record["reference_image"], image_size).unsqueeze(0).to(device=device, dtype=torch_dtype)
-    target_tissue = load_label_mask(record["target_tissue_mask"], image_size)
-    reference_tissue = load_label_mask(record["reference_tissue_mask"], image_size)
-    target_nuclei = remap_nuclei_mask(load_label_mask(record["target_nuclei_mask"], image_size))
-    reference_nuclei = remap_nuclei_mask(load_label_mask(record["reference_nuclei_mask"], image_size))
-
-    target_cond = torch.cat(
-        [
-            i0.squeeze(0).cpu(),
-            one_hot_mask(target_tissue, NUM_FINE),
-            one_hot_mask(target_nuclei, NUM_CELL_CLASSES + 1),
-        ],
-        dim=0,
-    ).unsqueeze(0).to(device=device, dtype=torch_dtype)
-    reference_cond = torch.cat(
-        [
-            reference.squeeze(0).cpu(),
-            one_hot_mask(reference_tissue, NUM_FINE),
-            one_hot_mask(reference_nuclei, NUM_CELL_CLASSES + 1),
-        ],
-        dim=0,
-    ).unsqueeze(0).to(device=device, dtype=torch_dtype)
-    target_region = tissue_nuclei_region_labels(
-        target_tissue,
-        target_nuclei,
-        label_mode=region_label_mode,
-    ).unsqueeze(0).to(device=device)
-    reference_region = tissue_nuclei_region_labels(
-        reference_tissue,
-        reference_nuclei,
-        label_mode=region_label_mode,
-    ).unsqueeze(0).to(device=device)
-
-    pred = model(
-        target_cond,
-        reference_cond,
-        target_region=target_region,
-        reference_region=reference_region,
-    )[0]
+    # Architecture, steering, identity and trust settings come from the checkpoint.
+    bundle_key = (str(Path(checkpoint_path).resolve()), str(device), str(torch_dtype))
+    bundle = _PIX2PIX_BUNDLE_CACHE.get(bundle_key)
+    if bundle is None:
+        bundle = load_pix2pix_postprocessor(
+            checkpoint_path,
+            device=device,
+            torch_dtype=torch_dtype,
+        )
+        _PIX2PIX_BUNDLE_CACHE[bundle_key] = bundle
+    pred, info = run_pix2pix_postprocess(
+        bundle=bundle,
+        i0_image=i0_image,
+        reference_image_path=record["reference_image"],
+        target_tissue_mask_path=record["target_tissue_mask"],
+        target_nuclei_mask_path=record["target_nuclei_mask"],
+        reference_tissue_mask_path=record["reference_tissue_mask"],
+        reference_nuclei_mask_path=record["reference_nuclei_mask"],
+        image_size=image_size,
+        device=device,
+        torch_dtype=torch_dtype,
+    )
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    _tensor_to_pil(pred).save(output)
-    print(f"[pix2pix] Saved epoch transfer: {output}")
+    pred.save(output)
+    print(
+        f"[pix2pix-v2] Saved epoch transfer: {output} "
+        f"(epoch={info['epoch']}, step={info['global_step']}, "
+        f"identity={info['use_wsi_identity']}, trust_gate={info['trust_gate']})"
+    )
+    return info
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -245,21 +255,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pix2pix-checkpoint",
         default="",
-        help="Optional pix2pix texture-transfer checkpoint, e.g. .../ckpt/epoch0014.pt.",
+        help=(
+            "Optional production pix2pix-v2 checkpoint, e.g. "
+            "/data/wqx/flowedit/"
+            "pix2pix_texture_transfer_lazy_ver4_wsi_identity_i0_local_full_pyramid_v3_ft/"
+            "ckpt/pilot_step001000.pt."
+        ),
     )
     parser.add_argument(
         "--pix2pix-output",
         default="",
         help="Output path for pix2pix-transferred image. Defaults to <output stem>_pix2pix.png.",
-    )
-    parser.add_argument("--pix2pix-base-channels", type=int, default=64)
-    parser.add_argument("--pix2pix-num-heads", type=int, default=4)
-    parser.add_argument("--pix2pix-cross-attn-scales", default="1/4,1/8,1/16")
-    parser.add_argument("--pix2pix-upsample-mode", choices=("bilinear", "nearest"), default="bilinear")
-    parser.add_argument(
-        "--pix2pix-region-label-mode",
-        choices=("tissue", "nuclei", "tissue_nuclei"),
-        default="tissue_nuclei",
     )
     return parser
 
@@ -414,11 +420,6 @@ def main() -> None:
             device=device,
             torch_dtype=torch_dtype,
             image_size=int(output_size[0]),
-            base_channels=args.pix2pix_base_channels,
-            num_heads=args.pix2pix_num_heads,
-            cross_attn_scales=args.pix2pix_cross_attn_scales,
-            upsample_mode=args.pix2pix_upsample_mode,
-            region_label_mode=args.pix2pix_region_label_mode,
         )
 
 
