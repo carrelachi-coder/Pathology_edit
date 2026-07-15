@@ -152,16 +152,12 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             self.assertGreaterEqual(log["source_cell_integrity"]["deleted_components"], 1)
 
     def test_auto_generation_route_uses_large_change_for_inpaint(self):
-        self.assertEqual(_select_generation_mode("auto", 0.36, 0.35), "inpaint")
+        self.assertEqual(_select_generation_mode("auto", 0.36, 0.35), "cross-v1")
         self.assertEqual(_select_generation_mode("auto", 0.35, 0.35), "cross-v1")
-        self.assertEqual(_select_generation_mode("auto", 0.10, 0.35), "cross-v1")
-        self.assertEqual(
-            _select_generation_mode("auto", 0.10, 0.35, cross_backend="cross-v0"),
-            "cross-v0",
-        )
-        self.assertEqual(_select_generation_mode("cross-v0", 0.90, 0.35), "cross-v0")
+        self.assertEqual(_select_generation_mode("auto", 0.10, 0.35), "inpaint")
+        self.assertEqual(_select_generation_mode("cross-v1", 0.90, 0.35), "cross-v1")
 
-    def test_diff_dry_run_executes_phase3_mask_edit_first(self):
+    def test_diff_mode_rejects_retired_deterministic_executor(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             image = root / "image.png"
@@ -179,7 +175,10 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             diff["necrosis_change"] = {"action": "add", "extent": "focal"}
             diff_path.write_text(json.dumps(diff), encoding="utf-8")
 
-            exit_code = run_phase3_inpaint_pipeline(
+            self.assertRaisesRegex(
+                RuntimeError,
+                "retired non-LLM deterministic primitive executor",
+                run_phase3_inpaint_pipeline,
                 [
                     "--mode",
                     "diff",
@@ -202,18 +201,7 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                 ]
             )
 
-            self.assertEqual(exit_code, 0)
-            self.assertTrue((output / "phase3_mask_edit" / "edit_intents.json").exists())
-            self.assertTrue((output / "phase3_mask_edit" / "mask_edit" / "target_mask.png").exists())
-            self.assertTrue((output / "generated_image.png").exists())
-
-            summary = json.loads((output / "pipeline_summary.json").read_text(encoding="utf-8"))
-            self.assertEqual(summary["mode"], "diff")
-            self.assertIsNotNone(summary["phase3"])
-            self.assertGreater(summary["phase3"]["execution"]["executed_steps"], 0)
-            self.assertGreater(summary["changed_pixels"], 0)
-
-    def test_prompt_fixture_dry_run_parses_then_executes(self):
+    def test_prompt_fixture_rejects_retired_deterministic_executor(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             image = root / "image.png"
@@ -230,7 +218,10 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             diff["necrosis_change"] = {"action": "add", "extent": "focal"}
             diff_path.write_text(json.dumps(diff), encoding="utf-8")
 
-            exit_code = run_phase3_inpaint_pipeline(
+            self.assertRaisesRegex(
+                RuntimeError,
+                "retired non-LLM deterministic primitive executor",
+                run_phase3_inpaint_pipeline,
                 [
                     "--mode",
                     "prompt",
@@ -257,13 +248,7 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                 ]
             )
 
-            self.assertEqual(exit_code, 0)
-            summary = json.loads((output / "pipeline_summary.json").read_text(encoding="utf-8"))
-            self.assertEqual(summary["mode"], "prompt")
-            self.assertEqual(summary["phase3"]["parser"]["mode"], "fixture")
-            self.assertGreater(summary["phase3"]["execution"]["executed_steps"], 0)
-
-    def test_prompt_api_dry_run_uses_parser_adapter(self):
+    def test_prompt_api_rejects_retired_deterministic_executor(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             image = root / "image.png"
@@ -278,8 +263,11 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             diff = json.loads(json.dumps(DEFAULT_SEMANTIC_DIFF))
             diff["necrosis_change"] = {"action": "add", "extent": "focal"}
 
-            with patch("scripts.run_phase3_inpaint_pipeline.parse_prompts_with_api", return_value=diff) as mocked:
-                exit_code = run_phase3_inpaint_pipeline(
+            with patch("scripts.run_phase3_inpaint_pipeline.parse_prompts_with_api", return_value=diff):
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "retired non-LLM deterministic primitive executor",
+                    run_phase3_inpaint_pipeline,
                     [
                         "--mode",
                         "prompt",
@@ -305,12 +293,6 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                         "dry-run",
                     ]
                 )
-
-            self.assertEqual(exit_code, 0)
-            self.assertTrue(mocked.called)
-            summary = json.loads((output / "pipeline_summary.json").read_text(encoding="utf-8"))
-            self.assertEqual(summary["phase3"]["parser"]["mode"], "api")
-            self.assertEqual(summary["phase3"]["parser"]["api_model"], "mock-model")
 
 
 if __name__ == "__main__":

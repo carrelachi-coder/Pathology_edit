@@ -143,6 +143,54 @@ def generator_hinge_loss(
     return -masked_mean(fake_logits, mask)
 
 
+def conditional_mismatch_hinge_loss(
+    wrong_condition_logits: torch.Tensor,
+    *,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Treat a real image paired with the wrong target context as fake."""
+
+    return masked_mean(F.relu(1.0 + wrong_condition_logits), mask)
+
+
+def soft_boundary_patch_mask(
+    base_mask: torch.Tensor | None,
+    boundary: torch.Tensor,
+    logits: torch.Tensor,
+    *,
+    floor: float,
+    corruption_mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Downweight target boundaries without removing their adversarial signal."""
+
+    if boundary.ndim == 3:
+        boundary = boundary.unsqueeze(1)
+    boundary_patch = F.interpolate(
+        boundary.to(device=logits.device, dtype=logits.dtype),
+        size=logits.shape[-2:],
+        mode="area",
+    ).clamp(0.0, 1.0)
+    floor_value = max(0.0, min(1.0, float(floor)))
+    weight = 1.0 - (1.0 - floor_value) * boundary_patch
+    if base_mask is not None:
+        weight = weight * base_mask.to(device=logits.device, dtype=logits.dtype)
+    if corruption_mask is not None:
+        if corruption_mask.ndim == 3:
+            corruption_mask = corruption_mask.unsqueeze(1)
+        corruption_patch = F.interpolate(
+            corruption_mask.to(device=logits.device, dtype=logits.dtype),
+            size=logits.shape[-2:],
+            mode="area",
+        ).clamp(0.0, 1.0)
+        if base_mask is not None:
+            corruption_patch = corruption_patch * base_mask.to(
+                device=logits.device,
+                dtype=logits.dtype,
+            )
+        weight = torch.maximum(weight, corruption_patch)
+    return weight
+
+
 def discriminator_logit_stats(
     real_logits: torch.Tensor,
     fake_logits: torch.Tensor,

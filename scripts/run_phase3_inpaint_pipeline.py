@@ -31,11 +31,13 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controlnet_train.inference import (
+    DEFAULT_CROSS_V1_CHECKPOINT,
+    DEFAULT_INPAINT_CHECKPOINT,
+    DEFAULT_PIX2PIX_CHECKPOINT,
+    DEFAULT_PROBNET_CHECKPOINT,
     EditPipelineInputs,
     EditRoutingConfig,
-    load_cross_bundle,
     load_inpaint_bundle,
-    run_cross_v0_bundle,
     run_edit_pipeline,
     run_inpaint_bundle,
 )
@@ -58,7 +60,6 @@ from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 
 
 _INPAINT_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
-_CROSS_V0_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
 _CROSS_V1_NO_IP_CACHE: dict[tuple[str, str, str, str, int, float, float], Any] = {}
 
 
@@ -547,26 +548,14 @@ def _run_generation_stage(
     }
     if selected_mode == "inpaint":
         required["--inpaint-checkpoint"] = args.inpaint_checkpoint
-    elif selected_mode == "cross-v0":
-        required["--cross-checkpoint"] = args.cross_checkpoint
     else:
         required["--cross-v1-checkpoint"] = args.cross_v1_checkpoint
-        if getattr(args, "pix2pix_checkpoint", None):
-            required["--pix2pix-checkpoint"] = args.pix2pix_checkpoint
+        required["--pix2pix-checkpoint"] = args.pix2pix_checkpoint
     missing = [name for name, value in required.items() if value is None]
     if missing:
         raise SystemExit(f"{', '.join(missing)} required with --generation-mode {args.generation_mode}")
 
-    cross_bundle = object()
-    cross_runner = run_cross_v0_bundle
-    if selected_mode == "cross-v0":
-        cross_bundle = _cached_cross_v0_bundle(
-            pretrained_model_name_or_path=args.pretrained_model_name_or_path,
-            checkpoint_path=args.cross_checkpoint,
-            device=args.device,
-        )
-        cross_runner = run_cross_v0_bundle
-    elif selected_mode == "cross-v1":
+    if selected_mode == "cross-v1":
         prompt = _resolve_cross_v1_prompt(
             prompt_override=args.prompt,
             prompt_source=getattr(args, "prompt_source", "dataset"),
@@ -589,11 +578,6 @@ def _run_generation_stage(
             guidance_scale=getattr(args, "guidance_scale", 3.5),
             controlnet_conditioning_scale=getattr(args, "controlnet_conditioning_scale", 1.0),
             seed=getattr(args, "seed", 42),
-            pix2pix_base_channels=getattr(args, "pix2pix_base_channels", 64),
-            pix2pix_num_heads=getattr(args, "pix2pix_num_heads", 4),
-            pix2pix_cross_attn_scales=getattr(args, "pix2pix_cross_attn_scales", "1/4,1/8,1/16"),
-            pix2pix_upsample_mode=getattr(args, "pix2pix_upsample_mode", "bilinear"),
-            pix2pix_region_label_mode=getattr(args, "pix2pix_region_label_mode", "tissue_nuclei"),
         )
         generated = output_dir / "generated_image.png"
         raw_generated = output_dir / "generated_image_raw.png"
@@ -644,28 +628,15 @@ def _run_generation_stage(
                 if selected_mode == "inpaint"
                 else object()
             ),
-            cross_bundle=(
-                cross_bundle
-            ),
+            cross_bundle=object(),
             inpaint_runner=run_inpaint_bundle,
-            cross_runner=cross_runner,
+            cross_runner=_production_cross_is_handled_before_inpaint,
             routing_config=EditRoutingConfig(t_inpaint=args.route_threshold, t_cross=args.route_threshold),
         )
     generated = output_dir / "generated_image.png"
     raw_generated = output_dir / "generated_image_raw.png"
     result.image.save(raw_generated)
-    color_match_method = getattr(args, "color_match", "lab")
-    color_match_applied = False
-    if selected_mode.startswith("cross-") and color_match_method != "none":
-        matched = _match_image_color_to_reference(
-            source=np.asarray(result.image.convert("RGB"), dtype=np.uint8),
-            reference=reference_image,
-            method=color_match_method,
-        )
-        _save_rgb_array(matched, generated)
-        color_match_applied = True
-    else:
-        result.image.save(generated)
+    result.image.save(generated)
     info = {
         "generation_mode": args.generation_mode,
         "status": "generated",
@@ -676,17 +647,7 @@ def _run_generation_stage(
         "change_ratio": result.change_ratio,
         "route_threshold": args.route_threshold,
         "prompt": result.prompt,
-        "color_match": {
-            "method": color_match_method,
-            "applied": color_match_applied,
-            "reference": str(args.reference_image),
-        },
-        "cross_v1": {
-            "ip_scale": float(getattr(args, "ip_scale", 1.0)),
-            "controlnet_conditioning_scale": float(
-                getattr(args, "controlnet_conditioning_scale", 1.0)
-            ),
-        },
+        "color_match": {"method": "none", "applied": False},
     }
     save_metadata(info, output_dir / "generation_info.json")
     return generated, info
@@ -712,24 +673,8 @@ def _cached_inpaint_bundle(
     return _INPAINT_BUNDLE_CACHE[key]
 
 
-def _cached_cross_v0_bundle(
-    *,
-    pretrained_model_name_or_path: str | Path,
-    checkpoint_path: str | Path,
-    device: str,
-):
-    key = (
-        str(pretrained_model_name_or_path),
-        str(checkpoint_path),
-        str(device),
-    )
-    if key not in _CROSS_V0_BUNDLE_CACHE:
-        _CROSS_V0_BUNDLE_CACHE[key] = load_cross_bundle(
-            pretrained_model_name_or_path=pretrained_model_name_or_path,
-            checkpoint_path=checkpoint_path,
-            device=device,
-        )
-    return _CROSS_V0_BUNDLE_CACHE[key]
+def _production_cross_is_handled_before_inpaint(*_args, **_kwargs):
+    raise RuntimeError("Production cross-v1 must be handled before the inpaint-only pipeline.")
 
 
 def _cached_cross_v1_no_ip_components(
@@ -782,7 +727,7 @@ def _run_cross_v1_no_ip_generation(
     *,
     pretrained_model_name_or_path: str | Path,
     checkpoint_path: str | Path,
-    pix2pix_checkpoint_path: str | Path | None,
+    pix2pix_checkpoint_path: str | Path,
     reference_image_path: str | Path,
     reference_tissue_mask_path: str | Path,
     reference_nuclei_mask_path: str | Path,
@@ -796,11 +741,6 @@ def _run_cross_v1_no_ip_generation(
     guidance_scale: float,
     controlnet_conditioning_scale: float,
     seed: int,
-    pix2pix_base_channels: int,
-    pix2pix_num_heads: int,
-    pix2pix_cross_attn_scales: str,
-    pix2pix_upsample_mode: str,
-    pix2pix_region_label_mode: str,
 ) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
     from controlnet_train.data.common import load_nuclei_mask, load_tissue_mask
     from controlnet_train.inference.pipeline_cross_v1 import _sample_with_flux_controlnet
@@ -859,42 +799,35 @@ def _run_cross_v1_no_ip_generation(
     stage1_path = output_dir / "stage1_no_ip.png"
     stage1_image.save(stage1_path)
 
-    final_image = stage1_image
-    pix2pix_output_path = None
-    if pix2pix_checkpoint_path:
-        pix2pix_output_path = output_dir / "stage2_pix2pix.png"
-        record = {
-            "reference_image": str(reference_image_path),
-            "reference_tissue_mask": str(reference_tissue_mask_path),
-            "reference_nuclei_mask": str(reference_nuclei_mask_path),
-            "target_tissue_mask": str(target_tissue_mask_path),
-            "target_nuclei_mask": str(target_nuclei_mask_path),
-        }
-        _run_pix2pix_transfer(
-            i0_image=stage1_image,
-            record=record,
-            checkpoint_path=pix2pix_checkpoint_path,
-            output_path=pix2pix_output_path,
-            device=device,
-            torch_dtype=torch_dtype,
-            image_size=int(output_size[0]),
-            base_channels=pix2pix_base_channels,
-            num_heads=pix2pix_num_heads,
-            cross_attn_scales=pix2pix_cross_attn_scales,
-            upsample_mode=pix2pix_upsample_mode,
-            region_label_mode=pix2pix_region_label_mode,
-        )
-        final_image = Image.open(pix2pix_output_path).convert("RGB")
+    pix2pix_output_path = output_dir / "stage2_pix2pix.png"
+    record = {
+        "reference_image": str(reference_image_path),
+        "reference_tissue_mask": str(reference_tissue_mask_path),
+        "reference_nuclei_mask": str(reference_nuclei_mask_path),
+        "target_tissue_mask": str(target_tissue_mask_path),
+        "target_nuclei_mask": str(target_nuclei_mask_path),
+    }
+    pix2pix_info = _run_pix2pix_transfer(
+        i0_image=stage1_image,
+        record=record,
+        checkpoint_path=pix2pix_checkpoint_path,
+        output_path=pix2pix_output_path,
+        device=device,
+        torch_dtype=torch_dtype,
+        image_size=int(output_size[0]),
+    )
+    final_image = Image.open(pix2pix_output_path).convert("RGB")
 
     info = {
-        "backend": "cross-v1-no-ip-pix2pix" if pix2pix_checkpoint_path else "cross-v1-no-ip",
+        "backend": "cross-v1-no-ip-pix2pix-v2",
         "loads_ip_adapter": False,
         "loads_uni": False,
         "checkpoint": str(checkpoint_path),
         "stage1_no_ip_image": str(stage1_path),
         "stage1_reference_mask_mode": stage1_reference_mask_mode,
-        "pix2pix_checkpoint": str(pix2pix_checkpoint_path) if pix2pix_checkpoint_path else None,
-        "pix2pix_output": str(pix2pix_output_path) if pix2pix_output_path else None,
+        "pix2pix_checkpoint": str(pix2pix_checkpoint_path),
+        "pix2pix_output": str(pix2pix_output_path),
+        "pix2pix_v2": pix2pix_info,
         "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
         "num_inference_steps": int(num_inference_steps),
         "guidance_scale": float(guidance_scale),
@@ -916,8 +849,8 @@ def _select_generation_mode(
     cross_backend: str = "cross-v1",
 ) -> str:
     if generation_mode == "auto":
-        return "inpaint" if change_ratio > threshold else cross_backend
-    if generation_mode in {"inpaint", "cross-v0", "cross-v1"}:
+        return "inpaint" if change_ratio < threshold else cross_backend
+    if generation_mode in {"inpaint", "cross-v1"}:
         return generation_mode
     return "dry-run"
 def _save_compare_panel(
@@ -1107,7 +1040,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default="delete",
         help="How to handle source nuclei components touching both changed and unchanged regions.",
     )
-    parser.add_argument("--probnet-ckpt", type=Path)
+    parser.add_argument("--probnet-ckpt", type=Path, default=Path(DEFAULT_PROBNET_CHECKPOINT))
     parser.add_argument("--nuclei-library", type=Path)
     parser.add_argument("--probnet-device", default="auto", choices=("auto", "cuda", "cpu"))
     parser.add_argument("--probnet-gamma-values", default="1.0")
@@ -1115,23 +1048,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--generation-mode",
-        choices=("dry-run", "inpaint", "cross-v0", "cross-v1", "auto"),
+        choices=("dry-run", "inpaint", "cross-v1", "auto"),
         default="dry-run",
-        help="dry-run writes artifacts without loading ControlNet; auto uses >threshold inpaint else the selected cross backend.",
+        help="dry-run skips generation; auto uses local inpaint below the threshold and production cross-v1 above it.",
     )
     parser.add_argument("--route-threshold", type=float, default=0.35)
     parser.add_argument(
         "--cross-backend",
-        choices=("cross-v0", "cross-v1"),
+        choices=("cross-v1",),
         default="cross-v1",
         help="Cross model used by --generation-mode auto.",
     )
     parser.add_argument("--pretrained-model-name-or-path")
-    parser.add_argument("--inpaint-checkpoint", type=Path)
-    parser.add_argument("--cross-checkpoint", type=Path)
-    parser.add_argument("--cross-v1-checkpoint", type=Path)
-    parser.add_argument("--uni-checkpoint", type=Path, help="Deprecated; cross-v1 no-IP generation does not load UNI.")
-    parser.add_argument("--pix2pix-checkpoint", type=Path)
+    parser.add_argument("--inpaint-checkpoint", type=Path, default=Path(DEFAULT_INPAINT_CHECKPOINT))
+    parser.add_argument("--cross-v1-checkpoint", type=Path, default=Path(DEFAULT_CROSS_V1_CHECKPOINT))
+    parser.add_argument("--pix2pix-checkpoint", type=Path, default=Path(DEFAULT_PIX2PIX_CHECKPOINT))
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--prompt-source", choices=("metadata", "dataset"), default="dataset")
@@ -1139,17 +1070,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-inference-steps", type=int, default=28)
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
-    parser.add_argument("--ip-scale", type=float, default=1.0, help="Deprecated; cross-v1 no-IP generation ignores this value.")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--pix2pix-base-channels", type=int, default=64)
-    parser.add_argument("--pix2pix-num-heads", type=int, default=4)
-    parser.add_argument("--pix2pix-cross-attn-scales", default="1/4,1/8,1/16")
-    parser.add_argument("--pix2pix-upsample-mode", choices=("bilinear", "nearest"), default="bilinear")
-    parser.add_argument(
-        "--pix2pix-region-label-mode",
-        choices=("tissue", "nuclei", "tissue_nuclei"),
-        default="tissue_nuclei",
-    )
     parser.add_argument(
         "--color-match",
         choices=("none", "lab"),

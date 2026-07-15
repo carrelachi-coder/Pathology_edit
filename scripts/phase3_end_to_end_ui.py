@@ -70,6 +70,20 @@ from phase3_mask_edit.parser.qwen_local_parser import (
 )
 from phase3_mask_edit.parser.semantic_diff import save_semantic_diff
 from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
+from controlnet_train.inference.agentic import (
+    AgenticWorkflowConfig,
+    FidelityThresholds,
+    GenerationArtifact,
+    run_agentic_workflow,
+    verify_mask_fidelity,
+)
+from controlnet_train.inference.router import AgenticRoutingConfig, route_agentic_edit_request
+from controlnet_train.inference.model_paths import (
+    DEFAULT_CROSS_V1_CHECKPOINT,
+    DEFAULT_INPAINT_CHECKPOINT,
+    DEFAULT_PIX2PIX_CHECKPOINT,
+    DEFAULT_PROBNET_CHECKPOINT,
+)
 from scripts.run_phase3_inpaint_pipeline import (
     _build_target_nuclei,
     _change_area_fraction,
@@ -99,17 +113,12 @@ DEFAULT_SEGMENTATOR_ENV = "pathology-segmentator-mmseg"
 DEFAULT_SEGMENTATOR_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/segmentator_runs/stage4_mask2former_multidataset_a800_v2/best_mIoU.pt"
 DEFAULT_SEGMENTATOR_DECODER = "mask2former"
 DEFAULT_SEGMENTATOR_DEVICE = "cuda:0"
-DEFAULT_PROBNET_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/checkpoints/best.pt"
 DEFAULT_NUCLEI_LIBRARY_TEMPLATE = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/nuclei_library/{profile}"
 DEFAULT_DENSITY_SCALE_TEMPLATE = (
     "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/configs/"
     "density_scale_{profile_lower}.json"
 )
 DEFAULT_PRETRAINED_MODEL = "/data/huggingface/FLUX.1-dev"
-DEFAULT_INPAINT_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_inpaint_all"
-DEFAULT_CROSS_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross"
-DEFAULT_CROSS_V1_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1/checkpoint-40000"
-DEFAULT_PIX2PIX_CHECKPOINT = "/data/wqx/flowedit/pix2pix_texture_transfer_lazy_ver4/ckpt/epoch0014.pt"
 DEFAULT_LARGE_BCSS_STEM = "TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500"
 DEFAULT_LARGE_BCSS_IMAGE = Path(r"D:\WQX\datasets\BCSS\rgbs") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
 DEFAULT_LARGE_BCSS_TISSUE_MASK = Path(r"D:\WQX\datasets\BCSS\masks") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
@@ -256,12 +265,13 @@ def _run_segmentator_tissue_mask(
     checkpoint: str,
     decoder: str,
     device: str,
+    output_path: Path | None = None,
 ) -> Path:
     checkpoint_path = Path(_defaulted_text(checkpoint, DEFAULT_SEGMENTATOR_CHECKPOINT))
     if not checkpoint_path.exists():
         raise gr.Error(f"Segmentator checkpoint not found: {checkpoint_path}")
     env_name = _defaulted_text(conda_env, DEFAULT_SEGMENTATOR_ENV)
-    output_path = output_dir / "inputs" / "source_tissue_mask.png"
+    output_path = output_path or output_dir / "inputs" / "source_tissue_mask.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
         "conda",
@@ -305,6 +315,56 @@ def _run_segmentator_tissue_mask(
     return output_path
 
 
+def _run_cellvit_mask(
+    *,
+    image_path: Path,
+    output_path: Path,
+    output_dir: Path,
+    script: str,
+    model: str,
+    root: str,
+    device: str,
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        str(Path(_defaulted_text(script, str(DEFAULT_CELLVIT_SCRIPT)))),
+        "--image",
+        str(image_path),
+        "--output-mask",
+        str(output_path),
+        "--model",
+        str(Path(_defaulted_text(model, DEFAULT_CELLVIT_MODEL))),
+        "--cellvit-root",
+        str(Path(_defaulted_text(root, str(DEFAULT_CELLVIT_ROOT)))),
+        "--gpu",
+        str(_cuda_index(device)),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        (output_dir / "cellvit_error.log").write_text(
+            _format_subprocess_error(exc, label="CellViT"), encoding="utf-8"
+        )
+        raise RuntimeError(_format_subprocess_error(exc, label="CellViT")) from exc
+    log_text = "\n".join(
+        part
+        for part in [(result.stdout or "").strip(), (result.stderr or "").strip()]
+        if part
+    )
+    if log_text:
+        (output_dir / "cellvit.log").write_text(log_text, encoding="utf-8")
+    if not output_path.exists():
+        raise RuntimeError(f"CellViT finished but did not write {output_path}")
+    return output_path
+
+
 def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
     defaults = {
         "profile": state.get("profile", "BCSS"),
@@ -327,7 +387,6 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
         "route_threshold": 0.35,
         "pretrained_model_name_or_path": None,
         "inpaint_checkpoint": None,
-        "cross_checkpoint": None,
         "cross_v1_checkpoint": None,
         "pix2pix_checkpoint": None,
         "device": "cuda",
@@ -1528,6 +1587,16 @@ def load_inputs(
         "source_mask_rgb": str(source_rgb),
         "target_mask_rgb": str(source_rgb),
         "reference_tissue_mask_source": tissue_source,
+        "verification_runtime": {
+            "segmentator_env": segmentator_env,
+            "segmentator_checkpoint": segmentator_checkpoint,
+            "segmentator_decoder": segmentator_decoder,
+            "segmentator_device": segmentator_device,
+            "cellvit_script": cellvit_script,
+            "cellvit_model": cellvit_model,
+            "cellvit_root": cellvit_root,
+            "cellvit_device": cellvit_device,
+        },
     }
     return state, _json_text({"status": "loaded", "output_dir": str(output_dir), "tissue_mask_source": tissue_source}), str(image_path), source_rgb
 
@@ -1633,6 +1702,16 @@ def load_inputs_from_paths(
         "large_patch_source": True,
         "reference_tissue_mask_source": tissue_source,
         "reference_nuclei_mask_source": nuclei_source,
+        "verification_runtime": {
+            "segmentator_env": segmentator_env,
+            "segmentator_checkpoint": segmentator_checkpoint,
+            "segmentator_decoder": segmentator_decoder,
+            "segmentator_device": segmentator_device,
+            "cellvit_script": cellvit_script,
+            "cellvit_model": cellvit_model,
+            "cellvit_root": cellvit_root,
+            "cellvit_device": cellvit_device,
+        },
     }
     info = {
         "status": "loaded",
@@ -2868,6 +2947,135 @@ def run_cell_stage(
     )
 
 
+def _run_agentic_generation_stage(
+    *,
+    state: dict[str, Any],
+    args: SimpleNamespace,
+    route_threshold: float,
+    reference_image: np.ndarray,
+    change_region: np.ndarray,
+) -> tuple[Path, dict[str, Any]]:
+    output_dir = Path(state["output_dir"])
+    reference_tissue = load_id_mask(state["reference_tissue_mask"])
+    target_tissue = load_id_mask(state["target_tissue_mask"])
+    target_nuclei = _load_uint8_mask(state["target_nuclei_mask"])
+    runtime = dict(state.get("verification_runtime") or {})
+    required_runtime = (
+        "segmentator_env",
+        "segmentator_checkpoint",
+        "segmentator_decoder",
+        "segmentator_device",
+        "cellvit_script",
+        "cellvit_model",
+        "cellvit_root",
+        "cellvit_device",
+    )
+    missing_runtime = [name for name in required_runtime if not runtime.get(name)]
+    if missing_runtime:
+        raise gr.Error(
+            "Agentic verification requires runtime settings captured during input loading: "
+            + ", ".join(missing_runtime)
+        )
+
+    def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
+        forced_mode = "inpaint" if mode == "inpaint" else "cross-v1"
+        attempt_args = SimpleNamespace(**vars(args))
+        attempt_args.generation_mode = forced_mode
+        attempt_args.output = attempt_dir
+        _validate_generation_paths(attempt_args, forced_mode)
+        image_path, info = _run_generation_stage(
+            args=attempt_args,
+            output_dir=attempt_dir,
+            reference_image=reference_image,
+            change_region=change_region,
+            target_tissue_path=Path(state["target_tissue_mask"]),
+            target_nuclei_path=Path(state["target_nuclei_mask"]),
+        )
+        return GenerationArtifact(mode=mode, image_path=image_path, metadata=info)
+
+    def verify(artifact: GenerationArtifact):
+        verification_dir = artifact.image_path.parent / "verification"
+        verification_dir.mkdir(parents=True, exist_ok=True)
+        predicted_tissue_path = _run_segmentator_tissue_mask(
+            image_path=artifact.image_path,
+            output_dir=verification_dir,
+            conda_env=str(runtime["segmentator_env"]),
+            checkpoint=str(runtime["segmentator_checkpoint"]),
+            decoder=str(runtime["segmentator_decoder"]),
+            device=str(runtime["segmentator_device"]),
+            output_path=verification_dir / "predicted_tissue_mask.png",
+        )
+        predicted_nuclei_path = _run_cellvit_mask(
+            image_path=artifact.image_path,
+            output_path=verification_dir / "predicted_nuclei_mask.png",
+            output_dir=verification_dir,
+            script=str(runtime["cellvit_script"]),
+            model=str(runtime["cellvit_model"]),
+            root=str(runtime["cellvit_root"]),
+            device=str(runtime["cellvit_device"]),
+        )
+        return verify_mask_fidelity(
+            reference_tissue_mask=reference_tissue,
+            target_tissue_mask=target_tissue,
+            predicted_tissue_mask=load_id_mask(predicted_tissue_path),
+            change_region=change_region,
+            target_nuclei_mask=target_nuclei,
+            predicted_nuclei_mask=_load_uint8_mask(predicted_nuclei_path),
+            thresholds=FidelityThresholds(),
+        )
+
+    workflow = run_agentic_workflow(
+        reference_tissue_mask=reference_tissue,
+        target_tissue_mask=target_tissue,
+        output_dir=output_dir / "agentic_generation",
+        generate=generate,
+        verify=verify,
+        config=AgenticWorkflowConfig(
+            routing=AgenticRoutingConfig(
+                t_inpaint=min(0.12, float(route_threshold)),
+                t_cross=float(route_threshold),
+            ),
+            max_attempts=2,
+        ),
+    )
+    if workflow.status == "noop":
+        final_path = output_dir / "generated_image.png"
+        shutil.copy2(Path(args.reference_image), final_path)
+        info = {
+            "generation_mode": "agentic",
+            "status": "noop",
+            "generated_image": str(final_path),
+            "selected_mode": "noop",
+            "change_ratio": 0.0,
+            "route_threshold": route_threshold,
+            "agentic_workflow": workflow.to_metadata(),
+        }
+        save_metadata(info, output_dir / "generation_info.json")
+        return final_path, info
+    if workflow.selected_attempt is None or workflow.selected_attempt.artifact is None:
+        errors = [attempt.error for attempt in workflow.attempts if attempt.error]
+        raise gr.Error(
+            "Agentic generation produced no verifiable candidate. " + "; ".join(errors)
+        )
+    selected = workflow.selected_attempt.artifact
+    final_path = output_dir / "generated_image.png"
+    shutil.copy2(selected.image_path, final_path)
+    info = dict(selected.metadata)
+    info.update(
+        {
+            "generation_mode": "agentic",
+            "status": workflow.status,
+            "generated_image": str(final_path),
+            "selected_mode": selected.mode,
+            "change_ratio": _change_area_fraction(change_region),
+            "route_threshold": route_threshold,
+            "agentic_workflow": workflow.to_metadata(),
+        }
+    )
+    save_metadata(info, output_dir / "generation_info.json")
+    return final_path, info
+
+
 def run_generation_stage(
     state: dict[str, Any],
     generation_mode: str,
@@ -2875,7 +3083,6 @@ def run_generation_stage(
     route_threshold: float,
     model_path: str,
     inpaint_checkpoint: str,
-    cross_checkpoint: str,
     cross_v1_checkpoint: str,
     pix2pix_checkpoint: str,
     device: str,
@@ -2892,28 +3099,36 @@ def run_generation_stage(
         route_threshold=route_threshold,
         pretrained_model_name_or_path=_defaulted_text(model_path, DEFAULT_PRETRAINED_MODEL),
         inpaint_checkpoint=Path(_defaulted_text(inpaint_checkpoint, DEFAULT_INPAINT_CHECKPOINT)),
-        cross_checkpoint=Path(_defaulted_text(cross_checkpoint, DEFAULT_CROSS_CHECKPOINT)),
         cross_v1_checkpoint=Path(_defaulted_text(cross_v1_checkpoint, DEFAULT_CROSS_V1_CHECKPOINT)),
         pix2pix_checkpoint=Path(_defaulted_text(pix2pix_checkpoint, DEFAULT_PIX2PIX_CHECKPOINT)),
         device=device or GENERATION_DEVICE_CHOICES[0],
         prompt=None,
     )
-    change_ratio = _change_area_fraction(change_region)
-    selected_mode = _select_generation_mode(
-        generation_mode,
-        change_ratio,
-        route_threshold,
-        cross_backend=cross_backend,
-    )
-    _validate_generation_paths(args, selected_mode)
-    generated_path, generation_info = _run_generation_stage(
-        args=args,
-        output_dir=output_dir,
-        reference_image=reference_image,
-        change_region=change_region,
-        target_tissue_path=Path(state["target_tissue_mask"]),
-        target_nuclei_path=Path(state["target_nuclei_mask"]),
-    )
+    if generation_mode == "agentic":
+        generated_path, generation_info = _run_agentic_generation_stage(
+            state=state,
+            args=args,
+            route_threshold=route_threshold,
+            reference_image=reference_image,
+            change_region=change_region,
+        )
+    else:
+        change_ratio = _change_area_fraction(change_region)
+        selected_mode = _select_generation_mode(
+            generation_mode,
+            change_ratio,
+            route_threshold,
+            cross_backend=cross_backend,
+        )
+        _validate_generation_paths(args, selected_mode)
+        generated_path, generation_info = _run_generation_stage(
+            args=args,
+            output_dir=output_dir,
+            reference_image=reference_image,
+            change_region=change_region,
+            target_tissue_path=Path(state["target_tissue_mask"]),
+            target_nuclei_path=Path(state["target_nuclei_mask"]),
+        )
     panel_path = _save_compare_panel(
         output_dir / "compare_panel.png",
         reference_image=reference_image,
@@ -2949,7 +3164,6 @@ def run_large_patch_stitch_generation(
     route_threshold: float,
     model_path: str,
     inpaint_checkpoint: str,
-    cross_checkpoint: str,
     cross_v1_checkpoint: str,
     pix2pix_checkpoint: str,
     device: str,
@@ -3010,7 +3224,6 @@ def run_large_patch_stitch_generation(
         route_threshold=route_threshold,
         pretrained_model_name_or_path=_defaulted_text(model_path, DEFAULT_PRETRAINED_MODEL),
         inpaint_checkpoint=Path(_defaulted_text(inpaint_checkpoint, DEFAULT_INPAINT_CHECKPOINT)),
-        cross_checkpoint=Path(_defaulted_text(cross_checkpoint, DEFAULT_CROSS_CHECKPOINT)),
         cross_v1_checkpoint=Path(_defaulted_text(cross_v1_checkpoint, DEFAULT_CROSS_V1_CHECKPOINT)),
         pix2pix_checkpoint=Path(_defaulted_text(pix2pix_checkpoint, DEFAULT_PIX2PIX_CHECKPOINT)),
         device=device or GENERATION_DEVICE_CHOICES[0],
@@ -3456,13 +3669,9 @@ def _validate_generation_paths(args: SimpleNamespace, selected_mode: str) -> Non
     required_paths: dict[str, Path] = {}
     if selected_mode == "inpaint":
         required_paths["inpaint checkpoint"] = Path(args.inpaint_checkpoint)
-    elif selected_mode == "cross-v0":
-        required_paths["cross-v0 checkpoint"] = Path(args.cross_checkpoint)
     elif selected_mode == "cross-v1":
         required_paths["cross-v1 checkpoint"] = Path(args.cross_v1_checkpoint)
-        pix2pix_checkpoint = getattr(args, "pix2pix_checkpoint", None)
-        if pix2pix_checkpoint:
-            required_paths["pix2pix checkpoint"] = Path(pix2pix_checkpoint)
+        required_paths["pix2pix checkpoint"] = Path(args.pix2pix_checkpoint)
 
     missing = [f"{label}: {path}" for label, path in required_paths.items() if not path.exists()]
     if missing:
@@ -3475,12 +3684,24 @@ def _validate_generation_paths(args: SimpleNamespace, selected_mode: str) -> Non
 
 
 def preview_route(state: dict[str, Any], threshold: float, cross_backend: str) -> str:
-    if not state or not state.get("change_region"):
+    del cross_backend
+    if not state or not state.get("target_tissue_mask"):
         return "Run the tissue stage first."
-    change_region = load_change_region(state["change_region"])
-    ratio = _change_area_fraction(change_region)
-    selected = _select_generation_mode("auto", ratio, threshold, cross_backend=cross_backend)
-    return f"change_region = {ratio:.2%}; auto route = {selected} (threshold {threshold:.0%})"
+    decision = route_agentic_edit_request(
+        load_id_mask(state["reference_tissue_mask"]),
+        load_id_mask(state["target_tissue_mask"]),
+        config=AgenticRoutingConfig(
+            t_inpaint=min(0.12, float(threshold)),
+            t_cross=float(threshold),
+        ),
+    )
+    features = decision.features
+    return (
+        f"route={decision.primary_mode}; confidence={decision.confidence:.0%}; "
+        f"image_change={features.change_ratio_image:.2%}; "
+        f"tissue_change={features.change_ratio_tissue:.2%}; "
+        f"components={features.component_count}; reason={decision.reason}"
+    )
 
 
 def check_cuda_memory() -> str:
@@ -4000,9 +4221,9 @@ def build_ui() -> gr.Blocks:
 
         gr.Markdown("### Image generation")
         with gr.Row():
-            generation_mode = gr.Radio(["dry-run", "auto", "inpaint", "cross-v0", "cross-v1"], value="dry-run", label="generation mode")
-            cross_backend = gr.Radio(["cross-v0", "cross-v1"], value="cross-v1", label="auto cross backend")
-            route_threshold = gr.Slider(0.0, 1.0, value=0.35, step=0.01, label="inpaint if change > threshold")
+            generation_mode = gr.Radio(["agentic", "dry-run", "auto", "inpaint", "cross-v1"], value="agentic", label="generation mode")
+            cross_backend = gr.State("cross-v1")
+            route_threshold = gr.Slider(0.12, 1.0, value=0.30, step=0.01, label="cross if tissue-normalized change >= threshold")
         route_button = gr.Button("Preview route")
         route_log = gr.Textbox(label="route")
         with gr.Accordion("Advanced generation inputs", open=False):
@@ -4011,10 +4232,9 @@ def build_ui() -> gr.Blocks:
                 device = gr.Dropdown(GENERATION_DEVICE_CHOICES, value=GENERATION_DEVICE_CHOICES[0], label="device")
             with gr.Row():
                 inpaint_checkpoint = gr.Textbox(value=DEFAULT_INPAINT_CHECKPOINT, label="inpaint checkpoint")
-                cross_checkpoint = gr.Textbox(value=DEFAULT_CROSS_CHECKPOINT, label="cross-v0 checkpoint")
                 cross_v1_checkpoint = gr.Textbox(value=DEFAULT_CROSS_V1_CHECKPOINT, label="cross-v1 checkpoint")
             with gr.Row():
-                pix2pix_checkpoint = gr.Textbox(value=DEFAULT_PIX2PIX_CHECKPOINT, label="pix2pix checkpoint (optional)")
+                pix2pix_checkpoint = gr.Textbox(value=DEFAULT_PIX2PIX_CHECKPOINT, label="pix2pix checkpoint")
         generate_button = gr.Button("4. Route + generate")
         with gr.Accordion("Large patch stitch experiment", open=False):
             with gr.Row():
@@ -4291,7 +4511,6 @@ def build_ui() -> gr.Blocks:
                 route_threshold,
                 model_path,
                 inpaint_checkpoint,
-                cross_checkpoint,
                 cross_v1_checkpoint,
                 pix2pix_checkpoint,
                 device,
@@ -4307,7 +4526,6 @@ def build_ui() -> gr.Blocks:
                 route_threshold,
                 model_path,
                 inpaint_checkpoint,
-                cross_checkpoint,
                 cross_v1_checkpoint,
                 pix2pix_checkpoint,
                 device,
