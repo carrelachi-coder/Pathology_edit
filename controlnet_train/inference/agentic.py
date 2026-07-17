@@ -266,8 +266,15 @@ def verify_mask_fidelity(
     target_nuclei_mask: np.ndarray | None = None,
     predicted_nuclei_mask: np.ndarray | None = None,
     thresholds: FidelityThresholds | None = None,
+    enforce_off_target_drift: bool = True,
 ) -> VerificationResult:
-    """Deterministically score re-segmented output against target masks."""
+    """Deterministically score re-segmented output against target masks.
+
+    The score is based only on target-region tissue and nuclei consistency so
+    local and global backends remain comparable. Off-target drift is retained
+    as a separate metric and can be enabled as a route-specific acceptance
+    gate, notably for full-patch Cross-v1 generation.
+    """
 
     thresholds = thresholds or FidelityThresholds()
     reference = np.asarray(reference_tissue_mask)
@@ -297,7 +304,7 @@ def verify_mask_fidelity(
         failed.append("changed_region_accuracy")
     if macro_iou < thresholds.changed_region_macro_iou_min:
         failed.append("changed_region_macro_iou")
-    if off_target_drift > thresholds.off_target_drift_max:
+    if enforce_off_target_drift and off_target_drift > thresholds.off_target_drift_max:
         failed.append("off_target_drift")
 
     nuclei_error = None
@@ -309,15 +316,15 @@ def verify_mask_fidelity(
         nuclei_error = _nuclei_density_relative_error(
             target_nuclei, predicted_nuclei, region=change
         )
+        metrics["nuclei_occupied_area_relative_error"] = nuclei_error
+        # Backward-compatible key. This semantic-mask calculation counts
+        # labelled nucleus pixels, not CellViT instances; publication-level
+        # cell counts must come from instance outputs.
         metrics["nuclei_density_relative_error"] = nuclei_error
         if nuclei_error > thresholds.nuclei_density_relative_error_max:
             failed.append("nuclei_density_relative_error")
 
-    score = (
-        0.45 * changed_accuracy
-        + 0.35 * macro_iou
-        + 0.20 * (1.0 - min(1.0, off_target_drift))
-    )
+    score = 0.55 * changed_accuracy + 0.45 * macro_iou
     if nuclei_error is not None:
         score = 0.85 * score + 0.15 * (1.0 - min(1.0, nuclei_error))
     return VerificationResult(

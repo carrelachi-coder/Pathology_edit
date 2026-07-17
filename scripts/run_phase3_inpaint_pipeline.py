@@ -335,12 +335,21 @@ def _build_target_nuclei(
         target = np.array(retained, copy=True)
         new = np.zeros_like(reference_nuclei, dtype=np.uint8)
         status = "preserved_reference_nuclei"
+        shape_sampling = None
     elif args.cell_fill_mode == "blank":
         target = retained
         new = np.zeros_like(reference_nuclei, dtype=np.uint8)
         status = "blanked_change_region"
+        shape_sampling = None
     else:
-        target, status = _run_probnet_cell_fill(args, target_tissue, retained, change_region, output_dir)
+        target, status, shape_sampling = _run_probnet_cell_fill(
+            args,
+            target_tissue,
+            retained,
+            reference_nuclei,
+            change_region,
+            output_dir,
+        )
         new = np.array(target, copy=True)
         new[~np.asarray(change_region, dtype=bool)] = 0
 
@@ -350,6 +359,7 @@ def _build_target_nuclei(
         "status": status,
         "changed_pixels": int(np.count_nonzero(change_region)),
         "source_cell_integrity": integrity_info,
+        "shape_sampling": shape_sampling,
         "retained_nuclei_mask": str(output_dir / "retained_nuclei_mask.png"),
         "new_nuclei_mask": str(output_dir / "new_nuclei_mask.png"),
         "target_combined_mask": str(output_dir / "target_combined_mask.png"),
@@ -419,10 +429,11 @@ def _retain_complete_reference_cells(
 def _run_probnet_cell_fill(
     args: argparse.Namespace,
     target_tissue: np.ndarray,
-    reference_nuclei: np.ndarray,
+    retained_nuclei: np.ndarray,
+    full_reference_nuclei: np.ndarray,
     change_region: np.ndarray,
     output_dir: Path,
-) -> tuple[np.ndarray, str]:
+) -> tuple[np.ndarray, str, dict[str, Any] | None]:
     missing = [
         name for name, value in {
             "--probnet-ckpt": args.probnet_ckpt,
@@ -436,7 +447,11 @@ def _run_probnet_cell_fill(
     cell_dir = output_dir / "probnet_cell_fill"
     cell_dir.mkdir(parents=True, exist_ok=True)
     input_tissue = save_id_mask(target_tissue, cell_dir / "input_tissue.png")
-    input_nuclei = save_id_mask(reference_nuclei, cell_dir / "input_nuclei.png")
+    input_nuclei = save_id_mask(retained_nuclei, cell_dir / "input_nuclei.png")
+    reference_nuclei_shapes = save_id_mask(
+        full_reference_nuclei,
+        cell_dir / "reference_nuclei_shapes.png",
+    )
     edit_region = save_change_region(change_region, cell_dir / "edit_region.png")
     output_nuclei = cell_dir / "target_nuclei.png"
     probnet_device, probnet_env, visible_device = _normalize_probnet_device(args.probnet_device)
@@ -454,6 +469,8 @@ def _run_probnet_cell_fill(
         str(input_tissue),
         "--input-nuclei",
         str(input_nuclei),
+        "--reference-nuclei-shapes",
+        str(reference_nuclei_shapes),
         "--edit-region",
         str(edit_region),
         "--output",
@@ -462,7 +479,21 @@ def _run_probnet_cell_fill(
         probnet_device,
         "--gamma-values",
         args.probnet_gamma_values,
+        "--reference-shape-min-area",
+        str(getattr(args, "reference_shape_min_area", 8)),
+        "--reference-shape-max-area-ratio",
+        str(getattr(args, "reference_shape_max_area_ratio", 0.0)),
+        "--library-size-min-scale",
+        str(getattr(args, "library_size_min_scale", 0.5)),
+        "--library-size-max-scale",
+        str(getattr(args, "library_size_max_scale", 2.0)),
+        "--library-size-log-area-jitter",
+        str(getattr(args, "library_size_log_area_jitter", 0.05)),
     ]
+    if getattr(args, "include_border_reference_shapes", False):
+        cmd.append("--include-border-reference-shapes")
+    if getattr(args, "disable_library_size_calibration", False):
+        cmd.append("--disable-library-size-calibration")
     if args.density_scale_json:
         cmd.extend(["--density-scale-json", str(args.density_scale_json)])
     display_cmd = (
@@ -485,7 +516,19 @@ def _run_probnet_cell_fill(
         if visible_device is not None:
             details = details.replace("Command: " + str(cmd), "Command: " + display_cmd)
         raise RuntimeError(details) from exc
-    return _load_uint8_mask(output_nuclei), "probnet_generated"
+    diagnostics_path = output_nuclei.with_suffix(".diagnostics.json")
+    shape_sampling = None
+    if diagnostics_path.exists():
+        diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+        if diagnostics:
+            first = diagnostics[0]
+            shape_sampling = {
+                "reference_pool": first.get("reference_pool"),
+                "placed_by_shape_source": first.get("placed_by_shape_source"),
+                "sampling": first.get("shape_sampling"),
+                "diagnostics_path": str(diagnostics_path),
+            }
+    return _load_uint8_mask(output_nuclei), "probnet_generated", shape_sampling
 
 
 def _normalize_probnet_device(device: str | None) -> tuple[str, dict[str, str] | None, str | None]:
@@ -1045,6 +1088,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probnet-device", default="auto", choices=("auto", "cuda", "cpu"))
     parser.add_argument("--probnet-gamma-values", default="1.0")
     parser.add_argument("--density-scale-json", type=Path)
+    parser.add_argument("--reference-shape-min-area", type=int, default=8)
+    parser.add_argument("--reference-shape-max-area-ratio", type=float, default=0.0)
+    parser.add_argument("--include-border-reference-shapes", action="store_true")
+    parser.add_argument("--disable-library-size-calibration", action="store_true")
+    parser.add_argument("--library-size-min-scale", type=float, default=0.5)
+    parser.add_argument("--library-size-max-scale", type=float, default=2.0)
+    parser.add_argument("--library-size-log-area-jitter", type=float, default=0.05)
 
     parser.add_argument(
         "--generation-mode",

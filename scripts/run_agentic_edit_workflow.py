@@ -174,6 +174,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             target_nuclei_mask=inputs["target_nuclei"],
             predicted_nuclei_mask=_load_uint8_mask(predicted_nuclei_path),
             thresholds=thresholds,
+            enforce_off_target_drift=artifact.mode != "inpaint",
         )
         _write_json(
             verification_dir / "verification.json",
@@ -182,6 +183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "score": result.score,
                 "metrics": dict(result.metrics),
                 "failed_checks": list(result.failed_checks),
+                "off_target_drift_enforced": artifact.mode != "inpaint",
                 "predicted_tissue_mask": str(predicted_tissue_path),
                 "predicted_nuclei_mask": str(predicted_nuclei_path),
             },

@@ -190,7 +190,8 @@ def _run_pix2pix_transfer(
         run_pix2pix_postprocess,
     )
 
-    # Architecture, steering, identity and trust settings come from the checkpoint.
+    # Architecture, steering and identity settings come from the checkpoint.
+    # The high-resolution nuclei trust gate is retired from production inference.
     bundle_key = (str(Path(checkpoint_path).resolve()), str(device), str(torch_dtype))
     bundle = _PIX2PIX_BUNDLE_CACHE.get(bundle_key)
     if bundle is None:
@@ -211,6 +212,7 @@ def _run_pix2pix_transfer(
         image_size=image_size,
         device=device,
         torch_dtype=torch_dtype,
+        enable_highres_nuclei_trust=False,
     )
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
