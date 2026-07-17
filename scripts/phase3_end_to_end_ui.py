@@ -3029,6 +3029,7 @@ def _run_agentic_generation_stage(
             target_nuclei_mask=target_nuclei,
             predicted_nuclei_mask=_load_uint8_mask(predicted_nuclei_path),
             thresholds=FidelityThresholds(),
+            enforce_off_target_drift=artifact.mode != "inpaint",
         )
 
     workflow = run_agentic_workflow(
