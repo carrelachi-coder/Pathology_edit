@@ -7,9 +7,10 @@ This is the Phase 4 inference entry point. ProbNet decides:
   - spatial placement weights through weighted Poisson sampling
   - nucleus type through P(type | center)
 
-The nuclei library is still used for realistic instance shapes and as a
-conservative density/area fallback. It no longer decides type distribution or
-places cells by rule-only statistics.
+Nucleus shapes are sampled from the current reference patch first, preserving
+the reference morphology domain. The global nuclei library only fills a
+same-class shortage and remains a conservative density/area fallback. It no
+longer decides type distribution or places cells by rule-only statistics.
 """
 
 import argparse
@@ -28,7 +29,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dataset_config import get_config
 from inpaint_cells.models.prob_unet import ProbUNet
-from inpaint_cells.nuclei_library.library import NucleiLibrary, place_nucleus_layered
+from inpaint_cells.nuclei_library.library import (
+    NucleiLibrary,
+    ReferenceFirstNucleiSampler,
+    ReferenceNucleiInstancePool,
+    place_nucleus_layered,
+)
 from inpaint_cells.utils.mask_utils import (
     NUM_NUCLEI,
     NUCLEI_CLASSES,
@@ -224,14 +230,67 @@ def sample_type_at_center(prob, cy, cx, args):
     return NUCLEI_CLASSES[idx]
 
 
-def generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, args, density_scales):
+def build_reference_pool(nuclei_mask, args):
+    if nuclei_mask is None:
+        return None
+    return ReferenceNucleiInstancePool.from_mask(
+        nuclei_mask,
+        min_area=args.reference_shape_min_area,
+        exclude_border=not args.include_border_reference_shapes,
+        max_area_ratio_to_median=args.reference_shape_max_area_ratio,
+    )
+
+
+def sample_instance_for_center(sampler, tissue_id, nuc_type):
+    instance, source = sampler.sample_instance(
+        tissue_id,
+        nuc_type,
+        allow_cross_tissue=(tissue_id != 3),
+    )
+    if instance is None and tissue_id == 3:
+        instance, source = sampler.sample_library_instance(
+            tissue_id,
+            104,
+            allow_cross_tissue=True,
+            requested_type=nuc_type,
+        )
+    if instance is None and tissue_id != 3:
+        instance, source = sampler.sample_library_instance(
+            tissue_id,
+            allow_cross_tissue=False,
+            requested_type=nuc_type,
+        )
+    return instance, source
+
+
+def generate_for_gamma(
+    prob,
+    tissue,
+    input_nuclei,
+    edit_mask,
+    library,
+    reference_pool,
+    gamma,
+    args,
+    density_scales,
+):
     nuc_prob = 1.0 - prob[0]
     output = input_nuclei.copy()
     output[edit_mask] = 0
+    shape_sampler = ReferenceFirstNucleiSampler(
+        library,
+        reference_pool,
+        calibrate_library_size=not args.disable_library_size_calibration,
+        library_size_min_scale=args.library_size_min_scale,
+        library_size_max_scale=args.library_size_max_scale,
+        library_size_log_area_jitter=args.library_size_log_area_jitter,
+    )
 
     diagnostics = {
         "gamma": gamma,
         "placed": 0,
+        "placed_by_shape_source": {"reference": 0, "library": 0},
+        "reference_pool": reference_pool.describe() if reference_pool is not None else None,
         "tissues": {},
     }
 
@@ -257,25 +316,25 @@ def generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, ar
         centers = choose_weighted_centers(candidates, nuc_prob, target_count, gamma)
 
         placed = 0
+        placed_by_shape_source = {"reference": 0, "library": 0}
         for cy, cx in centers:
             nuc_type = sample_type_at_center(prob, cy, cx, args)
             if nuc_type is None:
                 continue
-            instance = library.sample_instance(
+            instance, shape_source = sample_instance_for_center(
+                shape_sampler,
                 tissue_id,
                 nuc_type,
-                allow_cross_tissue=(tissue_id != 3),
             )
-            if instance is None and tissue_id == 3:
-                instance = library.sample_instance(tissue_id, 104, allow_cross_tissue=True)
-            if instance is None and tissue_id != 3:
-                instance = library.sample_instance(tissue_id)
             if instance is None:
                 continue
             if place_nucleus_layered(output, cy, cx, instance, augment=not args.no_augment_instances):
                 placed += 1
+                placed_by_shape_source[shape_source] += 1
 
         diagnostics["placed"] += placed
+        for source, count in placed_by_shape_source.items():
+            diagnostics["placed_by_shape_source"][source] += count
         diagnostics["tissues"][str(tissue_id)] = {
             **count_info,
             "expected_nucleus_area": expected_area,
@@ -285,8 +344,10 @@ def generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, ar
             "target_count": target_count,
             "selected_centers": len(centers),
             "placed": placed,
+            "placed_by_shape_source": placed_by_shape_source,
         }
 
+    diagnostics["shape_sampling"] = shape_sampler.diagnostics()
     return output, diagnostics
 
 
@@ -337,6 +398,18 @@ def run_single(args, model, library, config, density_scales, device):
         raise FileNotFoundError(f"Cannot load edit region mask: {args.edit_region}")
     edit_mask = edit_mask > 128
 
+    reference_nuclei_path = args.reference_nuclei_shapes or args.input_nuclei
+    if reference_nuclei_path:
+        reference_nuclei_raw = load_nuclei_mask(reference_nuclei_path, remap=False)
+        if reference_nuclei_raw.shape != tissue.shape:
+            raise ValueError(
+                "reference nuclei shape mask and tissue mask must have the same size: "
+                f"{reference_nuclei_raw.shape} vs {tissue.shape}"
+            )
+        reference_pool = build_reference_pool(reference_nuclei_raw, args)
+    else:
+        reference_pool = None
+
     if args.input_nuclei:
         input_nuclei = load_nuclei_mask(args.input_nuclei, remap=True)
     else:
@@ -353,7 +426,17 @@ def run_single(args, model, library, config, density_scales, device):
 
     gamma_values = parse_float_list(args.gamma_values)
     for idx, gamma in enumerate(gamma_values):
-        nuclei, diag = generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, args, density_scales)
+        nuclei, diag = generate_for_gamma(
+            prob,
+            tissue,
+            input_nuclei,
+            edit_mask,
+            library,
+            reference_pool,
+            gamma,
+            args,
+            density_scales,
+        )
         diagnostics.append(diag)
 
         if idx == 0:
@@ -362,7 +445,17 @@ def run_single(args, model, library, config, density_scales, device):
             save_path = output_path.with_name(f"{output_path.stem}_gamma_{safe_name_float(gamma)}{output_path.suffix}")
         save_nuclei_mask(nuclei, str(save_path))
         outputs.append((gamma, nuclei))
-        print(f"gamma={gamma:g}: placed {diag['placed']} nuclei -> {save_path}")
+        source_counts = diag["placed_by_shape_source"]
+        print(
+            f"gamma={gamma:g}: placed {diag['placed']} nuclei "
+            f"(reference={source_counts['reference']}, library={source_counts['library']}) "
+            f"-> {save_path}"
+        )
+
+    diagnostics_path = output_path.with_suffix(".diagnostics.json")
+    with open(diagnostics_path, "w") as f:
+        json.dump(diagnostics, f, indent=2)
+    print(f"Shape sampling diagnostics -> {diagnostics_path}")
 
     if args.vis_dir:
         vis_dir = Path(args.vis_dir)
@@ -418,6 +511,8 @@ def run_batch(args, model, library, config, density_scales, device):
     for idx, (name, tissue_path, nuclei_path, mask_path) in enumerate(samples):
         tissue = load_tissue_mask(str(tissue_path))
         gt_nuclei = load_nuclei_mask(str(nuclei_path), remap=True)
+        reference_nuclei_raw = load_nuclei_mask(str(nuclei_path), remap=False)
+        reference_pool = build_reference_pool(reference_nuclei_raw, args)
         edit_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) > 128
         input_nuclei = gt_nuclei.copy()
         input_nuclei[edit_mask] = 0
@@ -426,7 +521,17 @@ def run_batch(args, model, library, config, density_scales, device):
         outputs = []
         sample_diag = []
         for gamma in gamma_values:
-            nuclei, diag = generate_for_gamma(prob, tissue, input_nuclei, edit_mask, library, gamma, args, density_scales)
+            nuclei, diag = generate_for_gamma(
+                prob,
+                tissue,
+                input_nuclei,
+                edit_mask,
+                library,
+                reference_pool,
+                gamma,
+                args,
+                density_scales,
+            )
             suffix = "" if len(gamma_values) == 1 else f"_gamma_{safe_name_float(gamma)}"
             out_path = nuclei_dir / f"{name}{suffix}_nuclei.png"
             save_nuclei_mask(nuclei, str(out_path))
@@ -458,6 +563,14 @@ def build_parser():
     mode.add_argument("--input-tissue", help="Single edited tissue mask PNG")
 
     parser.add_argument("--input-nuclei", default=None, help="Optional existing nuclei mask for single inference")
+    parser.add_argument(
+        "--reference-nuclei-shapes",
+        default=None,
+        help=(
+            "Full reference nuclei mask used as the first-choice instance-shape pool. "
+            "Defaults to --input-nuclei when omitted."
+        ),
+    )
     parser.add_argument("--edit-region", default=None, help="Single edit region mask PNG")
     parser.add_argument("--output", default="nuclei_mask.png", help="Single output nuclei mask path")
     parser.add_argument("--output-dir", default="phase4_probnet_generate", help="Batch output directory")
@@ -501,6 +614,34 @@ def build_parser():
     parser.add_argument("--skip-tissue-ids", type=int, nargs="*", default=[],
                         help="Additional tissue IDs to skip")
     parser.add_argument("--no-augment-instances", action="store_true")
+    parser.add_argument("--reference-shape-min-area", type=int, default=8)
+    parser.add_argument(
+        "--reference-shape-max-area-ratio",
+        type=float,
+        default=0.0,
+        help="Reject same-class components above this multiple of median area; <=0 disables.",
+    )
+    parser.add_argument(
+        "--include-border-reference-shapes",
+        action="store_true",
+        help="Allow clipped nuclei touching the reference patch boundary.",
+    )
+    parser.add_argument(
+        "--disable-library-size-calibration",
+        action="store_true",
+        help=(
+            "Do not resize library fallback nuclei to the current patch's "
+            "same-class reference area distribution."
+        ),
+    )
+    parser.add_argument("--library-size-min-scale", type=float, default=0.5)
+    parser.add_argument("--library-size-max-scale", type=float, default=2.0)
+    parser.add_argument(
+        "--library-size-log-area-jitter",
+        type=float,
+        default=0.05,
+        help="Log-space area jitter after empirical same-class area sampling.",
+    )
     return parser
 
 

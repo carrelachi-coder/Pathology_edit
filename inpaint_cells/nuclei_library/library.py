@@ -132,6 +132,376 @@ class NucleiLibrary:
         return random.choice(candidates)
 
 
+class ReferenceNucleiInstancePool:
+    """Extract reusable, class-preserving nucleus shapes from one reference mask.
+
+    The reference mask may use raw CellViT IDs (101-105) or the internal
+    indices (1-5).  Components touching the patch boundary are excluded by
+    default because their full shape is not observable.  Optional per-class
+    area-outlier filtering is available for masks with merged components, but
+    is disabled by default so genuine pleomorphic nuclei are preserved.
+    """
+
+    def __init__(self, instances=None, rejected=None):
+        self.instances = defaultdict(list)
+        for nuc_type, values in (instances or {}).items():
+            self.instances[int(nuc_type)].extend(values)
+        self.rejected = {
+            "border": 0,
+            "too_small": 0,
+            "area_outlier": 0,
+            **(rejected or {}),
+        }
+
+    @classmethod
+    def from_mask(
+        cls,
+        nuclei_mask,
+        *,
+        min_area=8,
+        exclude_border=True,
+        max_area_ratio_to_median=0.0,
+    ):
+        mask = np.asarray(nuclei_mask)
+        if mask.ndim != 2:
+            raise ValueError(f"reference nuclei mask must be 2D, got {mask.shape}")
+
+        # Accept either raw mask IDs (101-105) or model indices (1-5).
+        positive_values = set(int(v) for v in np.unique(mask) if int(v) > 0)
+        internal_values = set(NUCLEI_INDEX_TO_RAW)
+        if positive_values and positive_values.issubset(internal_values):
+            raw_mask = np.zeros(mask.shape, dtype=np.int64)
+            for index, raw_id in NUCLEI_INDEX_TO_RAW.items():
+                raw_mask[mask == index] = raw_id
+        else:
+            raw_mask = mask.astype(np.int64, copy=False)
+
+        instances = defaultdict(list)
+        rejected = {"border": 0, "too_small": 0, "area_outlier": 0}
+        height, width = raw_mask.shape
+
+        for nuc_type in NUCLEI_CLASSES:
+            count, labels, stats, _ = cv2.connectedComponentsWithStats(
+                (raw_mask == nuc_type).astype(np.uint8),
+                connectivity=8,
+            )
+            candidates = []
+            for component_id in range(1, count):
+                x, y, component_width, component_height, area = (
+                    int(value) for value in stats[component_id]
+                )
+                touches_border = (
+                    x == 0
+                    or y == 0
+                    or x + component_width == width
+                    or y + component_height == height
+                )
+                if exclude_border and touches_border:
+                    rejected["border"] += 1
+                    continue
+                if area < min_area:
+                    rejected["too_small"] += 1
+                    continue
+                candidates.append(
+                    (component_id, x, y, component_width, component_height, area)
+                )
+
+            max_area = None
+            if len(candidates) >= 5 and max_area_ratio_to_median > 0:
+                median_area = float(np.median([item[-1] for item in candidates]))
+                max_area = median_area * float(max_area_ratio_to_median)
+
+            for component_id, x, y, component_width, component_height, area in candidates:
+                if max_area is not None and area > max_area:
+                    rejected["area_outlier"] += 1
+                    continue
+                crop = labels[
+                    y:y + component_height,
+                    x:x + component_width,
+                ] == component_id
+                instances[int(nuc_type)].append(
+                    {
+                        "mask": np.ascontiguousarray(crop, dtype=bool),
+                        "type": int(nuc_type),
+                        "area": int(area),
+                        "source": "reference",
+                    }
+                )
+
+        return cls(instances=instances, rejected=rejected)
+
+    def counts(self):
+        return {
+            int(nuc_type): len(self.instances.get(int(nuc_type), []))
+            for nuc_type in NUCLEI_CLASSES
+        }
+
+    def area_samples(self, nuc_type):
+        """Return accepted reference-instance areas for one CellViT class."""
+        values = []
+        for instance in self.instances.get(int(nuc_type), []):
+            area = int(instance.get("area", np.count_nonzero(instance["mask"])))
+            if area > 0:
+                values.append(area)
+        return values
+
+    def area_statistics(self):
+        """Summarize the patch-local size distribution for every nucleus type."""
+        summaries = {}
+        for nuc_type in NUCLEI_CLASSES:
+            values = np.asarray(self.area_samples(nuc_type), dtype=np.float64)
+            if values.size == 0:
+                continue
+            summaries[str(int(nuc_type))] = {
+                "count": int(values.size),
+                "mean": float(np.mean(values)),
+                "std": float(np.std(values)),
+                "min": float(np.min(values)),
+                "q25": float(np.percentile(values, 25)),
+                "median": float(np.median(values)),
+                "q75": float(np.percentile(values, 75)),
+                "max": float(np.max(values)),
+            }
+        return summaries
+
+    def describe(self):
+        counts = self.counts()
+        return {
+            "counts_by_type": {str(key): int(value) for key, value in counts.items()},
+            "total": int(sum(counts.values())),
+            "area_statistics_by_type": self.area_statistics(),
+            "rejected": {key: int(value) for key, value in self.rejected.items()},
+        }
+
+
+class ReferenceFirstNucleiSampler:
+    """Use same-class reference shapes once, then fall back to the library.
+
+    Library shapes are resized to an empirical area sampled from the current
+    patch's same-class reference nuclei. This retains library morphology while
+    matching patch-local cell-size statistics. If the patch contains no
+    accepted nucleus of that class, the library shape remains uncalibrated and
+    the fallback is recorded explicitly.
+    """
+
+    def __init__(
+        self,
+        library,
+        reference_pool=None,
+        *,
+        calibrate_library_size=True,
+        library_size_min_scale=0.5,
+        library_size_max_scale=2.0,
+        library_size_log_area_jitter=0.05,
+    ):
+        if library_size_min_scale <= 0:
+            raise ValueError("library_size_min_scale must be positive")
+        if library_size_max_scale < library_size_min_scale:
+            raise ValueError("library_size_max_scale must be >= library_size_min_scale")
+        if library_size_log_area_jitter < 0:
+            raise ValueError("library_size_log_area_jitter must be non-negative")
+        self.library = library
+        self.reference_areas_by_type = {
+            int(nuc_type): (
+                reference_pool.area_samples(int(nuc_type))
+                if reference_pool is not None
+                else []
+            )
+            for nuc_type in NUCLEI_CLASSES
+        }
+        self.calibrate_library_size = bool(calibrate_library_size)
+        self.library_size_min_scale = float(library_size_min_scale)
+        self.library_size_max_scale = float(library_size_max_scale)
+        self.library_size_log_area_jitter = float(library_size_log_area_jitter)
+        self.initial_counts = (
+            reference_pool.counts()
+            if reference_pool is not None
+            else {int(nuc_type): 0 for nuc_type in NUCLEI_CLASSES}
+        )
+        self.remaining = {}
+        for nuc_type in NUCLEI_CLASSES:
+            items = list(
+                reference_pool.instances.get(int(nuc_type), [])
+                if reference_pool is not None
+                else []
+            )
+            random.shuffle(items)
+            self.remaining[int(nuc_type)] = items
+        self.requested_by_type = defaultdict(int)
+        self.selected_by_source = defaultdict(int)
+        self.library_fallback_by_type = defaultdict(int)
+        self.library_size_calibrated_by_type = defaultdict(int)
+        self.library_size_uncalibrated_no_reference_by_type = defaultdict(int)
+        self.library_size_scale_clamped_by_type = defaultdict(int)
+        self.library_size_records_by_type = defaultdict(list)
+
+    def _calibrate_library_instance(self, instance):
+        if instance is None or not self.calibrate_library_size:
+            return instance
+
+        nuc_type = int(instance.get("type", 0))
+        reference_areas = self.reference_areas_by_type.get(nuc_type, [])
+        if not reference_areas:
+            self.library_size_uncalibrated_no_reference_by_type[nuc_type] += 1
+            return instance
+
+        source_mask = np.asarray(instance["mask"], dtype=bool)
+        source_area = int(np.count_nonzero(source_mask))
+        if source_area <= 0:
+            return instance
+
+        empirical_area = float(random.choice(reference_areas))
+        if self.library_size_log_area_jitter > 0:
+            empirical_area *= float(
+                np.exp(random.gauss(0.0, self.library_size_log_area_jitter))
+            )
+        target_area = max(1, int(round(empirical_area)))
+        requested_scale = float(np.sqrt(target_area / source_area))
+        applied_scale = float(
+            np.clip(
+                requested_scale,
+                self.library_size_min_scale,
+                self.library_size_max_scale,
+            )
+        )
+        scale_clamped = not np.isclose(requested_scale, applied_scale)
+
+        new_height = max(1, int(round(source_mask.shape[0] * applied_scale)))
+        new_width = max(1, int(round(source_mask.shape[1] * applied_scale)))
+        resized = cv2.resize(
+            source_mask.astype(np.uint8),
+            (new_width, new_height),
+            interpolation=cv2.INTER_NEAREST,
+        ).astype(bool)
+        if np.any(resized):
+            ys, xs = np.where(resized)
+            resized = resized[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+        actual_area = int(np.count_nonzero(resized))
+
+        calibrated = dict(instance)
+        calibrated.update(
+            {
+                "mask": np.ascontiguousarray(resized, dtype=bool),
+                "area": actual_area,
+                "size_calibrated": True,
+                "size_calibration": {
+                    "basis": "same_class_reference_empirical_area",
+                    "source_area": source_area,
+                    "target_area": target_area,
+                    "actual_area": actual_area,
+                    "requested_scale": requested_scale,
+                    "applied_scale": applied_scale,
+                    "scale_clamped": bool(scale_clamped),
+                    "reference_sample_count": len(reference_areas),
+                },
+            }
+        )
+        self.library_size_calibrated_by_type[nuc_type] += 1
+        if scale_clamped:
+            self.library_size_scale_clamped_by_type[nuc_type] += 1
+        self.library_size_records_by_type[nuc_type].append(
+            calibrated["size_calibration"]
+        )
+        return calibrated
+
+    def sample_instance(self, tissue_id, nuc_type, allow_cross_tissue=True):
+        """Return ``(instance, source)`` for an exact requested nucleus type."""
+        nuc_type = int(nuc_type)
+        self.requested_by_type[nuc_type] += 1
+        available = self.remaining.get(nuc_type, [])
+        if available:
+            self.selected_by_source["reference"] += 1
+            return available.pop(), "reference"
+
+        instance = self.library.sample_instance(
+            tissue_id,
+            nuc_type,
+            allow_cross_tissue=allow_cross_tissue,
+        )
+        if instance is not None:
+            instance = self._calibrate_library_instance(instance)
+            self.selected_by_source["library"] += 1
+            self.library_fallback_by_type[nuc_type] += 1
+            return instance, "library"
+        return None, None
+
+    def sample_library_instance(
+        self,
+        tissue_id,
+        nuc_type=None,
+        *,
+        allow_cross_tissue=True,
+        requested_type=None,
+    ):
+        """Use the legacy library fallback while keeping provenance counts."""
+        instance = self.library.sample_instance(
+            tissue_id,
+            nuc_type,
+            allow_cross_tissue=allow_cross_tissue,
+        )
+        if instance is None:
+            return None, None
+        instance = self._calibrate_library_instance(instance)
+        self.selected_by_source["library"] += 1
+        key = requested_type if requested_type is not None else instance.get("type", nuc_type)
+        if key is not None:
+            self.library_fallback_by_type[int(key)] += 1
+        return instance, "library"
+
+    def diagnostics(self):
+        size_records = {}
+        for nuc_type, records in self.library_size_records_by_type.items():
+            if not records:
+                continue
+            size_records[str(int(nuc_type))] = {
+                "count": len(records),
+                "mean_source_area": float(np.mean([item["source_area"] for item in records])),
+                "mean_target_area": float(np.mean([item["target_area"] for item in records])),
+                "mean_actual_area": float(np.mean([item["actual_area"] for item in records])),
+                "mean_applied_scale": float(np.mean([item["applied_scale"] for item in records])),
+                "scale_clamped": int(sum(item["scale_clamped"] for item in records)),
+            }
+        return {
+            "policy": "same_class_reference_without_replacement_then_library",
+            "initial_reference_counts_by_type": {
+                str(key): int(value) for key, value in self.initial_counts.items()
+            },
+            "remaining_reference_counts_by_type": {
+                str(key): len(value) for key, value in self.remaining.items()
+            },
+            "requested_by_type": {
+                str(key): int(value) for key, value in self.requested_by_type.items()
+            },
+            "selected_by_source": {
+                "reference": int(self.selected_by_source.get("reference", 0)),
+                "library": int(self.selected_by_source.get("library", 0)),
+            },
+            "library_fallback_by_type": {
+                str(key): int(value) for key, value in self.library_fallback_by_type.items()
+            },
+            "library_size_calibration": {
+                "enabled": self.calibrate_library_size,
+                "policy": "same_class_reference_empirical_area_bootstrap",
+                "min_scale": self.library_size_min_scale,
+                "max_scale": self.library_size_max_scale,
+                "log_area_jitter": self.library_size_log_area_jitter,
+                "calibrated_by_type": {
+                    str(key): int(value)
+                    for key, value in self.library_size_calibrated_by_type.items()
+                },
+                "uncalibrated_no_reference_by_type": {
+                    str(key): int(value)
+                    for key, value in self.library_size_uncalibrated_no_reference_by_type.items()
+                },
+                "scale_clamped_by_type": {
+                    str(key): int(value)
+                    for key, value in self.library_size_scale_clamped_by_type.items()
+                },
+                "summary_by_type": size_records,
+            },
+        }
+
+
 # ============================================================
 #  泊松盘采样
 # ============================================================
@@ -386,14 +756,19 @@ def place_nucleus_layered(nuclei_map, center_y, center_x, nuc_instance, augment=
             nuc_mask = np.fliplr(nuc_mask)
         if random.random() > 0.5:
             nuc_mask = np.flipud(nuc_mask)
-        scale = random.uniform(0.8, 1.2)
-        if abs(scale - 1.0) > 0.05:
-            new_h = max(1, int(nuc_mask.shape[0] * scale))
-            new_w = max(1, int(nuc_mask.shape[1] * scale))
-            nuc_mask = cv2.resize(
-                nuc_mask.astype(np.uint8), (new_w, new_h),
-                interpolation=cv2.INTER_NEAREST
-            ).astype(bool)
+        preserve_patch_size = (
+            nuc_instance.get("source") == "reference"
+            or bool(nuc_instance.get("size_calibrated", False))
+        )
+        if not preserve_patch_size:
+            scale = random.uniform(0.8, 1.2)
+            if abs(scale - 1.0) > 0.05:
+                new_h = max(1, int(nuc_mask.shape[0] * scale))
+                new_w = max(1, int(nuc_mask.shape[1] * scale))
+                nuc_mask = cv2.resize(
+                    nuc_mask.astype(np.uint8), (new_w, new_h),
+                    interpolation=cv2.INTER_NEAREST
+                ).astype(bool)
 
     h, w = nuc_mask.shape
     H, W = nuclei_map.shape

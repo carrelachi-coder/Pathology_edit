@@ -1,5 +1,7 @@
 from .library import (
     NucleiLibrary,
+    ReferenceFirstNucleiSampler,
+    ReferenceNucleiInstancePool,
     poisson_disk_sampling,
     # Legacy (raw IDs 101-105, combined tissue+nuclei map)
     place_nucleus,
