@@ -39,22 +39,40 @@ from ..utils.mask_utils import (
     load_tissue_mask, load_nuclei_mask,
     NUM_TISSUE, NUM_NUCLEI, NUCLEI_RAW_TO_INDEX,
 )
+from .density_targets import (
+    build_center_density_targets,
+    expand_edit_mask_to_complete_instances,
+    extract_class_centers,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _choose_crop_origin(h: int, w: int, out_size: int, edit_mask: np.ndarray, mode: str) -> Tuple[int, int]:
+def _choose_crop_origin(
+    h: int,
+    w: int,
+    out_size: int,
+    edit_mask: np.ndarray,
+    mode: str,
+    deterministic: bool = False,
+) -> Tuple[int, int]:
     """Choose a crop origin. Mask mode keeps the erased region visible when possible."""
     max_y = max(0, h - out_size)
     max_x = max(0, w - out_size)
     if mode == 'mask' and edit_mask is not None and edit_mask.any():
         ys, xs = np.where(edit_mask > 0.5)
-        idx = random.randrange(len(ys))
-        cy = int(ys[idx])
-        cx = int(xs[idx])
+        if deterministic:
+            cy = (int(ys.min()) + int(ys.max())) // 2
+            cx = (int(xs.min()) + int(xs.max())) // 2
+        else:
+            idx = random.randrange(len(ys))
+            cy = int(ys[idx])
+            cx = int(xs[idx])
         y = min(max(cy - out_size // 2, 0), max_y)
         x = min(max(cx - out_size // 2, 0), max_x)
         return y, x
+    if deterministic:
+        return max_y // 2, max_x // 2
     return random.randint(0, max_y), random.randint(0, max_x)
 
 
@@ -93,12 +111,20 @@ class NucleiProbDatasetLayered(Dataset):
         out_size: int = 256,
         augment: bool = True,
         crop_mode: str = 'mask',
+        dataset_name: str = 'unknown',
+        center_density_targets: bool = False,
+        density_sigma: float = 2.0,
+        complete_instance_erasure: bool = True,
     ):
         self.data_dir = data_dir
         self.cancer_type_index = cancer_type_index
         self.out_size = out_size
         self.augment = augment
         self.crop_mode = crop_mode
+        self.dataset_name = dataset_name
+        self.center_density_targets = center_density_targets
+        self.density_sigma = density_sigma
+        self.complete_instance_erasure = complete_instance_erasure
 
         self.samples = self._discover_samples()
         logger.info(
@@ -120,6 +146,7 @@ class NucleiProbDatasetLayered(Dataset):
                 mask_path = os.path.join(sample_dir, 'edit_mask.png')
                 if os.path.exists(nuclei_path) and os.path.exists(mask_path):
                     samples.append({
+                        'name': os.path.basename(sample_dir),
                         'gt_tissue': tissue_path,
                         'gt_nuclei': nuclei_path,
                         'input_tissue': tissue_path,  # same as GT (edit region defined by mask)
@@ -159,6 +186,7 @@ class NucleiProbDatasetLayered(Dataset):
 
                 if os.path.exists(gt_n_path) and os.path.exists(mask_path):
                     samples.append({
+                        'name': os.path.splitext(name)[0],
                         'gt_tissue': gt_t_path,
                         'gt_nuclei': gt_n_path,
                         'input_tissue': in_t_path,
@@ -184,27 +212,79 @@ class NucleiProbDatasetLayered(Dataset):
 
         mask_bin = cv2.imread(s['mask'], cv2.IMREAD_GRAYSCALE)
         edit_mask = (mask_bin > 128).astype(np.float32)
+        density_centers = (
+            extract_class_centers(gt_nuclei)
+            if self.center_density_targets
+            else None
+        )
+
+        if self.complete_instance_erasure:
+            erasure_mask = expand_edit_mask_to_complete_instances(
+                gt_nuclei,
+                edit_mask,
+            ).astype(np.float32)
+        else:
+            erasure_mask = edit_mask.copy()
 
         h, w = gt_tissue.shape[:2]
 
         # Crop to the training size. Prefer edit-mask-centered crops so the
         # supervised erased region remains visible after cropping.
         if h > self.out_size or w > self.out_size:
-            y, x = _choose_crop_origin(h, w, self.out_size, edit_mask, self.crop_mode)
+            y, x = _choose_crop_origin(
+                h,
+                w,
+                self.out_size,
+                edit_mask,
+                self.crop_mode,
+                deterministic=not self.augment,
+            )
             gt_tissue = gt_tissue[y:y+self.out_size, x:x+self.out_size]
             gt_nuclei = gt_nuclei[y:y+self.out_size, x:x+self.out_size]
             input_tissue = input_tissue[y:y+self.out_size, x:x+self.out_size]
             input_nuclei = input_nuclei[y:y+self.out_size, x:x+self.out_size]
             edit_mask = edit_mask[y:y+self.out_size, x:x+self.out_size]
+            erasure_mask = erasure_mask[y:y+self.out_size, x:x+self.out_size]
+            if density_centers is not None:
+                density_centers = [
+                    (class_id, center_y - y, center_x - x)
+                    for class_id, center_y, center_x in density_centers
+                ]
 
         # Zero nuclei in edit region (AD-3: generate from scratch)
         input_nuclei_masked = input_nuclei.copy()
-        input_nuclei_masked[edit_mask > 0.5] = 0
+        input_nuclei_masked[erasure_mask > 0.5] = 0
+
+        density_target = None
+        target_count_table = None
+        if self.center_density_targets:
+            density_target, target_count_table = build_center_density_targets(
+                gt_nuclei,
+                input_tissue,
+                edit_mask,
+                sigma=self.density_sigma,
+                centers=density_centers,
+            )
 
         # Data augmentation
         if self.augment:
-            gt_tissue, gt_nuclei, input_tissue, input_nuclei_masked, edit_mask = \
-                self._augment(gt_tissue, gt_nuclei, input_tissue, input_nuclei_masked, edit_mask)
+            (
+                gt_tissue,
+                gt_nuclei,
+                input_tissue,
+                input_nuclei_masked,
+                edit_mask,
+                erasure_mask,
+                density_target,
+            ) = self._augment(
+                gt_tissue,
+                gt_nuclei,
+                input_tissue,
+                input_nuclei_masked,
+                edit_mask,
+                erasure_mask,
+                density_target,
+            )
 
         # Target: GT nuclei for supervision
         target = gt_nuclei.astype(np.int64)
@@ -212,16 +292,33 @@ class NucleiProbDatasetLayered(Dataset):
         # Convert to tensors
         # tissue_map and cell_map are int64 for Embedding lookup (AD-4)
         edit_mask = edit_mask[np.newaxis, :, :]  # (1, H, W)
+        erasure_mask = erasure_mask[np.newaxis, :, :]
 
-        return {
+        result = {
             'tissue_map': torch.from_numpy(input_tissue.astype(np.int64)),       # (H, W)
             'cell_map': torch.from_numpy(input_nuclei_masked.astype(np.int64)),  # (H, W)
             'mask': torch.from_numpy(edit_mask).float(),                          # (1, H, W)
+            'erasure_mask': torch.from_numpy(erasure_mask).float(),                # (1, H, W)
             'cancer_id': torch.tensor(self.cancer_type_index, dtype=torch.int64), # scalar
             'target': torch.from_numpy(target),                                   # (H, W)
+            'dataset_name': self.dataset_name,
+            'sample_id': s['name'],
         }
+        if density_target is not None:
+            result['density_target'] = torch.from_numpy(density_target)
+            result['target_count_table'] = torch.from_numpy(target_count_table)
+        return result
 
-    def _augment(self, gt_tissue, gt_nuclei, input_tissue, input_nuclei, edit_mask):
+    def _augment(
+        self,
+        gt_tissue,
+        gt_nuclei,
+        input_tissue,
+        input_nuclei,
+        edit_mask,
+        erasure_mask,
+        density_target,
+    ):
         """Random flip and rotation augmentation for integer maps."""
         # Horizontal flip
         if random.random() > 0.5:
@@ -230,6 +327,9 @@ class NucleiProbDatasetLayered(Dataset):
             input_tissue = input_tissue[:, ::-1].copy()
             input_nuclei = input_nuclei[:, ::-1].copy()
             edit_mask = edit_mask[:, ::-1].copy()
+            erasure_mask = erasure_mask[:, ::-1].copy()
+            if density_target is not None:
+                density_target = density_target[:, :, ::-1].copy()
 
         # Vertical flip
         if random.random() > 0.5:
@@ -238,6 +338,9 @@ class NucleiProbDatasetLayered(Dataset):
             input_tissue = input_tissue[::-1, :].copy()
             input_nuclei = input_nuclei[::-1, :].copy()
             edit_mask = edit_mask[::-1, :].copy()
+            erasure_mask = erasure_mask[::-1, :].copy()
+            if density_target is not None:
+                density_target = density_target[:, ::-1, :].copy()
 
         # 90-degree rotation
         if random.random() > 0.5:
@@ -247,8 +350,23 @@ class NucleiProbDatasetLayered(Dataset):
             input_tissue = np.rot90(input_tissue, k).copy()
             input_nuclei = np.rot90(input_nuclei, k).copy()
             edit_mask = np.rot90(edit_mask, k).copy()
+            erasure_mask = np.rot90(erasure_mask, k).copy()
+            if density_target is not None:
+                density_target = np.rot90(
+                    density_target,
+                    k,
+                    axes=(1, 2),
+                ).copy()
 
-        return gt_tissue, gt_nuclei, input_tissue, input_nuclei, edit_mask
+        return (
+            gt_tissue,
+            gt_nuclei,
+            input_tissue,
+            input_nuclei,
+            edit_mask,
+            erasure_mask,
+            density_target,
+        )
 
 
 # ============================================================
@@ -282,6 +400,10 @@ class NucleiProbDatasetLegacy(Dataset):
         out_size: int = 256,
         augment: bool = True,
         crop_mode: str = 'mask',
+        dataset_name: str = 'unknown',
+        center_density_targets: bool = False,
+        density_sigma: float = 2.0,
+        complete_instance_erasure: bool = True,
     ):
         self.gt_dir = gt_dir
         self.train_dir = train_dir
@@ -289,6 +411,10 @@ class NucleiProbDatasetLegacy(Dataset):
         self.out_size = out_size
         self.augment = augment
         self.crop_mode = crop_mode
+        self.dataset_name = dataset_name
+        self.center_density_targets = center_density_targets
+        self.density_sigma = density_sigma
+        self.complete_instance_erasure = complete_instance_erasure
 
         all_gt = sorted(glob.glob(os.path.join(gt_dir, '*.png')))
         self.samples = []
@@ -297,7 +423,12 @@ class NucleiProbDatasetLegacy(Dataset):
             train_path = os.path.join(train_dir, fname)
             mask_path = os.path.join(train_dir, fname.replace('.png', '_mask001.png'))
             if os.path.exists(train_path) and os.path.exists(mask_path):
-                self.samples.append({'gt': gt_path, 'input': train_path, 'mask': mask_path})
+                self.samples.append({
+                    'name': os.path.splitext(fname)[0],
+                    'gt': gt_path,
+                    'input': train_path,
+                    'mask': mask_path,
+                })
 
         logger.info(
             f"NucleiProbDatasetLegacy: {len(self.samples)} samples "
@@ -321,7 +452,14 @@ class NucleiProbDatasetLegacy(Dataset):
         # Crop to the training size. Prefer edit-mask-centered crops so the
         # supervised erased region remains visible after cropping.
         if h > self.out_size or w > self.out_size:
-            y, x = _choose_crop_origin(h, w, self.out_size, edit_mask_full, self.crop_mode)
+            y, x = _choose_crop_origin(
+                h,
+                w,
+                self.out_size,
+                edit_mask_full,
+                self.crop_mode,
+                deterministic=not self.augment,
+            )
             gt_rgb = gt_rgb[y:y+self.out_size, x:x+self.out_size]
             input_rgb = input_rgb[y:y+self.out_size, x:x+self.out_size]
             mask_bin = mask_bin[y:y+self.out_size, x:x+self.out_size]
@@ -332,8 +470,16 @@ class NucleiProbDatasetLegacy(Dataset):
 
         edit_mask = (mask_bin > 128).astype(np.float32)
 
+        if self.complete_instance_erasure:
+            erasure_mask = expand_edit_mask_to_complete_instances(
+                gt_nuclei,
+                edit_mask,
+            ).astype(np.float32)
+        else:
+            erasure_mask = edit_mask.copy()
+
         # Zero nuclei in edit region (AD-3)
-        input_nuclei[edit_mask > 0.5] = 0
+        input_nuclei[erasure_mask > 0.5] = 0
 
         # Augmentation
         if self.augment:
@@ -343,12 +489,14 @@ class NucleiProbDatasetLegacy(Dataset):
                 input_tissue = input_tissue[:, ::-1].copy()
                 input_nuclei = input_nuclei[:, ::-1].copy()
                 edit_mask = edit_mask[:, ::-1].copy()
+                erasure_mask = erasure_mask[:, ::-1].copy()
             if random.random() > 0.5:
                 gt_tissue = gt_tissue[::-1, :].copy()
                 gt_nuclei = gt_nuclei[::-1, :].copy()
                 input_tissue = input_tissue[::-1, :].copy()
                 input_nuclei = input_nuclei[::-1, :].copy()
                 edit_mask = edit_mask[::-1, :].copy()
+                erasure_mask = erasure_mask[::-1, :].copy()
             if random.random() > 0.5:
                 k = random.choice([1, 2, 3])
                 gt_tissue = np.rot90(gt_tissue, k).copy()
@@ -356,17 +504,35 @@ class NucleiProbDatasetLegacy(Dataset):
                 input_tissue = np.rot90(input_tissue, k).copy()
                 input_nuclei = np.rot90(input_nuclei, k).copy()
                 edit_mask = np.rot90(edit_mask, k).copy()
+                erasure_mask = np.rot90(erasure_mask, k).copy()
 
         target = gt_nuclei.astype(np.int64)
+        density_target = None
+        target_count_table = None
+        if self.center_density_targets:
+            density_target, target_count_table = build_center_density_targets(
+                target,
+                input_tissue,
+                edit_mask,
+                sigma=self.density_sigma,
+            )
         edit_mask = edit_mask[np.newaxis, :, :]
+        erasure_mask = erasure_mask[np.newaxis, :, :]
 
-        return {
+        result = {
             'tissue_map': torch.from_numpy(input_tissue.astype(np.int64)),
             'cell_map': torch.from_numpy(input_nuclei.astype(np.int64)),
             'mask': torch.from_numpy(edit_mask).float(),
+            'erasure_mask': torch.from_numpy(erasure_mask).float(),
             'cancer_id': torch.tensor(self.cancer_type_index, dtype=torch.int64),
             'target': torch.from_numpy(target),
+            'dataset_name': self.dataset_name,
+            'sample_id': s['name'],
         }
+        if density_target is not None:
+            result['density_target'] = torch.from_numpy(density_target)
+            result['target_count_table'] = torch.from_numpy(target_count_table)
+        return result
 
     @staticmethod
     def _rgb_to_layers(rgb_img):
@@ -423,6 +589,9 @@ def build_multi_dataset(
     out_size: int = 256,
     augment: bool = True,
     crop_mode: str = 'mask',
+    center_density_targets: bool = False,
+    density_sigma: float = 2.0,
+    complete_instance_erasure: bool = True,
 ) -> Tuple[ConcatDataset, WeightedRandomSampler]:
     """
     Build a combined dataset from multiple data sources with weighted sampling.
@@ -480,6 +649,10 @@ def build_multi_dataset(
                 out_size=out_size,
                 augment=augment and (split == 'train'),
                 crop_mode=crop_mode,
+                dataset_name=ds_name,
+                center_density_targets=center_density_targets,
+                density_sigma=density_sigma,
+                complete_instance_erasure=complete_instance_erasure,
             )
         else:
             # Legacy LaMa format
@@ -490,6 +663,10 @@ def build_multi_dataset(
                 out_size=out_size,
                 augment=augment and (split == 'train'),
                 crop_mode=crop_mode,
+                dataset_name=ds_name,
+                center_density_targets=center_density_targets,
+                density_sigma=density_sigma,
+                complete_instance_erasure=complete_instance_erasure,
             )
 
         if len(ds) > 0:

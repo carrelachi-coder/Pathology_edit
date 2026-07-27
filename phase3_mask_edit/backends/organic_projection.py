@@ -76,7 +76,10 @@ def apply_organic_projected_label_write(
     if mask.ndim != 2:
         raise ValueError("old_mask must be a 2D id mask.")
 
-    candidate = np.asarray(raw_candidate, dtype=bool)
+    # Projection and primitive-specific cleanup may update their working mask.
+    # Keep the caller-owned proposal immutable so sequential edits can safely
+    # reuse the same LLM contour.
+    candidate = np.asarray(raw_candidate, dtype=bool).copy()
     if candidate.shape != mask.shape:
         raise ValueError(
             "raw_candidate shape must match old_mask shape: "
@@ -111,6 +114,7 @@ def apply_organic_projected_label_write(
         source_labels=source_labels,
         target_label=target_label,
         legal_domain=legal_domain,
+        strength=strength,
     )
     legal_domain = policy.legal_domain
     legal_pixels = int(np.count_nonzero(legal_domain))
@@ -1594,7 +1598,7 @@ def _projection_params(
         allow_fallback_when_empty=_config_bool(
             allow_fallback_when_empty
             if allow_fallback_when_empty is not None
-            else ranges.get("organic_allow_fallback_when_empty", True)
+            else ranges.get("organic_allow_fallback_when_empty", False)
         ),
     )
 
@@ -1643,6 +1647,7 @@ def _policy_for_primitive(
     source_labels: Sequence[str],
     target_label: str,
     legal_domain: np.ndarray,
+    strength: str,
 ) -> OrganicProjectionPolicy:
     if primitive_name == "stromal_immune_infiltration":
         return _stromal_immune_policy(
@@ -1657,6 +1662,7 @@ def _policy_for_primitive(
             schema=schema,
             primitive_config=primitive_config,
             legal_domain=legal_domain,
+            strength=strength,
         )
     if primitive_name == "intratumoral_immune_infiltration":
         return _intratumoral_immune_policy(
@@ -2014,11 +2020,13 @@ def _necrosis_policy(
     schema: MaskProfileSchema,
     primitive_config: Mapping[str, Any],
     legal_domain: np.ndarray,
+    strength: str,
 ) -> OrganicProjectionPolicy:
     ranges = primitive_config.get("parameter_ranges", {})
     tumor = np.isin(mask, schema.tumor_fine_ids)
     necrosis = _safe_label_mask(mask, schema, "Necrosis")
-    legal = legal_domain & tumor & ~necrosis
+    base_legal = legal_domain & tumor & ~necrosis
+    legal = base_legal
     score = np.zeros(mask.shape, dtype=float)
 
     necrosis_radius = _positive_float(
@@ -2028,12 +2036,29 @@ def _necrosis_policy(
     allow_multifocal_new_foci = _config_bool(
         ranges.get("allow_multifocal_new_foci_when_existing_necrosis", False)
     )
+    tumor_pixels = int(np.count_nonzero(tumor))
+    target_interval = _first_interval(
+        ranges.get("target_changed_area_fraction"),
+        strength=strength,
+    )
+    minimum_required_pixels = (
+        int(np.ceil(tumor_pixels * target_interval[0] - 1e-12))
+        if target_interval is not None
+        else 0
+    )
     expansion_band_pixels = 0
+    used_disconnected_necrosis_fallback = False
+    used_insufficient_expansion_band_fallback = False
     if used_existing_necrosis and not allow_multifocal_new_foci:
         dist_to_necrosis = ndimage.distance_transform_edt(~necrosis)
-        expansion_domain = legal & (dist_to_necrosis <= necrosis_radius)
-        legal = expansion_domain
+        expansion_domain = base_legal & (dist_to_necrosis <= necrosis_radius)
         expansion_band_pixels = int(np.count_nonzero(expansion_domain))
+        if expansion_band_pixels >= minimum_required_pixels and expansion_band_pixels > 0:
+            legal = expansion_domain
+        elif expansion_band_pixels == 0:
+            used_disconnected_necrosis_fallback = True
+        else:
+            used_insufficient_expansion_band_fallback = True
 
     boundary_radius = _positive_float(
         None, ranges.get("tumor_boundary_margin_radius_px", 64.0)
@@ -2065,7 +2090,6 @@ def _necrosis_policy(
         score -= vessel_weight * vessel_penalty
 
     score[~legal] = 0.0
-    tumor_pixels = int(np.count_nonzero(tumor))
     existing_necrosis_pixels = int(np.count_nonzero(necrosis))
     return OrganicProjectionPolicy(
         spatial_score=score,
@@ -2073,8 +2097,21 @@ def _necrosis_policy(
         policy_params={
             "legal_domain_policy": (
                 "tumor_near_existing_necrosis_expansion_band"
-                if used_existing_necrosis and not allow_multifocal_new_foci
-                else "original_tumor_only_excluding_existing_necrosis"
+                if (
+                    used_existing_necrosis
+                    and not allow_multifocal_new_foci
+                    and not used_disconnected_necrosis_fallback
+                    and not used_insufficient_expansion_band_fallback
+                )
+                else (
+                    "original_tumor_fallback_for_disconnected_existing_necrosis"
+                    if used_disconnected_necrosis_fallback
+                    else (
+                        "original_tumor_fallback_for_insufficient_necrosis_expansion_band"
+                        if used_insufficient_expansion_band_fallback
+                        else "original_tumor_only_excluding_existing_necrosis"
+                    )
+                )
             ),
             "tumor_pixels": tumor_pixels,
             "existing_necrosis_pixels": existing_necrosis_pixels,
@@ -2088,6 +2125,13 @@ def _necrosis_policy(
                 allow_multifocal_new_foci
             ),
             "existing_necrosis_expansion_band_pixels": expansion_band_pixels,
+            "minimum_required_pixels_for_strength": minimum_required_pixels,
+            "used_disconnected_necrosis_fallback": (
+                used_disconnected_necrosis_fallback
+            ),
+            "used_insufficient_expansion_band_fallback": (
+                used_insufficient_expansion_band_fallback
+            ),
             "vessel_avoidance_radius_px": vessel_radius,
             "vessel_avoidance_weight": vessel_weight,
             "used_vessel_avoidance": used_vessel_avoidance,
@@ -3641,7 +3685,9 @@ def _engulf_necrosis_intrusions(
     if not np.any(selected) or not np.any(engulfable):
         return selected, {
             "enabled": True,
+            "proposed_engulfed_pixels": 0,
             "engulfed_pixels": 0,
+            "validation_clipped_pixels": 0,
             "engulfed_components": 0,
             "engulfed_label_pixels": {},
         }
@@ -3690,11 +3736,23 @@ def _engulf_necrosis_intrusions(
         kept |= component
         engulfed_components += 1
 
+    proposed_engulfed_pixels = int(np.count_nonzero(kept))
+    validator_closed = ndimage.binary_closing(
+        necrosis_body | kept,
+        structure=_disk_structure(6),
+        border_value=0,
+    )
+    kept &= validator_closed
+    retained_engulfed_pixels = int(np.count_nonzero(kept))
     updated = selected | kept
     return updated, {
         "enabled": True,
         "closing_radius_px": float(closing_radius),
-        "engulfed_pixels": int(np.count_nonzero(kept)),
+        "proposed_engulfed_pixels": proposed_engulfed_pixels,
+        "engulfed_pixels": retained_engulfed_pixels,
+        "validation_clipped_pixels": (
+            proposed_engulfed_pixels - retained_engulfed_pixels
+        ),
         "engulfed_components": int(engulfed_components),
         "engulfed_label_pixels": _label_pixel_counts(
             mask,
@@ -3738,13 +3796,12 @@ def _necrosis_engulfable_intrusion_domain(
     if labels is None:
         labels = [
             "Tumor",
-            "Immune infiltrate",
             "Stroma",
             "Other tissue",
             "Normal epithelium",
         ]
     if not isinstance(labels, list):
-        labels = ["Tumor", "Immune infiltrate", "Stroma", "Other tissue", "Normal epithelium"]
+        labels = ["Tumor", "Stroma", "Other tissue", "Normal epithelium"]
     domain = np.zeros(mask.shape, dtype=bool)
     for label in labels:
         if isinstance(label, str) and label in schema.readable_labels:
@@ -4011,8 +4068,33 @@ def _immune_decrease_target_pixels(
     immune_pixels = int(
         np.count_nonzero(_safe_label_mask(mask, schema, "Immune infiltrate"))
     )
-    target = int(np.ceil(immune_pixels * midpoint))
+    target = _feasible_interval_target_pixels(
+        immune_pixels,
+        lower=lower,
+        upper=upper,
+        preferred_fraction=midpoint,
+    )
     return min(target, legal_pixels)
+
+
+def _feasible_interval_target_pixels(
+    reference_pixels: int,
+    *,
+    lower: float,
+    upper: float,
+    preferred_fraction: float,
+) -> int:
+    if reference_pixels <= 0 or upper <= 0:
+        return 0
+    minimum = max(1, int(np.ceil(reference_pixels * lower - 1e-12)))
+    maximum = min(
+        reference_pixels,
+        int(np.floor(reference_pixels * upper + 1e-12)),
+    )
+    preferred = max(1, int(np.floor(reference_pixels * preferred_fraction + 0.5)))
+    if minimum <= maximum:
+        return min(max(preferred, minimum), maximum)
+    return min(preferred, reference_pixels)
 
 
 def _immune_decrease_max_removable_pixels(

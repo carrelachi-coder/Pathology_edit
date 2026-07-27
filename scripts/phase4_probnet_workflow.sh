@@ -53,6 +53,7 @@ IMG_SIZE="${IMG_SIZE:-256}"
 BATCH_SIZE="${BATCH_SIZE:-16}"
 NUM_EPOCHS="${NUM_EPOCHS:-100}"
 N_AUGMENTATIONS="${N_AUGMENTATIONS:-3}"
+SPLIT_MANIFEST="${SPLIT_MANIFEST:-}"
 
 # Generation knobs.
 PROFILE_DIR="${PROFILE_DIR:-${REPO_ROOT}/inpaint_cells/configs}"
@@ -99,6 +100,10 @@ echo "  conda activate pathology-phase4"
 
 echo
 echo "== 1. Prepare ProbNet training data =="
+SPLIT_ARGS=()
+if [[ -n "${SPLIT_MANIFEST}" ]]; then
+  SPLIT_ARGS+=(--split-manifest "${SPLIT_MANIFEST}")
+fi
 python inpaint_cells/data/prepare_dataset.py \
   --dataset "${DATASET}" \
   --input-dir "${RAW_PATCH_DIR}" \
@@ -106,7 +111,8 @@ python inpaint_cells/data/prepare_dataset.py \
   --format auto \
   --n-augmentations "${N_AUGMENTATIONS}" \
   --val-ratio 0.1 \
-  --seed 42
+  --seed 42 \
+  "${SPLIT_ARGS[@]}"
 
 echo
 echo "== 2. Build nuclei instance library =="

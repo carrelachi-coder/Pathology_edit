@@ -53,11 +53,12 @@ Phase 4.4 相比旧版 (v2) 的改动:
 import os
 import sys
 import json
+import hashlib
 import argparse
 import glob
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -506,6 +507,56 @@ def _discover_legacy_samples(input_dir):
     return samples
 
 
+def _load_grouped_split_assignments(
+    manifest_path: str,
+    dataset_name: str,
+) -> Tuple[Dict[str, str], Dict[str, int], str]:
+    """Load train/val/test source assignments from a grouped Segmentator manifest."""
+    with open(manifest_path, 'rb') as handle:
+        raw = handle.read()
+    payload = json.loads(raw)
+    dataset_id = dataset_name.lower()
+    assignments: Dict[str, str] = {}
+    group_sets = {'train': set(), 'val': set(), 'test': set()}
+
+    for split in ('train', 'val', 'test'):
+        for record in payload.get(split, []):
+            if str(record.get('dataset_id', '')).lower() != dataset_id:
+                continue
+            sample_name = Path(str(record.get('image', record.get('sample_id', '')))).stem
+            if not sample_name:
+                raise ValueError(f"Grouped split record has no image/sample_id: {record}")
+            previous = assignments.get(sample_name)
+            if previous is not None and previous != split:
+                raise ValueError(
+                    f"Sample {dataset_name}/{sample_name} occurs in both {previous} and {split}."
+                )
+            assignments[sample_name] = split
+            group_id = record.get('group_id')
+            if group_id is not None:
+                group_sets[split].add(str(group_id))
+
+    if not assignments:
+        raise ValueError(
+            f"No records for dataset {dataset_name!r} were found in split manifest {manifest_path}."
+        )
+    if not any(split == 'train' for split in assignments.values()):
+        raise ValueError(f"Grouped split has no train records for {dataset_name}.")
+    if not any(split == 'val' for split in assignments.values()):
+        raise ValueError(f"Grouped split has no val records for {dataset_name}.")
+
+    for left, right in (('train', 'val'), ('train', 'test'), ('val', 'test')):
+        overlap = group_sets[left] & group_sets[right]
+        if overlap:
+            raise ValueError(
+                f"Grouped manifest leaks {dataset_name} groups across {left}/{right}: "
+                f"{sorted(overlap)[:5]}"
+            )
+
+    group_counts = {split: len(groups) for split, groups in group_sets.items()}
+    return assignments, group_counts, hashlib.sha256(raw).hexdigest()
+
+
 def prepare_dataset(
     input_dir: str,
     output_dir: str,
@@ -514,6 +565,7 @@ def prepare_dataset(
     val_ratio: float = 0.1,
     n_augmentations: int = 3,
     seed: int = 42,
+    split_manifest: Optional[str] = None,
 ):
     """
     准备 ProbNet 训练数据.
@@ -557,10 +609,33 @@ def prepare_dataset(
 
     logger.info(f"Found {len(all_samples)} input samples")
 
-    # Train/val 划分
-    n_val = max(int(len(all_samples) * val_ratio), 1)
-    indices = rng.permutation(len(all_samples))
-    val_indices = set(indices[:n_val].tolist())
+    # Train/val split. A grouped manifest is required for leakage-safe formal runs.
+    split_assignments = None
+    split_group_counts = None
+    split_manifest_sha256 = None
+    if split_manifest:
+        split_assignments, split_group_counts, split_manifest_sha256 = \
+            _load_grouped_split_assignments(split_manifest, dataset_name)
+        discovered_names = {sample['name'] for sample in all_samples}
+        missing = sorted(discovered_names - set(split_assignments))
+        if missing:
+            raise ValueError(
+                f"Grouped split manifest does not cover {len(missing)} discovered {dataset_name} "
+                f"samples; examples: {missing[:5]}"
+            )
+        logger.info(
+            f"Using grouped split manifest: {split_manifest} "
+            f"(groups={split_group_counts})"
+        )
+        val_indices = set()
+    else:
+        logger.warning(
+            "No --split-manifest supplied; falling back to patch-level random split. "
+            "Do not use this fallback for formal evaluation."
+        )
+        n_val = max(int(len(all_samples) * val_ratio), 1)
+        indices = rng.permutation(len(all_samples))
+        val_indices = set(indices[:n_val].tolist())
 
     # 创建输出目录 (分层格式)
     output_path = Path(output_dir)
@@ -573,6 +648,7 @@ def prepare_dataset(
     stats = {"train": 0, "val": 0}
     mode_counts = {"negative": 0, "full_image": 0, "large_region": 0, "local": 0}
     skipped = 0
+    held_out_test_sources = 0
 
     for file_idx, sample in enumerate(all_samples):
         # 加载样本
@@ -586,7 +662,13 @@ def prepare_dataset(
                 skipped += 1
                 continue
 
-        split = "val" if file_idx in val_indices else "train"
+        if split_assignments is not None:
+            split = split_assignments[sample['name']]
+            if split == 'test':
+                held_out_test_sources += 1
+                continue
+        else:
+            split = "val" if file_idx in val_indices else "train"
 
         # 生成擦除样本
         augmented = process_single_sample(
@@ -640,11 +722,23 @@ def prepare_dataset(
         'input_format': fmt,
         'n_augmentations': n_augmentations,
         'seed': seed,
+        'split_strategy': (
+            'group_manifest_train_val_with_test_held_out'
+            if split_assignments is not None
+            else 'patch_random'
+        ),
+        'split_manifest': split_manifest,
+        'split_manifest_sha256': split_manifest_sha256,
+        'split_group_counts': split_group_counts,
+        'held_out_test_sources': held_out_test_sources,
         'total_samples': total,
         'train_samples': stats['train'],
         'val_samples': stats['val'],
         'skipped': skipped,
         'mode_distribution': mode_counts,
+        'complete_instance_erasure': 'runtime_derived_from_gt_nuclei',
+        'stored_mask_role': 'conditioning_changed_region',
+        'instance_definition': 'per_class_8_connected_components',
         'output_format': 'layered',
         'output_structure': {
             'gt_tissue': 'uint8 PNG, values 0-15 (unified fine tissue IDs)',
@@ -689,6 +783,11 @@ if __name__ == "__main__":
     parser.add_argument("--n-augmentations", type=int, default=3,
                         help="Number of erasure augmentations per image (default: 3)")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--split-manifest",
+        default=None,
+        help="Grouped Segmentator manifest whose train/val/test assignments are reused",
+    )
     args = parser.parse_args()
 
     prepare_dataset(
@@ -699,4 +798,5 @@ if __name__ == "__main__":
         val_ratio=args.val_ratio,
         n_augmentations=args.n_augmentations,
         seed=args.seed,
+        split_manifest=args.split_manifest,
     )

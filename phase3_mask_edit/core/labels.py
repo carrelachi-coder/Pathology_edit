@@ -115,6 +115,11 @@ def _other_tissue_ids(cfg) -> tuple[int, ...]:
 
 def _semantic_warnings(profile_name: str, readable_labels: frozenset[str]) -> dict[str, str]:
     warnings: dict[str, str] = {}
+    if profile_name.upper() == "UNIFIED_COARSE":
+        warnings["__profile__"] = (
+            "UNIFIED_COARSE describes mask encoding only; record image/dataset "
+            "provenance and downstream organ conditioning separately."
+        )
     if profile_name.upper() == "ORCA" and "Other tissue" in readable_labels:
         warnings["Other tissue"] = (
             "ORCA non-carcinoma tissue is a coarse mixed class; use it as "

@@ -1,0 +1,28 @@
+# Frozen exploratory tumor-increase UNI-2h utility cohort on amax2.
+data_root: /data/wqx/flowedit/data
+output_dir: /data1/zhao/wqx/benchmarks/data/embedding_utility_bcss_moderate_600
+# Oversample before execution because the static capacity gate is intentionally
+# cheaper than the full production mask edit. Exactly 600 validated rows are
+# frozen after target-mask materialization.
+patches_per_combo: 700
+seed: 20260721
+strengths: [moderate]
+allowed_primitives: [tumor_burden_increase]
+excluded_primitives: []
+max_masks_per_profile: null
+early_stop_when_full: true
+require_image: true
+reject_failed_qc: true
+require_complete_ordinal_groups: false
+max_patches_per_wsi_per_cell: 10
+
+profiles:
+  - organ: breast
+    profile: BCSS
+    source_dataset: BCSS
+    mask_globs: ["BCSS_PATCHES/tissue_masks/*.png"]
+    image_globs: ["BCSS_PATCHES/images/*.png"]
+    magnification: 40
+    um_per_px: 0.25
+    wsi_id_regex: "^(?P<wsi>TCGA-[^_]+)"
+    patient_id_regex: "^(?P<patient>TCGA-[A-Z0-9]{2}-[A-Z0-9]{4})"

@@ -15,8 +15,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from segmentator.config import DatasetManifest
 from segmentator.data import TissueSegmentationDataset, build_manifest, load_manifest
-from segmentator.metrics import confusion_matrix, segmentation_metrics
-from segmentator.model import BaselineSegmenter
+from segmentator.metrics import group_macro_iou, segmentation_metrics
+from segmentator.inference import load_checkpoint
 
 
 DEFAULT_LABELS = (
@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-root", required=True)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--manifest", type=Path, default=None, help="Optional fixed split manifest JSON.")
+    parser.add_argument("--split", choices=["val", "test"], default="val")
     parser.add_argument("--uni2h-repo", default="UNI-2h")
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--train-count", type=int, default=1000)
@@ -47,6 +48,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--decoder", choices=["upernet", "mask2former"], default="upernet")
     parser.add_argument("--mask2former-queries", type=int, default=100)
     parser.add_argument("--mask2former-ignore-index", type=int, default=255)
+    parser.add_argument("--symmetric-padding", action="store_true")
+    parser.add_argument("--boundary-refinement", action="store_true")
+    parser.add_argument("--cellvit-mode", choices=["none", "teacher", "input"], default="none")
+    parser.add_argument("--cell-density-sigma", type=float, default=8.0)
+    parser.add_argument("--metric-sample-limit", type=int, default=0)
     parser.add_argument("--remap-invalid-to", type=int, default=7)
     parser.add_argument("--boundary-width", type=int, default=2)
     parser.add_argument("--disable-cudnn", action="store_true")
@@ -64,12 +70,17 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         if args.manifest is not None
         else build_manifest(Path(args.dataset_root), args.train_count, args.val_count, seed=args.seed)
     )
+    records = list(manifest.test if args.split == "test" else manifest.val)
+    if not records:
+        raise ValueError(f"manifest has no records for split={args.split}")
     val_ds = TissueSegmentationDataset(
-        list(manifest.val),
+        records,
         image_size=args.image_size,
         augment=False,
         num_classes=args.num_classes,
         remap_invalid_to=args.remap_invalid_to,
+        cellvit_mode=args.cellvit_mode,
+        cell_density_sigma=args.cell_density_sigma,
     )
     val_loader = DataLoader(
         val_ds,
@@ -78,29 +89,34 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         num_workers=args.num_workers,
     )
 
-    model = BaselineSegmenter(
+    model = load_checkpoint(
+        args.checkpoint,
         num_classes=args.num_classes,
-        freeze_encoder=True,
         local_repo=args.uni2h_repo,
         decoder=args.decoder,
         mask2former_queries=args.mask2former_queries,
         mask2former_ignore_index=args.mask2former_ignore_index,
+        symmetric_padding=args.symmetric_padding,
+        boundary_refinement=args.boundary_refinement,
+        cellvit_mode=args.cellvit_mode,
     ).to(device)
-    state = torch.load(Path(args.checkpoint), map_location="cpu")
-    model.load_state_dict(state, strict=True)
-    model.eval()
 
-    mat = torch.zeros(args.num_classes, args.num_classes, dtype=torch.long)
     preds: list[torch.Tensor] = []
     targets: list[torch.Tensor] = []
+    dataset_ids: list[str] = []
+    group_ids: list[str] = []
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="eval", dynamic_ncols=True):
             image = batch["image"].to(device)
             target = batch["mask"]
-            pred = model(image)["pred"].cpu()
-            mat += confusion_matrix(pred, target, args.num_classes)
+            nuclei_density = batch.get("nuclei_density")
+            if torch.is_tensor(nuclei_density):
+                nuclei_density = nuclei_density.to(device)
+            pred = model(image, nuclei_density=nuclei_density)["pred"].cpu()
             preds.append(pred)
             targets.append(target)
+            dataset_ids.extend(str(value) for value in batch["dataset_id"])
+            group_ids.extend(str(value) for value in batch["group_id"])
 
     pred_all = torch.cat(preds, dim=0)
     target_all = torch.cat(targets, dim=0)
@@ -111,7 +127,29 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         args.num_classes,
         class_names=class_names,
         boundary_width=args.boundary_width,
+        metric_sample_limit=args.metric_sample_limit,
     )
+    metrics["case_macro"] = group_macro_iou(pred_all, target_all, group_ids, args.num_classes)
+    per_dataset = {}
+    for dataset_id in sorted(set(dataset_ids)):
+        indices = [index for index, value in enumerate(dataset_ids) if value == dataset_id]
+        index_tensor = torch.tensor(indices, dtype=torch.long)
+        dataset_metrics = segmentation_metrics(
+            pred_all.index_select(0, index_tensor),
+            target_all.index_select(0, index_tensor),
+            args.num_classes,
+            class_names=class_names,
+            boundary_width=args.boundary_width,
+            metric_sample_limit=args.metric_sample_limit,
+        )
+        dataset_metrics["case_macro"] = group_macro_iou(
+            pred_all.index_select(0, index_tensor),
+            target_all.index_select(0, index_tensor),
+            [group_ids[index] for index in indices],
+            args.num_classes,
+        )
+        per_dataset[dataset_id] = dataset_metrics
+    metrics["per_dataset"] = per_dataset
     return {
         "device": str(device),
         "checkpoint": str(Path(args.checkpoint)),
@@ -120,12 +158,12 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         "train_count": args.train_count,
         "val_count": args.val_count,
         "manifest": str(args.manifest) if args.manifest is not None else None,
+        "split": args.split,
         "decoder": args.decoder,
         "mask2former_queries": args.mask2former_queries,
         "mask2former_ignore_index": args.mask2former_ignore_index,
         "seed": args.seed,
         "metrics": metrics,
-        "confusion_matrix": mat.tolist(),
     }
 
 
@@ -139,8 +177,7 @@ def _class_names(manifest: DatasetManifest, num_classes: int) -> tuple[str, ...]
 def print_report(result: dict[str, object]) -> None:
     metrics = result["metrics"]
     assert isinstance(metrics, dict)
-    confusion = torch.tensor(result["confusion_matrix"])
-    total_pixels = int(confusion.sum().item())
+    total_pixels = sum(int(values["support_pixels"]) for values in metrics["per_class"].values())
     print(
         json.dumps(
             {
@@ -166,8 +203,6 @@ def print_report(result: dict[str, object]) -> None:
             f"pixels={support:>10d} "
             f"ratio={ratio:.6f}"
         )
-    print("\nConfusion matrix rows=target cols=pred:")
-    print(confusion.tolist())
 
 
 def main() -> int:

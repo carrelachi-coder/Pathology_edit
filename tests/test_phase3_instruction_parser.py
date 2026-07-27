@@ -38,7 +38,9 @@ class Phase3InstructionParserTests(unittest.TestCase):
         self.assertEqual(intents[0].strength, "moderate")
 
     def test_necrosis_larger_maps_to_appearance(self):
-        semantic_diff = parse_instruction_rule_based("make necrosis significantly larger")
+        semantic_diff = parse_instruction_rule_based(
+            "make necrosis significantly larger"
+        )
 
         self.assertEqual(semantic_diff["necrosis_change"]["action"], "increase")
         self.assertEqual(semantic_diff["necrosis_change"]["extent"], "extensive")
@@ -66,12 +68,16 @@ class Phase3InstructionParserTests(unittest.TestCase):
         )
         self.assertEqual(semantic_diff["stroma_change"]["density"], "none")
 
-    def test_necrosis_resolution_stroma_replacement_does_not_parse_as_stroma_increase(self):
+    def test_necrosis_resolution_stroma_replacement_does_not_parse_as_stroma_increase(
+        self,
+    ):
         semantic_diff = parse_instruction_rule_based(
             "resolve most necrosis/debris and replace it with viable stroma; keep tumor burden unchanged"
         )
 
-        self.assertIn(semantic_diff["necrosis_change"]["action"], {"decrease", "remove"})
+        self.assertIn(
+            semantic_diff["necrosis_change"]["action"], {"decrease", "remove"}
+        )
         self.assertEqual(semantic_diff["stroma_change"]["density"], "none")
 
     def test_tumor_decrease_stroma_replacement_does_not_parse_as_stroma_increase(self):
@@ -89,13 +95,43 @@ class Phase3InstructionParserTests(unittest.TestCase):
 
         self.assertEqual(semantic_diff["stroma_change"]["density"], "increase")
 
+    def test_rule_based_intratumoral_location_is_explicit(self):
+        semantic_diff = parse_instruction_rule_based(
+            "add moderate immune infiltration inside tumor"
+        )
+
+        self.assertEqual(
+            semantic_diff["lymphocyte_change"]["location"],
+            "intratumoral",
+        )
+
+    def test_rule_based_gleason_transition_is_explicit(self):
+        semantic_diff = parse_instruction_rule_based(
+            "upgrade prostate tumor from Gleason pattern 3 to pattern 4"
+        )
+
+        self.assertEqual(
+            semantic_diff["transition_change"],
+            {
+                "source_state": "gleason_pattern_3",
+                "target_state": "gleason_pattern_4",
+                "degree": "moderate",
+            },
+        )
+        intents = semantic_diff_to_intents(semantic_diff, reference_profile="PANDA")
+        self.assertEqual([item.primitive for item in intents], ["gleason_upgrade_3to4"])
+
     def test_api_instruction_prompt_mentions_special_fine_edits_without_chinese(self):
         self.assertFalse(any(ord(char) > 127 for char in INSTRUCTION_SYSTEM_PROMPT))
-        self.assertIn("PANDA special edits", INSTRUCTION_SYSTEM_PROMPT)
-        self.assertIn("GlaS special edits", INSTRUCTION_SYSTEM_PROMPT)
-        self.assertIn("Gleason pattern 3 to 4", INSTRUCTION_SYSTEM_PROMPT)
-        self.assertIn("normal gland becoming adenomatous", INSTRUCTION_SYSTEM_PROMPT)
-        self.assertIn("Replacement/backfill targets are not separate edits", INSTRUCTION_SYSTEM_PROMPT)
+        self.assertIn(
+            "gleason_pattern_3 -> gleason_pattern_4", INSTRUCTION_SYSTEM_PROMPT
+        )
+        self.assertIn("normal_gland -> adenomatous_gland", INSTRUCTION_SYSTEM_PROMPT)
+        self.assertIn("lymphocyte_change.location", INSTRUCTION_SYSTEM_PROMPT)
+        self.assertIn(
+            "Replacement/backfill targets are not separate edits",
+            INSTRUCTION_SYSTEM_PROMPT,
+        )
 
     def test_unrecognized_instruction_raises(self):
         with self.assertRaises(InstructionParserError):

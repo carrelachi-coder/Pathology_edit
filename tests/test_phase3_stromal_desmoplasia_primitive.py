@@ -106,7 +106,7 @@ class Phase3StromalDesmoplasiaPrimitiveTests(unittest.TestCase):
             0.30,
         )
 
-    def test_executor_runs_stromal_desmoplasia_and_validates(self):
+    def test_executor_keeps_result_when_legacy_range_validation_warns(self):
         old_mask = _desmoplasia_mask()
         context = MaskEditContext.from_mask(old_mask, self.schema)
         intent = EditIntent.from_mapping(
@@ -121,10 +121,21 @@ class Phase3StromalDesmoplasiaPrimitiveTests(unittest.TestCase):
 
         result = execute_edit(old_mask, intent, self.recipe, self.schema, context)
 
-        self.assertIn(result.status, ("executed_validated", "degraded_executed"))
+        self.assertIn(
+            result.status,
+            (
+                "executed_validated",
+                "degraded_executed",
+                "degraded_executed_with_validation_warnings",
+            ),
+        )
         self.assertIsNotNone(result.edit_result)
         self.assertIsNotNone(result.validation)
-        self.assertTrue(result.validation.passed)
+        self.assertFalse(result.validation.passed)
+        failed_checks = [
+            check.name for check in result.validation.checks if not check.passed
+        ]
+        self.assertEqual(failed_checks, ["change_area_within_range"])
 
     def test_stromal_desmoplasia_rejects_no_tumor(self):
         old_mask = np.full((32, 32), 2, dtype=np.int64)

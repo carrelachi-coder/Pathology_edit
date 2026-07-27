@@ -1,1 +1,0 @@
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"remove","extent":"extensive"},"stroma_change":{"density":"none","degree":"moderate"}}

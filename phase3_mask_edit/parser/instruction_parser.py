@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -16,138 +17,60 @@ from phase3_mask_edit.parser.semantic_diff import (
     SemanticDiffValidationError,
     extract_json_object,
     normalize_semantic_diff,
+    semantic_diff_response_format,
 )
 
 
-INSTRUCTION_SYSTEM_PROMPT = """You convert one user pathology mask edit instruction into a Phase3 semantic-diff JSON object.
+def _instruction_example(**sections: Mapping[str, str]) -> str:
+    payload = json.loads(json.dumps(DEFAULT_SEMANTIC_DIFF))
+    for section, values in sections.items():
+        payload[section].update(values)
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
-The user may write short, informal, or non-template natural language. They may
-use synonyms instead of schema words, for example "a bit more dead tissue",
-"make the cancer less prominent", "stronger immune presence", or "fibrous
-reaction should be lighter".
 
-Choose only semantic changes that the instruction directly requests. Output ONLY JSON matching this schema:
-{
-  "schema_version": "0.1",
-  "tumor_change": {
-    "growth": "none" | "increase" | "decrease",
-    "degree": "mild" | "moderate" | "significant",
-    "grade_change": "none" | "upgrade" | "downgrade"
-  },
-  "lymphocyte_change": {
-    "infiltration": "none" | "increase" | "decrease",
-    "degree": "mild" | "moderate" | "significant"
-  },
-  "necrosis_change": {
-    "action": "none" | "add" | "increase" | "decrease" | "remove",
-    "extent": "focal" | "moderate" | "extensive"
-  },
-  "stroma_change": {
-    "density": "none" | "increase" | "decrease",
-    "degree": "mild" | "moderate" | "significant"
-  }
-}
+INSTRUCTION_SYSTEM_PROMPT = f"""You convert one user pathology mask edit instruction into a Phase3 semantic-diff JSON object.
+
+Choose only changes directly requested by the instruction. Output every field in schema version 0.2. Use "none" or "unspecified" rather than inferring an unstated change.
 
 Interpretation rules:
-- Tumor burden is about tumor amount, size, prominence, expansion, regression,
-  shrinkage, or replacement by non-tumor tissue.
-- Necrosis is about necrotic/dead tissue appearing, expanding, becoming larger,
-  resolving, disappearing, or being removed. "Larger necrosis" means
-  necrosis_change.action = "increase", not tumor growth.
-- Lymphocyte change is about immune infiltrate, TILs, lymphocytes, inflammation,
-  immune presence, immune cells, or intratumoral immune infiltration.
-- Stroma change is about stroma, stromal reaction, desmoplasia, fibrosis,
-  fibrous tissue, or connective tissue density.
-- Replacement/backfill targets are not separate edits. If the instruction says
-  immune infiltrate decreases and is replaced/backfilled/converted into stroma,
-  set lymphocyte_change.infiltration = "decrease" and stroma_change.density =
-  "none" unless it separately asks for desmoplasia, fibrosis, or stromal
-  reaction. Apply the same rule to necrosis/debris: if necrosis resolves and is
-  replaced/backfilled/converted into viable stroma, set necrosis_change.action
-  to "decrease" or "remove" and stroma_change.density = "none" unless there is
-  a separate request for desmoplasia, fibrosis, or stromal reaction. Apply the
-  same rule to tumor decrease/regression replaced by stroma.
-- Dataset-specialized fine-ID edits are represented through
-  tumor_change.grade_change. The schema has no direct primitive-name field, so
-  do not invent one. Use grade_change = "upgrade" or "downgrade" and keep tumor
-  growth = "none" unless the instruction also requests an area/size change.
-- PANDA special edits: Gleason pattern 3 to 4, Gleason 4 to 5, grade group
-  increase, or benign epithelium becoming Gleason 3 / low-grade malignant gland
-  are grade_change = "upgrade". Gleason pattern 4 to 3 or lower grade is
-  grade_change = "downgrade".
-- GlaS special edits: normal gland becoming adenomatous, adenoma/adenomatous
-  gland becoming carcinoma, moderately differentiated becoming poorly
-  differentiated, or high-grade transformation are grade_change = "upgrade".
-  Poorly differentiated shifting toward moderate differentiation is
-  grade_change = "downgrade".
-- Use "mild" for small, slight, subtle, a bit, a little, tiny, limited, or focal.
-- Use "moderate" for medium, moderate, noticeable but not marked, balanced, or
-  unspecified degree.
-- Use "significant" for marked, strong, dramatic, extensive, widespread, large,
-  a lot, much more, much less, or substantially changed.
-- For necrosis extent, map mild -> focal, moderate -> moderate, significant -> extensive.
-- If an instruction says tumor becomes more because necrosis decreases, include
-  both tumor growth increase and necrosis decrease. If it only says tumor more,
-  set only tumor growth increase.
-- If an instruction only describes appearance/style without one of the supported
-  semantic changes, leave every field at "none" defaults.
+- Tumor growth is only tumor amount, area, extent, expansion, regression, or shrinkage. A phenotype/grade transition alone is not growth.
+- Necrosis refers to necrotic/dead tissue. Larger necrosis means necrosis_change.action = "increase", not tumor growth.
+- Replacement/backfill targets are not separate edits. Immune, necrotic, or tumor tissue replaced by stroma keeps stroma_change.density = "none" unless desmoplasia, fibrosis, or stromal reaction is independently requested.
+- lymphocyte_change.location is "intratumoral" only inside/within tumor, "peritumoral" around tumor, "stromal" in stroma, otherwise "unspecified".
+- Fine transitions must use one exact transition_change pair:
+  benign_epithelium -> gleason_pattern_3
+  benign_epithelium -> stromal_tissue
+  gleason_pattern_3 -> gleason_pattern_4
+  gleason_pattern_4 -> gleason_pattern_5
+  gleason_pattern_4 -> gleason_pattern_3
+  normal_gland -> adenomatous_gland
+  adenomatous_gland -> moderately_differentiated_carcinoma
+  moderately_differentiated_carcinoma -> poorly_differentiated_carcinoma
+  poorly_differentiated_carcinoma -> moderately_differentiated_carcinoma
+- For all other instructions, transition_change.source_state = transition_change.target_state = "none".
+- Set grade_change to upgrade/downgrade for grade-bearing transitions, but keep it "none" for benign epithelium -> stromal tissue.
+- Use mild for small/slight/focal, moderate for unspecified or moderate, and significant for marked/strong/extensive/substantial.
+- For necrosis extent, mild -> focal, moderate -> moderate, significant -> extensive.
+- If only appearance/style changes without a supported semantic edit, leave all fields at defaults.
 
-Few-shot examples. The interpretation notes are guidance only; never output them.
-
+Examples:
 User: "make the dead-looking region a lot bigger"
-Note: "dead-looking region" refers to necrosis; "a lot bigger" means significant increase.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"increase","extent":"extensive"},"stroma_change":{"density":"none","degree":"moderate"}}
-
-User: "let the cancer occupy just a little more space"
-Note: "cancer occupy more space" refers to mild tumor growth.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"increase","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
-
-User: "the tissue should look less dead, with viable tumor replacing it"
-Note: This directly requests necrosis decrease and tumor increase.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"increase","degree":"moderate","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"decrease","extent":"moderate"},"stroma_change":{"density":"none","degree":"moderate"}}
+JSON: {_instruction_example(necrosis_change={"action": "increase", "extent": "extensive"})}
 
 User: "stronger intratumoral immune presence"
-Note: Immune presence refers to lymphocyte/TIL infiltration.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"increase","degree":"significant"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
+JSON: {_instruction_example(lymphocyte_change={"infiltration": "increase", "degree": "significant", "location": "intratumoral"})}
 
 User: "decrease the lymphocytic immune infiltrate and replace it with stromal tissue"
-Note: Stroma is the backfill target for the immune decrease, not a separate stromal desmoplasia edit.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"decrease","degree":"moderate"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
-
-User: "resolve most necrosis/debris and replace it with viable stroma; keep tumor burden unchanged"
-Note: Stroma is the replacement target for necrosis resolution, not a separate stromal desmoplasia edit.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"remove","extent":"extensive"},"stroma_change":{"density":"none","degree":"moderate"}}
-
-User: "reduce the tumor burden and replace the removed tumor with stromal tissue"
-Note: Stroma is the backfill target for tumor decrease, not a separate stromal desmoplasia edit.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"decrease","degree":"moderate","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
-
-User: "make the fibrous background lighter"
-Note: Fibrous background refers to stromal/fibrotic density decrease.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"mild","grade_change":"none"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"decrease","degree":"moderate"}}
+JSON: {_instruction_example(lymphocyte_change={"infiltration": "decrease", "degree": "moderate", "location": "unspecified"})}
 
 User: "upgrade prostate tumor from Gleason pattern 3 to pattern 4"
-Note: PANDA Gleason 3 to 4 is a fine-ID grade upgrade, not tumor area growth.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"moderate","grade_change":"upgrade"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
+JSON: {_instruction_example(tumor_change={"growth": "none", "degree": "moderate", "grade_change": "upgrade"}, transition_change={"source_state": "gleason_pattern_3", "target_state": "gleason_pattern_4", "degree": "moderate"})}
 
 User: "convert normal colonic glands into adenomatous glands"
-Note: GlaS normal to adenomatous is a fine-ID grade/progression upgrade.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"moderate","grade_change":"upgrade"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
+JSON: {_instruction_example(tumor_change={"growth": "none", "degree": "moderate", "grade_change": "upgrade"}, transition_change={"source_state": "normal_gland", "target_state": "adenomatous_gland", "degree": "moderate"})}
 
-User: "make the moderately differentiated colorectal carcinoma poorly differentiated"
-Note: GlaS moderate to poor differentiation is a grade upgrade.
-JSON:
-{"schema_version":"0.1","tumor_change":{"growth":"none","degree":"moderate","grade_change":"upgrade"},"lymphocyte_change":{"infiltration":"none","degree":"mild"},"necrosis_change":{"action":"none","extent":"focal"},"stroma_change":{"density":"none","degree":"moderate"}}
+User: "replace benign prostate epithelium with stromal tissue"
+JSON: {_instruction_example(transition_change={"source_state": "benign_epithelium", "target_state": "stromal_tissue", "degree": "moderate"})}
 
 Output JSON only. No markdown."""
 
@@ -157,7 +80,9 @@ class InstructionParserConfig:
     model: str
     api_base_url: str = "https://api.openai.com/v1"
     api_key_env: str = "OPENAI_API_KEY"
-    timeout_sec: float = 60.0
+    timeout_sec: float = 120.0
+    max_retries: int = 2
+    retry_backoff_sec: float = 2.0
     temperature: float = 0.0
     debug_dir: str | None = None
 
@@ -178,10 +103,14 @@ def parse_instruction_rule_based(instruction: str) -> dict[str, Any]:
     necrosis_extent = _necrosis_extent_from_strength(strength)
 
     if _mentions_any(text, _TUMOR_TERMS):
-        if _mentions_any(text, _INCREASE_TERMS) and not _mentions_any(text, _DECREASE_TERMS):
+        if _mentions_any(text, _INCREASE_TERMS) and not _mentions_any(
+            text, _DECREASE_TERMS
+        ):
             semantic_diff["tumor_change"]["growth"] = "increase"
             semantic_diff["tumor_change"]["degree"] = strength
-        elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(text, _INCREASE_TERMS):
+        elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(
+            text, _INCREASE_TERMS
+        ):
             semantic_diff["tumor_change"]["growth"] = "decrease"
             semantic_diff["tumor_change"]["degree"] = strength
 
@@ -189,7 +118,9 @@ def parse_instruction_rule_based(instruction: str) -> dict[str, Any]:
         if _mentions_any(text, _REMOVE_TERMS):
             semantic_diff["necrosis_change"]["action"] = "remove"
             semantic_diff["necrosis_change"]["extent"] = necrosis_extent
-        elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(text, _INCREASE_TERMS):
+        elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(
+            text, _INCREASE_TERMS
+        ):
             semantic_diff["necrosis_change"]["action"] = "decrease"
             semantic_diff["necrosis_change"]["extent"] = necrosis_extent
         elif _mentions_any(text, _ADD_TERMS):
@@ -200,7 +131,12 @@ def parse_instruction_rule_based(instruction: str) -> dict[str, Any]:
             semantic_diff["necrosis_change"]["extent"] = necrosis_extent
 
     if _mentions_any(text, _IMMUNE_TERMS):
-        if _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(text, _INCREASE_TERMS):
+        semantic_diff["lymphocyte_change"]["location"] = _immune_location_from_text(
+            text
+        )
+        if _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(
+            text, _INCREASE_TERMS
+        ):
             semantic_diff["lymphocyte_change"]["infiltration"] = "decrease"
             semantic_diff["lymphocyte_change"]["degree"] = strength
         elif _mentions_any(text, _INCREASE_TERMS) or _mentions_any(text, _ADD_TERMS):
@@ -229,14 +165,32 @@ def parse_instruction_rule_based(instruction: str) -> dict[str, Any]:
             and _mentions_any(text, _STROMA_TERMS)
             and not _mentions_any(text, _INDEPENDENT_STROMA_TERMS)
         )
-        if stroma_is_immune_backfill or stroma_is_necrosis_backfill or stroma_is_tumor_backfill:
+        if (
+            stroma_is_immune_backfill
+            or stroma_is_necrosis_backfill
+            or stroma_is_tumor_backfill
+        ):
             pass
-        elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(text, _INCREASE_TERMS):
+        elif _mentions_any(text, _DECREASE_TERMS) and not _mentions_any(
+            text, _INCREASE_TERMS
+        ):
             semantic_diff["stroma_change"]["density"] = "decrease"
             semantic_diff["stroma_change"]["degree"] = strength
         elif _mentions_any(text, _INCREASE_TERMS) or _mentions_any(text, _ADD_TERMS):
             semantic_diff["stroma_change"]["density"] = "increase"
             semantic_diff["stroma_change"]["degree"] = strength
+
+    transition = _fine_transition_from_text(text)
+    if transition is not None:
+        source_state, target_state, grade_change = transition
+        semantic_diff["transition_change"] = {
+            "source_state": source_state,
+            "target_state": target_state,
+            "degree": strength,
+        }
+        semantic_diff["tumor_change"]["grade_change"] = grade_change
+        semantic_diff["tumor_change"]["growth"] = "none"
+        semantic_diff["tumor_change"]["degree"] = strength
 
     normalized = normalize_semantic_diff(semantic_diff, fill_missing=True)
     if normalized == DEFAULT_SEMANTIC_DIFF:
@@ -250,6 +204,8 @@ def parse_instruction_with_api(
     instruction: str,
     *,
     config: InstructionParserConfig,
+    repair_feedback: Mapping[str, Any] | None = None,
+    previous_semantic_diff: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Parse a single edit instruction using an OpenAI-compatible chat API."""
 
@@ -266,9 +222,16 @@ def parse_instruction_with_api(
         "temperature": config.temperature,
         "messages": [
             {"role": "system", "content": INSTRUCTION_SYSTEM_PROMPT},
-            {"role": "user", "content": instruction},
+            {
+                "role": "user",
+                "content": _instruction_api_prompt(
+                    instruction,
+                    repair_feedback=repair_feedback,
+                    previous_semantic_diff=previous_semantic_diff,
+                ),
+            },
         ],
-        "response_format": {"type": "json_object"},
+        "response_format": semantic_diff_response_format(),
     }
     debug_dir = Path(config.debug_dir) if config.debug_dir else None
     if debug_dir is not None:
@@ -283,6 +246,8 @@ def parse_instruction_with_api(
         api_base_url=config.api_base_url,
         api_key=api_key,
         timeout_sec=config.timeout_sec,
+        max_retries=config.max_retries,
+        retry_backoff_sec=config.retry_backoff_sec,
         debug_dir=debug_dir,
     )
     content = _response_content(response_payload)
@@ -306,6 +271,8 @@ def parse_instruction(
     *,
     mode: str = "rule-based",
     config: InstructionParserConfig | None = None,
+    repair_feedback: Mapping[str, Any] | None = None,
+    previous_semantic_diff: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Parse a single natural-language edit instruction."""
 
@@ -314,8 +281,34 @@ def parse_instruction(
     if mode == "api":
         if config is None:
             raise InstructionParserError("config is required for api mode.")
-        return parse_instruction_with_api(instruction, config=config)
+        return parse_instruction_with_api(
+            instruction,
+            config=config,
+            repair_feedback=repair_feedback,
+            previous_semantic_diff=previous_semantic_diff,
+        )
     raise InstructionParserError(f"Unsupported instruction parser mode: {mode}")
+
+
+def _instruction_api_prompt(
+    instruction: str,
+    *,
+    repair_feedback: Mapping[str, Any] | None,
+    previous_semantic_diff: Mapping[str, Any] | None,
+) -> str:
+    if not repair_feedback:
+        return instruction
+    return (
+        instruction
+        + "\n\nThe previous semantic-diff output could not produce an executable "
+        "mask-edit intent. Re-read the instruction and correct any missed or "
+        "misclassified explicit edit. Do not invent a change merely to satisfy "
+        "the planner. Return the complete semantic-diff schema."
+        + "\n\nPREVIOUS SEMANTIC DIFF:\n"
+        + json.dumps(previous_semantic_diff or {}, indent=2, ensure_ascii=False)
+        + "\n\nDOWNSTREAM PLANNER FEEDBACK:\n"
+        + json.dumps(repair_feedback, indent=2, ensure_ascii=False)
+    )
 
 
 def _post_chat_completion(
@@ -324,34 +317,45 @@ def _post_chat_completion(
     api_base_url: str,
     api_key: str,
     timeout_sec: float,
+    max_retries: int,
+    retry_backoff_sec: float,
     debug_dir: Path | None = None,
 ) -> dict[str, Any]:
     endpoint = api_base_url.rstrip("/") + "/chat/completions"
     data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        endpoint,
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_sec) as response:
-            response_data = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        if debug_dir is not None:
-            (debug_dir / "instruction_parser_http_error.txt").write_text(
-                body,
-                encoding="utf-8",
-            )
-        raise InstructionParserError(
-            f"API request failed with HTTP {exc.code}: {body}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise InstructionParserError(f"API request failed: {exc}") from exc
+    response_data = ""
+    for attempt in range(max_retries + 1):
+        request = urllib.request.Request(
+            endpoint,
+            data=data,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+                response_data = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            if debug_dir is not None:
+                (
+                    debug_dir / f"instruction_parser_http_error_{attempt + 1}.txt"
+                ).write_text(
+                    body,
+                    encoding="utf-8",
+                )
+            retryable = exc.code in {408, 429, 500, 502, 503, 504}
+            if not retryable or attempt >= max_retries:
+                raise InstructionParserError(
+                    f"API request failed with HTTP {exc.code}: {body}"
+                ) from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if attempt >= max_retries:
+                raise InstructionParserError(f"API request failed: {exc}") from exc
+        time.sleep(retry_backoff_sec * (attempt + 1))
 
     if debug_dir is not None:
         (debug_dir / "instruction_parser_response_raw.txt").write_text(
@@ -407,6 +411,101 @@ def _necrosis_extent_from_strength(strength: str) -> str:
     if strength == "significant":
         return "extensive"
     return "moderate"
+
+
+def _immune_location_from_text(text: str) -> str:
+    if _mentions_any(
+        text,
+        ("intratumoral", "inside tumor", "within tumor", "among tumor"),
+    ):
+        return "intratumoral"
+    if _mentions_any(text, ("peritumoral", "around tumor", "surrounding tumor")):
+        return "peritumoral"
+    if _mentions_any(text, ("stromal", "in stroma", "within stroma")):
+        return "stromal"
+    return "unspecified"
+
+
+def _fine_transition_from_text(
+    text: str,
+) -> tuple[str, str, str] | None:
+    if _ordered_mentions(
+        text, ("benign epithelium", "normal epithelium"), ("stroma", "stromal tissue")
+    ):
+        return "benign_epithelium", "stromal_tissue", "none"
+    if _ordered_mentions(
+        text,
+        ("benign epithelium", "normal epithelium"),
+        ("gleason pattern 3", "gleason 3", "pattern 3"),
+    ):
+        return "benign_epithelium", "gleason_pattern_3", "upgrade"
+    if _ordered_mentions(
+        text,
+        ("gleason pattern 3", "gleason 3", "pattern 3"),
+        ("gleason pattern 4", "gleason 4", "pattern 4"),
+    ):
+        return "gleason_pattern_3", "gleason_pattern_4", "upgrade"
+    if _ordered_mentions(
+        text,
+        ("gleason pattern 4", "gleason 4", "pattern 4"),
+        ("gleason pattern 5", "gleason 5", "pattern 5"),
+    ):
+        return "gleason_pattern_4", "gleason_pattern_5", "upgrade"
+    if _ordered_mentions(
+        text,
+        ("gleason pattern 4", "gleason 4", "pattern 4"),
+        ("gleason pattern 3", "gleason 3", "pattern 3"),
+    ):
+        return "gleason_pattern_4", "gleason_pattern_3", "downgrade"
+    if _ordered_mentions(
+        text, ("normal gland", "normal colonic gland"), ("adenoma", "adenomatous gland")
+    ):
+        return "normal_gland", "adenomatous_gland", "upgrade"
+    if _ordered_mentions(
+        text,
+        ("adenoma", "adenomatous gland"),
+        ("moderately differentiated", "moderate differentiation"),
+    ):
+        return (
+            "adenomatous_gland",
+            "moderately_differentiated_carcinoma",
+            "upgrade",
+        )
+    if _ordered_mentions(
+        text,
+        ("moderately differentiated", "moderate differentiation"),
+        ("poorly differentiated", "poor differentiation"),
+    ):
+        return (
+            "moderately_differentiated_carcinoma",
+            "poorly_differentiated_carcinoma",
+            "upgrade",
+        )
+    if _ordered_mentions(
+        text,
+        ("poorly differentiated", "poor differentiation"),
+        ("moderately differentiated", "moderate differentiation"),
+    ):
+        return (
+            "poorly_differentiated_carcinoma",
+            "moderately_differentiated_carcinoma",
+            "downgrade",
+        )
+    return None
+
+
+def _ordered_mentions(
+    text: str,
+    source_terms: tuple[str, ...],
+    target_terms: tuple[str, ...],
+) -> bool:
+    source_positions = [text.find(term) for term in source_terms if term in text]
+    target_positions = [text.find(term) for term in target_terms if term in text]
+    return bool(
+        source_positions
+        and target_positions
+        and min(source_positions) < max(target_positions)
+    )
 
 
 _TUMOR_TERMS = (

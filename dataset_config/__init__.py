@@ -14,7 +14,7 @@ Quick Start:
 
     # List all datasets
     from dataset_config import list_datasets
-    print(list_datasets())       # ['BCSS', 'GLAS', 'IGNITE', 'ORCA', 'PANDA', 'PUMA']
+    print(list_datasets())       # includes UNIFIED_COARSE for Segmentator masks
 
     # Use unified labels
     print(FINE_LABELS[8])        # "Gleason 3"
@@ -29,6 +29,7 @@ Modules:
     ignite         : IGNITE (lung) config — 8 coarse classes
     puma           : PUMA (melanoma) config — 5 coarse classes
     orca           : ORCA (oral SCC) config — 3 classes (BG/Tumor/Other)
+    unified_coarse : organ-agnostic Segmentator output — shared coarse IDs 0-7
 """
 
 # Re-export main API

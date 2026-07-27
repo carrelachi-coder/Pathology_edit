@@ -184,6 +184,7 @@ def _prepare_state(ui, case: dict[str, Any], paths: dict[str, Path], output_dir:
         reference_image=image,
         reference_tissue=tissue,
         target_tissue=tissue,
+        semantic_change_region=ui.np.zeros(tissue.shape, dtype=bool),
         change_region=ui.np.zeros(tissue.shape, dtype=bool),
     )
     return {
@@ -386,6 +387,7 @@ def _write_no_op_tissue_stage(
         reference_image=reference_image,
         reference_tissue=reference_tissue,
         target_tissue=reference_tissue,
+        semantic_change_region=change_region,
         change_region=change_region,
     )
     phase3_info = {

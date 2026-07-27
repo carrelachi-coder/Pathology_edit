@@ -94,7 +94,9 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(intents[0].primitive, "immune_infiltration_decrease")
         self.assertEqual(intents[0].strength, "moderate")
 
-    def test_immune_decrease_with_stroma_replacement_plans_desmoplasia_as_fallback(self):
+    def test_immune_decrease_with_stroma_replacement_plans_desmoplasia_as_fallback(
+        self,
+    ):
         diff = semantic_diff_with(
             lymphocyte_change={
                 "infiltration": "decrease",
@@ -120,10 +122,13 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             [intent.primitive for intent in plan.intents],
             ["immune_infiltration_decrease"],
         )
-        self.assertEqual([item.primitive for item in plan.items], [
-            "immune_infiltration_decrease",
-            "stromal_desmoplasia",
-        ])
+        self.assertEqual(
+            [item.primitive for item in plan.items],
+            [
+                "immune_infiltration_decrease",
+                "stromal_desmoplasia",
+            ],
+        )
         self.assertEqual(plan.items[0].role, "primary")
         self.assertEqual(plan.items[1].role, "fallback")
         self.assertEqual(plan.items[1].fallback_for, "immune_infiltration_decrease")
@@ -133,7 +138,9 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             "immune_decrease_stroma_replacement",
         )
 
-    def test_necrosis_resolution_with_stroma_replacement_plans_desmoplasia_as_fallback(self):
+    def test_necrosis_resolution_with_stroma_replacement_plans_desmoplasia_as_fallback(
+        self,
+    ):
         diff = semantic_diff_with(
             necrosis_change={
                 "action": "remove",
@@ -203,6 +210,28 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             "tumor_decrease_stroma_replacement",
         )
 
+    def test_contextual_stroma_after_necrosis_resolution_is_fallback(self):
+        diff = semantic_diff_with(
+            necrosis_change={"action": "decrease", "extent": "focal"},
+            stroma_change={"density": "increase", "degree": "moderate"},
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            old_prompt="A large necrotic focus leaves scant viable stroma.",
+            new_prompt=(
+                "Minimal necrotic debris remains and viable collagenous stroma "
+                "predominates centrally."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["necrosis_resolution"],
+        )
+        self.assertEqual(plan.items[1].role, "fallback")
+
     def test_independent_desmoplasia_remains_separate_after_immune_decrease(self):
         diff = semantic_diff_with(
             lymphocyte_change={"infiltration": "decrease", "degree": "moderate"},
@@ -237,6 +266,146 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
 
         self.assertEqual(increase_intents[0].primitive, "tumor_burden_increase")
         self.assertEqual(decrease_intents[0].primitive, "tumor_burden_decrease")
+
+    def test_contextual_immune_adjective_is_not_a_second_tumor_edit(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "increase", "degree": "significant"},
+            lymphocyte_change={
+                "infiltration": "increase",
+                "degree": "moderate",
+                "location": "peritumoral",
+            },
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            old_prompt=(
+                "Sparse tumor nests are present with scattered immune infiltrate."
+            ),
+            new_prompt=(
+                "Prominent tumor nests occupy the compartment. A conspicuous "
+                "immune infiltrate is adjacent to tumor."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["tumor_burden_increase"],
+        )
+        self.assertEqual(
+            plan.unsupported_changes[-1].field,
+            "lymphocyte_change.infiltration",
+        )
+
+    def test_explicit_independent_immune_action_remains_a_second_tumor_edit(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "increase", "degree": "moderate"},
+            lymphocyte_change={
+                "infiltration": "increase",
+                "degree": "moderate",
+                "location": "intratumoral",
+            },
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="BCSS",
+            new_prompt="Increase tumor burden and increase immune cells within tumor.",
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["tumor_burden_increase", "intratumoral_immune_infiltration"],
+        )
+
+    def test_contextual_atypia_is_not_a_second_tumor_extent_edit(self):
+        diff = semantic_diff_with(
+            tumor_change={
+                "growth": "decrease",
+                "degree": "moderate",
+                "grade_change": "downgrade",
+            }
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="GlaS",
+            old_prompt="Prominent tumor nests have moderate nuclear atypia.",
+            new_prompt="Sparse tumor nests have mild nuclear atypia.",
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["tumor_burden_decrease"],
+        )
+
+    def test_necrosis_replacement_is_not_a_second_tumor_decrease(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "decrease", "degree": "significant"},
+            necrosis_change={"action": "add", "extent": "extensive"},
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="IGNITE",
+            new_prompt=(
+                "A central necrotic area is present. Necrotic debris replaces viable "
+                "tumor cells in the central compartment."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["necrosis_appearance"],
+        )
+
+    def test_primary_stroma_decrease_overrides_contextual_epithelium_growth(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "increase", "degree": "moderate"}
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="PANDA",
+            old_prompt=(
+                "The central stromal compartment contains abundant fibrous stroma "
+                "that is dense and well-developed."
+            ),
+            new_prompt=(
+                "The central stromal compartment contains scant fibrous stroma. "
+                "Epithelial elements predominate with limited stromal tissue."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["stroma_decrease"],
+        )
+
+    def test_primary_stroma_increase_overrides_contextual_immune_adjective(self):
+        diff = semantic_diff_with(
+            lymphocyte_change={
+                "infiltration": "increase",
+                "degree": "mild",
+                "location": "unspecified",
+            }
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="IGNITE",
+            old_prompt="The central compartment contains scant fibrous stroma.",
+            new_prompt=(
+                "The central compartment shows mild focal fibrous stroma. Subtle "
+                "collagen deposition is present with scattered immune infiltrate."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["stromal_desmoplasia"],
+        )
 
     def test_multiple_intents_are_returned_in_execution_order(self):
         diff = semantic_diff_with(
@@ -327,6 +496,226 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(plan.intents[0].primitive, "stromal_desmoplasia")
         self.assertEqual(plan.intents[0].strength, "moderate")
         self.assertEqual(plan.unsupported_changes, ())
+
+    def test_intratumoral_immune_text_selects_intratumoral_primitive(self):
+        diff = semantic_diff_with(
+            lymphocyte_change={"infiltration": "increase", "degree": "significant"}
+        )
+        old_mask = np.ones((8, 8), dtype=np.int64)
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            old_mask=old_mask,
+            new_prompt="Add significant intratumoral immune infiltrate inside tumor.",
+        )
+
+        self.assertEqual(len(plan.intents), 1)
+        self.assertEqual(
+            plan.intents[0].primitive,
+            "intratumoral_immune_infiltration",
+        )
+
+    def test_intratumoral_schema_location_selects_primitive_without_text_hint(self):
+        diff = semantic_diff_with(
+            lymphocyte_change={
+                "infiltration": "increase",
+                "degree": "moderate",
+                "location": "intratumoral",
+            }
+        )
+
+        intents = semantic_diff_to_intents(diff, reference_profile="BCSS")
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(
+            intents[0].primitive,
+            "intratumoral_immune_infiltration",
+        )
+
+    def test_explicit_fine_transition_pairs_map_without_prompt_text(self):
+        cases = (
+            ("PANDA", "benign_epithelium", "gleason_pattern_3", "benign_to_gleason3"),
+            ("PANDA", "benign_epithelium", "stromal_tissue", "benign_atrophy"),
+            ("PANDA", "gleason_pattern_3", "gleason_pattern_4", "gleason_upgrade_3to4"),
+            ("PANDA", "gleason_pattern_4", "gleason_pattern_5", "gleason_upgrade_4to5"),
+            (
+                "PANDA",
+                "gleason_pattern_4",
+                "gleason_pattern_3",
+                "gleason_downgrade_4to3",
+            ),
+            ("GlaS", "normal_gland", "adenomatous_gland", "normal_to_adenomatous"),
+            (
+                "GlaS",
+                "adenomatous_gland",
+                "moderately_differentiated_carcinoma",
+                "adenoma_to_carcinoma",
+            ),
+            (
+                "GlaS",
+                "moderately_differentiated_carcinoma",
+                "poorly_differentiated_carcinoma",
+                "grade_upgrade",
+            ),
+            (
+                "GlaS",
+                "poorly_differentiated_carcinoma",
+                "moderately_differentiated_carcinoma",
+                "treatment_dedifferentiation",
+            ),
+        )
+
+        for profile, source, target, primitive in cases:
+            with self.subTest(primitive=primitive):
+                diff = semantic_diff_with(
+                    transition_change={
+                        "source_state": source,
+                        "target_state": target,
+                        "degree": "moderate",
+                    }
+                )
+                intents = semantic_diff_to_intents(
+                    diff,
+                    reference_profile=profile,
+                )
+
+                self.assertEqual([item.primitive for item in intents], [primitive])
+
+    def test_explicit_transition_suppresses_generic_growth(self):
+        diff = semantic_diff_with(
+            tumor_change={
+                "growth": "increase",
+                "degree": "moderate",
+                "grade_change": "upgrade",
+            },
+            transition_change={
+                "source_state": "adenomatous_gland",
+                "target_state": "moderately_differentiated_carcinoma",
+                "degree": "moderate",
+            },
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="GlaS",
+            old_prompt="Adenomatous glands are present.",
+            new_prompt="Moderately differentiated carcinoma is present.",
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["adenoma_to_carcinoma"],
+        )
+        self.assertEqual(plan.unsupported_changes[0].field, "tumor_change.growth")
+
+    def test_unsupported_transition_evidence_does_not_hide_tumor_growth(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "increase", "degree": "significant"},
+            transition_change={
+                "source_state": "normal_gland",
+                "target_state": "adenomatous_gland",
+                "degree": "moderate",
+            },
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="GlaS",
+            old_prompt="Sparse tumor nests are present in stroma.",
+            new_prompt="Abundant malignant tumor nests occupy the compartment.",
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["tumor_burden_increase"],
+        )
+        self.assertEqual(plan.unsupported_changes[0].field, "transition_change")
+
+    def test_transition_ignores_contextual_immune_adjective(self):
+        diff = semantic_diff_with(
+            lymphocyte_change={
+                "infiltration": "increase",
+                "degree": "mild",
+                "location": "stromal",
+            },
+            transition_change={
+                "source_state": "poorly_differentiated_carcinoma",
+                "target_state": "moderately_differentiated_carcinoma",
+                "degree": "mild",
+            },
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="GlaS",
+            old_prompt="Poorly differentiated carcinoma with scant stroma.",
+            new_prompt=(
+                "Moderately differentiated carcinoma is present. The surrounding "
+                "stroma contains sparse lymphocytes."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["treatment_dedifferentiation"],
+        )
+
+    def test_transition_ignores_contextual_desmoplastic_response(self):
+        diff = semantic_diff_with(
+            stroma_change={"density": "increase", "degree": "mild"},
+            transition_change={
+                "source_state": "benign_epithelium",
+                "target_state": "gleason_pattern_3",
+                "degree": "moderate",
+            },
+        )
+
+        intents = semantic_diff_to_intents(
+            diff,
+            reference_profile="PANDA",
+            old_prompt="Benign prostatic epithelium is present.",
+            new_prompt=(
+                "Gleason pattern 3 malignant glands are present. The surrounding "
+                "stroma contains a mild desmoplastic response."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in intents],
+            ["benign_to_gleason3"],
+        )
+
+    def test_panda_benign_atrophy_is_inferred_from_transition_text(self):
+        old_mask = np.array([[5, 5, 2], [5, 2, 2], [0, 2, 2]], dtype=np.int64)
+
+        plan = plan_edit_intents(
+            DEFAULT_SEMANTIC_DIFF,
+            reference_profile="PANDA",
+            old_mask=old_mask,
+            old_prompt="Normal prostate glandular epithelium is present.",
+            new_prompt="Replace mild normal prostate epithelium with stromal tissue.",
+        )
+
+        self.assertEqual(len(plan.intents), 1)
+        self.assertEqual(plan.intents[0].primitive, "benign_atrophy")
+        self.assertEqual(plan.intents[0].strength, "mild")
+
+    def test_panda_normal_prostate_epithelium_maps_to_benign_to_gleason3(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "none", "grade_change": "upgrade"}
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="PANDA",
+            new_prompt=(
+                "Convert normal prostate epithelium into Gleason pattern 3 tumor glands."
+            ),
+        )
+
+        self.assertEqual(len(plan.intents), 1)
+        self.assertEqual(plan.intents[0].primitive, "benign_to_gleason3")
 
     def test_grade_only_change_without_supported_special_emits_warning_only(self):
         diff = semantic_diff_with(
@@ -469,7 +858,9 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
 
         self.assertEqual(len(plan.intents), 1)
         self.assertEqual(plan.items[0].status, "degraded_planned")
-        self.assertIn("optional_label_absent_in_mask:Blood vessel", plan.items[0].warnings)
+        self.assertIn(
+            "optional_label_absent_in_mask:Blood vessel", plan.items[0].warnings
+        )
 
 
 if __name__ == "__main__":

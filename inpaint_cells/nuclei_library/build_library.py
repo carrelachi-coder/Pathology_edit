@@ -58,6 +58,7 @@ import sys
 import json
 import argparse
 import glob
+import hashlib
 from collections import defaultdict
 from pathlib import Path
 
@@ -485,6 +486,15 @@ def main():
                         help='Max nucleus area in pixels')
     parser.add_argument('--max-instances-per-bucket', type=int, default=10000,
                         help='Max instances to store per tissue-type bucket')
+    parser.add_argument(
+        '--source-manifest',
+        default=None,
+        help=(
+            'Optional JSONL manifest of layered source rows. Each row must contain '
+            'source_tissue and source_nuclei. This freezes a training-only source '
+            'set without materializing a second image tree.'
+        ),
+    )
     args = parser.parse_args()
 
     # 加载数据集配置
@@ -578,7 +588,25 @@ def _process_layered(args, config, skip_tissues, instances_dir,
     flat_tissue_dir = os.path.join(args.gt_dir, 'tissue_masks')
     flat_nuclei_dir = os.path.join(args.gt_dir, 'nuclei_masks')
     layered_mode = 'sample_dirs'
-    if os.path.isdir(flat_tissue_dir) and os.path.isdir(flat_nuclei_dir):
+    manifest_rows = None
+    if args.source_manifest:
+        manifest_rows = []
+        with open(args.source_manifest, 'r', encoding='utf-8') as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                tissue_path = row.get('source_tissue')
+                nuclei_path = row.get('source_nuclei')
+                if not tissue_path or not nuclei_path:
+                    raise ValueError(
+                        f'{args.source_manifest}:{line_number}: missing '
+                        'source_tissue/source_nuclei'
+                    )
+                manifest_rows.append((str(tissue_path), str(nuclei_path)))
+        tissue_files = [row[0] for row in manifest_rows]
+        layered_mode = 'source_manifest'
+    elif os.path.isdir(flat_tissue_dir) and os.path.isdir(flat_nuclei_dir):
         tissue_files = sorted(glob.glob(os.path.join(flat_tissue_dir, '*.png')))
         layered_mode = 'tissue_masks'
     else:
@@ -598,12 +626,15 @@ def _process_layered(args, config, skip_tissues, instances_dir,
     print(f"Processing {len(tissue_files)} layered patches...")
     total_instances = 0
 
+    manifest_nuclei = dict(manifest_rows or [])
     for tissue_path in tqdm(tissue_files, desc='Extracting nuclei (layered)'):
         # 定位 nuclei 文件
         parent = os.path.dirname(tissue_path)
         basename = os.path.basename(tissue_path)
 
-        if layered_mode == 'tissue_masks':
+        if layered_mode == 'source_manifest':
+            nuclei_path = manifest_nuclei[tissue_path]
+        elif layered_mode == 'tissue_masks':
             nuclei_path = os.path.join(flat_nuclei_dir, basename)
         elif basename == 'tissue_mask.png':
             nuclei_path = os.path.join(parent, 'nuclei_mask.png')
@@ -929,6 +960,20 @@ def _save_statistics(args, tissue_stats, bucket_counts, stored_type_counts, tota
         'statistics': stats_output,
         'bucket_health_warnings': warning_lines,
     }
+    if args.source_manifest:
+        digest = hashlib.sha256()
+        source_rows = 0
+        with open(args.source_manifest, 'rb') as handle:
+            for block in iter(lambda: handle.read(8 * 1024 * 1024), b''):
+                digest.update(block)
+        with open(args.source_manifest, 'r', encoding='utf-8') as handle:
+            source_rows = sum(1 for line in handle if line.strip())
+        meta['source_manifest'] = {
+            'path': os.path.abspath(args.source_manifest),
+            'sha256': digest.hexdigest(),
+            'rows': source_rows,
+            'policy': 'explicit_training_only_layered_source_rows',
+        }
 
     with open(os.path.join(args.output_dir, 'statistics.json'), 'w') as f:
         json.dump(meta, f, indent=2)

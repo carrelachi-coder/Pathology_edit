@@ -26,7 +26,8 @@ DEFAULT_PIX2PIX_CHECKPOINT = _model_path(
 )
 DEFAULT_PROBNET_CHECKPOINT = _model_path(
     "PATHOLOGY_PROBNET_CHECKPOINT",
-    "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/checkpoints/best.pt",
+    "/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/"
+    "best_epoch29_c29607f1b609accb.pt",
 )
 
 

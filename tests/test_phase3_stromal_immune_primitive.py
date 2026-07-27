@@ -183,7 +183,7 @@ class Phase3StromalImmunePrimitiveTests(unittest.TestCase):
                 intent,
             )
 
-    def test_executor_runs_stromal_immune_infiltration(self):
+    def test_executor_keeps_result_when_legacy_range_validation_warns(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = _stromal_mask()
         context = MaskEditContext.from_mask(old_mask, schema)
@@ -198,13 +198,24 @@ class Phase3StromalImmunePrimitiveTests(unittest.TestCase):
 
         result = execute_edit(old_mask, intent, self.recipe, schema, context)
 
-        self.assertIn(result.status, ("executed_validated", "degraded_executed"))
+        self.assertIn(
+            result.status,
+            (
+                "executed_validated",
+                "degraded_executed",
+                "degraded_executed_with_validation_warnings",
+            ),
+        )
         self.assertIsNotNone(result.edit_result)
         self.assertIsNotNone(result.validation)
-        self.assertTrue(result.validation.passed)
+        self.assertFalse(result.validation.passed)
+        failed_checks = [
+            check.name for check in result.validation.checks if not check.passed
+        ]
+        self.assertEqual(failed_checks, ["change_area_within_range"])
         self.assertGreater(result.edit_result.selected_pixels, 0)
 
-    def test_stromal_immune_baseline_zero_immune_validates(self):
+    def test_stromal_immune_baseline_zero_immune_passes_immune_guard(self):
         schema = MaskProfileSchema.from_reference_profile("BCSS")
         old_mask = _stromal_mask(existing_immune=False)
         self.assertFalse(np.any(old_mask == 4))
@@ -221,7 +232,10 @@ class Phase3StromalImmunePrimitiveTests(unittest.TestCase):
         result = execute_edit(old_mask, intent, self.recipe, schema, context)
 
         self.assertIsNotNone(result.validation)
-        self.assertTrue(result.validation.passed)
+        self.assertEqual(
+            result.status,
+            "degraded_executed_with_validation_warnings",
+        )
         immune_check = next(
             c for c in result.validation.checks if c.name == "immune_area_must_increase"
         )

@@ -61,7 +61,7 @@ class SpecializedFinePrimitiveRecipeTests(unittest.TestCase):
 
 
 class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
-    def test_planned_panda_grade_special_executes_with_default_dataset_recipe(self):
+    def test_planned_panda_grade_special_rejects_retired_sequential_executor(self):
         old_mask = np.array(
             [
                 [8, 8, 8, 2, 0],
@@ -92,14 +92,12 @@ class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
         self.assertEqual(len(plan.intents), 1)
         self.assertEqual(plan.intents[0].primitive, "gleason_upgrade_3to4")
         self.assertEqual(plan.items[0].status, "planned")
-        result = execute_intents_on_mask(
-            old_mask,
-            plan.intents,
-            reference_profile="PANDA",
-        )
-        self.assertEqual(result.status, "executed")
-        self.assertLess(np.count_nonzero(result.target_mask == 8), np.count_nonzero(old_mask == 8))
-        self.assertGreater(np.count_nonzero(result.target_mask == 9), np.count_nonzero(old_mask == 9))
+        with self.assertRaisesRegex(RuntimeError, "retired"):
+            execute_intents_on_mask(
+                old_mask,
+                plan.intents,
+                reference_profile="PANDA",
+            )
 
     def test_panda_gleason_upgrade_3to4_runs_in_place(self):
         recipe = load_recipe("phase3_mask_edit/recipes/panda.yaml")

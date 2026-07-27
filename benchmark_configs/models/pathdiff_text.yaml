@@ -1,0 +1,50 @@
+model_id: pathdiff_text
+display_name: PathDiff Text-only
+model_type: pathdiff
+role: benchmark
+input_contract:
+  allowed:
+    - prompt
+  forbidden:
+    - target_image
+    - target_conic_instance_type_mask
+generation:
+  direction: "prompt(B) -> B"
+  checkpoint_style: jointly_trained_pathcap_conic_six_channel
+  official_entrypoint: "sampling.py::sample_one(mode='t2i')"
+  control_condition:
+    kind: official_null_mask
+    value: 10
+    shape: [256, 256, 6]
+  steps: 200
+  guidance: 1.75
+  ddim_eta: 1.0
+  native_resolution: 256
+  native_mpp: 0.5
+  scale_condition:
+    kind: prompt_conditioned_objective_magnification
+    objective_magnification: 20
+    prompt_position: prefix
+  physical_scale_status: prompt_conditioned_nominal_scale
+  output_normalization: full_frame_resize_256_at_0.5mpp_to_512_at_0.25mpp
+execution:
+  mode: ssh_batch
+  env_python: /data1/zhao/wqx/benchmarks/envs/pathdiff/bin/python
+  worker: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/scripts/run_generation_baseline.py
+  cwd: /data1/zhao/wqx/benchmarks/repos/PathDiff
+  environment:
+    PYTHONNOUSERSITE: "1"
+    HF_HOME: /data1/zhao/wqx/benchmarks/cache/hf
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+  arguments:
+    model-type: pathdiff
+    pathdiff-mode: t2i
+    repo-dir: /data1/zhao/wqx/benchmarks/repos/PathDiff
+    config: /data1/zhao/wqx/benchmarks/weights/pathdiff/configs/11-02T02-36-project.yaml
+    checkpoint: /data1/zhao/wqx/benchmarks/weights/pathdiff/last.ckpt
+    steps: 200
+    guidance: 1.75
+    native-resolution: 256
+    native-mpp: 0.5
+    pathdiff-text-objective-magnification: 20

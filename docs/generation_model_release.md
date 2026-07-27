@@ -3,6 +3,22 @@
 This document pins the private inference artifacts used by the production
 pathology edit workflow. The private Hub namespace is `Qinxin11`.
 
+## Current frozen nuclei-inference override
+
+The local production default for nuclei generation now supersedes the
+historical ProbNet artifact in the Hub release table below:
+
+`/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/best_epoch29_c29607f1b609accb.pt`
+
+Its SHA256 is
+`c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211`.
+Only `P(nucleus) = 1 - P(background)` is consumed from this checkpoint, as a
+spatial landing weight. Counts, density calibration and exact nucleus-type
+quotas come from the frozen patch-adaptive sampling policy documented in
+`probnet_count_density_training.md`. The older Hub ProbNet verification below
+is retained as release history and must not be interpreted as the current
+runtime sampling contract.
+
 ## Repositories
 
 | Private repository | Contents | Source |

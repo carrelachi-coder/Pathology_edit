@@ -1,0 +1,42 @@
+model_id: pathldm_plip
+display_name: PathLDM PLIP
+model_type: pathldm
+role: benchmark
+input_contract:
+  allowed:
+    - prompt
+  forbidden:
+    - target_image
+generation:
+  direction: "prompt(B) -> B"
+  steps: 50
+  guidance: 1.5
+  organs:
+    - breast
+  native_resolution: 256
+  native_mpp: 1.0
+  native_fov_um: 256
+  output_normalization: center_crop_128_then_resize_512
+execution:
+  mode: ssh_batch
+  env_python: /data1/zhao/wqx/benchmarks/envs/pathldm/bin/python
+  worker: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/scripts/run_generation_baseline.py
+  cwd: /data1/zhao/wqx/benchmarks/repos/PathLDM
+  environment:
+    PYTHONNOUSERSITE: "1"
+    HF_HOME: /data1/zhao/wqx/benchmarks/cache/hf
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+  arguments:
+    model-type: pathldm
+    repo-dir: /data1/zhao/wqx/benchmarks/repos/PathLDM
+    config: /data1/zhao/wqx/benchmarks/weights/pathldm/plip/configs/08-03T09-35-project.yaml
+    checkpoint: /data1/zhao/wqx/benchmarks/weights/pathldm/plip/checkpoints/epoch_3.ckpt
+    steps: 50
+    guidance: 1.5
+    pathldm-tumor-level: high
+    pathldm-til-level: low
+    native-resolution: 256
+    native-mpp: 1.0
+    source-mpp: 0.25
+    organs: breast

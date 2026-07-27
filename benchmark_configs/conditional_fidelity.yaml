@@ -1,0 +1,98 @@
+schema_version: 2
+evaluation_frame:
+  image_size: [512, 512]
+  mpp: 0.25
+  fov_um: 128.0
+  input_policy: mpp_normalized_generated_patch_only
+tissue:
+  class_ids: [0, 1, 2, 3, 4, 5, 6, 7]
+  class_names:
+    0: background
+    1: tumor
+    2: stroma
+    3: necrosis
+    4: immune_infiltrate
+    5: normal_epithelium
+    6: blood_vessel
+    7: other_tissue
+  background_id: 0
+  ignore_index: 255
+  presence_min_fraction: 0.005
+  evaluator:
+    env_python: /home/lyw/anaconda3/envs/pathology-segmentator-mmseg/bin/python3.10
+    checkpoint: /data1/zhao/wqx/benchmarks/weights/evaluators/segmentator_baseline_seed42_epoch4_b61f0574.pt
+    checkpoint_sha256: b61f0574d2b6de874ae54bc9e76b74e5debf9827c8a84c263a8a82eae257a336
+    status: pilot_snapshot_training_not_final
+    native_resolution: 512
+    native_mpp: 0.25
+
+cellvit:
+  env_python: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python
+  class_ids: [1, 2, 3, 4, 5]
+  class_names:
+    1: neoplastic
+    2: inflammatory
+    3: connective
+    4: dead
+    5: epithelial
+  checkpoint: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/CellViT-plus-plus-main/checkpoints/CellViT-SAM-H-x40-AMP-001.pth
+  checkpoint_sha256: 356418f19d9d478f164c7a31f85274584fefaa02355815c09f52346c658c8ec4
+  evaluation_mpp: 0.25
+  image_size: [512, 512]
+  matching_distance_um: 6.0
+
+conic:
+  env_python: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python
+  class_ids: [1, 2, 3, 4, 5, 6]
+  class_names:
+    1: neutrophil
+    2: epithelial
+    3: lymphocyte
+    4: plasma
+    5: eosinophil
+    6: connective
+  checkpoint: /data1/zhao/wqx/benchmarks/weights/conic_hovernet/hovernet-conic.pth
+  checkpoint_sha256: 34d8edba4345142a51719e89d4d6a5e971cf273875337e739c0409ff75c396b1
+  detector_mpp: 0.5
+  detector_image_size: [256, 256]
+  evaluation_mpp: 0.25
+  evaluation_image_size: [512, 512]
+  matching_distance_um: 6.0
+
+models:
+  cross_v1_project:
+    condition_structure_metrics: true
+    tissue_fairness: fair_main
+    cellvit_global: true
+    strict_spatial_evaluator: cellvit
+  pixcell_controlnet:
+    condition_structure_metrics: true
+    tissue_fairness: partial
+    cellvit_global: true
+    strict_spatial_evaluator: cellvit
+  pathdiff_conic:
+    condition_structure_metrics: true
+    tissue_fairness: partial
+    cellvit_global: true
+    strict_spatial_evaluator: conic
+  unipath_7b:
+    condition_structure_metrics: false
+    tissue_fairness: not_applicable_no_target_geometry
+    cellvit_global: false
+    strict_spatial_evaluator: null
+  mupad_text:
+    condition_structure_metrics: false
+    tissue_fairness: not_applicable_no_target_geometry
+    cellvit_global: false
+    strict_spatial_evaluator: null
+  mupad_image_auxiliary:
+    condition_structure_metrics: false
+    tissue_fairness: not_applicable_no_target_geometry
+    cellvit_global: false
+    strict_spatial_evaluator: null
+  pathldm_plip:
+    condition_structure_metrics: false
+    tissue_fairness: not_applicable_no_target_geometry
+    cellvit_global: false
+    strict_spatial_evaluator: null
+    organs: [breast]

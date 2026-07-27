@@ -37,6 +37,73 @@ def _source_mask() -> np.ndarray:
 
 
 class Phase3InpaintPipelineTests(unittest.TestCase):
+    def test_glas_boundary_change_rewrites_the_complete_gland_instance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = root / "image.png"
+            source = root / "source_mask.png"
+            target = root / "target_mask.png"
+            nuclei = root / "nuclei.png"
+            output = root / "out"
+
+            source_mask = np.full((96, 96), 2, dtype=np.uint8)
+            source_mask[24:48, 24:48] = 11
+            source_mask[64:80, 64:80] = 5
+            target_mask = source_mask.copy()
+            target_mask[20:52, 20:52] = 11
+            source_nuclei = np.zeros((96, 96), dtype=np.uint8)
+            source_nuclei[32:36, 32:36] = 101
+            source_nuclei[68:72, 68:72] = 105
+
+            _write_rgb(image)
+            save_id_mask(source_mask, source)
+            save_id_mask(target_mask, target)
+            Image.fromarray(source_nuclei).save(nuclei)
+
+            exit_code = run_phase3_inpaint_pipeline(
+                [
+                    "--mode",
+                    "gen",
+                    "--profile",
+                    "GlaS",
+                    "--reference-image",
+                    str(image),
+                    "--reference-tissue-mask",
+                    str(source),
+                    "--reference-nuclei-mask",
+                    str(nuclei),
+                    "--target-tissue-mask",
+                    str(target),
+                    "--output",
+                    str(output),
+                    "--generation-mode",
+                    "dry-run",
+                    "--cell-fill-mode",
+                    "blank",
+                ]
+            )
+
+            self.assertEqual(exit_code, 0)
+            semantic = np.asarray(
+                Image.open(output / "semantic_change_region.png").convert("L")
+            ) > 0
+            generation = np.asarray(
+                Image.open(output / "change_region.png").convert("L")
+            ) > 0
+            retained = np.asarray(
+                Image.open(output / "retained_nuclei_mask.png").convert("L")
+            )
+            self.assertLess(np.count_nonzero(semantic), np.count_nonzero(generation))
+            self.assertTrue(np.all(generation[20:52, 20:52]))
+            self.assertFalse(np.any(generation[64:80, 64:80]))
+            self.assertFalse(np.any(retained[32:36, 32:36]))
+            self.assertTrue(np.any(retained[68:72, 68:72] == 105))
+
+            summary = json.loads(
+                (output / "pipeline_summary.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(summary["gland_structure_policy"]["applied"])
+
     def test_gen_dry_run_writes_generation_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

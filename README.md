@@ -1,4 +1,24 @@
-# Pathology Edit：生成模型生产链路
+# Pathology Edit：产品代码
+
+本仓库包含病理图像编辑产品的完整可执行链路。论文、实验输出、数据集、
+checkpoint 和机器本地配置不进入 Git 历史。
+
+| 产品模块 | 主要代码 | 当前定位 |
+| --- | --- | --- |
+| 语义 mask 编辑 | `phase3_mask_edit/` | LLM contour + `organic_v2` 生产入口；旧非 LLM 确定性执行器已退役 |
+| 组织分割 | `segmentator/` | grouped coarse anchor + Fine V2；Boundary/Teacher 为门控消融 |
+| 细胞布局（CellDistNet） | `inpaint_cells/` | 计数与类型配额由冻结统计策略给出，模型只提供组织感知落点先验 |
+| 图像生成 | `controlnet_train/`、`scripts/` | Inpaint 与 Cross V1 + Pix2pix 两条生产路由 |
+| 基准与评估 | `phase3_mask_edit/benchmark/`、`benchmark_configs/` | mask 语义、条件一致性、Patho-KID 与表示分析 |
+
+执行计划与发布约束见：
+
+- `docs/benchmark_implementation_plan.md`
+- `docs/segmentator_fine_first_plan.md`
+- `docs/mask_edit_benchmark_v1_runbook.md`
+- `docs/generation_model_release.md`
+
+## 生成模型生产链路
 
 本仓库保留病理图像编辑中已经确定的四条生成链路：
 

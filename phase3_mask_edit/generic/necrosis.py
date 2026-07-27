@@ -1090,13 +1090,12 @@ def _necrosis_engulfable_intrusion_domain(
     if labels is None:
         labels = [
             "Tumor",
-            "Immune infiltrate",
             "Stroma",
             "Other tissue",
             "Normal epithelium",
         ]
     if not isinstance(labels, list):
-        labels = ["Tumor", "Immune infiltrate", "Stroma", "Other tissue", "Normal epithelium"]
+        labels = ["Tumor", "Stroma", "Other tissue", "Normal epithelium"]
     domain = np.zeros(mask.shape, dtype=bool)
     for label in labels:
         if isinstance(label, str) and label in schema.readable_labels:
