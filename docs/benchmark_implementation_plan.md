@@ -1,5 +1,19 @@
 # Pathology Edit Benchmark Implementation Plan
 
+## Manuscript narrative contract
+
+The active scientific framing is defined in
+`docs/world_model_narrative.md`. The system should be described as an
+intervention-conditioned pathology world model that constructs, realizes and
+verifies single-step counterfactual morphological state transitions. Benchmark
+implementation terms such as `edit`, `mask` and `generator` remain valid in
+code and operational records, but manuscript claims must distinguish the
+biological transition, its explicit tissue/nuclei target state, the observation
+route used to render that state and the closed-loop evidence used to verify it.
+The world-model framing does not authorize claims of patient-specific
+forecasting, temporal disease progression, molecular causality, long-horizon
+rollout or clinical utility.
+
 ## 0. Current Scope and Frozen Decisions
 
 This document is the active execution plan as of 2026-07-27. Historical
