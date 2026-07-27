@@ -5,6 +5,7 @@ import {
   emptyManifest as emptySelectionManifest,
   getSelectionMetadataForFile,
   parseSelectionManifest,
+  pickSelectionManifestFile,
   summarizeReviewItems
 } from "./maskReview.js";
 

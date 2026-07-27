@@ -69,6 +69,28 @@ export function emptyManifest() {
   return { byFileKey: new Map(), rowCount: 0 };
 }
 
+export function pickSelectionManifestFile(files) {
+  const csvFiles = [...(files || [])].filter((file) => /\.csv$/i.test(file?.name || ""));
+  if (csvFiles.length === 0) return null;
+
+  const preferredNames = [
+    "selection_manifest_zh.csv",
+    "selection_manifest.csv",
+    "manifest.csv"
+  ];
+  for (const preferredName of preferredNames) {
+    const exact = csvFiles.find(
+      (file) => basename(file.name).toLowerCase() === preferredName
+    );
+    if (exact) return exact;
+  }
+
+  return csvFiles.find((file) => {
+    const name = basename(file.name).toLowerCase();
+    return name.includes("selection") && name.includes("manifest");
+  }) || csvFiles[0];
+}
+
 export function parseSelectionManifest(text) {
   const rows = parseCsvRows(String(text || ""));
   if (rows.length === 0) return emptyManifest();

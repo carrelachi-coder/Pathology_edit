@@ -4,6 +4,7 @@ import {
   buildReviewItems,
   parseMaskFileName,
   parseSelectionManifest,
+  pickSelectionManifestFile,
   summarizeReviewItems
 } from "../src/maskReview.js";
 
@@ -15,6 +16,17 @@ test("parseMaskFileName recognizes ID and RGB mask exports", () => {
   assert.deepEqual(parseMaskFileName("case_001_mask.png"), { baseKey: "case_001", kind: "id" });
   assert.deepEqual(parseMaskFileName("case_001_mask_rgb.png"), { baseKey: "case_001", kind: "rgb" });
   assert.equal(parseMaskFileName("case_001.png"), null);
+});
+
+test("pickSelectionManifestFile prefers the Chinese selection manifest", () => {
+  const files = [
+    { name: "notes.csv", type: "text/csv" },
+    { name: "selection_manifest_zh.csv", type: "text/csv" },
+    { name: "batch_index.csv", type: "text/csv" }
+  ];
+
+  assert.equal(pickSelectionManifestFile(files)?.name, "selection_manifest_zh.csv");
+  assert.equal(pickSelectionManifestFile([{ name: "notes.txt" }]), null);
 });
 
 test("buildReviewItems matches images to ID masks and metadata", () => {
