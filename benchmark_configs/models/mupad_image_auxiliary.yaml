@@ -1,0 +1,39 @@
+model_id: mupad_image_auxiliary
+display_name: MuPaD-512 image auxiliary
+model_type: mupad_image
+role: auxiliary
+input_contract:
+  allowed:
+    - reference_wsi_context
+  forbidden:
+    - target_image
+    - reference_image
+generation:
+  direction: "real WSI context centered on A -> B auxiliary comparison"
+  steps: 250
+  guidance: 2.5
+  guidance_high: 0.75
+  guidance_low: 0.0
+  native_resolution: 512
+  native_mpp: 0.5
+  native_fov_um: 256
+  reference_preprocessing: crop_1024_at_0.25_from_wsi_then_downsample_to_512_at_0.5
+  target_overlap_policy: exclude_direction
+  output_normalization: center_crop_256_then_resize_512
+execution:
+  mode: ssh_batch
+  env_python: /data1/zhao/wqx/benchmarks/envs/mupad/bin/python
+  worker: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/scripts/run_generation_baseline.py
+  cwd: /data1/zhao/wqx/benchmarks/weights/mupad/MuPaD-512
+  arguments:
+    model-type: mupad_image
+    model-dir: /data1/zhao/wqx/benchmarks/weights/mupad/MuPaD-512
+    mupad-context-root: /data1/zhao/wqx/benchmarks/data/complex_paired_v3_1500/mupad_wsi_context/contexts
+    exclude-sample-ids: /data1/zhao/wqx/benchmarks/data/complex_paired_v3_1500/mupad_wsi_context/excluded_mupad_image.txt
+    steps: 250
+    guidance: 2.5
+    guidance-high: 0.75
+    guidance-low: 0.0
+    native-resolution: 512
+    native-mpp: 0.5
+    source-mpp: 0.25

@@ -1,0 +1,34 @@
+model_id: unipath_7b
+display_name: UniPath-7B
+model_type: unipath
+role: benchmark
+input_contract:
+  allowed:
+    - prompt
+  forbidden:
+    - target_image
+generation:
+  direction: "prompt(B) -> B"
+  steps: 30
+  guidance: 3.0
+  use_rag: true
+  native_resolution: 384
+  native_mpp: 0.5
+  native_fov_um: 192
+  output_normalization: center_crop_256_then_resize_512
+execution:
+  mode: ssh_batch
+  env_python: /data1/zhao/wqx/benchmarks/envs/unipath/bin/python
+  worker: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/scripts/run_generation_baseline.py
+  cwd: /data1/zhao/wqx/benchmarks/repos/UniPath
+  arguments:
+    model-type: unipath
+    repo-dir: /data1/zhao/wqx/benchmarks/repos/UniPath
+    model-dir: /data1/zhao/wqx/benchmarks/weights/unipath/UniPath-7B
+    rag-root: /data1/zhao/wqx/benchmarks/weights/unipath/UniPath-68K/RAG_8K
+    steps: 30
+    guidance: 3.0
+    use-rag: true
+    native-resolution: 384
+    native-mpp: 0.5
+    source-mpp: 0.25

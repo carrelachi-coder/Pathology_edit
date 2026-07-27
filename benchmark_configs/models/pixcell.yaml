@@ -1,0 +1,35 @@
+model_id: pixcell_controlnet
+display_name: PixCell Cell-ControlNet
+model_type: pixcell
+role: benchmark
+input_contract:
+  allowed:
+    - reference_image
+    - target_nuclei_mask
+  forbidden:
+    - target_image
+generation:
+  direction: "UNI(A) + binary CellViT mask(B) -> B"
+  mask_schema: binary_nuclei_foreground
+  steps: 20
+  guidance: 2.5
+  native_resolution: 256
+  native_mpp: 0.5
+  native_fov_um: 128
+  condition_preprocessing: full_field_512_at_0.25_to_256_at_0.5
+execution:
+  mode: ssh_batch
+  env_python: /data1/zhao/wqx/benchmarks/envs/pixcell/bin/python
+  worker: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/scripts/run_generation_baseline.py
+  cwd: /home/lyw/wqx-DL/flow-edit/FlowEdit-main
+  arguments:
+    model-type: pixcell
+    model-dir: /data1/zhao/wqx/benchmarks/weights/pixcell/PixCell-256-Cell-ControlNet
+    vae-dir: /data1/zhao/wqx/benchmarks/weights/pixcell/PixCell-256-Cell-ControlNet/vae
+    pipeline-dir: /data1/zhao/wqx/benchmarks/weights/pixcell/PixCell-pipeline-ControlNet
+    uni-root: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h
+    steps: 20
+    guidance: 2.5
+    native-resolution: 256
+    native-mpp: 0.5
+    source-mpp: 0.25

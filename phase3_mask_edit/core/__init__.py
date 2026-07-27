@@ -28,6 +28,13 @@ from phase3_mask_edit.core.mask_io import (
     save_metadata,
     save_rgb_mask,
 )
+from phase3_mask_edit.core.gland_region import (
+    GLAS_GLAND_FINE_IDS,
+    GLAS_WHOLE_GLAND_POLICY_VERSION,
+    expand_region_to_intersecting_components,
+    glas_gland_mask,
+    glas_whole_gland_generation_region,
+)
 from phase3_mask_edit.core.context import (
     MaskEditContext,
     MaskEditContextError,
@@ -68,6 +75,8 @@ from phase3_mask_edit.core.validation import (
 
 __all__ = [
     "EditIntent",
+    "GLAS_GLAND_FINE_IDS",
+    "GLAS_WHOLE_GLAND_POLICY_VERSION",
     "EditApplicabilityDecision",
     "IntentValidationError",
     "MaskIOError",
@@ -89,8 +98,11 @@ __all__ = [
     "boundary_ring",
     "distance_to_boundary",
     "distance_to_label",
+    "expand_region_to_intersecting_components",
     "fill_small_holes",
     "generate_islands",
+    "glas_gland_mask",
+    "glas_whole_gland_generation_region",
     "id_to_rgb",
     "keep_only_touching",
     "load_change_region",

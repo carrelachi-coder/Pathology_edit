@@ -164,6 +164,33 @@ class AgenticWorkflowTests(unittest.TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(result.metrics["off_target_drift"], 0.0)
 
+    def test_inpaint_can_record_off_target_drift_without_using_it_as_a_gate(self):
+        reference = np.ones((10, 10), dtype=np.uint8)
+        target = reference.copy()
+        target[2:5, 2:5] = 2
+        change = target != reference
+        predicted = target.copy()
+        predicted[0, :] = 3
+
+        cross_result = verify_mask_fidelity(
+            reference_tissue_mask=reference,
+            target_tissue_mask=target,
+            predicted_tissue_mask=predicted,
+            change_region=change,
+            enforce_off_target_drift=True,
+        )
+        inpaint_result = verify_mask_fidelity(
+            reference_tissue_mask=reference,
+            target_tissue_mask=target,
+            predicted_tissue_mask=predicted,
+            change_region=change,
+            enforce_off_target_drift=False,
+        )
+
+        self.assertIn("off_target_drift", cross_result.failed_checks)
+        self.assertNotIn("off_target_drift", inpaint_result.failed_checks)
+        self.assertEqual(cross_result.score, inpaint_result.score)
+
     def test_standalone_cli_handles_noop_without_loading_models(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

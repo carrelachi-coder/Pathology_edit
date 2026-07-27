@@ -43,6 +43,7 @@ BATCH_SIZE="${BATCH_SIZE:-16}"
 NUM_EPOCHS="${NUM_EPOCHS:-100}"
 N_AUGMENTATIONS="${N_AUGMENTATIONS:-3}"
 CROP_MODE="${CROP_MODE:-mask}"
+SPLIT_MANIFEST="${SPLIT_MANIFEST:-}"
 
 PROBNET_RUN_DIR="${PROBNET_RUN_DIR:-${PHASE4_ROOT}/probnet_run}"
 GEN_OUTPUT_DIR="${GEN_OUTPUT_DIR:-${PHASE4_ROOT}/generated_masks}"
@@ -89,6 +90,10 @@ prepare_probnet_data() {
 
   echo
   echo "== ${dataset}: prepare ProbNet training data =="
+  SPLIT_ARGS=()
+  if [[ -n "${SPLIT_MANIFEST}" ]]; then
+    SPLIT_ARGS+=(--split-manifest "${SPLIT_MANIFEST}")
+  fi
   python inpaint_cells/data/prepare_dataset.py \
     --dataset "${dataset}" \
     --input-dir "${raw_patch_dir}" \
@@ -96,7 +101,8 @@ prepare_probnet_data() {
     --format auto \
     --n-augmentations "${N_AUGMENTATIONS}" \
     --val-ratio 0.1 \
-    --seed 42
+    --seed 42 \
+    "${SPLIT_ARGS[@]}"
 }
 
 build_nuclei_library() {

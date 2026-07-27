@@ -1,0 +1,24 @@
+schema_version: 2
+evaluation_frame:
+  image_size: [512, 512]
+  mpp: 0.25
+  fov_um: 128.0
+  input_policy: mpp_normalized_patch_only
+feature_extractors:
+  conch:
+    root: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/CONCH-main
+    checkpoint: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/CONCH-main/checkpoints/pytorch_model.bin
+  uni2h:
+    root: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h
+    checkpoint: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorch_model.bin
+evaluation:
+  dtype: bf16
+  batch_size: 16
+  subset_size: 1000
+  subset_repeats: 100
+  bootstrap_repeats: 100
+  seed: 20260715
+calibration:
+  sample_sizes: [60, 100, 300, 500, 1000]
+  repeats: 100
+  seed: 20260716

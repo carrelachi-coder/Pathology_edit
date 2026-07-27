@@ -42,6 +42,8 @@ from controlnet_train.inference import (
     run_inpaint_bundle,
 )
 from controlnet_train.data.common import default_prompt_for_dataset
+from inpaint_cells.data import iter_class_components
+from inpaint_cells.sampling_policy import widen_locally_thin_mask
 from phase3_mask_edit.core.mask_io import (
     load_change_region,
     load_id_mask,
@@ -50,6 +52,7 @@ from phase3_mask_edit.core.mask_io import (
     save_metadata,
     save_rgb_mask,
 )
+from phase3_mask_edit.core.gland_region import glas_whole_gland_generation_region
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
     QwenLocalParserConfig,
@@ -92,28 +95,43 @@ def main(argv: list[str] | None = None) -> int:
     _validate_same_size(reference_image, target_tissue, "target_tissue_mask")
 
     if args.change_region:
-        change_region = load_change_region(args.change_region)
+        semantic_change_region = load_change_region(args.change_region)
     else:
-        change_region = reference_tissue != target_tissue
-    _validate_same_size(reference_image, change_region, "change_region")
+        semantic_change_region = reference_tissue != target_tissue
+    _validate_same_size(reference_image, semantic_change_region, "change_region")
+    change_region, gland_structure_policy = glas_whole_gland_generation_region(
+        reference_tissue,
+        target_tissue,
+        semantic_change_region,
+        profile=args.profile,
+    )
+    if args.cell_fill_mode == "probnet" and np.any(change_region):
+        change_region = widen_locally_thin_mask(
+            change_region,
+            (reference_tissue != 0) | (target_tissue != 0),
+            minimum_width=args.minimum_mask_width,
+        )
 
     stage_paths = _save_pre_generation_artifacts(
         output_dir=output_dir,
         reference_image=reference_image,
         reference_tissue=reference_tissue,
         target_tissue=target_tissue,
+        semantic_change_region=semantic_change_region,
         change_region=change_region,
     )
 
     target_nuclei, cell_info = _build_target_nuclei(
         args,
         reference_nuclei,
+        reference_tissue,
         target_tissue,
         change_region,
         output_dir,
     )
     target_nuclei_path = save_id_mask(target_nuclei, output_dir / "target_nuclei_mask.png")
     cell_info["target_nuclei_mask"] = str(target_nuclei_path)
+    cell_info["gland_structure_policy"] = gland_structure_policy
     save_metadata(cell_info, output_dir / "cell_fill_log.json")
     target_combined_path = _save_target_combined_mask(
         output_dir / "target_combined_mask.png",
@@ -146,12 +164,16 @@ def main(argv: list[str] | None = None) -> int:
         "profile": args.profile,
         "generation_mode": generation_info["generation_mode"],
         "cell_fill_mode": args.cell_fill_mode,
-        "changed_pixels": int(np.count_nonzero(change_region)),
+        "changed_pixels": int(np.count_nonzero(semantic_change_region)),
         "changed_area_fraction": (
-            float(np.count_nonzero(change_region)) / int(change_region.size)
-            if change_region.size
+            float(np.count_nonzero(semantic_change_region))
+            / int(semantic_change_region.size)
+            if semantic_change_region.size
             else 0.0
         ),
+        "generation_region_pixels": int(np.count_nonzero(change_region)),
+        "generation_region_area_fraction": _change_area_fraction(change_region),
+        "gland_structure_policy": gland_structure_policy,
         "inputs": {
             "reference_image": str(args.reference_image),
             "reference_tissue_mask": str(args.reference_tissue_mask),
@@ -296,6 +318,7 @@ def _save_pre_generation_artifacts(
     reference_image: np.ndarray,
     reference_tissue: np.ndarray,
     target_tissue: np.ndarray,
+    semantic_change_region: np.ndarray,
     change_region: np.ndarray,
 ) -> dict[str, str]:
     paths: dict[str, str] = {}
@@ -304,7 +327,16 @@ def _save_pre_generation_artifacts(
     paths["target_mask"] = str(save_id_mask(target_tissue, output_dir / "target_mask.png"))
     paths["source_mask_rgb"] = str(save_rgb_mask(reference_tissue, output_dir / "source_mask_rgb.png"))
     paths["target_mask_rgb"] = str(save_rgb_mask(target_tissue, output_dir / "target_mask_rgb.png"))
-    paths["change_region"] = str(save_change_region(change_region, output_dir / "change_region.png"))
+    paths["semantic_change_region"] = str(
+        save_change_region(
+            semantic_change_region,
+            output_dir / "semantic_change_region.png",
+        )
+    )
+    paths["change_region"] = str(
+        save_change_region(change_region, output_dir / "change_region.png")
+    )
+    paths["generation_change_region"] = paths["change_region"]
 
     erased = reference_image.copy()
     erased[np.asarray(change_region, dtype=bool)] = np.array([128, 128, 128], dtype=np.uint8)
@@ -315,12 +347,13 @@ def _save_pre_generation_artifacts(
 def _build_target_nuclei(
     args: argparse.Namespace,
     reference_nuclei: np.ndarray,
+    reference_tissue: np.ndarray,
     target_tissue: np.ndarray,
     change_region: np.ndarray,
     output_dir: Path,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     requested_policy = args.crossing_cell_policy
-    effective_policy = "delete" if args.cell_fill_mode == "probnet" else requested_policy
+    effective_policy = "centroid" if args.cell_fill_mode == "probnet" else requested_policy
     retained, integrity_info = _retain_complete_reference_cells(
         reference_nuclei,
         change_region,
@@ -328,7 +361,9 @@ def _build_target_nuclei(
     )
     integrity_info["requested_policy"] = requested_policy
     if requested_policy != effective_policy:
-        integrity_info["policy_override"] = "probnet_fill_requires_delete_to_avoid_clipped_source_cells"
+        integrity_info["policy_override"] = (
+            "probnet_fill_uses_complete_component_centroid_erasure"
+        )
     save_id_mask(retained, output_dir / "retained_nuclei_mask.png")
 
     if args.cell_fill_mode == "preserve":
@@ -344,6 +379,7 @@ def _build_target_nuclei(
     else:
         target, status, shape_sampling = _run_probnet_cell_fill(
             args,
+            reference_tissue,
             target_tissue,
             retained,
             reference_nuclei,
@@ -377,7 +413,7 @@ def _retain_complete_reference_cells(
     Any source cell touching the changed region is handled as a complete
     component, so the target mask never contains clipped source-cell fragments.
     """
-    if policy not in {"delete", "keep", "majority"}:
+    if policy not in {"delete", "keep", "majority", "centroid"}:
         raise ValueError(f"Unsupported crossing-cell-policy: {policy}")
 
     from scipy import ndimage
@@ -395,6 +431,28 @@ def _retain_complete_reference_cells(
         "inside_change_components": 0,
         "outside_change_components": 0,
     }
+
+    if policy == "centroid":
+        stats["source_components"] = 0
+        height, width = changed.shape
+        for _, component, (centroid_y, centroid_x) in iter_class_components(source):
+            stats["source_components"] += 1
+            touches_change = bool(np.any(component & changed))
+            touches_unchanged = bool(np.any(component & ~changed))
+            if touches_change and touches_unchanged:
+                stats["crossing_components"] += 1
+            elif touches_change:
+                stats["inside_change_components"] += 1
+            else:
+                stats["outside_change_components"] += 1
+            row = int(np.clip(round(centroid_y), 0, height - 1))
+            col = int(np.clip(round(centroid_x), 0, width - 1))
+            if changed[row, col]:
+                stats["deleted_components"] += 1
+            else:
+                retained[component] = source[component]
+                stats["kept_components"] += 1
+        return retained, stats
 
     for component_id in range(1, count + 1):
         component = labeled == component_id
@@ -428,6 +486,7 @@ def _retain_complete_reference_cells(
 
 def _run_probnet_cell_fill(
     args: argparse.Namespace,
+    reference_tissue: np.ndarray,
     target_tissue: np.ndarray,
     retained_nuclei: np.ndarray,
     full_reference_nuclei: np.ndarray,
@@ -446,6 +505,10 @@ def _run_probnet_cell_fill(
 
     cell_dir = output_dir / "probnet_cell_fill"
     cell_dir.mkdir(parents=True, exist_ok=True)
+    source_tissue = save_id_mask(
+        reference_tissue,
+        cell_dir / "reference_tissue.png",
+    )
     input_tissue = save_id_mask(target_tissue, cell_dir / "input_tissue.png")
     input_nuclei = save_id_mask(retained_nuclei, cell_dir / "input_nuclei.png")
     reference_nuclei_shapes = save_id_mask(
@@ -467,6 +530,8 @@ def _run_probnet_cell_fill(
         str(args.nuclei_library),
         "--input-tissue",
         str(input_tissue),
+        "--reference-tissue",
+        str(source_tissue),
         "--input-nuclei",
         str(input_nuclei),
         "--reference-nuclei-shapes",
@@ -479,6 +544,9 @@ def _run_probnet_cell_fill(
         probnet_device,
         "--gamma-values",
         args.probnet_gamma_values,
+        "--minimum-mask-width",
+        str(args.minimum_mask_width),
+        "--no-widen-edit-region",
         "--reference-shape-min-area",
         str(getattr(args, "reference_shape_min_area", 8)),
         "--reference-shape-max-area-ratio",
@@ -1086,7 +1154,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probnet-ckpt", type=Path, default=Path(DEFAULT_PROBNET_CHECKPOINT))
     parser.add_argument("--nuclei-library", type=Path)
     parser.add_argument("--probnet-device", default="auto", choices=("auto", "cuda", "cpu"))
-    parser.add_argument("--probnet-gamma-values", default="1.0")
+    parser.add_argument("--probnet-gamma-values", default="1.5")
+    parser.add_argument("--minimum-mask-width", type=int, default=33)
     parser.add_argument("--density-scale-json", type=Path)
     parser.add_argument("--reference-shape-min-area", type=int, default=8)
     parser.add_argument("--reference-shape-max-area-ratio", type=float, default=0.0)

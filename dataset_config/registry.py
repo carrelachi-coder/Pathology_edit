@@ -89,9 +89,9 @@ def _load_registry() -> None:
     if _REGISTRY:
         return  # already loaded
 
-    from . import bcss, panda, glas, ignite, puma, orca
+    from . import bcss, panda, glas, ignite, puma, orca, unified_coarse
 
-    for module in (bcss, panda, glas, ignite, puma, orca):
+    for module in (bcss, panda, glas, ignite, puma, orca, unified_coarse):
         cfg: DatasetConfig = module.CONFIG
         _REGISTRY[cfg.name.upper()] = cfg
 

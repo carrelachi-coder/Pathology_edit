@@ -1,7 +1,9 @@
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
+from PIL import Image
 from scipy import ndimage
 
 from dataset_config.unified_labels import UNIFIED_COLOR_MAP
@@ -101,6 +103,36 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertGreater(int(np.count_nonzero(region)), 0)
         self.assertLessEqual(int(np.count_nonzero(region)), 6)
         self.assertTrue(region[10, 10])
+
+    def test_organic_projection_fallback_handles_empty_template_overlap(self):
+        mask = np.zeros(self.mask_shape, dtype=np.int64)
+        mask[20:36, 20:36] = 1
+        mask[8:18, 8:18] = 2
+        candidate = np.zeros(self.mask_shape, dtype=bool)
+        candidate[50:58, 50:58] = True
+        primitive_config = {
+            "name": "tumor_burden_increase",
+            "mask_operation": {"target": "Tumor", "target_priority": ["Stroma"]},
+            "parameter_ranges": {
+                "target_area_delta_fraction": {"mild": [0.02, 0.03]},
+                "organic_allow_fallback_when_empty": True,
+            },
+        }
+
+        result = apply_organic_projected_label_write(
+            mask,
+            candidate,
+            schema=self.schema,
+            source_labels=("Stroma",),
+            target_label="Tumor",
+            primitive_config=primitive_config,
+            strength="mild",
+            target_pixels=20,
+        )
+
+        self.assertGreater(result.selected_pixels, 0)
+        self.assertTrue(result.ops_log["fallback_used"])
+        self.assertEqual(result.ops_log["primitive"], "tumor_burden_increase")
 
     def test_loads_llm_json_file(self):
         path = Path("tests/fixtures/llm_contour_response.json")
@@ -1359,13 +1391,91 @@ class LLMContourProposalTests(unittest.TestCase):
             30.0,
         )
 
+    def test_necrosis_disconnected_from_tumor_falls_back_to_new_tumor_focus(self):
+        old_mask = np.full((96, 96), 2, dtype=np.int64)
+        old_mask[56:88, 56:88] = 1
+        old_mask[8:20, 8:20] = 3
+        raw_candidate = old_mask == 1
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 24,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_neighbor_radius_px": 8,
+                    "allow_multifocal_new_foci_when_existing_necrosis": False,
+                },
+            },
+            seed=5,
+            target_pixels=100,
+        )
+
+        policy = result.ops_log["component_policy"]["params"]
+        self.assertEqual(policy["existing_necrosis_expansion_band_pixels"], 0)
+        self.assertTrue(policy["used_disconnected_necrosis_fallback"])
+        self.assertEqual(
+            policy["legal_domain_policy"],
+            "original_tumor_fallback_for_disconnected_existing_necrosis",
+        )
+        self.assertEqual(result.selected_pixels, 100)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+
+    def test_necrosis_small_expansion_band_falls_back_to_full_tumor_domain(self):
+        old_mask = np.full((96, 96), 2, dtype=np.int64)
+        old_mask[20:76, 20:76] = 1
+        old_mask[40:56, 18:20] = 3
+        raw_candidate = old_mask == 1
+
+        result = apply_organic_projected_label_write(
+            old_mask,
+            raw_candidate,
+            schema=self.schema,
+            source_labels=("Tumor",),
+            target_label="Necrosis",
+            primitive_config={
+                "name": "necrosis_appearance",
+                "parameter_ranges": {
+                    "target_changed_area_fraction": {"mild": [0.08, 0.14]},
+                    "organic_min_template_legal_overlap_fraction": 0.0,
+                    "organic_min_component_fraction": 0.0,
+                    "organic_template_neighborhood_radius_px": 24,
+                    "organic_template_spillover_fraction": 0.0,
+                    "necrosis_neighbor_radius_px": 2,
+                    "allow_multifocal_new_foci_when_existing_necrosis": False,
+                },
+            },
+            seed=7,
+            strength="mild",
+            target_pixels=300,
+        )
+
+        policy = result.ops_log["component_policy"]["params"]
+        self.assertGreater(policy["existing_necrosis_expansion_band_pixels"], 0)
+        self.assertLess(
+            policy["existing_necrosis_expansion_band_pixels"],
+            policy["minimum_required_pixels_for_strength"],
+        )
+        self.assertTrue(policy["used_insufficient_expansion_band_fallback"])
+        self.assertEqual(result.selected_pixels, 300)
+        self.assertTrue(np.all(old_mask[result.change_region] == 1))
+
     def test_necrosis_engulfs_thin_stroma_intrusion_without_consuming_external_stroma(self):
         old_mask = np.zeros((96, 96), dtype=np.int64)
         old_mask[8:88, 8:88] = 2
+        old_mask[0:4, 0:8] = 2
         old_mask[20:76, 20:76] = 1
         old_mask[44:52, 20:50] = 2
         raw_candidate = np.zeros_like(old_mask, dtype=bool)
         raw_candidate[32:64, 32:64] = True
+        raw_candidate[0:4, 0:8] = True
 
         result = apply_organic_projected_label_write(
             old_mask,
@@ -1392,6 +1502,15 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertIn("Stroma", engulfment["engulfed_label_pixels"])
         self.assertTrue(np.all(result.target_mask[44:52, 32:50] == 3))
         self.assertTrue(np.all(result.target_mask[44:52, 20:26] == 2))
+        yy, xx = np.mgrid[-6:7, -6:7]
+        target_necrosis = result.target_mask == 3
+        outside_tumor = result.change_region & (old_mask != 1)
+        validator_closed = ndimage.binary_closing(
+            target_necrosis,
+            structure=(yy * yy + xx * xx) <= 36,
+            border_value=0,
+        )
+        self.assertFalse(np.any(outside_tumor & ~validator_closed))
 
     def test_necrosis_policy_avoids_blood_vessel_neighborhood(self):
         old_mask = np.zeros((72, 72), dtype=np.int64)
@@ -2392,6 +2511,45 @@ class LLMContourProposalTests(unittest.TestCase):
             immune_pixels - result.selected_pixels,
         )
 
+    def test_immune_decrease_small_compartment_uses_feasible_integer_target(self):
+        old_mask = np.full((16, 16), 2, dtype=np.int64)
+        old_mask[4, 2:13] = 4
+        raw_candidate = old_mask == 4
+
+        for strength, interval, expected_pixels in (
+            ("mild", [0.08, 0.14], 1),
+            ("moderate", [0.14, 0.24], 2),
+            ("significant", [0.24, 0.35], 3),
+        ):
+            with self.subTest(strength=strength):
+                result = apply_organic_immune_infiltration_decrease(
+                    old_mask,
+                    raw_candidate,
+                    schema=self.schema,
+                    primitive_config={
+                        "name": "immune_infiltration_decrease",
+                        "mask_operation": {
+                            "source": "Immune infiltrate",
+                            "backfill_priority": ["Stroma", "Tumor"],
+                        },
+                        "parameter_ranges": {
+                            "immune_area_decrease_fraction": {
+                                strength: interval
+                            },
+                            "min_remaining_immune_fraction": 0.005,
+                            "organic_min_template_legal_overlap_fraction": 0.0,
+                            "organic_template_neighborhood_radius_px": 128,
+                            "organic_template_spillover_fraction": 0.0,
+                        },
+                    },
+                    seed=1,
+                    strength=strength,
+                    target_pixels=None,
+                )
+
+                self.assertEqual(result.ops_log["target_pixels"], expected_pixels)
+                self.assertEqual(result.selected_pixels, expected_pixels)
+
     def test_contour_executor_routes_immune_decrease_to_backfill_backend(self):
         old_mask = np.zeros((40, 40), dtype=np.int64)
         old_mask[2:38, 2:38] = 2
@@ -2937,9 +3095,17 @@ class LLMPreviewTests(unittest.TestCase):
         self.assertTrue(np.any(overlay[64, :] != rgb[64, :]))
 
     def test_preview_tool_auto_loads_rgb_mask_without_turning_unknown_ids_white(self):
-        mask = _load_mask_auto(
-            Path("phase3_mask_edit/previews/tumor_burden/BCSS_mild_real0_tb15_increase_src.png")
+        preview = np.array(
+            [
+                [UNIFIED_COLOR_MAP[0], UNIFIED_COLOR_MAP[1]],
+                [UNIFIED_COLOR_MAP[2], (17, 23, 29)],
+            ],
+            dtype=np.uint8,
         )
+        with TemporaryDirectory() as temporary_directory:
+            mask_path = Path(temporary_directory) / "source_mask.png"
+            Image.fromarray(preview, mode="RGB").save(mask_path)
+            mask = _load_mask_auto(mask_path)
 
         rgb = id_mask_to_llm_preview_rgb(mask)
         unique_colors = np.unique(rgb.reshape(-1, 3), axis=0)

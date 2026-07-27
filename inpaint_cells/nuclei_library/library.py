@@ -732,7 +732,20 @@ def fill_nuclei_in_region(output_map, edit_mask, library):
 #  Layered storage variants (AD-1)
 # ============================================================
 
-def place_nucleus_layered(nuclei_map, center_y, center_x, nuc_instance, augment=True):
+def place_nucleus_layered(
+    nuclei_map,
+    center_y,
+    center_x,
+    nuc_instance,
+    augment=True,
+    max_overlap_fraction=0.0,
+    valid_tissue_mask=None,
+    require_full_tissue_containment=False,
+    rotation_quarters=None,
+    flip_horizontal=None,
+    flip_vertical=None,
+    scale=None,
+):
     """
     把一个核实例贴到 nuclei_map 上 (AD-1: 分层存储, nuclei_map 值域 0-5 internal index)。
 
@@ -741,6 +754,13 @@ def place_nucleus_layered(nuclei_map, center_y, center_x, nuc_instance, augment=
         center_y, center_x: 放置中心坐标
         nuc_instance: dict with 'mask' (bool), 'type' (int, raw 101-105)
         augment: 是否随机旋转/翻转/缩放
+        max_overlap_fraction: Maximum fraction of the proposed nucleus that may
+            overlap an existing nucleus. Production reference-preserving
+            sampling passes ``0.0`` so retained and newly placed nuclei remain
+            bitwise disjoint.
+        valid_tissue_mask: Optional boolean mask defining biological support.
+        require_full_tissue_containment: Reject a truncated proposal or any
+            proposal pixel outside ``valid_tissue_mask``.
 
     Returns:
         True if placed successfully
@@ -750,25 +770,43 @@ def place_nucleus_layered(nuclei_map, center_y, center_x, nuc_instance, augment=
     nuc_type_idx = NUCLEI_RAW_TO_INDEX.get(nuc_type_raw, 0)
 
     if augment:
-        k = random.randint(0, 3)
+        k = (
+            random.randint(0, 3)
+            if rotation_quarters is None
+            else int(rotation_quarters) % 4
+        )
         nuc_mask = np.rot90(nuc_mask, k)
-        if random.random() > 0.5:
+        horizontal = (
+            random.random() > 0.5
+            if flip_horizontal is None
+            else bool(flip_horizontal)
+        )
+        vertical = (
+            random.random() > 0.5
+            if flip_vertical is None
+            else bool(flip_vertical)
+        )
+        if horizontal:
             nuc_mask = np.fliplr(nuc_mask)
-        if random.random() > 0.5:
+        if vertical:
             nuc_mask = np.flipud(nuc_mask)
         preserve_patch_size = (
             nuc_instance.get("source") == "reference"
             or bool(nuc_instance.get("size_calibrated", False))
         )
-        if not preserve_patch_size:
-            scale = random.uniform(0.8, 1.2)
-            if abs(scale - 1.0) > 0.05:
-                new_h = max(1, int(nuc_mask.shape[0] * scale))
-                new_w = max(1, int(nuc_mask.shape[1] * scale))
-                nuc_mask = cv2.resize(
-                    nuc_mask.astype(np.uint8), (new_w, new_h),
-                    interpolation=cv2.INTER_NEAREST
-                ).astype(bool)
+        applied_scale = scale
+        if applied_scale is None:
+            applied_scale = (
+                1.0 if preserve_patch_size else random.uniform(0.8, 1.2)
+            )
+        resize_threshold = 1e-6 if scale is not None else 0.05
+        if abs(float(applied_scale) - 1.0) > resize_threshold:
+            new_h = max(1, int(nuc_mask.shape[0] * float(applied_scale)))
+            new_w = max(1, int(nuc_mask.shape[1] * float(applied_scale)))
+            nuc_mask = cv2.resize(
+                nuc_mask.astype(np.uint8), (new_w, new_h),
+                interpolation=cv2.INTER_NEAREST
+            ).astype(bool)
 
     h, w = nuc_mask.shape
     H, W = nuclei_map.shape
@@ -777,6 +815,10 @@ def place_nucleus_layered(nuclei_map, center_y, center_x, nuc_instance, augment=
     x1 = center_x - w // 2
     y2 = y1 + h
     x2 = x1 + w
+
+    boundary_truncated = y1 < 0 or x1 < 0 or y2 > H or x2 > W
+    if require_full_tissue_containment and boundary_truncated:
+        return False
 
     src_y1 = max(0, -y1)
     src_x1 = max(0, -x1)
@@ -794,9 +836,24 @@ def place_nucleus_layered(nuclei_map, center_y, center_x, nuc_instance, augment=
     local_mask = nuc_mask[src_y1:src_y2, src_x1:src_x2]
     target_region = nuclei_map[dst_y1:dst_y2, dst_x1:dst_x2]
 
+    if require_full_tissue_containment:
+        if valid_tissue_mask is None:
+            raise ValueError(
+                "valid_tissue_mask is required for full tissue containment"
+            )
+        allowed = np.asarray(valid_tissue_mask, dtype=bool)
+        if allowed.shape != nuclei_map.shape:
+            raise ValueError(
+                "valid_tissue_mask and nuclei_map must share one shape"
+            )
+        local_allowed = allowed[dst_y1:dst_y2, dst_x1:dst_x2]
+        if np.any(local_mask & ~local_allowed):
+            return False
+
     # Overlap check: nuclei_map uses index 0-5 (0=background, 1-5=cell types)
     overlap = (target_region > 0) & local_mask
-    if overlap.sum() > local_mask.sum() * 0.2:
+    maximum_overlap = max(0.0, float(max_overlap_fraction))
+    if overlap.sum() > local_mask.sum() * maximum_overlap:
         return False
 
     nuclei_map[dst_y1:dst_y2, dst_x1:dst_x2][local_mask] = nuc_type_idx
@@ -871,7 +928,14 @@ def fill_nuclei_in_region_layered(nuclei_map, tissue_map, edit_mask, library):
             instance = library.sample_instance(tissue_id, nuc_type)
             if instance is None:
                 continue
-            if place_nucleus_layered(nuclei_map, cy, cx, instance, augment=True):
+            if place_nucleus_layered(
+                nuclei_map,
+                cy,
+                cx,
+                instance,
+                augment=True,
+                max_overlap_fraction=0.0,
+            ):
                 placed += 1
 
         total_placed += placed

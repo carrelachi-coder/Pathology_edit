@@ -8,12 +8,12 @@ import numpy as np
 from phase3_mask_edit.cli.edit_from_intents import execute_intents_on_mask
 from phase3_mask_edit.cli.parse_prompts import main as parse_prompts_main
 from phase3_mask_edit.core.intent import EditIntent
-from phase3_mask_edit.core.mask_io import load_id_mask, save_id_mask
+from phase3_mask_edit.core.mask_io import save_id_mask
 from phase3_mask_edit.parser.semantic_diff import DEFAULT_SEMANTIC_DIFF
 
 
 class Phase3EditFromIntentsCliTests(unittest.TestCase):
-    def test_execute_intents_on_mask_returns_target_and_union_change_region(self):
+    def test_execute_intents_on_mask_rejects_retired_executor(self):
         mask = np.zeros((96, 96), dtype=np.int64)
         mask[16:72, 16:72] = 1
         mask[72:88, 16:72] = 2
@@ -29,17 +29,14 @@ class Phase3EditFromIntentsCliTests(unittest.TestCase):
             }
         )
 
-        result = execute_intents_on_mask(
-            mask,
-            [intent],
-            reference_profile="BCSS",
-        )
+        with self.assertRaisesRegex(RuntimeError, "retired"):
+            execute_intents_on_mask(
+                mask,
+                [intent],
+                reference_profile="BCSS",
+            )
 
-        self.assertIn(result.status, {"executed", "degraded_executed"})
-        self.assertGreater(np.count_nonzero(result.change_region), 0)
-        self.assertFalse(np.array_equal(result.source_mask, result.target_mask))
-
-    def test_parse_prompts_fixture_execute_writes_new_mask(self):
+    def test_parse_prompts_fixture_execute_writes_plan_then_rejects_retired_executor(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             mask = np.zeros((96, 96), dtype=np.int64)
@@ -54,28 +51,25 @@ class Phase3EditFromIntentsCliTests(unittest.TestCase):
             diff_path.write_text(json.dumps(diff), encoding="utf-8")
 
             output = root / "out"
-            exit_code = parse_prompts_main(
-                [
-                    "--profile",
-                    "BCSS",
-                    "--semantic-diff",
-                    str(diff_path),
-                    "--mask",
-                    str(mask_path),
-                    "--output",
-                    str(output),
-                    "--execute",
-                ]
-            )
+            with self.assertRaisesRegex(SystemExit, "2"):
+                parse_prompts_main(
+                    [
+                        "--profile",
+                        "BCSS",
+                        "--semantic-diff",
+                        str(diff_path),
+                        "--mask",
+                        str(mask_path),
+                        "--output",
+                        str(output),
+                        "--execute",
+                    ]
+                )
 
-            self.assertEqual(exit_code, 0)
             self.assertTrue((output / "semantic_diff.json").exists())
             self.assertTrue((output / "edit_intents.json").exists())
             self.assertTrue((output / "planning_summary.json").exists())
-            self.assertTrue((output / "mask_edit" / "target_mask.png").exists())
-            self.assertTrue((output / "mask_edit" / "change_region.png").exists())
-            target = load_id_mask(output / "mask_edit" / "target_mask.png")
-            self.assertFalse(np.array_equal(mask, target))
+            self.assertFalse((output / "mask_edit").exists())
 
 
 if __name__ == "__main__":

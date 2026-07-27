@@ -1,0 +1,27 @@
+model_id: cross_v1_project
+display_name: Cross-v1 project model
+model_type: cross_v1
+role: main_method
+input_contract:
+  allowed:
+    - reference_image
+    - reference_tissue_mask
+    - reference_nuclei_mask
+    - target_tissue_mask
+    - target_nuclei_mask
+    - prompt
+  forbidden:
+    - target_image
+generation:
+  direction: "A + B masks/prompt -> B; B + A masks/prompt -> A"
+  uni_2h: false
+  ip_adapter: false
+  reference_condition: target_condition
+  pix2pix_checkpoint: /data/wqx/flowedit/pix2pix_texture_transfer_lazy_ver4_wsi_identity_i0_local_full_pyramid_v3_ft/ckpt/pilot_step001000.pt
+  native_resolution: 512
+  native_mpp: 0.25
+  native_fov_um: 128
+  output_filename: stage2_pix2pix_pilot_step001000_latest.png
+execution:
+  mode: reuse
+  output_root: /data1/zhao/wqx/benchmarks/runs/cross_v1_no_ip_epoch25_complex_v3_preview_60_20260714

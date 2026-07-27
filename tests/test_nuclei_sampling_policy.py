@@ -1,0 +1,48 @@
+from types import SimpleNamespace
+
+import numpy as np
+
+from inpaint_cells.sampling_policy import (
+    retry_pool_target,
+    valid_biological_tissue_mask,
+)
+
+
+def _retry_args():
+    return SimpleNamespace(
+        retry_candidate_multiplier=12.0,
+        retry_candidate_floor=64,
+        dense_retry_quota_threshold=20,
+        dense_retry_occupancy_threshold=0.12,
+        dense_retry_candidate_multiplier=24.0,
+        dense_retry_candidate_floor=128,
+    )
+
+
+def test_retry_pool_expands_for_dense_components():
+    ordinary = retry_pool_target(
+        quota=5,
+        component_area=10000,
+        expected_nucleus_area=80,
+        args=_retry_args(),
+    )
+    dense = retry_pool_target(
+        quota=25,
+        component_area=10000,
+        expected_nucleus_area=80,
+        args=_retry_args(),
+    )
+
+    assert ordinary == (64, False, 0.04)
+    assert dense == (600, True, 0.2)
+
+
+def test_valid_biological_tissue_excludes_background_and_skipped_labels():
+    tissue = np.array([[0, 1, 2], [3, 4, 0]], dtype=np.uint8)
+
+    allowed = valid_biological_tissue_mask(tissue, {2, 4})
+
+    np.testing.assert_array_equal(
+        allowed,
+        np.array([[False, True, False], [True, False, False]]),
+    )

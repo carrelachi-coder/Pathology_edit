@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Mapping
 
@@ -41,6 +42,31 @@ INTENT_ORDER = {
     "immune_infiltration_decrease": 45,
     "stromal_desmoplasia": 50,
     "stroma_decrease": 55,
+}
+
+TRANSITION_PRIMITIVES: dict[str, dict[tuple[str, str], str]] = {
+    "PANDA": {
+        ("benign_epithelium", "gleason_pattern_3"): "benign_to_gleason3",
+        ("benign_epithelium", "stromal_tissue"): "benign_atrophy",
+        ("gleason_pattern_3", "gleason_pattern_4"): "gleason_upgrade_3to4",
+        ("gleason_pattern_4", "gleason_pattern_5"): "gleason_upgrade_4to5",
+        ("gleason_pattern_4", "gleason_pattern_3"): "gleason_downgrade_4to3",
+    },
+    "GLAS": {
+        ("normal_gland", "adenomatous_gland"): "normal_to_adenomatous",
+        (
+            "adenomatous_gland",
+            "moderately_differentiated_carcinoma",
+        ): "adenoma_to_carcinoma",
+        (
+            "moderately_differentiated_carcinoma",
+            "poorly_differentiated_carcinoma",
+        ): "grade_upgrade",
+        (
+            "poorly_differentiated_carcinoma",
+            "moderately_differentiated_carcinoma",
+        ): "treatment_dedifferentiation",
+    },
 }
 
 
@@ -256,8 +282,140 @@ def _raw_intent_specs(
     raw_items: list[dict[str, Any]] = []
     unsupported: list[PlanningWarning] = []
 
+    transition_change = semantic_diff["transition_change"]
+    transition_pair = (
+        transition_change["source_state"],
+        transition_change["target_state"],
+    )
+    reported_transition = transition_pair != ("none", "none")
+    transition_primitive = TRANSITION_PRIMITIVES.get(reference_profile.upper(), {}).get(
+        transition_pair
+    )
+    transition_has_evidence = _transition_pair_has_text_evidence(
+        transition_pair,
+        old_prompt=old_prompt,
+        new_prompt=new_prompt,
+    )
+    has_explicit_transition = bool(
+        reported_transition and transition_primitive and transition_has_evidence
+    )
+    if reported_transition:
+        if transition_primitive is None:
+            unsupported.append(
+                PlanningWarning(
+                    field="transition_change",
+                    value=f"{transition_pair[0]}->{transition_pair[1]}",
+                    reason=(
+                        "The explicit fine transition is not supported for "
+                        f"reference profile {reference_profile}."
+                    ),
+                )
+            )
+        elif not transition_has_evidence:
+            unsupported.append(
+                PlanningWarning(
+                    field="transition_change",
+                    value=f"{transition_pair[0]}->{transition_pair[1]}",
+                    reason=(
+                        "Ignored the model transition because the source/target "
+                        "phenotypes are not supported by the prompt text."
+                    ),
+                )
+            )
+        else:
+            raw_items.append(
+                _intent_payload(
+                    transition_primitive,
+                    _strength_from_degree(transition_change["degree"]),
+                    reference_profile,
+                    old_prompt,
+                    new_prompt,
+                    prompt_diff,
+                )
+            )
+    else:
+        specialized_non_grade = _specialized_non_grade_payload(
+            reference_profile=reference_profile,
+            old_prompt=old_prompt,
+            new_prompt=new_prompt,
+            prompt_diff=prompt_diff,
+        )
+        if specialized_non_grade is not None:
+            raw_items.append(specialized_non_grade)
+
+    stroma_change = semantic_diff["stroma_change"]
+    reported_stroma_density = stroma_change["density"]
+    inferred_stroma_density = (
+        _infer_primary_stroma_density_change(old_prompt, new_prompt)
+        if reported_stroma_density == "none"
+        else "none"
+    )
+    stroma_density = (
+        inferred_stroma_density
+        if inferred_stroma_density != "none"
+        else reported_stroma_density
+    )
+
     tumor_change = semantic_diff["tumor_change"]
-    tumor_growth = tumor_change["growth"]
+    reported_tumor_growth = tumor_change["growth"]
+    necrosis_action = semantic_diff["necrosis_change"]["action"]
+    suppress_transition_growth = (
+        has_explicit_transition
+        and reported_tumor_growth != "none"
+        and bool(old_prompt or new_prompt)
+        and not _contains_independent_tumor_extent_change(new_prompt)
+    )
+    suppress_necrosis_replacement_growth = (
+        reported_tumor_growth == "decrease"
+        and necrosis_action in {"add", "increase"}
+        and bool(new_prompt)
+        and not _contains_independent_tumor_extent_change(new_prompt)
+    )
+    suppress_stroma_primary_growth = (
+        reported_tumor_growth != "none" and inferred_stroma_density != "none"
+    )
+    tumor_growth = (
+        "none"
+        if (
+            suppress_transition_growth
+            or suppress_necrosis_replacement_growth
+            or suppress_stroma_primary_growth
+        )
+        else reported_tumor_growth
+    )
+    if suppress_transition_growth:
+        unsupported.append(
+            PlanningWarning(
+                field="tumor_change.growth",
+                value=reported_tumor_growth,
+                reason=(
+                    "Ignored generic tumor growth because an exact fine-grained "
+                    "phenotype transition is the primary edit."
+                ),
+            )
+        )
+    if suppress_necrosis_replacement_growth:
+        unsupported.append(
+            PlanningWarning(
+                field="tumor_change.growth",
+                value=reported_tumor_growth,
+                reason=(
+                    "Ignored reciprocal viable-tumor displacement because "
+                    "necrosis appearance is the primary edit."
+                ),
+            )
+        )
+    if suppress_stroma_primary_growth:
+        unsupported.append(
+            PlanningWarning(
+                field="tumor_change.growth",
+                value=reported_tumor_growth,
+                reason=(
+                    "Ignored contextual epithelial prominence because stromal "
+                    "density is the primary changed subject."
+                ),
+            )
+        )
     if tumor_growth == "increase":
         primitive, warning = _select_tumor_growth_primitive(context)
         if primitive is None:
@@ -311,9 +469,27 @@ def _raw_intent_specs(
             if warning is not None:
                 unsupported.append(warning)
 
-    if tumor_change["grade_change"] != "none":
+    grade_change = tumor_change["grade_change"]
+    suppress_contextual_grade = (
+        grade_change != "none"
+        and tumor_growth != "none"
+        and bool(new_prompt)
+        and not _contains_independent_grade_edit(new_prompt)
+    )
+    if suppress_contextual_grade:
+        unsupported.append(
+            PlanningWarning(
+                field="tumor_change.grade_change",
+                value=grade_change,
+                reason=(
+                    "Ignored a contextual atypia descriptor because tumor extent "
+                    "is the primary edit and no independent grade action is stated."
+                ),
+            )
+        )
+    elif grade_change != "none" and not has_explicit_transition:
         special_payload = _specialized_grade_payload(
-            tumor_change["grade_change"],
+            grade_change,
             reference_profile=reference_profile,
             old_prompt=old_prompt,
             new_prompt=new_prompt,
@@ -323,7 +499,7 @@ def _raw_intent_specs(
             unsupported.append(
                 PlanningWarning(
                     field="tumor_change.grade_change",
-                    value=tumor_change["grade_change"],
+                    value=grade_change,
                     reason=(
                         "No dataset-specialized fine-ID transition could be inferred "
                         "from the reference profile and prompt wording."
@@ -334,7 +510,6 @@ def _raw_intent_specs(
             raw_items.append(special_payload)
 
     necrosis_change = semantic_diff["necrosis_change"]
-    necrosis_action = necrosis_change["action"]
     if necrosis_action in {"add", "increase"}:
         raw_items.append(
             _intent_payload(
@@ -375,10 +550,33 @@ def _raw_intent_specs(
 
     lymphocyte_change = semantic_diff["lymphocyte_change"]
     infiltration = lymphocyte_change["infiltration"]
-    if infiltration == "increase":
+    suppress_contextual_immune = (
+        (
+            tumor_growth != "none"
+            or has_explicit_transition
+            or (stroma_density != "none" and _stroma_is_primary_subject(new_prompt))
+        )
+        and infiltration != "none"
+        and bool(new_prompt)
+        and not _contains_independent_immune_edit(new_prompt)
+    )
+    if suppress_contextual_immune:
+        unsupported.append(
+            PlanningWarning(
+                field="lymphocyte_change.infiltration",
+                value=infiltration,
+                reason=(
+                    "Ignored a contextual immune descriptor because tumor extent "
+                    "is the primary edit and no independent immune action is stated."
+                ),
+            )
+        )
+    elif infiltration == "increase":
         raw_items.append(
             _intent_payload(
-                "stromal_immune_infiltration",
+                _immune_increase_primitive(
+                    lymphocyte_change["location"], old_prompt, new_prompt
+                ),
                 _strength_from_degree(lymphocyte_change["degree"]),
                 reference_profile,
                 old_prompt,
@@ -410,8 +608,24 @@ def _raw_intent_specs(
                 )
             )
 
-    stroma_change = semantic_diff["stroma_change"]
-    if stroma_change["density"] == "increase":
+    suppress_transition_stroma = (
+        has_explicit_transition
+        and stroma_density != "none"
+        and bool(new_prompt)
+        and not _contains_independent_stroma_action(new_prompt)
+    )
+    if suppress_transition_stroma:
+        unsupported.append(
+            PlanningWarning(
+                field="stroma_change.density",
+                value=stroma_density,
+                reason=(
+                    "Ignored a contextual stromal reaction because the exact "
+                    "phenotype transition is the primary edit."
+                ),
+            )
+        )
+    elif stroma_density == "increase":
         payload = _intent_payload(
             "stromal_desmoplasia",
             _strength_from_degree(stroma_change["degree"]),
@@ -420,25 +634,30 @@ def _raw_intent_specs(
             new_prompt,
             prompt_diff,
         )
-        if _stroma_increase_is_immune_replacement_fallback(
-            semantic_diff,
-            old_prompt=old_prompt,
-            new_prompt=new_prompt,
-        ) or _stroma_increase_is_necrosis_replacement_fallback(
-            semantic_diff,
-            old_prompt=old_prompt,
-            new_prompt=new_prompt,
-        ) or _stroma_increase_is_tumor_replacement_fallback(
-            semantic_diff,
-            old_prompt=old_prompt,
-            new_prompt=new_prompt,
+        if (
+            _stroma_increase_is_immune_replacement_fallback(
+                semantic_diff,
+                old_prompt=old_prompt,
+                new_prompt=new_prompt,
+            )
+            or _stroma_increase_is_necrosis_replacement_fallback(
+                semantic_diff,
+                old_prompt=old_prompt,
+                new_prompt=new_prompt,
+            )
+            or _stroma_increase_is_tumor_replacement_fallback(
+                semantic_diff,
+                old_prompt=old_prompt,
+                new_prompt=new_prompt,
+            )
         ):
             primary_primitive = (
                 "immune_infiltration_decrease"
                 if semantic_diff["lymphocyte_change"]["infiltration"] == "decrease"
                 else (
                     "necrosis_resolution"
-                    if semantic_diff["necrosis_change"]["action"] in {"decrease", "remove"}
+                    if semantic_diff["necrosis_change"]["action"]
+                    in {"decrease", "remove"}
                     else "tumor_burden_decrease"
                 )
             )
@@ -481,7 +700,7 @@ def _raw_intent_specs(
                 )
             )
         raw_items.append(payload)
-    elif stroma_change["density"] != "none":
+    elif stroma_density != "none":
         raw_items.append(
             _intent_payload(
                 "stroma_decrease",
@@ -642,11 +861,7 @@ def _stroma_increase_is_immune_replacement_fallback(
         return False
     if _contains_independent_stroma_edit(text):
         return False
-    return (
-        _contains_any(text, _IMMUNE_REPLACEMENT_TERMS)
-        and _contains_any(text, _IMMUNE_TERMS)
-        and _contains_any(text, _STROMA_TERMS)
-    )
+    return _contains_any(text, _IMMUNE_TERMS) and _contains_any(text, _STROMA_TERMS)
 
 
 def _stroma_increase_is_necrosis_replacement_fallback(
@@ -673,11 +888,7 @@ def _stroma_increase_is_necrosis_replacement_fallback(
         return False
     if _contains_independent_stroma_edit(text):
         return False
-    return (
-        _contains_any(text, _NECROSIS_REPLACEMENT_TERMS)
-        and _contains_any(text, _NECROSIS_TERMS)
-        and _contains_any(text, _STROMA_TERMS)
-    )
+    return _contains_any(text, _NECROSIS_TERMS) and _contains_any(text, _STROMA_TERMS)
 
 
 def _stroma_increase_is_tumor_replacement_fallback(
@@ -688,9 +899,7 @@ def _stroma_increase_is_tumor_replacement_fallback(
 ) -> bool:
     tumor_change = semantic_diff.get("tumor_change", {})
     stroma_change = semantic_diff.get("stroma_change", {})
-    if not isinstance(tumor_change, Mapping) or not isinstance(
-        stroma_change, Mapping
-    ):
+    if not isinstance(tumor_change, Mapping) or not isinstance(stroma_change, Mapping):
         return False
     if tumor_change.get("growth") != "decrease":
         return False
@@ -704,11 +913,7 @@ def _stroma_increase_is_tumor_replacement_fallback(
         return False
     if _contains_independent_stroma_edit(text):
         return False
-    return (
-        _contains_any(text, _TUMOR_REPLACEMENT_TERMS)
-        and _contains_any(text, _TUMOR_TERMS)
-        and _contains_any(text, _STROMA_TERMS)
-    )
+    return _contains_any(text, _TUMOR_TERMS) and _contains_any(text, _STROMA_TERMS)
 
 
 _IMMUNE_TERMS = (
@@ -747,53 +952,214 @@ _STROMA_TERMS = (
     "fibrous tissue",
 )
 
-_IMMUNE_REPLACEMENT_TERMS = (
-    "replace",
-    "replaced",
-    "replacement",
-    "backfill",
-    "backfilled",
-    "fill with",
-    "filled with",
-    "convert",
-    "converted",
-    "conversion",
-    "turn into",
-    "turned into",
-)
-
-_NECROSIS_REPLACEMENT_TERMS = _IMMUNE_REPLACEMENT_TERMS + (
-    "resolve",
-    "resolved",
-    "resolution",
-)
-
-_TUMOR_REPLACEMENT_TERMS = _IMMUNE_REPLACEMENT_TERMS + (
-    "decrease",
-    "decreased",
-    "reduce",
-    "reduced",
-    "regress",
-    "regression",
-    "shrink",
-    "shrunk",
-)
-
 _INDEPENDENT_STROMA_EDIT_TERMS = (
     "desmoplasia",
     "desmoplastic",
     "stromal response",
     "stromal reaction",
-    "fibrosis",
-    "fibrotic",
-    "collagenous",
-    "dense stroma",
     "peritumoral stroma",
 )
 
 
 def _contains_independent_stroma_edit(text: str) -> bool:
     return _contains_any(text, _INDEPENDENT_STROMA_EDIT_TERMS)
+
+
+def _contains_independent_stroma_action(text: str | None) -> bool:
+    normalized = _normalize_text(text)
+    return _contains_any(normalized, _INDEPENDENT_STROMA_ACTION_TERMS)
+
+
+_INDEPENDENT_STROMA_ACTION_TERMS = (
+    "also increase stroma",
+    "also increase stromal",
+    "also add stroma",
+    "also add desmoplasia",
+    "increase desmoplasia",
+    "increase stromal reaction",
+    "add desmoplasia",
+    "independently increase stroma",
+)
+
+
+def _stroma_is_primary_subject(text: str | None) -> bool:
+    first_sentence = _normalize_text(text).split(".", 1)[0]
+    return (
+        bool(first_sentence)
+        and _contains_any(first_sentence, _STROMA_TERMS)
+        and not _contains_any(
+            first_sentence,
+            _TUMOR_TERMS + _IMMUNE_TERMS + _NECROSIS_TERMS,
+        )
+    )
+
+
+def _infer_primary_stroma_density_change(
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> str:
+    if not _stroma_is_primary_subject(new_prompt):
+        return "none"
+    old_text = _normalize_text(old_prompt)
+    new_text = _normalize_text(new_prompt)
+    if not _contains_any(old_text, _STROMA_TERMS) or not _contains_any(
+        new_text, _STROMA_TERMS
+    ):
+        return "none"
+    old_low = _contains_any(old_text, _LOW_STROMA_TERMS)
+    old_high = _contains_any(old_text, _HIGH_STROMA_TERMS)
+    new_low = _contains_any(new_text, _LOW_STROMA_TERMS)
+    new_high = _contains_any(new_text, _HIGH_STROMA_TERMS)
+    if old_low and new_high:
+        return "increase"
+    if old_high and new_low:
+        return "decrease"
+    return "none"
+
+
+_LOW_STROMA_TERMS = (
+    "scant stroma",
+    "scant fibrous stroma",
+    "minimal stroma",
+    "minimal fibrous stroma",
+    "limited stromal tissue",
+    "sparse stroma",
+)
+
+_HIGH_STROMA_TERMS = (
+    "abundant stroma",
+    "abundant fibrous stroma",
+    "dense stroma",
+    "dense fibrous stroma",
+    "prominent stroma",
+    "prominent stromal",
+    "well-developed",
+    "collagen deposition",
+    "desmoplasia",
+    "desmoplastic",
+)
+
+
+def _contains_independent_tumor_extent_change(text: str | None) -> bool:
+    normalized = _normalize_text(text)
+    return _contains_any(normalized, _INDEPENDENT_TUMOR_EXTENT_TERMS)
+
+
+_INDEPENDENT_TUMOR_EXTENT_TERMS = (
+    "more tumor",
+    "greater tumor",
+    "increased tumor",
+    "larger tumor",
+    "expanded tumor",
+    "tumor expansion",
+    "tumor burden",
+    "occupying more",
+    "occupies more",
+    "larger area",
+    "increased area",
+    "greater extent",
+    "decrease tumor",
+    "decreased tumor",
+    "reduce tumor",
+    "reduced tumor",
+    "less tumor",
+    "smaller tumor",
+    "tumor regression",
+    "shrink tumor",
+    "shrinking tumor",
+)
+
+
+def _contains_independent_grade_edit(text: str | None) -> bool:
+    normalized = _normalize_text(text)
+    return _contains_any(normalized, _INDEPENDENT_GRADE_EDIT_TERMS)
+
+
+_INDEPENDENT_GRADE_EDIT_TERMS = (
+    "grade",
+    "differentiated",
+    "differentiation",
+    "dedifferentiation",
+    "gleason",
+    "upgrade",
+    "downgrade",
+)
+
+
+def _transition_pair_has_text_evidence(
+    pair: tuple[str, str],
+    *,
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> bool:
+    if pair == ("none", "none") or not (old_prompt or new_prompt):
+        return True
+    source_state, target_state = pair
+    source_text = _normalize_text(f"{old_prompt or ''} {new_prompt or ''}")
+    target_text = _normalize_text(new_prompt)
+    return _contains_any(
+        source_text, _TRANSITION_STATE_TERMS[source_state]
+    ) and _contains_any(target_text, _TRANSITION_STATE_TERMS[target_state])
+
+
+_TRANSITION_STATE_TERMS: dict[str, tuple[str, ...]] = {
+    "none": ("none",),
+    "benign_epithelium": (
+        "benign epithelium",
+        "benign prostatic epithelium",
+        "normal epithelium",
+        "benign gland",
+    ),
+    "stromal_tissue": ("stromal tissue", "stroma"),
+    "gleason_pattern_3": ("gleason pattern 3", "gleason 3", "pattern 3"),
+    "gleason_pattern_4": ("gleason pattern 4", "gleason 4", "pattern 4"),
+    "gleason_pattern_5": ("gleason pattern 5", "gleason 5", "pattern 5"),
+    "normal_gland": (
+        "normal gland",
+        "normal colonic gland",
+        "normal colonic glands",
+        "normal colorectal gland",
+        "normal colorectal glands",
+    ),
+    "adenomatous_gland": ("adenomatous gland", "adenoma", "adenomatous"),
+    "moderately_differentiated_carcinoma": (
+        "moderately differentiated carcinoma",
+        "moderately differentiated colorectal carcinoma",
+    ),
+    "poorly_differentiated_carcinoma": (
+        "poorly differentiated carcinoma",
+        "poorly differentiated colorectal carcinoma",
+    ),
+}
+
+
+def _contains_independent_immune_edit(text: str | None) -> bool:
+    normalized = _normalize_text(text)
+    return _contains_any(normalized, _INDEPENDENT_IMMUNE_EDIT_TERMS)
+
+
+_INDEPENDENT_IMMUNE_EDIT_TERMS = (
+    "increase immune",
+    "increased immune",
+    "add immune",
+    "added immune",
+    "more immune",
+    "increase lymphocyte",
+    "increased lymphocyte",
+    "add lymphocyte",
+    "more lymphocyte",
+    "stronger immune",
+    "brisk til",
+    "dense til",
+    "decrease immune",
+    "decreased immune",
+    "reduce immune",
+    "reduced immune",
+    "less immune",
+    "decrease lymphocyte",
+    "reduce lymphocyte",
+    "sparse til",
+)
 
 
 def _specialized_grade_payload(
@@ -822,6 +1188,70 @@ def _specialized_grade_payload(
     )
 
 
+def _specialized_non_grade_payload(
+    *,
+    reference_profile: str,
+    old_prompt: str | None,
+    new_prompt: str | None,
+    prompt_diff: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    if reference_profile.upper() != "PANDA":
+        return None
+    old_text = _normalize_text(old_prompt)
+    new_text = _normalize_text(new_prompt)
+    combined = f"{old_text} {new_text}".strip()
+    has_normal_epithelium = _mentions_normal_or_benign_epithelium(combined)
+    has_stromal_target = _contains_any(
+        new_text,
+        ("stroma", "stromal tissue", "fibrous connective tissue"),
+    )
+    has_replacement_signal = _contains_any(
+        new_text,
+        (
+            "replace",
+            "convert",
+            "without epithelial",
+            "no epithelial",
+            "epithelial structures are not prominent",
+        ),
+    )
+    if not (has_normal_epithelium and has_stromal_target and has_replacement_signal):
+        return None
+    return _intent_payload(
+        "benign_atrophy",
+        _strength_from_grade_prompt(old_prompt, new_prompt),
+        reference_profile,
+        old_prompt,
+        new_prompt,
+        prompt_diff,
+    )
+
+
+def _immune_increase_primitive(
+    location: str,
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> str:
+    if location == "intratumoral":
+        return "intratumoral_immune_infiltration"
+    if location in {"stromal", "peritumoral"}:
+        return "stromal_immune_infiltration"
+    text = _normalize_text(f"{old_prompt or ''} {new_prompt or ''}")
+    if _contains_any(
+        text,
+        (
+            "intratumoral",
+            "inside tumor",
+            "within tumor",
+            "among tumor",
+            "interspersed among tumor",
+            "central tumor compartment",
+        ),
+    ):
+        return "intratumoral_immune_infiltration"
+    return "stromal_immune_infiltration"
+
+
 def _specialized_grade_primitive(
     grade_change: str,
     *,
@@ -838,7 +1268,7 @@ def _specialized_grade_primitive(
         if grade_change == "downgrade":
             return "gleason_downgrade_4to3"
         if _mentions_benign_to_gleason3(old_text, new_text) or (
-            _contains_any(combined, ("benign", "normal epithelium"))
+            _mentions_normal_or_benign_epithelium(combined)
             and _contains_any(
                 combined,
                 ("gleason 3", "pattern 3", "low grade malignant"),
@@ -867,11 +1297,9 @@ def _specialized_grade_primitive(
         if grade_change == "downgrade":
             return "treatment_dedifferentiation"
         if (
-            "normal" in old_text
-            and _contains_any(new_text, ("adenoma", "adenomatous"))
+            "normal" in old_text and _contains_any(new_text, ("adenoma", "adenomatous"))
         ) or (
-            "normal" in combined
-            and _contains_any(combined, ("adenoma", "adenomatous"))
+            "normal" in combined and _contains_any(combined, ("adenoma", "adenomatous"))
         ):
             return "normal_to_adenomatous"
         if (
@@ -926,6 +1354,10 @@ def _normalize_text(value: str | None) -> str:
     return (value or "").strip().lower().replace("-", " ").replace("_", " ")
 
 
+def _mentions_normal_or_benign_epithelium(text: str) -> bool:
+    return bool(re.search(r"\b(?:normal|benign)(?:\s+\w+){0,3}\s+epitheli", text))
+
+
 def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
     return any(needle in text for needle in needles)
 
@@ -938,11 +1370,12 @@ def _mentions_gleason5(text: str) -> bool:
     return _contains_any(text, ("gleason 5", "pattern 5", "grade group 5"))
 
 
-def _mentions_transition(old_text: str, new_text: str, source: str, target: str) -> bool:
-    return (
-        _contains_any(old_text, (f"gleason {source}", f"pattern {source}"))
-        and _contains_any(new_text, (f"gleason {target}", f"pattern {target}"))
-    )
+def _mentions_transition(
+    old_text: str, new_text: str, source: str, target: str
+) -> bool:
+    return _contains_any(
+        old_text, (f"gleason {source}", f"pattern {source}")
+    ) and _contains_any(new_text, (f"gleason {target}", f"pattern {target}"))
 
 
 def _mentions_single_prompt_transition(text: str, source: str, target: str) -> bool:
@@ -966,8 +1399,6 @@ def _mentions_benign_to_gleason3(old_text: str, new_text: str) -> bool:
         new_text,
         ("gleason 3", "pattern 3", "low grade malignant"),
     )
-
-
 
 
 def _strength_from_degree(value: str) -> str:

@@ -237,7 +237,6 @@ primitives:
         - fissure_like_region
       necrosis_engulf_intrusion_labels:
         - Tumor
-        - Immune infiltrate
         - Stroma
         - Other tissue
         - Normal epithelium

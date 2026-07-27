@@ -1,0 +1,44 @@
+model_id: pathdiff_conic
+display_name: PathDiff CoNIC
+model_type: pathdiff
+role: benchmark
+input_contract:
+  allowed:
+    - target_conic_instance_type_mask
+    - prompt
+  forbidden:
+    - target_image
+generation:
+  direction: "CoNIC instance/type mask(B) + prompt(B) -> B"
+  checkpoint_style: conic_pathcap_six_channel
+  mask_schema:
+    channel_0: instance_id
+    channel_1: "CoNIC type ID: 0 background, 1 neutrophil, 2 epithelial, 3 lymphocyte, 4 plasma, 5 eosinophil, 6 connective"
+    hint: RGB_type_color_plus_RGB_instance_edges
+  steps: 200
+  guidance: 1.75
+  native_resolution: 256
+  native_mpp: 0.5
+  native_fov_um: 128
+  condition_preprocessing: full_field_512_at_0.25_to_256_at_0.5_then_conic
+execution:
+  mode: ssh_batch
+  env_python: /data1/zhao/wqx/benchmarks/envs/pathdiff/bin/python
+  worker: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/scripts/run_generation_baseline.py
+  cwd: /data1/zhao/wqx/benchmarks/repos/PathDiff
+  environment:
+    PYTHONNOUSERSITE: "1"
+    HF_HOME: /data1/zhao/wqx/benchmarks/cache/hf
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+  arguments:
+    model-type: pathdiff
+    repo-dir: /data1/zhao/wqx/benchmarks/repos/PathDiff
+    config: /data1/zhao/wqx/benchmarks/weights/pathdiff/configs/11-02T02-36-project.yaml
+    checkpoint: /data1/zhao/wqx/benchmarks/weights/pathdiff/last.ckpt
+    conic-root: /data1/zhao/wqx/benchmarks/data/complex_paired_v3_1500/conic_hovernet
+    steps: 200
+    guidance: 1.75
+    native-resolution: 256
+    native-mpp: 0.5
+    source-mpp: 0.25

@@ -87,6 +87,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Batch CellViT++ UI-equivalent segmentation.")
     parser.add_argument("--images-dir", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--json-output-dir",
+        help="Optional canonical per-image CellViT JSON output directory.",
+    )
     parser.add_argument("--raw-outdir", default="/data1/zhao/wqx/patch_selected_local/cellvit_raw_ui_equiv")
     parser.add_argument("--model", default=str(DEFAULT_MODEL))
     parser.add_argument("--cellvit-root", default=str(DEFAULT_CELLVIT_ROOT))
@@ -104,10 +108,13 @@ def main() -> int:
 
     images_dir = Path(args.images_dir).resolve()
     output_dir = Path(args.output_dir).resolve()
+    json_output_dir = Path(args.json_output_dir).resolve() if args.json_output_dir else None
     raw_outdir = Path(args.raw_outdir).resolve()
     staged_dir = raw_outdir / "openslide_inputs"
     result_dir = raw_outdir / "cellvit_results"
     output_dir.mkdir(parents=True, exist_ok=True)
+    if json_output_dir is not None:
+        json_output_dir.mkdir(parents=True, exist_ok=True)
     staged_dir.mkdir(parents=True, exist_ok=True)
     result_dir.mkdir(parents=True, exist_ok=True)
 
@@ -121,7 +128,15 @@ def main() -> int:
         all_images = all_images[: args.limit]
     images = [p for idx, p in enumerate(all_images) if idx % args.shards == args.shard_index]
     if args.skip_existing:
-        images = [p for p in images if not (output_dir / f"{p.stem}.png").exists()]
+        images = [
+            p
+            for p in images
+            if not (output_dir / f"{p.stem}.png").exists()
+            or (
+                json_output_dir is not None
+                and not (json_output_dir / f"{p.stem}.json").exists()
+            )
+        ]
 
     print(
         f"Staging {len(images)} images as OpenSlide TIFFs "
@@ -186,12 +201,47 @@ def main() -> int:
                     width, height = image.size
                 mask = np.zeros((height, width), dtype=np.uint8)
                 Image.fromarray(mask, mode="L").save(output_path)
+                if json_output_dir is not None:
+                    (json_output_dir / f"{image_path.stem}.json").write_text(
+                        json.dumps(
+                            {
+                                "wsi_metadata": {
+                                    "slide_mpp": float(args.mpp),
+                                    "magnification": float(args.magnification),
+                                },
+                                "type_map": {},
+                                "cells": [],
+                                "benchmark_provenance": {
+                                    "status": "empty_missing_raw_json",
+                                    "image": str(image_path),
+                                    "model": str(Path(args.model).resolve()),
+                                    "resolution": float(args.resolution),
+                                },
+                            },
+                            indent=2,
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
                 log_lines.append(f"OK_EMPTY\t{image_path.name}\t0 cells\tids=[0]\tmissing {cells_json.name}")
                 ok += 1
                 continue
             mask = rasterize_cells_json(cells_json, image_path)
             Image.fromarray(mask, mode="L").save(output_path)
             payload = json.loads(cells_json.read_text(encoding="utf-8"))
+            if json_output_dir is not None:
+                payload["benchmark_provenance"] = {
+                    "status": "completed",
+                    "image": str(image_path),
+                    "raw_cells_json": str(cells_json),
+                    "model": str(Path(args.model).resolve()),
+                    "slide_mpp": float(args.mpp),
+                    "magnification": float(args.magnification),
+                    "resolution": float(args.resolution),
+                }
+                (json_output_dir / f"{image_path.stem}.json").write_text(
+                    json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+                )
             cells = payload.get("cells", []) if isinstance(payload, dict) else []
             ids = sorted(int(v) for v in np.unique(mask).tolist())
             log_lines.append(f"OK\t{image_path.name}\t{len(cells)} cells\tids={ids}")

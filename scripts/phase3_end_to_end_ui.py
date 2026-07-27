@@ -59,6 +59,7 @@ from phase3_mask_edit.core.mask_io import (
     save_id_mask,
     save_metadata,
 )
+from phase3_mask_edit.core.gland_region import glas_whole_gland_generation_region
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.instruction_parser import (
     InstructionParserConfig,
@@ -1581,6 +1582,7 @@ def load_inputs(
             reference_image=image,
             reference_tissue=tissue,
             target_tissue=tissue,
+            semantic_change_region=np.zeros(tissue.shape, dtype=bool),
             change_region=np.zeros(tissue.shape, dtype=bool),
         )["source_mask_rgb"]
     )
@@ -1694,6 +1696,7 @@ def load_inputs_from_paths(
             reference_image=image,
             reference_tissue=tissue,
             target_tissue=tissue,
+            semantic_change_region=np.zeros(tissue.shape, dtype=bool),
             change_region=np.zeros(tissue.shape, dtype=bool),
         )["source_mask_rgb"]
     )
@@ -1920,12 +1923,14 @@ def run_tissue_stage(
         reference_image=_load_rgb_image(state["reference_image"]),
         reference_tissue=reference_tissue,
         target_tissue=target_tissue,
+        semantic_change_region=change_region,
         change_region=change_region,
     )
     state.update(
         {
             "target_tissue_mask": str(target_path),
             "target_mask_rgb": stage_paths["target_mask_rgb"],
+            "semantic_change_region": stage_paths["semantic_change_region"],
             "change_region": stage_paths["change_region"],
             "phase3": phase3_info,
         }
@@ -2431,6 +2436,7 @@ def _finalize_manual_tissue_stage(
         reference_image=reference_image,
         reference_tissue=reference_tissue,
         target_tissue=target_tissue,
+        semantic_change_region=change_region,
         change_region=change_region,
     )
     phase3_info = {
@@ -2446,6 +2452,7 @@ def _finalize_manual_tissue_stage(
         {
             "target_tissue_mask": str(target_path),
             "target_mask_rgb": stage_paths["target_mask_rgb"],
+            "semantic_change_region": stage_paths["semantic_change_region"],
             "change_region": stage_paths["change_region"],
             "phase3": phase3_info,
         }
@@ -2908,9 +2915,26 @@ def run_cell_stage(
     if not state or not state.get("target_tissue_mask") or not state.get("change_region"):
         raise gr.Error("Run the tissue stage first.")
     output_dir = Path(state["output_dir"])
+    reference_image = _load_rgb_image(state["reference_image"])
+    reference_tissue = load_id_mask(state["reference_tissue_mask"])
     target_tissue = load_id_mask(state["target_tissue_mask"])
     reference_nuclei = _load_uint8_mask(state["reference_nuclei_mask"])
-    change_region = load_change_region(state["change_region"])
+    semantic_change_path = state.get("semantic_change_region") or state["change_region"]
+    semantic_change_region = load_change_region(semantic_change_path)
+    change_region, gland_structure_policy = glas_whole_gland_generation_region(
+        reference_tissue,
+        target_tissue,
+        semantic_change_region,
+        profile=state.get("profile", "BCSS"),
+    )
+    stage_paths = _save_pre_generation_artifacts(
+        output_dir=output_dir,
+        reference_image=reference_image,
+        reference_tissue=reference_tissue,
+        target_tissue=target_tissue,
+        semantic_change_region=semantic_change_region,
+        change_region=change_region,
+    )
     profile_defaults = _profile_defaults(state.get("profile", "BCSS"))
     args = _make_args(
         state,
@@ -2937,12 +2961,16 @@ def run_cell_stage(
         target_nuclei=target_nuclei,
     )
     cell_info["target_nuclei_mask"] = str(target_nuclei_path)
+    cell_info["gland_structure_policy"] = gland_structure_policy
     (output_dir / "cell_fill_log.json").write_text(_json_text(cell_info), encoding="utf-8")
     state.update(
         {
             "target_nuclei_mask": str(target_nuclei_path),
             "cell_fill": cell_info,
             "target_combined_mask": str(combined_path),
+            "semantic_change_region": stage_paths["semantic_change_region"],
+            "change_region": stage_paths["change_region"],
+            "gland_structure_policy": gland_structure_policy,
         }
     )
     return (
@@ -3099,7 +3127,27 @@ def run_generation_stage(
         raise gr.Error("Run the cell-mask stage first.")
     output_dir = Path(state["output_dir"])
     reference_image = _load_rgb_image(state["reference_image"])
-    change_region = load_change_region(state["change_region"])
+    reference_tissue = load_id_mask(state["reference_tissue_mask"])
+    target_tissue = load_id_mask(state["target_tissue_mask"])
+    semantic_change_path = state.get("semantic_change_region") or state["change_region"]
+    semantic_change_region = load_change_region(semantic_change_path)
+    change_region, gland_structure_policy = glas_whole_gland_generation_region(
+        reference_tissue,
+        target_tissue,
+        semantic_change_region,
+        profile=state.get("profile", "BCSS"),
+    )
+    stage_paths = _save_pre_generation_artifacts(
+        output_dir=output_dir,
+        reference_image=reference_image,
+        reference_tissue=reference_tissue,
+        target_tissue=target_tissue,
+        semantic_change_region=semantic_change_region,
+        change_region=change_region,
+    )
+    state["semantic_change_region"] = stage_paths["semantic_change_region"]
+    state["change_region"] = stage_paths["change_region"]
+    state["gland_structure_policy"] = gland_structure_policy
     args = _make_args(
         state,
         generation_mode=generation_mode,
@@ -3218,7 +3266,25 @@ def run_large_patch_stitch_generation(
     reference_tissue = load_id_mask(state["reference_tissue_mask"])
     target_tissue = load_id_mask(state["target_tissue_mask"])
     reference_nuclei = _load_uint8_mask(state["reference_nuclei_mask"])
-    change_region = load_change_region(state["change_region"])
+    semantic_change_path = state.get("semantic_change_region") or state["change_region"]
+    semantic_change_region = load_change_region(semantic_change_path)
+    change_region, gland_structure_policy = glas_whole_gland_generation_region(
+        reference_tissue,
+        target_tissue,
+        semantic_change_region,
+        profile=state.get("profile", "BCSS"),
+    )
+    stage_paths = _save_pre_generation_artifacts(
+        output_dir=output_dir,
+        reference_image=reference_image,
+        reference_tissue=reference_tissue,
+        target_tissue=target_tissue,
+        semantic_change_region=semantic_change_region,
+        change_region=change_region,
+    )
+    state["semantic_change_region"] = stage_paths["semantic_change_region"]
+    state["change_region"] = stage_paths["change_region"]
+    state["gland_structure_policy"] = gland_structure_policy
     _validate_same_size(reference_image, reference_tissue, "reference_tissue_mask")
     _validate_same_size(reference_image, target_tissue, "target_tissue_mask")
     _validate_same_size(reference_image, reference_nuclei, "reference_nuclei_mask")
@@ -4605,12 +4671,14 @@ def _run_auto_selected_from_ui(
         reference_image=_load_rgb_image(state["reference_image"]),
         reference_tissue=reference_tissue,
         target_tissue=target_tissue,
+        semantic_change_region=change_region,
         change_region=change_region,
     )
     state.update(
         {
             "target_tissue_mask": str(target_path),
             "target_mask_rgb": stage_paths["target_mask_rgb"],
+            "semantic_change_region": stage_paths["semantic_change_region"],
             "change_region": stage_paths["change_region"],
             "phase3": phase3_info,
         }

@@ -24,15 +24,26 @@ class BenchmarkIntent:
     expected_direction: str
     expected_area_bucket: tuple[float, float] | None
     seed: int
+    source_dataset: str = ""
+    wsi_id: str = ""
+    patient_id: str = ""
+    magnification: float | None = None
+    um_per_px: float | None = None
+    qc_status: str = "pending"
+    qc_notes: tuple[str, ...] = ()
+    ordinal_group_id: str = ""
     specialized: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "BenchmarkIntent":
         bucket = payload.get("expected_area_bucket")
+        metadata = dict(payload.get("metadata") or {})
         if bucket is not None:
             if not isinstance(bucket, (list, tuple)) or len(bucket) != 2:
-                raise ValueError("expected_area_bucket must be null or a two-item list.")
+                raise ValueError(
+                    "expected_area_bucket must be null or a two-item list."
+                )
             bucket = (float(bucket[0]), float(bucket[1]))
         return cls(
             sample_id=str(payload["sample_id"]),
@@ -43,20 +54,50 @@ class BenchmarkIntent:
             primitive=str(payload["primitive"]),
             strength=str(payload["strength"]),
             region_hint=dict(payload.get("region_hint") or {}),
-            source_labels=tuple(str(item) for item in payload.get("source_labels") or ()),
+            source_labels=tuple(
+                str(item) for item in payload.get("source_labels") or ()
+            ),
             target_label=_optional_str(payload.get("target_label")),
             expected_direction=str(payload["expected_direction"]),
             expected_area_bucket=bucket,
             seed=int(payload["seed"]),
+            source_dataset=str(
+                payload.get("source_dataset") or metadata.get("source_dataset") or ""
+            ),
+            wsi_id=str(payload.get("wsi_id") or metadata.get("wsi_id") or ""),
+            patient_id=str(
+                payload.get("patient_id") or metadata.get("patient_id") or ""
+            ),
+            magnification=_optional_float(
+                payload.get("magnification", metadata.get("magnification"))
+            ),
+            um_per_px=_optional_float(
+                payload.get("um_per_px", metadata.get("um_per_px"))
+            ),
+            qc_status=str(
+                payload.get("qc_status") or metadata.get("qc_status") or "pending"
+            ),
+            qc_notes=tuple(
+                str(item)
+                for item in payload.get("qc_notes") or metadata.get("qc_notes") or ()
+            ),
+            ordinal_group_id=str(
+                payload.get("ordinal_group_id")
+                or metadata.get("ordinal_group_id")
+                or ""
+            ),
             specialized=bool(payload.get("specialized", False)),
-            metadata=dict(payload.get("metadata") or {}),
+            metadata=metadata,
         )
 
     def to_mapping(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["source_labels"] = list(self.source_labels)
+        payload["qc_notes"] = list(self.qc_notes)
         payload["expected_area_bucket"] = (
-            list(self.expected_area_bucket) if self.expected_area_bucket is not None else None
+            list(self.expected_area_bucket)
+            if self.expected_area_bucket is not None
+            else None
         )
         return payload
 
@@ -99,7 +140,9 @@ def read_intents_jsonl(path: str | Path) -> list[BenchmarkIntent]:
             try:
                 items.append(BenchmarkIntent.from_mapping(json.loads(stripped)))
             except Exception as exc:
-                raise ValueError(f"Invalid benchmark intent at line {line_number}: {exc}") from exc
+                raise ValueError(
+                    f"Invalid benchmark intent at line {line_number}: {exc}"
+                ) from exc
     return items
 
 
@@ -108,7 +151,10 @@ def write_intents_jsonl(intents: Iterable[BenchmarkIntent], path: str | Path) ->
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as stream:
         for intent in intents:
-            stream.write(json.dumps(intent.to_mapping(), ensure_ascii=False, sort_keys=True) + "\n")
+            stream.write(
+                json.dumps(intent.to_mapping(), ensure_ascii=False, sort_keys=True)
+                + "\n"
+            )
     return output_path
 
 
@@ -128,6 +174,14 @@ def write_intents_csv(intents: Iterable[BenchmarkIntent], path: str | Path) -> P
         "expected_direction",
         "expected_area_bucket",
         "seed",
+        "source_dataset",
+        "wsi_id",
+        "patient_id",
+        "magnification",
+        "um_per_px",
+        "qc_status",
+        "qc_notes",
+        "ordinal_group_id",
         "specialized",
         "metadata",
     ]
@@ -174,18 +228,52 @@ def write_eval_csv(rows: Iterable[Mapping[str, Any]], path: str | Path) -> Path:
         "measured_class_delta",
         "measured_area_fraction",
         "measured_location",
+        "changed_pixels",
+        "strength_denominator_pixels",
+        "direction_hit",
+        "on_target_transition_pixels",
+        "on_target_transition_ratio",
+        "off_target_change_pixels",
+        "off_target_change_ratio",
+        "spatial_containment_ratio",
+        "magnitude_bucket_pass",
+        "intended_magnitude_bucket_agreement",
         "class_ok",
         "direction_ok",
         "strength_ok",
         "location_ok",
+        "semantic_core_ok",
+        "strict_all_ok",
+        "primary_ok",
+        "strength_evaluation_policy",
         "all_ok",
+        "attempt_count",
+        "first_attempt_status",
+        "final_attempt_status",
+        "replanned",
+        "repair_success",
+        "terminal_failure_reason",
+        "cumulative_success_at_k",
+        "semantic_attempt_count",
+        "semantic_first_attempt_status",
+        "semantic_final_attempt_status",
+        "semantic_replanned",
+        "semantic_repair_success",
+        "semantic_terminal_failure_reason",
+        "failure_stage",
+        "source_dataset",
+        "wsi_id",
+        "patient_id",
+        "ordinal_group_id",
         "error",
         "output_dir",
     ]
     return _write_csv_rows(materialized, fieldnames, path)
 
 
-def _write_csv_rows(rows: list[Mapping[str, Any]], fieldnames: list[str], path: str | Path) -> Path:
+def _write_csv_rows(
+    rows: list[Mapping[str, Any]], fieldnames: list[str], path: str | Path
+) -> Path:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as stream:
@@ -207,3 +295,9 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
