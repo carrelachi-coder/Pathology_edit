@@ -3,7 +3,7 @@
   "release_id": "online-agent-product-v1-2026-07-29",
   "release_status": "engineering_frozen_pending_blinded_g2_calibration",
   "formal_publication_ready": false,
-  "code_commit": null,
+  "code_commit": "6da49e20095365be3ac3fc13f280658c14946e85",
   "entrypoints": {
     "ui": "scripts/phase3_end_to_end_ui.py",
     "agent_runner": "scripts/run_agentic_edit_workflow.py",

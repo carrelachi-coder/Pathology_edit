@@ -37,6 +37,8 @@ class OnlineProductReleaseTests(unittest.TestCase):
         nuclei = release["nuclei_generation"]
         generation = release["image_generation"]
         verification = release["verification"]
+        self.assertRegex(release["code_commit"], r"^[0-9a-f]{40}$")
+        self.assertEqual(release["code_commit"], segmentator["code_commit"])
         self.assertEqual(nuclei["checkpoint_sha256"], FROZEN_PROBNET_SHA256)
         self.assertEqual(
             nuclei["candidate_queue_policy"],

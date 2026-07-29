@@ -10,7 +10,7 @@
   "checkpoint": "/data1/zhao/wqx/segmentator_fine/fine_boundary_teacher_joint_seed42/best_composite.pt",
   "checkpoint_size_bytes": 2820003238,
   "checkpoint_sha256": "ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34",
-  "code_commit": "4a81e0a5e8f478200fbe8c00bad43f248c713cae",
+  "code_commit": "6da49e20095365be3ac3fc13f280658c14946e85",
   "decoder": "mask2former",
   "architecture": {
     "num_classes": 8,
