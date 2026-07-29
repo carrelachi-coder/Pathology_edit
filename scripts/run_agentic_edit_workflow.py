@@ -27,9 +27,14 @@ from controlnet_train.inference.agentic import (
 )
 from controlnet_train.inference.router import AgenticRoutingConfig
 from controlnet_train.inference.model_paths import (
+    DEFAULT_CELLVIT_MODEL,
+    DEFAULT_CELLVIT_PYTHON,
+    DEFAULT_CELLVIT_ROOT,
     DEFAULT_CROSS_V1_CHECKPOINT,
     DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
+    validate_frozen_cellvit_checkpoint,
+    validate_production_controlnet_checkpoint,
     validate_production_pix2pix_checkpoint,
 )
 from phase3_mask_edit.core.mask_io import (
@@ -64,15 +69,6 @@ DEFAULT_SEGMENTATOR_RELEASE = (
     / "releases"
     / "segmentator_fine_c_epoch2.json"
 )
-DEFAULT_CELLVIT_ROOT = (
-    "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/"
-    "CellViT-plus-plus-main"
-)
-DEFAULT_CELLVIT_MODEL = (
-    f"{DEFAULT_CELLVIT_ROOT}/checkpoints/CellViT-SAM-H-x40-AMP-001.pth"
-)
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -212,7 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cellvit-python",
         type=Path,
-        default=Path(sys.executable),
+        default=Path(DEFAULT_CELLVIT_PYTHON),
         help="Python used by the CellViT wrapper to run upstream CellViT code.",
     )
     parser.add_argument("--cellvit-gpu", type=int, default=1)
@@ -414,6 +410,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "source_segmentator": source_segmentator,
                 "predicted_tissue": predicted_tissue,
                 "predicted_nuclei_mask": str(predicted_nuclei_path),
+                "cellvit_release": args.cellvit_release,
                 "online_semantic_audit": str(
                     verification_dir / "online_semantic_audit.json"
                 ),
@@ -580,6 +577,14 @@ def _validate_generation_runtime(args: argparse.Namespace, mode: str) -> None:
     missing = [f"{label}: {path}" for label, path in required.items() if not Path(path).exists()]
     if missing:
         raise FileNotFoundError("Generation runtime paths not found:\n" + "\n".join(missing))
+    args.controlnet_release = validate_production_controlnet_checkpoint(
+        (
+            args.inpaint_checkpoint
+            if mode == "inpaint"
+            else args.cross_v1_checkpoint
+        ),
+        mode=mode,
+    )
     if mode != "inpaint":
         args.pix2pix_release = validate_production_pix2pix_checkpoint(
             args.pix2pix_checkpoint
@@ -609,6 +614,7 @@ def _validate_verification_runtime(args: argparse.Namespace) -> None:
     missing = [f"{label}: {path}" for label, path in required.items() if not Path(path).exists()]
     if missing:
         raise FileNotFoundError("Verification runtime paths not found:\n" + "\n".join(missing))
+    args.cellvit_release = validate_frozen_cellvit_checkpoint(args.cellvit_model)
 
 
 def _generation_namespace(args: argparse.Namespace) -> SimpleNamespace:

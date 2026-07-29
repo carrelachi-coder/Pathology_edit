@@ -39,6 +39,7 @@ INTENT_ORDER = {
     "necrosis_appearance": 30,
     "necrosis_resolution": 35,
     "stromal_immune_infiltration": 40,
+    "intratumoral_immune_infiltration": 42,
     "immune_infiltration_decrease": 45,
     "stromal_desmoplasia": 50,
     "stroma_decrease": 55,
@@ -712,6 +713,40 @@ def _raw_intent_specs(
             )
         )
 
+    implicit_fallback = _implicit_stroma_replacement_fallback(
+        semantic_diff,
+        old_prompt=old_prompt,
+        new_prompt=new_prompt,
+    )
+    if stroma_density == "none" and implicit_fallback is not None:
+        primary_primitive, group = implicit_fallback
+        payload = _fallback_payload(
+            _intent_payload(
+                "stromal_desmoplasia",
+                "moderate",
+                reference_profile,
+                old_prompt,
+                new_prompt,
+                prompt_diff,
+            ),
+            group=group,
+            fallback_for=primary_primitive,
+            note=(
+                "Stromal replacement/backfill was retained as a fallback "
+                f"realization for {primary_primitive}, not a separate primary edit."
+            ),
+        )
+        _mark_primary_payload(
+            raw_items,
+            primitive=primary_primitive,
+            group=group,
+            note=(
+                f"Primary realization for {primary_primitive} with stromal "
+                "replacement/backfill."
+            ),
+        )
+        raw_items.append(payload)
+
     return raw_items, unsupported
 
 
@@ -916,6 +951,57 @@ def _stroma_increase_is_tumor_replacement_fallback(
     return _contains_any(text, _TUMOR_TERMS) and _contains_any(text, _STROMA_TERMS)
 
 
+def _implicit_stroma_replacement_fallback(
+    semantic_diff: Mapping[str, Any],
+    *,
+    old_prompt: str | None,
+    new_prompt: str | None,
+) -> tuple[str, str] | None:
+    """Retain an explicit stromal backfill as a non-primary planner item."""
+
+    stroma_change = semantic_diff.get("stroma_change", {})
+    if not isinstance(stroma_change, Mapping) or stroma_change.get("density") != "none":
+        return None
+    text = _normalize_text(new_prompt) or _normalize_text(
+        f"{old_prompt or ''} {new_prompt or ''}"
+    )
+    if (
+        not text
+        or _contains_independent_stroma_edit(text)
+        or not _contains_any(text, _STROMA_REPLACEMENT_TERMS)
+        or not _contains_any(text, _STROMA_TERMS)
+    ):
+        return None
+
+    lymphocyte_change = semantic_diff.get("lymphocyte_change", {})
+    if (
+        isinstance(lymphocyte_change, Mapping)
+        and lymphocyte_change.get("infiltration") == "decrease"
+        and _contains_any(text, _IMMUNE_TERMS)
+    ):
+        return (
+            "immune_infiltration_decrease",
+            "immune_decrease_stroma_replacement",
+        )
+
+    necrosis_change = semantic_diff.get("necrosis_change", {})
+    if (
+        isinstance(necrosis_change, Mapping)
+        and necrosis_change.get("action") in {"decrease", "remove"}
+        and _contains_any(text, _NECROSIS_TERMS)
+    ):
+        return ("necrosis_resolution", "necrosis_resolution_stroma_replacement")
+
+    tumor_change = semantic_diff.get("tumor_change", {})
+    if (
+        isinstance(tumor_change, Mapping)
+        and tumor_change.get("growth") == "decrease"
+        and _contains_any(text, _TUMOR_TERMS)
+    ):
+        return ("tumor_burden_decrease", "tumor_decrease_stroma_replacement")
+    return None
+
+
 _IMMUNE_TERMS = (
     "immune",
     "lymphocyte",
@@ -950,6 +1036,17 @@ _STROMA_TERMS = (
     "stromal",
     "connective",
     "fibrous tissue",
+)
+
+_STROMA_REPLACEMENT_TERMS = (
+    "replace",
+    "replacement",
+    "backfill",
+    "back-fill",
+    "restore with stroma",
+    "restore viable stroma",
+    "fill the vacated",
+    "fill the removed",
 )
 
 _INDEPENDENT_STROMA_EDIT_TERMS = (

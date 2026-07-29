@@ -30,6 +30,7 @@ htmlcov/
 /.codex_preview/
 /.codex_remote/
 /.worktrees/
+/.tmp/
 /.tmp_testdata/
 /.tmp_phase3_llm_contour_agent_tests/
 /.tmp_phase3_llm_contour_fixture_tests/

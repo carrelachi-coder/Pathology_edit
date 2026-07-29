@@ -73,11 +73,15 @@ from phase3_mask_edit.parser.semantic_diff import save_semantic_diff
 from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 from controlnet_train.inference.router import AgenticRoutingConfig, route_agentic_edit_request
 from controlnet_train.inference.model_paths import (
+    DEFAULT_CELLVIT_MODEL,
+    DEFAULT_CELLVIT_PYTHON,
+    DEFAULT_CELLVIT_ROOT,
     DEFAULT_CROSS_V1_CHECKPOINT,
     DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
     DEFAULT_PROBNET_CHECKPOINT,
     PRODUCTION_PIX2PIX_ENV,
+    validate_frozen_cellvit_checkpoint,
     validate_frozen_probnet_checkpoint,
     validate_production_pix2pix_checkpoint,
 )
@@ -94,17 +98,15 @@ from scripts.run_phase3_inpaint_pipeline import (
     _format_subprocess_error,
     _validate_same_size,
 )
-from scripts.run_cellvit_single_patch import DEFAULT_CELLVIT_ROOT
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "runs" / "phase3_end_to_end_ui"
-DEFAULT_API_MODEL = "gpt-4o-all"
+DEFAULT_API_MODEL = "gpt-4.1-mini"
 DEFAULT_API_BASE_URL = "https://api.cursorai.art/v1"
 DEFAULT_API_KEY_ENV = "OPENAI_API_KEY"
 DEFAULT_QWEN_DEVICE = "cuda:0"
 DEFAULT_CELLVIT_SCRIPT = REPO_ROOT / "scripts" / "run_cellvit_single_patch.py"
-DEFAULT_CELLVIT_MODEL = r"D:\path\to\CellViT-SAM-H-x40-AMP-001.pth"
 DEFAULT_CELLVIT_DEVICE = "cuda:0"
 DEFAULT_SEGMENTATOR_ENV = "pathology-segmentator-mmseg"
 DEFAULT_SEGMENTATOR_RELEASE = (
@@ -1479,6 +1481,7 @@ def load_inputs(
     cellvit_script: str,
     cellvit_model: str,
     cellvit_root: str,
+    cellvit_python: str,
     cellvit_device: str,
 ) -> tuple[dict[str, Any], str, str | None, str | None]:
     run_id = time.strftime("%Y%m%d_%H%M%S")
@@ -1506,6 +1509,10 @@ def load_inputs(
         script_path = Path(_defaulted_text(cellvit_script, str(DEFAULT_CELLVIT_SCRIPT)))
         model_path = Path(_defaulted_text(cellvit_model, DEFAULT_CELLVIT_MODEL))
         root_path = Path(_defaulted_text(cellvit_root, str(DEFAULT_CELLVIT_ROOT)))
+        try:
+            validate_frozen_cellvit_checkpoint(model_path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise gr.Error(str(exc)) from exc
         command = [
             sys.executable,
             str(script_path),
@@ -1517,6 +1524,8 @@ def load_inputs(
             str(model_path),
             "--cellvit-root",
             str(root_path),
+            "--cellvit-python",
+            _defaulted_text(cellvit_python, DEFAULT_CELLVIT_PYTHON),
             "--gpu",
             str(_cuda_index(cellvit_device)),
         ]
@@ -1576,6 +1585,10 @@ def load_inputs(
             "cellvit_script": cellvit_script,
             "cellvit_model": cellvit_model,
             "cellvit_root": cellvit_root,
+            "cellvit_python": _defaulted_text(
+                cellvit_python,
+                DEFAULT_CELLVIT_PYTHON,
+            ),
             "cellvit_device": cellvit_device,
         },
     }
@@ -1594,6 +1607,7 @@ def load_inputs_from_paths(
     cellvit_script: str,
     cellvit_model: str,
     cellvit_root: str,
+    cellvit_python: str,
     cellvit_device: str,
 ) -> tuple[dict[str, Any], str, str | None, str | None]:
     run_id = time.strftime("%Y%m%d_%H%M%S")
@@ -1622,6 +1636,10 @@ def load_inputs_from_paths(
         script_path = Path(_defaulted_text(cellvit_script, str(DEFAULT_CELLVIT_SCRIPT)))
         model_path = Path(_defaulted_text(cellvit_model, DEFAULT_CELLVIT_MODEL))
         root_path = Path(_defaulted_text(cellvit_root, str(DEFAULT_CELLVIT_ROOT)))
+        try:
+            validate_frozen_cellvit_checkpoint(model_path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise gr.Error(str(exc)) from exc
         command = [
             sys.executable,
             str(script_path),
@@ -1633,6 +1651,8 @@ def load_inputs_from_paths(
             str(model_path),
             "--cellvit-root",
             str(root_path),
+            "--cellvit-python",
+            _defaulted_text(cellvit_python, DEFAULT_CELLVIT_PYTHON),
             "--gpu",
             str(_cuda_index(cellvit_device)),
         ]
@@ -1693,6 +1713,10 @@ def load_inputs_from_paths(
             "cellvit_script": cellvit_script,
             "cellvit_model": cellvit_model,
             "cellvit_root": cellvit_root,
+            "cellvit_python": _defaulted_text(
+                cellvit_python,
+                DEFAULT_CELLVIT_PYTHON,
+            ),
             "cellvit_device": cellvit_device,
         },
     }
@@ -2932,7 +2956,12 @@ def run_cell_stage(
             raise gr.Error(str(exc)) from exc
     try:
         target_nuclei, cell_info = _build_target_nuclei(
-            args, reference_nuclei, target_tissue, change_region, output_dir
+            args,
+            reference_nuclei,
+            reference_tissue,
+            target_tissue,
+            change_region,
+            output_dir,
         )
     except subprocess.CalledProcessError as exc:
         raise gr.Error(_format_subprocess_error(exc, label="ProbNet cell fill")) from exc
@@ -2981,6 +3010,7 @@ def _build_online_agent_command(
         "cellvit_script",
         "cellvit_model",
         "cellvit_root",
+        "cellvit_python",
         "cellvit_device",
     )
     missing_runtime = [name for name in required_runtime if not runtime.get(name)]
@@ -3045,7 +3075,7 @@ def _build_online_agent_command(
         "--cellvit-launch-python",
         sys.executable,
         "--cellvit-python",
-        sys.executable,
+        str(runtime["cellvit_python"]),
         "--cellvit-gpu",
         str(_cuda_index(str(runtime["cellvit_device"]))),
     ]
@@ -3452,6 +3482,7 @@ def run_large_patch_stitch_generation(
             target_nuclei_patch, cell_info = _build_target_nuclei(
                 patch_args,
                 reference_nuclei_patch,
+                reference_tissue_patch,
                 target_tissue_patch,
                 change_patch,
                 patch_dir,
@@ -4282,6 +4313,10 @@ def build_ui() -> gr.Blocks:
                 with gr.Row():
                     cellvit_root = gr.Textbox(value=str(DEFAULT_CELLVIT_ROOT), label="CellViT source root")
                     cellvit_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_CELLVIT_DEVICE, label="CellViT device")
+                cellvit_python = gr.Textbox(
+                    value=DEFAULT_CELLVIT_PYTHON,
+                    label="CellViT python",
+                )
                 with gr.Row():
                     segmentator_env = gr.Textbox(value=DEFAULT_SEGMENTATOR_ENV, label="segmentator conda env")
                     segmentator_release = gr.Textbox(
@@ -4453,6 +4488,7 @@ def build_ui() -> gr.Blocks:
                 cellvit_script,
                 cellvit_model,
                 cellvit_root,
+                cellvit_python,
                 cellvit_device,
             ],
             outputs=[state, load_log, src_image_preview, src_tissue_preview],
@@ -4489,6 +4525,7 @@ def build_ui() -> gr.Blocks:
                 cellvit_script,
                 cellvit_model,
                 cellvit_root,
+                cellvit_python,
                 cellvit_device,
             ],
             outputs=[state, load_log, src_image_preview, src_tissue_preview],

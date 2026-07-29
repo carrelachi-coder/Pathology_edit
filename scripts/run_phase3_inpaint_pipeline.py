@@ -41,6 +41,7 @@ from controlnet_train.inference import (
     run_edit_pipeline,
     run_inpaint_bundle,
     validate_frozen_probnet_checkpoint,
+    validate_production_controlnet_checkpoint,
     validate_production_pix2pix_checkpoint,
 )
 from controlnet_train.data.common import default_prompt_for_dataset
@@ -705,6 +706,16 @@ def _run_generation_stage(
     missing = [name for name, value in required.items() if value is None]
     if missing:
         raise SystemExit(f"{', '.join(missing)} required with --generation-mode {args.generation_mode}")
+    controlnet_release = getattr(args, "controlnet_release", None)
+    if controlnet_release is None:
+        controlnet_release = validate_production_controlnet_checkpoint(
+            (
+                args.inpaint_checkpoint
+                if selected_mode == "inpaint"
+                else args.cross_v1_checkpoint
+            ),
+            mode=selected_mode,
+        )
 
     if selected_mode == "cross-v1":
         pix2pix_release = getattr(args, "pix2pix_release", None)
@@ -751,6 +762,7 @@ def _run_generation_stage(
             "route_threshold": args.route_threshold,
             "prompt": prompt,
             "pix2pix_release": pix2pix_release,
+            "controlnet_release": controlnet_release,
             "cross_v1": no_ip_info,
         }
         save_metadata(info, output_dir / "generation_info.json")
@@ -810,6 +822,7 @@ def _run_generation_stage(
         "generation_change_region": str(generation_change_region_path),
         "route_threshold": args.route_threshold,
         "prompt": result.prompt,
+        "controlnet_release": controlnet_release,
     }
     save_metadata(info, output_dir / "generation_info.json")
     return generated, info

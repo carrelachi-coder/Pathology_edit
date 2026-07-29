@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from inpaint_cells.generate import choose_weighted_centers
 from inpaint_cells.sampling_policy import (
     retry_pool_target,
     valid_biological_tissue_mask,
@@ -46,3 +47,17 @@ def test_valid_biological_tissue_excludes_background_and_skipped_labels():
         allowed,
         np.array([[False, True, False], [True, False, False]]),
     )
+
+
+def test_probnet_score_orders_the_full_retry_queue():
+    candidates = [(0, 0), (0, 1), (0, 2), (0, 3)]
+    probability = np.array([[0.2, 0.9, 0.4, 0.7]], dtype=np.float32)
+
+    ranked = choose_weighted_centers(
+        candidates,
+        probability,
+        target_count=len(candidates),
+        gamma=1.5,
+    )
+
+    assert ranked == [(0, 1), (0, 3), (0, 2), (0, 0)]

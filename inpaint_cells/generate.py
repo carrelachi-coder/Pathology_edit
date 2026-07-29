@@ -266,16 +266,22 @@ def compute_target_count(nuc_prob, tissue_region, tissue_id, library, expected_a
 
 
 def choose_weighted_centers(candidates, nuc_prob, target_count, gamma):
+    """Order legal candidates by the learned ProbNet placement score.
+
+    Retry queues may contain every Poisson candidate. Weighted sampling
+    without replacement would therefore degrade into a weakly biased random
+    permutation. Stable score ranking keeps count independent while ensuring
+    that placement and fallback order remain ProbNet-determined.
+    """
+
     if target_count <= 0 or not candidates:
         return []
     n = min(target_count, len(candidates))
     ys = np.array([p[0] for p in candidates], dtype=np.int64)
     xs = np.array([p[1] for p in candidates], dtype=np.int64)
     scores = np.power(np.clip(nuc_prob[ys, xs], 0.0, 1.0), gamma)
-    scores = scores + 1e-8
-    probs = scores / scores.sum()
-    chosen = np.random.choice(len(candidates), size=n, replace=False, p=probs)
-    return [candidates[int(i)] for i in chosen]
+    order = np.argsort(-scores, kind="stable")[:n]
+    return [candidates[int(i)] for i in order]
 
 
 def allocate_component_counts(component_areas, target_count, minimum_area):
@@ -667,8 +673,8 @@ def place_candidate_with_retries(
                 scale=float(spec["scale"]),
             )
             if placed:
-                return True, str(shape_source), attempts
-    return False, None, attempts
+                return True, str(shape_source), attempts, (center_y, center_x)
+    return False, None, attempts, None
 
 
 def generate_for_gamma(
@@ -949,6 +955,7 @@ def generate_for_gamma(
         )
         attempted = 0
         placement_trials = 0
+        accepted_center_probabilities = []
         placed_by_component = {component_id: 0 for component_id in component_limits}
         placed_by_type = {
             int(nuc_type): 0
@@ -973,7 +980,12 @@ def generate_for_gamma(
                 nuc_type = sample_type_at_center(prob, cy, cx, args)
             if nuc_type is None:
                 continue
-            placed_ok, shape_source, local_trials = place_candidate_with_retries(
+            (
+                placed_ok,
+                shape_source,
+                local_trials,
+                accepted_center,
+            ) = place_candidate_with_retries(
                 output=output,
                 candidate_y=cy,
                 candidate_x=cx,
@@ -988,6 +1000,10 @@ def generate_for_gamma(
             placement_trials += int(local_trials)
             if placed_ok:
                 placed += 1
+                accepted_y, accepted_x = accepted_center
+                accepted_center_probabilities.append(
+                    float(nuc_prob[accepted_y, accepted_x])
+                )
                 placed_by_component[component_id] = (
                     placed_by_component.get(component_id, 0) + 1
                 )
@@ -1012,6 +1028,17 @@ def generate_for_gamma(
             "placement_trials": placement_trials,
             "placed": placed,
             "placed_by_shape_source": placed_by_shape_source,
+            "candidate_queue_policy": "stable_descending_probnet_score",
+            "accepted_center_probability": (
+                {
+                    "minimum": float(np.min(accepted_center_probabilities)),
+                    "median": float(np.median(accepted_center_probabilities)),
+                    "mean": float(np.mean(accepted_center_probabilities)),
+                    "maximum": float(np.max(accepted_center_probabilities)),
+                }
+                if accepted_center_probabilities
+                else None
+            ),
             "type_quota_policy": (
                 "empirical_exact_quota_checkpoint_independent"
                 if type_limits is not None

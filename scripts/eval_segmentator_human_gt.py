@@ -31,6 +31,7 @@ CLASS_NAMES = (
     "blood_vessel",
     "other_tissue",
 )
+EVALUATED_CLASS_IDS = frozenset({1, 2, 3, 4, 5, 6})
 
 
 def _raw_confusion(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
@@ -95,7 +96,7 @@ def _report(matrix: np.ndarray) -> dict[str, object]:
             "recall": recall,
             "support_pixels": int(support[class_id]),
         }
-        if support[class_id] > 0:
+        if class_id in EVALUATED_CLASS_IDS and support[class_id] > 0:
             ious.append(iou)
             dices.append(dice)
     return {

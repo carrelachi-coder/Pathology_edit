@@ -6,17 +6,14 @@ checkpoint 和机器本地配置不进入 Git 历史。
 | 产品模块 | 主要代码 | 当前定位 |
 | --- | --- | --- |
 | 语义 mask 编辑 | `phase3_mask_edit/` | LLM contour + `organic_v2` 生产入口；旧非 LLM 确定性执行器已退役 |
-| 组织分割 | `segmentator/` | grouped coarse anchor + Fine V2；Boundary/Teacher 为门控消融 |
-| 细胞布局（CellDistNet） | `inpaint_cells/` | 计数与类型配额由冻结统计策略给出，模型只提供组织感知落点先验 |
+| 组织分割 | `segmentator/` | C 线 Boundary + CellViT Teacher joint epoch 2；严格 release 驱动推理 |
+| 细胞布局（CellDistNet） | `inpaint_cells/` | epoch29 只提供落点先验；patch 自适应配额，当前 patch 同类 shape 优先 |
 | 图像生成 | `controlnet_train/`、`scripts/` | Inpaint 与 Cross V1 + Pix2pix 两条生产路由 |
 | 基准与评估 | `phase3_mask_edit/benchmark/`、`benchmark_configs/` | mask 语义、条件一致性、Patho-KID 与表示分析 |
 
-执行计划与发布约束见：
-
-- `docs/benchmark_implementation_plan.md`
-- `docs/segmentator_fine_first_plan.md`
-- `docs/mask_edit_benchmark_v1_runbook.md`
-- `docs/generation_model_release.md`
+线上产品的唯一冻结清单见 `docs/online_product_release.md`；生成模型打包
+细节见 `docs/generation_model_release.md`，C 线分割性能见
+`docs/segmentator_fine_validation.md`。其他 benchmark/plan 文档不定义线上默认值。
 
 ## 生成模型生产链路
 
@@ -60,7 +57,7 @@ hf auth whoami
 | --- | --- | --- |
 | Inpaint ControlNet | [Qinxin11/pathology-inpaint-controlnet](https://huggingface.co/Qinxin11/pathology-inpaint-controlnet) | 仓库根目录；含 ControlNet、`config.json`、`phase5_conditioning.pt` |
 | Cross V1 + Pix2pix | [Qinxin11/pathology-cross-v1-pix2pix](https://huggingface.co/Qinxin11/pathology-cross-v1-pix2pix) | `cross_v1/`；`pix2pix/pix2pix_epoch26_step214895.pt` |
-| ProbNet | [Qinxin11/pathology-probnet](https://huggingface.co/Qinxin11/pathology-probnet) | `best.pt`，epoch 61 / step 991504 |
+| ProbNet / CellDistNet | 本地冻结 release | `best_epoch29_c29607f1b609accb.pt`；SHA256 `c29607f...571211` |
 
 下载并注册为默认模型路径：
 
@@ -71,17 +68,19 @@ hf download Qinxin11/pathology-inpaint-controlnet \
   --local-dir /models/pathology/pathology-inpaint-controlnet
 hf download Qinxin11/pathology-cross-v1-pix2pix \
   --local-dir /models/pathology/pathology-cross-v1-pix2pix
-hf download Qinxin11/pathology-probnet \
-  --local-dir /models/pathology/pathology-probnet
 
 export PATHOLOGY_INPAINT_CHECKPOINT=/models/pathology/pathology-inpaint-controlnet
 export PATHOLOGY_CROSS_V1_CHECKPOINT=/models/pathology/pathology-cross-v1-pix2pix/cross_v1
 export PATHOLOGY_PIX2PIX_CHECKPOINT=/models/pathology/pathology-cross-v1-pix2pix/pix2pix/pix2pix_epoch26_step214895.pt
-export PATHOLOGY_PROBNET_CHECKPOINT=/models/pathology/pathology-probnet/best.pt
+export PATHOLOGY_PROBNET_CHECKPOINT=/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/best_epoch29_c29607f1b609accb.pt
+export PATHOLOGY_SEGMENTATOR_PYTHON=/home/lyw/anaconda3/envs/pathology-segmentator-mmseg/bin/python3.10
+export PATHOLOGY_CELLVIT_ROOT=/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/CellViT-plus-plus-main
+export PATHOLOGY_CELLVIT_MODEL=$PATHOLOGY_CELLVIT_ROOT/checkpoints/CellViT-SAM-H-x40-AMP-001.pth
+export PATHOLOGY_CELLVIT_PYTHON=/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python
 export FLUX_MODEL=/data/huggingface/FLUX.1-dev
 ```
 
-代码通过上述四个 `PATHOLOGY_*_CHECKPOINT` 环境变量读取生产 checkpoint；未设置时保留 `amax2` 上的兼容默认路径。Pix2pix 的网络结构、full-pyramid steering 和 nuclei trust 参数只从 checkpoint 读取，生产版本固定为 epoch 26 / step 214895，trust gate 为 `nuclei_reference_support_v2`。
+代码默认指向 `amax2` 上的 inference-only 打包目录，也允许通过上述环境变量覆盖。Inpaint/Cross 会校验打包 manifest、release commit、权重大小和 SHA 记录；Pix2pix 会校验文件 SHA、epoch 26 / step 214895、full-pyramid steering、identity adapter 和 `nuclei_reference_support_v2`。
 
 权重 SHA256、文件大小、打包范围和 Hub 往返验证结果见 [生成模型发布说明](docs/generation_model_release.md)。
 
@@ -237,14 +236,22 @@ python inpaint_cells/generate.py \
   --ckpt "$PATHOLOGY_PROBNET_CHECKPOINT" \
   --library /data/runs/phase4/all6/nuclei_library/ORCA \
   --input-tissue /data/input/edited_tissue.png \
+  --reference-tissue /data/input/source_tissue.png \
   --input-nuclei /data/input/source_nuclei.png \
+  --reference-nuclei-shapes /data/input/source_nuclei.png \
   --edit-region /data/input/edit_region.png \
   --output /data/outputs/generated_nuclei.png \
   --vis-dir /data/outputs/probnet_vis \
-  --gamma-values 1.0 \
-  --density-scale-json inpaint_cells/configs/density_scale_orca.json \
+  --gamma-values 1.5 \
   --device cuda
 ```
+
+生产 shape 策略是“当前 patch 同类别 reference shape 不放回优先，耗尽后
+才用 library”。Library fallback 会按当前 patch 同类细胞的经验面积缩放；
+默认线性缩放限制为 `0.5-2.0`。没有同类参考时保持 library 原尺寸并记录
+未校准诊断。Count 和 subtype quota 仍由 patch 统计策略决定；合法候选按
+ProbNet 分数稳定降序执行，放置失败才退到下一候选，不增加
+organ/dataset-specific 的硬空间规则。
 
 端到端 smoke test（从完整 layered sample 自动擦除一块区域后重建）：
 
@@ -261,7 +268,13 @@ python scripts/phase4_single_sample_smoke.py \
 
 ### 4.4 端到端路由与 agentic workflow
 
-`run_phase3_inpaint_pipeline.py` 根据改动面积选择 Inpaint 或 Cross V1 + Pix2pix，并可先用 ProbNet 填充细胞层：
+在线产品入口是完整 UI；其第四阶段直接调用标准 agent runner：
+
+```bash
+python scripts/phase3_end_to_end_ui.py
+```
+
+`run_phase3_inpaint_pipeline.py` 是底层 generation core，可根据改动面积选择 Inpaint 或 Cross V1 + Pix2pix，并可先用 ProbNet 填充细胞层：
 
 ```bash
 python scripts/run_phase3_inpaint_pipeline.py \
@@ -289,11 +302,21 @@ python scripts/run_agentic_edit_workflow.py \
   --reference-nuclei-mask /data/input/reference_nuclei.png \
   --target-tissue-mask /data/input/target_tissue.png \
   --target-nuclei-mask /data/input/target_nuclei.png \
+  --semantic-change-region /data/input/semantic_change_region.png \
+  --generation-change-region /data/input/generation_change_region.png \
+  --segmentator-release benchmark_configs/releases/segmentator_fine_c_epoch2.json \
+  --cellvit-root "$PATHOLOGY_CELLVIT_ROOT" \
+  --cellvit-model "$PATHOLOGY_CELLVIT_MODEL" \
+  --cellvit-python "$PATHOLOGY_CELLVIT_PYTHON" \
   --pretrained-model-name-or-path "$FLUX_MODEL" \
-  --output /data/outputs/agentic/final.png
+  --output /data/outputs/agentic/run_001
 ```
 
-四个 checkpoint 参数均有环境变量默认值；如需临时切换版本，可显式传入 `--inpaint-checkpoint`、`--cross-v1-checkpoint`、`--pix2pix-checkpoint` 和 `--probnet-ckpt`，但生产部署应固定为上表版本。
+Agent runner 对源图和每次生成图执行同一 C 线 Segmentator，并用冻结
+CellViT 审计 nuclei consistency；失败时最多切换一次 backend。语义
+change region 必须等于 source/target tissue 的真实差分，generation region
+可以是其结构性扩张后的超集。完整生产清单、禁止版本和哈希见
+[在线产品 release](docs/online_product_release.md)。
 
 ## 5. 快速检查
 

@@ -8,7 +8,13 @@ from PIL import Image
 import torch
 from torch import nn
 
-from segmentator.config import BaselineConfig, SEGMENTATOR_CLASSES, SampleRecord
+from segmentator.config import (
+    BaselineConfig,
+    SEGMENTATOR_CLASSES,
+    SampleRecord,
+    dataset_annotated_coarse_class_ids,
+    dataset_supported_fine_class_ids,
+)
 from segmentator.data import (
     IMAGENET_MEAN,
     IMAGENET_STD,
@@ -20,13 +26,20 @@ from segmentator.data import (
 )
 from segmentator.losses import (
     boundary_band_cross_entropy,
+    boundary_gate_supervision_loss,
     masked_segmentation_loss,
     multi_scale_soft_boundary_loss,
     outside_boundary_consistency_loss,
     segmentation_loss,
     soft_boundary_loss,
 )
-from segmentator.metrics import fine_segmentation_metrics, fragmentation_metrics, group_macro_iou, segmentation_metrics
+from segmentator.metrics import (
+    dataset_group_macro_iou,
+    fine_segmentation_metrics,
+    fragmentation_metrics,
+    group_macro_iou,
+    segmentation_metrics,
+)
 from segmentator.model import BoundaryRefinementHead, CellDensityHead, CellPriorEncoder, FineCellTeacherAdapter, HierarchicalFineHead, SimpleFeaturePyramid, UPerLikeDecoder, Uni2hFeatureEncoder
 from segmentator.training import (
     _checkpoint_selection_score,
@@ -38,6 +51,7 @@ from segmentator.training import (
     compute_class_weights,
     compute_fine_class_weights,
     boundary_aware_sampling_weights,
+    combine_sampling_weights,
     fine_supervision_sampling_weights,
 )
 from segmentator.cli import build_parser
@@ -158,6 +172,64 @@ class SegmentatorDataTests(unittest.TestCase):
         self.assertEqual(args.refinement_consistency_weight, 2.0)
         self.assertEqual(args.refinement_gate_width, 4)
         self.assertEqual(args.refinement_gate_threshold, 0.15)
+
+    def test_segmentator_cli_accepts_boundary_teacher_joint_arguments(self):
+        args = build_parser().parse_args(
+            [
+                "--dataset-root",
+                "data",
+                "--boundary-refinement",
+                "--refinement-gate-mode",
+                "learned_soft",
+                "--refinement-gate-loss-weight",
+                "0.5",
+                "--boundary-aware-sampling",
+                "--boundary-sampling-mode",
+                "dataset_quantile",
+                "--fine-supervision-sampling",
+                "--joint-sampling-fine-fraction",
+                "0.6",
+                "--hierarchical-fine",
+                "--cellvit-mode",
+                "teacher",
+                "--trainable-scope",
+                "boundary_teacher",
+                "--checkpoint-mode",
+                "joint",
+                "--init-refinement-from-checkpoint",
+                "boundary.pt",
+            ]
+        )
+
+        self.assertEqual(args.refinement_gate_mode, "learned_soft")
+        self.assertEqual(args.boundary_sampling_mode, "dataset_quantile")
+        self.assertEqual(args.trainable_scope, "boundary_teacher")
+        self.assertEqual(args.checkpoint_mode, "joint")
+        self.assertAlmostEqual(args.joint_sampling_fine_fraction, 0.6)
+
+    def test_segmentator_cli_accepts_runtime_cell_input_arguments(self):
+        args = build_parser().parse_args(
+            [
+                "--dataset-root",
+                "data",
+                "--hierarchical-fine",
+                "--fine-supervision-sampling",
+                "--balanced-datasets",
+                "--cellvit-mode",
+                "input",
+                "--cell-prior-dropout",
+                "0.2",
+                "--cell-input-fine-fraction",
+                "0.6",
+                "--trainable-scope",
+                "input",
+            ]
+        )
+
+        self.assertEqual(args.cellvit_mode, "input")
+        self.assertEqual(args.trainable_scope, "input")
+        self.assertAlmostEqual(args.cell_prior_dropout, 0.2)
+        self.assertAlmostEqual(args.cell_input_fine_fraction, 0.6)
 
     def test_segmentator_cli_accepts_coarse_preserving_fine_probe_arguments(self):
         args = build_parser().parse_args(
@@ -326,6 +398,38 @@ class SegmentatorDataTests(unittest.TestCase):
 
         self.assertFalse(eligible)
         self.assertEqual(score, float("-inf"))
+
+    def test_joint_checkpoint_selection_combines_fine_and_boundary(self):
+        config = BaselineConfig(
+            hierarchical_fine=True,
+            checkpoint_mode="joint",
+            checkpoint_coarse_miou_floor=0.61,
+            checkpoint_coarse_boundary_f1_4_floor=0.51,
+            checkpoint_fine_dataset_macro_floor=0.64,
+            checkpoint_fine_weight=1.0,
+            checkpoint_boundary_weight=0.5,
+        )
+        score, eligible = _checkpoint_selection_score(
+            {
+                "mIoU": 0.62,
+                "boundary_f1_4": 0.54,
+                "fine_dataset_macro_mIoU": 0.66,
+            },
+            config,
+        )
+
+        self.assertTrue(eligible)
+        self.assertAlmostEqual(score, 0.66 + 0.5 * 0.54)
+
+    def test_joint_sampling_preserves_requested_branch_mass(self):
+        fine = torch.tensor([1.0, 1.0, 0.0, 0.0])
+        boundary = torch.tensor([0.0, 0.0, 1.0, 3.0])
+
+        combined = combine_sampling_weights(fine, boundary, fine_fraction=0.6)
+
+        self.assertAlmostEqual(float(combined[:2].sum()), 0.6)
+        self.assertAlmostEqual(float(combined[2:].sum()), 0.4)
+        self.assertAlmostEqual(float(combined.sum()), 1.0)
 
     def test_gpu_memory_gate_waits_until_threshold_is_met(self):
         gib = 1024**3
@@ -566,6 +670,46 @@ class SegmentatorModelTests(unittest.TestCase):
         self.assertTrue(all(not parameter.requires_grad for parameter in model.encoder.parameters()))
         self.assertTrue(all(not parameter.requires_grad for parameter in model.decoder.parameters()))
 
+    def test_boundary_teacher_scope_trains_all_three_auxiliary_branches(self):
+        model = nn.Module()
+        model.encoder = nn.Linear(4, 4)
+        model.decoder = nn.Linear(4, 3)
+        model.refinement_head = nn.Linear(4, 3)
+        model.fine_head = nn.Linear(4, 2)
+        model.cell_teacher_adapter = nn.Linear(4, 4)
+        model.cell_density_head = nn.Linear(4, 6)
+
+        selected = _freeze_for_trainable_scope(model, "boundary_teacher")
+
+        expected = (
+            list(model.refinement_head.parameters())
+            + list(model.fine_head.parameters())
+            + list(model.cell_teacher_adapter.parameters())
+            + list(model.cell_density_head.parameters())
+        )
+        self.assertEqual({id(parameter) for parameter in selected}, {id(parameter) for parameter in expected})
+        self.assertTrue(all(not parameter.requires_grad for parameter in model.encoder.parameters()))
+        self.assertTrue(all(not parameter.requires_grad for parameter in model.decoder.parameters()))
+
+    def test_cell_input_scope_trains_only_input_and_fine_branches(self):
+        model = nn.Module()
+        model.encoder = nn.Linear(4, 4)
+        model.decoder = nn.Linear(4, 3)
+        model.fine_head = nn.Linear(4, 2)
+        model.cell_prior_encoder = nn.Linear(4, 4)
+        model.cell_density_head = nn.Linear(4, 6)
+
+        selected = _freeze_for_trainable_scope(model, "input")
+
+        expected = (
+            list(model.fine_head.parameters())
+            + list(model.cell_prior_encoder.parameters())
+            + list(model.cell_density_head.parameters())
+        )
+        self.assertEqual({id(parameter) for parameter in selected}, {id(parameter) for parameter in expected})
+        self.assertTrue(all(not parameter.requires_grad for parameter in model.encoder.parameters()))
+        self.assertTrue(all(not parameter.requires_grad for parameter in model.decoder.parameters()))
+
     def test_cell_teacher_adapter_is_identity_at_initialization(self):
         adapter = FineCellTeacherAdapter(channels=32, hidden_channels=16)
         features = torch.randn(2, 32, 8, 8)
@@ -606,6 +750,29 @@ class SegmentatorModelTests(unittest.TestCase):
         self.assertTrue(metrics["available"])
         self.assertEqual(metrics["valid_pixels"], 3)
         self.assertAlmostEqual(metrics["accuracy"], 2 / 3)
+
+    def test_supported_fine_classes_exclude_bcss_dcis(self):
+        self.assertEqual(dataset_supported_fine_class_ids("bcss"), (1, 15))
+        self.assertEqual(dataset_supported_fine_class_ids("glas"), (11, 12, 13))
+        self.assertEqual(dataset_supported_fine_class_ids("panda"), (8, 9, 10))
+        self.assertEqual(dataset_supported_fine_class_ids("orca"), ())
+
+    def test_fine_macro_excludes_unsupported_dcis_but_keeps_diagnostic(self):
+        target = torch.tensor([[[1, 1, 14, 14]]])
+        pred = torch.tensor([[[1, 1, 1, 1]]])
+
+        metrics = fine_segmentation_metrics(
+            pred,
+            target,
+            num_classes=16,
+            class_names=tuple(f"class_{idx}" for idx in range(16)),
+            evaluated_class_ids=(1, 15),
+        )
+
+        self.assertAlmostEqual(metrics["mIoU"], 0.5)
+        self.assertTrue(metrics["per_class"]["class_1"]["evaluated"])
+        self.assertFalse(metrics["per_class"]["class_14"]["evaluated"])
+        self.assertEqual(metrics["per_class"]["class_14"]["iou"], 0.0)
 
     def test_uni2h_encoder_uses_spaced_intermediate_layers(self):
         fake_backbone = _FakeUniBackbone()
@@ -676,8 +843,32 @@ class SegmentatorModelTests(unittest.TestCase):
         self.assertTrue(torch.equal(refined, logits))
         self.assertGreaterEqual(float(gate.min()), 0.0)
         self.assertLessEqual(float(gate.max()), 1.0)
-        self.assertEqual(tuple(prior(density, (8, 8)).shape), tuple(features.shape))
+        prior_features = prior(density, (8, 8))
+        self.assertEqual(tuple(prior_features.shape), tuple(features.shape))
+        self.assertTrue(torch.equal(prior_features, torch.zeros_like(prior_features)))
         self.assertEqual(tuple(teacher(features, (32, 32)).shape), tuple(density.shape))
+
+    def test_learned_boundary_gate_is_identity_initialized_and_supervised(self):
+        refinement = BoundaryRefinementHead(num_classes=3, gate_mode="learned_soft")
+        image = torch.randn(1, 3, 16, 16)
+        logits = torch.randn(1, 3, 16, 16)
+        target = torch.zeros(1, 16, 16, dtype=torch.long)
+        target[:, :, 8:] = 1
+
+        refined, gate, gate_logits = refinement(image, logits, return_gate="details")
+        gate_loss = boundary_gate_supervision_loss(
+            gate_logits,
+            target,
+            num_classes=3,
+            width=4,
+        )
+        gate_loss.backward()
+
+        self.assertTrue(torch.equal(refined, logits))
+        self.assertEqual(tuple(gate.shape), (1, 1, 16, 16))
+        self.assertEqual(tuple(gate_logits.shape), (1, 1, 16, 16))
+        self.assertTrue(torch.isfinite(gate_loss))
+        self.assertIsNotNone(refinement.gate_predictor[-1].bias.grad)
 
     def test_boundary_v2_losses_are_finite_and_identity_consistent(self):
         logits = torch.randn(1, 3, 16, 16)
@@ -708,6 +899,63 @@ class SegmentatorModelTests(unittest.TestCase):
         self.assertTrue(torch.isfinite(loss))
         self.assertGreater(fragmentation["overall"]["components_lt_16"], 0)
         self.assertEqual(macro["groups"], 1)
+
+    def test_dataset_annotated_coarse_classes_exclude_background_and_other(self):
+        self.assertEqual(dataset_annotated_coarse_class_ids("bcss"), (1, 2, 3, 4, 5, 6))
+        self.assertEqual(dataset_annotated_coarse_class_ids("orca"), (1,))
+        self.assertEqual(dataset_annotated_coarse_class_ids("glas"), (1, 2, 5))
+        self.assertEqual(dataset_annotated_coarse_class_ids("panda"), (1, 2, 5))
+        self.assertEqual(dataset_annotated_coarse_class_ids("puma"), (1, 2, 3, 5, 6))
+        self.assertEqual(dataset_annotated_coarse_class_ids("ignite"), (1, 2, 3, 4, 5, 6))
+
+    def test_orca_miou_is_tumor_only_but_retains_false_positives(self):
+        target = torch.tensor([[[0, 1, 7, 1]]])
+        prediction = torch.tensor([[[1, 1, 1, 0]]])
+
+        metrics = segmentation_metrics(
+            prediction,
+            target,
+            num_classes=8,
+            evaluated_class_ids=dataset_annotated_coarse_class_ids("orca"),
+        )
+
+        self.assertEqual(metrics["evaluated_classes"], ["class_1"])
+        self.assertAlmostEqual(metrics["mIoU"], 0.25, places=6)
+
+    def test_confusion_only_metrics_skip_spatial_work(self):
+        target = torch.tensor([[[0, 1]]])
+        prediction = torch.tensor([[[0, 1]]])
+
+        metrics = segmentation_metrics(
+            prediction,
+            target,
+            num_classes=2,
+            evaluated_class_ids=(1,),
+            include_spatial_metrics=False,
+        )
+
+        self.assertEqual(metrics["mIoU"], 1.0)
+        self.assertTrue(math.isnan(metrics["boundary_f1_4"]))
+        self.assertEqual(metrics["fragmentation"]["samples"], 0)
+
+    def test_dataset_group_macro_uses_each_datasets_native_classes(self):
+        prediction = torch.tensor([[[1, 1]], [[1, 0]]])
+        target = torch.tensor([[[1, 7]], [[1, 2]]])
+
+        metrics = dataset_group_macro_iou(
+            prediction,
+            target,
+            group_ids=["orca-case", "glas-case"],
+            dataset_ids=["orca", "glas"],
+            num_classes=8,
+            evaluated_class_ids_by_dataset={
+                "orca": dataset_annotated_coarse_class_ids("orca"),
+                "glas": dataset_annotated_coarse_class_ids("glas"),
+            },
+        )
+
+        self.assertEqual(metrics["groups"], 2)
+        self.assertAlmostEqual(metrics["mean_mIoU"], 0.5, places=6)
 
 
 if __name__ == "__main__":

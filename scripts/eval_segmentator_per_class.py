@@ -13,9 +13,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from segmentator.config import DatasetManifest
+from dataset_config.unified_labels import NUM_FINE
+from segmentator.config import (
+    DatasetManifest,
+    SEGMENTATOR_FINE_CLASSES,
+    dataset_annotated_coarse_class_ids,
+    dataset_supported_fine_class_ids,
+)
 from segmentator.data import TissueSegmentationDataset, build_manifest, load_manifest
-from segmentator.metrics import group_macro_iou, segmentation_metrics
+from segmentator.metrics import (
+    dataset_group_macro_iou,
+    fine_segmentation_metrics,
+    group_macro_iou,
+    segmentation_metrics,
+)
 from segmentator.inference import load_checkpoint
 
 
@@ -50,9 +61,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask2former-ignore-index", type=int, default=255)
     parser.add_argument("--symmetric-padding", action="store_true")
     parser.add_argument("--boundary-refinement", action="store_true")
+    parser.add_argument("--refinement-gate-mode", choices=["hard", "learned_soft"], default="hard")
     parser.add_argument("--cellvit-mode", choices=["none", "teacher", "input"], default="none")
+    parser.add_argument("--hierarchical-fine", action="store_true")
     parser.add_argument("--cell-density-sigma", type=float, default=8.0)
     parser.add_argument("--metric-sample-limit", type=int, default=0)
+    parser.add_argument("--skip-spatial-metrics", action="store_true")
+    parser.add_argument("--skip-group-macro", action="store_true")
     parser.add_argument("--remap-invalid-to", type=int, default=7)
     parser.add_argument("--boundary-width", type=int, default=2)
     parser.add_argument("--disable-cudnn", action="store_true")
@@ -81,6 +96,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         remap_invalid_to=args.remap_invalid_to,
         cellvit_mode=args.cellvit_mode,
         cell_density_sigma=args.cell_density_sigma,
+        hierarchical_fine=args.hierarchical_fine,
     )
     val_loader = DataLoader(
         val_ds,
@@ -98,23 +114,34 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         mask2former_ignore_index=args.mask2former_ignore_index,
         symmetric_padding=args.symmetric_padding,
         boundary_refinement=args.boundary_refinement,
+        refinement_gate_mode=args.refinement_gate_mode,
         cellvit_mode=args.cellvit_mode,
+        hierarchical_fine=args.hierarchical_fine,
     ).to(device)
 
     preds: list[torch.Tensor] = []
     targets: list[torch.Tensor] = []
     dataset_ids: list[str] = []
     group_ids: list[str] = []
+    fine_preds: list[torch.Tensor] = []
+    fine_targets: list[torch.Tensor] = []
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="eval", dynamic_ncols=True):
             image = batch["image"].to(device)
-            target = batch["mask"]
+            target = batch["mask"].clone()
             nuclei_density = batch.get("nuclei_density")
             if torch.is_tensor(nuclei_density):
                 nuclei_density = nuclei_density.to(device)
-            pred = model(image, nuclei_density=nuclei_density)["pred"].cpu()
+            fine_allowed = batch.get("fine_allowed")
+            if torch.is_tensor(fine_allowed):
+                fine_allowed = fine_allowed.to(device)
+            outputs = model(image, nuclei_density=nuclei_density, fine_allowed=fine_allowed)
+            pred = outputs["pred"].cpu()
             preds.append(pred)
             targets.append(target)
+            if args.hierarchical_fine:
+                fine_preds.append(outputs["fine_pred"].cpu())
+                fine_targets.append(batch["fine_mask"].clone())
             dataset_ids.extend(str(value) for value in batch["dataset_id"])
             group_ids.extend(str(value) for value in batch["group_id"])
 
@@ -128,12 +155,49 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         class_names=class_names,
         boundary_width=args.boundary_width,
         metric_sample_limit=args.metric_sample_limit,
+        include_spatial_metrics=not args.skip_spatial_metrics,
     )
-    metrics["case_macro"] = group_macro_iou(pred_all, target_all, group_ids, args.num_classes)
+    metrics["pooled_unified_mIoU"] = float(metrics["mIoU"])
+    metrics["pooled_unified_mDice"] = float(metrics["mDice"])
+    metrics["pooled_unified_case_macro"] = (
+        {"skipped": True}
+        if args.skip_group_macro
+        else group_macro_iou(
+            pred_all,
+            target_all,
+            group_ids,
+            args.num_classes,
+        )
+    )
+    fine_pred_all = torch.cat(fine_preds, dim=0) if args.hierarchical_fine else None
+    fine_target_all = torch.cat(fine_targets, dim=0) if args.hierarchical_fine else None
+    if args.hierarchical_fine:
+        supported_fine_class_ids = tuple(
+            sorted(
+                {
+                    class_id
+                    for dataset_id in set(dataset_ids)
+                    for class_id in dataset_supported_fine_class_ids(dataset_id)
+                }
+            )
+        )
+        metrics["fine"] = fine_segmentation_metrics(
+            fine_pred_all,
+            fine_target_all,
+            NUM_FINE,
+            class_names=SEGMENTATOR_FINE_CLASSES,
+            evaluated_class_ids=supported_fine_class_ids,
+        )
     per_dataset = {}
+    evaluated_class_ids_by_dataset: dict[str, tuple[int, ...]] = {}
     for dataset_id in sorted(set(dataset_ids)):
         indices = [index for index, value in enumerate(dataset_ids) if value == dataset_id]
         index_tensor = torch.tensor(indices, dtype=torch.long)
+        evaluated_class_ids = dataset_annotated_coarse_class_ids(
+            dataset_id,
+            num_classes=args.num_classes,
+        )
+        evaluated_class_ids_by_dataset[dataset_id] = evaluated_class_ids
         dataset_metrics = segmentation_metrics(
             pred_all.index_select(0, index_tensor),
             target_all.index_select(0, index_tensor),
@@ -141,15 +205,59 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
             class_names=class_names,
             boundary_width=args.boundary_width,
             metric_sample_limit=args.metric_sample_limit,
+            evaluated_class_ids=evaluated_class_ids,
+            include_spatial_metrics=not args.skip_spatial_metrics,
         )
-        dataset_metrics["case_macro"] = group_macro_iou(
-            pred_all.index_select(0, index_tensor),
-            target_all.index_select(0, index_tensor),
-            [group_ids[index] for index in indices],
-            args.num_classes,
+        dataset_metrics["case_macro"] = (
+            {"skipped": True}
+            if args.skip_group_macro
+            else group_macro_iou(
+                pred_all.index_select(0, index_tensor),
+                target_all.index_select(0, index_tensor),
+                [group_ids[index] for index in indices],
+                args.num_classes,
+                evaluated_class_ids=evaluated_class_ids,
+            )
         )
+        if args.hierarchical_fine:
+            supported_fine_class_ids = dataset_supported_fine_class_ids(dataset_id)
+            dataset_metrics["fine"] = fine_segmentation_metrics(
+                fine_pred_all.index_select(0, index_tensor),
+                fine_target_all.index_select(0, index_tensor),
+                NUM_FINE,
+                class_names=SEGMENTATOR_FINE_CLASSES,
+                evaluated_class_ids=supported_fine_class_ids or None,
+            )
         per_dataset[dataset_id] = dataset_metrics
     metrics["per_dataset"] = per_dataset
+    coarse_miou_values = [float(value["mIoU"]) for value in per_dataset.values()]
+    coarse_mdice_values = [float(value["mDice"]) for value in per_dataset.values()]
+    metrics["mIoU"] = sum(coarse_miou_values) / len(coarse_miou_values)
+    metrics["mDice"] = sum(coarse_mdice_values) / len(coarse_mdice_values)
+    metrics["coarse_dataset_macro_mIoU"] = float(metrics["mIoU"])
+    metrics["case_macro"] = (
+        {"skipped": True}
+        if args.skip_group_macro
+        else dataset_group_macro_iou(
+            pred_all,
+            target_all,
+            group_ids,
+            dataset_ids,
+            args.num_classes,
+            evaluated_class_ids_by_dataset,
+        )
+    )
+    if args.hierarchical_fine:
+        fine_dataset_values = [
+            float(value["fine"]["mIoU"])
+            for value in per_dataset.values()
+            if value["fine"]["available"]
+        ]
+        metrics["fine_dataset_macro_mIoU"] = (
+            sum(fine_dataset_values) / len(fine_dataset_values)
+            if fine_dataset_values
+            else float("nan")
+        )
     return {
         "device": str(device),
         "checkpoint": str(Path(args.checkpoint)),
@@ -162,6 +270,12 @@ def evaluate(args: argparse.Namespace) -> dict[str, object]:
         "decoder": args.decoder,
         "mask2former_queries": args.mask2former_queries,
         "mask2former_ignore_index": args.mask2former_ignore_index,
+        "hierarchical_fine": args.hierarchical_fine,
+        "cellvit_mode": args.cellvit_mode,
+        "boundary_refinement": args.boundary_refinement,
+        "refinement_gate_mode": args.refinement_gate_mode,
+        "spatial_metrics_included": not args.skip_spatial_metrics,
+        "group_macro_included": not args.skip_group_macro,
         "seed": args.seed,
         "metrics": metrics,
     }

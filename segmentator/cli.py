@@ -66,10 +66,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--refinement-consistency-weight", type=float, default=0.0)
     parser.add_argument("--refinement-gate-width", type=int, default=4)
     parser.add_argument("--refinement-gate-threshold", type=float, default=0.15)
+    parser.add_argument("--refinement-gate-mode", choices=["hard", "learned_soft"], default="hard")
+    parser.add_argument("--refinement-gate-loss-weight", type=float, default=0.0)
+    parser.add_argument("--refinement-gate-target-width", type=int, default=8)
     parser.add_argument("--boundary-aware-sampling", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--boundary-sampling-boost", type=float, default=3.0)
     parser.add_argument("--boundary-sampling-min-pixels", type=int, default=512)
     parser.add_argument("--boundary-sampling-width", type=int, default=4)
+    parser.add_argument("--boundary-sampling-mode", choices=["threshold", "dataset_quantile"], default="threshold")
+    parser.add_argument("--joint-sampling-fine-fraction", type=float, default=0.6)
+    parser.add_argument("--cell-input-fine-fraction", type=float, default=0.6)
     parser.add_argument("--cellvit-mode", choices=["none", "teacher", "input"], default="none")
     parser.add_argument("--cell-density-sigma", type=float, default=8.0)
     parser.add_argument("--cell-prior-dropout", type=float, default=0.2)
@@ -91,7 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fine-sampling-require-nuclei", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--freeze-shared-for-fine", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--fine-only-loss", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--trainable-scope", choices=["all", "fine", "boundary", "teacher"], default="all")
+    parser.add_argument(
+        "--trainable-scope",
+        choices=["all", "fine", "boundary", "teacher", "input", "boundary_teacher"],
+        default="all",
+    )
     parser.add_argument("--refinement-only-loss", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--label-space-summary", type=Path, default=None, help="Reuse a prior config.json or label-space summary to avoid rescanning all masks.")
     parser.add_argument("--stain-augmentation", choices=["none", "randstainna"], default="none")
@@ -123,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--checkpoint-mode",
-        choices=["composite", "fine_dataset_macro", "boundary_f1_4"],
+        choices=["composite", "fine_dataset_macro", "boundary_f1_4", "joint"],
         default="composite",
     )
     parser.add_argument("--checkpoint-coarse-miou-floor", type=float, default=None)
@@ -131,6 +141,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint-fine-dataset-macro-floor", type=float, default=None)
     parser.add_argument("--resume-from-checkpoint", type=str, default=None, help="Resume from 'latest' or a segmentator training checkpoint path.")
     parser.add_argument("--init-from-checkpoint", type=str, default=None, help="Initialize model weights only, for example from a coarse Segmentator checkpoint.")
+    parser.add_argument(
+        "--init-refinement-from-checkpoint",
+        type=str,
+        default=None,
+        help="Overlay refinement_head weights from a Boundary checkpoint after the primary initialization.",
+    )
     return parser
 
 
@@ -150,15 +166,29 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--trainable-scope boundary requires --boundary-refinement")
     if args.trainable_scope == "teacher" and args.cellvit_mode != "teacher":
         raise SystemExit("--trainable-scope teacher requires --cellvit-mode teacher")
+    if args.trainable_scope == "input" and args.cellvit_mode != "input":
+        raise SystemExit("--trainable-scope input requires --cellvit-mode input")
+    if args.trainable_scope == "boundary_teacher" and (
+        not args.boundary_refinement or args.cellvit_mode != "teacher"
+    ):
+        raise SystemExit("--trainable-scope boundary_teacher requires --boundary-refinement and --cellvit-mode teacher")
     if args.refinement_only_loss and not args.boundary_refinement:
         raise SystemExit("--refinement-only-loss requires --boundary-refinement")
     if args.boundary_aware_sampling and not args.boundary_refinement:
         raise SystemExit("--boundary-aware-sampling requires --boundary-refinement")
-    if args.boundary_aware_sampling and args.fine_supervision_sampling:
+    if (
+        args.boundary_aware_sampling
+        and args.fine_supervision_sampling
+        and args.trainable_scope != "boundary_teacher"
+    ):
         raise SystemExit("--boundary-aware-sampling and --fine-supervision-sampling are mutually exclusive")
     if any(width < 1 for width in args.refinement_boundary_widths):
         raise SystemExit("--refinement-boundary-widths must contain positive integers")
-    if args.refinement_gate_width < 1 or args.boundary_sampling_width < 1:
+    if (
+        args.refinement_gate_width < 1
+        or args.refinement_gate_target_width < 1
+        or args.boundary_sampling_width < 1
+    ):
         raise SystemExit("boundary gate and sampling widths must be positive")
     if not 0.0 <= args.refinement_gate_threshold < 1.0:
         raise SystemExit("--refinement-gate-threshold must be in [0, 1)")
@@ -169,8 +199,13 @@ def main(argv: list[str] | None = None) -> int:
         args.refinement_boundary_weight,
         args.refinement_boundary_ce_weight,
         args.refinement_consistency_weight,
+        args.refinement_gate_loss_weight,
     ) < 0:
         raise SystemExit("refinement loss weights must be non-negative")
+    if not 0.0 <= args.joint_sampling_fine_fraction <= 1.0:
+        raise SystemExit("--joint-sampling-fine-fraction must be in [0, 1]")
+    if not 0.0 <= args.cell_input_fine_fraction <= 1.0:
+        raise SystemExit("--cell-input-fine-fraction must be in [0, 1]")
     if args.fine_only_loss and args.refinement_only_loss:
         raise SystemExit("--fine-only-loss and --refinement-only-loss are mutually exclusive")
     if args.fine_sampling_require_nuclei and args.cellvit_mode == "none":
@@ -179,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         args.freeze_shared_for_fine
         or args.fine_only_loss
         or args.fine_supervision_sampling
-        or args.trainable_scope in {"fine", "teacher"}
+        or args.trainable_scope in {"fine", "teacher", "input", "boundary_teacher"}
         or args.checkpoint_mode == "fine_dataset_macro"
         or args.checkpoint_fine_dataset_macro_floor is not None
     ) and not args.hierarchical_fine:
@@ -188,6 +223,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--ddp-timeout-seconds must be positive")
     if args.resume_from_checkpoint and args.init_from_checkpoint:
         raise SystemExit("use only one of --resume-from-checkpoint and --init-from-checkpoint")
+    if args.resume_from_checkpoint and args.init_refinement_from_checkpoint:
+        raise SystemExit("--init-refinement-from-checkpoint cannot be combined with --resume-from-checkpoint")
     config = BaselineConfig(
         image_size=args.image_size,
         remap_invalid_to=args.remap_invalid_to,
@@ -232,10 +269,16 @@ def main(argv: list[str] | None = None) -> int:
         refinement_consistency_weight=args.refinement_consistency_weight,
         refinement_gate_width=args.refinement_gate_width,
         refinement_gate_threshold=args.refinement_gate_threshold,
+        refinement_gate_mode=args.refinement_gate_mode,
+        refinement_gate_loss_weight=args.refinement_gate_loss_weight,
+        refinement_gate_target_width=args.refinement_gate_target_width,
         boundary_aware_sampling=args.boundary_aware_sampling,
         boundary_sampling_boost=args.boundary_sampling_boost,
         boundary_sampling_min_pixels=args.boundary_sampling_min_pixels,
         boundary_sampling_width=args.boundary_sampling_width,
+        boundary_sampling_mode=args.boundary_sampling_mode,
+        joint_sampling_fine_fraction=args.joint_sampling_fine_fraction,
+        cell_input_fine_fraction=args.cell_input_fine_fraction,
         cellvit_mode=args.cellvit_mode,
         cell_density_sigma=args.cell_density_sigma,
         cell_prior_dropout=args.cell_prior_dropout,
@@ -278,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
         checkpoint_fine_dataset_macro_floor=args.checkpoint_fine_dataset_macro_floor,
         resume_from_checkpoint=args.resume_from_checkpoint,
         init_from_checkpoint=args.init_from_checkpoint,
+        init_refinement_from_checkpoint=args.init_refinement_from_checkpoint,
         output_dir=Path(args.output_dir),
     )
     metrics = run_stage4_baseline(args.dataset_root, config, uni2h_repo=args.uni2h_repo)
@@ -296,6 +340,7 @@ def main_predict(argv: list[str] | None = None) -> int:
     parser.add_argument("--mask2former-ignore-index", type=int, default=255)
     parser.add_argument("--symmetric-padding", action="store_true")
     parser.add_argument("--boundary-refinement", action="store_true")
+    parser.add_argument("--refinement-gate-mode", choices=["hard", "learned_soft"], default="hard")
     parser.add_argument("--cellvit-mode", choices=["none", "teacher", "input"], default="none")
     parser.add_argument("--hierarchical-fine", action="store_true")
     parser.add_argument("--dataset-id", default=None, help="Dataset/organ profile used to constrain hierarchical fine outputs.")
@@ -311,6 +356,7 @@ def main_predict(argv: list[str] | None = None) -> int:
         mask2former_ignore_index=args.mask2former_ignore_index,
         symmetric_padding=args.symmetric_padding,
         boundary_refinement=args.boundary_refinement,
+        refinement_gate_mode=args.refinement_gate_mode,
         cellvit_mode=args.cellvit_mode,
         hierarchical_fine=args.hierarchical_fine,
     )

@@ -46,7 +46,7 @@
       "instruction_parser": "api",
       "api_base_url": "https://api.cursorai.art/v1",
       "api_key_env": "OPENAI_API_KEY",
-      "api_model": "gpt-4o-all",
+      "api_model": "gpt-4.1-mini",
       "qwen_model_path": "",
       "qwen_device": "cuda:0",
       "no_few_shot": false
@@ -55,7 +55,7 @@
       "provider": "api-multimodal",
       "api_base_url": "https://api.cursorai.art/v1",
       "api_key_env": "OPENAI_API_KEY",
-      "api_model": "gpt-4o-all",
+      "api_model": "gpt-4.1-mini",
       "api_image_detail": "high",
       "max_attempts": 4,
       "max_regions": 8,
@@ -75,8 +75,7 @@
       "torch_dtype": "bf16",
       "num_inference_steps": 28,
       "guidance_scale": 3.5,
-      "controlnet_conditioning_scale": 1.0,
-      "color_match": "lab"
+      "controlnet_conditioning_scale": 1.0
     },
     "model_paths": {
       "cellvit_script": "scripts/run_cellvit_single_patch.py",

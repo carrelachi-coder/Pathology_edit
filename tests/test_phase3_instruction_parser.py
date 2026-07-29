@@ -132,6 +132,14 @@ class Phase3InstructionParserTests(unittest.TestCase):
             "Replacement/backfill targets are not separate edits",
             INSTRUCTION_SYSTEM_PROMPT,
         )
+        self.assertIn(
+            "An instruction may request two independent edits",
+            INSTRUCTION_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "Preserve/keep stable/leave unchanged clauses are constraints",
+            INSTRUCTION_SYSTEM_PROMPT,
+        )
 
     def test_unrecognized_instruction_raises(self):
         with self.assertRaises(InstructionParserError):

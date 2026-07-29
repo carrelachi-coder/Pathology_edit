@@ -1,3 +1,5 @@
+import ast
+import inspect
 import sys
 import tempfile
 import types
@@ -36,6 +38,9 @@ from phase3_mask_edit.core.config import load_recipe
 from phase3_mask_edit.core.intent import EditIntent
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from scripts.phase3_end_to_end_ui import (
+    DEFAULT_API_MODEL,
+    DEFAULT_CELLVIT_MODEL,
+    DEFAULT_CELLVIT_ROOT,
     _auto_feasible_strengths_for_primitive,
     _build_online_agent_command,
     _estimate_recommendation_capacity,
@@ -44,6 +49,8 @@ from scripts.phase3_end_to_end_ui import (
     _profile_defaults,
     _run_segmentator_tissue_mask,
     _with_default_contour_labels,
+    run_cell_stage,
+    run_large_patch_stitch_generation,
 )
 from phase3_mask_edit.core.context import MaskEditContext
 
@@ -78,6 +85,7 @@ class OnlineProductIntegrationTests(unittest.TestCase):
                 "cellvit_script": "/tmp/cellvit-wrapper.py",
                 "cellvit_model": "/tmp/cellvit.pt",
                 "cellvit_root": "/tmp/cellvit",
+                "cellvit_python": "/tmp/cellvit-python",
                 "cellvit_device": "cuda:2",
             },
         }
@@ -106,8 +114,89 @@ class OnlineProductIntegrationTests(unittest.TestCase):
         self.assertEqual(value("--generation-change-region"), "/tmp/generation.png")
         self.assertEqual(value("--semantic-postprocess-mode"), "shadow")
         self.assertEqual(value("--cellvit-script"), "/tmp/cellvit-wrapper.py")
+        self.assertEqual(value("--cellvit-python"), "/tmp/cellvit-python")
         self.assertEqual(value("--pix2pix-checkpoint"), "/tmp/pix2pix_epoch26_step214895.pt")
         self.assertEqual(output_dir, Path("/tmp/ui-run/agentic_generation"))
+
+    def test_online_defaults_use_the_frozen_mask_model_and_linux_cellvit_release(self):
+        self.assertEqual(DEFAULT_API_MODEL, "gpt-4.1-mini")
+        self.assertTrue(DEFAULT_CELLVIT_MODEL.endswith("CellViT-SAM-H-x40-AMP-001.pth"))
+        self.assertNotIn("D:\\", DEFAULT_CELLVIT_MODEL)
+        self.assertNotIn("D:\\", str(DEFAULT_CELLVIT_ROOT))
+
+    def test_cell_stage_passes_source_and_target_tissue_to_latest_probnet_interface(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image_path = root / "source.png"
+            source_tissue_path = root / "source_tissue.png"
+            target_tissue_path = root / "target_tissue.png"
+            nuclei_path = root / "source_nuclei.png"
+            semantic_path = root / "semantic.png"
+            Image.new("RGB", (8, 8), "white").save(image_path)
+            Image.fromarray(np.ones((8, 8), dtype=np.uint8)).save(source_tissue_path)
+            target_tissue = np.ones((8, 8), dtype=np.uint8)
+            target_tissue[2:6, 2:6] = 2
+            Image.fromarray(target_tissue).save(target_tissue_path)
+            Image.fromarray(np.zeros((8, 8), dtype=np.uint8)).save(nuclei_path)
+            Image.fromarray((target_tissue != 1).astype(np.uint8) * 255).save(
+                semantic_path
+            )
+            state = {
+                "profile": "BCSS",
+                "output_dir": str(root),
+                "reference_image": str(image_path),
+                "reference_tissue_mask": str(source_tissue_path),
+                "reference_nuclei_mask": str(nuclei_path),
+                "target_tissue_mask": str(target_tissue_path),
+                "semantic_change_region": str(semantic_path),
+                "change_region": str(semantic_path),
+            }
+            captured = {}
+
+            def fake_build(*args):
+                captured["args"] = args
+                return np.zeros((8, 8), dtype=np.uint8), {}
+
+            stage_paths = {
+                "semantic_change_region": str(semantic_path),
+                "change_region": str(semantic_path),
+            }
+            with (
+                patch(
+                    "scripts.phase3_end_to_end_ui._load_rgb_image",
+                    return_value=np.full((8, 8, 3), 255, dtype=np.uint8),
+                ),
+                patch(
+                    "scripts.phase3_end_to_end_ui._load_uint8_mask",
+                    return_value=np.zeros((8, 8), dtype=np.uint8),
+                ),
+                patch(
+                    "scripts.phase3_end_to_end_ui._save_pre_generation_artifacts",
+                    return_value=stage_paths,
+                ),
+                patch(
+                    "scripts.phase3_end_to_end_ui._build_target_nuclei",
+                    side_effect=fake_build,
+                ),
+                patch(
+                    "scripts.phase3_end_to_end_ui._save_target_combined_mask",
+                    return_value=root / "target_combined_mask.png",
+                ),
+            ):
+                run_cell_stage(
+                    state,
+                    "preserve",
+                    "delete",
+                    "",
+                    "",
+                    "",
+                    "cpu",
+                    "1.5",
+                )
+
+            args = captured["args"]
+            np.testing.assert_array_equal(args[2], np.ones((8, 8), dtype=np.uint8))
+            np.testing.assert_array_equal(args[3], target_tissue)
 
     def test_source_auto_segmentation_uses_c_line_release_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,6 +265,19 @@ class OnlineProductIntegrationTests(unittest.TestCase):
             9,
         )
         self.assertEqual(int(np.count_nonzero(specs[0]["write_mask"])), 9)
+
+    def test_large_patch_cell_fill_uses_latest_six_argument_interface(self):
+        tree = ast.parse(inspect.getsource(run_large_patch_stitch_generation))
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_build_target_nuclei"
+        ]
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls[0].args), 6)
 
 
 class Phase3AutoRecommendUiTests(unittest.TestCase):

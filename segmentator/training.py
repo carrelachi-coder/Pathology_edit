@@ -22,7 +22,12 @@ from tqdm.auto import tqdm
 
 from dataset_config.unified_labels import FINE_TO_PARENT, NUM_COARSE, NUM_FINE
 
-from .config import BaselineConfig, SEGMENTATOR_FINE_CLASSES
+from .config import (
+    BaselineConfig,
+    SEGMENTATOR_FINE_CLASSES,
+    dataset_annotated_coarse_class_ids,
+    dataset_supported_fine_class_ids,
+)
 from .data import (
     TissueSegmentationDataset,
     build_fine_target,
@@ -35,7 +40,7 @@ from .data import (
     remap_mask_to_coarse,
 )
 from .losses import segmentation_loss
-from .metrics import fine_segmentation_metrics, group_macro_iou, segmentation_metrics
+from .metrics import dataset_group_macro_iou, fine_segmentation_metrics, group_macro_iou, segmentation_metrics
 from .model import BaselineSegmenter
 from .stain_augmentation import StainAugmentationConfig
 
@@ -55,6 +60,8 @@ _TRAINABLE_SCOPE_MODULES = {
     "fine": ("fine_head",),
     "boundary": ("refinement_head",),
     "teacher": ("fine_head", "cell_teacher_adapter", "cell_density_head"),
+    "input": ("fine_head", "cell_prior_encoder", "cell_density_head"),
+    "boundary_teacher": ("refinement_head", "fine_head", "cell_teacher_adapter", "cell_density_head"),
 }
 
 
@@ -101,8 +108,16 @@ def _fine_dataset_macro(per_dataset_metrics: dict[str, dict[str, object]]) -> fl
     return float(np.mean(values)) if values else float("nan")
 
 
-def _majority_child_miou(target: torch.Tensor, ignore_index: int = 255) -> float:
+def _majority_child_miou(
+    target: torch.Tensor,
+    ignore_index: int = 255,
+    evaluated_class_ids: tuple[int, ...] | None = None,
+) -> float:
     valid = (target >= 0) & (target < NUM_FINE) & (target != ignore_index)
+    if evaluated_class_ids is not None:
+        evaluated = torch.zeros(NUM_FINE, dtype=torch.bool, device=target.device)
+        evaluated[list(evaluated_class_ids)] = True
+        valid &= evaluated[target.clamp(0, NUM_FINE - 1)]
     if not valid.any():
         return float("nan")
     counts = torch.bincount(target[valid].long(), minlength=NUM_FINE)
@@ -116,6 +131,7 @@ def _majority_child_miou(target: torch.Tensor, ignore_index: int = 255) -> float
             NUM_FINE,
             class_names=SEGMENTATOR_FINE_CLASSES,
             ignore_index=ignore_index,
+            evaluated_class_ids=evaluated_class_ids,
         )["mIoU"]
     )
 
@@ -123,7 +139,7 @@ def _majority_child_miou(target: torch.Tensor, ignore_index: int = 255) -> float
 def _checkpoint_selection_score(metrics: dict[str, object], config: BaselineConfig) -> tuple[float, bool]:
     if config.checkpoint_mode == "composite":
         return float(metrics["checkpoint_composite"]), True
-    if config.checkpoint_mode not in {"fine_dataset_macro", "boundary_f1_4"}:
+    if config.checkpoint_mode not in {"fine_dataset_macro", "boundary_f1_4", "joint"}:
         raise ValueError(f"unsupported checkpoint mode: {config.checkpoint_mode}")
 
     eligible = True
@@ -134,11 +150,16 @@ def _checkpoint_selection_score(metrics: dict[str, object], config: BaselineConf
     fine_dataset_macro = float(metrics.get("fine_dataset_macro_mIoU", float("nan")))
     if config.checkpoint_fine_dataset_macro_floor is not None:
         eligible = eligible and fine_dataset_macro >= config.checkpoint_fine_dataset_macro_floor
-    score = (
-        fine_dataset_macro
-        if config.checkpoint_mode == "fine_dataset_macro"
-        else float(metrics.get("boundary_f1_4", float("nan")))
-    )
+    boundary_f1_4 = float(metrics.get("boundary_f1_4", float("nan")))
+    if config.checkpoint_mode == "fine_dataset_macro":
+        score = fine_dataset_macro
+    elif config.checkpoint_mode == "boundary_f1_4":
+        score = boundary_f1_4
+    else:
+        score = (
+            config.checkpoint_fine_weight * fine_dataset_macro
+            + config.checkpoint_boundary_weight * boundary_f1_4
+        )
     return (score if eligible and math.isfinite(score) else float("-inf")), eligible
 
 
@@ -307,6 +328,37 @@ def _load_initialization_weights(checkpoint_path: Path, model: torch.nn.Module, 
     return {
         "checkpoint": str(checkpoint_path),
         "missing_fine_parameters": list(incompatible.missing_keys),
+        "unexpected_parameters": list(incompatible.unexpected_keys),
+    }
+
+
+def _load_module_initialization_weights(
+    checkpoint_path: Path,
+    model: torch.nn.Module,
+    module_name: str,
+    device: torch.device,
+) -> dict[str, object]:
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    if not isinstance(checkpoint, dict):
+        raise ValueError(f"Unsupported segmentator checkpoint format: {checkpoint_path}")
+    state_dict = checkpoint.get("model", checkpoint)
+    prefix = f"{module_name}."
+    module_state = {
+        key[len(prefix) :]: value
+        for key, value in state_dict.items()
+        if key.startswith(prefix)
+    }
+    if not module_state:
+        raise RuntimeError(f"checkpoint contains no {prefix} parameters: {checkpoint_path}")
+    module = getattr(_unwrap_model(model), module_name, None)
+    if module is None:
+        raise RuntimeError(f"model has no module named {module_name!r}")
+    incompatible = module.load_state_dict(module_state, strict=True)
+    return {
+        "checkpoint": str(checkpoint_path),
+        "module": module_name,
+        "parameter_tensors": len(module_state),
+        "missing_parameters": list(incompatible.missing_keys),
         "unexpected_parameters": list(incompatible.unexpected_keys),
     }
 
@@ -560,15 +612,20 @@ def boundary_aware_sampling_weights(
     boost: float,
     min_boundary_pixels: int,
     width: int,
+    mode: str = "threshold",
 ) -> tuple[torch.DoubleTensor, dict[str, object]]:
     if boost < 1.0:
         raise ValueError("boundary sampling boost must be at least 1")
     if min_boundary_pixels < 1 or width < 1:
         raise ValueError("boundary sampling pixel threshold and width must be positive")
+    if mode not in {"threshold", "dataset_quantile"}:
+        raise ValueError(f"unsupported boundary sampling mode: {mode}")
 
     table = coarse_remap_table(dataset.mask_remap, num_classes=dataset.num_classes, ignore_index=dataset.ignore_index)
     weights = torch.ones(len(dataset.records), dtype=torch.float64)
+    boundary_estimates = torch.zeros(len(dataset.records), dtype=torch.float64)
     dataset_stats: dict[str, dict[str, float | int]] = {}
+    dataset_indices: dict[str, list[int]] = {}
     skipped_unreadable: list[str] = []
     for index, record in enumerate(tqdm(dataset.records, desc="boundary-rich scan", dynamic_ncols=True)):
         try:
@@ -586,8 +643,8 @@ def boundary_aware_sampling_weights(
         edge[1:, :] |= vertical
         raw_edge_pixels = int((edge & valid).sum().item())
         boundary_pixels = min(raw_edge_pixels * (2 * width + 1), int(valid.sum().item()))
-        richness = min(boundary_pixels / min_boundary_pixels, 1.0)
-        weights[index] = 1.0 + (boost - 1.0) * richness
+        boundary_estimates[index] = boundary_pixels
+        dataset_indices.setdefault(record.dataset_id, []).append(index)
 
         stats = dataset_stats.setdefault(
             record.dataset_id,
@@ -597,6 +654,23 @@ def boundary_aware_sampling_weights(
         stats["rich_samples"] = int(stats["rich_samples"]) + int(boundary_pixels >= min_boundary_pixels)
         stats["boundary_pixels"] = int(stats["boundary_pixels"]) + boundary_pixels
 
+    dataset_quantiles: dict[str, dict[str, float]] = {}
+    for dataset_id, indices in sorted(dataset_indices.items()):
+        values = boundary_estimates[indices]
+        if mode == "dataset_quantile":
+            lower = float(torch.quantile(values, 0.5).item())
+            upper = float(torch.quantile(values, 0.9).item())
+            scale = max(upper - lower, 1.0)
+            richness = ((values - lower) / scale).clamp(0.0, 1.0)
+            weights[indices] = 1.0 + (boost - 1.0) * richness
+            dataset_quantiles[dataset_id] = {
+                "q50_boundary_pixels": lower,
+                "q90_boundary_pixels": upper,
+            }
+        else:
+            richness = (values / min_boundary_pixels).clamp(0.0, 1.0)
+            weights[indices] = 1.0 + (boost - 1.0) * richness
+
     metadata_datasets: dict[str, dict[str, float | int]] = {}
     for dataset_id, stats in sorted(dataset_stats.items()):
         samples = max(int(stats["samples"]), 1)
@@ -604,9 +678,11 @@ def boundary_aware_sampling_weights(
             **stats,
             "rich_fraction": int(stats["rich_samples"]) / samples,
             "mean_boundary_pixels": int(stats["boundary_pixels"]) / samples,
+            **dataset_quantiles.get(dataset_id, {}),
         }
     return weights, {
         "enabled": True,
+        "mode": mode,
         "boost": float(boost),
         "min_boundary_pixels": int(min_boundary_pixels),
         "width": int(width),
@@ -617,6 +693,24 @@ def boundary_aware_sampling_weights(
         "mean_multiplier": float(weights.mean().item()),
         "max_multiplier": float(weights.max().item()),
     }
+
+
+def combine_sampling_weights(
+    fine_weights: torch.Tensor,
+    boundary_weights: torch.Tensor,
+    fine_fraction: float,
+) -> torch.DoubleTensor:
+    if fine_weights.shape != boundary_weights.shape:
+        raise ValueError("fine and boundary sampling weights must have matching shapes")
+    if not 0.0 <= fine_fraction <= 1.0:
+        raise ValueError("fine sampling fraction must be in [0, 1]")
+    fine = fine_weights.to(dtype=torch.float64)
+    boundary = boundary_weights.to(dtype=torch.float64)
+    if bool((fine < 0).any()) or bool((boundary < 0).any()):
+        raise ValueError("sampling weights must be non-negative")
+    if float(fine.sum()) <= 0 or float(boundary.sum()) <= 0:
+        raise ValueError("fine and boundary sampling weights must each have positive mass")
+    return fine_fraction * fine / fine.sum() + (1.0 - fine_fraction) * boundary / boundary.sum()
 
 
 def fine_supervision_sampling_weights(
@@ -1005,6 +1099,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
             boost=config.boundary_sampling_boost,
             min_boundary_pixels=config.boundary_sampling_min_pixels,
             width=config.boundary_sampling_width,
+            mode=config.boundary_sampling_mode,
         )
     if distributed and config.boundary_aware_sampling:
         boundary_sampling_payload = [
@@ -1017,7 +1112,81 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     train_sampler = None
     train_shuffle = True
     train_drop_last = False
-    if config.fine_supervision_sampling:
+    joint_sampling_metadata: dict[str, object] = {"enabled": False}
+    cell_input_sampling_metadata: dict[str, object] = {"enabled": False}
+    if config.fine_supervision_sampling and config.boundary_aware_sampling:
+        sampler_generator = torch.Generator()
+        sampler_generator.manual_seed(config.seed + rank)
+        boundary_base_weights = (
+            dataset_balanced_weights(train_ds.records, temperature=config.dataset_sampling_temperature)
+            if config.balanced_datasets
+            else torch.ones(len(train_ds.records), dtype=torch.float64)
+        )
+        if config.rare_class_sampling:
+            boundary_base_weights = boundary_base_weights * rare_class_presence_weights(
+                train_ds,
+                config.rare_class_ids,
+                config.rare_class_sample_boost,
+            )
+        joint_weights = combine_sampling_weights(
+            fine_sampling_weights,
+            boundary_base_weights * boundary_sampling_weights,
+            config.joint_sampling_fine_fraction,
+        )
+        joint_sampling_metadata = {
+            "enabled": True,
+            "fine_fraction": float(config.joint_sampling_fine_fraction),
+            "boundary_fraction": float(1.0 - config.joint_sampling_fine_fraction),
+            "fine_eligible_records": int(fine_sampling_metadata["eligible_records"]),
+            "nonzero_records": int((joint_weights > 0).sum().item()),
+            "total_records": len(train_ds.records),
+        }
+        train_sampler = WeightedRandomSampler(
+            joint_weights,
+            num_samples=int(math.ceil((config.samples_per_epoch or len(train_ds)) / world_size))
+            if distributed
+            else (config.samples_per_epoch or len(train_ds)),
+            replacement=True,
+            generator=sampler_generator,
+        )
+        train_shuffle = False
+    elif config.fine_supervision_sampling and trainable_scope == "input":
+        sampler_generator = torch.Generator()
+        sampler_generator.manual_seed(config.seed + rank)
+        all_record_weights = (
+            dataset_balanced_weights(train_ds.records, temperature=config.dataset_sampling_temperature)
+            if config.balanced_datasets
+            else torch.ones(len(train_ds.records), dtype=torch.float64)
+        )
+        if config.rare_class_sampling:
+            all_record_weights = all_record_weights * rare_class_presence_weights(
+                train_ds,
+                config.rare_class_ids,
+                config.rare_class_sample_boost,
+            )
+        cell_input_weights = combine_sampling_weights(
+            fine_sampling_weights,
+            all_record_weights,
+            config.cell_input_fine_fraction,
+        )
+        cell_input_sampling_metadata = {
+            "enabled": True,
+            "fine_fraction": float(config.cell_input_fine_fraction),
+            "all_dataset_cell_fraction": float(1.0 - config.cell_input_fine_fraction),
+            "fine_eligible_records": int(fine_sampling_metadata["eligible_records"]),
+            "nonzero_records": int((cell_input_weights > 0).sum().item()),
+            "total_records": len(train_ds.records),
+        }
+        train_sampler = WeightedRandomSampler(
+            cell_input_weights,
+            num_samples=int(math.ceil((config.samples_per_epoch or len(train_ds)) / world_size))
+            if distributed
+            else (config.samples_per_epoch or len(train_ds)),
+            replacement=True,
+            generator=sampler_generator,
+        )
+        train_shuffle = False
+    elif config.fine_supervision_sampling:
         sampler_generator = torch.Generator()
         sampler_generator.manual_seed(config.seed + rank)
         default_samples = int(fine_sampling_metadata["eligible_records"])
@@ -1116,6 +1285,9 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         refinement_consistency_weight=config.refinement_consistency_weight,
         refinement_gate_width=config.refinement_gate_width,
         refinement_gate_threshold=config.refinement_gate_threshold,
+        refinement_gate_mode=config.refinement_gate_mode,
+        refinement_gate_loss_weight=config.refinement_gate_loss_weight,
+        refinement_gate_target_width=config.refinement_gate_target_width,
         cellvit_mode=config.cellvit_mode,
         cell_prior_dropout=config.cell_prior_dropout,
         cell_aux_loss_weight=config.cell_aux_loss_weight,
@@ -1223,14 +1395,36 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
     epochs_without_improvement = 0
     metrics: dict[str, object] = {}
     start_epoch = 0
-    if config.resume_from_checkpoint and config.init_from_checkpoint:
-        raise ValueError("use only one of resume_from_checkpoint and init_from_checkpoint")
+    if config.resume_from_checkpoint and (
+        config.init_from_checkpoint or config.init_refinement_from_checkpoint
+    ):
+        raise ValueError("resume cannot be combined with initialization checkpoints")
     initialization_metadata: dict[str, object] | None = None
     init_path = _resolve_resume_checkpoint(config.init_from_checkpoint, output_dir)
     if init_path is not None:
         initialization_metadata = _load_initialization_weights(init_path, model, device)
         if main_process:
             print(json.dumps({"initialization": initialization_metadata}, ensure_ascii=False), flush=True)
+    refinement_initialization_metadata: dict[str, object] | None = None
+    refinement_init_path = _resolve_resume_checkpoint(
+        config.init_refinement_from_checkpoint,
+        output_dir,
+    )
+    if refinement_init_path is not None:
+        refinement_initialization_metadata = _load_module_initialization_weights(
+            refinement_init_path,
+            model,
+            "refinement_head",
+            device,
+        )
+        if main_process:
+            print(
+                json.dumps(
+                    {"refinement_initialization": refinement_initialization_metadata},
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
     resume_path = _resolve_resume_checkpoint(config.resume_from_checkpoint, output_dir)
     if resume_path is not None:
         resume_state = _load_training_state(resume_path, model, optimizer, scaler, device, scheduler=scheduler)
@@ -1313,11 +1507,19 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     "refinement_consistency_weight": config.refinement_consistency_weight,
                     "refinement_gate_width": config.refinement_gate_width,
                     "refinement_gate_threshold": config.refinement_gate_threshold,
+                    "refinement_gate_mode": config.refinement_gate_mode,
+                    "refinement_gate_loss_weight": config.refinement_gate_loss_weight,
+                    "refinement_gate_target_width": config.refinement_gate_target_width,
                     "boundary_aware_sampling": config.boundary_aware_sampling,
                     "boundary_sampling_boost": config.boundary_sampling_boost,
                     "boundary_sampling_min_pixels": config.boundary_sampling_min_pixels,
                     "boundary_sampling_width": config.boundary_sampling_width,
+                    "boundary_sampling_mode": config.boundary_sampling_mode,
                     "boundary_sampling": boundary_sampling_metadata,
+                    "joint_sampling_fine_fraction": config.joint_sampling_fine_fraction,
+                    "joint_sampling": joint_sampling_metadata,
+                    "cell_input_fine_fraction": config.cell_input_fine_fraction,
+                    "cell_input_sampling": cell_input_sampling_metadata,
                     "cellvit_mode": config.cellvit_mode,
                     "cell_density_sigma": config.cell_density_sigma,
                     "cell_prior_dropout": config.cell_prior_dropout,
@@ -1354,6 +1556,8 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     "resume_checkpoint": str(resume_path) if resume_path is not None else None,
                     "init_from_checkpoint": config.init_from_checkpoint,
                     "initialization": initialization_metadata,
+                    "init_refinement_from_checkpoint": config.init_refinement_from_checkpoint,
+                    "refinement_initialization": refinement_initialization_metadata,
                     "start_epoch": start_epoch,
                     "export_val_predictions": config.export_val_predictions,
                     "export_val_tensors": config.export_val_tensors,
@@ -1376,6 +1580,16 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         if config.boundary_aware_sampling:
             (output_dir / "boundary_sampling.json").write_text(
                 json.dumps(boundary_sampling_metadata, indent=2),
+                encoding="utf-8",
+            )
+        if joint_sampling_metadata["enabled"]:
+            (output_dir / "joint_sampling.json").write_text(
+                json.dumps(joint_sampling_metadata, indent=2),
+                encoding="utf-8",
+            )
+        if cell_input_sampling_metadata["enabled"]:
+            (output_dir / "cell_input_sampling.json").write_text(
+                json.dumps(cell_input_sampling_metadata, indent=2),
                 encoding="utf-8",
             )
     if distributed:
@@ -1615,7 +1829,9 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 ignore_index=config.ignore_index,
                 metric_sample_limit=config.metric_sample_limit,
             )
-            metrics["case_macro"] = group_macro_iou(
+            metrics["pooled_unified_mIoU"] = float(metrics["mIoU"])
+            metrics["pooled_unified_mDice"] = float(metrics["mDice"])
+            metrics["pooled_unified_case_macro"] = group_macro_iou(
                 pred,
                 target,
                 ordered_group_ids,
@@ -1623,22 +1839,38 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                 ignore_index=config.ignore_index,
             )
             if config.hierarchical_fine:
+                supported_fine_class_ids = tuple(
+                    sorted(
+                        {
+                            class_id
+                            for dataset_id in set(ordered_dataset_ids)
+                            for class_id in dataset_supported_fine_class_ids(dataset_id)
+                        }
+                    )
+                )
                 fine_metrics = fine_segmentation_metrics(
                     fine_pred,
                     fine_target,
                     NUM_FINE,
                     class_names=SEGMENTATOR_FINE_CLASSES,
                     ignore_index=config.ignore_index,
+                    evaluated_class_ids=supported_fine_class_ids,
                 )
                 metrics["fine"] = fine_metrics
                 metrics["fine_mIoU"] = float(fine_metrics["mIoU"])
                 metrics["fine_accuracy"] = float(fine_metrics["accuracy"])
             per_dataset_metrics = {}
+            evaluated_class_ids_by_dataset: dict[str, tuple[int, ...]] = {}
             for dataset_id in sorted(set(ordered_dataset_ids)):
                 indices = [idx for idx, value in enumerate(ordered_dataset_ids) if value == dataset_id]
                 if not indices:
                     continue
                 index_tensor = torch.tensor(indices, dtype=torch.long)
+                evaluated_class_ids = dataset_annotated_coarse_class_ids(
+                    dataset_id,
+                    num_classes=config.num_classes,
+                )
+                evaluated_class_ids_by_dataset[dataset_id] = evaluated_class_ids
                 ds_metrics = segmentation_metrics(
                     pred.index_select(0, index_tensor),
                     target.index_select(0, index_tensor),
@@ -1647,6 +1879,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     boundary_width=config.boundary_width,
                     ignore_index=config.ignore_index,
                     metric_sample_limit=config.metric_sample_limit,
+                    evaluated_class_ids=evaluated_class_ids,
                 )
                 per_dataset_metrics[dataset_id] = {
                     "samples": len(indices),
@@ -1658,6 +1891,8 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     "boundary_f1_4": ds_metrics["boundary_f1_4"],
                     "boundary_f1_8": ds_metrics["boundary_f1_8"],
                     "hd95": ds_metrics["hd95"],
+                    "evaluated_class_ids": ds_metrics["evaluated_class_ids"],
+                    "evaluated_classes": ds_metrics["evaluated_classes"],
                     "fragmentation": ds_metrics["fragmentation"],
                     "case_macro": group_macro_iou(
                         pred.index_select(0, index_tensor),
@@ -1665,21 +1900,25 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                         [ordered_group_ids[index] for index in indices],
                         config.num_classes,
                         ignore_index=config.ignore_index,
+                        evaluated_class_ids=evaluated_class_ids,
                     ),
                     "per_class": ds_metrics["per_class"],
                     "groups": ds_metrics["groups"],
                 }
                 if config.hierarchical_fine:
+                    supported_fine_class_ids = dataset_supported_fine_class_ids(dataset_id)
                     ds_fine_metrics = fine_segmentation_metrics(
                         fine_pred.index_select(0, index_tensor),
                         fine_target.index_select(0, index_tensor),
                         NUM_FINE,
                         class_names=SEGMENTATOR_FINE_CLASSES,
                         ignore_index=config.ignore_index,
+                        evaluated_class_ids=supported_fine_class_ids or None,
                     )
                     majority_child_miou = _majority_child_miou(
                         fine_target.index_select(0, index_tensor),
                         ignore_index=config.ignore_index,
+                        evaluated_class_ids=supported_fine_class_ids or None,
                     )
                     ds_fine_metrics["majority_child_mIoU"] = majority_child_miou
                     ds_fine_metrics["gain_over_majority"] = (
@@ -1689,6 +1928,28 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     )
                     per_dataset_metrics[dataset_id]["fine"] = ds_fine_metrics
             metrics["per_dataset"] = per_dataset_metrics
+            coarse_miou_values = [
+                float(dataset_metrics["mIoU"])
+                for dataset_metrics in per_dataset_metrics.values()
+                if math.isfinite(float(dataset_metrics["mIoU"]))
+            ]
+            coarse_mdice_values = [
+                float(dataset_metrics["mDice"])
+                for dataset_metrics in per_dataset_metrics.values()
+                if math.isfinite(float(dataset_metrics["mDice"]))
+            ]
+            metrics["mIoU"] = float(np.mean(coarse_miou_values)) if coarse_miou_values else float("nan")
+            metrics["mDice"] = float(np.mean(coarse_mdice_values)) if coarse_mdice_values else float("nan")
+            metrics["coarse_dataset_macro_mIoU"] = float(metrics["mIoU"])
+            metrics["case_macro"] = dataset_group_macro_iou(
+                pred,
+                target,
+                ordered_group_ids,
+                ordered_dataset_ids,
+                config.num_classes,
+                evaluated_class_ids_by_dataset,
+                ignore_index=config.ignore_index,
+            )
             if config.hierarchical_fine:
                 metrics["fine_dataset_macro_mIoU"] = _fine_dataset_macro(per_dataset_metrics)
                 majority_values = [

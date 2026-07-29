@@ -35,7 +35,11 @@ Choose only changes directly requested by the instruction. Output every field in
 Interpretation rules:
 - Tumor growth is only tumor amount, area, extent, expansion, regression, or shrinkage. A phenotype/grade transition alone is not growth.
 - Necrosis refers to necrotic/dead tissue. Larger necrosis means necrosis_change.action = "increase", not tumor growth.
+- An instruction may request two independent edits. When it does, populate both corresponding schema sections and preserve each edit's own strength.
+- In a two-edit instruction, bind each strength word only to the tissue/action clause it directly modifies. Never propagate "markedly", "moderately", or "slightly" from one clause to the other.
 - Replacement/backfill targets are not separate edits. Immune, necrotic, or tumor tissue replaced by stroma keeps stroma_change.density = "none" unless desmoplasia, fibrosis, or stromal reaction is independently requested.
+- Preserve/keep stable/leave unchanged clauses are constraints, not edit actions. Keep the corresponding change section at "none".
+- A preservation constraint may appear before the requested edit. Still encode the later explicit edit; do not let the leading constraint suppress it.
 - lymphocyte_change.location is "intratumoral" only inside/within tumor, "peritumoral" around tumor, "stromal" in stroma, otherwise "unspecified".
 - Fine transitions must use one exact transition_change pair:
   benign_epithelium -> gleason_pattern_3
@@ -71,6 +75,24 @@ JSON: {_instruction_example(tumor_change={"growth": "none", "degree": "moderate"
 
 User: "replace benign prostate epithelium with stromal tissue"
 JSON: {_instruction_example(transition_change={"source_state": "benign_epithelium", "target_state": "stromal_tissue", "degree": "moderate"})}
+
+User: "slightly add necrosis in the left tumor compartment and, independently, markedly increase immune infiltration in the right-side stroma"
+JSON: {_instruction_example(necrosis_change={"action": "add", "extent": "focal"}, lymphocyte_change={"infiltration": "increase", "degree": "significant", "location": "stromal"})}
+
+User: "moderately expand tumor into nearby tissue while preserving the existing necrosis"
+JSON: {_instruction_example(tumor_change={"growth": "increase", "degree": "moderate", "grade_change": "none"})}
+
+User: "keep tumor burden stable while you slightly increase the desmoplastic stromal reaction"
+JSON: {_instruction_example(stroma_change={"density": "increase", "degree": "mild"})}
+
+User: "restore viable stromal tissue only as backfill while you markedly reduce the necrotic tissue"
+JSON: {_instruction_example(necrosis_change={"action": "decrease", "extent": "extensive"})}
+
+User: "while you markedly add necrosis within tumor, independently moderately decrease immune infiltration"
+JSON: {_instruction_example(necrosis_change={"action": "add", "extent": "extensive"}, lymphocyte_change={"infiltration": "decrease", "degree": "moderate", "location": "unspecified"})}
+
+User: "while you moderately increase immune infiltration in stromal tissue, independently markedly add necrosis within tumor"
+JSON: {_instruction_example(necrosis_change={"action": "add", "extent": "extensive"}, lymphocyte_change={"infiltration": "increase", "degree": "moderate", "location": "stromal"})}
 
 Output JSON only. No markdown."""
 

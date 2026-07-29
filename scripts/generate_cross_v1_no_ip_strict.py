@@ -190,8 +190,7 @@ def _run_pix2pix_transfer(
         run_pix2pix_postprocess,
     )
 
-    # Architecture, steering and identity settings come from the checkpoint.
-    # The high-resolution nuclei trust gate is retired from production inference.
+    # Architecture, steering, identity, and nuclei trust come from the checkpoint.
     bundle_key = (str(Path(checkpoint_path).resolve()), str(device), str(torch_dtype))
     bundle = _PIX2PIX_BUNDLE_CACHE.get(bundle_key)
     if bundle is None:
@@ -212,7 +211,6 @@ def _run_pix2pix_transfer(
         image_size=image_size,
         device=device,
         torch_dtype=torch_dtype,
-        enable_highres_nuclei_trust=False,
     )
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -258,10 +256,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--pix2pix-checkpoint",
         default="",
         help=(
-            "Optional production pix2pix-v2 checkpoint, e.g. "
-            "/data/wqx/flowedit/"
-            "pix2pix_texture_transfer_lazy_ver4_wsi_identity_i0_local_full_pyramid_v3_ft/"
-            "ckpt/pilot_step001000.pt."
+            "Optional Stage-2 production checkpoint. Online production must "
+            "select pix2pix_epoch26_step214895.pt through "
+            "PATHOLOGY_PIX2PIX_CHECKPOINT."
         ),
     )
     parser.add_argument(

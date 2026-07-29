@@ -4,11 +4,70 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
-from dataset_config.unified_labels import COARSE_LABELS, FINE_LABELS
+from dataset_config import get_config
+from dataset_config.unified_labels import COARSE_LABELS, FINE_LABELS, FINE_TO_PARENT, NUM_FINE
 
 
 SEGMENTATOR_CLASSES = tuple(COARSE_LABELS[idx].lower().replace(" ", "_") for idx in range(len(COARSE_LABELS)))
 SEGMENTATOR_FINE_CLASSES = tuple(FINE_LABELS[idx].lower().replace(" ", "_") for idx in range(len(FINE_LABELS)))
+COARSE_METRIC_EXCLUDED_CLASS_IDS = frozenset({0, 7})
+FINE_METRIC_UNSUPPORTED_CLASS_IDS_BY_DATASET = {
+    "bcss": frozenset({14}),  # DCIS is outside the supported Segmentator fine task.
+}
+
+
+def dataset_annotated_coarse_class_ids(dataset_id: str, num_classes: int = 8) -> tuple[int, ...]:
+    """Return dataset-native biological classes used for coarse mIoU/mDice."""
+    key = str(dataset_id).strip()
+    if not key:
+        raise ValueError("dataset_id must not be empty")
+    if key.lower() in {"default", "unified", "unified_coarse"}:
+        return tuple(
+            class_id
+            for class_id in range(num_classes)
+            if class_id not in COARSE_METRIC_EXCLUDED_CLASS_IDS
+        )
+    try:
+        dataset_config = get_config(key)
+    except KeyError as exc:
+        raise ValueError(f"no annotated coarse metric classes registered for dataset {dataset_id!r}") from exc
+    class_ids = tuple(
+        class_id
+        for class_id, original_ids in sorted(dataset_config.coarse_to_original.items())
+        if original_ids
+        and 0 <= class_id < num_classes
+        and class_id not in COARSE_METRIC_EXCLUDED_CLASS_IDS
+    )
+    if not class_ids:
+        raise ValueError(f"dataset {dataset_id!r} has no evaluable biological coarse classes")
+    return class_ids
+
+
+def dataset_supported_fine_class_ids(dataset_id: str) -> tuple[int, ...]:
+    """Return supported dataset-native classes for hierarchical fine metrics."""
+    key = str(dataset_id).strip()
+    if not key:
+        raise ValueError("dataset_id must not be empty")
+    try:
+        dataset_config = get_config(key)
+    except KeyError as exc:
+        raise ValueError(f"no supported fine metric classes registered for dataset {dataset_id!r}") from exc
+
+    by_parent: dict[int, set[int]] = {}
+    for value in dataset_config.to_fine_map.values():
+        fine_id = int(value)
+        if 0 <= fine_id < NUM_FINE:
+            by_parent.setdefault(FINE_TO_PARENT[fine_id], set()).add(fine_id)
+    unsupported = FINE_METRIC_UNSUPPORTED_CLASS_IDS_BY_DATASET.get(key.lower(), frozenset())
+    return tuple(
+        sorted(
+            fine_id
+            for fine_ids in by_parent.values()
+            if len(fine_ids) > 1
+            for fine_id in fine_ids
+            if fine_id not in unsupported
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -77,10 +136,16 @@ class BaselineConfig:
     refinement_consistency_weight: float = 0.0
     refinement_gate_width: int = 4
     refinement_gate_threshold: float = 0.15
+    refinement_gate_mode: str = "hard"
+    refinement_gate_loss_weight: float = 0.0
+    refinement_gate_target_width: int = 8
     boundary_aware_sampling: bool = False
     boundary_sampling_boost: float = 3.0
     boundary_sampling_min_pixels: int = 512
     boundary_sampling_width: int = 4
+    boundary_sampling_mode: str = "threshold"
+    joint_sampling_fine_fraction: float = 0.6
+    cell_input_fine_fraction: float = 0.6
     cellvit_mode: str = "none"
     cell_density_sigma: float = 8.0
     cell_prior_dropout: float = 0.2
@@ -123,6 +188,7 @@ class BaselineConfig:
     fine_sampling_require_nuclei: bool = False
     resume_from_checkpoint: str | None = None
     init_from_checkpoint: str | None = None
+    init_refinement_from_checkpoint: str | None = None
     output_dir: Path = field(default_factory=lambda: Path("segmentator_runs/stage4_baseline"))
 
     def resolve_output_dir(self) -> Path:

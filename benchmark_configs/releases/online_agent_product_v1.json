@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "release_id": "online-agent-product-v1-2026-07-29",
+  "release_status": "engineering_frozen_pending_blinded_g2_calibration",
+  "formal_publication_ready": false,
+  "code_commit": null,
+  "entrypoints": {
+    "ui": "scripts/phase3_end_to_end_ui.py",
+    "agent_runner": "scripts/run_agentic_edit_workflow.py",
+    "generation_core": "scripts/run_phase3_inpaint_pipeline.py"
+  },
+  "mask_edit": {
+    "reference_profiles": [
+      "BCSS",
+      "PANDA",
+      "GlaS",
+      "IGNITE",
+      "PUMA",
+      "ORCA"
+    ],
+    "ui_modes": [
+      "prompt",
+      "instruction",
+      "manual_contour",
+      "auto_recommend"
+    ],
+    "default_api_model": "gpt-4.1-mini",
+    "semantic_diff_schema": "0.2",
+    "projection": "organic_v2",
+    "instruction_policy": "independent_multi_intent_with_clause_local_strength",
+    "execution_policy": "ordered_sequential_current_mask",
+    "replacement_policy": "backfill_is_fallback_not_independent_primary",
+    "manual_policy": "multi_label_working_mask_then_finalize"
+  },
+  "nuclei_generation": {
+    "checkpoint": "/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/best_epoch29_c29607f1b609accb.pt",
+    "checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
+    "environment_selector": "PATHOLOGY_PROBNET_CHECKPOINT",
+    "spatial_policy": "probnet_p_nucleus_landing_weight_only",
+    "candidate_queue_policy": "stable_descending_probnet_score",
+    "count_and_type_policy": "patch_adaptive_density_and_type_quota",
+    "gamma": 1.5,
+    "density_scale": 1.0,
+    "density_scale_json": null,
+    "shape_policy": "same_class_reference_without_replacement_then_library",
+    "reference_shape_min_area_px": 8,
+    "reference_border_components": "excluded",
+    "library_size_calibration": {
+      "enabled": true,
+      "basis": "same_class_reference_empirical_area",
+      "min_scale": 0.5,
+      "max_scale": 2.0,
+      "log_area_jitter": 0.05,
+      "no_same_class_reference": "leave_library_shape_unscaled_and_record_diagnostic"
+    },
+    "placement_policy": "strict_zero_overlap_and_full_tissue_containment"
+  },
+  "image_generation": {
+    "base_model": "black-forest-labs/FLUX.1-dev",
+    "inpaint": {
+      "checkpoint": "/home/lyw/wqx-DL/flow-edit/hf_generation_release/pathology-inpaint-controlnet",
+      "environment_selector": "PATHOLOGY_INPAINT_CHECKPOINT",
+      "repo_id": "Qinxin11/pathology-inpaint-controlnet",
+      "weight_size_bytes": 8190001728,
+      "weight_sha256": "402c836c553410355cf2912518f69339d8eb61f1c9cc588d3020367121a6060c"
+    },
+    "cross_v1": {
+      "checkpoint": "/home/lyw/wqx-DL/flow-edit/hf_generation_release/pathology-cross-v1-pix2pix/cross_v1",
+      "environment_selector": "PATHOLOGY_CROSS_V1_CHECKPOINT",
+      "repo_id": "Qinxin11/pathology-cross-v1-pix2pix",
+      "weight_size_bytes": 8192950848,
+      "weight_sha256": "b0442d93aa2b2649e3506620c36c4cc54ba55d377f4c7f767f19147ea83d276e",
+      "uni_required": false,
+      "ip_adapter_required": false
+    },
+    "pix2pix": {
+      "environment_selector": "PATHOLOGY_PIX2PIX_CHECKPOINT",
+      "environment_selector_required": true,
+      "epoch": 26,
+      "global_step": 214895,
+      "checkpoint_sha256": "be5fe9376efdb5620a57481082f6d5738b6353796fb00fe6e58f6b212ba7c2ac",
+      "orientation_policy": "full_pyramid_local_histogram",
+      "nuclei_reference_policy": "nuclei_reference_support_v2",
+      "identity_adapter": true,
+      "color_matching_postprocess": false
+    },
+    "routing": {
+      "t_inpaint": 0.12,
+      "t_cross": 0.3,
+      "max_generation_attempts": 2,
+      "fallback_policy": "single_alternate_backend"
+    }
+  },
+  "verification": {
+    "segmentator_release": "benchmark_configs/releases/segmentator_fine_c_epoch2.json",
+    "segmentator_release_id": "segmentator-fine-c-joint-epoch2-v1",
+    "segmentator_checkpoint_sha256": "ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34",
+    "cellvit_checkpoint": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/CellViT-plus-plus-main/checkpoints/CellViT-SAM-H-x40-AMP-001.pth",
+    "cellvit_checkpoint_sha256": "356418f19d9d478f164c7a31f85274584fefaa02355815c09f52346c658c8ec4",
+    "cellvit_policy": "cellvit-sam-h-x40-amp-001-512px-0.25mpp-v1",
+    "semantic_postprocess_mode": "shadow",
+    "semantic_region": "exact_source_target_tissue_difference",
+    "generation_region": "semantic_superset_when_structure_or_minimum_width_requires_it",
+    "preservation_reference": "source_image_evaluator_prediction",
+    "formal_threshold_status": "pending_blinded_calibration"
+  },
+  "retired_or_forbidden": [
+    "pix2pix epoch25",
+    "pilot_step001000.pt as a runtime selector",
+    "color matching after Cross",
+    "legacy raw Segmentator checkpoint selection in the UI",
+    "gpt-4o-all as the default mask-edit model",
+    "Windows CellViT placeholder paths",
+    "library-first nucleus shape sampling",
+    "checkpoint density/count/type heads as production quota sources"
+  ]
+}

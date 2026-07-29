@@ -232,6 +232,32 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         )
         self.assertEqual(plan.items[1].role, "fallback")
 
+    def test_implicit_stroma_backfill_remains_a_fallback_when_parser_suppresses_it(self):
+        diff = semantic_diff_with(
+            necrosis_change={"action": "decrease", "extent": "extensive"},
+            stroma_change={"density": "none", "degree": "moderate"},
+        )
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="BCSS",
+            new_prompt=(
+                "Markedly reduce necrotic tissue and restore viable stromal "
+                "tissue only as backfill for the vacated area."
+            ),
+        )
+
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["necrosis_resolution"],
+        )
+        self.assertEqual(
+            [item.primitive for item in plan.items],
+            ["necrosis_resolution", "stromal_desmoplasia"],
+        )
+        self.assertEqual(plan.items[1].role, "fallback")
+        self.assertEqual(plan.items[1].fallback_for, "necrosis_resolution")
+
     def test_independent_desmoplasia_remains_separate_after_immune_decrease(self):
         diff = semantic_diff_with(
             lymphocyte_change={"infiltration": "decrease", "degree": "moderate"},

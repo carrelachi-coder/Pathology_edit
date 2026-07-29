@@ -1,8 +1,10 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import torch
+from PIL import Image
 
 from controlnet_train.pix2pix_transfer.dataset import NUM_CELL_CLASSES, NUM_FINE
 from controlnet_train.pix2pix_transfer.identity_adapter import FamilyFeatureFiLM
@@ -13,9 +15,56 @@ from controlnet_train.pix2pix_transfer.inference import (
 from controlnet_train.pix2pix_transfer.regional_cross_attention import (
     Pix2PixCrossAttnUNet,
 )
+from scripts.generate_cross_v1_no_ip_strict import _run_pix2pix_transfer
 
 
 class Pix2PixPostprocessInferenceTests(unittest.TestCase):
+    def test_strict_cross_uses_checkpoint_nuclei_trust_policy(self):
+        captured = {}
+
+        def fake_run(**kwargs):
+            captured.update(kwargs)
+            return Image.new("RGB", (8, 8)), {
+                "epoch": 26,
+                "global_step": 214895,
+                "use_wsi_identity": True,
+                "trust_gate": "nuclei_reference_support_v2",
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = Path(tmp) / "pix2pix.pt"
+            output = Path(tmp) / "output.png"
+            record = {
+                "reference_image": "reference.png",
+                "target_tissue_mask": "target_tissue.png",
+                "target_nuclei_mask": "target_nuclei.png",
+                "reference_tissue_mask": "reference_tissue.png",
+                "reference_nuclei_mask": "reference_nuclei.png",
+            }
+            with (
+                patch(
+                    "controlnet_train.pix2pix_transfer.inference."
+                    "load_pix2pix_postprocessor",
+                    return_value=object(),
+                ),
+                patch(
+                    "controlnet_train.pix2pix_transfer.inference."
+                    "run_pix2pix_postprocess",
+                    side_effect=fake_run,
+                ),
+            ):
+                _run_pix2pix_transfer(
+                    i0_image=Image.new("RGB", (8, 8)),
+                    record=record,
+                    checkpoint_path=checkpoint,
+                    output_path=output,
+                    device="cpu",
+                    torch_dtype=torch.float32,
+                    image_size=8,
+                )
+
+        self.assertNotIn("enable_highres_nuclei_trust", captured)
+
     def test_identity_adapter_preserves_bfloat16_feature_dtype(self):
         adapter = FamilyFeatureFiLM(8, gamma_max=0.3, gamma_init=0.1).to(
             dtype=torch.bfloat16

@@ -327,6 +327,17 @@ class SelectionTests(unittest.TestCase):
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_human_gt_miou_excludes_background_and_other_tissue(self):
+        matrix = np.zeros((8, 8), dtype=np.int64)
+        matrix[0, 0] = 20
+        matrix[1, 1] = 8
+        matrix[1, 0] = 2
+        matrix[7, 7] = 20
+
+        report = human_eval._report(matrix)
+
+        self.assertAlmostEqual(report["mIoU"], 0.8)
+
     def test_evaluation_groups_include_stratum_by_organ_reports(self):
         records = [
             {"stratum": "complex", "organ": "breast"},

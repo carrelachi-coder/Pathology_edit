@@ -26,8 +26,12 @@ from controlnet_train.inference import (
 )
 from controlnet_train.inference.torch_compat import install_sdpa_enable_gqa_compat
 from controlnet_train.inference.model_paths import (
+    DEFAULT_CROSS_V1_CHECKPOINT,
+    DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
+    validate_frozen_cellvit_checkpoint,
     validate_frozen_probnet_checkpoint,
+    validate_production_controlnet_checkpoint,
     validate_production_pix2pix_checkpoint,
 )
 
@@ -57,6 +61,16 @@ class TorchCompatibilityTests(unittest.TestCase):
 
 class ProductionPix2pixReleaseTests(unittest.TestCase):
     def test_default_checkpoint_is_packaged_orientation_release(self):
+        self.assertTrue(
+            DEFAULT_INPAINT_CHECKPOINT.endswith(
+                "hf_generation_release/pathology-inpaint-controlnet"
+            )
+        )
+        self.assertTrue(
+            DEFAULT_CROSS_V1_CHECKPOINT.endswith(
+                "hf_generation_release/pathology-cross-v1-pix2pix/cross_v1"
+            )
+        )
         self.assertTrue(
             DEFAULT_PIX2PIX_CHECKPOINT.endswith(
                 "pathology-cross-v1-pix2pix/pix2pix/"
@@ -110,6 +124,58 @@ class ProductionPix2pixReleaseTests(unittest.TestCase):
                 validate_production_pix2pix_checkpoint("/tmp/not-selected.pt")
 
 
+class ProductionControlnetReleaseTests(unittest.TestCase):
+    def test_validator_requires_the_frozen_packaged_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "pathology-inpaint-controlnet"
+            root.mkdir()
+            weight = root / "diffusion_pytorch_model.safetensors"
+            weight.write_bytes(b"weights")
+            sha256 = hashlib.sha256(weight.read_bytes()).hexdigest()
+            manifest = {
+                "repo_id": "Qinxin11/pathology-inpaint-controlnet",
+                "git_commit": "release-commit",
+                "files": [
+                    {
+                        "path": weight.name,
+                        "size_bytes": weight.stat().st_size,
+                        "sha256": sha256,
+                    }
+                ],
+            }
+            (root / "manifest.json").write_text(
+                json.dumps(manifest),
+                encoding="utf-8",
+            )
+            release = {
+                "inpaint": {
+                    "repo_suffix": "/pathology-inpaint-controlnet",
+                    "weight_path": weight.name,
+                    "weight_size_bytes": weight.stat().st_size,
+                    "weight_sha256": sha256,
+                }
+            }
+            with (
+                patch(
+                    "controlnet_train.inference.model_paths."
+                    "PRODUCTION_CONTROLNET_RELEASES",
+                    release,
+                ),
+                patch(
+                    "controlnet_train.inference.model_paths."
+                    "PRODUCTION_GENERATION_RELEASE_COMMIT",
+                    "release-commit",
+                ),
+            ):
+                result = validate_production_controlnet_checkpoint(
+                    root,
+                    mode="inpaint",
+                )
+
+            self.assertEqual(result["weight_sha256"], sha256)
+            self.assertEqual(result["code_commit"], "release-commit")
+
+
 class FrozenProbnetReleaseTests(unittest.TestCase):
     def test_validator_pins_epoch29_spatial_sampler(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,6 +192,25 @@ class FrozenProbnetReleaseTests(unittest.TestCase):
                 release["policy"],
                 "frozen_epoch29_patch_adaptive_spatial_sampling_v1",
             )
+
+
+class FrozenCellvitReleaseTests(unittest.TestCase):
+    def test_validator_pins_the_cellvit_evaluator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint_path = Path(tmp) / "cellvit.pth"
+            checkpoint_path.write_bytes(b"frozen-cellvit")
+            sha256 = hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
+            with patch(
+                "controlnet_train.inference.model_paths.FROZEN_CELLVIT_SHA256",
+                sha256,
+            ):
+                release = validate_frozen_cellvit_checkpoint(checkpoint_path)
+
+            self.assertEqual(
+                release["policy"],
+                "cellvit-sam-h-x40-amp-001-512px-0.25mpp-v1",
+            )
+            self.assertEqual(release["sha256"], sha256)
 
 
 def _write_rgb(path: Path, value: int) -> None:
@@ -408,8 +493,13 @@ class PipelineTests(unittest.TestCase):
 
 class ExportTests(unittest.TestCase):
     def test_top_level_package_exports_edit_pipeline_api(self):
+        import controlnet_train.inference as inference
+
         self.assertIs(ExportedEditPipelineInputs, EditPipelineInputs)
         self.assertIs(exported_run_edit_pipeline, run_edit_pipeline)
+        self.assertTrue(inference.DEFAULT_CELLVIT_MODEL.endswith(".pth"))
+        self.assertTrue(inference.DEFAULT_CELLVIT_ROOT)
+        self.assertTrue(inference.DEFAULT_CELLVIT_PYTHON)
 
 
 if __name__ == "__main__":

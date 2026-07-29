@@ -65,6 +65,10 @@ its architecture and all local full-pyramid steering/trust settings from the
 checkpoint; the fixed high-resolution nuclei policy is
 `nuclei_reference_support_v2` with unmatched scale `0.20`, matched floor
 `0.60`, four sufficient reference tokens and reference pool size `8`.
+Cross output is not passed through LAB transfer, histogram matching, or any
+other color-matching postprocess. Same-WSI appearance conditioning remains the
+checkpoint-learned identity adapter; it is independent of the nuclei trust
+gate and remains enabled.
 
 ## Packaging and upload
 
