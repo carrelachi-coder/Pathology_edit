@@ -40,6 +40,12 @@ class OnlineProductReleaseTests(unittest.TestCase):
         self.assertRegex(release["code_commit"], r"^[0-9a-f]{40}$")
         self.assertEqual(release["code_commit"], segmentator["code_commit"])
         self.assertEqual(nuclei["checkpoint_sha256"], FROZEN_PROBNET_SHA256)
+        self.assertEqual(nuclei["repo_id"], "Qinxin11/pathology-probnet")
+        self.assertEqual(
+            nuclei["repo_checkpoint_path"],
+            "best_epoch29_c29607f1b609accb.pt",
+        )
+        self.assertRegex(nuclei["repo_checkpoint_revision"], r"^[0-9a-f]{40}$")
         self.assertEqual(
             nuclei["candidate_queue_policy"],
             "stable_descending_probnet_score",
@@ -67,6 +73,18 @@ class OnlineProductReleaseTests(unittest.TestCase):
         self.assertEqual(
             verification["segmentator_checkpoint_sha256"],
             segmentator["checkpoint_sha256"],
+        )
+        self.assertEqual(
+            verification["segmentator_repo_id"],
+            segmentator["hub"]["repo_id"],
+        )
+        self.assertEqual(
+            verification["segmentator_repo_checkpoint_revision"],
+            segmentator["hub"]["checkpoint_revision"],
+        )
+        self.assertEqual(
+            segmentator["checkpoint_environment_selector"],
+            "PATHOLOGY_SEGMENTATOR_CHECKPOINT",
         )
 
     def test_manifest_matches_packaged_controlnet_defaults(self):

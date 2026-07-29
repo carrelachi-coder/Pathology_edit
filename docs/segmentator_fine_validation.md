@@ -16,6 +16,9 @@ The selected model is Boundary + CellViT Teacher joint epoch 2:
 
 - Size: `2,820,003,238` bytes.
 - SHA256: `ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34`.
+- Private Hub artifact:
+  `Qinxin11/pathology-segmentator/segmentator_fine_c_joint_epoch2_ddb95a7b.pt`,
+  checkpoint commit `afe195eaa3a4c2c1d24a41932669f5e55ac987bf`.
 - Runtime inputs: image only. CellViT is a training teacher and is not required
   at inference.
 - Safety fallback:

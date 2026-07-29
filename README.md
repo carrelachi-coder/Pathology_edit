@@ -57,7 +57,8 @@ hf auth whoami
 | --- | --- | --- |
 | Inpaint ControlNet | [Qinxin11/pathology-inpaint-controlnet](https://huggingface.co/Qinxin11/pathology-inpaint-controlnet) | 仓库根目录；含 ControlNet、`config.json`、`phase5_conditioning.pt` |
 | Cross V1 + Pix2pix | [Qinxin11/pathology-cross-v1-pix2pix](https://huggingface.co/Qinxin11/pathology-cross-v1-pix2pix) | `cross_v1/`；`pix2pix/pix2pix_epoch26_step214895.pt` |
-| ProbNet / CellDistNet | 本地冻结 release | `best_epoch29_c29607f1b609accb.pt`；SHA256 `c29607f...571211` |
+| ProbNet / CellDistNet | [Qinxin11/pathology-probnet](https://huggingface.co/Qinxin11/pathology-probnet) | `best_epoch29_c29607f1b609accb.pt`；epoch 29 / step 33785；SHA256 `c29607f...571211` |
+| C 线 Segmentator | [Qinxin11/pathology-segmentator](https://huggingface.co/Qinxin11/pathology-segmentator) | `segmentator_fine_c_joint_epoch2_ddb95a7b.pt`；joint epoch 2；SHA256 `ddb95a7...604c34` |
 
 下载并注册为默认模型路径：
 
@@ -68,11 +69,24 @@ hf download Qinxin11/pathology-inpaint-controlnet \
   --local-dir /models/pathology/pathology-inpaint-controlnet
 hf download Qinxin11/pathology-cross-v1-pix2pix \
   --local-dir /models/pathology/pathology-cross-v1-pix2pix
+hf download Qinxin11/pathology-probnet \
+  best_epoch29_c29607f1b609accb.pt \
+  --revision add6970449cf3a94997375a665c832e91b188251 \
+  --local-dir /models/pathology/pathology-probnet
+hf download Qinxin11/pathology-segmentator \
+  segmentator_fine_c_joint_epoch2_ddb95a7b.pt \
+  --revision afe195eaa3a4c2c1d24a41932669f5e55ac987bf \
+  --local-dir /models/pathology/pathology-segmentator
+hf download Qinxin11/pathology-segmentator \
+  release.json \
+  --revision 685c2fdb3dec3f5657985cf889023762bc7d9371 \
+  --local-dir /models/pathology/pathology-segmentator
 
 export PATHOLOGY_INPAINT_CHECKPOINT=/models/pathology/pathology-inpaint-controlnet
 export PATHOLOGY_CROSS_V1_CHECKPOINT=/models/pathology/pathology-cross-v1-pix2pix/cross_v1
 export PATHOLOGY_PIX2PIX_CHECKPOINT=/models/pathology/pathology-cross-v1-pix2pix/pix2pix/pix2pix_epoch26_step214895.pt
-export PATHOLOGY_PROBNET_CHECKPOINT=/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/best_epoch29_c29607f1b609accb.pt
+export PATHOLOGY_PROBNET_CHECKPOINT=/models/pathology/pathology-probnet/best_epoch29_c29607f1b609accb.pt
+export PATHOLOGY_SEGMENTATOR_CHECKPOINT=/models/pathology/pathology-segmentator/segmentator_fine_c_joint_epoch2_ddb95a7b.pt
 export PATHOLOGY_SEGMENTATOR_PYTHON=/home/lyw/anaconda3/envs/pathology-segmentator-mmseg/bin/python3.10
 export PATHOLOGY_CELLVIT_ROOT=/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/CellViT-plus-plus-main
 export PATHOLOGY_CELLVIT_MODEL=$PATHOLOGY_CELLVIT_ROOT/checkpoints/CellViT-SAM-H-x40-AMP-001.pth
@@ -80,7 +94,7 @@ export PATHOLOGY_CELLVIT_PYTHON=/home/lyw/anaconda3/envs/pathology-phase5-inpain
 export FLUX_MODEL=/data/huggingface/FLUX.1-dev
 ```
 
-代码默认指向 `amax2` 上的 inference-only 打包目录，也允许通过上述环境变量覆盖。Inpaint/Cross 会校验打包 manifest、release commit、权重大小和 SHA 记录；Pix2pix 会校验文件 SHA、epoch 26 / step 214895、full-pyramid steering、identity adapter 和 `nuclei_reference_support_v2`。
+代码默认指向 `amax2` 上的 inference-only 打包目录，也允许通过上述环境变量覆盖。Inpaint/Cross 会校验打包 manifest、release commit、权重大小和 SHA 记录；Pix2pix 会校验文件 SHA、epoch 26 / step 214895、full-pyramid steering、identity adapter 和 `nuclei_reference_support_v2`；ProbNet 会强制 epoch29 SHA 和稳定降序候选队列；Segmentator 会通过 release 重建架构并严格加载 C 线 checkpoint。
 
 权重 SHA256、文件大小、打包范围和 Hub 往返验证结果见 [生成模型发布说明](docs/generation_model_release.md)。
 
@@ -333,4 +347,4 @@ python scripts/generate_cross_v1_no_ip_strict.py --help
 python inpaint_cells/generate.py --help
 ```
 
-完整发布验收包括：Hub 文件 SHA256 对齐、三个仓库 private 状态、Inpaint 固定样本、Cross V1 + Pix2pix 像素一致性，以及 ProbNet 配合本地实例库生成 mask。详细结果记录在 [docs/generation_model_release.md](docs/generation_model_release.md)。
+完整发布验收包括：Hub 文件 SHA256 对齐、四个模型仓库的 private 状态、Inpaint 固定样本、Cross V1 + Pix2pix 像素一致性、ProbNet 配合本地实例库生成 mask，以及 C 线 Segmentator 严格 release 重建。详细结果记录在 [docs/generation_model_release.md](docs/generation_model_release.md)。

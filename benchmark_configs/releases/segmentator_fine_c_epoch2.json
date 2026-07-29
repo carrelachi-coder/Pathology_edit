@@ -10,7 +10,14 @@
   "checkpoint": "/data1/zhao/wqx/segmentator_fine/fine_boundary_teacher_joint_seed42/best_composite.pt",
   "checkpoint_size_bytes": 2820003238,
   "checkpoint_sha256": "ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34",
-  "code_commit": "6da49e20095365be3ac3fc13f280658c14946e85",
+  "checkpoint_environment_selector": "PATHOLOGY_SEGMENTATOR_CHECKPOINT",
+  "hub": {
+    "repo_id": "Qinxin11/pathology-segmentator",
+    "checkpoint_path": "segmentator_fine_c_joint_epoch2_ddb95a7b.pt",
+    "checkpoint_revision": "afe195eaa3a4c2c1d24a41932669f5e55ac987bf",
+    "private": true
+  },
+  "code_commit": "0c6574bd90a2f9234564c33dc83d07537a12fd35",
   "decoder": "mask2former",
   "architecture": {
     "num_classes": 8,
@@ -116,7 +123,7 @@
   },
   "validation_report": {
     "path": "docs/segmentator_fine_validation.md",
-    "sha256": "abd204ccbcfba88fb862bf5a6f826683ffd564b61609cd6c80f68b774aa621a1"
+    "sha256": "7cf8a9104d0b64fafc6f2dcedbcfbcf65b1c81d4ee0e601e5cf5c0b6af3c8398"
   },
   "safety_fallback": {
     "checkpoint": "/data1/zhao/wqx/segmentator_fine/fine_cellvit_teacher_v2_seed42/best_composite.pt",
