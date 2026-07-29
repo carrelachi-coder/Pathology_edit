@@ -38,7 +38,7 @@ class OnlineProductReleaseTests(unittest.TestCase):
         generation = release["image_generation"]
         verification = release["verification"]
         self.assertRegex(release["code_commit"], r"^[0-9a-f]{40}$")
-        self.assertEqual(release["code_commit"], segmentator["code_commit"])
+        self.assertRegex(segmentator["code_commit"], r"^[0-9a-f]{40}$")
         self.assertEqual(nuclei["checkpoint_sha256"], FROZEN_PROBNET_SHA256)
         self.assertEqual(nuclei["repo_id"], "Qinxin11/pathology-probnet")
         self.assertEqual(
@@ -62,6 +62,11 @@ class OnlineProductReleaseTests(unittest.TestCase):
             generation["pix2pix"]["global_step"],
             PRODUCTION_PIX2PIX_GLOBAL_STEP,
         )
+        low_stain = generation["pix2pix"]["low_stain_protection"]
+        self.assertEqual(low_stain["policy"], "cross_rgb_od_low_stain_v1")
+        self.assertEqual(low_stain["scope"], "generation_change_region")
+        self.assertFalse(low_stain["organ_specific_constraints"])
+        self.assertFalse(generation["pix2pix"]["color_matching_postprocess"])
         self.assertEqual(
             verification["cellvit_checkpoint_sha256"],
             FROZEN_CELLVIT_SHA256,

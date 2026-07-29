@@ -23,7 +23,7 @@ checkpoint 和机器本地配置不进入 Git 历史。
 | --- | --- | --- |
 | Inpaint ControlNet | 局部组织编辑与小范围修补 | `scripts/train_phase5_inpaint.sh`、`controlnet_train/cli/eval_controlnet_flux_inpaint.py` |
 | Cross V1 no-IP | 根据目标 mask 生成 Stage 1 图像；生产推理不加载 UNI/IP-Adapter | `scripts/train_phase5_cross_v1.sh`、`scripts/generate_cross_v1_no_ip_strict.py` |
-| Pix2pix full-pyramid | 将 Cross V1 输出迁移到参考图的局部纹理与方向 | `scripts/train_pix2pix_postprocess.sh`、`scripts/generate_cross_v1_no_ip_strict.py` |
+| Pix2pix full-pyramid | 将 Cross V1 输出迁移到参考图的局部纹理与方向，并保护低染色 Cross 结构 | `scripts/train_pix2pix_postprocess.sh`、`scripts/generate_cross_v1_no_ip_strict.py` |
 | ProbNet | 在编辑区域预测细胞概率并结合实例库生成 nuclei mask | `scripts/phase4_probnet_workflow.sh`、`scripts/phase4_probnet_workflow_all.sh`、`inpaint_cells/generate.py` |
 
 Cross V0、Cross V2/V3、旧 RGB-VAE、旧 pix2pix v2、旧 ControlNet/Inpaint 原型，以及 steered-texture/window-orientation/WSI-identity 的历史启动脚本不属于生产入口。
@@ -94,7 +94,7 @@ export PATHOLOGY_CELLVIT_PYTHON=/home/lyw/anaconda3/envs/pathology-phase5-inpain
 export FLUX_MODEL=/data/huggingface/FLUX.1-dev
 ```
 
-代码默认指向 `amax2` 上的 inference-only 打包目录，也允许通过上述环境变量覆盖。Inpaint/Cross 会校验打包 manifest、release commit、权重大小和 SHA 记录；Pix2pix 会校验文件 SHA、epoch 26 / step 214895、full-pyramid steering、identity adapter 和 `nuclei_reference_support_v2`；ProbNet 会强制 epoch29 SHA 和稳定降序候选队列；Segmentator 会通过 release 重建架构并严格加载 C 线 checkpoint。
+代码默认指向 `amax2` 上的 inference-only 打包目录，也允许通过上述环境变量覆盖。Inpaint/Cross 会校验打包 manifest、release commit、权重大小和 SHA 记录；Pix2pix 会校验文件 SHA、epoch 26 / step 214895、full-pyramid steering、identity adapter 和 `nuclei_reference_support_v2`，并在 generation change region 内执行 `cross_rgb_od_low_stain_v1` 低染色结构保护；ProbNet 会强制 epoch29 SHA 和稳定降序候选队列；Segmentator 会通过 release 重建架构并严格加载 C 线 checkpoint。
 
 权重 SHA256、文件大小、打包范围和 Hub 往返验证结果见 [生成模型发布说明](docs/generation_model_release.md)。
 

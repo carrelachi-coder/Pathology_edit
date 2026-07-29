@@ -30,7 +30,7 @@ generation mode; `dry-run` is a debugging mode.
 | Instruction parsing and planning | `phase3_mask_edit/parser/instruction_parser.py`, `phase3_mask_edit/rules/semantic_to_intent.py` | Multi-edit strengths remain clause-local; preservation clauses do not become edits; replacement/backfill remains a fallback. |
 | Target nuclei construction | `scripts/run_phase3_inpaint_pipeline.py`, `inpaint_cells/generate.py`, `inpaint_cells/nuclei_library/library.py` | The UI passes source tissue, target tissue, source nuclei shapes, and the real edit region through the current six-argument interface. |
 | Production orchestration | `scripts/run_agentic_edit_workflow.py` | This is the only online agent loop. The UI invokes it instead of maintaining a second generation/verification implementation. |
-| Inpaint/Cross generation | `scripts/run_phase3_inpaint_pipeline.py`, `scripts/generate_cross_v1_no_ip_strict.py` | Runtime packages are validated before use. Cross retains the epoch-26 checkpoint's nuclei trust and identity adapter and does not apply color matching. |
+| Inpaint/Cross generation | `scripts/run_phase3_inpaint_pipeline.py`, `scripts/generate_cross_v1_no_ip_strict.py` | Runtime packages are validated before use. Cross retains the epoch-26 checkpoint's nuclei trust and identity adapter, applies the RGB/OD low-stain structure guard inside the generation region, and does not apply color matching. |
 | Tissue verification | `segmentator/release.py`, `scripts/predict_segmentator_mask.py` | C-line release manifest reconstructs the architecture strictly; raw UI checkpoint/decoder selection is not supported. |
 | Nuclei verification | `scripts/run_cellvit_single_patch.py` | Frozen CellViT path, Python, SHA, 512-pixel input, and 0.25 MPP contract are shared by source preprocessing and online verification. |
 
@@ -50,7 +50,7 @@ release is the joint epoch-2 checkpoint, not either initializer.
 | Library fallback size | patch-calibrated | A library nucleus is resized to an empirical same-class area from the current patch. Linear scale is clamped to `0.5-2.0` with log-area jitter `0.05`. If no same-class reference exists, it remains unscaled and the diagnostic records that fact. |
 | Inpaint | packaged `Qinxin11/pathology-inpaint-controlnet` | Packaged manifest commit and the released ControlNet weight size/SHA are checked before generation. |
 | Cross V1 | packaged no-IP/no-UNI Cross release | Packaged manifest commit and the released ControlNet weight size/SHA are checked before generation. |
-| Pix2pix | epoch 26 / step 214895, SHA256 `be5fe937...2ac` | `PATHOLOGY_PIX2PIX_CHECKPOINT` is mandatory. Full-pyramid local-histogram orientation steering, identity adapter, and `nuclei_reference_support_v2` come from the checkpoint. They are not disabled by the wrapper. No color matching follows Cross. |
+| Pix2pix | epoch 26 / step 214895, SHA256 `be5fe937...2ac` | `PATHOLOGY_PIX2PIX_CHECKPOINT` is mandatory. Full-pyramid local-histogram orientation steering, identity adapter, and `nuclei_reference_support_v2` come from the checkpoint. `cross_rgb_od_low_stain_v1` then preserves large low-OD, high-luma, low-chroma Cross components inside the generation region while excluding target nuclei. The guard records its mask, unprotected output and protected fraction in provenance; it uses no organ-specific rule and is not color matching. |
 | Tissue evaluator | `Qinxin11/pathology-segmentator`, C-line joint epoch 2, SHA256 `ddb95a7...604c34` | Release `segmentator-fine-c-joint-epoch2-v1`, strict architecture reconstruction, image-only runtime. |
 | Nuclei evaluator | CellViT-SAM-H-x40-AMP-001 | SHA256 `356418f...c8ec4`, `512 x 512` at `0.25 MPP`. Root, model, and Python are centralized through `PATHOLOGY_CELLVIT_ROOT`, `PATHOLOGY_CELLVIT_MODEL`, and `PATHOLOGY_CELLVIT_PYTHON`. |
 | Agent loop | canonical runner | Semantic routing uses the exact source/target tissue difference. A wider generation support may be used for glands or thin regions. Source-image predictions are the preservation reference. P1 remains `shadow`; at most two generation attempts are allowed. |
@@ -86,6 +86,8 @@ deployment override; editing source constants on a production machine is not.
 - pix2pix epoch 25 and use of `pilot_step001000.pt` as a runtime selector;
 - disabling the epoch-26 checkpoint's high-resolution nuclei trust policy;
 - LAB/histogram color matching after Cross;
+- treating the Cross RGB/OD low-stain structure guard as a global color or
+  stain-normalization postprocess;
 - raw Segmentator checkpoint/decoder selection in the UI;
 - `gpt-4o-all` as the default mask-edit model;
 - Windows placeholder CellViT paths;

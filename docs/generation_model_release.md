@@ -72,6 +72,16 @@ other color-matching postprocess. Same-WSI appearance conditioning remains the
 checkpoint-learned identity adapter; it is independent of the nuclei trust
 gate and remains enabled.
 
+After Pix2pix, Cross generation applies the inference-only
+`cross_rgb_od_low_stain_v1` guard inside the generation change region. It
+identifies large, cell-free components using Cross RGB luma/chroma and optical
+density, excludes a dilated target-nuclei mask, and feather-blends the
+corresponding Stage 1 Cross pixels over the Pix2pix result. This protects
+low-stain structures that Pix2pix may otherwise wash out. It is not global
+color matching or stain normalization, contains no dataset/organ-specific
+constraint, and writes the protection mask, unprotected image, thresholds and
+protected fractions into generation provenance.
+
 ## Packaging and upload
 
 On `amax2`, build inference-only release folders on the same filesystem as the
@@ -129,11 +139,14 @@ or committed shell scripts.
   mask. The C-line Segmentator release test verifies strict architecture
   reconstruction and the portable checkpoint override.
 
-The manifests pin production code commit
-`0c6574bd90a2f9234564c33dc83d07537a12fd35`. Mutable repository-head
-revisions are not runtime selectors; the machine-readable releases pin the
-immutable checkpoint commits `add6970449cf3a94997375a665c832e91b188251`
-(ProbNet) and `afe195eaa3a4c2c1d24a41932669f5e55ac987bf` (Segmentator).
+The model packaging manifests pin code commit
+`0c6574bd90a2f9234564c33dc83d07537a12fd35`; the aggregate online product
+manifest pins `ce7c065de806fdd923aa8d26a2321a39cd4021e6`, which adds the
+Cross low-stain guard without changing any released weight. Mutable
+repository-head revisions are not runtime selectors; the machine-readable
+releases pin the immutable checkpoint commits
+`add6970449cf3a94997375a665c832e91b188251` (ProbNet) and
+`afe195eaa3a4c2c1d24a41932669f5e55ac987bf` (Segmentator).
 
 Primary released weight hashes:
 

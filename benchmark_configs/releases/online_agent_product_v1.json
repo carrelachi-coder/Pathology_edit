@@ -3,7 +3,7 @@
   "release_id": "online-agent-product-v1-2026-07-29",
   "release_status": "engineering_frozen_pending_blinded_g2_calibration",
   "formal_publication_ready": false,
-  "code_commit": "0c6574bd90a2f9234564c33dc83d07537a12fd35",
+  "code_commit": "ce7c065de806fdd923aa8d26a2321a39cd4021e6",
   "entrypoints": {
     "ui": "scripts/phase3_end_to_end_ui.py",
     "agent_runner": "scripts/run_agentic_edit_workflow.py",
@@ -86,7 +86,22 @@
       "orientation_policy": "full_pyramid_local_histogram",
       "nuclei_reference_policy": "nuclei_reference_support_v2",
       "identity_adapter": true,
-      "color_matching_postprocess": false
+      "color_matching_postprocess": false,
+      "low_stain_protection": {
+        "policy": "cross_rgb_od_low_stain_v1",
+        "enabled": true,
+        "applies_to": "cross_v1_pix2pix_output_only",
+        "source": "cross_v1_stage1",
+        "scope": "generation_change_region",
+        "blend": "feathered_cross_over_pix2pix",
+        "minimum_luma": 0.7,
+        "maximum_chroma": 0.28,
+        "maximum_otsu_od": 0.35,
+        "nuclei_exclusion_radius_at_512": 5,
+        "minimum_component_area_at_512": 500,
+        "organ_specific_constraints": false,
+        "provenance_field": "image_generation_provenance.cross_rgb_od_low_stain_protection"
+      }
     },
     "routing": {
       "t_inpaint": 0.12,
