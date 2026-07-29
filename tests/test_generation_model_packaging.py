@@ -5,13 +5,67 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import torch
 
-from scripts.package_generation_models import package_cross_pix2pix
+from scripts.package_generation_models import (
+    PROBNET_RELEASE_FILENAME,
+    _sha256,
+    package_cross_pix2pix,
+    package_probnet,
+)
 
 
 class GenerationModelPackagingTests(unittest.TestCase):
+    def test_probnet_release_pins_epoch29_and_excludes_density_configs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "probnet.pt"
+            torch.save(
+                {
+                    "model": {"weight": torch.ones(1)},
+                    "epoch": 28,
+                    "global_step": 33785,
+                    "val_loss": 3.9,
+                    "val_metrics": {},
+                },
+                source,
+            )
+            args = SimpleNamespace(
+                probnet_checkpoint=source,
+                output_root=root / "release",
+                overwrite=False,
+                hf_namespace="test-user",
+                git_commit="deadbeef",
+            )
+
+            with patch(
+                "scripts.package_generation_models.FROZEN_PROBNET_SHA256",
+                _sha256(source),
+            ):
+                output = package_probnet(args)
+
+            self.assertEqual(
+                (output / PROBNET_RELEASE_FILENAME).read_bytes(),
+                source.read_bytes(),
+            )
+            self.assertEqual((output / "best.pt").read_bytes(), source.read_bytes())
+            self.assertFalse((output / "configs").exists())
+            manifest = json.loads((output / "manifest.json").read_text())
+            metadata = manifest["model_metadata"]
+            self.assertEqual(metadata["epoch_human"], 29)
+            self.assertEqual(
+                metadata["runtime_role"],
+                "per_pixel_nucleus_placement_score_only",
+            )
+            self.assertEqual(
+                manifest["loading"]["environment_variables"][
+                    "PATHOLOGY_PROBNET_CHECKPOINT"
+                ],
+                f"/models/pathology-probnet/{PROBNET_RELEASE_FILENAME}",
+            )
+
     def test_cross_pix2pix_release_is_inference_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

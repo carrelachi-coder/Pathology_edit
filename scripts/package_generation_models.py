@@ -22,10 +22,12 @@ from controlnet_train.inference.model_paths import (
     DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
     DEFAULT_PROBNET_CHECKPOINT,
+    FROZEN_PROBNET_SHA256,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PROBNET_RELEASE_FILENAME = "best_epoch29_c29607f1b609accb.pt"
 PIX2PIX_INFERENCE_ARG_NAMES = {
     "base_channels",
     "num_heads",
@@ -311,13 +313,16 @@ python scripts/generate_cross_v1_no_ip_strict.py --help
 
 def package_probnet(args: argparse.Namespace) -> Path:
     source = args.probnet_checkpoint.resolve()
+    source_sha256 = _sha256(source)
+    if source_sha256 != FROZEN_PROBNET_SHA256:
+        raise ValueError(
+            "Refusing to package a non-production ProbNet checkpoint: "
+            f"{source_sha256} != {FROZEN_PROBNET_SHA256} ({source})"
+        )
     output = args.output_root / "pathology-probnet"
     _prepare_directory(output, overwrite=args.overwrite)
+    _link_or_copy(source, output / PROBNET_RELEASE_FILENAME)
     _link_or_copy(source, output / "best.pt")
-    config_output = output / "configs"
-    config_output.mkdir(parents=True)
-    for config in sorted((REPO_ROOT / "inpaint_cells" / "configs").glob("*.json")):
-        shutil.copy2(config, config_output / config.name)
     checkpoint = torch.load(source, map_location="cpu", weights_only=False)
     (output / "README.md").write_text(
         f"""---
@@ -327,17 +332,20 @@ pipeline_tag: image-to-image
 
 # Pathology ProbNet
 
-Private inference-only ProbUNet release used by the Phase 4 nuclei generation
-workflow. The checkpoint uses `base_ch=64` and predicts six classes (background
-plus five project nuclei classes).
+Private inference-only ProbNet release used by the online nuclei-generation
+workflow.
 
-ProbNet placement also requires a dataset-specific nuclei instance library.
-Those approximately 1GB of real instance crops are intentionally not included
-in this model repository and should be managed as a separate private dataset.
+The frozen epoch-29 checkpoint supplies only the per-pixel nucleus placement
+score. Counts and exact subtype quotas come from the patch-adaptive policy;
+density-scale configs and organ-specific hard placement bands are not runtime
+selectors. Nucleus shapes prefer same-class instances from the current source
+patch before using the external instance library.
 
 ```bash
-hf download {args.hf_namespace}/pathology-probnet --local-dir /models/pathology-probnet
-export PATHOLOGY_PROBNET_CHECKPOINT=/models/pathology-probnet/best.pt
+hf download {args.hf_namespace}/pathology-probnet \\
+  {PROBNET_RELEASE_FILENAME} \\
+  --local-dir /models/pathology-probnet
+export PATHOLOGY_PROBNET_CHECKPOINT=/models/pathology-probnet/{PROBNET_RELEASE_FILENAME}
 python scripts/phase4_single_sample_smoke.py --help
 ```
 """,
@@ -347,14 +355,21 @@ python scripts/phase4_single_sample_smoke.py --help
         output,
         repo_id=f"{args.hf_namespace}/pathology-probnet",
         git_commit=args.git_commit,
-        sources=[{"path": str(source), "sha256": _sha256(source)}],
+        sources=[{"path": str(source), "sha256": source_sha256}],
         model_metadata={
             "type": "prob-unet",
             "base_channels": 64,
-            "epoch": int(checkpoint["epoch"]),
+            "epoch_zero_based": int(checkpoint["epoch"]),
+            "epoch_human": int(checkpoint["epoch"]) + 1,
             "global_step": int(checkpoint["global_step"]),
             "val_loss": float(checkpoint["val_loss"]),
             "val_metrics": checkpoint.get("val_metrics", {}),
+            "runtime_role": "per_pixel_nucleus_placement_score_only",
+            "candidate_queue_policy": "stable_descending_probnet_score",
+            "count_and_type_policy": "patch_adaptive_density_and_type_quota",
+            "shape_policy": (
+                "same_class_reference_without_replacement_then_library"
+            ),
             "nuclei_library_included": False,
         },
         dependencies={
@@ -364,7 +379,9 @@ python scripts/phase4_single_sample_smoke.py --help
         },
         loading={
             "environment_variables": {
-                "PATHOLOGY_PROBNET_CHECKPOINT": "/models/pathology-probnet/best.pt"
+                "PATHOLOGY_PROBNET_CHECKPOINT": (
+                    f"/models/pathology-probnet/{PROBNET_RELEASE_FILENAME}"
+                )
             },
             "command": "python scripts/phase4_single_sample_smoke.py --help",
         },
