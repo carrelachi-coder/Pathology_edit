@@ -48,6 +48,12 @@ class OnlineProductReleaseTests(unittest.TestCase):
         self.assertRegex(nuclei["repo_checkpoint_revision"], r"^[0-9a-f]{40}$")
         self.assertEqual(
             nuclei["candidate_queue_policy"],
+            "probnet_score_descending_with_quota_coverage_prefix",
+        )
+        self.assertEqual(nuclei["quota_coverage_spacing_scale"], 0.75)
+        self.assertEqual(nuclei["quota_coverage_max_radius"], 48.0)
+        self.assertEqual(
+            nuclei["retry_tail_policy"],
             "stable_descending_probnet_score",
         )
         self.assertEqual(

@@ -94,7 +94,7 @@ export PATHOLOGY_CELLVIT_PYTHON=/home/lyw/anaconda3/envs/pathology-phase5-inpain
 export FLUX_MODEL=/data/huggingface/FLUX.1-dev
 ```
 
-代码默认指向 `amax2` 上的 inference-only 打包目录，也允许通过上述环境变量覆盖。Inpaint/Cross 会校验打包 manifest、release commit、权重大小和 SHA 记录；Pix2pix 会校验文件 SHA、epoch 26 / step 214895、full-pyramid steering、identity adapter 和 `nuclei_reference_support_v2`，并在 generation change region 内执行 `cross_rgb_od_low_stain_v1` 低染色结构保护；ProbNet 会强制 epoch29 SHA 和稳定降序候选队列；Segmentator 会通过 release 重建架构并严格加载 C 线 checkpoint。
+代码默认指向 `amax2` 上的 inference-only 打包目录，也允许通过上述环境变量覆盖。Inpaint/Cross 会校验打包 manifest、release commit、权重大小和 SHA 记录；Pix2pix 会校验文件 SHA、epoch 26 / step 214895、full-pyramid steering、identity adapter 和 `nuclei_reference_support_v2`，并在 generation change region 内执行 `cross_rgb_od_low_stain_v1` 低染色结构保护；ProbNet 会强制 epoch29 SHA，先按分数贪心构造 quota-aware coverage prefix，再保留完整稳定降序 tail 处理放置失败；Segmentator 会通过 release 重建架构并严格加载 C 线 checkpoint。
 
 权重 SHA256、文件大小、打包范围和 Hub 往返验证结果见 [生成模型发布说明](docs/generation_model_release.md)。
 
@@ -263,9 +263,11 @@ python inpaint_cells/generate.py \
 生产 shape 策略是“当前 patch 同类别 reference shape 不放回优先，耗尽后
 才用 library”。Library fallback 会按当前 patch 同类细胞的经验面积缩放；
 默认线性缩放限制为 `0.5-2.0`。没有同类参考时保持 library 原尺寸并记录
-未校准诊断。Count 和 subtype quota 仍由 patch 统计策略决定；合法候选按
-ProbNet 分数稳定降序执行，放置失败才退到下一候选，不增加
-organ/dataset-specific 的硬空间规则。
+未校准诊断。Count 和 subtype quota 仍由 patch 统计策略决定。每个
+tissue/component 的 primary quota prefix 先按 ProbNet 分数贪心选择，并用
+`0.75 * sqrt(area / quota)` 的通用半径防止窄高分带吞掉全部 quota，半径
+上限为 48 px；未进入 prefix 的所有合法候选仍保持 ProbNet 分数稳定降序，
+供放置失败时完整重试。该规则不增加 organ/dataset-specific 硬约束。
 
 端到端 smoke test（从完整 layered sample 自动擦除一块区域后重建）：
 

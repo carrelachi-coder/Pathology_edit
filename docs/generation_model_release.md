@@ -37,6 +37,11 @@ spatial landing score. Counts, density calibration and exact nucleus-type
 quotas come from the frozen patch-adaptive sampling policy documented in
 `probnet_count_density_training.md`. Historical density-scale files remaining
 in the Hub repository are provenance only and are not production selectors.
+The primary quota prefix uses descending ProbNet score with generic
+area-per-quota coverage (`spacing_scale=0.75`, maximum radius 48 px); every
+deferred or unused legal candidate remains in the complete stable-descending
+retry tail. This is a runtime policy change only and does not alter the
+epoch-29 checkpoint.
 
 ## Repositories
 
@@ -111,8 +116,9 @@ or committed shell scripts.
 - Cross V1 + pix2pix reports epoch `26`, global step `214895`, no IP/UNI, and
   trust gate `nuclei_reference_support_v2` on the fixed validation case.
 - ProbNet loads the epoch-29 / step-33785 checkpoint and the online agent audits
-  `stable_descending_probnet_score`, its frozen SHA, and the absence of
-  organ-specific placement constraints.
+  `probnet_score_descending_with_quota_coverage_prefix`, spacing scale `0.75`,
+  maximum radius `48.0`, the stable-descending retry tail, its frozen SHA, and
+  the absence of organ-specific placement constraints.
 - Segmentator reconstructs the C-line Mask2Former architecture from
   `release.json`, loads the joint epoch-2 state dict strictly, and accepts
   `PATHOLOGY_SEGMENTATOR_CHECKPOINT` as the deployment-path override.
@@ -134,17 +140,21 @@ or committed shell scripts.
   fixed-sample outputs are pixel-identical (maximum pixel difference `0`).
 - Ordinary BF16 CUDA generation may show small run-to-run numeric variation;
   exact regression comparisons therefore use deterministic CUDA settings.
-- The online product provenance tests verify the epoch-29 ProbNet SHA and
-  stable descending score queue before the agent accepts a generated nuclei
-  mask. The C-line Segmentator release test verifies strict architecture
-  reconstruction and the portable checkpoint override.
+- The online product provenance tests verify the epoch-29 ProbNet SHA,
+  quota-aware coverage prefix and complete stable-descending retry tail before
+  the agent accepts a generated nuclei mask. The 18-case canary's earlier
+  cell-spatial-quality conclusion is invalid because it used the superseded
+  global-descending prefix; current evidence is engineering regression only
+  until the formal cohort is rerun. The C-line Segmentator release test
+  verifies strict architecture reconstruction and the portable checkpoint
+  override.
 
-The model packaging manifests pin code commit
-`0c6574bd90a2f9234564c33dc83d07537a12fd35`; the aggregate online product
-manifest pins `ce7c065de806fdd923aa8d26a2321a39cd4021e6`, which adds the
-Cross low-stain guard without changing any released weight. Mutable
-repository-head revisions are not runtime selectors; the machine-readable
-releases pin the immutable checkpoint commits
+The ProbNet runtime metadata and aggregate online product manifest pin
+`64de2f5d6d6637053bdb1ea050493fc6fbbfb27b`, which adds the quota-aware
+coverage prefix. Cross low-stain protection entered at
+`ce7c065de806fdd923aa8d26a2321a39cd4021e6`. Neither change modifies a
+released weight. Mutable repository-head revisions are not runtime selectors;
+the machine-readable releases pin the immutable checkpoint commits
 `add6970449cf3a94997375a665c832e91b188251` (ProbNet) and
 `afe195eaa3a4c2c1d24a41932669f5e55ac987bf` (Segmentator).
 

@@ -45,7 +45,7 @@ release is the joint epoch-2 checkpoint, not either initializer.
 | Part | Product selection | Runtime contract |
 |---|---|---|
 | Mask edit | semantic-diff schema 0.2, `gpt-4.1-mini`, `organic_v2` | Prompt, direct instruction, multi-label manual contour, and auto-recommend remain available. Independent instructions execute sequentially against the current mask. Replacement/backfill is a fallback, not an accidental second edit. |
-| ProbNet / CellDistNet | `Qinxin11/pathology-probnet`, epoch 29 / step 33785, SHA256 `c29607f...571211` | ProbNet supplies only the spatial landing order. The complete legal retry queue is consumed by stable descending ProbNet score; a lower-score point is tried only after a higher-score placement fails. Patch-adaptive policy supplies counts and exact type quotas. Gamma is `1.5`; no density-scale JSON is used. |
+| ProbNet / CellDistNet | `Qinxin11/pathology-probnet`, epoch 29 / step 33785, SHA256 `c29607f...571211` | ProbNet supplies only the spatial ranking. The primary tissue/component quota prefix greedily follows descending score while deferring points within `0.75 * sqrt(area / quota)`, capped at 48 px, so a narrow high-score band cannot consume the quota. All deferred and unused candidates remain in a complete stable-descending retry tail. Patch-adaptive policy supplies counts and exact type quotas. Gamma is `1.5`; no density-scale JSON or organ/tissue special case is used. |
 | Nucleus shape | reference-first | Same-class shapes from the current source patch are sampled without replacement before the library is used. |
 | Library fallback size | patch-calibrated | A library nucleus is resized to an empirical same-class area from the current patch. Linear scale is clamped to `0.5-2.0` with log-area jitter `0.05`. If no same-class reference exists, it remains unscaled and the diagnostic records that fact. |
 | Inpaint | packaged `Qinxin11/pathology-inpaint-controlnet` | Packaged manifest commit and the released ControlNet weight size/SHA are checked before generation. |
@@ -93,6 +93,8 @@ deployment override; editing source constants on a production machine is not.
 - Windows placeholder CellViT paths;
 - library-first nucleus shape sampling;
 - ProbNet checkpoint count, density, or type heads as production quota sources.
+- using an unqualified global stable-descending ProbNet queue as the complete
+  primary quota prefix;
 - organ-, tissue-, or dataset-specific hard placement bands that override the
   learned ProbNet ordering.
 

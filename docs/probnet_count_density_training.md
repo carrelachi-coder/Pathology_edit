@@ -127,9 +127,12 @@ target_density_t =
    by component area with largest remainder. Do not reserve one nucleus for
    every small component; a component with expected count below one may receive
    zero.
-9. Generate Poisson candidates independently in every positive-quota component
-   and order/select locations with the frozen ProbNet scalar field using
-   `gamma=1.5`.
+9. Generate Poisson candidates independently in every positive-quota component.
+   Build the primary quota prefix greedily in descending frozen-ProbNet score
+   order while deferring candidates closer than
+   `0.75 * sqrt(component_area / component_quota)`, capped at 48 pixels.
+   Preserve every deferred and unused candidate in a complete
+   stable-descending retry tail. Use `gamma=1.5`.
 10. Draw same-class instance shapes from the current patch first. Use the
     matching profile library only for same-class shortages. Continue through
     unused candidate centers until the quota is filled or the pool is
@@ -162,6 +165,9 @@ dense_retry_quota_threshold = 20
 dense_retry_occupancy_threshold = 0.12
 dense_retry_candidate_multiplier = 24
 dense_retry_candidate_floor = 128
+quota_coverage_spacing_scale = 0.75
+quota_coverage_max_radius = 48
+retry_tail_policy = stable_descending_probnet_score
 max_nucleus_overlap_fraction = 0.0
 ```
 
@@ -237,6 +243,22 @@ combined feature-space figure are stored at:
 embedding_utility_bcss_paired257_frozen_sampling_v3_epoch29
 ```
 
-This full rerun is the first utility result eligible for publication after the
-sampling policy was frozen. Earlier epoch-1 utility banks remain historical
-artifacts and must not be mixed with these embeddings.
+This full rerun predates the quota-aware coverage prefix introduced after the
+18-case canary exposed collapse into a narrow high-score boundary band. It
+remains useful as historical pipeline/completion evidence, but it is no longer
+eligible as the final current-policy publication result and must not be mixed
+with a rerun produced by the new policy.
+
+## 18-Case Canary Correction
+
+The earlier 18-case canary cell-spatial-quality conclusion is invalid. In the
+d177 BCSS case, the superseded global-descending prefix preserved the requested
+count but concentrated most generated instances near the changed-region
+boundary. A same-case engineering regression with the generic quota-aware
+coverage prefix preserved count and type quotas, produced independent
+instances, and removed the visible boundary collapse.
+
+This is implementation-regression evidence only, not a formal quality result.
+No formal cell-quality conclusion should be reported until the fixed cohort is
+rerun under code commit
+`64de2f5d6d6637053bdb1ea050493fc6fbbfb27b`.
