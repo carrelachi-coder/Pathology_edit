@@ -44,16 +44,22 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                 "tissues": {
                     "2": {
                         "candidate_queue_policy": (
-                            "stable_descending_probnet_score"
+                            "probnet_score_descending_with_quota_coverage_prefix"
                         ),
+                        "quota_coverage_spacing_scale": 0.75,
+                        "quota_coverage_max_radius": 48.0,
+                        "retry_tail_policy": "stable_descending_probnet_score",
                         "accepted_center_probability": {
                             "median": 0.81,
                         },
                     },
                     "7": {
                         "candidate_queue_policy": (
-                            "stable_descending_probnet_score"
+                            "probnet_score_descending_with_quota_coverage_prefix"
                         ),
+                        "quota_coverage_spacing_scale": 0.75,
+                        "quota_coverage_max_radius": 48.0,
+                        "retry_tail_policy": "stable_descending_probnet_score",
                         "accepted_center_probability": {
                             "median": 0.74,
                         },
@@ -64,9 +70,15 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
 
         self.assertEqual(
             contract["candidate_queue_policy"],
-            "stable_descending_probnet_score",
+            "probnet_score_descending_with_quota_coverage_prefix",
         )
         self.assertFalse(contract["organ_specific_constraints"])
+        self.assertEqual(contract["quota_coverage_spacing_scale"], 0.75)
+        self.assertEqual(contract["quota_coverage_max_radius"], 48.0)
+        self.assertEqual(
+            contract["retry_tail_policy"],
+            "stable_descending_probnet_score",
+        )
         self.assertEqual(
             contract["accepted_center_probability_by_tissue"]["7"]["median"],
             0.74,

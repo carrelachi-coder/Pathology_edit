@@ -597,6 +597,19 @@ def _validate_nuclei_generation_contract(
             f"product release: {actual_policy!r} != "
             f"{expected['candidate_queue_policy']!r}"
         )
+    for field in (
+        "quota_coverage_spacing_scale",
+        "quota_coverage_max_radius",
+        "retry_tail_policy",
+    ):
+        actual_value = sampling.get(field)
+        expected_value = expected.get(field)
+        if actual_value != expected_value:
+            raise ValueError(
+                "Target nuclei coverage contract does not match the online "
+                f"product release for {field}: "
+                f"{actual_value!r} != {expected_value!r}"
+            )
     checkpoint = sampling.get("probnet_release") or {}
     actual_sha256 = checkpoint.get("sha256")
     if actual_sha256 != expected["checkpoint_sha256"]:
@@ -616,6 +629,11 @@ def _validate_nuclei_generation_contract(
         "validated": True,
         "log": str(log_path.resolve()),
         "candidate_queue_policy": actual_policy,
+        "quota_coverage_spacing_scale": sampling[
+            "quota_coverage_spacing_scale"
+        ],
+        "quota_coverage_max_radius": sampling["quota_coverage_max_radius"],
+        "retry_tail_policy": sampling["retry_tail_policy"],
         "checkpoint_sha256": actual_sha256,
         "organ_specific_constraints": False,
         "diagnostics_path": sampling.get("diagnostics_path"),

@@ -60,6 +60,14 @@ class GenerationModelPackagingTests(unittest.TestCase):
                 "per_pixel_nucleus_placement_score_only",
             )
             self.assertEqual(
+                metadata["candidate_queue_policy"],
+                "probnet_score_descending_with_quota_coverage_prefix",
+            )
+            self.assertEqual(
+                metadata["retry_tail_policy"],
+                "stable_descending_probnet_score",
+            )
+            self.assertEqual(
                 manifest["loading"]["environment_variables"][
                     "PATHOLOGY_PROBNET_CHECKPOINT"
                 ],

@@ -2,7 +2,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from inpaint_cells.generate import choose_weighted_centers
+from inpaint_cells.generate import (
+    choose_weighted_centers,
+    quota_coverage_radius,
+)
 from inpaint_cells.sampling_policy import (
     retry_pool_target,
     valid_biological_tissue_mask,
@@ -61,3 +64,41 @@ def test_probnet_score_orders_the_full_retry_queue():
     )
 
     assert ranked == [(0, 1), (0, 3), (0, 2), (0, 0)]
+
+
+def test_probnet_quota_prefix_defers_crowded_high_score_candidates():
+    candidates = [(0, x) for x in range(10)]
+    probability = np.array(
+        [[1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]],
+        dtype=np.float32,
+    )
+
+    ranked = choose_weighted_centers(
+        candidates,
+        probability,
+        target_count=len(candidates),
+        gamma=1.5,
+        coverage_count=3,
+        coverage_radius=3.0,
+    )
+
+    assert ranked[:3] == [(0, 0), (0, 3), (0, 6)]
+    assert ranked[3:] == [
+        (0, 1),
+        (0, 2),
+        (0, 4),
+        (0, 5),
+        (0, 7),
+        (0, 8),
+        (0, 9),
+    ]
+
+
+def test_quota_coverage_radius_is_generic_area_per_count_spacing():
+    radius = quota_coverage_radius(
+        region_area=10000,
+        quota=4,
+        candidate_min_distance=8.0,
+    )
+
+    assert radius == 37.5

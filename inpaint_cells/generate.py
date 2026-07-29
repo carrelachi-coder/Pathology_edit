@@ -265,13 +265,43 @@ def compute_target_count(nuc_prob, tissue_region, tissue_id, library, expected_a
     }
 
 
-def choose_weighted_centers(candidates, nuc_prob, target_count, gamma):
-    """Order legal candidates by the learned ProbNet placement score.
+def quota_coverage_radius(
+    region_area,
+    quota,
+    candidate_min_distance,
+    spacing_scale=0.75,
+    maximum=48.0,
+):
+    """Return a generic quota-aware spacing for the primary placement prefix."""
 
-    Retry queues may contain every Poisson candidate. Weighted sampling
-    without replacement would therefore degrade into a weakly biased random
-    permutation. Stable score ranking keeps count independent while ensuring
-    that placement and fallback order remain ProbNet-determined.
+    if quota <= 0 or region_area <= 0:
+        return float(max(candidate_min_distance, 0.0))
+    area_spacing = np.sqrt(float(region_area) / float(quota))
+    return float(
+        np.clip(
+            area_spacing * float(spacing_scale),
+            float(candidate_min_distance),
+            float(max(maximum, candidate_min_distance)),
+        )
+    )
+
+
+def choose_weighted_centers(
+    candidates,
+    nuc_prob,
+    target_count,
+    gamma,
+    *,
+    coverage_count=None,
+    coverage_radius=0.0,
+):
+    """Build a ProbNet-ranked queue with an optional spatially covered prefix.
+
+    The complete retry tail remains in stable descending ProbNet-score order.
+    Only the primary quota prefix defers candidates that are too close to an
+    already selected higher-score point. This prevents a narrow high-score band
+    from consuming an entire tissue quota while preserving ProbNet as the
+    spatial ranking source.
     """
 
     if target_count <= 0 or not candidates:
@@ -280,8 +310,41 @@ def choose_weighted_centers(candidates, nuc_prob, target_count, gamma):
     ys = np.array([p[0] for p in candidates], dtype=np.int64)
     xs = np.array([p[1] for p in candidates], dtype=np.int64)
     scores = np.power(np.clip(nuc_prob[ys, xs], 0.0, 1.0), gamma)
-    order = np.argsort(-scores, kind="stable")[:n]
-    return [candidates[int(i)] for i in order]
+    score_order = np.argsort(-scores, kind="stable")
+
+    prefix_target = min(
+        n,
+        int(coverage_count) if coverage_count is not None else 0,
+    )
+    radius = float(coverage_radius)
+    if prefix_target <= 1 or radius <= 0:
+        return [candidates[int(i)] for i in score_order[:n]]
+
+    radius_sq = radius * radius
+    prefix_indices = []
+    for candidate_index in score_order:
+        candidate_index = int(candidate_index)
+        y = int(ys[candidate_index])
+        x = int(xs[candidate_index])
+        if any(
+            (y - int(ys[selected_index])) ** 2
+            + (x - int(xs[selected_index])) ** 2
+            < radius_sq
+            for selected_index in prefix_indices
+        ):
+            continue
+        prefix_indices.append(candidate_index)
+        if len(prefix_indices) >= prefix_target:
+            break
+
+    prefix_set = set(prefix_indices)
+    retry_tail = [
+        int(candidate_index)
+        for candidate_index in score_order
+        if int(candidate_index) not in prefix_set
+    ]
+    queue = prefix_indices + retry_tail
+    return [candidates[candidate_index] for candidate_index in queue[:n]]
 
 
 def allocate_component_counts(component_areas, target_count, minimum_area):
@@ -855,11 +918,24 @@ def generate_for_gamma(
                             retry_pool_size,
                         )
                         requested = len(component_candidates)
+                    coverage_radius = quota_coverage_radius(
+                        region_area=area,
+                        quota=quota,
+                        candidate_min_distance=min_distance,
+                        spacing_scale=float(
+                            getattr(args, "quota_coverage_spacing_scale", 0.75)
+                        ),
+                        maximum=float(
+                            getattr(args, "quota_coverage_max_radius", 48.0)
+                        ),
+                    )
                     selected = choose_weighted_centers(
                         component_candidates,
                         nuc_prob,
                         requested,
                         gamma,
+                        coverage_count=quota,
+                        coverage_radius=coverage_radius,
                     )
                     candidates.extend(component_candidates)
                     centers.extend(selected)
@@ -874,6 +950,8 @@ def generate_for_gamma(
                         "selected_centers": len(selected),
                         "attempted_centers": 0,
                         "placed": 0,
+                        "coverage_prefix_target": quota,
+                        "coverage_radius": coverage_radius,
                     }
             else:
                 requested_centers = target_count
@@ -895,11 +973,24 @@ def generate_for_gamma(
                         retry_pool_size,
                     )
                     requested_centers = len(candidates)
+                coverage_radius = quota_coverage_radius(
+                    region_area=int(np.count_nonzero(tissue_region)),
+                    quota=target_count,
+                    candidate_min_distance=min_distance,
+                    spacing_scale=float(
+                        getattr(args, "quota_coverage_spacing_scale", 0.75)
+                    ),
+                    maximum=float(
+                        getattr(args, "quota_coverage_max_radius", 48.0)
+                    ),
+                )
                 centers = choose_weighted_centers(
                     candidates,
                     nuc_prob,
                     requested_centers,
                     gamma,
+                    coverage_count=target_count,
+                    coverage_radius=coverage_radius,
                 )
                 center_component_ids = [0] * len(centers)
         else:
@@ -1028,7 +1119,16 @@ def generate_for_gamma(
             "placement_trials": placement_trials,
             "placed": placed,
             "placed_by_shape_source": placed_by_shape_source,
-            "candidate_queue_policy": "stable_descending_probnet_score",
+            "candidate_queue_policy": (
+                "probnet_score_descending_with_quota_coverage_prefix"
+            ),
+            "quota_coverage_spacing_scale": float(
+                getattr(args, "quota_coverage_spacing_scale", 0.75)
+            ),
+            "quota_coverage_max_radius": float(
+                getattr(args, "quota_coverage_max_radius", 48.0)
+            ),
+            "retry_tail_policy": "stable_descending_probnet_score",
             "accepted_center_probability": (
                 {
                     "minimum": float(np.min(accepted_center_probabilities)),
@@ -1498,6 +1598,21 @@ def build_parser():
     parser.add_argument("--oversample-min", type=float, default=1.5)
     parser.add_argument("--oversample-max", type=float, default=8.0)
     parser.add_argument("--poisson-attempts", type=int, default=30)
+    parser.add_argument(
+        "--quota-coverage-spacing-scale",
+        type=float,
+        default=0.75,
+        help=(
+            "Generic primary-prefix spacing as a fraction of "
+            "sqrt(tissue area / target count)."
+        ),
+    )
+    parser.add_argument(
+        "--quota-coverage-max-radius",
+        type=float,
+        default=48.0,
+        help="Maximum generic spacing radius for the primary quota prefix.",
+    )
     parser.add_argument("--skip-tissue-ids", type=int, nargs="*", default=[],
                         help="Additional tissue IDs to skip")
     parser.add_argument("--no-augment-instances", action="store_true")

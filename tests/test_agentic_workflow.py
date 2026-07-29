@@ -84,8 +84,11 @@ class AgenticRoutingTests(unittest.TestCase):
                         "release_id": "test-release",
                         "nuclei_generation": {
                             "candidate_queue_policy": (
-                                "stable_descending_probnet_score"
+                                "probnet_score_descending_with_quota_coverage_prefix"
                             ),
+                            "quota_coverage_spacing_scale": 0.75,
+                            "quota_coverage_max_radius": 48.0,
+                            "retry_tail_policy": "stable_descending_probnet_score",
                             "checkpoint_sha256": "abc123",
                         },
                     }
@@ -99,8 +102,11 @@ class AgenticRoutingTests(unittest.TestCase):
                         "mode": "probnet",
                         "shape_sampling": {
                             "candidate_queue_policy": (
-                                "stable_descending_probnet_score"
+                                "probnet_score_descending_with_quota_coverage_prefix"
                             ),
+                            "quota_coverage_spacing_scale": 0.75,
+                            "quota_coverage_max_radius": 48.0,
+                            "retry_tail_policy": "stable_descending_probnet_score",
                             "organ_specific_constraints": False,
                             "probnet_release": {"sha256": "abc123"},
                             "diagnostics_path": "/tmp/diagnostics.json",
@@ -123,6 +129,12 @@ class AgenticRoutingTests(unittest.TestCase):
             self.assertTrue(result["validated"])
             self.assertEqual(
                 result["candidate_queue_policy"],
+                "probnet_score_descending_with_quota_coverage_prefix",
+            )
+            self.assertEqual(result["quota_coverage_spacing_scale"], 0.75)
+            self.assertEqual(result["quota_coverage_max_radius"], 48.0)
+            self.assertEqual(
+                result["retry_tail_policy"],
                 "stable_descending_probnet_score",
             )
 

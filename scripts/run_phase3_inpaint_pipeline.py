@@ -648,8 +648,37 @@ def _probnet_sampling_contract(diagnostics: dict[str, Any]) -> dict[str, Any]:
             "ProbNet diagnostics must report one candidate queue policy; "
             f"found {sorted(policies)}"
         )
+    coverage_scales = {
+        float(item["quota_coverage_spacing_scale"])
+        for item in tissues.values()
+        if item.get("quota_coverage_spacing_scale") is not None
+    }
+    coverage_max_radii = {
+        float(item["quota_coverage_max_radius"])
+        for item in tissues.values()
+        if item.get("quota_coverage_max_radius") is not None
+    }
+    retry_tail_policies = {
+        str(item["retry_tail_policy"])
+        for item in tissues.values()
+        if item.get("retry_tail_policy")
+    }
+    if (
+        len(coverage_scales) != 1
+        or len(coverage_max_radii) != 1
+        or len(retry_tail_policies) != 1
+    ):
+        raise RuntimeError(
+            "ProbNet diagnostics must report one quota coverage contract; "
+            f"scales={sorted(coverage_scales)}, "
+            f"max_radii={sorted(coverage_max_radii)}, "
+            f"retry_tails={sorted(retry_tail_policies)}"
+        )
     return {
         "candidate_queue_policy": next(iter(policies)),
+        "quota_coverage_spacing_scale": next(iter(coverage_scales)),
+        "quota_coverage_max_radius": next(iter(coverage_max_radii)),
+        "retry_tail_policy": next(iter(retry_tail_policies)),
         "organ_specific_constraints": False,
         "accepted_center_probability_by_tissue": {
             str(tissue_id): item.get("accepted_center_probability")

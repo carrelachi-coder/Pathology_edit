@@ -338,8 +338,11 @@ workflow.
 The frozen epoch-29 checkpoint supplies only the per-pixel nucleus placement
 score. Counts and exact subtype quotas come from the patch-adaptive policy;
 density-scale configs and organ-specific hard placement bands are not runtime
-selectors. Nucleus shapes prefer same-class instances from the current source
-patch before using the external instance library.
+selectors. The primary quota prefix greedily preserves ProbNet score while
+enforcing generic area/count coverage; the complete retry tail remains in
+stable descending ProbNet-score order. Nucleus shapes prefer same-class
+instances from the current source patch before using the external instance
+library.
 
 ```bash
 hf download {args.hf_namespace}/pathology-probnet \\
@@ -365,7 +368,12 @@ python scripts/phase4_single_sample_smoke.py --help
             "val_loss": float(checkpoint["val_loss"]),
             "val_metrics": checkpoint.get("val_metrics", {}),
             "runtime_role": "per_pixel_nucleus_placement_score_only",
-            "candidate_queue_policy": "stable_descending_probnet_score",
+            "candidate_queue_policy": (
+                "probnet_score_descending_with_quota_coverage_prefix"
+            ),
+            "quota_coverage_spacing_scale": 0.75,
+            "quota_coverage_max_radius": 48.0,
+            "retry_tail_policy": "stable_descending_probnet_score",
             "count_and_type_policy": "patch_adaptive_density_and_type_quota",
             "shape_policy": (
                 "same_class_reference_without_replacement_then_library"
