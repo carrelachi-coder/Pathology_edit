@@ -69,6 +69,14 @@ DEFAULT_SEGMENTATOR_RELEASE = (
     / "releases"
     / "segmentator_fine_c_epoch2.json"
 )
+DEFAULT_ONLINE_PRODUCT_RELEASE = (
+    REPO_ROOT
+    / "benchmark_configs"
+    / "releases"
+    / "online_agent_product_v1.json"
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -83,6 +91,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference-nuclei-mask", required=True, type=Path)
     parser.add_argument("--target-tissue-mask", required=True, type=Path)
     parser.add_argument("--target-nuclei-mask", required=True, type=Path)
+    parser.add_argument(
+        "--nuclei-generation-log",
+        type=Path,
+        help=(
+            "Cell-stage provenance JSON. When supplied, validate the target "
+            "nuclei against the frozen online product sampling contract."
+        ),
+    )
+    parser.add_argument(
+        "--product-release",
+        type=Path,
+        default=DEFAULT_ONLINE_PRODUCT_RELEASE,
+        help="Online product release manifest defining the nuclei sampling contract.",
+    )
     semantic_region_group = parser.add_mutually_exclusive_group()
     semantic_region_group.add_argument(
         "--semantic-change-region",
@@ -218,6 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     inputs = _load_and_validate_inputs(args)
+    nuclei_generation = _validate_nuclei_generation_contract(args)
     output_dir = args.output.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     semantic_change_region_path = save_change_region(
@@ -263,7 +286,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
-        _validate_generation_runtime(args, mode)
+        generation_mode = _generation_backend_mode(mode)
+        _validate_generation_runtime(args, generation_mode)
         existing_image = attempt_dir / "generated_image.png"
         existing_metadata = attempt_dir / "generation_info.json"
         if (
@@ -283,7 +307,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 metadata=metadata,
             )
         attempt_args = SimpleNamespace(**vars(generation_args))
-        attempt_args.generation_mode = "inpaint" if mode == "inpaint" else "cross-v1"
+        attempt_args.generation_mode = generation_mode
         image_path, metadata = _run_generation_stage(
             args=attempt_args,
             output_dir=attempt_dir,
@@ -441,6 +465,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     summary = workflow.to_metadata()
     summary["generated_image"] = str(final_path) if final_path.exists() else None
+    summary["nuclei_generation"] = nuclei_generation
     summary["online_self_audit"] = {
         "scope": "product_runtime",
         "benchmark_independent": True,
@@ -476,6 +501,88 @@ def main(argv: Sequence[str] | None = None) -> int:
     _write_json(output_dir / "pipeline_summary.json", summary)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0 if workflow.status in {"validated", "noop"} else 2
+
+
+def _generation_backend_mode(agent_mode: str) -> str:
+    if agent_mode == "inpaint":
+        return "inpaint"
+    if agent_mode in {
+        "cross",
+        "cross-v1",
+        "cross-v1-no-ip-pix2pix-v2",
+    }:
+        return "cross-v1"
+    raise ValueError(f"Unsupported agent generation mode: {agent_mode}")
+
+
+def _validate_nuclei_generation_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    release_path = Path(args.product_release)
+    if not release_path.is_file():
+        raise FileNotFoundError(f"Online product release not found: {release_path}")
+    release = json.loads(release_path.read_text(encoding="utf-8"))
+    expected = release["nuclei_generation"]
+    result = {
+        "product_release": str(release_path.resolve()),
+        "release_id": release.get("release_id"),
+        "expected_candidate_queue_policy": expected["candidate_queue_policy"],
+        "expected_checkpoint_sha256": expected["checkpoint_sha256"],
+    }
+    if args.nuclei_generation_log is None:
+        return {
+            **result,
+            "status": "not_provided_legacy_input",
+            "validated": False,
+        }
+
+    log_path = Path(args.nuclei_generation_log)
+    if not log_path.is_file():
+        raise FileNotFoundError(f"Nuclei generation log not found: {log_path}")
+    payload = json.loads(log_path.read_text(encoding="utf-8"))
+    if payload.get("mode") != "probnet":
+        return {
+            **result,
+            "status": "non_probnet_cell_fill",
+            "validated": False,
+            "log": str(log_path.resolve()),
+            "cell_fill_mode": payload.get("mode"),
+        }
+
+    sampling = payload.get("shape_sampling") or {}
+    actual_policy = sampling.get("candidate_queue_policy")
+    if actual_policy != expected["candidate_queue_policy"]:
+        raise ValueError(
+            "Target nuclei candidate queue policy does not match the online "
+            f"product release: {actual_policy!r} != "
+            f"{expected['candidate_queue_policy']!r}"
+        )
+    checkpoint = sampling.get("probnet_release") or {}
+    actual_sha256 = checkpoint.get("sha256")
+    if actual_sha256 != expected["checkpoint_sha256"]:
+        raise ValueError(
+            "Target nuclei ProbNet checkpoint does not match the online "
+            f"product release: {actual_sha256!r} != "
+            f"{expected['checkpoint_sha256']!r}"
+        )
+    if sampling.get("organ_specific_constraints") is not False:
+        raise ValueError(
+            "Target nuclei provenance must explicitly disable organ-specific "
+            "placement constraints."
+        )
+    return {
+        **result,
+        "status": "validated",
+        "validated": True,
+        "log": str(log_path.resolve()),
+        "candidate_queue_policy": actual_policy,
+        "checkpoint_sha256": actual_sha256,
+        "organ_specific_constraints": False,
+        "diagnostics_path": sampling.get("diagnostics_path"),
+        "accepted_center_probability_by_tissue": sampling.get(
+            "accepted_center_probability_by_tissue"
+        ),
+    }
 
 
 def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]:

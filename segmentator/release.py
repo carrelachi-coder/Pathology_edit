@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -44,8 +45,18 @@ def load_segmentator_release(
         raise ValueError(f"Segmentator release must be an object: {release_path}")
     if "segmentator" in payload:
         payload = payload["segmentator"]
-    validate_segmentator_release(payload, verify_checkpoint=verify_checkpoint)
     payload = dict(payload)
+    environment_selector = str(
+        payload.get(
+            "checkpoint_environment_selector",
+            "PATHOLOGY_SEGMENTATOR_CHECKPOINT",
+        )
+    )
+    checkpoint_override = os.environ.get(environment_selector, "").strip()
+    if checkpoint_override:
+        payload["checkpoint"] = checkpoint_override
+    validate_segmentator_release(payload, verify_checkpoint=verify_checkpoint)
+    payload["_checkpoint_environment_selector"] = environment_selector
     payload["_release_path"] = str(release_path)
     payload["_release_sha256"] = sha256_file(release_path)
     return payload

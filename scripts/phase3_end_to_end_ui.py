@@ -2976,11 +2976,13 @@ def run_cell_stage(
     cell_info["target_nuclei_mask"] = str(target_nuclei_path)
     cell_info["gland_structure_policy"] = gland_structure_policy
     cell_info["probnet_release"] = probnet_release
-    (output_dir / "cell_fill_log.json").write_text(_json_text(cell_info), encoding="utf-8")
+    cell_fill_log_path = output_dir / "cell_fill_log.json"
+    cell_fill_log_path.write_text(_json_text(cell_info), encoding="utf-8")
     state.update(
         {
             "target_nuclei_mask": str(target_nuclei_path),
             "cell_fill": cell_info,
+            "cell_fill_log": str(cell_fill_log_path),
             "target_combined_mask": str(combined_path),
             "semantic_change_region": stage_paths["semantic_change_region"],
             "change_region": stage_paths["change_region"],
@@ -3082,6 +3084,11 @@ def _build_online_agent_command(
     segmentator_python = str(runtime.get("segmentator_python") or "").strip()
     if segmentator_python:
         command.extend(["--segmentator-python", segmentator_python])
+    nuclei_generation_log = state.get("cell_fill_log")
+    if nuclei_generation_log:
+        command.extend(
+            ["--nuclei-generation-log", str(nuclei_generation_log)]
+        )
     return command, agent_output_dir
 
 

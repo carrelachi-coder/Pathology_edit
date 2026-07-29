@@ -630,9 +630,32 @@ def _run_probnet_cell_fill(
                 "reference_pool": first.get("reference_pool"),
                 "placed_by_shape_source": first.get("placed_by_shape_source"),
                 "sampling": first.get("shape_sampling"),
+                **_probnet_sampling_contract(first),
                 "diagnostics_path": str(diagnostics_path),
             })
     return _load_uint8_mask(output_nuclei), "probnet_generated", shape_sampling
+
+
+def _probnet_sampling_contract(diagnostics: dict[str, Any]) -> dict[str, Any]:
+    tissues = diagnostics.get("tissues") or {}
+    policies = {
+        str(item["candidate_queue_policy"])
+        for item in tissues.values()
+        if item.get("candidate_queue_policy")
+    }
+    if len(policies) != 1:
+        raise RuntimeError(
+            "ProbNet diagnostics must report one candidate queue policy; "
+            f"found {sorted(policies)}"
+        )
+    return {
+        "candidate_queue_policy": next(iter(policies)),
+        "organ_specific_constraints": False,
+        "accepted_center_probability_by_tissue": {
+            str(tissue_id): item.get("accepted_center_probability")
+            for tissue_id, item in tissues.items()
+        },
+    }
 
 
 def _normalize_probnet_device(device: str | None) -> tuple[str, dict[str, str] | None, str | None]:

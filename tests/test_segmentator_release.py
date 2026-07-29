@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from segmentator.release import (
@@ -38,6 +41,25 @@ class SegmentatorReleaseTests(unittest.TestCase):
         self.assertTrue(kwargs["boundary_refinement"])
         self.assertEqual(kwargs["refinement_gate_mode"], "learned_soft")
         self.assertEqual(kwargs["cellvit_mode"], "teacher")
+
+    def test_checkpoint_path_can_be_overridden_for_hub_deployment(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            checkpoint = Path(temporary_directory) / "segmentator.pt"
+            checkpoint.write_bytes(b"hub-checkpoint")
+            with patch.dict(
+                os.environ,
+                {"PATHOLOGY_SEGMENTATOR_CHECKPOINT": str(checkpoint)},
+            ):
+                release = load_segmentator_release(
+                    RELEASE_PATH,
+                    verify_checkpoint=False,
+                )
+
+        self.assertEqual(release["checkpoint"], str(checkpoint))
+        self.assertEqual(
+            release["_checkpoint_environment_selector"],
+            "PATHOLOGY_SEGMENTATOR_CHECKPOINT",
+        )
 
 
 if __name__ == "__main__":

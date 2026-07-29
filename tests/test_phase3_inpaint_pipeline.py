@@ -10,6 +10,7 @@ from PIL import Image
 from phase3_mask_edit.core.mask_io import save_id_mask
 from phase3_mask_edit.parser.semantic_diff import DEFAULT_SEMANTIC_DIFF
 from scripts.run_phase3_inpaint_pipeline import (
+    _probnet_sampling_contract,
     _select_generation_mode,
     main as run_phase3_inpaint_pipeline,
 )
@@ -37,6 +38,40 @@ def _source_mask() -> np.ndarray:
 
 
 class Phase3InpaintPipelineTests(unittest.TestCase):
+    def test_probnet_contract_is_generic_and_auditable(self):
+        contract = _probnet_sampling_contract(
+            {
+                "tissues": {
+                    "2": {
+                        "candidate_queue_policy": (
+                            "stable_descending_probnet_score"
+                        ),
+                        "accepted_center_probability": {
+                            "median": 0.81,
+                        },
+                    },
+                    "7": {
+                        "candidate_queue_policy": (
+                            "stable_descending_probnet_score"
+                        ),
+                        "accepted_center_probability": {
+                            "median": 0.74,
+                        },
+                    },
+                }
+            }
+        )
+
+        self.assertEqual(
+            contract["candidate_queue_policy"],
+            "stable_descending_probnet_score",
+        )
+        self.assertFalse(contract["organ_specific_constraints"])
+        self.assertEqual(
+            contract["accepted_center_probability_by_tissue"]["7"]["median"],
+            0.74,
+        )
+
     def test_glas_boundary_change_rewrites_the_complete_gland_instance(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

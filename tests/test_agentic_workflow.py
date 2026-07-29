@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,7 +17,9 @@ from controlnet_train.inference.agentic import (
 )
 from controlnet_train.inference.router import route_agentic_edit_request
 from scripts.run_agentic_edit_workflow import (
+    _generation_backend_mode,
     _load_and_validate_inputs,
+    _validate_nuclei_generation_contract,
     build_parser as build_agentic_parser,
     main as run_agentic_cli,
 )
@@ -30,6 +33,65 @@ from controlnet_train.cli.eval_controlnet_flux_cross_v1 import (
 
 
 class AgenticRoutingTests(unittest.TestCase):
+    def test_agent_cross_label_maps_to_production_backend(self):
+        self.assertEqual(
+            _generation_backend_mode("cross-v1-no-ip-pix2pix-v2"),
+            "cross-v1",
+        )
+        self.assertEqual(_generation_backend_mode("inpaint"), "inpaint")
+
+    def test_agent_validates_frozen_probnet_sampling_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            release = root / "release.json"
+            release.write_text(
+                json.dumps(
+                    {
+                        "release_id": "test-release",
+                        "nuclei_generation": {
+                            "candidate_queue_policy": (
+                                "stable_descending_probnet_score"
+                            ),
+                            "checkpoint_sha256": "abc123",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            log = root / "cell_fill_log.json"
+            log.write_text(
+                json.dumps(
+                    {
+                        "mode": "probnet",
+                        "shape_sampling": {
+                            "candidate_queue_policy": (
+                                "stable_descending_probnet_score"
+                            ),
+                            "organ_specific_constraints": False,
+                            "probnet_release": {"sha256": "abc123"},
+                            "diagnostics_path": "/tmp/diagnostics.json",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = type(
+                "Args",
+                (),
+                {
+                    "product_release": release,
+                    "nuclei_generation_log": log,
+                },
+            )()
+
+            result = _validate_nuclei_generation_contract(args)
+
+            self.assertTrue(result["validated"])
+            self.assertEqual(
+                result["candidate_queue_policy"],
+                "stable_descending_probnet_score",
+            )
+
     def test_compact_local_edit_routes_to_inpaint(self):
         reference = np.ones((32, 32), dtype=np.uint8)
         target = reference.copy()

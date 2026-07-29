@@ -77,6 +77,7 @@ class OnlineProductIntegrationTests(unittest.TestCase):
             "target_nuclei_mask": "/tmp/target_nuclei.png",
             "semantic_change_region": "/tmp/semantic.png",
             "change_region": "/tmp/generation.png",
+            "cell_fill_log": "/tmp/ui-run/cell_fill_log.json",
             "verification_runtime": {
                 "segmentator_env": "segmentator-env",
                 "segmentator_release": "/tmp/segmentator-release.json",
@@ -116,6 +117,10 @@ class OnlineProductIntegrationTests(unittest.TestCase):
         self.assertEqual(value("--cellvit-script"), "/tmp/cellvit-wrapper.py")
         self.assertEqual(value("--cellvit-python"), "/tmp/cellvit-python")
         self.assertEqual(value("--pix2pix-checkpoint"), "/tmp/pix2pix_epoch26_step214895.pt")
+        self.assertEqual(
+            value("--nuclei-generation-log"),
+            "/tmp/ui-run/cell_fill_log.json",
+        )
         self.assertEqual(output_dir, Path("/tmp/ui-run/agentic_generation"))
 
     def test_online_defaults_use_the_frozen_mask_model_and_linux_cellvit_release(self):
