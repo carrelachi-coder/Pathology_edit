@@ -1,0 +1,75 @@
+schema_version: 1
+status: engineering_interface_freeze
+
+segmentator_release: benchmark_configs/releases/segmentator_fine_c_epoch2.json
+
+evaluation_frame:
+  image_size: [512, 512]
+  mpp: 0.25
+  semantic_region_policy: source_target_mask_difference
+  boundary_radius_pixels: 4
+
+fine_policy:
+  supported_profiles: [bcss, glas, panda]
+  unsupported:
+    bcss: [14]
+  unsupported_dcis_status: unsupported_dcis
+  other_profiles_status: not_applicable
+
+confidence_policy:
+  status: calibration_required
+  top1_probability_min: null
+  top1_top2_margin_min: null
+  normalized_entropy_max: null
+
+evaluator_clean_policy:
+  status: calibration_required
+  source_region_accuracy_min: null
+  source_class_recall_min: null
+  source_mean_normalized_entropy_max: null
+  source_boundary_f1_4_min: null
+  stratification: organ_and_source_class_with_pooled_fallback
+
+verifier_gates:
+  status: pilot_not_formal
+  changed_region_accuracy_min: 0.70
+  changed_region_macro_iou_min: 0.55
+  cross_preservation_drift_u_far_max: 0.08
+  nuclei_occupied_area_relative_error_max: 0.35
+  formal_validated_status_enabled: false
+
+online_self_audit:
+  scope: product_runtime
+  implementation: phase3_mask_edit/audit
+  benchmark_independent: true
+  p0:
+    enabled: true
+    exports: [coarse_probability, coarse_confidence, coarse_entropy, fine_probability, fine_entropy]
+  p1:
+    policy_id: conservative-island-p1-v1
+    status: canary_candidate
+    runtime_mode: shadow
+    online_weight_adaptation: false
+    max_component_pixels: 16
+    boundary_protection_radius_pixels: 4
+    max_changed_fraction: 0.0005
+    enforce_requires: [disjoint_60_condition_calibration, blinded_visual_review]
+
+online_agent_canary:
+  role: validate_product_loop_without_changing_behavior
+  condition_count: 18
+  manifest: /data1/zhao/wqx/benchmark_v1/g2_online_agent_canary_v1/manifests/online_agent_canary_18.jsonl
+  output_root: /data1/zhao/wqx/benchmark_v1/g2_online_agent_canary_v1
+  coverage:
+    organs: 6
+    route_strata: [inpaint, gray, cross]
+    conditions_per_stratum: 6
+  can_tune_scientific_thresholds: false
+  can_enable_p1_enforce: false
+
+reporting:
+  primary: all_cases
+  sensitivities:
+    - evaluator_clean
+    - evaluator_uncertain_audit
+  uncertainty_is_generator_failure: false

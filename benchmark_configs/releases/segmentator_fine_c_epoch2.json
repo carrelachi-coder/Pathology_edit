@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "release_id": "segmentator-fine-c-joint-epoch2-v1",
+  "release_status": "engineering_frozen_pending_independent_doctor_review",
+  "formal_publication_ready": false,
+  "publication_blockers": [
+    "code_commit must be filled after the release implementation is committed",
+    "independent doctor-reviewed TCGA report path and SHA256 are not yet available",
+    "G2 verifier thresholds still require blinded calibration"
+  ],
+  "checkpoint": "/data1/zhao/wqx/segmentator_fine/fine_boundary_teacher_joint_seed42/best_composite.pt",
+  "checkpoint_size_bytes": 2820003238,
+  "checkpoint_sha256": "ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34",
+  "code_commit": null,
+  "decoder": "mask2former",
+  "architecture": {
+    "num_classes": 8,
+    "mask2former_queries": 100,
+    "mask2former_ignore_index": 255,
+    "hierarchical_fine": true,
+    "boundary_refinement": true,
+    "refinement_gate_mode": "learned_soft",
+    "symmetric_padding": false,
+    "cellvit_mode": "teacher",
+    "fine_supported_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      15
+    ]
+  },
+  "runtime": {
+    "local_repo": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h",
+    "runtime_inputs": "image_only",
+    "cellvit_required_at_inference": false,
+    "strict_checkpoint_load": true
+  },
+  "input": {
+    "image_size": [
+      512,
+      512
+    ],
+    "mpp": 0.25,
+    "color_mode": "RGB",
+    "normalization": {
+      "id": "imagenet-rgb-v1",
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "padding": {
+      "id": "mask2former-reflect-right-bottom-align56-v1",
+      "alignment": 56,
+      "mode": "reflect",
+      "symmetric": false
+    }
+  },
+  "output": {
+    "coarse_class_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "coarse_probability_layout": "CHW",
+    "entropy": "normalized_shannon_log_k",
+    "fine_entropy": "normalized_shannon_log_dataset_allowed_children_per_parent",
+    "save_argmax_png": true,
+    "save_probability_npz": true,
+    "save_entropy_npy": true,
+    "fine_output_policy": "dataset_constrained",
+    "fine_metric_unsupported_ids": {
+      "bcss": [
+        14
+      ]
+    }
+  },
+  "metric_contract": {
+    "coarse": "dataset_native_annotated_biological_classes_excluding_background_and_other",
+    "fine": "supported_dataset_native_classes_only_excluding_dcis",
+    "validation": {
+      "coarse_dataset_macro_miou": 0.691264,
+      "pooled_unified_miou_diagnostic": 0.61982,
+      "fine_dataset_macro_miou": 0.669412,
+      "boundary_f1_2": 0.413745,
+      "boundary_f1_4": 0.520756,
+      "boundary_f1_8": 0.637244,
+      "hd95": 80.6823
+    },
+    "held_out_internal_test": {
+      "coarse_dataset_macro_miou": 0.627313,
+      "fine_dataset_macro_miou": 0.601549,
+      "description": "grouped held-out internal patch test; not external validation or a uniform full-WSI cohort"
+    }
+  },
+  "validation_report": {
+    "path": "docs/segmentator_fine_validation.md",
+    "sha256": "abd204ccbcfba88fb862bf5a6f826683ffd564b61609cd6c80f68b774aa621a1"
+  },
+  "safety_fallback": {
+    "checkpoint": "/data1/zhao/wqx/segmentator_fine/fine_cellvit_teacher_v2_seed42/best_composite.pt",
+    "selection": "manual_only"
+  }
+}

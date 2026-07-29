@@ -222,14 +222,18 @@ class BoundaryRefinementHead(nn.Module):
         hidden_channels: int = 64,
         gate_width: int = 4,
         gate_threshold: float = 0.15,
+        gate_mode: str = "hard",
     ) -> None:
         super().__init__()
         if gate_width < 1:
             raise ValueError("gate_width must be positive")
         if not 0.0 <= gate_threshold < 1.0:
             raise ValueError("gate_threshold must be in [0, 1)")
+        if gate_mode not in {"hard", "learned_soft"}:
+            raise ValueError(f"unsupported boundary gate mode: {gate_mode}")
         self.gate_width = gate_width
         self.gate_threshold = gate_threshold
+        self.gate_mode = gate_mode
         self.image_stem = nn.Sequential(
             nn.Conv2d(3, hidden_channels, 3, stride=2, padding=1, bias=False),
             nn.GroupNorm(8, hidden_channels),
@@ -250,6 +254,19 @@ class BoundaryRefinementHead(nn.Module):
         )
         nn.init.zeros_(self.fuse[-1].weight)
         nn.init.zeros_(self.fuse[-1].bias)
+        self.gate_predictor = (
+            nn.Sequential(
+                nn.Conv2d(hidden_channels * 2, hidden_channels // 2, 3, padding=1, bias=False),
+                nn.GroupNorm(8, hidden_channels // 2),
+                nn.GELU(),
+                nn.Conv2d(hidden_channels // 2, 1, 1),
+            )
+            if gate_mode == "learned_soft"
+            else None
+        )
+        if self.gate_predictor is not None:
+            nn.init.zeros_(self.gate_predictor[-1].weight)
+            nn.init.constant_(self.gate_predictor[-1].bias, -2.0)
         self.residual_scale = nn.Parameter(torch.tensor(1.0))
 
     def boundary_gate(self, logits: torch.Tensor) -> torch.Tensor:
@@ -273,14 +290,31 @@ class BoundaryRefinementHead(nn.Module):
         image: torch.Tensor,
         logits: torch.Tensor,
         *,
-        return_gate: bool = False,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        return_gate: bool | str = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         image_features = self.image_stem(image)
-        logit_features = self.logit_projection(F.interpolate(logits, size=image_features.shape[-2:], mode="bilinear", align_corners=False))
-        residual = self.fuse(torch.cat([image_features, logit_features], dim=1))
+        logit_features = self.logit_projection(
+            F.interpolate(logits, size=image_features.shape[-2:], mode="bilinear", align_corners=False)
+        )
+        fused_input = torch.cat([image_features, logit_features], dim=1)
+        residual = self.fuse(fused_input)
         residual = F.interpolate(residual, size=logits.shape[-2:], mode="bilinear", align_corners=False)
-        gate = self.boundary_gate(logits)
+        semantic_gate = self.boundary_gate(logits)
+        gate_logits = None
+        if self.gate_predictor is not None:
+            gate_logits = self.gate_predictor(fused_input)
+            gate_logits = F.interpolate(
+                gate_logits,
+                size=logits.shape[-2:],
+                mode="bilinear",
+                align_corners=False,
+            )
+            gate = torch.maximum(semantic_gate, gate_logits.sigmoid())
+        else:
+            gate = semantic_gate
         refined = logits + self.residual_scale * gate * residual
+        if return_gate == "details":
+            return refined, gate, gate_logits
         return (refined, gate) if return_gate else refined
 
 
@@ -322,6 +356,8 @@ class CellPriorEncoder(nn.Module):
             nn.GELU(),
             nn.Conv2d(64, out_channels, 3, padding=1),
         )
+        nn.init.zeros_(self.net[-1].weight)
+        nn.init.zeros_(self.net[-1].bias)
 
     def forward(self, density: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
         density = F.interpolate(density, size=size, mode="bilinear", align_corners=False)
@@ -586,6 +622,9 @@ class BaselineSegmenter(nn.Module):
         refinement_consistency_weight: float = 0.0,
         refinement_gate_width: int = 4,
         refinement_gate_threshold: float = 0.15,
+        refinement_gate_mode: str = "hard",
+        refinement_gate_loss_weight: float = 0.0,
+        refinement_gate_target_width: int = 8,
         cellvit_mode: str = "none",
         cell_prior_dropout: float = 0.2,
         cell_aux_loss_weight: float = 0.2,
@@ -606,6 +645,9 @@ class BaselineSegmenter(nn.Module):
         self.refinement_boundary_ce_weight = refinement_boundary_ce_weight
         self.refinement_consistency_weight = refinement_consistency_weight
         self.refinement_gate_width = refinement_gate_width
+        self.refinement_gate_mode = refinement_gate_mode
+        self.refinement_gate_loss_weight = refinement_gate_loss_weight
+        self.refinement_gate_target_width = refinement_gate_target_width
         self.cellvit_mode = cellvit_mode
         self.cell_prior_dropout = cell_prior_dropout
         self.cell_aux_loss_weight = cell_aux_loss_weight
@@ -623,6 +665,10 @@ class BaselineSegmenter(nn.Module):
             raise ValueError("fine_only_loss requires hierarchical_fine")
         if refinement_only_loss and not boundary_refinement:
             raise ValueError("refinement_only_loss requires boundary_refinement")
+        if refinement_gate_loss_weight < 0:
+            raise ValueError("refinement_gate_loss_weight must be non-negative")
+        if refinement_gate_target_width < 1:
+            raise ValueError("refinement_gate_target_width must be positive")
         if fine_only_loss and refinement_only_loss:
             raise ValueError("fine_only_loss and refinement_only_loss are mutually exclusive")
         if cellvit_mode not in {"none", "teacher", "input"}:
@@ -649,6 +695,7 @@ class BaselineSegmenter(nn.Module):
                 num_classes,
                 gate_width=refinement_gate_width,
                 gate_threshold=refinement_gate_threshold,
+                gate_mode=refinement_gate_mode,
             )
             if boundary_refinement
             else None
@@ -891,9 +938,14 @@ class BaselineSegmenter(nn.Module):
                 logits = self.decoder(feats, x.shape[-2:])
             if logits.shape[-2:] != x.shape[-2:]:
                 logits = F.interpolate(logits, size=x.shape[-2:], mode="bilinear", align_corners=False)
-            refined_logits, refinement_gate = self.refinement_head(x, logits, return_gate=True)
+            refined_logits, refinement_gate, refinement_gate_logits = self.refinement_head(
+                x,
+                logits,
+                return_gate="details",
+            )
             from .losses import (
                 boundary_band_cross_entropy,
+                boundary_gate_supervision_loss,
                 multi_scale_soft_boundary_loss,
                 outside_boundary_consistency_loss,
                 segmentation_loss,
@@ -928,10 +980,22 @@ class BaselineSegmenter(nn.Module):
                 target,
                 ignore_index=ignore_index,
             )
+            refine_gate = (
+                boundary_gate_supervision_loss(
+                    refinement_gate_logits,
+                    target,
+                    self.num_classes,
+                    width=self.refinement_gate_target_width,
+                    ignore_index=ignore_index,
+                )
+                if refinement_gate_logits is not None
+                else refined_logits.reshape(-1)[0] * 0.0
+            )
             losses["loss_refine_semantic"] = refine_losses["total"] * self.refinement_loss_weight
             losses["loss_refine_boundary"] = refine_boundary * self.refinement_boundary_weight
             losses["loss_refine_boundary_ce"] = refine_boundary_ce * self.refinement_boundary_ce_weight
             losses["loss_refine_consistency"] = refine_consistency * self.refinement_consistency_weight
+            losses["loss_refine_gate"] = refine_gate * self.refinement_gate_loss_weight
             losses["refinement_gate_mean"] = refinement_gate.detach().mean()
             total = (
                 total
@@ -939,6 +1003,7 @@ class BaselineSegmenter(nn.Module):
                 + losses["loss_refine_boundary"]
                 + losses["loss_refine_boundary_ce"]
                 + losses["loss_refine_consistency"]
+                + losses["loss_refine_gate"]
             )
 
         fine_features = self._fine_branch_features(feats)

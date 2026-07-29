@@ -75,20 +75,23 @@ The frozen policy above matches the defaults in `inpaint_cells/generate.py`,
 the current `run_phase3_inpaint_pipeline.py` default, and the explicit
 epoch-29 visual/final endpoint invocation.
 
-Two older wrapper families are not production-authoritative:
+The older shell/profile wrapper family is not production-authoritative:
 
 - `inpaint_cells/configs/generation_profiles.json` and
   `scripts/phase4_probnet_workflow*.sh` still contain pre-freeze
   profile-specific values for `prob_count_weight`, `density_scale`, gamma
-  lists, and density-scale JSON files;
-- `scripts/phase3_end_to_end_ui.py` still auto-fills a profile-specific
-  `density_scale_{profile}.json` and currently falls back to gamma `1.0`.
+  lists, and density-scale JSON files.
 
 Those JSON files are profile/organ-specific rather than BCSS-global, but they
 are legacy calibration multipliers. Passing one multiplies the patch-adaptive
-density scale after `compute_patch_adaptive_priors`, so these wrappers are
-excluded from the frozen endpoint until their defaults are aligned. They must
-not be used to claim that the policy in this document was executed.
+density scale after `compute_patch_adaptive_priors`, so those shell wrappers
+are excluded from the frozen endpoint until their defaults are aligned. They
+must not be used to claim that the policy in this document was executed.
+
+The online product entrypoint `scripts/phase3_end_to_end_ui.py` is aligned with
+the frozen endpoint: it pins the epoch-29 checkpoint by SHA256, uses gamma
+`1.5`, leaves `density_scale_json` unset, and delegates agentic generation and
+verification to `scripts/run_agentic_edit_workflow.py`.
 
 ## Frozen Sampling Policy
 
@@ -153,8 +156,12 @@ local_density_direct_min_count = 10
 minimum_mask_width = 33
 component_quota_policy = area_largest_remainder
 backfill_failed_placements = true
-retry_candidate_multiplier = 8
-retry_candidate_floor = 32
+retry_candidate_multiplier = 12
+retry_candidate_floor = 64
+dense_retry_quota_threshold = 20
+dense_retry_occupancy_threshold = 0.12
+dense_retry_candidate_multiplier = 24
+dense_retry_candidate_floor = 128
 max_nucleus_overlap_fraction = 0.0
 ```
 
@@ -218,6 +225,9 @@ image audit verified that every output points to this nuclei bank and uses
 `inpaint_change_region.png` as the common generation support. The global path
 also verified Cross V1 without UNI or IP-Adapter and the orientation-adjusted
 full-pyramid pix2pix checkpoint at epoch 26 / step 214895.
+For reproduction, this pix2pix artifact must be selected explicitly through
+`PATHOLOGY_PIX2PIX_CHECKPOINT`; historical filenames and default code paths are
+not authoritative production selectors.
 
 The completed run, audits, fresh UNI-2h/CONCH caches, dose-response reports, and
 combined feature-space figure are stored at:

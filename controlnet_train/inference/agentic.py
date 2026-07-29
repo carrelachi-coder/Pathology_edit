@@ -262,6 +262,7 @@ def verify_mask_fidelity(
     reference_tissue_mask: np.ndarray,
     target_tissue_mask: np.ndarray,
     predicted_tissue_mask: np.ndarray,
+    source_predicted_tissue_mask: np.ndarray | None = None,
     change_region: np.ndarray,
     target_nuclei_mask: np.ndarray | None = None,
     predicted_nuclei_mask: np.ndarray | None = None,
@@ -280,8 +281,19 @@ def verify_mask_fidelity(
     reference = np.asarray(reference_tissue_mask)
     target = np.asarray(target_tissue_mask)
     predicted = np.asarray(predicted_tissue_mask)
+    source_predicted = (
+        reference
+        if source_predicted_tissue_mask is None
+        else np.asarray(source_predicted_tissue_mask)
+    )
     change = np.asarray(change_region, dtype=bool)
-    if not (reference.shape == target.shape == predicted.shape == change.shape):
+    if not (
+        reference.shape
+        == target.shape
+        == predicted.shape
+        == source_predicted.shape
+        == change.shape
+    ):
         raise ValueError("Tissue masks and change_region must have identical shapes.")
     changed_count = int(np.count_nonzero(change))
     changed_accuracy = (
@@ -289,7 +301,7 @@ def verify_mask_fidelity(
     )
     outside = ~change
     off_target_drift = (
-        float(np.mean(predicted[outside] != reference[outside]))
+        float(np.mean(predicted[outside] != source_predicted[outside]))
         if np.any(outside)
         else 0.0
     )
@@ -299,6 +311,23 @@ def verify_mask_fidelity(
         "changed_region_macro_iou": macro_iou,
         "off_target_drift": off_target_drift,
     }
+    if source_predicted_tissue_mask is not None:
+        no_edit_accuracy = (
+            float(np.mean(source_predicted[change] == target[change]))
+            if changed_count
+            else 1.0
+        )
+        no_edit_macro_iou = _macro_iou(
+            target, source_predicted, region=change
+        )
+        metrics.update(
+            {
+                "no_edit_changed_region_accuracy": no_edit_accuracy,
+                "target_gain_accuracy": changed_accuracy - no_edit_accuracy,
+                "no_edit_changed_region_macro_iou": no_edit_macro_iou,
+                "target_gain_macro_iou": macro_iou - no_edit_macro_iou,
+            }
+        )
     failed = []
     if changed_accuracy < thresholds.changed_region_accuracy_min:
         failed.append("changed_region_accuracy")
@@ -338,7 +367,10 @@ def verify_mask_fidelity(
 def _macro_iou(target: np.ndarray, predicted: np.ndarray, *, region: np.ndarray) -> float:
     if not np.any(region):
         return 1.0
-    labels = np.unique(target[region])
+    labels = np.union1d(
+        np.unique(target[region]),
+        np.unique(predicted[region]),
+    )
     scores = []
     for label in labels:
         target_label = (target == label) & region

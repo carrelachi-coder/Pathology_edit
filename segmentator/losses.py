@@ -167,6 +167,45 @@ def boundary_band_cross_entropy(
     return losses[band].mean()
 
 
+def boundary_gate_supervision_loss(
+    gate_logits: torch.Tensor,
+    target: torch.Tensor,
+    num_classes: int,
+    width: int = 8,
+    ignore_index: int = 255,
+    max_positive_weight: float = 10.0,
+) -> torch.Tensor:
+    """Teach a learned gate to cover true boundary neighborhoods without flooding interiors."""
+    if gate_logits.ndim != 4 or gate_logits.shape[1] != 1:
+        raise ValueError("gate logits must have shape [B, 1, H, W]")
+    if gate_logits.shape[-2:] != target.shape[-2:]:
+        gate_logits = F.interpolate(
+            gate_logits,
+            size=target.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
+        )
+    band = target_boundary_band(
+        target,
+        num_classes,
+        width=width,
+        ignore_index=ignore_index,
+    )
+    valid = target != ignore_index
+    if not valid.any() or not band.any():
+        return gate_logits.reshape(-1)[0] * 0.0
+    positive = band[valid].sum().to(gate_logits.dtype)
+    negative = valid.sum().to(gate_logits.dtype) - positive
+    positive_weight = (negative / positive.clamp_min(1.0)).clamp(1.0, max_positive_weight)
+    losses = F.binary_cross_entropy_with_logits(
+        gate_logits.squeeze(1),
+        band.to(gate_logits.dtype),
+        reduction="none",
+        pos_weight=positive_weight,
+    )
+    return losses[valid].mean()
+
+
 def outside_boundary_consistency_loss(
     refined_logits: torch.Tensor,
     base_logits: torch.Tensor,

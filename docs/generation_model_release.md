@@ -3,6 +3,25 @@
 This document pins the private inference artifacts used by the production
 pathology edit workflow. The private Hub namespace is `Qinxin11`.
 
+## Authoritative production pix2pix pin
+
+`PATHOLOGY_PIX2PIX_CHECKPOINT` is the **only authoritative runtime selector**
+for the production pix2pix postprocessor. Every production and formal
+benchmark job must set it explicitly to the packaged orientation-adjusted
+artifact:
+
+```bash
+export PATHOLOGY_PIX2PIX_CHECKPOINT=/models/pathology-cross-v1-pix2pix/pix2pix/pix2pix_epoch26_step214895.pt
+```
+
+The resolved checkpoint must report epoch `26`, global step `214895`, trust
+gate `nuclei_reference_support_v2`, and SHA256
+`be5fe9376efdb5620a57481082f6d5738b6353796fb00fe6e58f6b212ba7c2ac`.
+Do not infer the production version from a historical run-directory name, the
+local source filename `pilot_step001000.pt`, an epoch-25 baseline reference, or
+the Python fallback in `model_paths.py`. Those are implementation/provenance
+details and cannot override `PATHOLOGY_PIX2PIX_CHECKPOINT`.
+
 ## Current frozen nuclei-inference override
 
 The local production default for nuclei generation now supersedes the
@@ -24,7 +43,7 @@ runtime sampling contract.
 | Private repository | Contents | Source |
 | --- | --- | --- |
 | `Qinxin11/pathology-inpaint-controlnet` | FLUX ControlNet config, inference safetensors, Phase 5 conditioning | `/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_inpaint_all` |
-| `Qinxin11/pathology-cross-v1-pix2pix` | Cross V1 no-IP/no-UNI export and pix2pix epoch 26 / step 214895 | `/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1` and `/data/wqx/flowedit/pix2pix_texture_transfer_lazy_ver4_wsi_identity_i0_local_full_pyramid_v3_ft/ckpt/pilot_step001000.pt` |
+| `Qinxin11/pathology-cross-v1-pix2pix` | Cross V1 no-IP/no-UNI export and pix2pix epoch 26 / step 214895 | `/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/controlnet_cross_v1` and the provenance-only source `/data/wqx/flowedit/pix2pix_texture_transfer_lazy_ver4_wsi_identity_i0_local_full_pyramid_v3_ft/ckpt/pilot_step001000.pt`; production runtime selection still comes exclusively from `PATHOLOGY_PIX2PIX_CHECKPOINT` |
 | `Qinxin11/pathology-probnet` | ProbNet `best.pt` plus generation/density configs | `/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/checkpoints/best.pt` |
 
 The release excludes FLUX.1-dev, UNI, IP-Adapter weights, optimizer/scheduler

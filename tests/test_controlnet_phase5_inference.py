@@ -1,5 +1,8 @@
 import json
+import hashlib
+import os
 import shutil
+import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -22,6 +25,11 @@ from controlnet_train.inference import (
     route_edit_request,
 )
 from controlnet_train.inference.torch_compat import install_sdpa_enable_gqa_compat
+from controlnet_train.inference.model_paths import (
+    DEFAULT_PIX2PIX_CHECKPOINT,
+    validate_frozen_probnet_checkpoint,
+    validate_production_pix2pix_checkpoint,
+)
 
 _TMP_ROOT = Path.cwd() / ".tmp_testdata"
 _TMP_ROOT.mkdir(exist_ok=True)
@@ -45,6 +53,79 @@ class TorchCompatibilityTests(unittest.TestCase):
 
         self.assertIs(result, query)
         self.assertNotIn("enable_gqa", calls[0])
+
+
+class ProductionPix2pixReleaseTests(unittest.TestCase):
+    def test_default_checkpoint_is_packaged_orientation_release(self):
+        self.assertTrue(
+            DEFAULT_PIX2PIX_CHECKPOINT.endswith(
+                "pathology-cross-v1-pix2pix/pix2pix/"
+                "pix2pix_epoch26_step214895.pt"
+            )
+        )
+
+    def test_validator_requires_orientation_and_nuclei_trust_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint_path = Path(tmp) / "pix2pix.pt"
+            torch.save(
+                {
+                    "epoch": 26,
+                    "global_step": 214895,
+                    "args": {
+                        "cross4_texture_steering": True,
+                        "cross4_steering_reference_mode": "local_histogram",
+                        "cross4_steering_scales": "1/1,1/2,1/4,1/8,1/16",
+                        "full_pyramid_texture_steering": True,
+                        "highres_nuclei_trust_enabled": True,
+                        "wsi_identity_adapter": True,
+                    },
+                },
+                checkpoint_path,
+            )
+            sha256 = hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
+            with patch(
+                "controlnet_train.inference.model_paths.PRODUCTION_PIX2PIX_SHA256",
+                sha256,
+            ):
+                release = validate_production_pix2pix_checkpoint(
+                    checkpoint_path,
+                    require_environment_selector=False,
+                )
+
+            self.assertEqual(
+                release["orientation_policy"],
+                "full_pyramid_local_histogram",
+            )
+            self.assertEqual(
+                release["nuclei_reference_policy"],
+                "nuclei_reference_support_v2",
+            )
+
+    def test_online_validator_requires_authoritative_environment_selector(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "PATHOLOGY_PIX2PIX_CHECKPOINT must explicitly select",
+            ):
+                validate_production_pix2pix_checkpoint("/tmp/not-selected.pt")
+
+
+class FrozenProbnetReleaseTests(unittest.TestCase):
+    def test_validator_pins_epoch29_spatial_sampler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint_path = Path(tmp) / "probnet.pt"
+            checkpoint_path.write_bytes(b"frozen-probnet")
+            sha256 = hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
+            with patch(
+                "controlnet_train.inference.model_paths.FROZEN_PROBNET_SHA256",
+                sha256,
+            ):
+                release = validate_frozen_probnet_checkpoint(checkpoint_path)
+
+            self.assertEqual(
+                release["policy"],
+                "frozen_epoch29_patch_adaptive_spatial_sampling_v1",
+            )
 
 
 def _write_rgb(path: Path, value: int) -> None:
@@ -120,6 +201,72 @@ class PromptResolutionTests(unittest.TestCase):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_explicit_generation_region_controls_inpaint_without_changing_route(self):
+        tmpdir = _TMP_ROOT / f"phase54_{uuid.uuid4().hex}"
+        try:
+            reference_image = tmpdir / "reference.png"
+            reference_tissue = tmpdir / "reference_tissue.png"
+            reference_nuclei = tmpdir / "reference_nuclei.png"
+            target_tissue = tmpdir / "target_tissue.png"
+            target_nuclei = tmpdir / "target_nuclei.png"
+            generation_region = tmpdir / "generation_region.png"
+            output_dir = tmpdir / "outputs"
+
+            source = np.full((8, 8), 1, dtype=np.uint8)
+            target = source.copy()
+            target[3, 3] = 2
+            wider_region = np.zeros((8, 8), dtype=np.uint8)
+            wider_region[2:5, 2:5] = 255
+            _write_rgb(reference_image, 32)
+            _write_mask(reference_tissue, source)
+            _write_mask(reference_nuclei, np.zeros((8, 8), dtype=np.uint8))
+            _write_mask(target_tissue, target)
+            _write_mask(target_nuclei, np.zeros((8, 8), dtype=np.uint8))
+            _write_mask(generation_region, wider_region)
+
+            calls = {}
+
+            def fake_inpaint_runner(bundle, inputs, prompt, change_region_mask):
+                calls["mask_sum"] = float(change_region_mask.sum().item())
+                return Image.new("RGB", (8, 8), color=(12, 34, 56))
+
+            result = run_edit_pipeline(
+                inputs=EditPipelineInputs(
+                    reference_image=reference_image,
+                    reference_tissue_mask=reference_tissue,
+                    reference_nuclei_mask=reference_nuclei,
+                    target_tissue_mask=target_tissue,
+                    target_nuclei_mask=target_nuclei,
+                    output_dir=output_dir,
+                    generation_change_region=generation_region,
+                    force_mode="inpaint",
+                ),
+                inpaint_bundle=object(),
+                cross_bundle=object(),
+                inpaint_runner=fake_inpaint_runner,
+                cross_runner=lambda *args, **kwargs: Image.new("RGB", (8, 8)),
+            )
+
+            self.assertEqual(float(result.change_region_mask.sum().item()), 1.0)
+            self.assertEqual(
+                float(result.generation_change_region_mask.sum().item()),
+                9.0,
+            )
+            self.assertEqual(calls["mask_sum"], 9.0)
+            summary = json.loads(
+                (output_dir / "run_summary.json").read_text(encoding="utf8")
+            )
+            self.assertAlmostEqual(summary["semantic_change_ratio"], 1 / 64)
+            self.assertAlmostEqual(summary["generation_change_ratio"], 9 / 64)
+            self.assertTrue(
+                (output_dir / "semantic_change_region_mask.png").exists()
+            )
+            self.assertTrue(
+                (output_dir / "generation_change_region_mask.png").exists()
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def test_run_edit_pipeline_uses_inpaint_runner_and_writes_summary(self):
         tmpdir = _TMP_ROOT / f"phase54_{uuid.uuid4().hex}"
         try:

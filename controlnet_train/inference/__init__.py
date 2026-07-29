@@ -14,6 +14,13 @@ from .model_paths import (
     DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
     DEFAULT_PROBNET_CHECKPOINT,
+    FROZEN_PROBNET_SHA256,
+    PRODUCTION_PIX2PIX_ENV,
+    PRODUCTION_PIX2PIX_EPOCH,
+    PRODUCTION_PIX2PIX_GLOBAL_STEP,
+    PRODUCTION_PIX2PIX_SHA256,
+    validate_frozen_probnet_checkpoint,
+    validate_production_pix2pix_checkpoint,
 )
 from .router import (
     AgenticRouteFeatures,
@@ -49,6 +56,11 @@ __all__ = [
     "DEFAULT_INPAINT_CHECKPOINT",
     "DEFAULT_PIX2PIX_CHECKPOINT",
     "DEFAULT_PROBNET_CHECKPOINT",
+    "FROZEN_PROBNET_SHA256",
+    "PRODUCTION_PIX2PIX_ENV",
+    "PRODUCTION_PIX2PIX_EPOCH",
+    "PRODUCTION_PIX2PIX_GLOBAL_STEP",
+    "PRODUCTION_PIX2PIX_SHA256",
     "EditPipelineInputs",
     "EditPipelineResult",
     "EditRoutingConfig",
@@ -69,5 +81,7 @@ __all__ = [
     "run_agentic_workflow",
     "run_edit_pipeline",
     "run_inpaint_bundle",
+    "validate_frozen_probnet_checkpoint",
+    "validate_production_pix2pix_checkpoint",
     "verify_mask_fidelity",
 ]

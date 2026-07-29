@@ -21,6 +21,7 @@ from controlnet_train.inference.agentic import (
     AgenticWorkflowConfig,
     FidelityThresholds,
     GenerationArtifact,
+    VerificationResult,
     run_agentic_workflow,
     verify_mask_fidelity,
 )
@@ -29,8 +30,24 @@ from controlnet_train.inference.model_paths import (
     DEFAULT_CROSS_V1_CHECKPOINT,
     DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
+    validate_production_pix2pix_checkpoint,
 )
-from phase3_mask_edit.core.mask_io import load_change_region, load_id_mask
+from phase3_mask_edit.core.mask_io import (
+    load_change_region,
+    load_id_mask,
+    save_change_region,
+    save_id_mask,
+)
+from phase3_mask_edit.audit import (
+    OnlineAuditPolicy,
+    OnlineSemanticAuditor,
+    SemanticPrediction,
+    dataset_native_metric_class_ids,
+    profile_supports_fine,
+    source_evaluator_quality,
+    to_coarse_mask,
+)
+from segmentator.release import load_segmentator_release
 from scripts.run_phase3_inpaint_pipeline import (
     _load_rgb_image,
     _load_uint8_mask,
@@ -41,9 +58,11 @@ from scripts.run_phase3_inpaint_pipeline import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PRETRAINED_MODEL = "/data/huggingface/FLUX.1-dev"
-DEFAULT_SEGMENTATOR_CHECKPOINT = (
-    "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/segmentator_runs/"
-    "stage4_mask2former_multidataset_a800_v2/best_mIoU.pt"
+DEFAULT_SEGMENTATOR_RELEASE = (
+    REPO_ROOT
+    / "benchmark_configs"
+    / "releases"
+    / "segmentator_fine_c_epoch2.json"
 )
 DEFAULT_CELLVIT_ROOT = (
     "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/"
@@ -68,10 +87,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference-nuclei-mask", required=True, type=Path)
     parser.add_argument("--target-tissue-mask", required=True, type=Path)
     parser.add_argument("--target-nuclei-mask", required=True, type=Path)
-    parser.add_argument(
+    semantic_region_group = parser.add_mutually_exclusive_group()
+    semantic_region_group.add_argument(
+        "--semantic-change-region",
+        type=Path,
+        help=(
+            "Binary region used by the verifier; defaults to "
+            "reference_tissue != target_tissue."
+        ),
+    )
+    semantic_region_group.add_argument(
         "--change-region",
         type=Path,
-        help="Optional binary change mask; defaults to reference_tissue != target_tissue.",
+        help=(
+            "Deprecated alias for --semantic-change-region. Retained for "
+            "backward compatibility."
+        ),
+    )
+    parser.add_argument(
+        "--generation-change-region",
+        type=Path,
+        help=(
+            "Binary region erased/conditioned by the generator. Defaults to the "
+            "semantic change region and may be a wider superset for GlaS or thin edits."
+        ),
     )
     parser.add_argument("--output", required=True, type=Path)
 
@@ -87,17 +126,67 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--color-match", choices=("none", "lab"), default="lab")
-
     parser.add_argument("--t-inpaint", type=float, default=0.12)
     parser.add_argument("--t-cross", type=float, default=0.30)
     parser.add_argument("--max-attempts", type=int, default=2)
+    parser.add_argument(
+        "--reuse-existing-generation",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Reuse a completed attempt image and generation metadata when an "
+            "interrupted run resumes in the same output directory."
+        ),
+    )
+    parser.add_argument(
+        "--inject-verifier-failure-attempt",
+        type=int,
+        default=0,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--inject-verifier-failed-check",
+        choices=(
+            "changed_region_accuracy",
+            "changed_region_macro_iou",
+            "off_target_drift",
+            "nuclei_density_relative_error",
+        ),
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--inject-verifier-failed-check-attempt",
+        type=int,
+        default=1,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--changed-region-accuracy-min", type=float, default=0.70)
     parser.add_argument("--changed-region-macro-iou-min", type=float, default=0.55)
     parser.add_argument("--off-target-drift-max", type=float, default=0.08)
     parser.add_argument("--nuclei-density-relative-error-max", type=float, default=0.35)
+    parser.add_argument(
+        "--semantic-postprocess-mode",
+        choices=("off", "shadow", "enforce"),
+        default="shadow",
+        help=(
+            "Run conservative P1 off, as a non-decision shadow, or as the "
+            "verification decision mask. Shadow is the safe product default."
+        ),
+    )
 
-    parser.add_argument("--segmentator-checkpoint", type=Path, default=Path(DEFAULT_SEGMENTATOR_CHECKPOINT))
+    parser.add_argument(
+        "--segmentator-release",
+        type=Path,
+        default=DEFAULT_SEGMENTATOR_RELEASE,
+        help="Frozen Segmentator release JSON/YAML used for strict G2 inference.",
+    )
+    parser.add_argument(
+        "--segmentator-checkpoint",
+        type=Path,
+        default=None,
+        help="Legacy checkpoint override; disables release-driven architecture reconstruction.",
+    )
     parser.add_argument("--segmentator-env", default="pathology-segmentator-mmseg")
     parser.add_argument(
         "--segmentator-python",
@@ -108,6 +197,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--segmentator-device", default="cuda:1")
     parser.add_argument("--cellvit-model", type=Path, default=Path(DEFAULT_CELLVIT_MODEL))
     parser.add_argument("--cellvit-root", type=Path, default=Path(DEFAULT_CELLVIT_ROOT))
+    parser.add_argument(
+        "--cellvit-script",
+        type=Path,
+        default=REPO_ROOT / "scripts" / "run_cellvit_single_patch.py",
+        help="CellViT wrapper used for generated-image nuclei verification.",
+    )
     parser.add_argument(
         "--cellvit-launch-python",
         type=Path,
@@ -129,6 +224,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     inputs = _load_and_validate_inputs(args)
     output_dir = args.output.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    semantic_change_region_path = save_change_region(
+        inputs["semantic_change_region"],
+        output_dir / "semantic_change_region.png",
+    )
+    generation_change_region_path = save_change_region(
+        inputs["generation_change_region"],
+        output_dir / "generation_change_region.png",
+    )
 
     generation_args = _generation_namespace(args)
     thresholds = FidelityThresholds(
@@ -137,16 +240,59 @@ def main(argv: Sequence[str] | None = None) -> int:
         off_target_drift_max=args.off_target_drift_max,
         nuclei_density_relative_error_max=args.nuclei_density_relative_error_max,
     )
+    source_segmentator = None
+    source_semantic_prediction = None
+    semantic_auditor = OnlineSemanticAuditor(
+        OnlineAuditPolicy(postprocess_mode=args.semantic_postprocess_mode)
+    )
+    if np.any(inputs["semantic_change_region"]):
+        _validate_verification_runtime(args)
+        source_segmentator = _run_segmentator(
+            args=args,
+            image_path=args.reference_image.resolve(),
+            output_dir=output_dir / "source_verification",
+        )
+        source_semantic_prediction = _load_semantic_prediction(source_segmentator)
+        source_quality = source_evaluator_quality(
+            source_mask=inputs["reference_coarse_tissue"],
+            source_prediction=source_semantic_prediction.mask,
+            source_probabilities=source_semantic_prediction.probabilities,
+            class_ids=dataset_native_metric_class_ids(
+                args.profile, level="coarse"
+            ),
+        )
+        _write_json(
+            output_dir / "source_verification" / "evaluator_quality.json",
+            source_quality,
+        )
 
     def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
         _validate_generation_runtime(args, mode)
+        existing_image = attempt_dir / "generated_image.png"
+        existing_metadata = attempt_dir / "generation_info.json"
+        if (
+            args.reuse_existing_generation
+            and existing_image.is_file()
+            and existing_metadata.is_file()
+        ):
+            metadata = json.loads(existing_metadata.read_text(encoding="utf-8"))
+            metadata = {
+                **metadata,
+                "resumed_generation": True,
+                "resumed_image_path": str(existing_image),
+            }
+            return GenerationArtifact(
+                mode=mode,
+                image_path=existing_image,
+                metadata=metadata,
+            )
         attempt_args = SimpleNamespace(**vars(generation_args))
         attempt_args.generation_mode = "inpaint" if mode == "inpaint" else "cross-v1"
         image_path, metadata = _run_generation_stage(
             args=attempt_args,
             output_dir=attempt_dir,
             reference_image=inputs["reference_image"],
-            change_region=inputs["change_region"],
+            change_region=inputs["generation_change_region"],
             target_tissue_path=args.target_tissue_mask.resolve(),
             target_nuclei_path=args.target_nuclei_mask.resolve(),
         )
@@ -156,7 +302,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         _validate_verification_runtime(args)
         verification_dir = artifact.image_path.parent / "verification"
         verification_dir.mkdir(parents=True, exist_ok=True)
-        predicted_tissue_path = _run_segmentator(
+        attempt_index = _attempt_index_from_path(artifact.image_path.parent)
+        injection_marker = verification_dir / ".injected_failure_consumed"
+        if (
+            args.inject_verifier_failure_attempt == attempt_index
+            and not injection_marker.exists()
+        ):
+            injection_marker.write_text(
+                "intentional canary fault after generation\n", encoding="utf-8"
+            )
+            raise RuntimeError(
+                f"injected verifier failure for attempt {attempt_index}"
+            )
+        predicted_tissue = _run_segmentator(
             args=args,
             image_path=artifact.image_path,
             output_dir=verification_dir,
@@ -166,16 +324,85 @@ def main(argv: Sequence[str] | None = None) -> int:
             image_path=artifact.image_path,
             output_dir=verification_dir,
         )
+        generated_semantic_prediction = _load_semantic_prediction(predicted_tissue)
+        online_audit = semantic_auditor.audit(
+            source_mask=inputs["reference_coarse_tissue"],
+            target_mask=inputs["target_coarse_tissue"],
+            source_prediction=source_semantic_prediction,
+            generated_prediction=generated_semantic_prediction,
+            class_ids=dataset_native_metric_class_ids(
+                args.profile, level="coarse"
+            ),
+            semantic_change_region=inputs["semantic_change_region"],
+            **_fine_audit_inputs(
+                args=args,
+                inputs=inputs,
+                source_artifacts=source_segmentator,
+                generated_artifacts=predicted_tissue,
+            ),
+        )
+        decision_tissue = online_audit.decision_mask
+        raw_mask_path = save_id_mask(
+            generated_semantic_prediction.mask,
+            verification_dir / "coarse_mask_raw.png",
+        )
+        audited_mask_path = None
+        p1_changed_path = None
+        if online_audit.p1_result is not None:
+            audited_mask_path = save_id_mask(
+                online_audit.p1_result.audited_mask,
+                verification_dir / "coarse_mask_p1.png",
+            )
+            p1_changed_path = save_change_region(
+                online_audit.p1_result.changed_mask,
+                verification_dir / "p1_changed_pixels.png",
+            )
+        online_audit_metadata = online_audit.to_metadata()
+        online_audit_metadata["artifacts"] = {
+            "raw_mask": str(raw_mask_path),
+            "p1_mask": (
+                None if audited_mask_path is None else str(audited_mask_path)
+            ),
+            "p1_changed_pixels": (
+                None if p1_changed_path is None else str(p1_changed_path)
+            ),
+        }
+        _write_json(
+            verification_dir / "online_semantic_audit.json",
+            online_audit_metadata,
+        )
         result = verify_mask_fidelity(
-            reference_tissue_mask=inputs["reference_tissue"],
-            target_tissue_mask=inputs["target_tissue"],
-            predicted_tissue_mask=load_id_mask(predicted_tissue_path),
-            change_region=inputs["change_region"],
+            reference_tissue_mask=inputs["reference_coarse_tissue"],
+            target_tissue_mask=inputs["target_coarse_tissue"],
+            predicted_tissue_mask=decision_tissue,
+            source_predicted_tissue_mask=source_semantic_prediction.mask,
+            change_region=inputs["semantic_change_region"],
             target_nuclei_mask=inputs["target_nuclei"],
             predicted_nuclei_mask=_load_uint8_mask(predicted_nuclei_path),
             thresholds=thresholds,
             enforce_off_target_drift=artifact.mode != "inpaint",
         )
+        if (
+            args.inject_verifier_failed_check
+            and attempt_index == args.inject_verifier_failed_check_attempt
+        ):
+            failed_checks = tuple(
+                dict.fromkeys(
+                    (
+                        *result.failed_checks,
+                        args.inject_verifier_failed_check,
+                    )
+                )
+            )
+            result = VerificationResult(
+                passed=False,
+                score=result.score,
+                metrics={
+                    **dict(result.metrics),
+                    "injected_canary_failure": 1.0,
+                },
+                failed_checks=failed_checks,
+            )
         _write_json(
             verification_dir / "verification.json",
             {
@@ -184,8 +411,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "metrics": dict(result.metrics),
                 "failed_checks": list(result.failed_checks),
                 "off_target_drift_enforced": artifact.mode != "inpaint",
-                "predicted_tissue_mask": str(predicted_tissue_path),
+                "source_segmentator": source_segmentator,
+                "predicted_tissue": predicted_tissue,
                 "predicted_nuclei_mask": str(predicted_nuclei_path),
+                "online_semantic_audit": str(
+                    verification_dir / "online_semantic_audit.json"
+                ),
+                "semantic_decision_input": online_audit.decision_input,
+                "raw_audit_metrics": online_audit.raw_metrics,
+                "p1_audit_metrics": online_audit.p1_metrics,
             },
         )
         return result
@@ -210,6 +444,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     summary = workflow.to_metadata()
     summary["generated_image"] = str(final_path) if final_path.exists() else None
+    summary["online_self_audit"] = {
+        "scope": "product_runtime",
+        "benchmark_independent": True,
+        "semantic_postprocess_mode": args.semantic_postprocess_mode,
+        "verifier_policy_status": "pilot_not_formal",
+        "formal_validated": False,
+        "engineering_status": (
+            "engineering_pass_uncalibrated"
+            if workflow.status == "validated"
+            else workflow.status
+        ),
+        "reason": (
+            "Confidence, evaluator-clean, and acceptance thresholds require "
+            "a separately frozen blinded calibration cohort."
+        ),
+    }
+    summary["change_regions"] = {
+        "semantic": str(semantic_change_region_path),
+        "generation": str(generation_change_region_path),
+        "semantic_pixels": int(
+            np.count_nonzero(inputs["semantic_change_region"])
+        ),
+        "generation_pixels": int(
+            np.count_nonzero(inputs["generation_change_region"])
+        ),
+        "semantic_matches_tissue_difference": bool(
+            np.array_equal(
+                inputs["semantic_change_region"],
+                inputs["reference_tissue"] != inputs["target_tissue"],
+            )
+        ),
+    }
     _write_json(output_dir / "pipeline_summary.json", summary)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0 if workflow.status in {"validated", "noop"} else 2
@@ -224,8 +490,23 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
         "target nuclei mask": args.target_nuclei_mask,
     }
     missing = [f"{label}: {path}" for label, path in required_paths.items() if not Path(path).exists()]
-    if args.change_region is not None and not args.change_region.exists():
-        missing.append(f"change region: {args.change_region}")
+    semantic_change_region_path = (
+        args.semantic_change_region
+        if args.semantic_change_region is not None
+        else args.change_region
+    )
+    if (
+        semantic_change_region_path is not None
+        and not semantic_change_region_path.exists()
+    ):
+        missing.append(f"semantic change region: {semantic_change_region_path}")
+    if (
+        args.generation_change_region is not None
+        and not args.generation_change_region.exists()
+    ):
+        missing.append(
+            f"generation change region: {args.generation_change_region}"
+        )
     if missing:
         raise FileNotFoundError("Required runtime paths not found:\n" + "\n".join(missing))
 
@@ -241,19 +522,51 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
         ("target nuclei mask", target_nuclei),
     ):
         _validate_same_size(reference_image, mask, label)
-    change_region = (
-        load_change_region(args.change_region)
-        if args.change_region is not None
+    semantic_change_region = (
+        load_change_region(semantic_change_region_path)
+        if semantic_change_region_path is not None
         else reference_tissue != target_tissue
     )
-    _validate_same_size(reference_image, change_region, "change region")
+    generation_change_region = (
+        load_change_region(args.generation_change_region)
+        if args.generation_change_region is not None
+        else np.array(semantic_change_region, copy=True)
+    )
+    _validate_same_size(
+        reference_image,
+        semantic_change_region,
+        "semantic change region",
+    )
+    _validate_same_size(
+        reference_image,
+        generation_change_region,
+        "generation change region",
+    )
+    missing_generation_pixels = (
+        np.asarray(semantic_change_region, dtype=bool)
+        & ~np.asarray(generation_change_region, dtype=bool)
+    )
+    if np.any(missing_generation_pixels):
+        raise ValueError(
+            "generation change region must contain every semantic change pixel; "
+            f"missing {int(np.count_nonzero(missing_generation_pixels))} pixels."
+        )
     return {
         "reference_image": reference_image,
         "reference_tissue": reference_tissue,
         "reference_nuclei": reference_nuclei,
         "target_tissue": target_tissue,
+        "reference_coarse_tissue": to_coarse_mask(reference_tissue),
+        "target_coarse_tissue": to_coarse_mask(target_tissue),
         "target_nuclei": target_nuclei,
-        "change_region": np.asarray(change_region, dtype=bool),
+        "semantic_change_region": np.asarray(
+            semantic_change_region,
+            dtype=bool,
+        ),
+        "generation_change_region": np.asarray(
+            generation_change_region,
+            dtype=bool,
+        ),
     }
 
 
@@ -267,13 +580,31 @@ def _validate_generation_runtime(args: argparse.Namespace, mode: str) -> None:
     missing = [f"{label}: {path}" for label, path in required.items() if not Path(path).exists()]
     if missing:
         raise FileNotFoundError("Generation runtime paths not found:\n" + "\n".join(missing))
+    if mode != "inpaint":
+        args.pix2pix_release = validate_production_pix2pix_checkpoint(
+            args.pix2pix_checkpoint
+        )
 
 
 def _validate_verification_runtime(args: argparse.Namespace) -> None:
+    if args.segmentator_checkpoint is not None:
+        segmentator_checkpoint = args.segmentator_checkpoint
+        segmentator_runtime = {}
+    else:
+        release = load_segmentator_release(
+            args.segmentator_release,
+            verify_checkpoint=False,
+        )
+        segmentator_checkpoint = Path(release["checkpoint"])
+        segmentator_runtime = {
+            "segmentator release": args.segmentator_release,
+        }
     required = {
-        "segmentator checkpoint": args.segmentator_checkpoint,
+        **segmentator_runtime,
+        "segmentator checkpoint": segmentator_checkpoint,
         "CellViT model": args.cellvit_model,
         "CellViT root": args.cellvit_root,
+        "CellViT wrapper": args.cellvit_script,
     }
     missing = [f"{label}: {path}" for label, path in required.items() if not Path(path).exists()]
     if missing:
@@ -301,12 +632,12 @@ def _generation_namespace(args: argparse.Namespace) -> SimpleNamespace:
         guidance_scale=args.guidance_scale,
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
         seed=args.seed,
-        color_match=args.color_match,
     )
 
 
-def _run_segmentator(*, args: argparse.Namespace, image_path: Path, output_dir: Path) -> Path:
-    output_path = output_dir / "predicted_tissue_mask.png"
+def _run_segmentator(
+    *, args: argparse.Namespace, image_path: Path, output_dir: Path
+) -> dict[str, str]:
     if args.segmentator_python:
         command = [str(args.segmentator_python)]
     else:
@@ -314,29 +645,130 @@ def _run_segmentator(*, args: argparse.Namespace, image_path: Path, output_dir: 
     command.extend(
         [
             str(REPO_ROOT / "scripts" / "predict_segmentator_mask.py"),
-            "--checkpoint",
-            str(args.segmentator_checkpoint),
             "--input",
             str(image_path),
-            "--output",
-            str(output_path),
-            "--decoder",
-            args.segmentator_decoder,
+            "--output-dir",
+            str(output_dir),
+            "--profile",
+            args.profile,
+            "--save-probabilities",
+            "--save-entropy",
+            "--save-fine-when-applicable",
             "--device",
             args.segmentator_device,
         ]
     )
+    if args.segmentator_checkpoint is not None:
+        command.extend(
+            [
+                "--checkpoint",
+                str(args.segmentator_checkpoint),
+                "--decoder",
+                args.segmentator_decoder,
+            ]
+        )
+    else:
+        command.extend(["--release", str(args.segmentator_release)])
     _run_logged(command, output_dir / "segmentator.log")
-    if not output_path.exists():
-        raise RuntimeError(f"Segmentator completed without writing {output_path}")
-    return output_path
+    result = {
+        "coarse_mask": str(output_dir / "coarse_mask.png"),
+        "coarse_probabilities": str(
+            output_dir / "coarse_probabilities.npz"
+        ),
+        "entropy": str(output_dir / "entropy.npy"),
+        "provenance": str(output_dir / "provenance.json"),
+    }
+    missing = [path for path in result.values() if not Path(path).is_file()]
+    if missing:
+        raise RuntimeError(
+            f"Segmentator completed without required outputs: {missing}"
+        )
+    fine_paths = {
+        "fine_mask": output_dir / "fine_mask.png",
+        "fine_probabilities": output_dir / "fine_probabilities.npz",
+        "fine_entropy": output_dir / "fine_entropy.npy",
+    }
+    for name, path in fine_paths.items():
+        if path.is_file():
+            result[name] = str(path)
+    return result
+
+
+def _load_segmentator_probabilities(path: str | Path) -> np.ndarray:
+    with np.load(path) as payload:
+        if str(payload["layout"]) != "CHW":
+            raise ValueError(f"unsupported Segmentator probability layout: {path}")
+        return np.asarray(payload["probabilities"], dtype=np.float64)
+
+
+def _load_semantic_prediction(
+    artifacts: dict[str, str],
+) -> SemanticPrediction:
+    return SemanticPrediction(
+        mask=load_id_mask(artifacts["coarse_mask"]),
+        probabilities=_load_segmentator_probabilities(
+            artifacts["coarse_probabilities"]
+        ),
+        entropy=np.load(artifacts["entropy"]),
+    )
+
+
+def _load_fine_prediction(
+    artifacts: dict[str, str],
+) -> SemanticPrediction | None:
+    required = ("fine_mask", "fine_probabilities", "fine_entropy")
+    if not all(name in artifacts for name in required):
+        return None
+    return SemanticPrediction(
+        mask=load_id_mask(artifacts["fine_mask"]),
+        probabilities=_load_segmentator_probabilities(
+            artifacts["fine_probabilities"]
+        ),
+        entropy=np.load(artifacts["fine_entropy"]),
+    )
+
+
+def _fine_audit_inputs(
+    *,
+    args: argparse.Namespace,
+    inputs: dict[str, np.ndarray],
+    source_artifacts: dict[str, str],
+    generated_artifacts: dict[str, str],
+) -> dict[str, Any]:
+    if not profile_supports_fine(args.profile):
+        return {}
+    source_prediction = _load_fine_prediction(source_artifacts)
+    generated_prediction = _load_fine_prediction(generated_artifacts)
+    if source_prediction is None or generated_prediction is None:
+        raise RuntimeError(
+            f"{args.profile} requires dataset-native fine audit artifacts"
+        )
+    return {
+        "source_fine_mask": inputs["reference_tissue"],
+        "target_fine_mask": inputs["target_tissue"],
+        "source_fine_prediction": source_prediction,
+        "generated_fine_prediction": generated_prediction,
+        "fine_class_ids": dataset_native_metric_class_ids(
+            args.profile, level="fine"
+        ),
+    }
+
+
+def _attempt_index_from_path(path: Path) -> int:
+    name = path.name
+    if not name.startswith("attempt_"):
+        return 0
+    try:
+        return int(name.split("_", 2)[1])
+    except (IndexError, ValueError):
+        return 0
 
 
 def _run_cellvit(*, args: argparse.Namespace, image_path: Path, output_dir: Path) -> Path:
     output_path = output_dir / "predicted_nuclei_mask.png"
     command = [
         str(args.cellvit_launch_python),
-        str(REPO_ROOT / "scripts" / "run_cellvit_single_patch.py"),
+        str(args.cellvit_script),
         "--image",
         str(image_path),
         "--output-mask",

@@ -45,6 +45,7 @@ class EditPipelineInputs:
     target_tissue_mask: str | Path
     target_nuclei_mask: str | Path
     output_dir: str | Path
+    generation_change_region: str | Path | None = None
     prompt: str | None = None
     dataset: str | None = None
     force_mode: str | None = None
@@ -58,12 +59,14 @@ class LoadedEditInputs:
     reference_nuclei_mask_path: Path
     target_tissue_mask_path: Path
     target_nuclei_mask_path: Path
+    generation_change_region_path: Path | None
     output_dir: Path
     reference_image: torch.Tensor
     reference_tissue_mask: torch.Tensor
     reference_nuclei_mask: torch.Tensor
     target_tissue_mask: torch.Tensor
     target_nuclei_mask: torch.Tensor
+    generation_change_region_mask: torch.Tensor | None
     prompt: str | None
     dataset: str | None
     force_mode: str | None
@@ -75,6 +78,7 @@ class EditPipelineResult:
     image: Image.Image
     selected_mode: str
     change_region_mask: torch.Tensor
+    generation_change_region_mask: torch.Tensor
     change_ratio: float
     prompt: str
     output_dir: Path
@@ -123,15 +127,26 @@ def run_edit_pipeline(
         raise ValueError(f"Unsupported force_mode: {selected_mode}")
 
     prompt = resolve_prompt(loaded_inputs.prompt, loaded_inputs.dataset)
+    generation_change_region_mask = (
+        loaded_inputs.generation_change_region_mask
+        if loaded_inputs.generation_change_region_mask is not None
+        else decision.change_region_mask
+    )
 
     if selected_mode == "inpaint":
-        image = inpaint_runner(inpaint_bundle, loaded_inputs, prompt, decision.change_region_mask)
+        image = inpaint_runner(
+            inpaint_bundle,
+            loaded_inputs,
+            prompt,
+            generation_change_region_mask,
+        )
     else:
         image = cross_runner(cross_bundle, loaded_inputs, prompt)
 
     _save_outputs(
         loaded_inputs=loaded_inputs,
         decision=decision,
+        generation_change_region_mask=generation_change_region_mask,
         selected_mode=selected_mode,
         prompt=prompt,
         image=image,
@@ -141,6 +156,7 @@ def run_edit_pipeline(
         image=image,
         selected_mode=selected_mode,
         change_region_mask=decision.change_region_mask,
+        generation_change_region_mask=generation_change_region_mask,
         change_ratio=decision.change_ratio,
         prompt=prompt,
         output_dir=loaded_inputs.output_dir,
@@ -248,18 +264,37 @@ def _load_inputs(inputs: EditPipelineInputs) -> LoadedEditInputs:
     )
     target_tissue_mask_path = _ensure_existing_file(inputs.target_tissue_mask, "target_tissue_mask")
     target_nuclei_mask_path = _ensure_existing_file(inputs.target_nuclei_mask, "target_nuclei_mask")
+    generation_change_region_path = (
+        _ensure_existing_file(
+            inputs.generation_change_region,
+            "generation_change_region",
+        )
+        if inputs.generation_change_region is not None
+        else None
+    )
 
     reference_image = load_image_tensor(reference_image_path)
     reference_tissue_mask = load_tissue_mask(reference_tissue_mask_path)
     reference_nuclei_mask = load_nuclei_mask(reference_nuclei_mask_path)
     target_tissue_mask = load_tissue_mask(target_tissue_mask_path)
     target_nuclei_mask = load_nuclei_mask(target_nuclei_mask_path)
+    generation_change_region_mask = (
+        _load_change_region_mask(generation_change_region_path)
+        if generation_change_region_path is not None
+        else None
+    )
 
     image_size = tuple(int(v) for v in reference_image.shape[1:])
     _validate_mask_size(reference_tissue_mask, image_size, "reference_tissue_mask")
     _validate_mask_size(reference_nuclei_mask, image_size, "reference_nuclei_mask")
     _validate_mask_size(target_tissue_mask, image_size, "target_tissue_mask")
     _validate_mask_size(target_nuclei_mask, image_size, "target_nuclei_mask")
+    if generation_change_region_mask is not None:
+        _validate_mask_size(
+            generation_change_region_mask,
+            image_size,
+            "generation_change_region",
+        )
 
     output_dir = Path(inputs.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -270,12 +305,14 @@ def _load_inputs(inputs: EditPipelineInputs) -> LoadedEditInputs:
         reference_nuclei_mask_path=reference_nuclei_mask_path,
         target_tissue_mask_path=target_tissue_mask_path,
         target_nuclei_mask_path=target_nuclei_mask_path,
+        generation_change_region_path=generation_change_region_path,
         output_dir=output_dir,
         reference_image=reference_image,
         reference_tissue_mask=reference_tissue_mask,
         reference_nuclei_mask=reference_nuclei_mask,
         target_tissue_mask=target_tissue_mask,
         target_nuclei_mask=target_nuclei_mask,
+        generation_change_region_mask=generation_change_region_mask,
         prompt=inputs.prompt,
         dataset=inputs.dataset,
         force_mode=inputs.force_mode,
@@ -287,6 +324,7 @@ def _save_outputs(
     *,
     loaded_inputs: LoadedEditInputs,
     decision: EditRoutingDecision,
+    generation_change_region_mask: torch.Tensor,
     selected_mode: str,
     prompt: str,
     image: Image.Image,
@@ -294,6 +332,14 @@ def _save_outputs(
     output_dir = loaded_inputs.output_dir
     image.save(output_dir / "final.png")
     _save_mask_image(output_dir / "change_region_mask.png", decision.change_region_mask)
+    _save_mask_image(
+        output_dir / "semantic_change_region_mask.png",
+        decision.change_region_mask,
+    )
+    _save_mask_image(
+        output_dir / "generation_change_region_mask.png",
+        generation_change_region_mask,
+    )
     if loaded_inputs.save_debug_artifacts:
         _save_mask_image(output_dir / "reference_tissue_mask.png", loaded_inputs.reference_tissue_mask)
         _save_mask_image(output_dir / "target_tissue_mask.png", loaded_inputs.target_tissue_mask)
@@ -303,12 +349,21 @@ def _save_outputs(
     summary = {
         "selected_mode": selected_mode,
         "change_ratio": decision.change_ratio,
+        "semantic_change_ratio": decision.change_ratio,
+        "generation_change_ratio": float(
+            generation_change_region_mask.to(dtype=torch.float32).mean().item()
+        ),
         "prompt": prompt,
         "reference_image": str(loaded_inputs.reference_image_path),
         "reference_tissue_mask": str(loaded_inputs.reference_tissue_mask_path),
         "reference_nuclei_mask": str(loaded_inputs.reference_nuclei_mask_path),
         "target_tissue_mask": str(loaded_inputs.target_tissue_mask_path),
         "target_nuclei_mask": str(loaded_inputs.target_nuclei_mask_path),
+        "generation_change_region": (
+            str(loaded_inputs.generation_change_region_path)
+            if loaded_inputs.generation_change_region_path is not None
+            else "derived_from_reference_target_tissue_difference"
+        ),
         "changed_tissue_ids_from": decision.changed_tissue_ids_from,
         "changed_tissue_ids_to": decision.changed_tissue_ids_to,
     }
@@ -334,6 +389,15 @@ def _ensure_existing_file(path_value: str | Path, label: str) -> Path:
     if not path.exists():
         raise FileNotFoundError(f"{label} not found: {path}")
     return path
+
+
+def _load_change_region_mask(path: Path) -> torch.Tensor:
+    array = np.asarray(Image.open(path).convert("L"))
+    if array.ndim != 2:
+        raise ValueError(
+            f"generation_change_region must be a 2D mask, got shape {array.shape}."
+        )
+    return torch.from_numpy((array > 0).astype(np.float32))
 
 
 def _validate_mask_size(mask: torch.Tensor, image_size: tuple[int, int], label: str) -> None:

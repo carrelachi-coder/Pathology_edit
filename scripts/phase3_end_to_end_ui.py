@@ -71,19 +71,15 @@ from phase3_mask_edit.parser.qwen_local_parser import (
 )
 from phase3_mask_edit.parser.semantic_diff import save_semantic_diff
 from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
-from controlnet_train.inference.agentic import (
-    AgenticWorkflowConfig,
-    FidelityThresholds,
-    GenerationArtifact,
-    run_agentic_workflow,
-    verify_mask_fidelity,
-)
 from controlnet_train.inference.router import AgenticRoutingConfig, route_agentic_edit_request
 from controlnet_train.inference.model_paths import (
     DEFAULT_CROSS_V1_CHECKPOINT,
     DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
     DEFAULT_PROBNET_CHECKPOINT,
+    PRODUCTION_PIX2PIX_ENV,
+    validate_frozen_probnet_checkpoint,
+    validate_production_pix2pix_checkpoint,
 )
 from scripts.run_phase3_inpaint_pipeline import (
     _build_target_nuclei,
@@ -111,14 +107,18 @@ DEFAULT_CELLVIT_SCRIPT = REPO_ROOT / "scripts" / "run_cellvit_single_patch.py"
 DEFAULT_CELLVIT_MODEL = r"D:\path\to\CellViT-SAM-H-x40-AMP-001.pth"
 DEFAULT_CELLVIT_DEVICE = "cuda:0"
 DEFAULT_SEGMENTATOR_ENV = "pathology-segmentator-mmseg"
-DEFAULT_SEGMENTATOR_CHECKPOINT = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/segmentator_runs/stage4_mask2former_multidataset_a800_v2/best_mIoU.pt"
-DEFAULT_SEGMENTATOR_DECODER = "mask2former"
+DEFAULT_SEGMENTATOR_RELEASE = (
+    REPO_ROOT
+    / "benchmark_configs"
+    / "releases"
+    / "segmentator_fine_c_epoch2.json"
+)
+DEFAULT_SEGMENTATOR_PYTHON = os.environ.get(
+    "PATHOLOGY_SEGMENTATOR_PYTHON",
+    "",
+).strip()
 DEFAULT_SEGMENTATOR_DEVICE = "cuda:0"
 DEFAULT_NUCLEI_LIBRARY_TEMPLATE = "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/nuclei_library/{profile}"
-DEFAULT_DENSITY_SCALE_TEMPLATE = (
-    "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/inpaint_cells/configs/"
-    "density_scale_{profile_lower}.json"
-)
 DEFAULT_PRETRAINED_MODEL = "/data/huggingface/FLUX.1-dev"
 DEFAULT_LARGE_BCSS_STEM = "TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500"
 DEFAULT_LARGE_BCSS_IMAGE = Path(r"D:\WQX\datasets\BCSS\rgbs") / f"{DEFAULT_LARGE_BCSS_STEM}.png"
@@ -183,10 +183,7 @@ def _profile_defaults(profile: str) -> dict[str, str]:
     return {
         "probnet_ckpt": DEFAULT_PROBNET_CHECKPOINT,
         "nuclei_library": DEFAULT_NUCLEI_LIBRARY_TEMPLATE.format(profile=profile_name),
-        "density_scale_json": DEFAULT_DENSITY_SCALE_TEMPLATE.format(
-            profile=profile_name,
-            profile_lower=profile_name.lower(),
-        ),
+        "density_scale_json": "",
     }
 
 
@@ -260,38 +257,54 @@ def _copy_optional_input_path(path_value: str | Path | None, output_dir: Path, f
 
 def _run_segmentator_tissue_mask(
     *,
+    profile: str,
     image_path: Path,
     output_dir: Path,
     conda_env: str,
-    checkpoint: str,
-    decoder: str,
+    release: str,
+    python_executable: str,
     device: str,
     output_path: Path | None = None,
 ) -> Path:
-    checkpoint_path = Path(_defaulted_text(checkpoint, DEFAULT_SEGMENTATOR_CHECKPOINT))
-    if not checkpoint_path.exists():
-        raise gr.Error(f"Segmentator checkpoint not found: {checkpoint_path}")
-    env_name = _defaulted_text(conda_env, DEFAULT_SEGMENTATOR_ENV)
+    release_path = Path(
+        _defaulted_text(release, str(DEFAULT_SEGMENTATOR_RELEASE))
+    ).expanduser()
+    if not release_path.is_file():
+        raise gr.Error(f"Segmentator release not found: {release_path}")
+    prediction_dir = output_dir / "inputs" / "source_segmentator"
+    prediction_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_path or output_dir / "inputs" / "source_tissue_mask.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        "conda",
-        "run",
-        "-n",
-        env_name,
-        "python",
-        str(REPO_ROOT / "scripts" / "predict_segmentator_mask.py"),
-        "--checkpoint",
-        str(checkpoint_path),
-        "--input",
-        str(image_path),
-        "--output",
-        str(output_path),
-        "--decoder",
-        decoder or DEFAULT_SEGMENTATOR_DECODER,
-        "--device",
-        device or DEFAULT_SEGMENTATOR_DEVICE,
-    ]
+    python_path = (python_executable or "").strip()
+    command = (
+        [python_path]
+        if python_path
+        else [
+            "conda",
+            "run",
+            "-n",
+            _defaulted_text(conda_env, DEFAULT_SEGMENTATOR_ENV),
+            "python",
+        ]
+    )
+    command.extend(
+        [
+            str(REPO_ROOT / "scripts" / "predict_segmentator_mask.py"),
+            "--release",
+            str(release_path),
+            "--input",
+            str(image_path),
+            "--output-dir",
+            str(prediction_dir),
+            "--profile",
+            profile,
+            "--save-probabilities",
+            "--save-entropy",
+            "--save-fine-when-applicable",
+            "--device",
+            device or DEFAULT_SEGMENTATOR_DEVICE,
+        ]
+    )
     try:
         result = subprocess.run(
             command,
@@ -301,7 +314,9 @@ def _run_segmentator_tissue_mask(
             text=True,
         )
     except FileNotFoundError as exc:
-        raise gr.Error("conda not found in PATH; cannot run segmentator environment.") from exc
+        raise gr.Error(
+            f"Segmentator executable not found: {command[0]}"
+        ) from exc
     except subprocess.CalledProcessError as exc:
         log_path = output_dir / "segmentator_error.log"
         log_path.write_text(_format_subprocess_error(exc, label="Segmentator"), encoding="utf-8")
@@ -311,58 +326,15 @@ def _run_segmentator_tissue_mask(
     )
     if log_text:
         (output_dir / "segmentator.log").write_text(log_text, encoding="utf-8")
-    if not output_path.exists():
-        raise gr.Error(f"Segmentator finished but did not write {output_path}")
-    return output_path
-
-
-def _run_cellvit_mask(
-    *,
-    image_path: Path,
-    output_path: Path,
-    output_dir: Path,
-    script: str,
-    model: str,
-    root: str,
-    device: str,
-) -> Path:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        sys.executable,
-        str(Path(_defaulted_text(script, str(DEFAULT_CELLVIT_SCRIPT)))),
-        "--image",
-        str(image_path),
-        "--output-mask",
-        str(output_path),
-        "--model",
-        str(Path(_defaulted_text(model, DEFAULT_CELLVIT_MODEL))),
-        "--cellvit-root",
-        str(Path(_defaulted_text(root, str(DEFAULT_CELLVIT_ROOT)))),
-        "--gpu",
-        str(_cuda_index(device)),
-    ]
-    try:
-        result = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
+    selected_prediction = prediction_dir / "fine_mask.png"
+    if not selected_prediction.is_file():
+        selected_prediction = prediction_dir / "coarse_mask.png"
+    if not selected_prediction.is_file():
+        raise gr.Error(
+            "C-line Segmentator finished without a fine or coarse tissue mask; "
+            f"see {output_dir / 'segmentator.log'}"
         )
-    except subprocess.CalledProcessError as exc:
-        (output_dir / "cellvit_error.log").write_text(
-            _format_subprocess_error(exc, label="CellViT"), encoding="utf-8"
-        )
-        raise RuntimeError(_format_subprocess_error(exc, label="CellViT")) from exc
-    log_text = "\n".join(
-        part
-        for part in [(result.stdout or "").strip(), (result.stderr or "").strip()]
-        if part
-    )
-    if log_text:
-        (output_dir / "cellvit.log").write_text(log_text, encoding="utf-8")
-    if not output_path.exists():
-        raise RuntimeError(f"CellViT finished but did not write {output_path}")
+    shutil.copy2(selected_prediction, output_path)
     return output_path
 
 
@@ -381,7 +353,7 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
         "probnet_ckpt": None,
         "nuclei_library": None,
         "probnet_device": "auto",
-        "probnet_gamma_values": "1.0",
+        "probnet_gamma_values": "1.5",
         "density_scale_json": None,
         "reference_shape_min_area": 8,
         "reference_shape_max_area_ratio": 0.0,
@@ -404,7 +376,6 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
         "num_inference_steps": 28,
         "guidance_scale": 3.5,
         "controlnet_conditioning_scale": 1.0,
-        "color_match": "lab",
         "print_summary": False,
     }
     defaults.update(overrides)
@@ -1502,8 +1473,8 @@ def load_inputs(
     source_tissue_mask,
     source_cell_mask,
     segmentator_env: str,
-    segmentator_checkpoint: str,
-    segmentator_decoder: str,
+    segmentator_release: str,
+    segmentator_python: str,
     segmentator_device: str,
     cellvit_script: str,
     cellvit_model: str,
@@ -1519,11 +1490,12 @@ def load_inputs(
     tissue_source = "uploaded"
     if tissue_path is None:
         tissue_path = _run_segmentator_tissue_mask(
+            profile=profile,
             image_path=image_path,
             output_dir=output_dir,
             conda_env=segmentator_env,
-            checkpoint=segmentator_checkpoint,
-            decoder=segmentator_decoder,
+            release=segmentator_release,
+            python_executable=segmentator_python,
             device=segmentator_device,
         )
         tissue_source = "segmentator"
@@ -1598,8 +1570,8 @@ def load_inputs(
         "reference_tissue_mask_source": tissue_source,
         "verification_runtime": {
             "segmentator_env": segmentator_env,
-            "segmentator_checkpoint": segmentator_checkpoint,
-            "segmentator_decoder": segmentator_decoder,
+            "segmentator_release": segmentator_release,
+            "segmentator_python": segmentator_python,
             "segmentator_device": segmentator_device,
             "cellvit_script": cellvit_script,
             "cellvit_model": cellvit_model,
@@ -1616,8 +1588,8 @@ def load_inputs_from_paths(
     source_tissue_mask_path: str,
     source_cell_mask_path: str,
     segmentator_env: str,
-    segmentator_checkpoint: str,
-    segmentator_decoder: str,
+    segmentator_release: str,
+    segmentator_python: str,
     segmentator_device: str,
     cellvit_script: str,
     cellvit_model: str,
@@ -1633,11 +1605,12 @@ def load_inputs_from_paths(
     tissue_source = "local_path"
     if tissue_path is None:
         tissue_path = _run_segmentator_tissue_mask(
+            profile=profile,
             image_path=image_path,
             output_dir=output_dir,
             conda_env=segmentator_env,
-            checkpoint=segmentator_checkpoint,
-            decoder=segmentator_decoder,
+            release=segmentator_release,
+            python_executable=segmentator_python,
             device=segmentator_device,
         )
         tissue_source = "segmentator"
@@ -1714,8 +1687,8 @@ def load_inputs_from_paths(
         "reference_nuclei_mask_source": nuclei_source,
         "verification_runtime": {
             "segmentator_env": segmentator_env,
-            "segmentator_checkpoint": segmentator_checkpoint,
-            "segmentator_decoder": segmentator_decoder,
+            "segmentator_release": segmentator_release,
+            "segmentator_python": segmentator_python,
             "segmentator_device": segmentator_device,
             "cellvit_script": cellvit_script,
             "cellvit_model": cellvit_model,
@@ -2936,16 +2909,27 @@ def run_cell_stage(
         change_region=change_region,
     )
     profile_defaults = _profile_defaults(state.get("profile", "BCSS"))
+    density_scale_text = (density_scale_json or "").strip()
     args = _make_args(
         state,
         cell_fill_mode=cell_fill_mode,
         crossing_cell_policy=crossing_cell_policy,
         probnet_ckpt=Path(_defaulted_text(probnet_ckpt, profile_defaults["probnet_ckpt"])),
         nuclei_library=Path(_defaulted_text(nuclei_library, profile_defaults["nuclei_library"])),
-        density_scale_json=Path(_defaulted_text(density_scale_json, profile_defaults["density_scale_json"])),
+        density_scale_json=(
+            Path(density_scale_text) if density_scale_text else None
+        ),
         probnet_device=probnet_device,
-        probnet_gamma_values=gamma_values or "1.0",
+        probnet_gamma_values=gamma_values or "1.5",
     )
+    probnet_release = None
+    if cell_fill_mode == "probnet":
+        try:
+            probnet_release = validate_frozen_probnet_checkpoint(
+                args.probnet_ckpt
+            )
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            raise gr.Error(str(exc)) from exc
     try:
         target_nuclei, cell_info = _build_target_nuclei(
             args, reference_nuclei, target_tissue, change_region, output_dir
@@ -2962,6 +2946,7 @@ def run_cell_stage(
     )
     cell_info["target_nuclei_mask"] = str(target_nuclei_path)
     cell_info["gland_structure_policy"] = gland_structure_policy
+    cell_info["probnet_release"] = probnet_release
     (output_dir / "cell_fill_log.json").write_text(_json_text(cell_info), encoding="utf-8")
     state.update(
         {
@@ -2982,23 +2967,16 @@ def run_cell_stage(
     )
 
 
-def _run_agentic_generation_stage(
+def _build_online_agent_command(
     *,
     state: dict[str, Any],
     args: SimpleNamespace,
     route_threshold: float,
-    reference_image: np.ndarray,
-    change_region: np.ndarray,
-) -> tuple[Path, dict[str, Any]]:
-    output_dir = Path(state["output_dir"])
-    reference_tissue = load_id_mask(state["reference_tissue_mask"])
-    target_tissue = load_id_mask(state["target_tissue_mask"])
-    target_nuclei = _load_uint8_mask(state["target_nuclei_mask"])
+) -> tuple[list[str], Path]:
     runtime = dict(state.get("verification_runtime") or {})
     required_runtime = (
         "segmentator_env",
-        "segmentator_checkpoint",
-        "segmentator_decoder",
+        "segmentator_release",
         "segmentator_device",
         "cellvit_script",
         "cellvit_model",
@@ -3011,101 +2989,132 @@ def _run_agentic_generation_stage(
             "Agentic verification requires runtime settings captured during input loading: "
             + ", ".join(missing_runtime)
         )
+    output_dir = Path(state["output_dir"])
+    agent_output_dir = output_dir / "agentic_generation"
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "run_agentic_edit_workflow.py"),
+        "--profile",
+        str(state["profile"]),
+        "--reference-image",
+        str(state["reference_image"]),
+        "--reference-tissue-mask",
+        str(state["reference_tissue_mask"]),
+        "--reference-nuclei-mask",
+        str(state["reference_nuclei_mask"]),
+        "--target-tissue-mask",
+        str(state["target_tissue_mask"]),
+        "--target-nuclei-mask",
+        str(state["target_nuclei_mask"]),
+        "--semantic-change-region",
+        str(state["semantic_change_region"]),
+        "--generation-change-region",
+        str(state["change_region"]),
+        "--output",
+        str(agent_output_dir),
+        "--pretrained-model-name-or-path",
+        str(args.pretrained_model_name_or_path),
+        "--inpaint-checkpoint",
+        str(args.inpaint_checkpoint),
+        "--cross-v1-checkpoint",
+        str(args.cross_v1_checkpoint),
+        "--pix2pix-checkpoint",
+        str(args.pix2pix_checkpoint),
+        "--device",
+        str(args.device),
+        "--t-inpaint",
+        str(min(0.12, float(route_threshold))),
+        "--t-cross",
+        str(float(route_threshold)),
+        "--max-attempts",
+        "2",
+        "--segmentator-release",
+        str(runtime["segmentator_release"]),
+        "--segmentator-env",
+        str(runtime["segmentator_env"]),
+        "--segmentator-device",
+        str(runtime["segmentator_device"]),
+        "--semantic-postprocess-mode",
+        "shadow",
+        "--cellvit-script",
+        str(runtime["cellvit_script"]),
+        "--cellvit-model",
+        str(runtime["cellvit_model"]),
+        "--cellvit-root",
+        str(runtime["cellvit_root"]),
+        "--cellvit-launch-python",
+        sys.executable,
+        "--cellvit-python",
+        sys.executable,
+        "--cellvit-gpu",
+        str(_cuda_index(str(runtime["cellvit_device"]))),
+    ]
+    segmentator_python = str(runtime.get("segmentator_python") or "").strip()
+    if segmentator_python:
+        command.extend(["--segmentator-python", segmentator_python])
+    return command, agent_output_dir
 
-    def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
-        forced_mode = "inpaint" if mode == "inpaint" else "cross-v1"
-        attempt_args = SimpleNamespace(**vars(args))
-        attempt_args.generation_mode = forced_mode
-        attempt_args.output = attempt_dir
-        _validate_generation_paths(attempt_args, forced_mode)
-        image_path, info = _run_generation_stage(
-            args=attempt_args,
-            output_dir=attempt_dir,
-            reference_image=reference_image,
-            change_region=change_region,
-            target_tissue_path=Path(state["target_tissue_mask"]),
-            target_nuclei_path=Path(state["target_nuclei_mask"]),
-        )
-        return GenerationArtifact(mode=mode, image_path=image_path, metadata=info)
 
-    def verify(artifact: GenerationArtifact):
-        verification_dir = artifact.image_path.parent / "verification"
-        verification_dir.mkdir(parents=True, exist_ok=True)
-        predicted_tissue_path = _run_segmentator_tissue_mask(
-            image_path=artifact.image_path,
-            output_dir=verification_dir,
-            conda_env=str(runtime["segmentator_env"]),
-            checkpoint=str(runtime["segmentator_checkpoint"]),
-            decoder=str(runtime["segmentator_decoder"]),
-            device=str(runtime["segmentator_device"]),
-            output_path=verification_dir / "predicted_tissue_mask.png",
-        )
-        predicted_nuclei_path = _run_cellvit_mask(
-            image_path=artifact.image_path,
-            output_path=verification_dir / "predicted_nuclei_mask.png",
-            output_dir=verification_dir,
-            script=str(runtime["cellvit_script"]),
-            model=str(runtime["cellvit_model"]),
-            root=str(runtime["cellvit_root"]),
-            device=str(runtime["cellvit_device"]),
-        )
-        return verify_mask_fidelity(
-            reference_tissue_mask=reference_tissue,
-            target_tissue_mask=target_tissue,
-            predicted_tissue_mask=load_id_mask(predicted_tissue_path),
-            change_region=change_region,
-            target_nuclei_mask=target_nuclei,
-            predicted_nuclei_mask=_load_uint8_mask(predicted_nuclei_path),
-            thresholds=FidelityThresholds(),
-            enforce_off_target_drift=artifact.mode != "inpaint",
-        )
-
-    workflow = run_agentic_workflow(
-        reference_tissue_mask=reference_tissue,
-        target_tissue_mask=target_tissue,
-        output_dir=output_dir / "agentic_generation",
-        generate=generate,
-        verify=verify,
-        config=AgenticWorkflowConfig(
-            routing=AgenticRoutingConfig(
-                t_inpaint=min(0.12, float(route_threshold)),
-                t_cross=float(route_threshold),
-            ),
-            max_attempts=2,
-        ),
+def _run_agentic_generation_stage(
+    *,
+    state: dict[str, Any],
+    args: SimpleNamespace,
+    route_threshold: float,
+    reference_image: np.ndarray,
+    change_region: np.ndarray,
+) -> tuple[Path, dict[str, Any]]:
+    del reference_image
+    output_dir = Path(state["output_dir"])
+    command, agent_output_dir = _build_online_agent_command(
+        state=state,
+        args=args,
+        route_threshold=route_threshold,
     )
-    if workflow.status == "noop":
-        final_path = output_dir / "generated_image.png"
-        shutil.copy2(Path(args.reference_image), final_path)
-        info = {
-            "generation_mode": "agentic",
-            "status": "noop",
-            "generated_image": str(final_path),
-            "selected_mode": "noop",
-            "change_ratio": 0.0,
-            "route_threshold": route_threshold,
-            "agentic_workflow": workflow.to_metadata(),
-        }
-        save_metadata(info, output_dir / "generation_info.json")
-        return final_path, info
-    if workflow.selected_attempt is None or workflow.selected_attempt.artifact is None:
-        errors = [attempt.error for attempt in workflow.attempts if attempt.error]
+    result = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    log_path = output_dir / "agentic_runner.log"
+    log_path.write_text(
+        "command: "
+        + " ".join(command)
+        + "\n\nstdout:\n"
+        + (result.stdout or "")
+        + "\n\nstderr:\n"
+        + (result.stderr or ""),
+        encoding="utf-8",
+    )
+    summary_path = agent_output_dir / "pipeline_summary.json"
+    if result.returncode not in {0, 2} or not summary_path.is_file():
         raise gr.Error(
-            "Agentic generation produced no verifiable candidate. " + "; ".join(errors)
+            "Production agent runner failed; "
+            f"see {log_path} (return code {result.returncode})."
         )
-    selected = workflow.selected_attempt.artifact
+    workflow = json.loads(summary_path.read_text(encoding="utf-8"))
+    generated = workflow.get("generated_image")
+    if not generated or not Path(generated).is_file():
+        raise gr.Error(
+            "Production agent runner returned no selectable image; "
+            f"see {summary_path}."
+        )
     final_path = output_dir / "generated_image.png"
-    shutil.copy2(selected.image_path, final_path)
-    info = dict(selected.metadata)
+    shutil.copy2(generated, final_path)
+    selected_attempt = workflow.get("selected_attempt") or {}
+    artifact = selected_attempt.get("artifact") or {}
+    info = dict(artifact.get("metadata") or {})
     info.update(
         {
             "generation_mode": "agentic",
-            "status": workflow.status,
+            "status": workflow.get("status"),
             "generated_image": str(final_path),
-            "selected_mode": selected.mode,
+            "selected_mode": artifact.get("mode") or "noop",
             "change_ratio": _change_area_fraction(change_region),
             "route_threshold": route_threshold,
-            "agentic_workflow": workflow.to_metadata(),
+            "agentic_workflow": workflow,
+            "agentic_runner_summary": str(summary_path),
+            "agentic_runner_log": str(log_path),
         }
     )
     save_metadata(info, output_dir / "generation_info.json")
@@ -3194,15 +3203,23 @@ def run_generation_stage(
         title=f"{generation_info['selected_mode']} / change={generation_info['change_ratio']:.3f}",
         prompt=str(generation_info.get("prompt", "")),
     )
+    online_status = (
+        (generation_info.get("agentic_workflow") or {})
+        .get("online_self_audit", {})
+        .get("engineering_status")
+        if generation_mode == "agentic"
+        else None
+    )
     summary = {
-        "status": "completed",
+        "status": online_status or "completed",
         "output_dir": str(output_dir),
         "phase3": state.get("phase3"),
         "cell_fill": state.get("cell_fill"),
         "generation": generation_info,
         "artifacts": {
             "target_tissue_mask": state["target_tissue_mask"],
-            "change_region": state["change_region"],
+            "semantic_change_region": state["semantic_change_region"],
+            "generation_change_region": state["change_region"],
             "target_nuclei_mask": state["target_nuclei_mask"],
             "generated_image": str(generated_path),
             "compare_panel": str(panel_path),
@@ -3291,6 +3308,7 @@ def run_large_patch_stitch_generation(
     _validate_same_size(reference_image, change_region, "change_region")
 
     profile_defaults = _profile_defaults(state.get("profile", "BCSS"))
+    density_scale_text = (density_scale_json or "").strip()
     base_args = _make_args(
         state,
         generation_mode=generation_mode,
@@ -3305,15 +3323,28 @@ def run_large_patch_stitch_generation(
         crossing_cell_policy=crossing_cell_policy,
         probnet_ckpt=Path(_defaulted_text(probnet_ckpt, profile_defaults["probnet_ckpt"])),
         nuclei_library=Path(_defaulted_text(nuclei_library, profile_defaults["nuclei_library"])),
-        density_scale_json=Path(_defaulted_text(density_scale_json, profile_defaults["density_scale_json"])),
+        density_scale_json=(
+            Path(density_scale_text) if density_scale_text else None
+        ),
         probnet_device=probnet_device,
-        probnet_gamma_values=gamma_values or "1.0",
+        probnet_gamma_values=gamma_values or "1.5",
         prompt=None,
     )
+    if cell_fill_mode == "probnet":
+        try:
+            validate_frozen_probnet_checkpoint(base_args.probnet_ckpt)
+        except (FileNotFoundError, ValueError) as exc:
+            raise gr.Error(str(exc)) from exc
+    if generation_mode == "agentic" and patch_size != 512:
+        raise gr.Error(
+            "C-line Segmentator release inference is fixed at 512x512; "
+            "agentic large-patch generation therefore requires patch size 512."
+        )
 
     full_h, full_w = change_region.shape
     patch_specs = _large_patch_specs(
-        change_region=change_region,
+        semantic_change_region=semantic_change_region,
+        generation_change_region=change_region,
         patch_size=patch_size,
         write_margin=write_margin,
         patch_stride=patch_stride,
@@ -3335,19 +3366,22 @@ def run_large_patch_stitch_generation(
             f"Increase max patches or edit a smaller region."
         )
 
-    selected_modes = sorted(
-        {
-            _select_generation_mode(
-                generation_mode,
-                _change_area_fraction(spec["change_patch"]),
-                route_threshold,
-                cross_backend=cross_backend,
-            )
-            for spec in patch_specs
-        }
-    )
-    for selected_mode in selected_modes:
-        _validate_generation_paths(base_args, selected_mode)
+    if generation_mode != "agentic":
+        selected_modes = sorted(
+            {
+                _select_generation_mode(
+                    generation_mode,
+                    _change_area_fraction(
+                        spec["generation_change_patch"]
+                    ),
+                    route_threshold,
+                    cross_backend=cross_backend,
+                )
+                for spec in patch_specs
+            }
+        )
+        for selected_mode in selected_modes:
+            _validate_generation_paths(base_args, selected_mode)
 
     stitched = np.array(reference_image, copy=True)
     if blend_mode == "hard":
@@ -3366,7 +3400,8 @@ def run_large_patch_stitch_generation(
         valid_h = int(spec["valid_h"])
         valid_w = int(spec["valid_w"])
         write_mask = spec["write_mask"]
-        change_patch = spec["change_patch"]
+        semantic_change_patch = spec["semantic_change_patch"]
+        change_patch = spec["generation_change_patch"]
         target_tissue_patch = _extract_patch_array(target_tissue, y, x, patch_size, fill_value=0)
         reference_tissue_patch = _extract_patch_array(reference_tissue, y, x, patch_size, fill_value=0)
         reference_nuclei_patch = _extract_patch_array(reference_nuclei, y, x, patch_size, fill_value=0)
@@ -3376,7 +3411,14 @@ def run_large_patch_stitch_generation(
         reference_tissue_path = save_id_mask(reference_tissue_patch, patch_dir / "reference_tissue_mask.png")
         reference_nuclei_path = save_id_mask(reference_nuclei_patch, patch_dir / "reference_nuclei_mask.png")
         target_tissue_path = save_id_mask(target_tissue_patch, patch_dir / "target_tissue_mask.png")
-        save_change_region(change_patch, patch_dir / "change_region.png")
+        save_change_region(
+            semantic_change_patch,
+            patch_dir / "semantic_change_region.png",
+        )
+        save_change_region(
+            change_patch,
+            patch_dir / "generation_change_region.png",
+        )
         save_change_region(write_mask, patch_dir / "write_mask.png")
 
         patch_state = {
@@ -3385,7 +3427,12 @@ def run_large_patch_stitch_generation(
             "reference_tissue_mask": str(reference_tissue_path),
             "reference_nuclei_mask": str(reference_nuclei_path),
             "target_tissue_mask": str(target_tissue_path),
-            "change_region": str(patch_dir / "change_region.png"),
+            "semantic_change_region": str(
+                patch_dir / "semantic_change_region.png"
+            ),
+            "change_region": str(
+                patch_dir / "generation_change_region.png"
+            ),
             "output_dir": str(patch_dir),
         }
         patch_overrides = vars(base_args).copy()
@@ -3395,7 +3442,7 @@ def run_large_patch_stitch_generation(
                 "reference_tissue_mask": reference_tissue_path,
                 "reference_nuclei_mask": reference_nuclei_path,
                 "target_tissue_mask": target_tissue_path,
-                "change_region": patch_dir / "change_region.png",
+                "change_region": patch_dir / "generation_change_region.png",
                 "output": patch_dir,
             }
         )
@@ -3415,20 +3462,30 @@ def run_large_patch_stitch_generation(
             raise gr.Error(str(exc)) from exc
 
         target_nuclei_path = save_id_mask(target_nuclei_patch, patch_dir / "target_nuclei_mask.png")
+        patch_state["target_nuclei_mask"] = str(target_nuclei_path)
         _save_target_combined_mask(
             patch_dir / "target_combined_mask.png",
             target_tissue=target_tissue_patch,
             target_nuclei=target_nuclei_patch,
         )
 
-        generated_path, generation_info = _run_generation_stage(
-            args=patch_args,
-            output_dir=patch_dir,
-            reference_image=reference_image_patch,
-            change_region=change_patch,
-            target_tissue_path=target_tissue_path,
-            target_nuclei_path=target_nuclei_path,
-        )
+        if generation_mode == "agentic":
+            generated_path, generation_info = _run_agentic_generation_stage(
+                state=patch_state,
+                args=patch_args,
+                route_threshold=route_threshold,
+                reference_image=reference_image_patch,
+                change_region=change_patch,
+            )
+        else:
+            generated_path, generation_info = _run_generation_stage(
+                args=patch_args,
+                output_dir=patch_dir,
+                reference_image=reference_image_patch,
+                change_region=change_patch,
+                target_tissue_path=target_tissue_path,
+                target_nuclei_path=target_nuclei_path,
+            )
         generated_patch = np.asarray(Image.open(generated_path).convert("RGB"), dtype=np.uint8)
         _stitch_generated_patch(
             stitched=stitched,
@@ -3454,7 +3511,12 @@ def run_large_patch_stitch_generation(
                 "y": y,
                 "valid_size": [valid_h, valid_w],
                 "write_pixels": int(np.count_nonzero(write_mask)),
-                "change_pixels": int(np.count_nonzero(change_patch)),
+                "semantic_change_pixels": int(
+                    np.count_nonzero(semantic_change_patch)
+                ),
+                "generation_change_pixels": int(
+                    np.count_nonzero(change_patch)
+                ),
                 "cell_fill": cell_info,
                 "generation": generation_info,
                 "generated_image": str(generated_path),
@@ -3501,18 +3563,40 @@ def run_large_patch_stitch_generation(
 
 def _large_patch_specs(
     *,
-    change_region: np.ndarray,
+    semantic_change_region: np.ndarray,
+    generation_change_region: np.ndarray,
     patch_size: int,
     write_margin: int,
     patch_stride: int,
 ) -> list[dict[str, Any]]:
-    h, w = change_region.shape
+    semantic = np.asarray(semantic_change_region, dtype=bool)
+    generation = np.asarray(generation_change_region, dtype=bool)
+    if semantic.shape != generation.shape:
+        raise ValueError(
+            "semantic and generation change regions must have identical shapes"
+        )
+    h, w = semantic.shape
     specs: list[dict[str, Any]] = []
     for y in _axis_patch_origins(h, patch_size, patch_stride):
         for x in _axis_patch_origins(w, patch_size, patch_stride):
             valid_h = min(patch_size, h - y)
             valid_w = min(patch_size, w - x)
-            change_patch = _extract_patch_array(change_region, y, x, patch_size, fill_value=False).astype(bool)
+            semantic_patch = _extract_patch_array(
+                semantic,
+                y,
+                x,
+                patch_size,
+                fill_value=False,
+            ).astype(bool)
+            if not np.any(semantic_patch):
+                continue
+            generation_patch = _extract_patch_array(
+                generation,
+                y,
+                x,
+                patch_size,
+                fill_value=False,
+            ).astype(bool)
             write_window = _patch_write_window(
                 y=y,
                 x=x,
@@ -3523,7 +3607,7 @@ def _large_patch_specs(
                 patch_size=patch_size,
                 write_margin=write_margin,
             )
-            write_mask = change_patch & write_window
+            write_mask = generation_patch & write_window
             if not np.any(write_mask):
                 continue
             specs.append(
@@ -3532,7 +3616,8 @@ def _large_patch_specs(
                     "x": x,
                     "valid_h": valid_h,
                     "valid_w": valid_w,
-                    "change_patch": change_patch,
+                    "semantic_change_patch": semantic_patch,
+                    "generation_change_patch": generation_patch,
                     "write_mask": write_mask,
                     "center_weight": _patch_center_priority(write_window),
                 }
@@ -3755,6 +3840,13 @@ def _validate_generation_paths(args: SimpleNamespace, selected_mode: str) -> Non
             f"{detail}\n"
             "Update the corresponding path in Advanced generation inputs, or choose dry-run."
         )
+    if selected_mode == "cross-v1":
+        try:
+            args.pix2pix_release = validate_production_pix2pix_checkpoint(
+                args.pix2pix_checkpoint
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            raise gr.Error(str(exc)) from exc
 
 
 def preview_route(state: dict[str, Any], threshold: float, cross_backend: str) -> str:
@@ -4192,9 +4284,15 @@ def build_ui() -> gr.Blocks:
                     cellvit_device = gr.Dropdown(CUDA_DEVICE_CHOICES, value=DEFAULT_CELLVIT_DEVICE, label="CellViT device")
                 with gr.Row():
                     segmentator_env = gr.Textbox(value=DEFAULT_SEGMENTATOR_ENV, label="segmentator conda env")
-                    segmentator_checkpoint = gr.Textbox(value=DEFAULT_SEGMENTATOR_CHECKPOINT, label="segmentator checkpoint")
+                    segmentator_release = gr.Textbox(
+                        value=str(DEFAULT_SEGMENTATOR_RELEASE),
+                        label="C-line Segmentator release",
+                    )
                 with gr.Row():
-                    segmentator_decoder = gr.Dropdown(["mask2former", "upernet"], value=DEFAULT_SEGMENTATOR_DECODER, label="segmentator decoder")
+                    segmentator_python = gr.Textbox(
+                        value=DEFAULT_SEGMENTATOR_PYTHON,
+                        label="segmentator python (optional; otherwise conda env)",
+                    )
                     segmentator_device = gr.Dropdown(GENERATION_DEVICE_CHOICES, value=DEFAULT_SEGMENTATOR_DEVICE, label="segmentator device")
 
         instruction_panel = gr.Column(visible=False)
@@ -4280,12 +4378,16 @@ def build_ui() -> gr.Blocks:
             crossing_policy = gr.Radio(["delete", "majority", "keep"], value="delete", label="crossing source-cell policy")
         profile_default_values = _profile_defaults("BCSS")
         with gr.Accordion("Advanced ProbNet inputs", open=False):
+            gr.Markdown(
+                "Production policy: frozen epoch29 checkpoint, profile-specific "
+                "library, gamma=1.5, density_scale=1.0, no density-scale JSON."
+            )
             with gr.Row():
                 probnet_ckpt = gr.Textbox(value=profile_default_values["probnet_ckpt"], label="ProbNet checkpoint")
                 nuclei_library = gr.Textbox(value=profile_default_values["nuclei_library"], label="nuclei library directory")
                 density_scale_json = gr.Textbox(value=profile_default_values["density_scale_json"], label="density scale JSON")
             probnet_device = gr.Dropdown(PROBNET_DEVICE_CHOICES, value="auto", label="ProbNet device")
-            gamma_values = gr.Textbox(value="1.0", label="gamma values")
+            gamma_values = gr.Textbox(value="1.5", label="gamma values")
         cell_button = gr.Button("3. Build target cell mask")
         cell_log = gr.Code(label="cell log", language="json")
         with gr.Row():
@@ -4295,7 +4397,11 @@ def build_ui() -> gr.Blocks:
 
         gr.Markdown("### Image generation")
         with gr.Row():
-            generation_mode = gr.Radio(["agentic", "dry-run", "auto", "inpaint", "cross-v1"], value="agentic", label="generation mode")
+            generation_mode = gr.Radio(
+                ["agentic", "dry-run"],
+                value="agentic",
+                label="generation mode (agentic=production; dry-run=debug)",
+            )
             cross_backend = gr.State("cross-v1")
             route_threshold = gr.Slider(0.12, 1.0, value=0.30, step=0.01, label="cross if tissue-normalized change >= threshold")
         route_button = gr.Button("Preview route")
@@ -4308,7 +4414,11 @@ def build_ui() -> gr.Blocks:
                 inpaint_checkpoint = gr.Textbox(value=DEFAULT_INPAINT_CHECKPOINT, label="inpaint checkpoint")
                 cross_v1_checkpoint = gr.Textbox(value=DEFAULT_CROSS_V1_CHECKPOINT, label="cross-v1 checkpoint")
             with gr.Row():
-                pix2pix_checkpoint = gr.Textbox(value=DEFAULT_PIX2PIX_CHECKPOINT, label="pix2pix checkpoint")
+                pix2pix_checkpoint = gr.Textbox(
+                    value=os.environ.get(PRODUCTION_PIX2PIX_ENV, "").strip(),
+                    label=f"pix2pix epoch26 checkpoint ({PRODUCTION_PIX2PIX_ENV})",
+                    interactive=False,
+                )
         generate_button = gr.Button("4. Route + generate")
         with gr.Accordion("Large patch stitch experiment", open=False):
             with gr.Row():
@@ -4337,8 +4447,8 @@ def build_ui() -> gr.Blocks:
                 source_tissue,
                 source_cell,
                 segmentator_env,
-                segmentator_checkpoint,
-                segmentator_decoder,
+                segmentator_release,
+                segmentator_python,
                 segmentator_device,
                 cellvit_script,
                 cellvit_model,
@@ -4373,8 +4483,8 @@ def build_ui() -> gr.Blocks:
                 local_tissue_path,
                 local_cell_path,
                 segmentator_env,
-                segmentator_checkpoint,
-                segmentator_decoder,
+                segmentator_release,
+                segmentator_python,
                 segmentator_device,
                 cellvit_script,
                 cellvit_model,

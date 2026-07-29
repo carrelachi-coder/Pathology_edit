@@ -40,9 +40,10 @@ from controlnet_train.inference import (
     load_inpaint_bundle,
     run_edit_pipeline,
     run_inpaint_bundle,
+    validate_frozen_probnet_checkpoint,
+    validate_production_pix2pix_checkpoint,
 )
 from controlnet_train.data.common import default_prompt_for_dataset
-from inpaint_cells.data import iter_class_components
 from inpaint_cells.sampling_policy import widen_locally_thin_mask
 from phase3_mask_edit.core.mask_io import (
     load_change_region,
@@ -416,15 +417,12 @@ def _retain_complete_reference_cells(
     if policy not in {"delete", "keep", "majority", "centroid"}:
         raise ValueError(f"Unsupported crossing-cell-policy: {policy}")
 
-    from scipy import ndimage
-
     source = np.asarray(reference_nuclei, dtype=np.uint8)
     changed = np.asarray(change_region, dtype=bool)
-    labeled, count = ndimage.label(source > 0)
     retained = np.zeros_like(source, dtype=np.uint8)
     stats = {
         "policy": policy,
-        "source_components": int(count),
+        "source_components": 0,
         "kept_components": 0,
         "deleted_components": 0,
         "crossing_components": 0,
@@ -435,7 +433,9 @@ def _retain_complete_reference_cells(
     if policy == "centroid":
         stats["source_components"] = 0
         height, width = changed.shape
-        for _, component, (centroid_y, centroid_x) in iter_class_components(source):
+        for _, component, (centroid_y, centroid_x) in _iter_present_class_components(
+            source
+        ):
             stats["source_components"] += 1
             touches_change = bool(np.any(component & changed))
             touches_unchanged = bool(np.any(component & ~changed))
@@ -454,8 +454,9 @@ def _retain_complete_reference_cells(
                 stats["kept_components"] += 1
         return retained, stats
 
-    for component_id in range(1, count + 1):
-        component = labeled == component_id
+    stats["source_components"] = 0
+    for _, component, _ in _iter_present_class_components(source):
+        stats["source_components"] += 1
         touches_change = bool(np.any(component & changed))
         touches_unchanged = bool(np.any(component & ~changed))
 
@@ -484,6 +485,37 @@ def _retain_complete_reference_cells(
     return retained, stats
 
 
+def _iter_present_class_components(
+    nuclei_map: np.ndarray,
+):
+    """Yield complete components for every nonzero subtype encoded in a mask."""
+
+    from scipy import ndimage
+
+    source = np.asarray(nuclei_map)
+    structure = np.ones((3, 3), dtype=np.uint8)
+    for class_id in np.unique(source):
+        class_id = int(class_id)
+        if class_id == 0:
+            continue
+        class_mask = source == class_id
+        labels, count = ndimage.label(class_mask, structure=structure)
+        centroids = ndimage.center_of_mass(
+            class_mask,
+            labels,
+            range(1, count + 1),
+        )
+        for component_id, (centroid_y, centroid_x) in enumerate(
+            centroids,
+            start=1,
+        ):
+            yield (
+                class_id,
+                labels == component_id,
+                (float(centroid_y), float(centroid_x)),
+            )
+
+
 def _run_probnet_cell_fill(
     args: argparse.Namespace,
     reference_tissue: np.ndarray,
@@ -502,6 +534,7 @@ def _run_probnet_cell_fill(
     ]
     if missing:
         raise SystemExit(f"{', '.join(missing)} required with --cell-fill-mode probnet")
+    probnet_release = validate_frozen_probnet_checkpoint(args.probnet_ckpt)
 
     cell_dir = output_dir / "probnet_cell_fill"
     cell_dir.mkdir(parents=True, exist_ok=True)
@@ -585,17 +618,19 @@ def _run_probnet_cell_fill(
             details = details.replace("Command: " + str(cmd), "Command: " + display_cmd)
         raise RuntimeError(details) from exc
     diagnostics_path = output_nuclei.with_suffix(".diagnostics.json")
-    shape_sampling = None
+    shape_sampling: dict[str, Any] = {
+        "probnet_release": probnet_release,
+    }
     if diagnostics_path.exists():
         diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
         if diagnostics:
             first = diagnostics[0]
-            shape_sampling = {
+            shape_sampling.update({
                 "reference_pool": first.get("reference_pool"),
                 "placed_by_shape_source": first.get("placed_by_shape_source"),
                 "sampling": first.get("shape_sampling"),
                 "diagnostics_path": str(diagnostics_path),
-            }
+            })
     return _load_uint8_mask(output_nuclei), "probnet_generated", shape_sampling
 
 
@@ -625,6 +660,10 @@ def _run_generation_stage(
     target_tissue_path: Path,
     target_nuclei_path: Path,
 ) -> tuple[Path, dict[str, Any]]:
+    generation_change_region_path = save_change_region(
+        change_region,
+        output_dir / "generation_change_region.png",
+    )
     if args.generation_mode == "dry-run":
         erased = reference_image.copy()
         erased[np.asarray(change_region, dtype=bool)] = np.array([128, 128, 128], dtype=np.uint8)
@@ -642,6 +681,7 @@ def _run_generation_stage(
             "generated_image": str(generated),
             "selected_mode": selected_mode,
             "change_ratio": change_ratio,
+            "generation_change_region": str(generation_change_region_path),
             "route_threshold": args.route_threshold,
         }
         save_metadata(info, output_dir / "generation_info.json")
@@ -667,6 +707,11 @@ def _run_generation_stage(
         raise SystemExit(f"{', '.join(missing)} required with --generation-mode {args.generation_mode}")
 
     if selected_mode == "cross-v1":
+        pix2pix_release = getattr(args, "pix2pix_release", None)
+        if pix2pix_release is None:
+            pix2pix_release = validate_production_pix2pix_checkpoint(
+                args.pix2pix_checkpoint
+            )
         prompt = _resolve_cross_v1_prompt(
             prompt_override=args.prompt,
             prompt_source=getattr(args, "prompt_source", "dataset"),
@@ -702,9 +747,10 @@ def _run_generation_stage(
             "controlnet_output_dir": str(output_dir / "controlnet_cross_v1_no_ip"),
             "selected_mode": selected_mode,
             "change_ratio": change_ratio,
+            "generation_change_region": str(generation_change_region_path),
             "route_threshold": args.route_threshold,
             "prompt": prompt,
-            "color_match": {"method": "none", "applied": False, "reference": str(args.reference_image)},
+            "pix2pix_release": pix2pix_release,
             "cross_v1": no_ip_info,
         }
         save_metadata(info, output_dir / "generation_info.json")
@@ -725,6 +771,7 @@ def _run_generation_stage(
                 target_tissue_mask=target_tissue_path,
                 target_nuclei_mask=target_nuclei_path,
                 output_dir=controlnet_dir,
+                generation_change_region=generation_change_region_path,
                 prompt=prompt,
                 dataset=args.profile,
                 force_mode=selected_mode if selected_mode == "inpaint" else "cross",
@@ -756,9 +803,13 @@ def _run_generation_stage(
         "controlnet_output_dir": str(controlnet_dir),
         "selected_mode": selected_mode,
         "change_ratio": result.change_ratio,
+        "semantic_change_ratio": result.change_ratio,
+        "generation_change_ratio": float(
+            result.generation_change_region_mask.to(dtype=torch.float32).mean().item()
+        ),
+        "generation_change_region": str(generation_change_region_path),
         "route_threshold": args.route_threshold,
         "prompt": result.prompt,
-        "color_match": {"method": "none", "applied": False},
     }
     save_metadata(info, output_dir / "generation_info.json")
     return generated, info
@@ -998,52 +1049,6 @@ def _save_compare_panel(
     return path
 
 
-def _match_image_color_to_reference(
-    *,
-    source: np.ndarray,
-    reference: np.ndarray,
-    method: str,
-) -> np.ndarray:
-    if method == "lab":
-        return _mean_std_transfer_pil_lab(source=source, reference=reference)
-    raise ValueError(f"Unsupported color match method: {method}")
-
-
-def _mean_std_transfer_pil_lab(*, source: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    from skimage.color import lab2rgb, rgb2lab
-
-    source_rgb = np.asarray(source, dtype=np.float32) / 255.0
-    reference_rgb = np.asarray(reference, dtype=np.float32) / 255.0
-    source_lab = rgb2lab(source_rgb).astype(np.float32)
-    reference_lab = rgb2lab(reference_rgb).astype(np.float32)
-    source_mask = _tissue_mask_from_rgb(source_rgb)
-    reference_mask = _tissue_mask_from_rgb(reference_rgb)
-
-    if not np.any(source_mask) or not np.any(reference_mask):
-        return np.asarray(source, dtype=np.uint8)
-
-    matched_lab = source_lab.copy()
-    for channel in range(3):
-        source_values = source_lab[..., channel][source_mask]
-        reference_values = reference_lab[..., channel][reference_mask]
-        source_std = float(source_values.std())
-        reference_std = float(reference_values.std())
-        matched_lab[..., channel][source_mask] = (
-            (source_values - float(source_values.mean()))
-            * (reference_std / max(source_std, 1e-6))
-            + float(reference_values.mean())
-        )
-
-    matched_rgb = np.clip(lab2rgb(matched_lab), 0.0, 1.0)
-    output = source_rgb.copy()
-    output[source_mask] = matched_rgb[source_mask]
-    return (output * 255.0).round().astype(np.uint8)
-
-
-def _tissue_mask_from_rgb(rgb_float: np.ndarray, threshold: float = 0.85) -> np.ndarray:
-    return rgb_float.mean(axis=-1) < threshold
-
-
 def _save_target_combined_mask(
     path: Path,
     *,
@@ -1190,12 +1195,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument(
-        "--color-match",
-        choices=("none", "lab"),
-        default="lab",
-        help="Postprocess cross-v1 output to match reference stain/color statistics.",
-    )
     parser.add_argument("--print-summary", action="store_true")
     return parser
 

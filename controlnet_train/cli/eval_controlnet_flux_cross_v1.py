@@ -33,12 +33,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ip-scale", type=float, default=1.0)
     parser.add_argument("--prompt-source", choices=["metadata", "dataset"], default="dataset")
     parser.add_argument("--prompt", default=None, help="Override every sample with one prompt.")
-    parser.add_argument(
-        "--color-match",
-        choices=("none", "lab"),
-        default="lab",
-        help="Postprocess predictions to match reference stain/color statistics.",
-    )
     parser.add_argument("--overview-max-samples", type=int, default=32)
     parser.add_argument("--thumbnail-size", type=int, default=192)
     return parser
@@ -193,13 +187,6 @@ def main(argv=None) -> int:
         reference_pil.save(sample_dir / "reference.png")
         target_pil = Image.open(target_image_path).convert("RGB")
         target_pil.save(sample_dir / "target.png")
-        prediction.save(sample_dir / "prediction_raw.png")
-        if args.color_match == "lab":
-            prediction = _match_image_color_to_reference(
-                source=prediction,
-                reference=reference_pil,
-                method=args.color_match,
-            )
         prediction.save(sample_dir / "prediction.png")
         _save_mask_image(np.asarray(Image.open(reference_tissue_mask_path)), sample_dir / "reference_tissue_mask.png")
         _save_mask_image(np.asarray(Image.open(target_tissue_mask_path)), sample_dir / "target_tissue_mask.png")
@@ -217,7 +204,6 @@ def main(argv=None) -> int:
             "pair_difficulty": record.get("pair_difficulty", ""),
             "tissue_coverage_ratio": float(record.get("tissue_coverage_ratio", math.nan)),
             "area_coverage_ratio": float(record.get("area_coverage_ratio", math.nan)),
-            "color_match_applied": args.color_match != "none",
             "ip_scale": float(args.ip_scale),
             "controlnet_conditioning_scale": float(args.controlnet_conditioning_scale),
             **metrics,
@@ -305,52 +291,6 @@ def _psnr(mse: float) -> float:
 
 def _pil_to_chw_float(image: Image.Image) -> np.ndarray:
     return np.transpose(np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0, (2, 0, 1))
-
-
-def _match_image_color_to_reference(
-    *,
-    source: Image.Image,
-    reference: Image.Image,
-    method: str,
-) -> Image.Image:
-    if method == "lab":
-        return _mean_std_transfer_pil_lab(source=source, reference=reference)
-    raise ValueError(f"Unsupported color match method: {method}")
-
-
-def _mean_std_transfer_pil_lab(*, source: Image.Image, reference: Image.Image) -> Image.Image:
-    from skimage.color import lab2rgb, rgb2lab
-
-    source_rgb = np.asarray(source.convert("RGB"), dtype=np.float32) / 255.0
-    reference_rgb = np.asarray(reference.convert("RGB"), dtype=np.float32) / 255.0
-    source_lab = rgb2lab(source_rgb).astype(np.float32)
-    reference_lab = rgb2lab(reference_rgb).astype(np.float32)
-    source_mask = _tissue_mask_from_rgb(source_rgb)
-    reference_mask = _tissue_mask_from_rgb(reference_rgb)
-
-    if not np.any(source_mask) or not np.any(reference_mask):
-        return source.convert("RGB")
-
-    matched_lab = source_lab.copy()
-    for channel in range(3):
-        source_values = source_lab[..., channel][source_mask]
-        reference_values = reference_lab[..., channel][reference_mask]
-        source_std = float(source_values.std())
-        reference_std = float(reference_values.std())
-        matched_lab[..., channel][source_mask] = (
-            (source_values - float(source_values.mean()))
-            * (reference_std / max(source_std, 1e-6))
-            + float(reference_values.mean())
-        )
-
-    matched_rgb = np.clip(lab2rgb(matched_lab), 0.0, 1.0)
-    output = source_rgb.copy()
-    output[source_mask] = matched_rgb[source_mask]
-    return Image.fromarray((output * 255.0).round().astype(np.uint8), mode="RGB")
-
-
-def _tissue_mask_from_rgb(rgb_float: np.ndarray, threshold: float = 0.85) -> np.ndarray:
-    return rgb_float.mean(axis=-1) < threshold
 
 
 def _safe_name(value: str) -> str:
