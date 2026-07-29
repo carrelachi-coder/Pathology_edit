@@ -184,6 +184,7 @@ def _run_pix2pix_transfer(
     device: str,
     torch_dtype: torch.dtype,
     image_size: int,
+    low_stain_protection_region_path: str | Path | None = None,
 ) -> dict[str, Any]:
     from controlnet_train.pix2pix_transfer.inference import (
         load_pix2pix_postprocessor,
@@ -200,6 +201,13 @@ def _run_pix2pix_transfer(
             torch_dtype=torch_dtype,
         )
         _PIX2PIX_BUNDLE_CACHE[bundle_key] = bundle
+    output = Path(output_path)
+    protection_mask_output = output.with_name(
+        f"{output.stem}_low_stain_protection_mask.png"
+    )
+    unprotected_output = output.with_name(
+        f"{output.stem}_unprotected.png"
+    )
     pred, info = run_pix2pix_postprocess(
         bundle=bundle,
         i0_image=i0_image,
@@ -211,8 +219,10 @@ def _run_pix2pix_transfer(
         image_size=image_size,
         device=device,
         torch_dtype=torch_dtype,
+        low_stain_protection_region_path=low_stain_protection_region_path,
+        low_stain_protection_mask_output_path=protection_mask_output,
+        unprotected_output_path=unprotected_output,
     )
-    output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     pred.save(output)
     print(

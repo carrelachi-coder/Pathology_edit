@@ -466,6 +466,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = workflow.to_metadata()
     summary["generated_image"] = str(final_path) if final_path.exists() else None
     summary["nuclei_generation"] = nuclei_generation
+    summary["image_generation_provenance"] = (
+        _selected_image_generation_provenance(summary)
+    )
     summary["online_self_audit"] = {
         "scope": "product_runtime",
         "benchmark_independent": True,
@@ -513,6 +516,43 @@ def _generation_backend_mode(agent_mode: str) -> str:
     }:
         return "cross-v1"
     raise ValueError(f"Unsupported agent generation mode: {agent_mode}")
+
+
+def _selected_image_generation_provenance(
+    workflow_summary: dict[str, Any],
+) -> dict[str, Any]:
+    selected = workflow_summary.get("selected_attempt") or {}
+    artifact = selected.get("artifact") or {}
+    metadata = artifact.get("metadata") or {}
+    selected_mode = metadata.get("selected_mode") or artifact.get("mode")
+    cross = metadata.get("cross_v1") or {}
+    pix2pix = cross.get("pix2pix_v2") or {}
+    protection = pix2pix.get("cross_rgb_od_low_stain_protection")
+    if protection is None:
+        protection = {
+            "policy": "cross_rgb_od_low_stain_v1",
+            "enabled": False,
+            "applied": False,
+            "status": (
+                "not_applicable"
+                if selected_mode not in {"cross", "cross-v1"}
+                else "missing_from_selected_cross_artifact"
+            ),
+        }
+    else:
+        protection = {
+            **protection,
+            "status": (
+                "applied"
+                if protection.get("applied")
+                else "enabled_no_supported_region"
+            ),
+        }
+    return {
+        "selected_attempt": selected.get("attempt_index"),
+        "selected_mode": selected_mode,
+        "cross_rgb_od_low_stain_protection": protection,
+    }
 
 
 def _validate_nuclei_generation_contract(

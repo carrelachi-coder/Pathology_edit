@@ -19,6 +19,7 @@ from controlnet_train.inference.router import route_agentic_edit_request
 from scripts.run_agentic_edit_workflow import (
     _generation_backend_mode,
     _load_and_validate_inputs,
+    _selected_image_generation_provenance,
     _validate_nuclei_generation_contract,
     build_parser as build_agentic_parser,
     main as run_agentic_cli,
@@ -33,6 +34,39 @@ from controlnet_train.cli.eval_controlnet_flux_cross_v1 import (
 
 
 class AgenticRoutingTests(unittest.TestCase):
+    def test_agent_surfaces_selected_cross_low_stain_provenance(self):
+        provenance = _selected_image_generation_provenance(
+            {
+                "selected_attempt": {
+                    "attempt_index": 2,
+                    "artifact": {
+                        "mode": "cross-v1-no-ip-pix2pix-v2",
+                        "metadata": {
+                            "selected_mode": "cross-v1",
+                            "cross_v1": {
+                                "pix2pix_v2": {
+                                    "cross_rgb_od_low_stain_protection": {
+                                        "policy": "cross_rgb_od_low_stain_v1",
+                                        "enabled": True,
+                                        "applied": True,
+                                        "protected_fraction_image": 0.35,
+                                        "organ_specific_constraints": False,
+                                    }
+                                }
+                            },
+                        },
+                    },
+                }
+            }
+        )
+
+        self.assertEqual(provenance["selected_attempt"], 2)
+        self.assertEqual(provenance["selected_mode"], "cross-v1")
+        protection = provenance["cross_rgb_od_low_stain_protection"]
+        self.assertEqual(protection["status"], "applied")
+        self.assertEqual(protection["protected_fraction_image"], 0.35)
+        self.assertFalse(protection["organ_specific_constraints"])
+
     def test_agent_cross_label_maps_to_production_backend(self):
         self.assertEqual(
             _generation_backend_mode("cross-v1-no-ip-pix2pix-v2"),

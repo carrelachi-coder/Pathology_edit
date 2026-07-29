@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import torch
 from PIL import Image
 
@@ -10,6 +11,7 @@ from controlnet_train.pix2pix_transfer.dataset import NUM_CELL_CLASSES, NUM_FINE
 from controlnet_train.pix2pix_transfer.identity_adapter import FamilyFeatureFiLM
 from controlnet_train.pix2pix_transfer.inference import (
     Pix2PixPostprocessConfig,
+    apply_cross_low_stain_protection,
     load_pix2pix_postprocessor,
 )
 from controlnet_train.pix2pix_transfer.regional_cross_attention import (
@@ -19,6 +21,33 @@ from scripts.generate_cross_v1_no_ip_strict import _run_pix2pix_transfer
 
 
 class Pix2PixPostprocessInferenceTests(unittest.TestCase):
+    def test_cross_low_stain_protection_preserves_bright_cell_free_component(self):
+        cross = np.full((64, 64, 3), (120, 70, 110), dtype=np.uint8)
+        cross[8:40, 8:40] = (245, 240, 245)
+        pix2pix = np.full((64, 64, 3), (160, 90, 150), dtype=np.uint8)
+        region = np.ones((64, 64), dtype=np.uint8)
+        nuclei = np.zeros((64, 64), dtype=np.uint8)
+
+        output, mask, info = apply_cross_low_stain_protection(
+            cross_image=Image.fromarray(cross),
+            pix2pix_image=Image.fromarray(pix2pix),
+            target_nuclei_mask=nuclei,
+            protection_region=region,
+        )
+
+        output_array = np.asarray(output)
+        mask_array = np.asarray(mask)
+        np.testing.assert_allclose(
+            output_array[20, 20],
+            cross[20, 20],
+            atol=2,
+        )
+        np.testing.assert_array_equal(output_array[55, 55], pix2pix[55, 55])
+        self.assertGreater(int(mask_array[20, 20]), 240)
+        self.assertEqual(info["policy"], "cross_rgb_od_low_stain_v1")
+        self.assertTrue(info["applied"])
+        self.assertFalse(info["organ_specific_constraints"])
+
     def test_strict_cross_uses_checkpoint_nuclei_trust_policy(self):
         captured = {}
 
@@ -61,9 +90,19 @@ class Pix2PixPostprocessInferenceTests(unittest.TestCase):
                     device="cpu",
                     torch_dtype=torch.float32,
                     image_size=8,
+                    low_stain_protection_region_path="change_region.png",
                 )
 
         self.assertNotIn("enable_highres_nuclei_trust", captured)
+        self.assertEqual(
+            captured["low_stain_protection_region_path"],
+            "change_region.png",
+        )
+        self.assertTrue(
+            str(captured["low_stain_protection_mask_output_path"]).endswith(
+                "output_low_stain_protection_mask.png"
+            )
+        )
 
     def test_identity_adapter_preserves_bfloat16_feature_dtype(self):
         adapter = FamilyFeatureFiLM(8, gamma_max=0.3, gamma_init=0.1).to(

@@ -760,6 +760,7 @@ def _run_generation_stage(
             reference_nuclei_mask_path=args.reference_nuclei_mask,
             target_tissue_mask_path=target_tissue_path,
             target_nuclei_mask_path=target_nuclei_path,
+            generation_change_region_path=generation_change_region_path,
             prompt=prompt,
             output_dir=output_dir / "controlnet_cross_v1_no_ip",
             device=args.device,
@@ -931,6 +932,7 @@ def _run_cross_v1_no_ip_generation(
     reference_nuclei_mask_path: str | Path,
     target_tissue_mask_path: str | Path,
     target_nuclei_mask_path: str | Path,
+    generation_change_region_path: str | Path | None,
     prompt: str,
     output_dir: Path,
     device: str,
@@ -1013,6 +1015,7 @@ def _run_cross_v1_no_ip_generation(
         device=device,
         torch_dtype=torch_dtype,
         image_size=int(output_size[0]),
+        low_stain_protection_region_path=generation_change_region_path,
     )
     final_image = Image.open(pix2pix_output_path).convert("RGB")
 
