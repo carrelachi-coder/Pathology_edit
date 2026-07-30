@@ -66,6 +66,21 @@ def test_reference_pool_accepts_internal_class_indices():
     assert pool.counts()[105] == 1
 
 
+def test_reference_pool_can_be_partitioned_by_original_component_region():
+    nuclei = np.zeros((24, 24), dtype=np.uint8)
+    nuclei[3:6, 3:7] = 101
+    nuclei[15:19, 16:20] = 101
+    pool = ReferenceNucleiInstancePool.from_mask(nuclei, min_area=2)
+    left = np.zeros_like(nuclei, dtype=bool)
+    left[:, :12] = True
+
+    left_pool = pool.subset_by_center_region(left)
+
+    assert pool.counts()[101] == 2
+    assert left_pool.counts()[101] == 1
+    assert left_pool.instances[101][0]["area"] == 12
+
+
 def test_reference_shapes_are_used_without_replacement_before_library_fallback():
     nuclei = np.zeros((32, 32), dtype=np.uint8)
     nuclei[3:6, 3:6] = 101
@@ -96,6 +111,24 @@ def test_reference_shapes_are_used_without_replacement_before_library_fallback()
     assert diagnostics["remaining_reference_counts_by_type"]["101"] == 0
     assert diagnostics["selected_by_source"] == {"reference": 2, "library": 2}
     assert diagnostics["library_fallback_by_type"] == {"101": 1, "102": 1}
+
+
+def test_failed_reference_shape_is_returned_to_pool():
+    nuclei = np.zeros((24, 24), dtype=np.uint8)
+    nuclei[5:8, 5:8] = 101
+    pool = ReferenceNucleiInstancePool.from_mask(nuclei, min_area=2)
+    sampler = ReferenceFirstNucleiSampler(FakeLibrary(), pool)
+
+    instance, source = sampler.sample_instance(13, 101)
+    assert source == "reference"
+    assert sampler.diagnostics()["remaining_reference_counts_by_type"]["101"] == 0
+
+    sampler.release_failed_instance(instance, source)
+
+    assert sampler.diagnostics()["remaining_reference_counts_by_type"]["101"] == 1
+    retry, retry_source = sampler.sample_instance(13, 101)
+    assert retry_source == "reference"
+    assert retry["area"] == instance["area"]
 
 
 def test_obvious_same_class_area_outlier_is_not_used_as_one_nucleus():
@@ -169,6 +202,30 @@ def test_library_fallback_without_same_class_reference_is_recorded_unscaled():
     assert diagnostics["uncalibrated_no_reference_by_type"] == {"102": 1}
 
 
+def test_tissue_exact_library_shape_can_skip_patch_size_calibration():
+    nuclei = np.zeros((24, 24), dtype=np.uint8)
+    nuclei[5:9, 5:9] = 101
+    pool = ReferenceNucleiInstancePool.from_mask(nuclei, min_area=2)
+    library = FakeLibrary()
+    sampler = ReferenceFirstNucleiSampler(
+        library,
+        pool,
+        library_size_log_area_jitter=0.0,
+    )
+
+    instance, source = sampler.sample_library_instance(
+        2,
+        101,
+        allow_cross_tissue=False,
+        calibrate_size=False,
+    )
+
+    assert source == "library"
+    assert instance["area"] == 9
+    assert "size_calibrated" not in instance
+    assert library.calls == [(2, 101, False)]
+
+
 def test_strict_layered_placement_never_overwrites_retained_nucleus():
     nuclei = np.zeros((12, 12), dtype=np.int64)
     nuclei[5, 5] = 2
@@ -214,3 +271,50 @@ def test_strict_layered_placement_requires_complete_tissue_containment():
 
     assert placed is False
     np.testing.assert_array_equal(nuclei, original)
+
+
+def test_layered_placement_spacing_margin_prevents_component_merging():
+    nuclei = np.zeros((12, 12), dtype=np.int64)
+    nuclei[5, 5] = 1
+    original = nuclei.copy()
+    instance = {
+        "mask": np.ones((1, 1), dtype=bool),
+        "type": 101,
+        "source": "reference",
+    }
+
+    placed = place_nucleus_layered(
+        nuclei,
+        5,
+        6,
+        instance,
+        augment=False,
+        minimum_separation_px=1,
+    )
+
+    assert placed is False
+    np.testing.assert_array_equal(nuclei, original)
+
+
+def test_reference_shape_ignores_retry_scale_and_preserves_patch_area():
+    nuclei = np.zeros((20, 20), dtype=np.int64)
+    instance = {
+        "mask": np.ones((4, 4), dtype=bool),
+        "type": 101,
+        "source": "reference",
+    }
+
+    placed = place_nucleus_layered(
+        nuclei,
+        10,
+        10,
+        instance,
+        augment=True,
+        rotation_quarters=0,
+        flip_horizontal=False,
+        flip_vertical=False,
+        scale=0.5,
+    )
+
+    assert placed is True
+    assert np.count_nonzero(nuclei) == 16

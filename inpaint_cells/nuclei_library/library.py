@@ -181,7 +181,7 @@ class ReferenceNucleiInstancePool:
         height, width = raw_mask.shape
 
         for nuc_type in NUCLEI_CLASSES:
-            count, labels, stats, _ = cv2.connectedComponentsWithStats(
+            count, labels, stats, centroids = cv2.connectedComponentsWithStats(
                 (raw_mask == nuc_type).astype(np.uint8),
                 connectivity=8,
             )
@@ -225,10 +225,34 @@ class ReferenceNucleiInstancePool:
                         "type": int(nuc_type),
                         "area": int(area),
                         "source": "reference",
+                        "center_y": float(centroids[component_id][1]),
+                        "center_x": float(centroids[component_id][0]),
                     }
                 )
 
         return cls(instances=instances, rejected=rejected)
+
+    def subset_by_center_region(self, region_mask):
+        """Return reference instances whose original centroids lie in a region."""
+
+        region = np.asarray(region_mask, dtype=bool)
+        if region.ndim != 2:
+            raise ValueError("reference subset region must be 2D")
+        height, width = region.shape
+        instances = defaultdict(list)
+        for nuc_type, values in self.instances.items():
+            for instance in values:
+                if "center_y" not in instance or "center_x" not in instance:
+                    continue
+                row = int(
+                    np.clip(round(float(instance["center_y"])), 0, height - 1)
+                )
+                col = int(
+                    np.clip(round(float(instance["center_x"])), 0, width - 1)
+                )
+                if region[row, col]:
+                    instances[int(nuc_type)].append(instance)
+        return ReferenceNucleiInstancePool(instances=instances)
 
     def counts(self):
         return {
@@ -410,8 +434,9 @@ class ReferenceFirstNucleiSampler:
         self.requested_by_type[nuc_type] += 1
         available = self.remaining.get(nuc_type, [])
         if available:
+            selected_index = random.randrange(len(available))
             self.selected_by_source["reference"] += 1
-            return available.pop(), "reference"
+            return available.pop(selected_index), "reference"
 
         instance = self.library.sample_instance(
             tissue_id,
@@ -425,6 +450,20 @@ class ReferenceFirstNucleiSampler:
             return instance, "library"
         return None, None
 
+    def release_failed_instance(self, instance, source):
+        """Return an unsuccessfully placed reference shape to the pool."""
+
+        if instance is None or str(source) != "reference":
+            return
+        nuc_type = int(instance.get("type", 0))
+        if nuc_type not in self.remaining:
+            return
+        self.remaining[nuc_type].append(instance)
+        self.selected_by_source["reference"] = max(
+            0,
+            int(self.selected_by_source.get("reference", 0)) - 1,
+        )
+
     def sample_library_instance(
         self,
         tissue_id,
@@ -432,6 +471,7 @@ class ReferenceFirstNucleiSampler:
         *,
         allow_cross_tissue=True,
         requested_type=None,
+        calibrate_size=True,
     ):
         """Use the legacy library fallback while keeping provenance counts."""
         instance = self.library.sample_instance(
@@ -441,7 +481,8 @@ class ReferenceFirstNucleiSampler:
         )
         if instance is None:
             return None, None
-        instance = self._calibrate_library_instance(instance)
+        if calibrate_size:
+            instance = self._calibrate_library_instance(instance)
         self.selected_by_source["library"] += 1
         key = requested_type if requested_type is not None else instance.get("type", nuc_type)
         if key is not None:
@@ -745,6 +786,7 @@ def place_nucleus_layered(
     flip_horizontal=None,
     flip_vertical=None,
     scale=None,
+    minimum_separation_px=0,
 ):
     """
     把一个核实例贴到 nuclei_map 上 (AD-1: 分层存储, nuclei_map 值域 0-5 internal index)。
@@ -761,6 +803,8 @@ def place_nucleus_layered(
         valid_tissue_mask: Optional boolean mask defining biological support.
         require_full_tissue_containment: Reject a truncated proposal or any
             proposal pixel outside ``valid_tissue_mask``.
+        minimum_separation_px: Empty-pixel margin required between the proposal
+            and every retained or newly generated nucleus.
 
     Returns:
         True if placed successfully
@@ -794,11 +838,15 @@ def place_nucleus_layered(
             nuc_instance.get("source") == "reference"
             or bool(nuc_instance.get("size_calibrated", False))
         )
-        applied_scale = scale
-        if applied_scale is None:
-            applied_scale = (
-                1.0 if preserve_patch_size else random.uniform(0.8, 1.2)
+        applied_scale = (
+            1.0
+            if preserve_patch_size
+            else (
+                scale
+                if scale is not None
+                else random.uniform(0.8, 1.2)
             )
+        )
         resize_threshold = 1e-6 if scale is not None else 0.05
         if abs(float(applied_scale) - 1.0) > resize_threshold:
             new_h = max(1, int(nuc_mask.shape[0] * float(applied_scale)))
@@ -855,6 +903,36 @@ def place_nucleus_layered(
     maximum_overlap = max(0.0, float(max_overlap_fraction))
     if overlap.sum() > local_mask.sum() * maximum_overlap:
         return False
+    separation = max(0, int(minimum_separation_px))
+    if separation > 0:
+        extended_y1 = max(0, dst_y1 - separation)
+        extended_x1 = max(0, dst_x1 - separation)
+        extended_y2 = min(H, dst_y2 + separation)
+        extended_x2 = min(W, dst_x2 + separation)
+        proposal = np.zeros(
+            (extended_y2 - extended_y1, extended_x2 - extended_x1),
+            dtype=np.uint8,
+        )
+        proposal[
+            dst_y1 - extended_y1 : dst_y2 - extended_y1,
+            dst_x1 - extended_x1 : dst_x2 - extended_x1,
+        ][local_mask] = 1
+        proposal = cv2.dilate(
+            proposal,
+            np.ones(
+                (2 * separation + 1, 2 * separation + 1),
+                dtype=np.uint8,
+            ),
+        )
+        occupied = (
+            nuclei_map[
+                extended_y1:extended_y2,
+                extended_x1:extended_x2,
+            ]
+            > 0
+        )
+        if np.any((proposal > 0) & occupied):
+            return False
 
     nuclei_map[dst_y1:dst_y2, dst_x1:dst_x2][local_mask] = nuc_type_idx
     return True

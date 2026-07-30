@@ -43,6 +43,7 @@ from phase3_mask_edit.core.mask_io import (
     save_change_region,
     save_id_mask,
 )
+from phase3_mask_edit.core.gland_region import bound_generation_context_region
 from phase3_mask_edit.audit import (
     OnlineAuditPolicy,
     OnlineSemanticAuditor,
@@ -500,6 +501,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 inputs["reference_tissue"] != inputs["target_tissue"],
             )
         ),
+        "generation_context_policy": inputs["generation_region_policy"],
     }
     _write_json(output_dir / "pipeline_summary.json", summary)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
@@ -568,6 +570,11 @@ def _validate_nuclei_generation_contract(
         "release_id": release.get("release_id"),
         "expected_candidate_queue_policy": expected["candidate_queue_policy"],
         "expected_checkpoint_sha256": expected["checkpoint_sha256"],
+        "expected_count_policy": expected["count_policy"],
+        "expected_type_quota_routing_policy": expected[
+            "type_quota_routing_policy"
+        ],
+        "expected_shape_policy": expected["shape_policy"],
     }
     if args.nuclei_generation_log is None:
         return {
@@ -601,6 +608,12 @@ def _validate_nuclei_generation_contract(
         "quota_coverage_spacing_scale",
         "quota_coverage_max_radius",
         "retry_tail_policy",
+        "count_policy",
+        "type_quota_routing_policy",
+        "shape_policy",
+        "nucleus_spacing_margin_px",
+        "source_nucleus_erasure_policy",
+        "buffer_nucleus_policy",
     ):
         actual_value = sampling.get(field)
         expected_value = expected.get(field)
@@ -634,6 +647,18 @@ def _validate_nuclei_generation_contract(
         ],
         "quota_coverage_max_radius": sampling["quota_coverage_max_radius"],
         "retry_tail_policy": sampling["retry_tail_policy"],
+        "count_policy": sampling["count_policy"],
+        "type_quota_routing_policy": sampling[
+            "type_quota_routing_policy"
+        ],
+        "shape_policy": sampling["shape_policy"],
+        "nucleus_spacing_margin_px": sampling[
+            "nucleus_spacing_margin_px"
+        ],
+        "source_nucleus_erasure_policy": sampling[
+            "source_nucleus_erasure_policy"
+        ],
+        "buffer_nucleus_policy": sampling["buffer_nucleus_policy"],
         "checkpoint_sha256": actual_sha256,
         "organ_specific_constraints": False,
         "diagnostics_path": sampling.get("diagnostics_path"),
@@ -713,6 +738,21 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
             "generation change region must contain every semantic change pixel; "
             f"missing {int(np.count_nonzero(missing_generation_pixels))} pixels."
         )
+    if str(args.profile).upper() == "GLAS":
+        generation_region_policy = {
+            "policy": "preserve_glas_whole_component_and_nucleus_buffer",
+            "capped": False,
+            "generation_pixels": int(
+                np.count_nonzero(generation_change_region)
+            ),
+        }
+    else:
+        generation_change_region, generation_region_policy = (
+            bound_generation_context_region(
+                semantic_change_region,
+                generation_change_region,
+            )
+        )
     return {
         "reference_image": reference_image,
         "reference_tissue": reference_tissue,
@@ -729,6 +769,7 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
             generation_change_region,
             dtype=bool,
         ),
+        "generation_region_policy": generation_region_policy,
     }
 
 

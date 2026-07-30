@@ -6,19 +6,20 @@ as a legacy internal identifier so that released provenance remains stable.
 
 ## Production Decision
 
-ProbNet does not determine the number or class composition of generated
-nuclei. The production pipeline separates those responsibilities:
+The production pipeline separates count, type, location and shape:
 
-- the current patch and its matching reference-profile statistics determine
-  total count and exact type quotas;
-- the frozen ProbNet scalar field `P(nucleus) = 1 - P(background)` weights
-  spatial landing positions;
-- component allocation, instance-shape selection, and placement retries are
-  deterministic sampling-policy responsibilities.
+- total count is estimated from the unedited source patch; the edited target
+  tissue mask supplies only the area to populate;
+- the frozen ProbNet scalar field `P(nucleus) = 1 - P(background)` supplies
+  spatial quality;
+- the density head supplies exact type-quota evidence only for tissue/grade
+  IDs genuinely created by the edit;
+- unchanged target tissue preserves its pre-edit patch type mixture;
+- component allocation, instance-shape selection, and placement retries remain
+  explicit sampling-policy responsibilities.
 
-Count-head recalibration and density-head hyperparameter selection are retired.
-They are not part of model selection, deployment, or the final 120-case
-evaluation.
+The checkpoint count head remains non-authoritative. The density head is not a
+total-count source.
 
 ## Frozen Checkpoint
 
@@ -35,10 +36,10 @@ File SHA256:
 c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211
 ```
 
-The checkpoint contains semantic, type, density, and count-related outputs,
-but inference consumes only its scalar nucleus-presence probability for
-location weighting. Checkpoint density integrals and type logits never set
-the requested count or type mixture.
+The checkpoint contains semantic, type, density, and count-related outputs.
+Inference consumes the scalar nucleus-presence probability for spatial
+placement and the normalized density-head class evidence for changed-tissue
+type quotas. It never uses the checkpoint to set total count.
 
 ## Authoritative Code Contract
 
@@ -95,15 +96,17 @@ verification to `scripts/run_agentic_edit_workflow.py`.
 
 ## Frozen Sampling Policy
 
-1. Widen locally thin edit branches to a 33-pixel minimum support width,
-   preserve the semantic edit, and clip the support to biological foreground.
-2. Delete a source nucleus as a complete component only when its centroid lies
-   inside the generation support. Keep boundary-crossing nuclei whole when
-   their centroids remain outside.
-3. For each tissue type, measure patch-local density from source-nucleus
-   centroids outside the full support.
-4. Treat the local estimate as reliable when at least 20,000 unedited tissue
-   pixels and 10 nuclei are observed. Use a reliable local density directly.
+1. Preserve the exact semantic edit. For GLaS, any touched gland/tumor
+   connected component becomes the complete destructive core.
+2. Delete every complete source-nucleus instance that intersects the
+   destructive core. Estimate the largest valid deleted equivalent diameter
+   and set the generation support to the core plus a `1.5x` diameter buffer.
+   Nuclei that only touch the buffer are retained as hard placement obstacles.
+3. For every dataset and target tissue, measure patch-local density from the
+   full pre-edit source tissue and source-nucleus centroids. Never remove the
+   destructive core from this density reference.
+4. Treat the exact target-tissue estimate as reliable when at least 20,000
+   source pixels and 10 nuclei are observed. Use it directly.
 5. For a sparse observation, shrink the local estimate toward the matching
    reference-profile tissue-density prior using
    `observed_tissue_area / full_patch_area` as confidence:
@@ -117,26 +120,35 @@ target_density_t =
     + (1 - confidence_t) * profile_tissue_density_t
 ```
 
-6. Use the reliable patch-local nucleus-type distribution for exact type
-   quotas. If it is sparse, use the matching profile library's tissue-specific
-   type distribution. If that distribution is unavailable, fall back first to
-   sparse local types and only then to the explicit default class.
+   If a GLaS target grade is absent, retain the target grade's dataset prior and
+   multiply it by a gland-family cellularity factor measured from the pre-edit
+   patch.
+6. For unchanged target tissue, use the pre-edit patch type distribution for
+   exact quotas. For a genuinely changed target tissue/grade, normalize the
+   density-head class evidence and use it for exact quotas; fall back to the
+   matching profile prior only when head evidence is unavailable.
 7. Convert type proportions to exact integer quotas with largest remainder.
-   ProbNet type logits do not participate.
+   Per-center semantic type probabilities assign those exact quotas spatially;
+   they do not change the quota totals.
 8. Allocate each tissue-level target across disconnected components strictly
    by component area with largest remainder. Do not reserve one nucleus for
    every small component; a component with expected count below one may receive
    zero.
-9. Generate Poisson candidates independently in every positive-quota component.
-   Build the primary quota prefix greedily in descending frozen-ProbNet score
-   order while deferring candidates closer than
-   `0.75 * sqrt(component_area / component_quota)`, capped at 48 pixels.
-   Preserve every deferred and unused candidate in a complete
-   stable-descending retry tail. Use `gamma=1.5`.
-10. Draw same-class instance shapes from the current patch first. Use the
-    matching profile library only for same-class shortages. Continue through
-    unused candidate centers until the quota is filled or the pool is
-    exhausted.
+9. Generate candidates independently in every positive-quota component. Build
+   the primary prefix greedily from
+   `gamma * logit(P(nucleus)) + min(nearest_distance / radius, 1)`, where
+   `radius = min(0.75 * sqrt(component_area / component_quota), 48)`.
+   Preserve every unused candidate in a complete stable-descending ProbNet
+   quality retry tail. Use `gamma=1.5`.
+10. For unchanged tissue, draw same-class shapes from the corresponding
+    source-patch component. Failed reference shapes return to the pool and are
+    never resized during retries. A component-local shortage uses a library
+    shape calibrated to that component's reference sizes. A real target
+    tissue/grade transition uses exact `(target tissue, predicted type)`
+    library shapes without source-patch size calibration.
+11. Require zero overlap, full biological-tissue containment and one empty
+    pixel between nuclei so two same-class placements remain separate
+    instances.
 
 Retry pools contain at least:
 
@@ -169,6 +181,8 @@ quota_coverage_spacing_scale = 0.75
 quota_coverage_max_radius = 48
 retry_tail_policy = stable_descending_probnet_score
 max_nucleus_overlap_fraction = 0.0
+nucleus_spacing_margin_px = 1
+type_density_head_weight_for_changed_tissue = 1.0
 ```
 
 Strict zero overlap is part of the production contract. A proposed nucleus

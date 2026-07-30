@@ -28,7 +28,7 @@ generation mode; `dry-run` is a debugging mode.
 |---|---|---|
 | UI input and mask editor | `scripts/phase3_end_to_end_ui.py` | Keeps prompt, direct instruction, multi-label manual contour/finalize, and auto-recommend. Source tissue auto-segmentation is release-driven; source nuclei auto-segmentation uses the frozen CellViT runtime. |
 | Instruction parsing and planning | `phase3_mask_edit/parser/instruction_parser.py`, `phase3_mask_edit/rules/semantic_to_intent.py` | Multi-edit strengths remain clause-local; preservation clauses do not become edits; replacement/backfill remains a fallback. |
-| Target nuclei construction | `scripts/run_phase3_inpaint_pipeline.py`, `inpaint_cells/generate.py`, `inpaint_cells/nuclei_library/library.py` | The UI passes source tissue, target tissue, source nuclei shapes, and the real edit region through the current six-argument interface. |
+| Target nuclei construction | `scripts/run_phase3_inpaint_pipeline.py`, `inpaint_cells/generate.py`, `inpaint_cells/nuclei_library/library.py` | Count evidence always comes from the pre-edit source patch. Changed target tissues use the density head for exact type quotas and exact target-tissue library shapes; unchanged target tissues preserve their pre-edit type mixture and use component-local source-patch shapes. Complete instances intersecting the deletion core are removed; buffer-only instances remain obstacles. |
 | Production orchestration | `scripts/run_agentic_edit_workflow.py` | This is the only online agent loop. The UI invokes it instead of maintaining a second generation/verification implementation. |
 | Inpaint/Cross generation | `scripts/run_phase3_inpaint_pipeline.py`, `scripts/generate_cross_v1_no_ip_strict.py` | Runtime packages are validated before use. Cross retains the epoch-26 checkpoint's nuclei trust and identity adapter, applies the RGB/OD low-stain structure guard inside the generation region, and does not apply color matching. |
 | Tissue verification | `segmentator/release.py`, `scripts/predict_segmentator_mask.py` | C-line release manifest reconstructs the architecture strictly; raw UI checkpoint/decoder selection is not supported. |
@@ -45,15 +45,17 @@ release is the joint epoch-2 checkpoint, not either initializer.
 | Part | Product selection | Runtime contract |
 |---|---|---|
 | Mask edit | semantic-diff schema 0.2, `gpt-4.1-mini`, `organic_v2` | Prompt, direct instruction, multi-label manual contour, and auto-recommend remain available. Independent instructions execute sequentially against the current mask. Replacement/backfill is a fallback, not an accidental second edit. |
-| ProbNet / CellDistNet | `Qinxin11/pathology-probnet`, epoch 29 / step 33785, SHA256 `c29607f...571211` | ProbNet supplies only the spatial ranking. The primary tissue/component quota prefix greedily follows descending score while deferring points within `0.75 * sqrt(area / quota)`, capped at 48 px, so a narrow high-score band cannot consume the quota. All deferred and unused candidates remain in a complete stable-descending retry tail. Patch-adaptive policy supplies counts and exact type quotas. Gamma is `1.5`; no density-scale JSON or organ/tissue special case is used. |
-| Nucleus shape | reference-first | Same-class shapes from the current source patch are sampled without replacement before the library is used. |
-| Library fallback size | patch-calibrated | A library nucleus is resized to an empirical same-class area from the current patch. Linear scale is clamped to `0.5-2.0` with log-area jitter `0.05`. If no same-class reference exists, it remains unscaled and the diagnostic records that fact. |
+| ProbNet / CellDistNet | `Qinxin11/pathology-probnet`, epoch 29 / step 33785, SHA256 `c29607f...571211` | `P(nucleus)` supplies spatial quality. The primary prefix maximizes `gamma * logit(P) + diversity`, with diversity capped at one and a generic radius `0.75 * sqrt(area / quota)` capped at 48 px. The stable descending quality tail remains available for retries. The density head supplies type evidence only for genuinely changed target tissues. |
+| Count | pre-edit patch adaptive | For every dataset and tissue, density evidence is measured from the source tissue/nuclei before editing. The edited target mask supplies only the target area. Reliable exact-target-tissue evidence is used directly; an absent GLaS target grade uses its grade-specific dataset prior multiplied by a source-patch gland-cellularity factor. |
+| Nucleus shape | component-local reference-first | Unchanged target tissue uses same-class shapes from the corresponding source-patch connected component. Failed placements return the reference instance to the pool, and retry scaling cannot resize a reference shape. |
+| Changed-tissue library shape | exact target tissue and type | A real tissue/grade transition samples the library by `(target tissue, density-head type)` without contaminated source-patch size calibration. An unchanged component-local shortage uses a library shape calibrated to that component's reference areas. |
+| Placement integrity | full instance and one-pixel separation | Complete source instances intersecting the deletion core are erased. Buffer-only nuclei are retained as hard obstacles. Generated nuclei use zero overlap, full biological-tissue containment, and a one-pixel spacing margin so same-class instances cannot merge and trigger false count backfill. |
 | Inpaint | packaged `Qinxin11/pathology-inpaint-controlnet` | Packaged manifest commit and the released ControlNet weight size/SHA are checked before generation. |
 | Cross V1 | packaged no-IP/no-UNI Cross release | Packaged manifest commit and the released ControlNet weight size/SHA are checked before generation. |
 | Pix2pix | epoch 26 / step 214895, SHA256 `be5fe937...2ac` | `PATHOLOGY_PIX2PIX_CHECKPOINT` is mandatory. Full-pyramid local-histogram orientation steering, identity adapter, and `nuclei_reference_support_v2` come from the checkpoint. `cross_rgb_od_low_stain_v1` then preserves large low-OD, high-luma, low-chroma Cross components inside the generation region while excluding target nuclei. The guard records its mask, unprotected output and protected fraction in provenance; it uses no organ-specific rule and is not color matching. |
 | Tissue evaluator | `Qinxin11/pathology-segmentator`, C-line joint epoch 2, SHA256 `ddb95a7...604c34` | Release `segmentator-fine-c-joint-epoch2-v1`, strict architecture reconstruction, image-only runtime. |
 | Nuclei evaluator | CellViT-SAM-H-x40-AMP-001 | SHA256 `356418f...c8ec4`, `512 x 512` at `0.25 MPP`. Root, model, and Python are centralized through `PATHOLOGY_CELLVIT_ROOT`, `PATHOLOGY_CELLVIT_MODEL`, and `PATHOLOGY_CELLVIT_PYTHON`. |
-| Agent loop | canonical runner | Semantic routing uses the exact source/target tissue difference. A wider generation support may be used for glands or thin regions. Source-image predictions are the preservation reference. P1 remains `shadow`; at most two generation attempts are allowed. |
+| Agent loop | canonical runner | The UI writes a per-run or per-patch `cell_fill_log.json`; the runner validates its count, type-routing, shape, erasure, buffer, spacing, candidate-queue and checkpoint contract before generation. Semantic routing uses the exact source/target tissue difference. A wider generation support may be used for glands or thin regions. Source-image predictions are the preservation reference. P1 remains `shadow`; at most two generation attempts are allowed. |
 
 ## Required production environment
 
@@ -92,7 +94,12 @@ deployment override; editing source constants on a production machine is not.
 - `gpt-4o-all` as the default mask-edit model;
 - Windows placeholder CellViT paths;
 - library-first nucleus shape sampling;
-- ProbNet checkpoint count, density, or type heads as production quota sources.
+- ProbNet checkpoint total-count output as a production count source;
+- using the density head to overwrite unchanged-tissue type composition;
+- estimating density from the edited target mask or excluding the deletion
+  core from the pre-edit density reference;
+- consuming a patch reference shape after a failed placement or shrinking it
+  during retries;
 - using an unqualified global stable-descending ProbNet queue as the complete
   primary quota prefix;
 - organ-, tissue-, or dataset-specific hard placement bands that override the

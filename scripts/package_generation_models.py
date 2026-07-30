@@ -335,14 +335,14 @@ pipeline_tag: image-to-image
 Private inference-only ProbNet release used by the online nuclei-generation
 workflow.
 
-The frozen epoch-29 checkpoint supplies only the per-pixel nucleus placement
-score. Counts and exact subtype quotas come from the patch-adaptive policy;
-density-scale configs and organ-specific hard placement bands are not runtime
-selectors. The primary quota prefix greedily preserves ProbNet score while
-enforcing generic area/count coverage; the complete retry tail remains in
-stable descending ProbNet-score order. Nucleus shapes prefer same-class
-instances from the current source patch before using the external instance
-library.
+The frozen epoch-29 checkpoint supplies the per-pixel nucleus placement score
+and changed-tissue type evidence. Counts are estimated from the unedited source
+patch, with target-grade dataset-prior calibration only when the exact source
+tissue is unavailable. Unchanged target tissue preserves its pre-edit type
+mixture. The primary quota prefix balances ProbNet log-odds quality with
+generic spatial diversity; the complete retry tail remains in stable
+descending ProbNet-score order. Nucleus shapes use component-local same-class
+source-patch instances before a locally size-calibrated library fallback.
 
 ```bash
 hf download {args.hf_namespace}/pathology-probnet \\
@@ -367,16 +367,34 @@ python scripts/phase4_single_sample_smoke.py --help
             "global_step": int(checkpoint["global_step"]),
             "val_loss": float(checkpoint["val_loss"]),
             "val_metrics": checkpoint.get("val_metrics", {}),
-            "runtime_role": "per_pixel_nucleus_placement_score_only",
+            "runtime_role": (
+                "per_pixel_placement_and_changed_tissue_type_evidence_"
+                "without_total_count"
+            ),
             "candidate_queue_policy": (
-                "probnet_score_descending_with_quota_coverage_prefix"
+                "probnet_log_odds_quality_diversity_prefix"
             ),
             "quota_coverage_spacing_scale": 0.75,
             "quota_coverage_max_radius": 48.0,
             "retry_tail_policy": "stable_descending_probnet_score",
-            "count_and_type_policy": "patch_adaptive_density_and_type_quota",
+            "count_policy": (
+                "pre_edit_source_tissue_density_or_target_prior_calibrated_by_"
+                "pre_edit_source_times_post_edit_target_area"
+            ),
+            "type_quota_routing_policy": (
+                "changed_target_tissue_density_head_"
+                "unchanged_target_tissue_pre_edit_patch"
+            ),
             "shape_policy": (
-                "same_class_reference_without_replacement_then_library"
+                "component_local_same_class_reference_then_"
+                "component_calibrated_library"
+            ),
+            "nucleus_spacing_margin_px": 1,
+            "source_nucleus_erasure_policy": (
+                "complete_component_on_any_deletion_region_intersection"
+            ),
+            "buffer_nucleus_policy": (
+                "retain_generation_buffer_only_nuclei_as_placement_obstacles"
             ),
             "nuclei_library_included": False,
         },

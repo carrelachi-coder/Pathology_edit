@@ -84,12 +84,34 @@ class AgenticRoutingTests(unittest.TestCase):
                         "release_id": "test-release",
                         "nuclei_generation": {
                             "candidate_queue_policy": (
-                                "probnet_score_descending_with_quota_coverage_prefix"
+                                "probnet_log_odds_quality_diversity_prefix"
                             ),
                             "quota_coverage_spacing_scale": 0.75,
                             "quota_coverage_max_radius": 48.0,
                             "retry_tail_policy": "stable_descending_probnet_score",
                             "checkpoint_sha256": "abc123",
+                            "count_policy": (
+                                "pre_edit_source_tissue_density_or_target_prior_"
+                                "calibrated_by_pre_edit_source_times_post_edit_"
+                                "target_area"
+                            ),
+                            "type_quota_routing_policy": (
+                                "changed_target_tissue_density_head_"
+                                "unchanged_target_tissue_pre_edit_patch"
+                            ),
+                            "shape_policy": (
+                                "component_local_same_class_reference_then_"
+                                "component_calibrated_library"
+                            ),
+                            "nucleus_spacing_margin_px": 1,
+                            "source_nucleus_erasure_policy": (
+                                "complete_component_on_any_deletion_region_"
+                                "intersection"
+                            ),
+                            "buffer_nucleus_policy": (
+                                "retain_generation_buffer_only_nuclei_as_"
+                                "placement_obstacles"
+                            ),
                         },
                     }
                 ),
@@ -102,7 +124,7 @@ class AgenticRoutingTests(unittest.TestCase):
                         "mode": "probnet",
                         "shape_sampling": {
                             "candidate_queue_policy": (
-                                "probnet_score_descending_with_quota_coverage_prefix"
+                                "probnet_log_odds_quality_diversity_prefix"
                             ),
                             "quota_coverage_spacing_scale": 0.75,
                             "quota_coverage_max_radius": 48.0,
@@ -110,6 +132,28 @@ class AgenticRoutingTests(unittest.TestCase):
                             "organ_specific_constraints": False,
                             "probnet_release": {"sha256": "abc123"},
                             "diagnostics_path": "/tmp/diagnostics.json",
+                            "count_policy": (
+                                "pre_edit_source_tissue_density_or_target_prior_"
+                                "calibrated_by_pre_edit_source_times_post_edit_"
+                                "target_area"
+                            ),
+                            "type_quota_routing_policy": (
+                                "changed_target_tissue_density_head_"
+                                "unchanged_target_tissue_pre_edit_patch"
+                            ),
+                            "shape_policy": (
+                                "component_local_same_class_reference_then_"
+                                "component_calibrated_library"
+                            ),
+                            "nucleus_spacing_margin_px": 1,
+                            "source_nucleus_erasure_policy": (
+                                "complete_component_on_any_deletion_region_"
+                                "intersection"
+                            ),
+                            "buffer_nucleus_policy": (
+                                "retain_generation_buffer_only_nuclei_as_"
+                                "placement_obstacles"
+                            ),
                         },
                     }
                 ),
@@ -129,13 +173,19 @@ class AgenticRoutingTests(unittest.TestCase):
             self.assertTrue(result["validated"])
             self.assertEqual(
                 result["candidate_queue_policy"],
-                "probnet_score_descending_with_quota_coverage_prefix",
+                "probnet_log_odds_quality_diversity_prefix",
             )
             self.assertEqual(result["quota_coverage_spacing_scale"], 0.75)
             self.assertEqual(result["quota_coverage_max_radius"], 48.0)
             self.assertEqual(
                 result["retry_tail_policy"],
                 "stable_descending_probnet_score",
+            )
+            self.assertEqual(result["nucleus_spacing_margin_px"], 1)
+            self.assertEqual(
+                result["shape_policy"],
+                "component_local_same_class_reference_then_"
+                "component_calibrated_library",
             )
 
     def test_compact_local_edit_routes_to_inpaint(self):
@@ -311,6 +361,120 @@ class AgenticWorkflowTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "must contain every semantic"):
                 _load_and_validate_inputs(args)
+
+    def test_cli_bounds_unrequested_generation_only_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = root / "reference.png"
+            source_tissue = root / "source_tissue.png"
+            target_tissue = root / "target_tissue.png"
+            nuclei = root / "nuclei.png"
+            semantic_region = root / "semantic_region.png"
+            generation_region = root / "generation_region.png"
+
+            Image.new("RGB", (64, 64), "white").save(image)
+            source = np.ones((64, 64), dtype=np.uint8)
+            target = source.copy()
+            target[24:40, 24:40] = 2
+            semantic = source != target
+            Image.fromarray(source).save(source_tissue)
+            Image.fromarray(target).save(target_tissue)
+            Image.fromarray(np.zeros((64, 64), dtype=np.uint8)).save(nuclei)
+            Image.fromarray(semantic.astype(np.uint8) * 255).save(semantic_region)
+            Image.fromarray(np.full((64, 64), 255, dtype=np.uint8)).save(
+                generation_region
+            )
+
+            args = build_agentic_parser().parse_args(
+                [
+                    "--profile",
+                    "BCSS",
+                    "--reference-image",
+                    str(image),
+                    "--reference-tissue-mask",
+                    str(source_tissue),
+                    "--reference-nuclei-mask",
+                    str(nuclei),
+                    "--target-tissue-mask",
+                    str(target_tissue),
+                    "--target-nuclei-mask",
+                    str(nuclei),
+                    "--semantic-change-region",
+                    str(semantic_region),
+                    "--generation-change-region",
+                    str(generation_region),
+                    "--output",
+                    str(root / "output"),
+                ]
+            )
+
+            loaded = _load_and_validate_inputs(args)
+
+            semantic_pixels = int(np.count_nonzero(semantic))
+            self.assertEqual(
+                int(np.count_nonzero(loaded["generation_change_region"])),
+                semantic_pixels + semantic_pixels // 4,
+            )
+            self.assertTrue(
+                loaded["generation_region_policy"]["capped"]
+            )
+
+    def test_cli_preserves_glas_whole_component_generation_region(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = root / "reference.png"
+            source_tissue = root / "source_tissue.png"
+            target_tissue = root / "target_tissue.png"
+            nuclei = root / "nuclei.png"
+            semantic_region = root / "semantic_region.png"
+            generation_region = root / "generation_region.png"
+
+            Image.new("RGB", (64, 64), "white").save(image)
+            source = np.full((64, 64), 2, dtype=np.uint8)
+            source[8:56, 8:56] = 12
+            target = source.copy()
+            target[24:40, 24:40] = 2
+            semantic = source != target
+            generation = np.zeros((64, 64), dtype=np.uint8)
+            generation[8:56, 8:56] = 255
+            Image.fromarray(source).save(source_tissue)
+            Image.fromarray(target).save(target_tissue)
+            Image.fromarray(np.zeros((64, 64), dtype=np.uint8)).save(nuclei)
+            Image.fromarray(semantic.astype(np.uint8) * 255).save(semantic_region)
+            Image.fromarray(generation).save(generation_region)
+
+            args = build_agentic_parser().parse_args(
+                [
+                    "--profile",
+                    "GlaS",
+                    "--reference-image",
+                    str(image),
+                    "--reference-tissue-mask",
+                    str(source_tissue),
+                    "--reference-nuclei-mask",
+                    str(nuclei),
+                    "--target-tissue-mask",
+                    str(target_tissue),
+                    "--target-nuclei-mask",
+                    str(nuclei),
+                    "--semantic-change-region",
+                    str(semantic_region),
+                    "--generation-change-region",
+                    str(generation_region),
+                    "--output",
+                    str(root / "output"),
+                ]
+            )
+
+            loaded = _load_and_validate_inputs(args)
+
+            self.assertEqual(
+                int(np.count_nonzero(loaded["generation_change_region"])),
+                48 * 48,
+            )
+            self.assertFalse(
+                loaded["generation_region_policy"]["capped"]
+            )
 
     def test_failed_inpaint_falls_back_to_production_cross(self):
         reference = np.ones((16, 16), dtype=np.uint8)

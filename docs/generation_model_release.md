@@ -116,9 +116,11 @@ or committed shell scripts.
 - Cross V1 + pix2pix reports epoch `26`, global step `214895`, no IP/UNI, and
   trust gate `nuclei_reference_support_v2` on the fixed validation case.
 - ProbNet loads the epoch-29 / step-33785 checkpoint and the online agent audits
-  `probnet_score_descending_with_quota_coverage_prefix`, spacing scale `0.75`,
-  maximum radius `48.0`, the stable-descending retry tail, its frozen SHA, and
-  the absence of organ-specific placement constraints.
+  `probnet_log_odds_quality_diversity_prefix`, spacing scale `0.75`, maximum
+  radius `48.0`, the stable-descending retry tail, pre-edit count reference,
+  changed/unchanged type routing, component-local shape policy, one-pixel
+  spacing, full-instance erasure, buffer retention, its frozen SHA, and the
+  absence of organ-specific placement constraints.
 - Segmentator reconstructs the C-line Mask2Former architecture from
   `release.json`, loads the joint epoch-2 state dict strictly, and accepts
   `PATHOLOGY_SEGMENTATOR_CHECKPOINT` as the deployment-path override.

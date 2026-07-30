@@ -2,11 +2,11 @@
 """
 Unified ProbNet-centered nuclei mask generation.
 
-This is the Phase 4 inference entry point. The frozen ProbNet checkpoint has
-one inference role: its scalar P(nucleus) = 1 - P(background) field weights
-spatial landing positions. Counts/densities and exact type quotas are derived
-from the current patch and dataset tissue priors, independently of checkpoint
-density/count/type heads.
+This is the Phase 4 inference entry point. The frozen ProbNet checkpoint's
+scalar P(nucleus) = 1 - P(background) field weights spatial landing positions.
+Total counts remain controlled by tissue densities measured from the unedited
+source patch. Exact type quotas are controlled by the normalized density-head
+evidence in the production configuration.
 
 Nucleus shapes are sampled from the current reference patch first, preserving
 the reference morphology domain. The global nuclei library only fills a
@@ -30,7 +30,10 @@ import torch.nn.functional as F
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dataset_config import get_config
-from inpaint_cells.data.density_targets import select_instances_by_centroid
+from inpaint_cells.data.density_targets import (
+    expand_edit_mask_to_complete_instances,
+    iter_class_components,
+)
 from inpaint_cells.models.prob_unet import ProbUNet
 from inpaint_cells.nuclei_library.library import (
     NucleiLibrary,
@@ -51,6 +54,18 @@ from inpaint_cells.sampling_policy import (
     retry_transform_specs,
     valid_biological_tissue_mask,
     widen_locally_thin_mask,
+)
+
+GLAS_GLAND_TISSUE_IDS = frozenset({5, 11, 12, 13})
+COUNT_POLICY_NAME = (
+    "pre_edit_source_tissue_density_or_target_prior_calibrated_by_"
+    "pre_edit_source_times_post_edit_target_area"
+)
+TYPE_QUOTA_ROUTING_POLICY_NAME = (
+    "changed_target_tissue_density_head_unchanged_target_tissue_pre_edit_patch"
+)
+COMPONENT_SHAPE_POLICY_NAME = (
+    "component_local_same_class_reference_then_component_calibrated_library"
 )
 
 
@@ -295,22 +310,18 @@ def choose_weighted_centers(
     coverage_count=None,
     coverage_radius=0.0,
 ):
-    """Build a ProbNet-ranked queue with an optional spatially covered prefix.
-
-    The complete retry tail remains in stable descending ProbNet-score order.
-    Only the primary quota prefix defers candidates that are too close to an
-    already selected higher-score point. This prevents a narrow high-score band
-    from consuming an entire tissue quota while preserving ProbNet as the
-    spatial ranking source.
-    """
+    """Build a ProbNet quality-diversity prefix and stable score retry tail."""
 
     if target_count <= 0 or not candidates:
         return []
     n = min(target_count, len(candidates))
     ys = np.array([p[0] for p in candidates], dtype=np.int64)
     xs = np.array([p[1] for p in candidates], dtype=np.int64)
-    scores = np.power(np.clip(nuc_prob[ys, xs], 0.0, 1.0), gamma)
-    score_order = np.argsort(-scores, kind="stable")
+    probability = np.clip(nuc_prob[ys, xs], 1e-6, 1.0 - 1e-6)
+    quality = float(gamma) * (
+        np.log(probability) - np.log1p(-probability)
+    )
+    score_order = np.argsort(-quality, kind="stable")
 
     prefix_target = min(
         n,
@@ -320,22 +331,29 @@ def choose_weighted_centers(
     if prefix_target <= 1 or radius <= 0:
         return [candidates[int(i)] for i in score_order[:n]]
 
-    radius_sq = radius * radius
-    prefix_indices = []
-    for candidate_index in score_order:
-        candidate_index = int(candidate_index)
-        y = int(ys[candidate_index])
-        x = int(xs[candidate_index])
-        if any(
-            (y - int(ys[selected_index])) ** 2
-            + (x - int(xs[selected_index])) ** 2
-            < radius_sq
-            for selected_index in prefix_indices
-        ):
-            continue
+    prefix_indices = [int(score_order[0])]
+    first_index = prefix_indices[0]
+    min_distance_sq = (
+        (ys - ys[first_index]) ** 2
+        + (xs - xs[first_index]) ** 2
+    ).astype(np.float64)
+    while len(prefix_indices) < prefix_target:
+        diversity = np.minimum(
+            np.sqrt(min_distance_sq) / radius,
+            1.0,
+        )
+        utility = quality + diversity
+        utility[np.asarray(prefix_indices, dtype=np.int64)] = -np.inf
+        candidate_index = int(np.argmax(utility))
         prefix_indices.append(candidate_index)
-        if len(prefix_indices) >= prefix_target:
-            break
+        candidate_distance_sq = (
+            (ys - ys[candidate_index]) ** 2
+            + (xs - xs[candidate_index]) ** 2
+        )
+        min_distance_sq = np.minimum(
+            min_distance_sq,
+            candidate_distance_sq,
+        )
 
     prefix_set = set(prefix_indices)
     retry_tail = [
@@ -448,6 +466,88 @@ def allocate_type_counts(type_proportions, target_count):
     return {nuc_type: count for nuc_type, count in quotas.items() if count > 0}
 
 
+def fuse_density_head_with_tissue_prior(
+    density_by_class,
+    tissue_prior,
+    *,
+    density_weight=0.5,
+):
+    """Fuse normalized target-conditioned type evidence and tissue prior."""
+
+    weight = float(density_weight)
+    if not 0.0 <= weight <= 1.0:
+        raise ValueError("density_weight must be between 0 and 1")
+
+    density_values = np.asarray(density_by_class, dtype=np.float64).reshape(-1)
+    density_values = np.clip(density_values, 0.0, None)
+    density_distribution = {
+        int(nuc_type): float(density_values[index])
+        for index, nuc_type in enumerate(NUCLEI_CLASSES)
+        if index < density_values.size and density_values[index] > 0
+    }
+    prior_distribution = {
+        int(nuc_type): max(float(value), 0.0)
+        for nuc_type, value in (tissue_prior or {}).items()
+        if float(value) > 0
+    }
+
+    density_total = float(sum(density_distribution.values()))
+    prior_total = float(sum(prior_distribution.values()))
+    if density_total <= 0 and prior_total <= 0:
+        return {}, {
+            "density_head_weight": weight,
+            "density_head_distribution": {},
+            "tissue_prior_distribution": {},
+            "fused_distribution": {},
+            "fallback": "no_type_evidence",
+        }
+    if density_total <= 0:
+        weight = 0.0
+        fallback = "tissue_prior_only_no_density_evidence"
+    elif prior_total <= 0:
+        weight = 1.0
+        fallback = "density_head_only_no_tissue_prior"
+    else:
+        fallback = None
+
+    density_normalized = {
+        int(nuc_type): float(value / density_total)
+        for nuc_type, value in density_distribution.items()
+    }
+    prior_normalized = {
+        int(nuc_type): float(value / prior_total)
+        for nuc_type, value in prior_distribution.items()
+    }
+    fused = {
+        int(nuc_type): (
+            weight * density_normalized.get(int(nuc_type), 0.0)
+            + (1.0 - weight) * prior_normalized.get(int(nuc_type), 0.0)
+        )
+        for nuc_type in NUCLEI_CLASSES
+    }
+    fused = {
+        int(nuc_type): float(value)
+        for nuc_type, value in fused.items()
+        if value > 0
+    }
+    return fused, {
+        "density_head_weight": float(weight),
+        "density_head_distribution": {
+            str(key): float(value)
+            for key, value in density_normalized.items()
+        },
+        "tissue_prior_distribution": {
+            str(key): float(value)
+            for key, value in prior_normalized.items()
+        },
+        "fused_distribution": {
+            str(key): float(value)
+            for key, value in fused.items()
+        },
+        "fallback": fallback,
+    }
+
+
 def sample_type_with_remaining_quota(type_limits, placed_by_type):
     """Sample from the remaining empirical quota, independent of ProbNet."""
     available = [
@@ -466,6 +566,70 @@ def sample_type_with_remaining_quota(type_limits, placed_by_type):
     return int(np.random.choice(available, p=weights))
 
 
+def choose_type_with_remaining_quota_at_center(
+    type_limits,
+    placed_by_type,
+    prob,
+    center_y,
+    center_x,
+):
+    """Greedily assign the locally strongest type with quota remaining."""
+
+    available = [
+        int(nuc_type)
+        for nuc_type, limit in type_limits.items()
+        if placed_by_type.get(int(nuc_type), 0) < int(limit)
+    ]
+    if not available:
+        return None
+    index_by_type = {
+        int(nuc_type): index
+        for index, nuc_type in enumerate(NUCLEI_CLASSES)
+    }
+    return max(
+        available,
+        key=lambda nuc_type: (
+            float(
+                prob[
+                    index_by_type[int(nuc_type)] + 1,
+                    int(center_y),
+                    int(center_x),
+                ]
+            ),
+            int(type_limits[int(nuc_type)])
+            - int(placed_by_type.get(int(nuc_type), 0)),
+            -int(nuc_type),
+        ),
+    )
+
+
+def count_retained_centers_by_type(nuclei_map, region_mask):
+    """Count retained complete nuclei by centroid inside one target region."""
+
+    region = np.asarray(region_mask, dtype=bool)
+    counts = {int(nuc_type): 0 for nuc_type in NUCLEI_CLASSES}
+    for class_id, _, (center_y, center_x) in iter_class_components(
+        np.asarray(nuclei_map),
+        num_classes=len(NUCLEI_CLASSES),
+    ):
+        row = int(np.clip(round(center_y), 0, region.shape[0] - 1))
+        col = int(np.clip(round(center_x), 0, region.shape[1] - 1))
+        if region[row, col]:
+            raw_type = int(NUCLEI_CLASSES[int(class_id) - 1])
+            counts[raw_type] += 1
+    return counts
+
+
+def density_calibration_family_ids(dataset_name, target_tissue_id):
+    """Return source tissues usable for a target-prior calibration factor."""
+
+    normalized_dataset = str(dataset_name or "").strip().lower()
+    target_id = int(target_tissue_id)
+    if normalized_dataset == "glas" and target_id in GLAS_GLAND_TISSUE_IDS:
+        return GLAS_GLAND_TISSUE_IDS
+    return frozenset()
+
+
 def compute_patch_adaptive_priors(
     *,
     reference_nuclei_raw,
@@ -477,14 +641,22 @@ def compute_patch_adaptive_priors(
     global_density_scale=1.0,
     local_density_direct_min_area=20000,
     local_density_direct_min_count=10,
+    dataset_name=None,
 ):
-    """Freeze count and type priors independently of the ProbNet checkpoint.
+    """Estimate count and fallback type priors from the unedited source patch.
 
-    A sufficiently large patch-local observation is used directly.  Sparse
-    observations shrink toward the dataset tissue-density prior.  Nucleus type
-    quotas use the reliable patch-local distribution, otherwise the dataset
-    library distribution.  The checkpoint is therefore responsible only for
-    the scalar spatial placement field ``P(nucleus)``.
+    Patch density and calibration evidence are always measured on
+    ``reference_tissue`` before the edit. The deletion/generation masks must
+    never remove source observations from that estimate: they only define which
+    target area will be populated. Exact target-tissue observations take
+    precedence. If a GLaS target grade is absent, its grade-specific dataset
+    prior is scaled by a cellularity factor measured across the pre-edit gland
+    family; the grade priors are never pooled away.
+
+    A sufficiently large source-patch observation is used directly. Sparse
+    observations shrink toward the dataset tissue-density prior. Nucleus type
+    quotas use the reliable patch-local distribution only as a fallback when
+    density-head evidence is unavailable.
     """
     shape = reference_tissue.shape
     if not (
@@ -497,8 +669,7 @@ def compute_patch_adaptive_priors(
         raise ValueError("patch-adaptive prior inputs must share one shape")
 
     patch_area = int(reference_tissue.size)
-    local_counts = {}
-    local_counts_by_type = {}
+    source_centers = []
     for class_value in np.unique(reference_nuclei_raw):
         raw_type = int(class_value)
         if raw_type == 0:
@@ -517,14 +688,7 @@ def compute_patch_adaptive_priors(
         for center_y, center_x in centers:
             row = int(np.clip(round(center_y), 0, shape[0] - 1))
             col = int(np.clip(round(center_x), 0, shape[1] - 1))
-            if density_exclusion_region[row, col]:
-                continue
-            tissue_id = int(reference_tissue[row, col])
-            if tissue_id == 0:
-                continue
-            local_counts[tissue_id] = local_counts.get(tissue_id, 0) + 1
-            tissue_counts = local_counts_by_type.setdefault(tissue_id, {})
-            tissue_counts[raw_type] = tissue_counts.get(raw_type, 0) + 1
+            source_centers.append((raw_type, row, col))
 
     density_scales = {}
     type_proportions = {}
@@ -533,12 +697,17 @@ def compute_patch_adaptive_priors(
         tissue_id = int(tissue_id_value)
         if tissue_id == 0:
             continue
-        observed_region = (
-            (reference_tissue == tissue_id) & ~density_exclusion_region
-        )
+        reference_ids = frozenset({tissue_id})
+        observed_region = reference_tissue == tissue_id
         observed_area = int(np.count_nonzero(observed_region))
-        local_count = int(local_counts.get(tissue_id, 0))
-        local_type_counts = local_counts_by_type.get(tissue_id, {})
+        local_type_counts = {}
+        for raw_type, row, col in source_centers:
+            if not observed_region[row, col]:
+                continue
+            local_type_counts[raw_type] = (
+                local_type_counts.get(raw_type, 0) + 1
+            )
+        local_count = int(sum(local_type_counts.values()))
         dataset_density = float(library.get_density(tissue_id))
         local_density = (
             10000.0 * local_count / observed_area
@@ -550,11 +719,72 @@ def compute_patch_adaptive_priors(
             observed_area >= int(local_density_direct_min_area)
             and local_count >= int(local_density_direct_min_count)
         )
-        effective_confidence = 1.0 if local_is_reliable else raw_area_confidence
-        target_density = (
-            effective_confidence * local_density
-            + (1.0 - effective_confidence) * dataset_density
+        calibration_family_ids = density_calibration_family_ids(
+            dataset_name,
+            tissue_id,
         )
+        family_calibration = None
+        family_audit = None
+        if not local_is_reliable and calibration_family_ids:
+            family_region = np.isin(
+                reference_tissue,
+                tuple(calibration_family_ids),
+            )
+            family_area = int(np.count_nonzero(family_region))
+            family_count = int(
+                sum(
+                    1
+                    for _, row, col in source_centers
+                    if family_region[row, col]
+                )
+            )
+            family_expected_dataset_count = float(
+                sum(
+                    np.count_nonzero(reference_tissue == family_tissue_id)
+                    * float(library.get_density(int(family_tissue_id)))
+                    / 10000.0
+                    for family_tissue_id in calibration_family_ids
+                )
+            )
+            family_is_reliable = bool(
+                family_area >= int(local_density_direct_min_area)
+                and family_count >= int(local_density_direct_min_count)
+                and family_expected_dataset_count > 0
+            )
+            if family_is_reliable:
+                family_calibration = float(
+                    family_count / family_expected_dataset_count
+                )
+            family_audit = {
+                "source_tissue_ids": sorted(calibration_family_ids),
+                "source_area_px": family_area,
+                "source_centroid_count": family_count,
+                "dataset_expected_count_on_source_area": (
+                    family_expected_dataset_count
+                ),
+                "reliable": family_is_reliable,
+                "scale": family_calibration,
+            }
+
+        if local_is_reliable:
+            effective_confidence = 1.0
+            target_density = local_density
+            density_mode = "pre_edit_patch_local_direct_reliable"
+        elif family_calibration is not None:
+            effective_confidence = 0.0
+            target_density = dataset_density * family_calibration
+            density_mode = (
+                "target_dataset_prior_times_pre_edit_family_calibration"
+            )
+        else:
+            effective_confidence = raw_area_confidence
+            target_density = (
+                effective_confidence * local_density
+                + (1.0 - effective_confidence) * dataset_density
+            )
+            density_mode = (
+                "pre_edit_sparse_area_confidence_dataset_shrinkage"
+            )
         density_scale = (
             float(global_density_scale) * target_density / dataset_density
             if dataset_density > 0
@@ -590,15 +820,16 @@ def compute_patch_adaptive_priors(
             }
 
         tissue_audit[str(tissue_id)] = {
+            "reference_area_px": observed_area,
             "unedited_reference_area_px": observed_area,
+            "density_reference_image": "pre_edit_source_patch",
+            "density_reference_tissue_ids": sorted(reference_ids),
+            "density_reference_deletion_exclusion_applied": False,
+            "dataset_prior_calibration_from_pre_edit_source": family_audit,
             "patch_area_px": patch_area,
             "raw_area_confidence": raw_area_confidence,
             "effective_local_confidence": effective_confidence,
-            "density_mode": (
-                "patch_local_direct_reliable"
-                if local_is_reliable
-                else "area_confidence_patch_local_dataset_shrinkage"
-            ),
+            "density_mode": density_mode,
             "local_reliability_min_area_px": int(local_density_direct_min_area),
             "local_reliability_min_count": int(local_density_direct_min_count),
             "local_centroid_count": local_count,
@@ -621,9 +852,14 @@ def compute_patch_adaptive_priors(
 
     audit = {
         "checkpoint_role": "spatial_placement_probability_only",
-        "count_policy": "reliable patch-local density else area-weighted dataset shrinkage",
+        "count_policy": COUNT_POLICY_NAME,
         "type_policy": "reliable patch-local quota else dataset tissue prior",
-        "nucleus_count_rule": "class-component centroid outside density exclusion region",
+        "nucleus_count_rule": (
+            "class_component_centroid_in_pre_edit_source_tissue_family"
+        ),
+        "density_exclusion_region_role": (
+            "cell_erasure_only_not_source_density_estimation"
+        ),
         "tissues": tissue_audit,
     }
     return density_scales, type_proportions, audit
@@ -650,7 +886,21 @@ def build_reference_pool(nuclei_mask, args):
     )
 
 
-def sample_instance_for_center(sampler, tissue_id, nuc_type):
+def sample_instance_for_center(
+    sampler,
+    tissue_id,
+    nuc_type,
+    *,
+    force_tissue_library=False,
+):
+    if force_tissue_library:
+        return sampler.sample_library_instance(
+            tissue_id,
+            nuc_type,
+            allow_cross_tissue=False,
+            requested_type=nuc_type,
+            calibrate_size=False,
+        )
     instance, source = sampler.sample_instance(
         tissue_id,
         nuc_type,
@@ -683,6 +933,7 @@ def place_candidate_with_retries(
     center_region,
     valid_tissue_mask,
     dense_retry,
+    force_tissue_library,
     args,
 ):
     """Try alternate same-class shapes and transforms at one candidate center."""
@@ -703,6 +954,7 @@ def place_candidate_with_retries(
             shape_sampler,
             tissue_id,
             nucleus_type,
+            force_tissue_library=force_tissue_library,
         )
         if instance is None:
             break
@@ -734,9 +986,13 @@ def place_candidate_with_retries(
                 flip_horizontal=bool(spec["flip_horizontal"]),
                 flip_vertical=bool(spec["flip_vertical"]),
                 scale=float(spec["scale"]),
+                minimum_separation_px=int(
+                    getattr(args, "nucleus_spacing_margin_px", 1)
+                ),
             )
             if placed:
                 return True, str(shape_source), attempts, (center_y, center_x)
+        shape_sampler.release_failed_instance(instance, shape_source)
     return False, None, attempts, None
 
 
@@ -751,6 +1007,8 @@ def generate_for_gamma(
     args,
     density_scales,
     density=None,
+    type_density=None,
+    library_only_tissue_ids=None,
     clear_edit_mask=True,
     type_proportions_by_tissue=None,
 ):
@@ -770,6 +1028,10 @@ def generate_for_gamma(
         library_size_max_scale=args.library_size_max_scale,
         library_size_log_area_jitter=args.library_size_log_area_jitter,
     )
+    library_only_tissue_ids = {
+        int(tissue_id)
+        for tissue_id in (library_only_tissue_ids or ())
+    }
 
     diagnostics = {
         "gamma": gamma,
@@ -782,11 +1044,16 @@ def generate_for_gamma(
         "full_shape_tissue_policy": (
             "hard_reject_outside_valid_biological_tissue_then_retry"
         ),
+        "nucleus_spacing_margin_px": int(
+            getattr(args, "nucleus_spacing_margin_px", 1)
+        ),
+        "type_quota_routing_policy": TYPE_QUOTA_ROUTING_POLICY_NAME,
         "placed": 0,
         "placed_by_shape_source": {"reference": 0, "library": 0},
         "reference_pool": reference_pool.describe() if reference_pool is not None else None,
         "tissues": {},
     }
+    component_shape_sampling = {}
 
     for tissue_id in np.unique(tissue[edit_mask]):
         tissue_id = int(tissue_id)
@@ -829,9 +1096,97 @@ def generate_for_gamma(
             }
 
         type_limits = None
+        type_fusion = None
+        retained_by_type = count_retained_centers_by_type(
+            input_nuclei,
+            tissue_region,
+        )
+        retained_count = int(sum(retained_by_type.values()))
+        expected_target_count = int(target_count)
+        if class_counts is not None:
+            retained_internal = np.asarray(
+                [
+                    retained_by_type.get(int(nuc_type), 0)
+                    for nuc_type in NUCLEI_CLASSES
+                ],
+                dtype=np.int64,
+            )
+            class_counts = np.maximum(class_counts - retained_internal, 0)
+            target_count = int(class_counts.sum())
+        else:
+            target_count = max(0, expected_target_count - retained_count)
+        count_info.update(
+            {
+                "expected_total_count_in_generation_region": expected_target_count,
+                "retained_centroid_count_in_generation_region": retained_count,
+                "retained_centroid_count_by_type": {
+                    str(key): int(value)
+                    for key, value in retained_by_type.items()
+                    if int(value) > 0
+                },
+                "new_target_count": int(target_count),
+                "new_count_policy": (
+                    "target_tissue_expected_total_minus_retained_centroids"
+                ),
+            }
+        )
         if density is None and type_proportions_by_tissue:
             local_type_proportions = type_proportions_by_tissue.get(tissue_id)
             if local_type_proportions:
+                if (
+                    type_density is not None
+                    and tissue_id in library_only_tissue_ids
+                ):
+                    density_by_class = type_density[:, tissue_region].sum(axis=1)
+                    (
+                        local_type_proportions,
+                        type_fusion,
+                    ) = fuse_density_head_with_tissue_prior(
+                        density_by_class,
+                        local_type_proportions,
+                        density_weight=float(
+                            getattr(args, "type_density_head_weight", 0.5)
+                        ),
+                    )
+                    desired_total_by_type = {
+                        int(nuc_type): (
+                            float(local_type_proportions.get(int(nuc_type), 0.0))
+                            * float(expected_target_count)
+                        )
+                        for nuc_type in NUCLEI_CLASSES
+                    }
+                    residual_type_evidence = {
+                        int(nuc_type): max(
+                            0.0,
+                            desired_total_by_type[int(nuc_type)]
+                            - float(retained_by_type.get(int(nuc_type), 0)),
+                        )
+                        for nuc_type in NUCLEI_CLASSES
+                    }
+                    if sum(residual_type_evidence.values()) > 0:
+                        local_type_proportions = residual_type_evidence
+                    type_fusion.update(
+                        {
+                            "expected_total_count": int(expected_target_count),
+                            "desired_total_by_type_before_retained_subtraction": {
+                                str(key): float(value)
+                                for key, value in desired_total_by_type.items()
+                            },
+                            "retained_count_by_type": {
+                                str(key): int(value)
+                                for key, value in retained_by_type.items()
+                                if int(value) > 0
+                            },
+                            "residual_new_type_evidence": {
+                                str(key): float(value)
+                                for key, value in residual_type_evidence.items()
+                                if float(value) > 0
+                            },
+                            "buffer_subtraction_policy": (
+                                "normalize_to_expected_total_then_subtract_retained_by_type"
+                            ),
+                        }
+                    )
                 type_limits = allocate_type_counts(
                     local_type_proportions,
                     target_count,
@@ -853,6 +1208,7 @@ def generate_for_gamma(
         component_limits = {0: target_count}
         component_dense_retry = {0: False}
         component_sampling = None
+        component_shape_samplers = {}
         if density is None:
             if component_mode:
                 component_labels, component_count = ndimage.label(
@@ -894,6 +1250,25 @@ def generate_for_gamma(
                     if quota <= 0:
                         continue
                     component_region = component_labels == component_id
+                    local_reference_pool = (
+                        reference_pool.subset_by_center_region(component_region)
+                        if reference_pool is not None
+                        else None
+                    )
+                    component_shape_samplers[component_id] = (
+                        ReferenceFirstNucleiSampler(
+                            library,
+                            local_reference_pool,
+                            calibrate_library_size=(
+                                not args.disable_library_size_calibration
+                            ),
+                            library_size_min_scale=args.library_size_min_scale,
+                            library_size_max_scale=args.library_size_max_scale,
+                            library_size_log_area_jitter=(
+                                args.library_size_log_area_jitter
+                            ),
+                        )
+                    )
                     component_candidates = poisson_candidates(
                         component_region,
                         min_distance,
@@ -1063,9 +1438,12 @@ def generate_for_gamma(
             if density_type is not None:
                 nuc_type = density_type
             elif type_limits is not None:
-                nuc_type = sample_type_with_remaining_quota(
+                nuc_type = choose_type_with_remaining_quota_at_center(
                     type_limits,
                     placed_by_type,
+                    prob,
+                    cy,
+                    cx,
                 )
             else:
                 nuc_type = sample_type_at_center(prob, cy, cx, args)
@@ -1082,10 +1460,14 @@ def generate_for_gamma(
                 candidate_x=cx,
                 nucleus_type=nuc_type,
                 tissue_id=tissue_id,
-                shape_sampler=shape_sampler,
+                shape_sampler=component_shape_samplers.get(
+                    component_id,
+                    shape_sampler,
+                ),
                 center_region=tissue_region,
                 valid_tissue_mask=valid_tissue_mask,
                 dense_retry=dense_retry,
+                force_tissue_library=tissue_id in library_only_tissue_ids,
                 args=args,
             )
             placement_trials += int(local_trials)
@@ -1120,8 +1502,13 @@ def generate_for_gamma(
             "placed": placed,
             "placed_by_shape_source": placed_by_shape_source,
             "candidate_queue_policy": (
-                "probnet_score_descending_with_quota_coverage_prefix"
+                "probnet_log_odds_quality_diversity_prefix"
             ),
+            "candidate_quality_score": "gamma_times_logit_probnet_probability",
+            "candidate_diversity_score": (
+                "min_nearest_selected_distance_over_coverage_radius_capped_at_one"
+            ),
+            "candidate_diversity_weight": 1.0,
             "quota_coverage_spacing_scale": float(
                 getattr(args, "quota_coverage_spacing_scale", 0.75)
             ),
@@ -1140,9 +1527,22 @@ def generate_for_gamma(
                 else None
             ),
             "type_quota_policy": (
-                "empirical_exact_quota_checkpoint_independent"
+                "density_head_for_changed_tissue_exact_quota"
+                if type_limits is not None and type_fusion is not None
+                else "pre_edit_patch_type_preserving_exact_quota"
                 if type_limits is not None
                 else "probnet_per_center_sampling"
+            ),
+            "type_quota_fusion": type_fusion,
+            "center_type_assignment_policy": (
+                "greedy_local_probnet_type_score_with_exact_remaining_quota"
+                if type_limits is not None
+                else "probnet_per_center_sampling"
+            ),
+            "shape_source_policy": (
+                "exact_target_tissue_and_type_library_without_patch_size_calibration"
+                if tissue_id in library_only_tissue_ids
+                else "reference_first_same_type_then_library"
             ),
             "target_by_type": (
                 {str(key): int(value) for key, value in type_limits.items()}
@@ -1156,9 +1556,189 @@ def generate_for_gamma(
             ),
             "component_sampling": component_sampling,
         }
+        if component_shape_samplers:
+            component_shape_sampling[str(tissue_id)] = {
+                str(component_id): sampler.diagnostics()
+                for component_id, sampler in component_shape_samplers.items()
+            }
+        _require_complete_target_count(
+            tissue_id=tissue_id,
+            target_count=target_count,
+            placed=placed,
+            strict=bool(getattr(args, "require_exact_target_count", True)),
+        )
 
-    diagnostics["shape_sampling"] = shape_sampler.diagnostics()
+    shape_sampling = shape_sampler.diagnostics()
+    if component_shape_sampling:
+        shape_sampling.update(
+            {
+                "policy": (
+                    COMPONENT_SHAPE_POLICY_NAME
+                ),
+                "selected_by_source": dict(
+                    diagnostics["placed_by_shape_source"]
+                ),
+                "component_local": component_shape_sampling,
+            }
+        )
+    diagnostics["shape_sampling"] = shape_sampling
     return output, diagnostics
+
+
+def _require_complete_target_count(
+    *,
+    tissue_id,
+    target_count,
+    placed,
+    strict=True,
+):
+    """Reject silent cell-count loss after destructive boundary regeneration."""
+
+    shortfall = int(target_count) - int(placed)
+    if strict and shortfall > 0:
+        raise RuntimeError(
+            "ProbNet placement did not satisfy the target-tissue count quota: "
+            f"tissue_id={int(tissue_id)}, target={int(target_count)}, "
+            f"placed={int(placed)}, shortfall={shortfall}."
+        )
+    return max(shortfall, 0)
+
+
+def _sum_count_dicts(first, second):
+    keys = set(first or {}) | set(second or {})
+    return {
+        str(key): int((first or {}).get(str(key), 0))
+        + int((second or {}).get(str(key), 0))
+        for key in keys
+        if (
+            int((first or {}).get(str(key), 0))
+            + int((second or {}).get(str(key), 0))
+        )
+        > 0
+    }
+
+
+def generate_two_stage_for_gamma(
+    prob,
+    tissue,
+    input_nuclei,
+    deletion_mask,
+    generation_mask,
+    library,
+    reference_pool,
+    gamma,
+    args,
+    density_scales,
+    *,
+    type_density=None,
+    library_only_tissue_ids=None,
+    type_proportions_by_tissue=None,
+):
+    """Fill the destructive core first, then only the buffered count deficit."""
+
+    core_output, core_diagnostics = generate_for_gamma(
+        prob,
+        tissue,
+        input_nuclei,
+        deletion_mask,
+        library,
+        reference_pool,
+        gamma,
+        args,
+        density_scales,
+        type_density=type_density,
+        library_only_tissue_ids=library_only_tissue_ids,
+        clear_edit_mask=False,
+        type_proportions_by_tissue=type_proportions_by_tissue,
+    )
+    if np.array_equal(
+        np.asarray(deletion_mask, dtype=bool),
+        np.asarray(generation_mask, dtype=bool),
+    ):
+        core_diagnostics["regeneration_stages"] = {
+            "policy": "single_stage_no_extra_buffer",
+            "core": core_diagnostics["tissues"],
+            "buffer_increment": {},
+        }
+        return core_output, core_diagnostics
+
+    output, buffer_diagnostics = generate_for_gamma(
+        prob,
+        tissue,
+        core_output,
+        generation_mask,
+        library,
+        reference_pool,
+        gamma,
+        args,
+        density_scales,
+        type_density=type_density,
+        library_only_tissue_ids=library_only_tissue_ids,
+        clear_edit_mask=False,
+        type_proportions_by_tissue=type_proportions_by_tissue,
+    )
+    buffer_tissues = buffer_diagnostics["tissues"]
+    core_tissues = core_diagnostics["tissues"]
+    for tissue_id in set(core_tissues) | set(buffer_tissues):
+        core_info = core_tissues.get(tissue_id, {})
+        buffer_info = buffer_tissues.setdefault(tissue_id, {})
+        core_placed = int(core_info.get("placed", 0))
+        buffer_placed = int(buffer_info.get("placed", 0))
+        buffer_info["core_target_count"] = int(
+            core_info.get("target_count", 0)
+        )
+        buffer_info["core_placed"] = core_placed
+        buffer_info["buffer_increment_target_count"] = int(
+            buffer_info.get("target_count", 0)
+        )
+        buffer_info["buffer_increment_placed"] = buffer_placed
+        buffer_info["target_count"] = (
+            int(core_info.get("target_count", 0))
+            + int(buffer_info.get("target_count", 0))
+        )
+        buffer_info["placed"] = core_placed + buffer_placed
+        buffer_info["target_by_type"] = _sum_count_dicts(
+            core_info.get("target_by_type"),
+            buffer_info.get("target_by_type"),
+        )
+        buffer_info["placed_by_type"] = _sum_count_dicts(
+            core_info.get("placed_by_type"),
+            buffer_info.get("placed_by_type"),
+        )
+        buffer_info["two_stage_count_policy"] = (
+            "fill_deletion_core_then_generation_buffer_expected_total_deficit"
+        )
+
+    core_sources = core_diagnostics["placed_by_shape_source"]
+    buffer_sources = buffer_diagnostics["placed_by_shape_source"]
+    buffer_diagnostics["placed"] = (
+        int(core_diagnostics["placed"])
+        + int(buffer_diagnostics["placed"])
+    )
+    buffer_diagnostics["placed_by_shape_source"] = {
+        source: int(core_sources.get(source, 0))
+        + int(buffer_sources.get(source, 0))
+        for source in {"reference", "library"}
+    }
+    buffer_diagnostics["regeneration_stages"] = {
+        "policy": "core_first_then_buffer_deficit_v1",
+        "core": core_tissues,
+        "buffer_increment": {
+            tissue_id: {
+                key: value
+                for key, value in info.items()
+                if key
+                in {
+                    "buffer_increment_target_count",
+                    "buffer_increment_placed",
+                    "target_by_type",
+                    "placed_by_type",
+                }
+            }
+            for tissue_id, info in buffer_tissues.items()
+        },
+    }
+    return output, buffer_diagnostics
 
 
 def heatmap_rgb(values, mask=None):
@@ -1216,7 +1796,23 @@ def run_single(args, model, library, config, density_scales, device):
     if edit_mask is None:
         raise FileNotFoundError(f"Cannot load edit region mask: {args.edit_region}")
     edit_mask = edit_mask > 128
-    semantic_edit_pixels = int(np.count_nonzero(edit_mask))
+    if args.deletion_region:
+        deletion_mask = cv2.imread(
+            args.deletion_region,
+            cv2.IMREAD_GRAYSCALE,
+        )
+        if deletion_mask is None:
+            raise FileNotFoundError(
+                f"Cannot load deletion region mask: {args.deletion_region}"
+            )
+        deletion_mask = deletion_mask > 128
+    else:
+        deletion_mask = edit_mask.copy()
+    if deletion_mask.shape != edit_mask.shape:
+        raise ValueError("deletion and generation regions must share one shape")
+    if np.any(deletion_mask & ~edit_mask):
+        raise ValueError("generation region must contain every deletion pixel")
+    semantic_edit_pixels = int(np.count_nonzero(deletion_mask))
     if args.widen_edit_region:
         edit_mask = widen_locally_thin_mask(
             edit_mask,
@@ -1242,19 +1838,24 @@ def run_single(args, model, library, config, density_scales, device):
     else:
         input_nuclei = np.zeros_like(tissue, dtype=np.int64)
     input_nuclei = input_nuclei.copy()
-    erasure_mask = select_instances_by_centroid(input_nuclei, edit_mask)
+    erasure_mask = expand_edit_mask_to_complete_instances(
+        input_nuclei,
+        deletion_mask,
+    )
+    edit_mask |= erasure_mask
     input_nuclei[erasure_mask] = 0
 
     calibrated_scales, type_proportions, prior_audit = compute_patch_adaptive_priors(
         reference_nuclei_raw=reference_nuclei_raw,
         reference_tissue=reference_tissue,
-        density_exclusion_region=edit_mask,
+        density_exclusion_region=deletion_mask,
         target_tissue=tissue,
         generation_region=edit_mask,
         library=library,
         global_density_scale=args.density_scale,
         local_density_direct_min_area=args.local_density_direct_min_area,
         local_density_direct_min_count=args.local_density_direct_min_count,
+        dataset_name=args.dataset,
     )
     prior_audit["generation_support"] = {
         "semantic_pixels": semantic_edit_pixels,
@@ -1262,13 +1863,26 @@ def run_single(args, model, library, config, density_scales, device):
         "minimum_width_px": int(args.minimum_mask_width),
         "widening_enabled": bool(args.widen_edit_region),
         "source_nucleus_erasure_policy": (
-            "complete_component_if_centroid_in_support"
+            "complete_component_on_any_deletion_region_intersection"
+        ),
+        "buffer_nucleus_policy": (
+            "retain_generation_buffer_only_nuclei_as_placement_obstacles"
         ),
     }
     for tissue_id, override in density_scales.items():
         calibrated_scales[tissue_id] = calibrated_scales.get(tissue_id, 1.0) * override
 
-    prob = predict_prob(
+    library_only_tissue_ids = {
+        int(value)
+        for value in np.unique(
+            tissue[
+                deletion_mask
+                & (reference_tissue != tissue)
+            ]
+        )
+        if int(value) != 0
+    }
+    prob, type_density = predict_fields(
         model, tissue, input_nuclei, edit_mask, config.cancer_type_index, device
     )
     outputs = []
@@ -1279,16 +1893,19 @@ def run_single(args, model, library, config, density_scales, device):
 
     gamma_values = parse_float_list(args.gamma_values)
     for idx, gamma in enumerate(gamma_values):
-        nuclei, diag = generate_for_gamma(
+        nuclei, diag = generate_two_stage_for_gamma(
             prob,
             tissue,
             input_nuclei,
+            deletion_mask,
             edit_mask,
             library,
             reference_pool,
             gamma,
             args,
             calibrated_scales,
+            type_density=type_density,
+            library_only_tissue_ids=library_only_tissue_ids,
             type_proportions_by_tissue=type_proportions,
         )
         diag["patch_adaptive_priors"] = prior_audit
@@ -1369,7 +1986,8 @@ def run_batch(args, model, library, config, density_scales, device):
         reference_nuclei_raw = load_nuclei_mask(str(nuclei_path), remap=False)
         reference_pool = build_reference_pool(reference_nuclei_raw, args)
         edit_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) > 128
-        semantic_edit_pixels = int(np.count_nonzero(edit_mask))
+        deletion_mask = edit_mask.copy()
+        semantic_edit_pixels = int(np.count_nonzero(deletion_mask))
         if args.widen_edit_region:
             edit_mask = widen_locally_thin_mask(
                 edit_mask,
@@ -1377,19 +1995,24 @@ def run_batch(args, model, library, config, density_scales, device):
                 minimum_width=args.minimum_mask_width,
             )
         input_nuclei = gt_nuclei.copy()
-        erasure_mask = select_instances_by_centroid(input_nuclei, edit_mask)
+        erasure_mask = expand_edit_mask_to_complete_instances(
+            input_nuclei,
+            deletion_mask,
+        )
+        edit_mask |= erasure_mask
         input_nuclei[erasure_mask] = 0
 
         calibrated_scales, type_proportions, prior_audit = compute_patch_adaptive_priors(
             reference_nuclei_raw=reference_nuclei_raw,
             reference_tissue=tissue,
-            density_exclusion_region=edit_mask,
+            density_exclusion_region=deletion_mask,
             target_tissue=tissue,
             generation_region=edit_mask,
             library=library,
             global_density_scale=args.density_scale,
             local_density_direct_min_area=args.local_density_direct_min_area,
             local_density_direct_min_count=args.local_density_direct_min_count,
+            dataset_name=args.dataset,
         )
         prior_audit["generation_support"] = {
             "semantic_pixels": semantic_edit_pixels,
@@ -1397,28 +2020,34 @@ def run_batch(args, model, library, config, density_scales, device):
             "minimum_width_px": int(args.minimum_mask_width),
             "widening_enabled": bool(args.widen_edit_region),
             "source_nucleus_erasure_policy": (
-                "complete_component_if_centroid_in_support"
+                "complete_component_on_any_deletion_region_intersection"
+            ),
+            "buffer_nucleus_policy": (
+                "retain_generation_buffer_only_nuclei_as_placement_obstacles"
             ),
         }
         for tissue_id, override in density_scales.items():
             calibrated_scales[tissue_id] = calibrated_scales.get(tissue_id, 1.0) * override
 
-        prob = predict_prob(
+        prob, type_density = predict_fields(
             model, tissue, input_nuclei, edit_mask, config.cancer_type_index, device
         )
         outputs = []
         sample_diag = []
         for gamma in gamma_values:
-            nuclei, diag = generate_for_gamma(
+            nuclei, diag = generate_two_stage_for_gamma(
                 prob,
                 tissue,
                 input_nuclei,
+                deletion_mask,
                 edit_mask,
                 library,
                 reference_pool,
                 gamma,
                 args,
                 calibrated_scales,
+                type_density=type_density,
+                library_only_tissue_ids=(),
                 type_proportions_by_tissue=type_proportions,
             )
             diag["patch_adaptive_priors"] = prior_audit
@@ -1470,6 +2099,14 @@ def build_parser():
         ),
     )
     parser.add_argument("--edit-region", default=None, help="Single edit region mask PNG")
+    parser.add_argument(
+        "--deletion-region",
+        default=None,
+        help=(
+            "Semantic change support used for destructive instance erasure. "
+            "Defaults to --edit-region for legacy callers."
+        ),
+    )
     parser.add_argument("--output", default="nuclei_mask.png", help="Single output nuclei mask path")
     parser.add_argument("--output-dir", default="phase4_probnet_generate", help="Batch output directory")
     parser.add_argument("--n", type=int, default=10, help="Batch sample limit; <=0 means all")
@@ -1492,6 +2129,15 @@ def build_parser():
                         help="If library density exists, cap count at this multiple of library count")
     parser.add_argument("--min-region-area", type=int, default=50)
     parser.add_argument("--type-prob-floor", type=float, default=0.03)
+    parser.add_argument(
+        "--type-density-head-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "Weight of normalized ProbNet density-head type evidence in the "
+            "type quota; the remaining weight uses the dataset+tissue prior."
+        ),
+    )
     parser.add_argument("--local-density-direct-min-area", type=int, default=20000)
     parser.add_argument("--local-density-direct-min-count", type=int, default=10)
     parser.add_argument("--minimum-mask-width", type=int, default=33)
@@ -1579,6 +2225,24 @@ def build_parser():
             "Maximum proposed-nucleus area allowed to overlap an existing "
             "nucleus. Frozen production sampling uses 0.0 to preserve retained "
             "source nuclei bitwise."
+        ),
+    )
+    parser.add_argument(
+        "--nucleus-spacing-margin-px",
+        type=int,
+        default=1,
+        help=(
+            "Minimum empty-pixel margin between retained/generated nuclei. "
+            "One pixel prevents same-class instances from merging."
+        ),
+    )
+    parser.add_argument(
+        "--require-exact-target-count",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Fail instead of silently returning fewer generated nuclei than "
+            "the target-tissue density quota."
         ),
     )
 

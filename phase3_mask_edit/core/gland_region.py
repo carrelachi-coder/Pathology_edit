@@ -9,7 +9,87 @@ from scipy import ndimage
 
 
 GLAS_GLAND_FINE_IDS = frozenset({5, 11, 12, 13})
-GLAS_WHOLE_GLAND_POLICY_VERSION = "glas_whole_gland_instance_v1"
+GLAS_WHOLE_GLAND_POLICY_VERSION = "glas_whole_gland_instance_v2"
+GENERATION_CONTEXT_MAX_EXTRA_FRACTION = 0.25
+GENERATION_CONTEXT_MIN_EXTRA_PIXELS = 32
+
+
+def bound_generation_context_region(
+    semantic_change_region: np.ndarray,
+    candidate_generation_region: np.ndarray,
+    *,
+    max_extra_fraction: float = GENERATION_CONTEXT_MAX_EXTRA_FRACTION,
+    min_extra_pixels: int = GENERATION_CONTEXT_MIN_EXTRA_PIXELS,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Keep requested edits while bounding extra generator-only context.
+
+    Candidate context is retained in increasing distance from the semantic
+    edit. This prevents a touched, highly connected structure from turning a
+    local request into an unbounded whole-patch rewrite.
+    """
+
+    semantic = np.asarray(semantic_change_region, dtype=bool)
+    candidate = np.asarray(candidate_generation_region, dtype=bool)
+    if semantic.shape != candidate.shape:
+        raise ValueError("semantic and candidate generation regions must align")
+    if max_extra_fraction < 0:
+        raise ValueError("max_extra_fraction must be non-negative")
+    if min_extra_pixels < 0:
+        raise ValueError("min_extra_pixels must be non-negative")
+    missing = semantic & ~candidate
+    if np.any(missing):
+        raise ValueError(
+            "candidate generation region must contain every semantic change pixel"
+        )
+
+    semantic_pixels = int(np.count_nonzero(semantic))
+    candidate_pixels = int(np.count_nonzero(candidate))
+    candidate_extra = candidate & ~semantic
+    candidate_extra_pixels = int(np.count_nonzero(candidate_extra))
+    extra_budget = (
+        max(
+            int(min_extra_pixels),
+            int(np.floor(float(max_extra_fraction) * semantic_pixels)),
+        )
+        if semantic_pixels
+        else 0
+    )
+    retained_extra_pixels = min(candidate_extra_pixels, extra_budget)
+    capped = candidate_extra_pixels > retained_extra_pixels
+
+    if not capped:
+        bounded = candidate.copy()
+    else:
+        bounded = semantic.copy()
+        distance_to_semantic = ndimage.distance_transform_edt(~semantic)
+        coordinates = np.argwhere(candidate_extra)
+        distances = distance_to_semantic[
+            coordinates[:, 0],
+            coordinates[:, 1],
+        ]
+        order = np.lexsort(
+            (
+                coordinates[:, 1],
+                coordinates[:, 0],
+                distances,
+            )
+        )
+        keep = coordinates[order[:retained_extra_pixels]]
+        bounded[keep[:, 0], keep[:, 1]] = True
+
+    return bounded, {
+        "policy": "bounded_generation_context_v1",
+        "max_extra_fraction": float(max_extra_fraction),
+        "min_extra_pixels": int(min_extra_pixels),
+        "semantic_pixels": semantic_pixels,
+        "candidate_pixels": candidate_pixels,
+        "candidate_extra_pixels": candidate_extra_pixels,
+        "extra_budget_pixels": int(extra_budget),
+        "retained_extra_pixels": int(retained_extra_pixels),
+        "generation_pixels": int(np.count_nonzero(bounded)),
+        "capped": bool(capped),
+        "selection": "nearest_to_semantic_stable",
+    }
 
 
 def expand_region_to_intersecting_components(
@@ -97,12 +177,13 @@ def glas_whole_gland_generation_region(
     target_gland = glas_gland_mask(target)
     boundary_delta = source_gland ^ target_gland
     boundary_delta_pixels = int(np.count_nonzero(boundary_delta))
-    if boundary_delta_pixels == 0:
+    touched_gland_change = semantic & (source_gland | target_gland)
+    if not np.any(touched_gland_change):
         return semantic.copy(), {
             **base,
             "applied": False,
-            "reason": "gland_footprint_unchanged",
-            "boundary_delta_pixels": 0,
+            "reason": "semantic_change_does_not_touch_gland",
+            "boundary_delta_pixels": boundary_delta_pixels,
             "generation_change_pixels": int(np.count_nonzero(semantic)),
         }
 
@@ -114,8 +195,12 @@ def glas_whole_gland_generation_region(
     return generation, {
         **base,
         "applied": bool(component_info["touched_component_count"]),
-        "reason": "gland_boundary_changed",
+        "reason": "gland_change_whole_connected_component",
         "boundary_delta_pixels": boundary_delta_pixels,
         "generation_change_pixels": int(np.count_nonzero(generation)),
-        **component_info,
+        "component_expansion": component_info,
+        "context_bound": {
+            "policy": "disabled_for_glas_whole_connected_component",
+            "capped": False,
+        },
     }

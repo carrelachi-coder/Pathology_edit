@@ -1,6 +1,7 @@
 import numpy as np
 
 from phase3_mask_edit.core.gland_region import (
+    bound_generation_context_region,
     expand_region_to_intersecting_components,
     glas_gland_mask,
     glas_whole_gland_generation_region,
@@ -23,17 +24,17 @@ def test_glas_boundary_change_expands_only_the_affected_gland_instance():
     )
 
     assert metadata["applied"] is True
-    assert metadata["reason"] == "gland_boundary_changed"
+    assert metadata["reason"] == "gland_change_whole_connected_component"
     assert np.all(generation[1:6, 1:6])
     assert not np.any(generation[8:10, 8:10])
     assert np.all(generation[semantic])
 
 
-def test_glas_fine_relabel_without_boundary_change_is_not_overexpanded():
+def test_glas_fine_relabel_expands_to_whole_connected_gland():
     source = np.full((8, 8), 2, dtype=np.uint8)
     source[2:6, 2:6] = 11
     target = source.copy()
-    target[2:6, 2:6] = 12
+    target[3:5, 3:5] = 12
     semantic = source != target
 
     generation, metadata = glas_whole_gland_generation_region(
@@ -43,9 +44,10 @@ def test_glas_fine_relabel_without_boundary_change_is_not_overexpanded():
         profile="GLAS",
     )
 
-    assert metadata["applied"] is False
-    assert metadata["reason"] == "gland_footprint_unchanged"
-    assert np.array_equal(generation, semantic)
+    assert metadata["applied"] is True
+    assert metadata["reason"] == "gland_change_whole_connected_component"
+    assert np.all(generation[2:6, 2:6])
+    assert int(np.count_nonzero(generation)) == 16
 
 
 def test_candidate_region_expands_to_complete_intersecting_glas_components():
@@ -65,3 +67,38 @@ def test_candidate_region_expands_to_complete_intersecting_glas_components():
     assert np.all(expanded[1:4, 1:4])
     assert expanded[5, 5]
     assert not np.any(expanded[6:9, 6:9])
+
+
+def test_generation_context_caps_large_connected_component_expansion():
+    semantic = np.zeros((128, 128), dtype=bool)
+    semantic[48:80, 48:80] = True
+    candidate = np.ones_like(semantic)
+
+    bounded, metadata = bound_generation_context_region(semantic, candidate)
+
+    semantic_pixels = int(np.count_nonzero(semantic))
+    assert metadata["capped"] is True
+    assert metadata["extra_budget_pixels"] == semantic_pixels // 4
+    assert int(np.count_nonzero(bounded)) == semantic_pixels + semantic_pixels // 4
+    assert np.all(bounded[semantic])
+    assert not bounded[0, 0]
+
+
+def test_glas_large_union_preserves_the_complete_connected_component():
+    source = np.full((128, 128), 2, dtype=np.uint8)
+    source[8:120, 8:120] = 12
+    target = source.copy()
+    target[40:88, 40:88] = 2
+    semantic = source != target
+
+    generation, metadata = glas_whole_gland_generation_region(
+        source,
+        target,
+        semantic,
+        profile="GlaS",
+    )
+
+    assert metadata["reason"] == "gland_change_whole_connected_component"
+    assert metadata["context_bound"]["capped"] is False
+    assert np.all(generation[8:120, 8:120])
+    assert np.all(generation[semantic])

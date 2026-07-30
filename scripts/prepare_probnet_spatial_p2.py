@@ -213,6 +213,7 @@ def build_plan_for_crop(
         global_density_scale=1.0,
         local_density_direct_min_area=args.local_density_direct_min_area,
         local_density_direct_min_count=args.local_density_direct_min_count,
+        dataset_name=dataset,
     )
     plan, slots, component_labels = build_statistical_plan(
         tissue_map=np.asarray(crop["tissue"]),

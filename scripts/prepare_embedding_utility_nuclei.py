@@ -288,6 +288,7 @@ def _generate_one(
         global_density_scale=probnet_args.density_scale,
         local_density_direct_min_area=probnet_args.local_density_direct_min_area,
         local_density_direct_min_count=probnet_args.local_density_direct_min_count,
+        dataset_name=config.name,
     )
     for tissue_id, override in density_scales.items():
         calibrated_scales[tissue_id] = calibrated_scales.get(tissue_id, 1.0) * override

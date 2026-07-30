@@ -19,6 +19,7 @@ sys.modules.setdefault(
 
 inpaint_pipeline = types.ModuleType("scripts.run_phase3_inpaint_pipeline")
 for name in (
+    "_build_nucleus_aware_generation_region",
     "_build_target_nuclei",
     "_load_rgb_image",
     "_load_uint8_mask",
@@ -47,6 +48,7 @@ from scripts.phase3_end_to_end_ui import (
     _large_patch_specs,
     _primitive_config,
     _profile_defaults,
+    _resolve_ui_cell_regions,
     _run_segmentator_tissue_mask,
     _with_default_contour_labels,
     run_cell_stage,
@@ -122,6 +124,46 @@ class OnlineProductIntegrationTests(unittest.TestCase):
             "/tmp/ui-run/cell_fill_log.json",
         )
         self.assertEqual(output_dir, Path("/tmp/ui-run/agentic_generation"))
+
+    def test_agentic_ui_rejects_target_nuclei_without_current_cell_log(self):
+        state = {
+            "profile": "BCSS",
+            "output_dir": "/tmp/ui-run",
+            "reference_image": "/tmp/source.png",
+            "reference_tissue_mask": "/tmp/source_tissue.png",
+            "reference_nuclei_mask": "/tmp/source_nuclei.png",
+            "target_tissue_mask": "/tmp/target_tissue.png",
+            "target_nuclei_mask": "/tmp/target_nuclei.png",
+            "semantic_change_region": "/tmp/semantic.png",
+            "change_region": "/tmp/generation.png",
+            "verification_runtime": {
+                "segmentator_env": "segmentator-env",
+                "segmentator_release": "/tmp/segmentator-release.json",
+                "segmentator_device": "cuda:1",
+                "cellvit_script": "/tmp/cellvit-wrapper.py",
+                "cellvit_model": "/tmp/cellvit.pt",
+                "cellvit_root": "/tmp/cellvit",
+                "cellvit_python": "/tmp/cellvit-python",
+                "cellvit_device": "cuda:2",
+            },
+        }
+        args = SimpleNamespace(
+            pretrained_model_name_or_path="/tmp/flux",
+            inpaint_checkpoint="/tmp/inpaint",
+            cross_v1_checkpoint="/tmp/cross",
+            pix2pix_checkpoint="/tmp/pix2pix_epoch26_step214895.pt",
+            device="cuda:0",
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "requires the current cell_fill_log",
+        ):
+            _build_online_agent_command(
+                state=state,
+                args=args,
+                route_threshold=0.30,
+            )
 
     def test_online_defaults_use_the_frozen_mask_model_and_linux_cellvit_release(self):
         self.assertEqual(DEFAULT_API_MODEL, "gpt-4.1-mini")
@@ -271,8 +313,9 @@ class OnlineProductIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(int(np.count_nonzero(specs[0]["write_mask"])), 9)
 
-    def test_large_patch_cell_fill_uses_latest_six_argument_interface(self):
-        tree = ast.parse(inspect.getsource(run_large_patch_stitch_generation))
+    def test_large_patch_cell_fill_uses_latest_deletion_and_generation_interface(self):
+        source = inspect.getsource(run_large_patch_stitch_generation)
+        tree = ast.parse(source)
         calls = [
             node
             for node in ast.walk(tree)
@@ -282,7 +325,48 @@ class OnlineProductIntegrationTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(calls), 1)
-        self.assertEqual(len(calls[0].args), 6)
+        self.assertEqual(len(calls[0].args), 7)
+        string_constants = {
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+        }
+        self.assertIn("cell_fill_log.json", string_constants)
+        self.assertIn("cell_fill_log", string_constants)
+
+    def test_ui_region_helper_keeps_deletion_core_separate_from_buffer(self):
+        source_tissue = np.full((32, 32), 2, dtype=np.uint8)
+        target_tissue = source_tissue.copy()
+        target_tissue[14:18, 14:18] = 1
+        source_nuclei = np.zeros((32, 32), dtype=np.uint8)
+        source_nuclei[14:17, 14:17] = 101
+        semantic = source_tissue != target_tissue
+        buffered = semantic.copy()
+        buffered[10:22, 10:22] = True
+
+        with patch(
+            "scripts.phase3_end_to_end_ui._build_nucleus_aware_generation_region",
+            return_value=(
+                buffered,
+                {"policy": "deleted_nucleus_diameter_buffer_v1"},
+            ),
+        ):
+            generation, deletion, policy = _resolve_ui_cell_regions(
+                profile="BCSS",
+                reference_tissue=source_tissue,
+                target_tissue=target_tissue,
+                reference_nuclei=source_nuclei,
+                semantic_change_region=semantic,
+                cell_fill_mode="probnet",
+            )
+
+        np.testing.assert_array_equal(deletion, semantic)
+        np.testing.assert_array_equal(generation, buffered)
+        self.assertEqual(
+            policy["cell_deletion_region_policy"],
+            "semantic_change_region",
+        )
 
 
 class Phase3AutoRecommendUiTests(unittest.TestCase):

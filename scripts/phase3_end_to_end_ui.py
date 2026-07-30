@@ -86,6 +86,7 @@ from controlnet_train.inference.model_paths import (
     validate_production_pix2pix_checkpoint,
 )
 from scripts.run_phase3_inpaint_pipeline import (
+    _build_nucleus_aware_generation_region,
     _build_target_nuclei,
     _change_area_fraction,
     _load_rgb_image,
@@ -2899,6 +2900,65 @@ def _merge_phase3_info(base: dict[str, Any], result: Any) -> dict[str, Any]:
     return phase3_info
 
 
+def _resolve_ui_cell_regions(
+    *,
+    profile: str,
+    reference_tissue: np.ndarray,
+    target_tissue: np.ndarray,
+    reference_nuclei: np.ndarray,
+    semantic_change_region: np.ndarray,
+    cell_fill_mode: str,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    """Resolve destructive and buffered supports exactly as the CLI pipeline."""
+
+    generation_region, gland_structure_policy = (
+        glas_whole_gland_generation_region(
+            reference_tissue,
+            target_tissue,
+            semantic_change_region,
+            profile=profile,
+        )
+    )
+    whole_glas_component = bool(
+        str(profile).upper() == "GLAS"
+        and gland_structure_policy.get("applied")
+    )
+    deletion_region = (
+        np.asarray(generation_region, dtype=bool).copy()
+        if whole_glas_component
+        else np.asarray(semantic_change_region, dtype=bool).copy()
+    )
+    nuclei_boundary_context = None
+    if cell_fill_mode in {"blank", "probnet"} and np.any(generation_region):
+        generation_region, nuclei_boundary_context = (
+            _build_nucleus_aware_generation_region(
+                deletion_region=deletion_region,
+                base_generation_region=generation_region,
+                reference_nuclei=reference_nuclei,
+                biological_support=(
+                    (reference_tissue != 0) | (target_tissue != 0)
+                ),
+            )
+        )
+    gland_structure_policy = {
+        **gland_structure_policy,
+        "nuclei_boundary_context": nuclei_boundary_context,
+        "cell_deletion_region_policy": (
+            "whole_glas_connected_component"
+            if whole_glas_component
+            else "semantic_change_region"
+        ),
+        "generation_change_pixels": int(
+            np.count_nonzero(generation_region)
+        ),
+    }
+    return (
+        np.asarray(generation_region, dtype=bool),
+        deletion_region,
+        gland_structure_policy,
+    )
+
+
 def run_cell_stage(
     state: dict[str, Any],
     cell_fill_mode: str,
@@ -2918,11 +2978,17 @@ def run_cell_stage(
     reference_nuclei = _load_uint8_mask(state["reference_nuclei_mask"])
     semantic_change_path = state.get("semantic_change_region") or state["change_region"]
     semantic_change_region = load_change_region(semantic_change_path)
-    change_region, gland_structure_policy = glas_whole_gland_generation_region(
-        reference_tissue,
-        target_tissue,
-        semantic_change_region,
+    (
+        change_region,
+        cell_deletion_region,
+        gland_structure_policy,
+    ) = _resolve_ui_cell_regions(
         profile=state.get("profile", "BCSS"),
+        reference_tissue=reference_tissue,
+        target_tissue=target_tissue,
+        reference_nuclei=reference_nuclei,
+        semantic_change_region=semantic_change_region,
+        cell_fill_mode=cell_fill_mode,
     )
     stage_paths = _save_pre_generation_artifacts(
         output_dir=output_dir,
@@ -2960,6 +3026,7 @@ def run_cell_stage(
             reference_nuclei,
             reference_tissue,
             target_tissue,
+            cell_deletion_region,
             change_region,
             output_dir,
         )
@@ -3085,10 +3152,14 @@ def _build_online_agent_command(
     if segmentator_python:
         command.extend(["--segmentator-python", segmentator_python])
     nuclei_generation_log = state.get("cell_fill_log")
-    if nuclei_generation_log:
-        command.extend(
-            ["--nuclei-generation-log", str(nuclei_generation_log)]
+    if not nuclei_generation_log:
+        raise gr.Error(
+            "Agentic generation requires the current cell_fill_log.json. "
+            "Run the cell-mask stage again."
         )
+    command.extend(
+        ["--nuclei-generation-log", str(nuclei_generation_log)]
+    )
     return command, agent_output_dir
 
 
@@ -3177,12 +3248,18 @@ def run_generation_stage(
     target_tissue = load_id_mask(state["target_tissue_mask"])
     semantic_change_path = state.get("semantic_change_region") or state["change_region"]
     semantic_change_region = load_change_region(semantic_change_path)
-    change_region, gland_structure_policy = glas_whole_gland_generation_region(
-        reference_tissue,
-        target_tissue,
-        semantic_change_region,
-        profile=state.get("profile", "BCSS"),
+    change_region = load_change_region(state["change_region"])
+    gland_structure_policy = dict(
+        state.get("gland_structure_policy") or {}
     )
+    if np.any(
+        np.asarray(semantic_change_region, dtype=bool)
+        & ~np.asarray(change_region, dtype=bool)
+    ):
+        raise gr.Error(
+            "Frozen generation region no longer contains the semantic edit. "
+            "Run the cell-mask stage again."
+        )
     stage_paths = _save_pre_generation_artifacts(
         output_dir=output_dir,
         reference_image=reference_image,
@@ -3322,11 +3399,17 @@ def run_large_patch_stitch_generation(
     reference_nuclei = _load_uint8_mask(state["reference_nuclei_mask"])
     semantic_change_path = state.get("semantic_change_region") or state["change_region"]
     semantic_change_region = load_change_region(semantic_change_path)
-    change_region, gland_structure_policy = glas_whole_gland_generation_region(
-        reference_tissue,
-        target_tissue,
-        semantic_change_region,
+    (
+        change_region,
+        cell_deletion_region,
+        gland_structure_policy,
+    ) = _resolve_ui_cell_regions(
         profile=state.get("profile", "BCSS"),
+        reference_tissue=reference_tissue,
+        target_tissue=target_tissue,
+        reference_nuclei=reference_nuclei,
+        semantic_change_region=semantic_change_region,
+        cell_fill_mode=cell_fill_mode,
     )
     stage_paths = _save_pre_generation_artifacts(
         output_dir=output_dir,
@@ -3439,6 +3522,13 @@ def run_large_patch_stitch_generation(
         write_mask = spec["write_mask"]
         semantic_change_patch = spec["semantic_change_patch"]
         change_patch = spec["generation_change_patch"]
+        deletion_change_patch = _extract_patch_array(
+            cell_deletion_region,
+            y,
+            x,
+            patch_size,
+            fill_value=False,
+        )
         target_tissue_patch = _extract_patch_array(target_tissue, y, x, patch_size, fill_value=0)
         reference_tissue_patch = _extract_patch_array(reference_tissue, y, x, patch_size, fill_value=0)
         reference_nuclei_patch = _extract_patch_array(reference_nuclei, y, x, patch_size, fill_value=0)
@@ -3491,6 +3581,7 @@ def run_large_patch_stitch_generation(
                 reference_nuclei_patch,
                 reference_tissue_patch,
                 target_tissue_patch,
+                deletion_change_patch,
                 change_patch,
                 patch_dir,
             )
@@ -3500,7 +3591,20 @@ def run_large_patch_stitch_generation(
             raise gr.Error(str(exc)) from exc
 
         target_nuclei_path = save_id_mask(target_nuclei_patch, patch_dir / "target_nuclei_mask.png")
-        patch_state["target_nuclei_mask"] = str(target_nuclei_path)
+        cell_info["target_nuclei_mask"] = str(target_nuclei_path)
+        cell_info["gland_structure_policy"] = gland_structure_policy
+        patch_cell_fill_log = patch_dir / "cell_fill_log.json"
+        patch_cell_fill_log.write_text(
+            _json_text(cell_info),
+            encoding="utf-8",
+        )
+        patch_state.update(
+            {
+                "target_nuclei_mask": str(target_nuclei_path),
+                "cell_fill": cell_info,
+                "cell_fill_log": str(patch_cell_fill_log),
+            }
+        )
         _save_target_combined_mask(
             patch_dir / "target_combined_mask.png",
             target_tissue=target_tissue_patch,

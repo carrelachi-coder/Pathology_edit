@@ -48,7 +48,7 @@ class OnlineProductReleaseTests(unittest.TestCase):
         self.assertRegex(nuclei["repo_checkpoint_revision"], r"^[0-9a-f]{40}$")
         self.assertEqual(
             nuclei["candidate_queue_policy"],
-            "probnet_score_descending_with_quota_coverage_prefix",
+            "probnet_log_odds_quality_diversity_prefix",
         )
         self.assertEqual(nuclei["quota_coverage_spacing_scale"], 0.75)
         self.assertEqual(nuclei["quota_coverage_max_radius"], 48.0)
@@ -56,6 +56,17 @@ class OnlineProductReleaseTests(unittest.TestCase):
             nuclei["retry_tail_policy"],
             "stable_descending_probnet_score",
         )
+        self.assertEqual(
+            nuclei["count_policy"],
+            "pre_edit_source_tissue_density_or_target_prior_calibrated_by_"
+            "pre_edit_source_times_post_edit_target_area",
+        )
+        self.assertEqual(
+            nuclei["type_quota_routing_policy"],
+            "changed_target_tissue_density_head_"
+            "unchanged_target_tissue_pre_edit_patch",
+        )
+        self.assertEqual(nuclei["nucleus_spacing_margin_px"], 1)
         self.assertEqual(
             generation["pix2pix"]["checkpoint_sha256"],
             PRODUCTION_PIX2PIX_SHA256,

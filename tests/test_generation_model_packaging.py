@@ -57,11 +57,12 @@ class GenerationModelPackagingTests(unittest.TestCase):
             self.assertEqual(metadata["epoch_human"], 29)
             self.assertEqual(
                 metadata["runtime_role"],
-                "per_pixel_nucleus_placement_score_only",
+                "per_pixel_placement_and_changed_tissue_type_evidence_"
+                "without_total_count",
             )
             self.assertEqual(
                 metadata["candidate_queue_policy"],
-                "probnet_score_descending_with_quota_coverage_prefix",
+                "probnet_log_odds_quality_diversity_prefix",
             )
             self.assertEqual(
                 metadata["retry_tail_policy"],

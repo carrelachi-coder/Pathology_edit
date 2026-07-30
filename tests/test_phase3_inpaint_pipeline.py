@@ -10,7 +10,9 @@ from PIL import Image
 from phase3_mask_edit.core.mask_io import save_id_mask
 from phase3_mask_edit.parser.semantic_diff import DEFAULT_SEMANTIC_DIFF
 from scripts.run_phase3_inpaint_pipeline import (
+    _build_nucleus_aware_generation_region,
     _probnet_sampling_contract,
+    _retain_complete_reference_cells,
     _select_generation_mode,
     main as run_phase3_inpaint_pipeline,
 )
@@ -38,13 +40,101 @@ def _source_mask() -> np.ndarray:
 
 
 class Phase3InpaintPipelineTests(unittest.TestCase):
+    def test_nucleus_boundary_context_uses_largest_deleted_diameter(self):
+        change = np.zeros((20, 20), dtype=bool)
+        change[8:12, 10:14] = True
+        nuclei = np.zeros((20, 20), dtype=np.uint8)
+        nuclei[7:11, 7:11] = 101
+        nuclei[2:5, 2:5] = 102
+
+        expanded, metadata = _build_nucleus_aware_generation_region(
+            deletion_region=change,
+            base_generation_region=change,
+            reference_nuclei=nuclei,
+            biological_support=np.ones_like(change),
+        )
+
+        expected_diameter = 2.0 * np.sqrt(16.0 / np.pi)
+        self.assertAlmostEqual(
+            metadata["largest_deleted_nucleus_diameter_px"],
+            expected_diameter,
+        )
+        self.assertEqual(
+            metadata["buffer_radius_px"],
+            int(np.ceil(1.5 * expected_diameter)),
+        )
+        self.assertGreater(metadata["added_buffer_pixels"], 0)
+
+    def test_buffer_only_nucleus_is_retained(self):
+        deletion = np.zeros((32, 32), dtype=bool)
+        deletion[14:18, 14:18] = True
+        nuclei = np.zeros((32, 32), dtype=np.uint8)
+        nuclei[14:18, 14:18] = 101
+        nuclei[5:8, 14:17] = 102
+
+        generation, _ = _build_nucleus_aware_generation_region(
+            deletion_region=deletion,
+            base_generation_region=deletion,
+            reference_nuclei=nuclei,
+            biological_support=np.ones_like(deletion),
+        )
+        self.assertTrue(np.any(generation[5:8, 14:17]))
+
+        retained, stats = _retain_complete_reference_cells(
+            nuclei,
+            deletion,
+            policy="delete",
+        )
+        self.assertFalse(np.any(retained[14:18, 14:18]))
+        self.assertTrue(np.all(retained[5:8, 14:17] == 102))
+        self.assertEqual(stats["deleted_components"], 1)
+        self.assertEqual(stats["kept_components"], 1)
+
+    def test_merged_component_does_not_define_generation_buffer_radius(self):
+        deletion = np.zeros((96, 96), dtype=bool)
+        nuclei = np.zeros((96, 96), dtype=np.uint8)
+        for index, (row, col) in enumerate(
+            [(4, 4), (4, 20), (20, 4), (20, 20), (36, 4)]
+        ):
+            nuclei[row:row + 4, col:col + 4] = 101
+            if index == 0:
+                deletion[row:row + 4, col:col + 4] = True
+        nuclei[50:82, 50:82] = 101
+        deletion[60:62, 60:62] = True
+
+        _, metadata = _build_nucleus_aware_generation_region(
+            deletion_region=deletion,
+            base_generation_region=deletion,
+            reference_nuclei=nuclei,
+            biological_support=np.ones_like(deletion),
+        )
+
+        self.assertEqual(metadata["rejected_merged_diameter_components"], 1)
+        self.assertEqual(metadata["largest_deleted_nucleus_area_px"], 16)
+
+    def test_probnet_retention_deletes_crossing_instance_without_centroid_rule(self):
+        source = np.zeros((20, 20), dtype=np.uint8)
+        source[5:11, 4:13] = 101
+        changed = np.zeros((20, 20), dtype=bool)
+        changed[:, 11:] = True
+
+        retained, stats = _retain_complete_reference_cells(
+            source,
+            changed,
+            policy="delete",
+        )
+
+        self.assertEqual(stats["crossing_components"], 1)
+        self.assertEqual(stats["deleted_components"], 1)
+        self.assertFalse(np.any(retained))
+
     def test_probnet_contract_is_generic_and_auditable(self):
         contract = _probnet_sampling_contract(
             {
                 "tissues": {
                     "2": {
                         "candidate_queue_policy": (
-                            "probnet_score_descending_with_quota_coverage_prefix"
+                            "probnet_log_odds_quality_diversity_prefix"
                         ),
                         "quota_coverage_spacing_scale": 0.75,
                         "quota_coverage_max_radius": 48.0,
@@ -55,7 +145,7 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                     },
                     "7": {
                         "candidate_queue_policy": (
-                            "probnet_score_descending_with_quota_coverage_prefix"
+                            "probnet_log_odds_quality_diversity_prefix"
                         ),
                         "quota_coverage_spacing_scale": 0.75,
                         "quota_coverage_max_radius": 48.0,
@@ -64,13 +154,39 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                             "median": 0.74,
                         },
                     },
-                }
+                },
+                "nucleus_spacing_margin_px": 1,
+                "type_quota_routing_policy": (
+                    "changed_target_tissue_density_head_"
+                    "unchanged_target_tissue_pre_edit_patch"
+                ),
+                "patch_adaptive_priors": {
+                    "count_policy": (
+                        "pre_edit_source_tissue_density_or_target_prior_"
+                        "calibrated_by_pre_edit_source_times_post_edit_target_area"
+                    ),
+                    "generation_support": {
+                        "source_nucleus_erasure_policy": (
+                            "complete_component_on_any_deletion_region_intersection"
+                        ),
+                        "buffer_nucleus_policy": (
+                            "retain_generation_buffer_only_nuclei_as_"
+                            "placement_obstacles"
+                        ),
+                    },
+                },
+                "shape_sampling": {
+                    "policy": (
+                        "component_local_same_class_reference_then_"
+                        "component_calibrated_library"
+                    ),
+                },
             }
         )
 
         self.assertEqual(
             contract["candidate_queue_policy"],
-            "probnet_score_descending_with_quota_coverage_prefix",
+            "probnet_log_odds_quality_diversity_prefix",
         )
         self.assertFalse(contract["organ_specific_constraints"])
         self.assertEqual(contract["quota_coverage_spacing_scale"], 0.75)
@@ -83,8 +199,14 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             contract["accepted_center_probability_by_tissue"]["7"]["median"],
             0.74,
         )
+        self.assertEqual(contract["nucleus_spacing_margin_px"], 1)
+        self.assertEqual(
+            contract["type_quota_routing_policy"],
+            "changed_target_tissue_density_head_"
+            "unchanged_target_tissue_pre_edit_patch",
+        )
 
-    def test_glas_boundary_change_rewrites_the_complete_gland_instance(self):
+    def test_glas_boundary_change_rewrites_complete_gland_component(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             image = root / "image.png"
@@ -141,15 +263,25 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                 Image.open(output / "retained_nuclei_mask.png").convert("L")
             )
             self.assertLess(np.count_nonzero(semantic), np.count_nonzero(generation))
+            self.assertTrue(np.all(generation[semantic]))
             self.assertTrue(np.all(generation[20:52, 20:52]))
             self.assertFalse(np.any(generation[64:80, 64:80]))
-            self.assertFalse(np.any(retained[32:36, 32:36]))
+            self.assertFalse(np.any(retained[32:36, 32:36] == 101))
             self.assertTrue(np.any(retained[68:72, 68:72] == 105))
 
             summary = json.loads(
                 (output / "pipeline_summary.json").read_text(encoding="utf-8")
             )
             self.assertTrue(summary["gland_structure_policy"]["applied"])
+            self.assertFalse(
+                summary["gland_structure_policy"]["context_bound"]["capped"]
+            )
+            self.assertEqual(
+                summary["gland_structure_policy"][
+                    "cell_deletion_region_policy"
+                ],
+                "whole_glas_connected_component",
+            )
 
     def test_gen_dry_run_writes_generation_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -262,6 +394,18 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             self.assertTrue(np.any(retained[60:64, 60:64] == 102))
 
             log = json.loads((output / "cell_fill_log.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                log["gland_structure_policy"]["nuclei_boundary_context"][
+                    "deleted_seed_components"
+                ],
+                1,
+            )
+            self.assertGreater(
+                log["gland_structure_policy"]["nuclei_boundary_context"][
+                    "added_buffer_pixels"
+                ],
+                0,
+            )
             self.assertEqual(log["source_cell_integrity"]["crossing_components"], 1)
             self.assertGreaterEqual(log["source_cell_integrity"]["deleted_components"], 1)
 

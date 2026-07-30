@@ -26,6 +26,7 @@ from typing import Any
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
+from scipy import ndimage
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -54,7 +55,10 @@ from phase3_mask_edit.core.mask_io import (
     save_metadata,
     save_rgb_mask,
 )
-from phase3_mask_edit.core.gland_region import glas_whole_gland_generation_region
+from phase3_mask_edit.core.gland_region import (
+    bound_generation_context_region,
+    glas_whole_gland_generation_region,
+)
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
     QwenLocalParserConfig,
@@ -107,12 +111,59 @@ def main(argv: list[str] | None = None) -> int:
         semantic_change_region,
         profile=args.profile,
     )
-    if args.cell_fill_mode == "probnet" and np.any(change_region):
+    whole_glas_component = bool(
+        str(args.profile).upper() == "GLAS"
+        and gland_structure_policy.get("applied")
+    )
+    if (
+        args.cell_fill_mode == "probnet"
+        and np.any(change_region)
+        and not whole_glas_component
+    ):
         change_region = widen_locally_thin_mask(
             change_region,
             (reference_tissue != 0) | (target_tissue != 0),
             minimum_width=args.minimum_mask_width,
         )
+    if whole_glas_component:
+        final_context_bound = {
+            "policy": "disabled_for_glas_whole_connected_component",
+            "capped": False,
+            "generation_pixels": int(np.count_nonzero(change_region)),
+        }
+        cell_deletion_region = np.asarray(change_region, dtype=bool).copy()
+    else:
+        change_region, final_context_bound = bound_generation_context_region(
+            semantic_change_region,
+            change_region,
+        )
+        cell_deletion_region = np.asarray(
+            semantic_change_region,
+            dtype=bool,
+        ).copy()
+    nuclei_boundary_context = None
+    if args.cell_fill_mode in {"blank", "probnet"} and np.any(change_region):
+        change_region, nuclei_boundary_context = (
+            _build_nucleus_aware_generation_region(
+                deletion_region=cell_deletion_region,
+                base_generation_region=change_region,
+                reference_nuclei=reference_nuclei,
+                biological_support=(
+                    (reference_tissue != 0) | (target_tissue != 0)
+                ),
+            )
+        )
+    gland_structure_policy = {
+        **gland_structure_policy,
+        "post_width_context_bound": final_context_bound,
+        "cell_deletion_region_policy": (
+            "whole_glas_connected_component"
+            if whole_glas_component
+            else "semantic_change_region"
+        ),
+        "nuclei_boundary_context": nuclei_boundary_context,
+        "generation_change_pixels": int(np.count_nonzero(change_region)),
+    }
 
     stage_paths = _save_pre_generation_artifacts(
         output_dir=output_dir,
@@ -128,6 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         reference_nuclei,
         reference_tissue,
         target_tissue,
+        cell_deletion_region,
         change_region,
         output_dir,
     )
@@ -351,20 +403,25 @@ def _build_target_nuclei(
     reference_nuclei: np.ndarray,
     reference_tissue: np.ndarray,
     target_tissue: np.ndarray,
+    deletion_region: np.ndarray,
     change_region: np.ndarray,
     output_dir: Path,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     requested_policy = args.crossing_cell_policy
-    effective_policy = "centroid" if args.cell_fill_mode == "probnet" else requested_policy
+    effective_policy = (
+        "delete"
+        if args.cell_fill_mode == "probnet"
+        else requested_policy
+    )
     retained, integrity_info = _retain_complete_reference_cells(
         reference_nuclei,
-        change_region,
+        deletion_region,
         policy=effective_policy,
     )
     integrity_info["requested_policy"] = requested_policy
     if requested_policy != effective_policy:
         integrity_info["policy_override"] = (
-            "probnet_fill_uses_complete_component_centroid_erasure"
+            "probnet_fill_deletes_every_component_intersecting_deletion_region"
         )
     save_id_mask(retained, output_dir / "retained_nuclei_mask.png")
 
@@ -385,22 +442,136 @@ def _build_target_nuclei(
             target_tissue,
             retained,
             reference_nuclei,
+            deletion_region,
             change_region,
             output_dir,
         )
         new = np.array(target, copy=True)
+        new[np.asarray(retained) > 0] = 0
         new[~np.asarray(change_region, dtype=bool)] = 0
 
     save_id_mask(new, output_dir / "new_nuclei_mask.png")
     return target, {
         "mode": args.cell_fill_mode,
         "status": status,
+        "deletion_pixels": int(np.count_nonzero(deletion_region)),
         "changed_pixels": int(np.count_nonzero(change_region)),
         "source_cell_integrity": integrity_info,
         "shape_sampling": shape_sampling,
         "retained_nuclei_mask": str(output_dir / "retained_nuclei_mask.png"),
         "new_nuclei_mask": str(output_dir / "new_nuclei_mask.png"),
         "target_combined_mask": str(output_dir / "target_combined_mask.png"),
+    }
+
+
+def _build_nucleus_aware_generation_region(
+    *,
+    deletion_region: np.ndarray,
+    base_generation_region: np.ndarray,
+    reference_nuclei: np.ndarray,
+    biological_support: np.ndarray,
+    diameter_multiplier: float = 1.5,
+    max_area_ratio_to_class_median: float = 4.0,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Build a buffer from nuclei deleted by the true semantic edit.
+
+    Only nuclei intersecting ``deletion_region`` are deleted.  Nuclei that
+    intersect the resulting buffer alone remain intact and act as placement
+    obstacles.
+    """
+
+    deletion = np.asarray(deletion_region, dtype=bool)
+    base = np.asarray(base_generation_region, dtype=bool)
+    source = np.asarray(reference_nuclei)
+    support = np.asarray(biological_support, dtype=bool)
+    if not (deletion.shape == base.shape == source.shape == support.shape):
+        raise ValueError("nucleus-aware generation-region inputs must share one shape")
+    if diameter_multiplier < 0:
+        raise ValueError("diameter_multiplier must be non-negative")
+    if max_area_ratio_to_class_median <= 0:
+        raise ValueError("max_area_ratio_to_class_median must be positive")
+
+    source_components = list(_iter_present_class_components(source))
+    areas_by_type: dict[int, list[int]] = {}
+    for class_id, component, _ in source_components:
+        areas_by_type.setdefault(int(class_id), []).append(
+            int(np.count_nonzero(component))
+        )
+    class_area_limits = {
+        int(class_id): (
+            float(np.median(areas)) * float(max_area_ratio_to_class_median)
+            if len(areas) >= 5
+            else float("inf")
+        )
+        for class_id, areas in areas_by_type.items()
+    }
+    deleted_areas = []
+    deleted_valid_diameter_areas = []
+    rejected_merged_components = 0
+    for class_id, component, _ in source_components:
+        if np.any(component & deletion):
+            area = int(np.count_nonzero(component))
+            deleted_areas.append(area)
+            if area <= class_area_limits.get(int(class_id), float("inf")):
+                deleted_valid_diameter_areas.append(area)
+            else:
+                rejected_merged_components += 1
+
+    if deleted_areas and not deleted_valid_diameter_areas:
+        deleted_valid_diameter_areas = [int(min(deleted_areas))]
+
+    deleted_diameters = [
+        float(2.0 * np.sqrt(float(area) / np.pi))
+        for area in deleted_valid_diameter_areas
+        if area > 0
+    ]
+    largest_deleted_diameter = (
+        float(max(deleted_diameters))
+        if deleted_diameters
+        else 0.0
+    )
+    buffer_radius = int(
+        np.ceil(float(diameter_multiplier) * largest_deleted_diameter)
+    )
+    if buffer_radius > 0:
+        distance_to_deletion = ndimage.distance_transform_edt(~deletion)
+        buffered = distance_to_deletion <= float(buffer_radius)
+    else:
+        buffered = deletion.copy()
+    expanded = (base | buffered) & support
+
+    return expanded, {
+        "policy": "deleted_nucleus_diameter_buffer_v1",
+        "deletion_policy": "delete_complete_component_on_any_change_intersection",
+        "buffer_retention_policy": (
+            "retain_nuclei_intersecting_buffer_only_as_placement_obstacles"
+        ),
+        "diameter_definition": "equivalent_diameter_2_sqrt_area_over_pi",
+        "diameter_component_filter": (
+            "per_class_area_at_most_4x_patch_median_when_at_least_5_components"
+        ),
+        "max_area_ratio_to_class_median": float(
+            max_area_ratio_to_class_median
+        ),
+        "diameter_multiplier": float(diameter_multiplier),
+        "deleted_seed_components": int(len(deleted_areas)),
+        "valid_deleted_diameter_components": int(
+            len(deleted_valid_diameter_areas)
+        ),
+        "rejected_merged_diameter_components": int(
+            rejected_merged_components
+        ),
+        "largest_deleted_nucleus_area_px": (
+            int(max(deleted_valid_diameter_areas))
+            if deleted_valid_diameter_areas
+            else 0
+        ),
+        "largest_deleted_nucleus_diameter_px": largest_deleted_diameter,
+        "buffer_radius_px": int(buffer_radius),
+        "deletion_pixels": int(np.count_nonzero(deletion)),
+        "source_generation_pixels": int(np.count_nonzero(base)),
+        "expanded_generation_pixels": int(np.count_nonzero(expanded)),
+        "added_buffer_pixels": int(np.count_nonzero(expanded & ~base)),
     }
 
 
@@ -523,6 +694,7 @@ def _run_probnet_cell_fill(
     target_tissue: np.ndarray,
     retained_nuclei: np.ndarray,
     full_reference_nuclei: np.ndarray,
+    deletion_region: np.ndarray,
     change_region: np.ndarray,
     output_dir: Path,
 ) -> tuple[np.ndarray, str, dict[str, Any] | None]:
@@ -550,6 +722,10 @@ def _run_probnet_cell_fill(
         cell_dir / "reference_nuclei_shapes.png",
     )
     edit_region = save_change_region(change_region, cell_dir / "edit_region.png")
+    deletion_region_path = save_change_region(
+        deletion_region,
+        cell_dir / "deletion_region.png",
+    )
     output_nuclei = cell_dir / "target_nuclei.png"
     probnet_device, probnet_env, visible_device = _normalize_probnet_device(args.probnet_device)
 
@@ -572,6 +748,8 @@ def _run_probnet_cell_fill(
         str(reference_nuclei_shapes),
         "--edit-region",
         str(edit_region),
+        "--deletion-region",
+        str(deletion_region_path),
         "--output",
         str(output_nuclei),
         "--device",
@@ -581,6 +759,11 @@ def _run_probnet_cell_fill(
         "--minimum-mask-width",
         str(args.minimum_mask_width),
         "--no-widen-edit-region",
+        "--require-exact-target-count",
+        "--type-density-head-weight",
+        "1.0",
+        "--nucleus-spacing-margin-px",
+        "1",
         "--reference-shape-min-area",
         str(getattr(args, "reference_shape_min_area", 8)),
         "--reference-shape-max-area-ratio",
@@ -674,12 +857,40 @@ def _probnet_sampling_contract(diagnostics: dict[str, Any]) -> dict[str, Any]:
             f"max_radii={sorted(coverage_max_radii)}, "
             f"retry_tails={sorted(retry_tail_policies)}"
         )
+    prior = diagnostics.get("patch_adaptive_priors") or {}
+    generation_support = prior.get("generation_support") or {}
+    shape_sampling = diagnostics.get("shape_sampling") or {}
+    production_contract = {
+        "count_policy": prior.get("count_policy"),
+        "type_quota_routing_policy": diagnostics.get(
+            "type_quota_routing_policy"
+        ),
+        "shape_policy": shape_sampling.get("policy"),
+        "nucleus_spacing_margin_px": diagnostics.get(
+            "nucleus_spacing_margin_px"
+        ),
+        "source_nucleus_erasure_policy": generation_support.get(
+            "source_nucleus_erasure_policy"
+        ),
+        "buffer_nucleus_policy": generation_support.get(
+            "buffer_nucleus_policy"
+        ),
+    }
+    missing_contract = [
+        field for field, value in production_contract.items() if value is None
+    ]
+    if missing_contract:
+        raise RuntimeError(
+            "ProbNet diagnostics are missing production contract fields: "
+            + ", ".join(sorted(missing_contract))
+        )
     return {
         "candidate_queue_policy": next(iter(policies)),
         "quota_coverage_spacing_scale": next(iter(coverage_scales)),
         "quota_coverage_max_radius": next(iter(coverage_max_radii)),
         "retry_tail_policy": next(iter(retry_tail_policies)),
         "organ_specific_constraints": False,
+        **production_contract,
         "accepted_center_probability_by_tissue": {
             str(tissue_id): item.get("accepted_center_probability")
             for tissue_id, item in tissues.items()

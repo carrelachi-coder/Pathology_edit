@@ -334,6 +334,16 @@ change region 必须等于 source/target tissue 的真实差分，generation reg
 可以是其结构性扩张后的超集。完整生产清单、禁止版本和哈希见
 [在线产品 release](docs/online_product_release.md)。
 
+在线 UI 和大图 patch 模式都通过同一个
+`run_phase3_inpaint_pipeline.py -> inpaint_cells/generate.py` 细胞入口构建
+target nuclei，并把每次运行独立的 `cell_fill_log.json` 交给 agent runner
+校验。count 只从编辑前 source patch 的 tissue/nuclei 估计；changed tissue
+使用 density head 决定 type quota 和精确 target-tissue library shape，
+unchanged tissue 保持编辑前 type，并使用对应连通域的 patch shape。删除区
+相交的完整旧核会被删除，1.5 倍最大删除核直径的 buffer 只保留外围旧核为
+placement obstacle；生成核使用零重叠、完整 tissue containment 和 1 px
+间隔。
+
 ## 5. 快速检查
 
 ```bash
