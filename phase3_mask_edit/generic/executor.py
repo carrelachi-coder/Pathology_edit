@@ -42,6 +42,7 @@ from phase3_mask_edit.generic.immune import (
 from phase3_mask_edit.generic.desmoplasia import (
     apply_stromal_desmoplasia,
 )
+from phase3_mask_edit.generic.stroma import apply_stroma_increase
 from phase3_mask_edit.specialized.fine_transition import (
     apply_fine_label_transition,
 )
@@ -83,6 +84,7 @@ def _auto_register() -> None:
         apply_stromal_immune_infiltration,
     )
     register_primitive("stromal_desmoplasia", apply_stromal_desmoplasia)
+    register_primitive("stroma_increase", apply_stroma_increase)
 
 
 _EXECUTION_STRATEGY_REGISTRY: dict[str, Callable] = {

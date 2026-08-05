@@ -38,6 +38,7 @@ XLARGE_DEID_ALLOWED_PRIMITIVES = frozenset(
         "necrosis_resolution",
         "immune_infiltration_decrease",
         "stromal_desmoplasia",
+        "stroma_increase",
         "stroma_decrease",
         "stromal_reduction",
     }

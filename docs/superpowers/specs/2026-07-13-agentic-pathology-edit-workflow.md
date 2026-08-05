@@ -121,9 +121,9 @@ does not implement a second agent loop. Its agentic generation button invokes
 this standalone entry point with the exact target masks and the separate
 semantic/generation regions produced by the first three stages. The UI also:
 
-- selects the versioned C-line Segmentator release rather than a legacy raw
-  checkpoint;
-- pins the frozen epoch-29 ProbNet checkpoint by SHA256, uses gamma `1.5`, and
+- selects the versioned `segmentator-fine-legacy-anchor-v1` production release
+  rather than a raw checkpoint or historical C-line comparison;
+- pins the frozen epoch-29 ProbNet checkpoint by SHA256, uses gamma `3.0`, and
   passes no density-scale JSON;
 - requires `PATHOLOGY_PIX2PIX_CHECKPOINT` to select the packaged epoch-26 /
   step-214895 artifact and validates its SHA256 and release metadata;

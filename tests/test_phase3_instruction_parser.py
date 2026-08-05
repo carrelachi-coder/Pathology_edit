@@ -119,7 +119,7 @@ class Phase3InstructionParserTests(unittest.TestCase):
             },
         )
         intents = semantic_diff_to_intents(semantic_diff, reference_profile="PANDA")
-        self.assertEqual([item.primitive for item in intents], ["gleason_upgrade_3to4"])
+        self.assertEqual(intents, [])
 
     def test_api_instruction_prompt_mentions_special_fine_edits_without_chinese(self):
         self.assertFalse(any(ord(char) > 127 for char in INSTRUCTION_SYSTEM_PROMPT))

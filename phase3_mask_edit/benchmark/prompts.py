@@ -369,7 +369,7 @@ def semantic_diff_for_intent(intent: BenchmarkIntent) -> dict[str, Any]:
             "degree": degree,
             "location": "unspecified",
         }
-    elif primitive == "stromal_desmoplasia":
+    elif primitive in {"stroma_increase", "stromal_desmoplasia"}:
         diff["stroma_change"] = {"density": "increase", "degree": degree}
     elif primitive in {"stroma_decrease", "stromal_reduction"}:
         diff["stroma_change"] = {"density": "decrease", "degree": degree}
@@ -609,6 +609,11 @@ def _template_report_pair(intent: BenchmarkIntent) -> tuple[str, str]:
             f"H&E stained {organ} pathology report. The {location} region has loose non-desmoplastic stroma around tumor.",
             f"H&E stained {organ} pathology report. The {location} region has dense collagenous desmoplastic stroma around tumor.",
         )
+    if primitive == "stroma_increase":
+        return (
+            f"H&E stained {organ} pathology report. The {location} region contains a limited existing stromal compartment.",
+            f"H&E stained {organ} pathology report. The {location} region contains an expanded contiguous stromal compartment.",
+        )
     if primitive in {"stroma_decrease", "stromal_reduction"}:
         return (
             f"H&E stained {organ} pathology report. The {location} region contains abundant stromal tissue.",
@@ -689,6 +694,8 @@ def _edit_phrase(intent: BenchmarkIntent) -> str:
         return "decrease immune infiltrate"
     if primitive == "stromal_desmoplasia":
         return "increase desmoplastic stromal reaction"
+    if primitive == "stroma_increase":
+        return "increase the existing stromal compartment"
     if primitive in {"stroma_decrease", "stromal_reduction"}:
         return "decrease stromal tissue"
     specialized_phrases = {

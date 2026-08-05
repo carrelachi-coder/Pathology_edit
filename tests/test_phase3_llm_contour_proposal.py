@@ -22,6 +22,7 @@ from phase3_mask_edit.backends.llm_contour import (
 )
 from phase3_mask_edit.backends.organic_projection import (
     ORGANIC_PROJECTION_BACKEND,
+    _cleanup_and_refill_once,
     _solidify_intratumoral_immune_spots,
     apply_organic_immune_infiltration_decrease,
     apply_organic_necrosis_resolution,
@@ -1467,7 +1468,7 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.selected_pixels, 300)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
 
-    def test_necrosis_engulfs_thin_stroma_intrusion_without_consuming_external_stroma(self):
+    def test_necrosis_engulfment_preserves_labels_outside_source_domain(self):
         old_mask = np.zeros((96, 96), dtype=np.int64)
         old_mask[8:88, 8:88] = 2
         old_mask[0:4, 0:8] = 2
@@ -1498,19 +1499,14 @@ class LLMContourProposalTests(unittest.TestCase):
         )
 
         engulfment = result.ops_log["necrosis_intrusion_engulfment"]
-        self.assertGreater(engulfment["engulfed_pixels"], 0)
-        self.assertIn("Stroma", engulfment["engulfed_label_pixels"])
-        self.assertTrue(np.all(result.target_mask[44:52, 32:50] == 3))
-        self.assertTrue(np.all(result.target_mask[44:52, 20:26] == 2))
-        yy, xx = np.mgrid[-6:7, -6:7]
-        target_necrosis = result.target_mask == 3
-        outside_tumor = result.change_region & (old_mask != 1)
-        validator_closed = ndimage.binary_closing(
-            target_necrosis,
-            structure=(yy * yy + xx * xx) <= 36,
-            border_value=0,
+        self.assertEqual(engulfment["engulfed_pixels"], 0)
+        self.assertFalse(np.any(result.change_region & (old_mask != 1)))
+        self.assertTrue(
+            np.array_equal(
+                result.target_mask[old_mask == 2],
+                old_mask[old_mask == 2],
+            )
         )
-        self.assertFalse(np.any(outside_tumor & ~validator_closed))
 
     def test_necrosis_policy_avoids_blood_vessel_neighborhood(self):
         old_mask = np.zeros((72, 72), dtype=np.int64)
@@ -1585,6 +1581,27 @@ class LLMContourProposalTests(unittest.TestCase):
             result.selected_pixels,
         )
         self.assertTrue(np.all(old_mask[result.change_region] == 2))
+
+    def test_cleanup_removes_tiny_components_introduced_by_refill(self):
+        selected = np.zeros((20, 20), dtype=bool)
+        selected[2:5, 2:5] = True
+        selected[15, 15] = True
+        score = np.zeros(selected.shape, dtype=float)
+        score[15, 15] = 10.0
+
+        cleaned, log = _cleanup_and_refill_once(
+            selected,
+            legal_domain=np.ones(selected.shape, dtype=bool),
+            final_score=score,
+            target_pixels=10,
+            min_component_fraction=0.30,
+            fill_holes_max_area_px=0,
+        )
+
+        _, count = ndimage.label(cleaned, structure=np.ones((3, 3), dtype=bool))
+        self.assertEqual(count, 1)
+        self.assertEqual(int(np.count_nonzero(cleaned)), 9)
+        self.assertGreater(log["cleanup_post_refill_removed_pixels"], 0)
 
     def test_intratumoral_immune_policy_uses_spot_policy_cleanup_floor(self):
         old_mask = np.zeros((48, 48), dtype=np.int64)
@@ -1905,11 +1922,12 @@ class LLMContourProposalTests(unittest.TestCase):
         self.assertEqual(result.selected_pixels, target_pixels)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
 
-    def test_intratumoral_immune_policy_splits_large_template_into_spots(self):
+    def test_intratumoral_immune_policy_preserves_template_components_as_connected_foci(self):
         old_mask = np.zeros((96, 96), dtype=np.int64)
         old_mask[8:88, 8:88] = 1
         raw_candidate = np.zeros_like(old_mask, dtype=bool)
-        raw_candidate[28:68, 28:68] = True
+        raw_candidate[24:40, 24:40] = True
+        raw_candidate[56:72, 56:72] = True
 
         primitive_config = {
             "name": "intratumoral_immune_infiltration",
@@ -1954,10 +1972,17 @@ class LLMContourProposalTests(unittest.TestCase):
 
         spot_log = result.ops_log["spot_policy"]
         self.assertTrue(spot_log["enabled"])
-        self.assertLessEqual(spot_log["final_component_count"], 3)
-        self.assertGreaterEqual(max(spot_log["final_component_sizes"]), 64)
-        self.assertLessEqual(spot_log["oversized_component_count"], 3)
-        self.assertGreaterEqual(spot_log["selected_spots"], 1)
+        self.assertEqual(
+            spot_log["focus_count_policy"],
+            "raw_template_connected_components",
+        )
+        self.assertEqual(spot_log["requested_spot_count"], 2)
+        self.assertEqual(spot_log["effective_max_spots_per_patch"], 2)
+        focus_targets = [focus["target_pixels"] for focus in spot_log["focuses"]]
+        self.assertEqual(sum(focus_targets), 320)
+        self.assertLessEqual(max(focus_targets) - min(focus_targets), 4)
+        self.assertEqual(spot_log["selected_spots"], 2)
+        self.assertEqual(spot_log["final_component_count"], 2)
         self.assertEqual(result.selected_pixels, 320)
         self.assertTrue(np.all(old_mask[result.change_region] == 1))
         self.assertTrue(np.all(result.target_mask[result.change_region] == 4))

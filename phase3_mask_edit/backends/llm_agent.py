@@ -6,6 +6,7 @@ import base64
 import copy
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, is_dataclass
@@ -841,7 +842,12 @@ def _with_task_specific_repair_feedback(
         return None
     updated = dict(repair_feedback)
     instruction_parts: list[str] = []
-    if primitive_name in {"stromal_desmoplasia", "stroma_decrease", "stromal_reduction"}:
+    if primitive_name in {
+        "stroma_increase",
+        "stromal_desmoplasia",
+        "stroma_decrease",
+        "stromal_reduction",
+    }:
         instruction_parts.append(
             f"Focus on {target_label} with broad enough coverage to satisfy the stroma area guard."
         )
@@ -1030,26 +1036,38 @@ def _post_chat_completion(
 ) -> dict[str, Any]:
     endpoint = api_base_url.rstrip("/") + "/chat/completions"
     data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        endpoint,
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+    max_retries = max(
+        0, int(os.getenv("PATHOLOGY_CONTOUR_API_MAX_RETRIES", "4"))
     )
-
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_sec) as response:
-            response_data = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise ContourProviderError(
-            f"API request failed with HTTP {exc.code}: {body}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise ContourProviderError(f"API request failed: {exc}") from exc
+    backoff = max(
+        0.0, float(os.getenv("PATHOLOGY_CONTOUR_API_RETRY_BACKOFF_SEC", "5"))
+    )
+    response_data = ""
+    for attempt in range(max_retries + 1):
+        request = urllib.request.Request(
+            endpoint,
+            data=data,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+                response_data = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            retryable = exc.code in {408, 429, 500, 502, 503, 504}
+            if not retryable or attempt >= max_retries:
+                raise ContourProviderError(
+                    f"API request failed with HTTP {exc.code}: {body}"
+                ) from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if attempt >= max_retries:
+                raise ContourProviderError(f"API request failed: {exc}") from exc
+        time.sleep(min(60.0, backoff * (2**attempt)))
 
     try:
         decoded = json.loads(response_data)

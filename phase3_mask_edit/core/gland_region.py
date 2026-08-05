@@ -10,6 +10,11 @@ from scipy import ndimage
 
 GLAS_GLAND_FINE_IDS = frozenset({5, 11, 12, 13})
 GLAS_WHOLE_GLAND_POLICY_VERSION = "glas_whole_gland_instance_v2"
+GLAS_WHOLE_GLAND_CELL_REGION_POLICY = "whole_glas_connected_component"
+SEMANTIC_CELL_DELETION_REGION_POLICY = "semantic_change_region"
+SEMANTIC_NUCLEI_GENERATION_REGION_POLICY = (
+    "semantic_change_region_plus_complete_intersecting_instances"
+)
 GENERATION_CONTEXT_MAX_EXTRA_FRACTION = 0.25
 GENERATION_CONTEXT_MIN_EXTRA_PIXELS = 32
 

@@ -42,6 +42,7 @@ INTENT_ORDER = {
     "intratumoral_immune_infiltration": 42,
     "immune_infiltration_decrease": 45,
     "stromal_desmoplasia": 50,
+    "stroma_increase": 50,
     "stroma_decrease": 55,
 }
 
@@ -69,6 +70,16 @@ TRANSITION_PRIMITIVES: dict[str, dict[tuple[str, str], str]] = {
         ): "treatment_dedifferentiation",
     },
 }
+
+RETIRED_LOCAL_GRADE_PRIMITIVES = frozenset(
+    {
+        "gleason_upgrade_3to4",
+        "gleason_upgrade_4to5",
+        "gleason_downgrade_4to3",
+        "grade_upgrade",
+        "treatment_dedifferentiation",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -183,9 +194,10 @@ def plan_edit_intents(
     if not reference_profile:
         raise ValueError("reference_profile is required.")
 
+    schema = MaskProfileSchema.from_reference_profile(reference_profile)
+    reference_profile = schema.reference_profile
     context = None
     if old_mask is not None:
-        schema = MaskProfileSchema.from_reference_profile(reference_profile)
         context = MaskEditContext.from_mask(old_mask, schema)
 
     raw_items, unsupported = _raw_intent_specs(
@@ -297,8 +309,14 @@ def _raw_intent_specs(
         old_prompt=old_prompt,
         new_prompt=new_prompt,
     )
+    has_recognized_transition = bool(
+        reported_transition
+        and transition_primitive
+        and transition_has_evidence
+    )
     has_explicit_transition = bool(
-        reported_transition and transition_primitive and transition_has_evidence
+        has_recognized_transition
+        and transition_primitive not in RETIRED_LOCAL_GRADE_PRIMITIVES
     )
     if reported_transition:
         if transition_primitive is None:
@@ -320,6 +338,18 @@ def _raw_intent_specs(
                     reason=(
                         "Ignored the model transition because the source/target "
                         "phenotypes are not supported by the prompt text."
+                    ),
+                )
+            )
+        elif transition_primitive in RETIRED_LOCAL_GRADE_PRIMITIVES:
+            unsupported.append(
+                PlanningWarning(
+                    field="transition_change",
+                    value=f"{transition_pair[0]}->{transition_pair[1]}",
+                    reason=(
+                        "Localized histologic-grade transformation is not supported "
+                        "by the current product. Grade remains an audit and "
+                        "preservation attribute, not a generation target."
                     ),
                 )
             )
@@ -361,7 +391,7 @@ def _raw_intent_specs(
     reported_tumor_growth = tumor_change["growth"]
     necrosis_action = semantic_diff["necrosis_change"]["action"]
     suppress_transition_growth = (
-        has_explicit_transition
+        has_recognized_transition
         and reported_tumor_growth != "none"
         and bool(old_prompt or new_prompt)
         and not _contains_independent_tumor_extent_change(new_prompt)
@@ -488,7 +518,7 @@ def _raw_intent_specs(
                 ),
             )
         )
-    elif grade_change != "none" and not has_explicit_transition:
+    elif grade_change != "none" and not has_recognized_transition:
         special_payload = _specialized_grade_payload(
             grade_change,
             reference_profile=reference_profile,
@@ -496,19 +526,23 @@ def _raw_intent_specs(
             new_prompt=new_prompt,
             prompt_diff=prompt_diff,
         )
-        if special_payload is None:
+        if (
+            special_payload is not None
+            and special_payload["primitive"] not in RETIRED_LOCAL_GRADE_PRIMITIVES
+        ):
+            raw_items.append(special_payload)
+        else:
             unsupported.append(
                 PlanningWarning(
                     field="tumor_change.grade_change",
                     value=grade_change,
                     reason=(
-                        "No dataset-specialized fine-ID transition could be inferred "
-                        "from the reference profile and prompt wording."
+                        "Localized histologic-grade transformation is not supported "
+                        "by the current product. The request must abstain rather than "
+                        "approximate grade using tissue or nucleus composition."
                     ),
                 )
             )
-        else:
-            raw_items.append(special_payload)
 
     necrosis_change = semantic_diff["necrosis_change"]
     if necrosis_action in {"add", "increase"}:
@@ -554,7 +588,7 @@ def _raw_intent_specs(
     suppress_contextual_immune = (
         (
             tumor_growth != "none"
-            or has_explicit_transition
+            or has_recognized_transition
             or (stroma_density != "none" and _stroma_is_primary_subject(new_prompt))
         )
         and infiltration != "none"
@@ -610,7 +644,7 @@ def _raw_intent_specs(
             )
 
     suppress_transition_stroma = (
-        has_explicit_transition
+        has_recognized_transition
         and stroma_density != "none"
         and bool(new_prompt)
         and not _contains_independent_stroma_action(new_prompt)
@@ -627,8 +661,15 @@ def _raw_intent_specs(
             )
         )
     elif stroma_density == "increase":
+        primary_stroma_primitive = (
+            "stromal_desmoplasia"
+            if _contains_independent_stroma_edit(
+                _normalize_text(new_prompt or old_prompt)
+            )
+            else "stroma_increase"
+        )
         payload = _intent_payload(
-            "stromal_desmoplasia",
+            primary_stroma_primitive,
             _strength_from_degree(stroma_change["degree"]),
             reference_profile,
             old_prompt,
@@ -652,6 +693,14 @@ def _raw_intent_specs(
                 new_prompt=new_prompt,
             )
         ):
+            payload = _intent_payload(
+                "stromal_desmoplasia",
+                _strength_from_degree(stroma_change["degree"]),
+                reference_profile,
+                old_prompt,
+                new_prompt,
+                prompt_diff,
+            )
             primary_primitive = (
                 "immune_infiltration_decrease"
                 if semantic_diff["lymphocyte_change"]["infiltration"] == "decrease"

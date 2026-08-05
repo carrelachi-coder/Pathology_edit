@@ -197,6 +197,18 @@ def _check_change_area_range(
             src_mask, change_region, schema, ranges
         )
     if (
+        primitive_config.get("name") == "stroma_increase"
+        and src_mask is not None
+        and change_region is not None
+    ):
+        return _check_whole_mask_relative_change_area(
+            src_mask,
+            change_region,
+            ranges.get("target_area_delta_fraction", {}),
+            strength=strength,
+            label="stroma_increase",
+        )
+    if (
         primitive_config.get("name") == "stromal_desmoplasia"
         and src_mask is not None
         and change_region is not None
@@ -238,6 +250,32 @@ def _check_change_area_range(
         "change_area_within_range", False,
         f"changed_area_fraction={changed_area_fraction:.4f} outside "
         f"[{min_fraction:.2f}, {max_fraction:.2f}]",
+    )
+
+
+def _check_whole_mask_relative_change_area(
+    src_mask: np.ndarray,
+    change_region: np.ndarray,
+    intervals: Mapping[str, Any],
+    *,
+    strength: str,
+    label: str,
+) -> ValidationCheck:
+    interval = intervals.get(strength) if isinstance(intervals, Mapping) else None
+    if not isinstance(interval, (list, tuple)) or len(interval) != 2:
+        return ValidationCheck(
+            "change_area_within_range",
+            False,
+            f"{label} has no interval for strength={strength}.",
+        )
+    fraction = int(np.count_nonzero(change_region)) / max(int(src_mask.size), 1)
+    lower, upper = float(interval[0]), float(interval[1])
+    passed = lower <= fraction <= upper
+    return ValidationCheck(
+        "change_area_within_range",
+        passed,
+        f"changed_whole_mask_fraction={fraction:.4f} "
+        f"{'in' if passed else 'outside'} [{lower:.2f}, {upper:.2f}]",
     )
 
 

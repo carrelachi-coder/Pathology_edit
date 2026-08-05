@@ -61,7 +61,7 @@ class SpecializedFinePrimitiveRecipeTests(unittest.TestCase):
 
 
 class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
-    def test_planned_panda_grade_special_rejects_retired_sequential_executor(self):
+    def test_product_planner_retires_panda_grade_special_before_execution(self):
         old_mask = np.array(
             [
                 [8, 8, 8, 2, 0],
@@ -89,15 +89,16 @@ class SpecializedFinePrimitiveExecutionTests(unittest.TestCase):
             new_prompt="Gleason pattern 4 adenocarcinoma.",
         )
 
-        self.assertEqual(len(plan.intents), 1)
-        self.assertEqual(plan.intents[0].primitive, "gleason_upgrade_3to4")
-        self.assertEqual(plan.items[0].status, "planned")
-        with self.assertRaisesRegex(RuntimeError, "retired"):
-            execute_intents_on_mask(
-                old_mask,
-                plan.intents,
-                reference_profile="PANDA",
-            )
+        self.assertEqual(plan.intents, ())
+        self.assertEqual(plan.items, ())
+        self.assertEqual(
+            plan.unsupported_changes[0].field,
+            "tumor_change.grade_change",
+        )
+        self.assertIn(
+            "Localized histologic-grade transformation is not supported",
+            plan.unsupported_changes[0].reason,
+        )
 
     def test_panda_gleason_upgrade_3to4_runs_in_place(self):
         recipe = load_recipe("phase3_mask_edit/recipes/panda.yaml")

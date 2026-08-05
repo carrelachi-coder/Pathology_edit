@@ -349,6 +349,7 @@ def apply_organic_projected_label_write(
             selected,
             legal_domain=legal_domain,
             final_score=final_score,
+            raw_template=candidate,
             target_pixels=selected_target_pixels,
             primitive_config=primitive_config or {},
             seed=seed,
@@ -377,6 +378,7 @@ def apply_organic_projected_label_write(
         selected, necrosis_engulfment_log = _engulf_necrosis_intrusions(
             mask,
             selected,
+            legal_domain=legal_domain,
             raw_template=(
                 candidate
                 if raw_legal_overlap > 0
@@ -386,6 +388,11 @@ def apply_organic_projected_label_write(
             schema=schema,
             primitive_config=primitive_config or {},
         )
+    selected_before_source_contract = int(np.count_nonzero(selected))
+    selected &= legal_domain
+    source_contract_clipped_pixels = (
+        selected_before_source_contract - int(np.count_nonzero(selected))
+    )
     target_ids = schema.resolve_fine_ids(target_label)
     target_mask = np.array(mask, copy=True)
     if primitive_name == "tumor_burden_increase":
@@ -494,6 +501,7 @@ def apply_organic_projected_label_write(
         "necrosis_solidify": necrosis_solidify_log,
         "necrosis_shape_polish": necrosis_shape_polish_log,
         "necrosis_intrusion_engulfment": necrosis_engulfment_log,
+        "source_contract_clipped_pixels": int(source_contract_clipped_pixels),
     }
     if primitive_name == "tumor_burden_increase":
         ops_log["source_label_contributions"] = _source_label_contributions(
@@ -1656,6 +1664,13 @@ def _policy_for_primitive(
             primitive_config=primitive_config,
             legal_domain=legal_domain,
         )
+    if primitive_name == "stroma_increase":
+        return _stroma_increase_policy(
+            mask,
+            schema=schema,
+            primitive_config=primitive_config,
+            legal_domain=legal_domain,
+        )
     if primitive_name == "necrosis_appearance":
         return _necrosis_policy(
             mask,
@@ -2350,6 +2365,35 @@ def _stromal_desmoplasia_policy(
     )
 
 
+def _stroma_increase_policy(
+    mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    primitive_config: Mapping[str, Any],
+    legal_domain: np.ndarray,
+) -> OrganicProjectionPolicy:
+    """Prefer organic growth from existing stroma without requiring tumor."""
+
+    stroma = _safe_label_mask(mask, schema, "Stroma")
+    ranges = primitive_config.get("parameter_ranges", {})
+    radius = _positive_float(
+        None, ranges.get("stroma_neighbor_radius_px", 48.0)
+    )
+    distance = ndimage.distance_transform_edt(~stroma)
+    score = np.exp(-distance / radius)
+    score[~legal_domain] = 0.0
+    return OrganicProjectionPolicy(
+        spatial_score=score,
+        policy_name="generic_existing_stroma_expansion",
+        policy_params={
+            "legal_domain_policy": "configured_non_stroma_sources",
+            "stroma_neighbor_radius_px": radius,
+            "tumor_context_required": False,
+        },
+        legal_domain=legal_domain,
+    )
+
+
 def _stromal_desmoplasia_feasible_target_pixels(
     mask: np.ndarray,
     *,
@@ -2694,7 +2738,7 @@ def _cleanup_and_refill_once(
     min_component_fraction: float,
     fill_holes_max_area_px: int,
     min_component_pixels: tuple[int, str] | None = None,
-) -> tuple[np.ndarray, dict[str, int]]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     """Apply one cleanup pass and at most one score-ordered refill pass."""
 
     pre_cleanup_pixels = int(np.count_nonzero(selected))
@@ -2726,6 +2770,17 @@ def _cleanup_and_refill_once(
         cleaned |= refill
         cleaned &= legal_domain
 
+    # A score-ordered refill can introduce tiny disconnected tails that the
+    # first cleanup never saw. Remove those tails only when cleanup retained a
+    # real component to anchor the refill. If cleanup removed everything, the
+    # refill is the complete replacement candidate; applying the same absolute
+    # component floor again would erase a valid fragmented proposal wholesale.
+    post_refill_removed_pixels = 0
+    if post_cleanup_pixels_before_refill > 0:
+        cleaned, post_refill_removed_pixels = _remove_small_components(
+            cleaned, min_component_px
+        )
+
     return cleaned, {
         "pre_cleanup_pixels": pre_cleanup_pixels,
         "cleanup_min_component_pixels": int(min_component_px),
@@ -2734,6 +2789,7 @@ def _cleanup_and_refill_once(
         "cleanup_filled_hole_pixels": int(hole_fill_pixels),
         "post_cleanup_pixels_before_refill": post_cleanup_pixels_before_refill,
         "cleanup_refill_pixels": refill_pixels,
+        "cleanup_post_refill_removed_pixels": int(post_refill_removed_pixels),
         "post_cleanup_pixels": int(np.count_nonzero(cleaned)),
     }
 
@@ -2788,6 +2844,7 @@ def _apply_intratumoral_immune_spot_policy(
     *,
     legal_domain: np.ndarray,
     final_score: np.ndarray,
+    raw_template: np.ndarray | None = None,
     target_pixels: int,
     primitive_config: Mapping[str, Any],
     seed: int = 0,
@@ -2807,29 +2864,123 @@ def _apply_intratumoral_immune_spot_policy(
     configured_max_spots = _spot_policy_int(
         spot_policy.get("max_spots_per_patch"), default=0
     )
-    if configured_max_spot_area_px <= 0 and configured_max_spots <= 0:
+    if configured_max_spots <= 0:
         return selected, {"enabled": False}
 
     min_spot_area_px = _spot_policy_min_area_px(primitive_config) or 1
-    if configured_max_spot_area_px <= 0:
-        configured_max_spot_area_px = max(int(target_pixels), min_spot_area_px)
-
-    requested_spot_count = (
-        configured_max_spots
-        if configured_max_spots > 0
-        else max(1, int(np.ceil(max(int(target_pixels), 1) / configured_max_spot_area_px)))
+    ranges = primitive_config.get("parameter_ranges", {})
+    if not isinstance(ranges, Mapping):
+        ranges = {}
+    boundary_radius = _positive_float(
+        None,
+        ranges.get("tumor_boundary_margin_radius_px", 32.0),
     )
-    effective_spot_count = max(1, min(int(requested_spot_count), 3))
-    effective_spot_area_px = max(
-        min_spot_area_px,
-        int(configured_max_spot_area_px),
-        int(np.ceil(max(int(target_pixels), 1) / effective_spot_count)),
+    shallow_band_depth = _positive_float(
+        None,
+        ranges.get(
+            "intratumoral_shallow_band_depth_px",
+            max(6.0, boundary_radius * 0.30),
+        ),
     )
-
+    shallow_band_sigma = _positive_float(
+        None,
+        ranges.get(
+            "intratumoral_shallow_band_sigma_px",
+            max(5.0, shallow_band_depth),
+        ),
+    )
     target_pixels = min(int(target_pixels), int(np.count_nonzero(legal_domain)))
+    template = (
+        np.asarray(raw_template, dtype=bool)
+        if raw_template is not None
+        else np.asarray(selected, dtype=bool)
+    )
+    template &= legal_domain
+    component_structure = np.ones((3, 3), dtype=bool)
+    template_labels, template_component_count = ndimage.label(
+        template,
+        structure=component_structure,
+    )
+    template_component_sizes = [
+        int(np.count_nonzero(template_labels == component_id))
+        for component_id in range(1, template_component_count + 1)
+    ]
+    component_ids = sorted(
+        range(1, template_component_count + 1),
+        key=lambda component_id: (
+            -template_component_sizes[component_id - 1],
+            component_id,
+        ),
+    )
+    if not component_ids:
+        fallback_template = np.asarray(selected, dtype=bool) & legal_domain
+        template_labels, template_component_count = ndimage.label(
+            fallback_template,
+            structure=component_structure,
+        )
+        template_component_sizes = [
+            int(np.count_nonzero(template_labels == component_id))
+            for component_id in range(1, template_component_count + 1)
+        ]
+        component_ids = sorted(
+            range(1, template_component_count + 1),
+            key=lambda component_id: (
+                -template_component_sizes[component_id - 1],
+                component_id,
+            ),
+        )
+        template = fallback_template
+    if not component_ids and target_pixels > 0:
+        fallback_scores = np.asarray(final_score, dtype=float).copy()
+        fallback_scores[~legal_domain] = -np.inf
+        template = _top_k_mask(fallback_scores, 1)
+        template_labels = template.astype(np.int32)
+        template_component_count = 1
+        template_component_sizes = [1]
+        component_ids = [1]
+
+    requested_spot_count = len(component_ids)
+    effective_spot_count = (
+        min(requested_spot_count, configured_max_spots)
+        if configured_max_spots > 0
+        else requested_spot_count
+    )
+    effective_spot_count = min(
+        max(1, int(effective_spot_count)),
+        max(target_pixels, 1),
+    )
+    component_ids = component_ids[:effective_spot_count]
+    active_template = np.isin(template_labels, component_ids)
+    nearest_indices = ndimage.distance_transform_edt(
+        ~active_template,
+        return_distances=False,
+        return_indices=True,
+    )
+    owner_labels = template_labels[tuple(nearest_indices)]
+    owner_sizes = [
+        int(np.count_nonzero(legal_domain & (owner_labels == component_id)))
+        for component_id in component_ids
+    ]
+    owner_total = max(sum(owner_sizes), 1)
+    exact_budgets = [
+        target_pixels * owner_size / owner_total for owner_size in owner_sizes
+    ]
+    spot_budgets = [int(np.floor(value)) for value in exact_budgets]
+    remainder = target_pixels - sum(spot_budgets)
+    remainder_order = sorted(
+        range(effective_spot_count),
+        key=lambda index: (
+            -(exact_budgets[index] - spot_budgets[index]),
+            index,
+        ),
+    )
+    for index in remainder_order[:remainder]:
+        spot_budgets[index] += 1
+    effective_spot_area_px = max(spot_budgets, default=0)
     if target_pixels <= 0:
         return np.zeros_like(selected, dtype=bool), {
             "enabled": True,
+            "focus_count_policy": "raw_template_connected_components",
             "configured_max_spot_area_px": int(configured_max_spot_area_px),
             "effective_spot_area_px": int(effective_spot_area_px),
             "configured_max_spots_per_patch": int(configured_max_spots),
@@ -2839,138 +2990,110 @@ def _apply_intratumoral_immune_spot_policy(
             "selected_pixels_after": 0,
         }
 
-    seed_score = np.asarray(final_score, dtype=float).copy()
-    seed_domain = np.asarray(selected, dtype=bool) & legal_domain
-    if not np.any(seed_domain):
-        seed_domain = np.asarray(legal_domain, dtype=bool)
-    seed_score[~seed_domain] = -np.inf
     rng = np.random.default_rng(int(seed))
-
+    seed_score = np.asarray(final_score, dtype=float).copy()
     result = np.zeros_like(selected, dtype=bool)
-    suppressed = np.zeros_like(selected, dtype=bool)
     spot_sizes: list[int] = []
-    grow_structure = _disk_structure(2.0)
-    spot_gap_radius = max(1, int(round(np.sqrt(float(effective_spot_area_px)) / 5.0)))
-    spot_suppression_radius = max(1, spot_gap_radius // 2)
-    remaining = target_pixels
+    focus_logs: list[dict[str, Any]] = []
 
-    while remaining > 0 and len(spot_sizes) < effective_spot_count:
-        buffered_result = (
-            ndimage.binary_dilation(
-                result,
-                iterations=spot_suppression_radius,
-                structure=grow_structure,
-            )
-            if np.any(result)
-            else result
-        )
-        available_seed = seed_domain & ~suppressed & ~buffered_result & ~result
+    for component_id, spot_budget, owner_size in zip(
+        component_ids,
+        spot_budgets,
+        owner_sizes,
+    ):
+        owner_domain = legal_domain & (owner_labels == component_id)
+        template_component = (template_labels == component_id) & owner_domain
+        available_seed = template_component
         if not np.any(available_seed):
-            break
-        seed_scores = seed_score.copy()
+            available_seed = np.asarray(selected, dtype=bool) & owner_domain
+        if not np.any(available_seed) or spot_budget <= 0:
+            focus_logs.append(
+                {
+                    "template_component_id": int(component_id),
+                    "owner_pixels": int(owner_size),
+                    "target_pixels": int(spot_budget),
+                    "selected_pixels": 0,
+                }
+            )
+            continue
+        seed_projection = _normalize_on_domain(seed_score, available_seed)
+        template_interior = ndimage.distance_transform_edt(template_component)
+        seed_interior = _normalize_on_domain(template_interior, available_seed)
+        owner_interior = ndimage.distance_transform_edt(owner_domain)
+        focus_radius = np.sqrt(max(float(spot_budget), 1.0) / np.pi)
+        focus_band_depth = shallow_band_depth + 0.85 * focus_radius
+        shallow_band = np.exp(
+            -0.5
+            * (
+                (owner_interior - focus_band_depth)
+                / max(shallow_band_sigma, 1.0)
+            )
+            ** 2
+        )
+        seed_band = _normalize_on_domain(shallow_band, available_seed)
+        seed_scores = (
+            0.55 * seed_projection
+            + 0.35 * seed_band
+            + 0.10 * seed_interior
+        )
         seed_scores[~available_seed] = -np.inf
         seed_mask = _top_k_mask(seed_scores, 1)
-        if not np.any(seed_mask):
-            break
-
-        jitter = 0.82 + 0.34 * float(rng.random())
-        spot_budget = min(
-            effective_spot_area_px,
-            remaining,
-            max(min_spot_area_px, int(round(effective_spot_area_px * jitter))),
-        )
         spot = _grow_score_ordered_spot(
             seed_mask,
-            legal_domain=legal_domain & ~result & ~buffered_result,
+            legal_domain=owner_domain,
             final_score=final_score,
-            max_pixels=spot_budget,
+            max_pixels=int(spot_budget),
             rng=rng,
         )
         pixels = int(np.count_nonzero(spot))
-        if pixels == 0:
-            suppressed |= seed_mask
-            continue
         result |= spot
-        spot_sizes.append(pixels)
-        remaining = target_pixels - int(np.count_nonzero(result))
-        suppressed |= ndimage.binary_dilation(
-            spot,
-            iterations=spot_suppression_radius,
-            structure=grow_structure,
+        if pixels > 0:
+            spot_sizes.append(pixels)
+        focus_logs.append(
+            {
+                "template_component_id": int(component_id),
+                "template_pixels": int(
+                    np.count_nonzero(template_labels == component_id)
+                ),
+                "owner_pixels": int(owner_size),
+                "target_pixels": int(spot_budget),
+                "selected_pixels": int(pixels),
+            }
         )
-
-    if int(np.count_nonzero(result)) < target_pixels:
-        needed = target_pixels - int(np.count_nonzero(result))
-        refill, refill_log = _fill_intratumoral_immune_spot_shortfall(
-            result,
-            legal_domain=legal_domain,
-            final_score=final_score,
-            needed=needed,
-            max_spot_area_px=effective_spot_area_px,
-            max_extra_spots=max(effective_spot_count - len(spot_sizes), 0),
-            spot_gap_radius=spot_gap_radius,
-            rng=rng,
-        )
-        result |= refill
-    else:
-        refill_log = {"refill_pixels": 0, "refill_spots": 0}
-
-    if int(np.count_nonzero(result)) < target_pixels and np.any(result):
-        needed = target_pixels - int(np.count_nonzero(result))
-        expansion, expansion_log = _expand_intratumoral_immune_region(
-            result,
-            legal_domain=legal_domain,
-            final_score=final_score,
-            needed=needed,
-            rng=rng,
-        )
-        result |= expansion
-        refill_log["refill_pixels"] += int(np.count_nonzero(expansion))
-        refill_log["refill_spots"] += int(expansion_log["refill_spots"])
-
-    result, edge_softening_log = _soften_intratumoral_immune_spot_edges(
-        result,
-        legal_domain=legal_domain,
-        final_score=final_score,
-        target_pixels=target_pixels,
-        rng=rng,
-    )
-    result, morphology_log = _solidify_intratumoral_immune_spots(
-        result,
-        legal_domain=legal_domain,
-        final_score=final_score,
-        target_pixels=target_pixels,
-        rng=rng,
-    )
 
     final_labeled, final_count = ndimage.label(
         result,
-        structure=np.ones((3, 3), dtype=bool),
+        structure=component_structure,
     )
     final_sizes = [
         int(np.count_nonzero(final_labeled == component_id))
         for component_id in range(1, final_count + 1)
     ]
-    oversized = [size for size in final_sizes if size > effective_spot_area_px]
     return result, {
         "enabled": True,
+        "focus_count_policy": "raw_template_connected_components",
+        "template_component_count": int(template_component_count),
         "configured_max_spot_area_px": int(configured_max_spot_area_px),
         "effective_spot_area_px": int(effective_spot_area_px),
         "configured_max_spots_per_patch": int(configured_max_spots),
+        "requested_spot_count": int(requested_spot_count),
         "effective_max_spots_per_patch": int(effective_spot_count),
         "min_spot_area_px": int(min_spot_area_px),
         "selected_spots": int(len(spot_sizes)),
         "selected_pixels_before": int(np.count_nonzero(selected)),
         "selected_pixels_after": int(np.count_nonzero(result)),
         "spot_sizes": spot_sizes,
-        **refill_log,
-        "edge_softening": edge_softening_log,
-        "morphology_cleanup": morphology_log,
+        "focuses": focus_logs,
+        "edge_softening": {
+            "enabled": False,
+            "reason": "organic_frontier_growth_preserves_focus_connectivity",
+        },
+        "morphology_cleanup": {
+            "enabled": False,
+            "reason": "organic_frontier_growth_preserves_focus_connectivity",
+        },
         "final_component_count": int(final_count),
         "final_component_sizes": final_sizes,
-        "oversized_component_count": int(len(oversized)),
-        "spot_gap_radius_px": int(spot_gap_radius),
-        "spot_suppression_radius_px": int(spot_suppression_radius),
     }
 
 
@@ -3071,7 +3194,7 @@ def _solidify_intratumoral_immune_spots(
 
 
 def _intratumoral_immune_smoothing_sigma_px(target_pixels: int) -> float:
-    return float(max(1.2, min(3.5, np.sqrt(float(max(target_pixels, 1))) / 10.0)))
+    return float(max(1.0, min(2.5, np.sqrt(float(max(target_pixels, 1))) / 18.0)))
 
 
 def _edge_aware_sdf_smooth(mask: np.ndarray, *, sigma: float) -> np.ndarray:
@@ -3123,7 +3246,14 @@ def _soften_intratumoral_immune_spot_edges(
             "pixels_after": current_pixels,
         }
 
-    edge_radius = max(2, min(6, int(round(np.sqrt(float(target_pixels)) / 7.0))))
+    average_component_pixels = max(
+        1.0,
+        float(target_pixels) / max(float(component_count), 1.0),
+    )
+    edge_radius = max(
+        2,
+        min(4, int(round(np.sqrt(average_component_pixels) / 9.0))),
+    )
     structure = _disk_structure(edge_radius)
     noise = ndimage.gaussian_filter(
         rng.normal(size=current.shape),
@@ -3281,7 +3411,9 @@ def _expand_intratumoral_immune_region(
 
     expansion = np.zeros_like(current, dtype=bool)
     occupied = np.asarray(current, dtype=bool).copy()
-    structure = _disk_structure(2.0)
+    # Keep every repair pixel 8-connected to an existing focus. A radius-2
+    # frontier can select outer-ring pixels without the intermediate bridge.
+    structure = _disk_structure(1.5)
     remaining = int(needed)
     passes = 0
     shape_noise = None
@@ -3390,72 +3522,98 @@ def _grow_score_ordered_spot(
     if int(np.count_nonzero(spot)) >= max_pixels:
         return spot
 
-    structure = _disk_structure(2.0)
+    structure = _disk_structure(1.5)
     compactness_radius_px = max(3.0, np.sqrt(float(max_pixels)) * 0.65)
-    shape_noise = None
+    organic_score = np.asarray(final_score, dtype=float).copy()
     if rng is not None:
-        noise_sigma = max(1.5, min(6.0, np.sqrt(float(max_pixels)) / 4.0))
-        shape_noise = ndimage.gaussian_filter(
-            rng.normal(size=final_score.shape),
-            sigma=float(noise_sigma),
+        center = ndimage.center_of_mass(spot)
+        rows, cols = np.indices(final_score.shape)
+        dy = rows - float(center[0])
+        dx = cols - float(center[1])
+        angle = float(rng.uniform(0.0, np.pi))
+        cos_angle = float(np.cos(angle))
+        sin_angle = float(np.sin(angle))
+        major = dx * cos_angle + dy * sin_angle
+        minor = -dx * sin_angle + dy * cos_angle
+        equivalent_radius = max(np.sqrt(float(max_pixels) / np.pi), 2.0)
+        aspect = float(rng.uniform(1.05, 1.55))
+        major_scale = equivalent_radius * aspect
+        minor_scale = equivalent_radius / np.sqrt(aspect)
+        radial = np.exp(
+            -0.5
+            * (
+                (major / max(major_scale, 1.0)) ** 2
+                + (minor / max(minor_scale, 1.0)) ** 2
+            )
         )
+        fine_noise = ndimage.gaussian_filter(
+            rng.normal(size=final_score.shape),
+            sigma=max(1.5, equivalent_radius / 5.0),
+        )
+        broad_noise = ndimage.gaussian_filter(
+            rng.normal(size=final_score.shape),
+            sigma=max(3.0, equivalent_radius / 2.0),
+        )
+        noise = 0.65 * fine_noise + 0.35 * broad_noise
+        radial_norm = _normalize_on_domain(radial, legal_domain)
+        noise_norm = _normalize_on_domain(noise, legal_domain)
+        organic_score = (
+            0.65 * radial_norm
+            + 0.35 * noise_norm
+        )
+        frontier_fraction = float(rng.uniform(0.45, 0.70))
+    else:
+        frontier_fraction = 0.60
+    organic_score = np.asarray(organic_score, dtype=float)
+    organic_score[~legal_domain] = -np.inf
+
     while int(np.count_nonzero(spot)) < max_pixels:
         frontier = ndimage.binary_dilation(spot, structure=structure) & legal_domain & ~spot
         if not np.any(frontier):
             break
         needed = int(max_pixels) - int(np.count_nonzero(spot))
-        frontier_score = np.asarray(final_score, dtype=float).copy()
+        frontier_score = organic_score.copy()
         compact_score = _compactness_score(
             spot,
             final_score.shape,
             radius_px=compactness_radius_px,
         )
-        frontier_score[frontier] += 0.75 * compact_score[frontier]
-        if shape_noise is not None:
-            frontier_score[frontier] += 0.10 * shape_noise[frontier]
+        frontier_score[frontier] += 0.35 * compact_score[frontier]
         if rng is not None:
-            frontier_score[frontier] += 0.03 * rng.normal(size=int(np.count_nonzero(frontier)))
+            frontier_score[frontier] += 0.02 * rng.normal(
+                size=int(np.count_nonzero(frontier))
+            )
+        frontier_pixels = int(np.count_nonzero(frontier))
+        growth_budget = max(1, int(round(frontier_pixels * frontier_fraction)))
         add = _top_k_mask_for_refill(
             frontier_score,
             legal_domain=frontier,
-            k=min(needed, int(np.count_nonzero(frontier))),
+            k=min(needed, growth_budget),
         )
         if not np.any(add):
             break
         spot |= add
-    spot &= legal_domain
-    if np.count_nonzero(spot) > 0:
-        softened = ndimage.binary_closing(spot, structure=_disk_structure(2.0))
-        softened &= legal_domain
-        if np.count_nonzero(softened) > 0:
-            spot = softened
-        if int(np.count_nonzero(spot)) > max_pixels:
-            trim_score = np.asarray(final_score, dtype=float).copy()
-            trim_compact = _compactness_score(
-                spot,
-                final_score.shape,
-                radius_px=compactness_radius_px,
-            )
-            trim_score[spot] += 0.75 * trim_compact[spot]
-            spot = _top_k_mask_for_refill(
-                trim_score,
-                legal_domain=spot,
-                k=max_pixels,
-            )
-        elif int(np.count_nonzero(spot)) < max_pixels:
-            refill_score = np.asarray(final_score, dtype=float).copy()
-            refill_compact = _compactness_score(
-                spot,
-                final_score.shape,
-                radius_px=compactness_radius_px,
-            )
-            refill_score[legal_domain] += 0.75 * refill_compact[legal_domain]
-            refill = _top_k_mask_for_refill(
-                refill_score,
-                legal_domain=legal_domain & ~spot,
-                k=max_pixels - int(np.count_nonzero(spot)),
-            )
-            spot |= refill
+    if int(np.count_nonzero(spot)) == int(max_pixels):
+        polish_sigma = float(
+            np.clip(np.sqrt(max(float(max_pixels), 1.0)) / 40.0, 1.5, 4.0)
+        )
+        smooth_support = ndimage.gaussian_filter(
+            spot.astype(float),
+            sigma=polish_sigma,
+        )
+        smooth_norm = _normalize_on_domain(smooth_support, legal_domain)
+        organic_norm = _normalize_on_domain(organic_score, legal_domain)
+        polished = _top_k_mask_for_refill(
+            0.82 * smooth_norm + 0.18 * organic_norm,
+            legal_domain=legal_domain,
+            k=int(max_pixels),
+        )
+        _, polished_count = ndimage.label(
+            polished,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        if polished_count == 1:
+            spot = polished
     return spot & legal_domain
 
 
@@ -3673,6 +3831,7 @@ def _engulf_necrosis_intrusions(
     mask: np.ndarray,
     selected: np.ndarray,
     *,
+    legal_domain: np.ndarray,
     raw_template: np.ndarray | None = None,
     schema: MaskProfileSchema,
     primitive_config: Mapping[str, Any],
@@ -3682,6 +3841,10 @@ def _engulf_necrosis_intrusions(
         schema=schema,
         primitive_config=primitive_config,
     )
+    # Shape polishing is subordinate to the explicit source-label contract.
+    # In particular, a necrosis contour may visually bridge a stromal island,
+    # but that island must remain unchanged unless Stroma was an allowed source.
+    engulfable &= np.asarray(legal_domain, dtype=bool)
     if not np.any(selected) or not np.any(engulfable):
         return selected, {
             "enabled": True,
@@ -3911,6 +4074,11 @@ def _target_pixels_from_config(
         immune = np.isin(mask, schema.resolve_fine_ids("Immune infiltrate"))
         reference_pixels = int(np.count_nonzero(stroma | immune))
     elif name == "tumor_burden_increase":
+        bucket = _first_interval(
+            ranges.get("target_area_delta_fraction"), strength=strength
+        )
+        reference_pixels = int(mask.size)
+    elif name == "stroma_increase":
         bucket = _first_interval(
             ranges.get("target_area_delta_fraction"), strength=strength
         )

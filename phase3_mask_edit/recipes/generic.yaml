@@ -310,7 +310,7 @@ primitives:
     parameter_ranges:
       necrosis_area_decrease_fraction:
         mild: [0.08, 0.14]
-        moderate: [0.14, 0.24]
+        moderate: [0.20, 0.30]
         significant: [0.24, 0.70]
         xlarge_deid: [0.40, 0.70]
       min_necrosis_resolution_component_area_px: 64
@@ -417,8 +417,9 @@ primitives:
       spot_policy:
         max_total_area_fraction_of_tumor: 0.30
         min_spot_area_px: 12      # ≈3 µm² at 40x; ~1-2 lymphocytes
-        max_spot_area_px: 256     # ≈64 µm² at 40x; small cluster
-        max_spots_per_patch: 32
+        # Preserve one connected organic support per LLM template component.
+        # Individual nuclei are generated in the later CellViT/ProbNet stage.
+        max_spots_per_patch: 8
       avoid_large_sheet_replacement: true
     parameter_ranges:
       target_changed_area_fraction:
@@ -521,7 +522,77 @@ primitives:
       do_not_use_for_tumor_expanding_into_immune
 
   # ════════════════════════════════════════════════════════════════════════
-  # 8. STROMAL DESMOPLASIA
+  # 8. GENERIC STROMA INCREASE
+  # ════════════════════════════════════════════════════════════════════════
+  - name: stroma_increase
+    version: v1
+    pathology_meaning: expansion of an existing stromal compartment
+    required_tissue_labels:
+      - Stroma
+    required_context:
+      - editable_non_stroma_tissue
+    optional_tissue_labels:
+      - Other tissue
+      - Normal epithelium
+      - Immune infiltrate
+    mask_operation:
+      type: existing_stroma_boundary_expansion
+      primary_sources:
+        - Other tissue
+        - Normal epithelium
+      secondary_sources:
+        - Immune infiltrate
+      target: Stroma
+      forbid_sources:
+        - Tumor
+        - Necrosis
+        - Background
+    spatial_pattern:
+      region: adjacent_to_existing_stroma
+      expansion_order:
+        - expand_existing_stroma_boundary
+        - consume_other_or_normal_epithelium
+        - consume_immune_only_when_needed
+      require_existing_stroma: true
+      require_tumor: false
+      avoid_disconnected_stroma: true
+    parameter_ranges:
+      target_area_delta_fraction:
+        mild: [0.08, 0.14]
+        moderate: [0.14, 0.24]
+        significant: [0.24, 0.40]
+        xlarge_deid: [0.40, 0.60]
+      organic_template_sigma_px: 3.0
+      organic_noise_sigma_px: 18.0
+      organic_noise_amplitude: 0.18
+      organic_score_weights:
+        template: 0.45
+        spatial: 0.45
+        noise: 0.10
+      organic_min_template_legal_overlap_fraction: 0.05
+      organic_min_selected_template_iou: 0.05
+      organic_template_neighborhood_radius_px: 64
+      organic_template_spillover_fraction: 0.15
+      organic_min_component_fraction: 0.01
+      organic_fill_holes_max_area_px: 0
+      stroma_neighbor_radius_px: 48
+    probnet_bias:
+      Connective: up
+      Inflammatory: down_if_source_immune
+    validation_rules:
+      - stroma_area_must_increase
+      - new_stroma_must_connect_to_existing_stroma
+      - tumor_necrosis_background_must_be_preserved
+      - changed_area_within_parameter_range
+    expected_failure_cases:
+      - no_stroma
+      - no_editable_non_stroma_tissue
+      - changed_area_below_minimum
+    overlap_guard:
+      use_stromal_desmoplasia_only_for_explicit_peritumoral_desmoplastic_reaction
+
+  # ════════════════════════════════════════════════════════════════════════
+  # 9. STROMAL DESMOPLASIA
   # ════════════════════════════════════════════════════════════════════════
   - name: stromal_desmoplasia
     version: v1

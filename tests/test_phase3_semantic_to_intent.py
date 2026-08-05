@@ -366,6 +366,26 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             ["tumor_burden_decrease"],
         )
 
+    def test_profile_name_is_canonicalized_before_applicability(self):
+        diff = semantic_diff_with(
+            tumor_change={"growth": "increase", "degree": "moderate"}
+        )
+        old_mask = np.full((16, 16), 2, dtype=np.uint8)
+        old_mask[:, :8] = 11
+
+        plan = plan_edit_intents(
+            diff,
+            reference_profile="GLAS",
+            old_mask=old_mask,
+        )
+
+        self.assertEqual(plan.reference_profile, "GlaS")
+        self.assertEqual(
+            [intent.primitive for intent in plan.intents],
+            ["tumor_burden_increase"],
+        )
+        self.assertEqual(plan.intents[0].reference_profile, "GlaS")
+
     def test_necrosis_replacement_is_not_a_second_tumor_decrease(self):
         diff = semantic_diff_with(
             tumor_change={"growth": "decrease", "degree": "significant"},
@@ -430,7 +450,7 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
 
         self.assertEqual(
             [intent.primitive for intent in intents],
-            ["stromal_desmoplasia"],
+            ["stroma_increase"],
         )
 
     def test_multiple_intents_are_returned_in_execution_order(self):
@@ -511,7 +531,7 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(plan.items[0].status, "degraded_planned")
         self.assertIn("optional_label_absent_in_mask:Stroma", plan.items[0].warnings)
 
-    def test_stroma_density_increase_maps_to_desmoplasia(self):
+    def test_stroma_density_increase_maps_to_generic_stroma_increase(self):
         diff = semantic_diff_with(
             stroma_change={"density": "increase", "degree": "moderate"}
         )
@@ -519,7 +539,7 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         plan = plan_edit_intents(diff, reference_profile="BCSS")
 
         self.assertEqual(len(plan.intents), 1)
-        self.assertEqual(plan.intents[0].primitive, "stromal_desmoplasia")
+        self.assertEqual(plan.intents[0].primitive, "stroma_increase")
         self.assertEqual(plan.intents[0].strength, "moderate")
         self.assertEqual(plan.unsupported_changes, ())
 
@@ -559,36 +579,16 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             "intratumoral_immune_infiltration",
         )
 
-    def test_explicit_fine_transition_pairs_map_without_prompt_text(self):
+    def test_supported_explicit_fine_transition_pairs_map_without_prompt_text(self):
         cases = (
             ("PANDA", "benign_epithelium", "gleason_pattern_3", "benign_to_gleason3"),
             ("PANDA", "benign_epithelium", "stromal_tissue", "benign_atrophy"),
-            ("PANDA", "gleason_pattern_3", "gleason_pattern_4", "gleason_upgrade_3to4"),
-            ("PANDA", "gleason_pattern_4", "gleason_pattern_5", "gleason_upgrade_4to5"),
-            (
-                "PANDA",
-                "gleason_pattern_4",
-                "gleason_pattern_3",
-                "gleason_downgrade_4to3",
-            ),
             ("GlaS", "normal_gland", "adenomatous_gland", "normal_to_adenomatous"),
             (
                 "GlaS",
                 "adenomatous_gland",
                 "moderately_differentiated_carcinoma",
                 "adenoma_to_carcinoma",
-            ),
-            (
-                "GlaS",
-                "moderately_differentiated_carcinoma",
-                "poorly_differentiated_carcinoma",
-                "grade_upgrade",
-            ),
-            (
-                "GlaS",
-                "poorly_differentiated_carcinoma",
-                "moderately_differentiated_carcinoma",
-                "treatment_dedifferentiation",
             ),
         )
 
@@ -607,6 +607,44 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
                 )
 
                 self.assertEqual([item.primitive for item in intents], [primitive])
+
+    def test_local_grade_transitions_are_retired_from_product_planning(self):
+        cases = (
+            ("PANDA", "gleason_pattern_3", "gleason_pattern_4"),
+            ("PANDA", "gleason_pattern_4", "gleason_pattern_5"),
+            ("PANDA", "gleason_pattern_4", "gleason_pattern_3"),
+            (
+                "GlaS",
+                "moderately_differentiated_carcinoma",
+                "poorly_differentiated_carcinoma",
+            ),
+            (
+                "GlaS",
+                "poorly_differentiated_carcinoma",
+                "moderately_differentiated_carcinoma",
+            ),
+        )
+
+        for profile, source, target in cases:
+            with self.subTest(profile=profile, source=source, target=target):
+                diff = semantic_diff_with(
+                    transition_change={
+                        "source_state": source,
+                        "target_state": target,
+                        "degree": "moderate",
+                    }
+                )
+                plan = plan_edit_intents(
+                    diff,
+                    reference_profile=profile,
+                )
+
+                self.assertEqual(plan.intents, ())
+                self.assertEqual(plan.unsupported_changes[0].field, "transition_change")
+                self.assertIn(
+                    "Localized histologic-grade transformation is not supported",
+                    plan.unsupported_changes[0].reason,
+                )
 
     def test_explicit_transition_suppresses_generic_growth(self):
         diff = semantic_diff_with(
@@ -672,7 +710,7 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
             },
         )
 
-        intents = semantic_diff_to_intents(
+        plan = plan_edit_intents(
             diff,
             reference_profile="GlaS",
             old_prompt="Poorly differentiated carcinoma with scant stroma.",
@@ -683,8 +721,12 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            [intent.primitive for intent in intents],
-            ["treatment_dedifferentiation"],
+            plan.intents,
+            (),
+        )
+        self.assertEqual(
+            [warning.field for warning in plan.unsupported_changes],
+            ["transition_change", "lymphocyte_change.infiltration"],
         )
 
     def test_transition_ignores_contextual_desmoplastic_response(self):
@@ -753,49 +795,58 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(plan.intents, ())
         self.assertEqual(plan.unsupported_changes[0].field, "tumor_change.grade_change")
 
-    def test_panda_grade_upgrade_maps_to_gleason_special(self):
+    def test_panda_grade_upgrade_abstains(self):
         diff = semantic_diff_with(
             tumor_change={"growth": "none", "grade_change": "upgrade"}
         )
 
-        intents = semantic_diff_to_intents(
+        plan = plan_edit_intents(
             diff,
             reference_profile="PANDA",
             old_prompt="Prostate adenocarcinoma with Gleason pattern 3.",
             new_prompt="Prostate adenocarcinoma upgraded to Gleason pattern 4.",
         )
 
-        self.assertEqual(len(intents), 1)
-        self.assertEqual(intents[0].primitive, "gleason_upgrade_3to4")
-        self.assertEqual(intents[0].reference_profile, "PANDA")
+        self.assertEqual(plan.intents, ())
+        self.assertEqual(
+            plan.unsupported_changes[0].field,
+            "tumor_change.grade_change",
+        )
 
-    def test_panda_pattern_5_maps_to_gleason_4to5_special(self):
+    def test_panda_pattern_5_upgrade_abstains(self):
         diff = semantic_diff_with(
             tumor_change={"growth": "none", "grade_change": "upgrade"}
         )
 
-        intents = semantic_diff_to_intents(
+        plan = plan_edit_intents(
             diff,
             reference_profile="PANDA",
             old_prompt="Prostate adenocarcinoma with Gleason pattern 4.",
             new_prompt="Prostate adenocarcinoma with new Gleason pattern 5.",
         )
 
-        self.assertEqual(intents[0].primitive, "gleason_upgrade_4to5")
+        self.assertEqual(plan.intents, ())
+        self.assertEqual(
+            plan.unsupported_changes[0].field,
+            "tumor_change.grade_change",
+        )
 
-    def test_instruction_style_panda_gleason_3to4_maps_without_old_prompt(self):
+    def test_instruction_style_panda_gleason_3to4_abstains(self):
         diff = semantic_diff_with(
             tumor_change={"growth": "none", "grade_change": "upgrade"}
         )
 
-        intents = semantic_diff_to_intents(
+        plan = plan_edit_intents(
             diff,
             reference_profile="PANDA",
             new_prompt="upgrade prostate tumor from Gleason pattern 3 to pattern 4",
         )
 
-        self.assertEqual(len(intents), 1)
-        self.assertEqual(intents[0].primitive, "gleason_upgrade_3to4")
+        self.assertEqual(plan.intents, ())
+        self.assertEqual(
+            plan.unsupported_changes[0].field,
+            "tumor_change.grade_change",
+        )
 
     def test_instruction_style_glas_normal_to_adenomatous_maps_without_old_prompt(self):
         diff = semantic_diff_with(
@@ -811,19 +862,23 @@ class Phase3SemanticToIntentTests(unittest.TestCase):
         self.assertEqual(len(intents), 1)
         self.assertEqual(intents[0].primitive, "normal_to_adenomatous")
 
-    def test_glas_grade_upgrade_maps_to_grade_special(self):
+    def test_glas_grade_upgrade_abstains(self):
         diff = semantic_diff_with(
             tumor_change={"growth": "none", "grade_change": "upgrade"}
         )
 
-        intents = semantic_diff_to_intents(
+        plan = plan_edit_intents(
             diff,
             reference_profile="GlaS",
             old_prompt="Moderately differentiated colorectal carcinoma.",
             new_prompt="Poorly differentiated high grade colorectal carcinoma.",
         )
 
-        self.assertEqual(intents[0].primitive, "grade_upgrade")
+        self.assertEqual(plan.intents, ())
+        self.assertEqual(
+            plan.unsupported_changes[0].field,
+            "tumor_change.grade_change",
+        )
 
     def test_glas_growth_and_grade_upgrade_plans_both_area_and_fine_transition(self):
         diff = semantic_diff_with(

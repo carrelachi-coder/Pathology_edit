@@ -14,6 +14,7 @@ from phase3_mask_edit.generic.immune import (
 from phase3_mask_edit.generic.desmoplasia import (
     apply_stromal_desmoplasia,
 )
+from phase3_mask_edit.generic.stroma import apply_stroma_increase
 from phase3_mask_edit.generic.tumor_burden import (
     PrimitiveEditResult,
     PrimitiveExecutionError,
@@ -27,6 +28,7 @@ __all__ = [
     "PrimitiveExecutionError",
     "apply_necrosis_appearance",
     "apply_stromal_desmoplasia",
+    "apply_stroma_increase",
     "apply_stromal_immune_infiltration",
     "apply_tumor_burden_decrease",
     "apply_tumor_burden_increase",

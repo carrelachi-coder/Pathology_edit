@@ -816,15 +816,21 @@ class LLMContourAgentTests(unittest.TestCase):
         self.assertEqual(result.status, STATUS_VALIDATED)
         self.assertIsNotNone(result.edit_result)
         selected_pixels = int(result.edit_result.selected_pixels)
-        self.assertEqual(selected_pixels, 100)
-        self.assertEqual(np.count_nonzero(result.edit_result.target_mask == 12), 100)
-        self.assertEqual(np.count_nonzero(result.edit_result.target_mask == 11), 256)
+        self.assertEqual(selected_pixels, 256)
+        self.assertEqual(np.count_nonzero(result.edit_result.target_mask == 12), 256)
+        self.assertEqual(np.count_nonzero(result.edit_result.target_mask == 11), 100)
         self.assertEqual(
             result.edit_result.ops_log["selection_policy"],
             "whole_source_components_template_prioritized",
         )
         self.assertEqual(result.edit_result.ops_log["selection_unit"], "connected_component")
-        self.assertEqual(result.edit_result.ops_log["selected_component_areas"], [100])
+        self.assertEqual(result.edit_result.ops_log["selected_component_areas"], [256])
+        self.assertEqual(
+            result.edit_result.ops_log[
+                "selected_component_template_overlap_pixels"
+            ],
+            [256],
+        )
 
 
 def _synthetic_bcss_mask() -> np.ndarray:

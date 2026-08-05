@@ -649,6 +649,8 @@ def strength_denominator_pixels(
     name = primitive_config.get("name")
     if name == "tumor_burden_increase":
         return int(mask.size)
+    if name == "stroma_increase":
+        return int(mask.size)
     if name == "tumor_burden_decrease":
         return int(mask.size)
     if name == "tumor_burden_decrease_tumor_relative":
@@ -717,6 +719,14 @@ def legal_pixel_mask(
             return safe_schema_label_mask(mask, schema, source)
     if name == "stromal_immune_infiltration":
         return safe_schema_label_mask(mask, schema, "Stroma")
+    if name == "stroma_increase":
+        legal = np.zeros(mask.shape, dtype=bool)
+        for label in [
+            *labels_from_operation(operation.get("primary_sources")),
+            *labels_from_operation(operation.get("secondary_sources")),
+        ]:
+            legal |= safe_schema_label_mask(mask, schema, label)
+        return legal & ~np.isin(mask, tuple(schema.skip_fine_ids))
     if name == "stromal_desmoplasia":
         legal = np.zeros(mask.shape, dtype=bool)
         for label in [
@@ -871,6 +881,7 @@ def expected_direction_for_primitive(primitive_config: Mapping[str, Any]) -> str
         "necrosis_appearance",
         "stromal_immune_infiltration",
         "intratumoral_immune_infiltration",
+        "stroma_increase",
         "stromal_desmoplasia",
     }:
         return "increase"
@@ -904,7 +915,7 @@ def source_target_labels_for_primitive(
         )
         target = "Tumor" if "Tumor" in schema.readable_labels else None
         return source, target
-    if primitive_config.get("name") == "stromal_desmoplasia":
+    if primitive_config.get("name") in {"stroma_increase", "stromal_desmoplasia"}:
         source = tuple(
             filter_schema_labels(
                 [

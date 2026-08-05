@@ -469,23 +469,38 @@ def _fine_transition_change_region(
     template = np.asarray(raw_candidate, dtype=bool)
     overlap_areas = ndimage.sum(template, labeled, component_ids).astype(np.int64)
 
-    # Prefer components touched by the LLM template, then larger overlap, then larger
-    # source components. The write itself remains whole-component and in-place.
+    # A template-touched grade component is an explicit semantic selection. It
+    # must be relabeled in full even when that whole component exceeds the
+    # nominal area budget; skipping it and changing unrelated small components
+    # would violate both the template and the connected-component contract.
     touched = overlap_areas > 0
-    order = np.lexsort((component_ids, -component_areas, -overlap_areas, ~touched))
+    touched_order = np.lexsort(
+        (component_ids, -component_areas, -overlap_areas)
+    )[touched[np.lexsort((component_ids, -component_areas, -overlap_areas))]]
+    untouched_order = np.lexsort(
+        (component_ids, component_areas, -overlap_areas)
+    )[~touched[np.lexsort((component_ids, component_areas, -overlap_areas))]]
     selected_ids: list[int] = []
     selected_areas: list[int] = []
     selected_overlaps: list[int] = []
     selected_pixels = 0
     skipped_oversize = 0
 
-    for index in order:
+    for index in touched_order:
         component_id = int(component_ids[index])
         area = int(component_areas[index])
-        if area > target_pixels - selected_pixels and selected_pixels > 0:
-            skipped_oversize += 1
-            continue
-        if area > target_pixels and selected_pixels == 0:
+        selected_ids.append(component_id)
+        selected_areas.append(area)
+        selected_overlaps.append(int(overlap_areas[index]))
+        selected_pixels += area
+
+    for index in untouched_order:
+        if selected_pixels >= target_pixels:
+            break
+        component_id = int(component_ids[index])
+        area = int(component_areas[index])
+        remaining = target_pixels - selected_pixels
+        if area > remaining and selected_pixels > 0:
             skipped_oversize += 1
             continue
         selected_ids.append(component_id)

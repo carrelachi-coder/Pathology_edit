@@ -427,6 +427,13 @@ def _build_target_area_hint(
         )
         reference_pixels = int(label_areas.get("Tumor", 0))
         reference = "Tumor"
+    elif primitive_name == "stroma_increase":
+        bucket = _interval_for_strength(
+            ranges.get("target_area_delta_fraction"),
+            intent.strength,
+        )
+        reference_pixels = int(sum(label_areas.values()))
+        reference = "whole mask"
     elif primitive_name == "stromal_desmoplasia":
         bucket = _interval_for_strength(
             ranges.get("stroma_area_delta_fraction"),
@@ -674,6 +681,35 @@ def _build_llm_task_requirements(
                 "parameter_ranges": ranges,
                 "validation_rules": validation_rules,
                 "backfill_priority": operation.get("backfill_priority", []),
+            },
+        }
+    if name == "stroma_increase":
+        return {
+            "pathology_goal": "Increase an existing stromal compartment.",
+            "mask_edit": (
+                "Convert configured adjacent non-stromal source tissue to Stroma. "
+                "Existing Stroma is required; Tumor is not required or created."
+            ),
+            "source_label": {
+                "primary_sources": operation.get("primary_sources", []),
+                "secondary_sources": operation.get("secondary_sources", []),
+            },
+            "target_label": operation.get("target", "Stroma"),
+            "where_to_draw": [
+                "Draw on legal non-stromal tissue adjacent to existing Stroma.",
+                "Grow from existing stromal boundaries and preserve Tumor, Necrosis, and Background.",
+                "Do not create a disconnected stromal island.",
+            ],
+            "shape_style": [
+                "Irregular connected expansion following local stromal geometry.",
+                "Avoid rectangles, diamonds, uniform rings, and isolated fragments.",
+            ],
+            "area_requirement": _area_requirement_text(target_area_hint),
+            "recipe_constraints": {
+                "mask_operation": operation,
+                "spatial_pattern": spatial,
+                "parameter_ranges": ranges,
+                "validation_rules": validation_rules,
             },
         }
     if name == "stromal_desmoplasia":
@@ -1316,6 +1352,8 @@ def _default_placement_relation(context: Mapping[str, Any]) -> str:
         return "immune_decrease_distal_or_isolated"
     if primitive == "stromal_desmoplasia":
         return "peritumoral_desmoplastic_stroma_expansion"
+    if primitive == "stroma_increase":
+        return "existing_stroma_adjacent_expansion"
     return "generic_label_safe"
 
 
@@ -1335,4 +1373,6 @@ def _default_shape_hints(context: Mapping[str, Any]) -> list[str]:
         return ["patchy", "multifocal", "irregular_boundary"]
     if primitive == "stromal_desmoplasia":
         return ["peritumoral", "stromal_reinforcement", "irregular_boundary"]
+    if primitive == "stroma_increase":
+        return ["connected_expansion", "lobulated_boundary", "irregular_boundary"]
     return ["irregular_boundary"]
