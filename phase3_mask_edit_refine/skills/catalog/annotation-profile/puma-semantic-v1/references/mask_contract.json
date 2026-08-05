@@ -1,0 +1,64 @@
+{
+  "skill_id": "puma-semantic-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable PUMA tissue-mask contract separated from nuclei annotations and conditioned on primary/metastatic site.",
+  "constraints": [
+    {
+      "constraint_id": "puma.mask.require_primary_metastatic_site_and_remap",
+      "applies_when": {},
+      "mask_statement": "Require preprocessing/remap provenance, primary-versus-metastatic status, and source site before interpreting tissue labels or retrieving thresholds.",
+      "observability": ["provenance", "semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["input_validation", "mask_gate"],
+      "checker_ids": ["profile_required_provenance", "profile_signature_consistency"],
+      "critic_requirement": null,
+      "required_inputs": ["profile and anatomical-stratum provenance"],
+      "failure_action": "abstain_case",
+      "generation_handoff": ["Use primary/metastatic- and source-site-matched H&E references."],
+      "known_limitations": ["The repository mapping of PUMA epithelium to epidermis still requires raw label-spec verification."]
+    },
+    {
+      "constraint_id": "puma.mask.white_background_is_immutable",
+      "applies_when": {},
+      "mask_statement": "Preserve every white-background/zero pixel exactly; background cannot seed, receive, bridge, or be filled by tissue edits.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["background_seed_protection"],
+      "critic_requirement": null,
+      "required_inputs": ["PUMA semantic mask"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Do not inpaint protected background pixels."],
+      "known_limitations": ["Processing clefts and true slide background can appear similar on H&E but remain protected by the mask contract."]
+    },
+    {
+      "constraint_id": "puma.mask.preserve_epithelium_necrosis_vessel_and_separate_nuclei",
+      "applies_when": {},
+      "mask_statement": "Change only declared tissue source IDs; preserve epithelium, necrosis, vessel, and every unrequested tissue label exactly, and never rasterize nuclei classes into new tissue-region labels.",
+      "observability": ["semantic_mask", "native_annotation"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved", "semantic_capability_guard"],
+      "critic_requirement": null,
+      "required_inputs": ["tissue semantic mask", "separate nuclei annotation identity"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Preserve epidermal, necrotic, and vascular appearance; cell editing remains a separate workflow."],
+      "known_limitations": ["The semantic mask does not encode ulceration, junctional component, or regression."]
+    },
+    {
+      "constraint_id": "puma.mask.no_tissue_topology_repair",
+      "applies_when": {},
+      "mask_statement": "Reject tumor islands/bridges, source splits, target merges, necrotic-hole filling, and any topology cleanup that consumes protected tissues.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["mask_gate"],
+      "checker_ids": ["component_topology", "edited_label_topology", "unrequested_labels_preserved"],
+      "critic_requirement": null,
+      "required_inputs": ["source and candidate masks"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": [],
+      "known_limitations": ["Dedicated epidermal invasion, ulceration, necrosis, or perivascular tasks need separate primitives."]
+    }
+  ]
+}

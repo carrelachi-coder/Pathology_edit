@@ -1,0 +1,25 @@
+{
+  "annotation_profile_id": "glas-gland-v1",
+  "dataset_revision": "REPLACE_WITH_IMMUTABLE_DATASET_REVISION",
+  "protocol_sources": [
+    "https://doi.org/10.1016/j.media.2016.08.008"
+  ],
+  "records": [
+    {
+      "record_id": "REPLACE_WITH_RECORD_ID",
+      "mask_uri": "/read-only/path/to/mask.npy",
+      "image_uri": "/read-only/path/to/image.png",
+      "patient_id": "REPLACE_WITH_PATIENT_ID",
+      "wsi_id": "REPLACE_WITH_WSI_ID",
+      "split": "train",
+      "pixel_size_um": 0.465,
+      "mask_sha256": "REPLACE_WITH_SHA256",
+      "image_sha256": "REPLACE_WITH_SHA256",
+      "provenance": {
+        "preprocessing_revision": "REPLACE_WITH_REVISION",
+        "original_instance_mask_digest": "REPLACE_WITH_NATIVE_INSTANCE_MASK_SHA256",
+        "patch_grade": "REPLACE_WITH_ORIGINAL_FIELD_GRADE"
+      }
+    }
+  ]
+}

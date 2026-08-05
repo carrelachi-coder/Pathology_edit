@@ -1,0 +1,140 @@
+{
+  "skill_id": "bcss-semantic-v1",
+  "skill_kind": "annotation_profile",
+  "version": "1.1.0-draft",
+  "review_status": "draft",
+  "summary": "BCSS native 22-class annotation and repository 22-to-unified remap contract, including protected collapsed-zero provenance and retained tumor subtypes.",
+  "capabilities": {
+    "dataset_config_name": "BCSS",
+    "canonical_labels": ["Tumor", "Stroma", "Necrosis", "Immune infiltrate", "Normal epithelium", "Blood vessel", "Other tissue"],
+    "native_class_count": 22,
+    "annotation_traits": [
+      "region annotations were harmonized from multiple pathologists",
+      "native classes are substantially finer than the unified ontology",
+      "multiple biologically distinct native classes collapse into Stroma, Tumor, Blood vessel, Other tissue, or zero"
+    ],
+    "background_policy": {
+      "canonical_label": "Background",
+      "native_meanings": ["outside_roi", "exclude", "undetermined"],
+      "editable": false,
+      "may_seed_edit": false,
+      "preserve_exactly": true,
+      "may_bridge_across": false
+    },
+    "required_provenance_fields": [
+      "preprocessing_revision",
+      "original_label_map_digest"
+    ],
+    "semantic_limitations": [
+      "Unified zero combines outside-ROI, excluded, and undetermined pixels; it is not a biological tissue class.",
+      "Unified Stroma also contains native glandular secretions in this repository remap.",
+      "Unified Other tissue mixes blood, metaplasia, fat, mucoid material, nerve, skin adnexa, and native other."
+    ]
+  },
+  "rules": [
+    {
+      "rule_id": "bcss.collapsed_zero_is_immutable",
+      "scope": "candidate_generation_and_gate",
+      "applies_when": {"canonical_label": "Background"},
+      "claim": "Preserve every unified-zero pixel because the remap cannot distinguish outside-ROI, excluded, and undetermined provenance after collapse.",
+      "required_observation": "Compare source and candidate masks at all zero pixels and verify no zero component is used as an edit anchor.",
+      "severity": "hard",
+      "deterministic_check_id": "background_seed_protection",
+      "critic_requirement": null,
+      "exceptions": [],
+      "counterexamples": ["Growing tumor into an excluded strip.", "Filling an undetermined hole with stroma because it appears internal."],
+      "expected_morphology": ["The candidate retains the exact source zero footprint."],
+      "forbidden_morphology": ["Zero-label filling, erosion, seeding, or bridging."],
+      "evidence_citations": [
+        "https://doi.org/10.1093/bioinformatics/btz083",
+        "https://github.com/PathologyDataScience/BCSS"
+      ],
+      "dataset_statistics": {"status": "pending_full_dataset_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Native zero provenance is unavailable once only the remapped mask is retained."]
+    },
+    {
+      "rule_id": "bcss.unified_compartments_do_not_restore_native_identity",
+      "scope": "semantic_contract",
+      "applies_when": {"canonical_label": ["Stroma", "Other tissue", "Blood vessel"]},
+      "claim": "Do not reverse-infer a unique native tissue from a many-to-one unified label.",
+      "required_observation": "Use the original label map when available; otherwise keep the canonical label coarse and ask the critic only for visual plausibility.",
+      "severity": "hard",
+      "deterministic_check_id": "semantic_capability_guard",
+      "critic_requirement": "veto_unsupported_native_subtype_inference",
+      "exceptions": ["A separately retained native mask digest and pixel-aligned native mask may restore the native identity."],
+      "counterexamples": ["Calling every Stroma pixel fibrous stroma even though glandular secretion was mapped there.", "Calling every Blood vessel pixel a blood vessel even though native lymphatics share the canonical label."],
+      "expected_morphology": ["Candidate selection is compatible with H&E and the canonical label without inventing a native subtype."],
+      "forbidden_morphology": ["Tool choice that requires a tissue subtype absent from the retained mask."],
+      "evidence_citations": [
+        "https://doi.org/10.1093/bioinformatics/btz083",
+        "https://github.com/PathologyDataScience/BCSS"
+      ],
+      "dataset_statistics": {"status": "pending_full_dataset_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Repository remap behavior must be validated against the exact preprocessing revision."]
+    },
+    {
+      "rule_id": "bcss.preserve_dcis_and_angioinvasion_fine_identity",
+      "scope": "candidate_gate",
+      "applies_when": {"fine_label": ["DCIS", "Angioinvasion"]},
+      "claim": "A burden-only edit must not silently convert invasive tumor, DCIS, and angioinvasion fine labels into one another.",
+      "required_observation": "Audit changed fine IDs against the primitive source/target transition and preserve unrequested tumor subtypes pixel-exactly.",
+      "severity": "hard",
+      "deterministic_check_id": "label_transition",
+      "critic_requirement": "veto_subtype_morphology_mismatch",
+      "exceptions": ["A dedicated reviewed DCIS-invasion or vascular-invasion primitive."],
+      "counterexamples": ["Expanding generic tumor by overwriting a DCIS duct.", "Relabeling angioinvasion as ordinary invasive tumor to simplify the boundary."],
+      "expected_morphology": ["Unrequested fine tumor classes retain their identity and geometry."],
+      "forbidden_morphology": ["Implicit DCIS-to-invasive or angioinvasion-to-invasive conversion."],
+      "evidence_citations": [
+        "https://doi.org/10.1093/bioinformatics/btz083",
+        "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
+      ],
+      "dataset_statistics": {"status": "pending_full_dataset_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Fine-label accuracy depends on preserving the repository's fine remap rather than only a coarse mask."]
+    },
+    {
+      "rule_id": "bcss.small_rare_regions_are_not_cleanup_noise",
+      "scope": "candidate_generation_and_gate",
+      "applies_when": {"canonical_label": ["Blood vessel", "Immune infiltrate", "Normal epithelium", "Other tissue"]},
+      "claim": "Do not erase or absorb small labeled regions merely because their area is below a generic morphology threshold.",
+      "required_observation": "Preserve every unrequested label exactly and compare component topology before and after the edit.",
+      "severity": "hard",
+      "deterministic_check_id": "unrequested_labels_preserved",
+      "critic_requirement": null,
+      "exceptions": [],
+      "counterexamples": ["Morphological closing that removes a tiny vessel or normal duct.", "Smoothing a tumor boundary by swallowing a small immune component."],
+      "expected_morphology": ["Small non-source components remain pixel-identical."],
+      "forbidden_morphology": ["Generic denoising of legitimate minority labels."],
+      "evidence_citations": ["https://doi.org/10.1093/bioinformatics/btz083"],
+      "dataset_statistics": {"status": "pending_full_dataset_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Rare-class size envelopes require complete-training-set statistics."]
+    },
+    {
+      "rule_id": "bcss.require_native_remap_provenance",
+      "scope": "input_validation",
+      "applies_when": {"annotation_profile_id": "bcss-semantic-v1"},
+      "claim": "Require the exact preprocessing revision and original label-map digest; do not infer BCSS semantics from breast organ metadata.",
+      "required_observation": "Verify declared annotation profile and mapping provenance before loading rules.",
+      "severity": "hard",
+      "deterministic_check_id": "profile_required_provenance",
+      "critic_requirement": null,
+      "exceptions": [],
+      "counterexamples": ["Treating any breast segmentation as BCSS.", "Mixing a 22-class native mask with an eight-class profile declaration."],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
+      "evidence_citations": ["https://github.com/PathologyDataScience/BCSS"],
+      "dataset_statistics": {"status": "pending_full_dataset_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["No full immutable BCSS evidence manifest is mounted in this repository yet."]
+    }
+  ]
+}

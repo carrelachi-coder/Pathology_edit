@@ -1,0 +1,27 @@
+{
+  "case_id": "REPLACE_WITH_CASE_ID",
+  "instruction": "在结直肠癌 patch 上扩大肿瘤面积",
+  "source_image_uri": "/read-only/path/to/source_image.png",
+  "source_mask_uri": "/read-only/path/to/source_mask.npy",
+  "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+  "annotation_profile_id": "glas-gland-v1",
+  "primitive_id": "tumor-burden-increase-v1",
+  "area_budget": {
+    "target_fraction": 0.1,
+    "min_fraction": 0.1,
+    "max_fraction": 0.1,
+    "basis": "whole_mask",
+    "relative_tolerance": 0.02,
+    "fallback_policy": "exact"
+  },
+  "pixel_size_um": null,
+  "seed": 17,
+  "provenance": {
+    "source_image_sha256": "REPLACE_WITH_SHA256",
+    "source_mask_sha256": "REPLACE_WITH_SHA256",
+    "source_revision": "REPLACE_WITH_IMMUTABLE_REVISION",
+    "preprocessing_revision": "REPLACE_WITH_GLAS_PREPROCESSING_REVISION",
+    "original_instance_mask_digest": "REPLACE_WITH_NATIVE_INSTANCE_MASK_SHA256",
+    "patch_grade": "REPLACE_WITH_ORIGINAL_FIELD_GRADE"
+  }
+}

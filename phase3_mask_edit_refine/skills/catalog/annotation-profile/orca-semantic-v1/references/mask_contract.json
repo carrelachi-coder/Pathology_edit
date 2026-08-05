@@ -1,0 +1,64 @@
+{
+  "skill_id": "orca-semantic-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable ORCA three-class mask contract with strict fragmented non-tissue protection.",
+  "constraints": [
+    {
+      "constraint_id": "orca.mask.require_three_class_remap_provenance",
+      "applies_when": {},
+      "mask_statement": "Require preprocessing revision and original-label-map digest and accept only the declared non-tissue/non-carcinoma/carcinoma signature.",
+      "observability": ["provenance", "semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["input_validation", "mask_gate"],
+      "checker_ids": ["profile_required_provenance", "profile_signature_consistency"],
+      "critic_requirement": null,
+      "required_inputs": ["ORCA profile provenance", "three-class mask"],
+      "failure_action": "abstain_case",
+      "generation_handoff": [],
+      "known_limitations": ["Current signature checking is not a substitute for certified full-dataset profile statistics."]
+    },
+    {
+      "constraint_id": "orca.mask.every_non_tissue_fragment_is_immutable",
+      "applies_when": {},
+      "mask_statement": "Preserve every non-tissue pixel exactly, including one-pixel and internal fragments; non-tissue cannot seed Tumor or Other tissue, cannot be relabeled first, and cannot be crossed, filled, eroded, dilated, or bridged over.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["background_seed_protection"],
+      "critic_requirement": null,
+      "required_inputs": ["source and candidate three-class masks"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Exclude protected non-tissue fragments from the inpaint region."],
+      "known_limitations": ["The reason for each fragmented zero region is not encoded and is irrelevant to the pixel-exact invariant."]
+    },
+    {
+      "constraint_id": "orca.mask.only_other_tissue_carcinoma_transition",
+      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1"]},
+      "mask_statement": "Allow only Other tissue to Tumor or Tumor to Other tissue at an existing directed interface; never claim or emit Stroma, Immune, Normal epithelium, Vessel, Necrosis, or another unavailable class.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["semantic_capability_guard", "label_transition", "unrequested_labels_preserved", "interface_contact", "tumor_stroma_interface"],
+      "critic_requirement": null,
+      "required_inputs": ["three-class semantic mask", "component/interface scene graph"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Use H&E to render the actual non-carcinoma substrate; the mask must retain the coarse Other tissue statement."],
+      "known_limitations": ["Other tissue is irreducibly heterogeneous in this profile."]
+    },
+    {
+      "constraint_id": "orca.mask.no_island_bridge_split_merge_hole_or_deep_notch",
+      "applies_when": {},
+      "mask_statement": "Reject islands, bridges, source splits, target merges, new/filled holes, detached edits, and short/deep or rectangle-like changed regions.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["mask_gate"],
+      "checker_ids": ["component_topology", "edited_label_topology", "depth_span_ratio", "boundary_naturalness"],
+      "critic_requirement": null,
+      "required_inputs": ["source and candidate masks", "selected interface"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Nest/cord/keratin morphology remains a downstream oral-SCC rendering and audit requirement."],
+      "known_limitations": ["Coarse mask topology cannot verify oral-SCC microscopic architecture."]
+    }
+  ]
+}

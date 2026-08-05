@@ -1,0 +1,64 @@
+{
+  "skill_id": "glas-gland-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable transformed-GLaS mask contract with conditional native gland-instance enforcement.",
+  "constraints": [
+    {
+      "constraint_id": "glas.mask.require_instance_grade_and_preprocessing_provenance",
+      "applies_when": {},
+      "mask_statement": "Require preprocessing revision, original gland-instance-mask digest, and patch grade before interpreting transformed fine IDs.",
+      "observability": ["provenance"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["input_validation", "mask_gate"],
+      "checker_ids": ["profile_required_provenance", "profile_signature_consistency"],
+      "critic_requirement": null,
+      "required_inputs": ["GLaS transformation provenance"],
+      "failure_action": "abstain_case",
+      "generation_handoff": [],
+      "known_limitations": ["A digest does not make the native instance mask available to the current scene graph by itself."]
+    },
+    {
+      "constraint_id": "glas.mask.zero_is_not_non_gland_tissue",
+      "applies_when": {},
+      "mask_statement": "Preserve every zero pixel exactly; use only explicit nonzero transformed Stroma as the non-gland semantic source and never use zero as lumen or stroma.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["background_seed_protection"],
+      "critic_requirement": null,
+      "required_inputs": ["transformed semantic mask"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Do not inpaint protected zero pixels."],
+      "known_limitations": ["Exact zero semantics depend on the frozen preprocessing revision."]
+    },
+    {
+      "constraint_id": "glas.mask.native_gland_instance_topology_is_conditional_hard_input",
+      "applies_when": {},
+      "mask_statement": "When the native instance mask is mounted, reject any edit that splits, merges, deletes, bridges, or fills an individual gland/lumen; without it, do not claim gland-instance guarantees and abstain on ambiguous gland cuts.",
+      "observability": ["native_annotation", "source_he"],
+      "enforcement": "conditional",
+      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
+      "checker_ids": ["prohibited_region", "edited_label_topology"],
+      "critic_requirement": "veto_missing_or_violated_gland_instance_contract",
+      "required_inputs": ["native gland-instance mask for deterministic object guarantees", "source H&E"],
+      "failure_action": "abstain_case",
+      "generation_handoff": ["Render continuous gland epithelium and lumina; instance-safe mask geometry does not guarantee microscopic gland quality."],
+      "known_limitations": ["Current semantic scene components are not a substitute for native instances."]
+    },
+    {
+      "constraint_id": "glas.mask.transformed_stroma_requires_existing_interface_and_label_contract",
+      "applies_when": {},
+      "mask_statement": "Use transformed Stroma only through an existing directed gland/non-gland interface, change only declared fine IDs, and preserve all other labels; mask edit must not claim that the source is histologically pure stroma.",
+      "observability": ["semantic_mask", "scene_graph", "source_he"],
+      "enforcement": "conditional",
+      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved", "interface_contact", "depth_span_ratio"],
+      "critic_requirement": "veto_non_gland_complement_incompatible_with_edit",
+      "required_inputs": ["transformed semantic mask", "source H&E"],
+      "failure_action": "abstain_case",
+      "generation_handoff": ["Distinguish true stroma from lumen, mucin, debris, muscle, or inflammation during H&E generation and final audit."],
+      "known_limitations": ["The transformed semantic label cannot recover the non-gland histologic subtype."]
+    }
+  ]
+}

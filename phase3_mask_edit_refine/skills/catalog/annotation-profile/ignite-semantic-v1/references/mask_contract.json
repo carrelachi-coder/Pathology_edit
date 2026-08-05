@@ -1,0 +1,64 @@
+{
+  "skill_id": "ignite-semantic-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable IGNITE unified-mask contract with remap/site provenance and immutable collapsed zero.",
+  "constraints": [
+    {
+      "constraint_id": "ignite.mask.require_remap_site_and_specimen_provenance",
+      "applies_when": {},
+      "mask_statement": "Require preprocessing revision, original label-map digest, source site, and specimen type before interpreting unified IDs or applying thresholds.",
+      "observability": ["provenance", "semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["input_validation", "mask_gate"],
+      "checker_ids": ["profile_required_provenance", "profile_signature_consistency"],
+      "critic_requirement": null,
+      "required_inputs": ["remap/site/specimen provenance"],
+      "failure_action": "abstain_case",
+      "generation_handoff": ["Use a site- and specimen-matched H&E reference."],
+      "known_limitations": ["Certified enumeration and digest matching remain pending."]
+    },
+    {
+      "constraint_id": "ignite.mask.collapsed_zero_is_pixel_exact",
+      "applies_when": {},
+      "mask_statement": "Preserve all collapsed unannotated/background zero pixels exactly; zero cannot seed, receive, bridge, or be crossed by any tissue edit.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["background_seed_protection"],
+      "critic_requirement": null,
+      "required_inputs": ["unified semantic mask"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Do not inpaint protected zero pixels."],
+      "known_limitations": ["Collapsed zero cannot distinguish unannotated tissue from true background."]
+    },
+    {
+      "constraint_id": "ignite.mask.only_declared_unified_transition",
+      "applies_when": {},
+      "mask_statement": "Change only declared source unified IDs to the selected target ID; preserve every other unified tissue label exactly and do not infer a native class from the coarse ID.",
+      "observability": ["semantic_mask", "provenance"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved", "semantic_capability_guard"],
+      "critic_requirement": null,
+      "required_inputs": ["verified unified mask"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Use retained native labels or H&E to render alveolar, bronchial, inflammatory, muscle, cartilage, fluid, liver, or keratin context correctly."],
+      "known_limitations": ["A lossy remap cannot deterministically recover native morphology."]
+    },
+    {
+      "constraint_id": "ignite.mask.no_coarse_topology_repair",
+      "applies_when": {},
+      "mask_statement": "Reject source splits, target merges, islands, new/filled holes, and global closing intended to repair the coarse mask.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["mask_gate"],
+      "checker_ids": ["component_topology", "edited_label_topology"],
+      "critic_requirement": null,
+      "required_inputs": ["source and candidate masks"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": [],
+      "known_limitations": ["Coarse holes may correspond to multiple different lung structures."]
+    }
+  ]
+}

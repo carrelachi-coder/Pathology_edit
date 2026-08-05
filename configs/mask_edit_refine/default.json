@@ -1,0 +1,24 @@
+{
+  "schema_version": "mask-edit-refine-config-v1",
+  "models": {
+    "planner": {"model": "gpt-5.6-terra", "reasoning_effort": "medium"},
+    "critic": {"model": "gpt-5.6-terra", "reasoning_effort": "medium"},
+    "escalation": {"model": "gpt-5.6-sol", "reasoning_effort": "medium", "max_fraction": 0.1}
+  },
+  "workflow": {
+    "candidate_count": 12,
+    "planner_confidence_threshold": 0.7,
+    "critic_confidence_threshold": 0.7,
+    "critic_min_score_margin": 0.1,
+    "fail_closed": true,
+    "legacy_fallback": false
+  },
+  "skills": {
+    "production_review_status": "internally_reviewed",
+    "require_dual_metadata": true,
+    "allow_organ_to_profile_inference": false
+  },
+  "data_governance": {
+    "allowed": "deidentified_research_patches_only"
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "skill_id": "glas-gland-v1",
+  "skill_kind": "annotation_profile",
+  "version": "1.1.0-draft",
+  "review_status": "draft",
+  "summary": "GlaS gland-instance annotation plus field-level diagnostic grade transformed into repository semantic fine labels.",
+  "capabilities": {
+    "dataset_config_name": "GLaS",
+    "canonical_labels": ["Tumor", "Stroma", "Normal epithelium"],
+    "fine_labels": ["Adenomatous gland", "Moderately differentiated", "Poorly differentiated"],
+    "annotation_traits": [
+      "the primary segmentation target is individual gland objects",
+      "benign or malignant status is supplied at the image/field level",
+      "repository preprocessing transfers field-level context to gland pixels",
+      "repository Stroma is the non-gland complement and is not a pure stromal histology annotation"
+    ],
+    "background_policy": {
+      "canonical_label": "Background",
+      "native_meaning": "outside_valid_transformed_tissue_support",
+      "editable": false,
+      "may_seed_edit": false,
+      "preserve_exactly": true,
+      "may_bridge_across": false
+    },
+    "required_provenance_fields": [
+      "preprocessing_revision",
+      "original_instance_mask_digest",
+      "patch_grade"
+    ],
+    "semantic_limitations": [
+      "Fine tumor subtype IDs are inherited from field metadata and are not independently annotated per gland.",
+      "Canonical Stroma denotes non-gland complement and may include lumen, inflammatory tissue, smooth muscle, debris, or other non-gland structures.",
+      "Immune, vessel, necrosis, and Other tissue are not independently encoded."
+    ]
+  },
+  "rules": [
+    {
+      "rule_id": "glas.require_instance_and_field_grade_provenance",
+      "scope": "input_validation",
+      "applies_when": {"annotation_profile_id": "glas-gland-v1"},
+      "claim": "Require the original gland-instance mask digest, field grade, and preprocessing revision; the semantic fine mask alone cannot prove gland identity or independently graded subtypes.",
+      "required_observation": "Verify all three provenance fields before scene construction and retain instance IDs in the audit artifact.",
+      "severity": "hard",
+      "deterministic_check_id": "profile_required_provenance",
+      "critic_requirement": null,
+      "exceptions": [],
+      "counterexamples": ["Calling a fine-12 gland independently expert-labeled as moderately differentiated when the value was propagated from the field.", "Editing a semantic mask after losing original gland instance boundaries."],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
+      "evidence_citations": [
+        "https://doi.org/10.1016/j.media.2016.08.008",
+        "https://arxiv.org/abs/1603.00275"
+      ],
+      "dataset_statistics": {"status": "pending_patient_and_field_stratified_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["The current scene graph uses semantic components; direct native gland-instance constraints remain to be integrated."]
+    },
+    {
+      "rule_id": "glas.background_is_not_non_gland_tissue",
+      "scope": "candidate_generation_and_gate",
+      "applies_when": {"canonical_label": "Background"},
+      "claim": "Do not use zero as gland-adjacent stroma or lumen; valid non-gland pixels are represented by the transformed Stroma label, while zero remains protected.",
+      "required_observation": "Verify exact preservation of zero and choose anchors only between explicit nonzero scene components.",
+      "severity": "hard",
+      "deterministic_check_id": "background_seed_protection",
+      "critic_requirement": null,
+      "exceptions": [],
+      "counterexamples": ["Growing a gland into a zero border region.", "Using an internal zero artifact as a gland lumen seed."],
+      "expected_morphology": ["All zero pixels are identical in source and target."],
+      "forbidden_morphology": ["Zero-label seeding, filling, crossing, or relabeling."],
+      "evidence_citations": ["https://doi.org/10.1016/j.media.2016.08.008"],
+      "dataset_statistics": {"status": "pending_patient_and_field_stratified_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Exact transformed zero semantics must be frozen per preprocessing revision."]
+    },
+    {
+      "rule_id": "glas.preserve_individual_gland_objects",
+      "scope": "interface_selection_and_gate",
+      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1"]},
+      "claim": "Treat each annotated gland as an object: a local burden edit must not merge adjacent glands, split one gland, erase its lumen, or create a detached gland island.",
+      "required_observation": "Trace the complete epithelial contour and lumen in the native instance mask, semantic overlay, and H&E before selecting an anchor.",
+      "severity": "hard",
+      "deterministic_check_id": "edited_label_topology",
+      "critic_requirement": "veto_gland_object_violation",
+      "exceptions": ["Poorly differentiated fields with no recognizable gland object require explicit observation and a non-gland architecture primitive."],
+      "counterexamples": ["A short deep notch through one side of a gland.", "An expansion bridge joining two separate gland instances.", "Closing a real lumen because it is a hole in the binary tumor mask."],
+      "expected_morphology": ["A smooth displacement along a sufficiently broad existing gland/non-gland interface.", "A recognizable lumen and continuous epithelial boundary remain coherent when present."],
+      "forbidden_morphology": ["Abrupt notches, narrow necks, gland fusion, gland fission, detached epithelial islands, or lumen filling."],
+      "evidence_citations": [
+        "https://doi.org/10.1016/j.media.2016.08.008",
+        "https://arxiv.org/abs/1603.00275"
+      ],
+      "dataset_statistics": {"status": "pending_patient_and_field_stratified_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Semantic connected components can merge touching instances; native instance topology is the authoritative check."]
+    },
+    {
+      "rule_id": "glas.stroma_is_a_non_gland_complement",
+      "scope": "semantic_contract_and_critic",
+      "applies_when": {"canonical_label": "Stroma"},
+      "claim": "Interpret transformed Stroma only as non-gland complement; do not assume every pixel is fibrous or desmoplastic stroma.",
+      "required_observation": "Inspect H&E at the proposed edit band for true tissue support, luminal space, dense mucosa, smooth muscle, inflammatory tissue, debris, or artifact.",
+      "severity": "hard",
+      "deterministic_check_id": "semantic_capability_guard",
+      "critic_requirement": "veto_non_gland_complement_misinterpretation",
+      "exceptions": [],
+      "counterexamples": ["Expanding a malignant gland across a large luminal space because the transformed mask calls it Stroma.", "Selecting submucosal muscle as a gland-growth reference."],
+      "expected_morphology": ["The chosen source band is visibly compatible with the intended gland boundary change."],
+      "forbidden_morphology": ["Crossing a lumen, muscular wall, debris field, or unrelated dense mucosa under a generic Stroma assumption."],
+      "evidence_citations": [
+        "https://doi.org/10.1016/j.media.2016.08.008",
+        "https://arxiv.org/abs/1603.00275"
+      ],
+      "dataset_statistics": {"status": "pending_patient_and_field_stratified_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["The transformed mask cannot recover non-gland histologic subtypes."]
+    },
+    {
+      "rule_id": "glas.no_implicit_field_grade_change",
+      "scope": "candidate_gate",
+      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1"]},
+      "claim": "A burden edit must preserve the selected field-derived fine tumor ID and every unrequested gland subtype.",
+      "required_observation": "Audit changed fine IDs against the primitive transition and recorded patch grade.",
+      "severity": "hard",
+      "deterministic_check_id": "label_transition",
+      "critic_requirement": null,
+      "exceptions": ["A separate, explicitly requested differentiation-change primitive."],
+      "counterexamples": ["Turning fine-11 adenomatous gland pixels into fine-12 while only growing tumor.", "Using a neighboring field's grade as the target label."],
+      "expected_morphology": ["Fine IDs outside the declared transition remain pixel-identical."],
+      "forbidden_morphology": ["Implicit differentiation upgrade or downgrade."],
+      "evidence_citations": ["https://doi.org/10.1016/j.media.2016.08.008"],
+      "dataset_statistics": {"status": "pending_patient_and_field_stratified_computation"},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Field-level labels may not capture intrafield heterogeneity."]
+    }
+  ]
+}

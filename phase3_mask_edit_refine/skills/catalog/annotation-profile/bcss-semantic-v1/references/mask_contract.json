@@ -1,0 +1,64 @@
+{
+  "skill_id": "bcss-semantic-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable mask contract for the BCSS native-22 to unified remap.",
+  "constraints": [
+    {
+      "constraint_id": "bcss.mask.zero_is_pixel_exact_and_never_a_seed",
+      "applies_when": {},
+      "mask_statement": "Preserve every unified-zero pixel exactly; outside-ROI, excluded, and undetermined pixels cannot seed, receive, connect, or be crossed by an edit.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["background_seed_protection"],
+      "critic_requirement": null,
+      "required_inputs": ["unified fine-ID mask"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Do not inpaint protected zero pixels."],
+      "known_limitations": ["The collapsed mask cannot recover which native zero concept produced each pixel."]
+    },
+    {
+      "constraint_id": "bcss.mask.require_exact_remap_provenance",
+      "applies_when": {},
+      "mask_statement": "Require the preprocessing revision and original label-map digest before interpreting any unified ID.",
+      "observability": ["provenance"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["input_validation", "mask_gate"],
+      "checker_ids": ["profile_required_provenance", "profile_signature_consistency"],
+      "critic_requirement": null,
+      "required_inputs": ["profile provenance"],
+      "failure_action": "abstain_case",
+      "generation_handoff": [],
+      "known_limitations": ["Presence of a digest is not yet cryptographic verification against a certified manifest."]
+    },
+    {
+      "constraint_id": "bcss.mask.preserve_fine_and_unrequested_labels",
+      "applies_when": {},
+      "mask_statement": "Enforce the declared source-to-target fine-ID transition and preserve DCIS, angioinvasion, vessels, immune regions, normal epithelium, necrosis, and Other tissue unless explicitly requested.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved"],
+      "critic_requirement": null,
+      "required_inputs": ["fine-ID semantic mask"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Retain the visible identity of protected fine-label regions."],
+      "known_limitations": ["Many-to-one canonical labels cannot recover native subtype identity."]
+    },
+    {
+      "constraint_id": "bcss.mask.no_small_label_cleanup_or_topology_repair",
+      "applies_when": {},
+      "mask_statement": "Do not delete small minority-label components, fill holes, merge components, or smooth across protected labels as generic cleanup.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["mask_gate"],
+      "checker_ids": ["edited_label_topology", "unrequested_labels_preserved"],
+      "critic_requirement": null,
+      "required_inputs": ["source and candidate masks"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": [],
+      "known_limitations": ["Certified dataset statistics are still required to distinguish annotation noise from rare true components outside mask edit."]
+    }
+  ]
+}

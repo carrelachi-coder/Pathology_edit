@@ -1,0 +1,723 @@
+"""Compile Planner intent into a topology-safe executable pixel contract."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from typing import Any
+
+import numpy as np
+from scipy import ndimage
+
+from phase3_mask_edit.core.labels import MaskProfileSchema
+from phase3_mask_edit_refine.candidates import compile_depth_profile_map
+from phase3_mask_edit_refine.models import (
+    EditPlan,
+    PlannedInterface,
+    RefineContractError,
+    ResolvedAreaContract,
+)
+from phase3_mask_edit_refine.scene import SceneAnalysis
+from phase3_mask_edit_refine.topology import (
+    protected_narrow_necks,
+    source_deletion_limit,
+    topology_safe_priority_grow,
+)
+
+
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v2"
+
+
+@dataclass(frozen=True)
+class _CompilerWork:
+    planned: PlannedInterface
+    anchor_masks: tuple[np.ndarray, ...]
+    anchor_mask: np.ndarray
+    legal_source: np.ndarray
+    priority: np.ndarray
+    source_component: np.ndarray
+    item_capacity_px: int
+    source_deletion_limit_px: int
+    protected_source_necks: np.ndarray
+
+
+def compile_edit_plan(
+    plan: EditPlan,
+    *,
+    source_mask: np.ndarray,
+    schema: MaskProfileSchema,
+    scene: SceneAnalysis,
+) -> tuple[EditPlan, dict[str, Any]]:
+    """Resolve area, allocations, and depth with topology constraints up front.
+
+    The desired area remains immutable.  For a ranged task whose fallback
+    policy explicitly permits it, the solver returns the largest topology-safe
+    realization it can construct at or below the desired value.  It never goes
+    below the task's hard minimum and never expands to an unselected interface.
+    """
+
+    mask = np.asarray(source_mask)
+    source_ids = tuple(
+        fine_id
+        for label in plan.source_labels
+        for fine_id in schema.resolve_fine_ids(label)
+    )
+    target_ids = tuple(schema.resolve_fine_ids(plan.target_label))
+    source_region = np.isin(mask, source_ids)
+    target_region = np.isin(mask, target_ids)
+    desired_pixels = plan.area_budget.target_pixels(mask, source_region)
+    hard_min_pixels, hard_max_pixels = plan.area_budget.hard_pixel_interval(
+        mask, source_region
+    )
+    desired_pixels = min(desired_pixels, hard_max_pixels)
+
+    works = _prepare_compiler_work(
+        plan,
+        source_mask=mask,
+        source_region=source_region,
+        scene=scene,
+    )
+    if not works:
+        raise RefineContractError(
+            "execution solver found no legal pixels on the selected interfaces"
+        )
+
+    requested_weights = np.asarray(
+        [item.planned.execution_contract.area_allocation_fraction for item in works],
+        dtype=float,
+    )
+    (
+        allocations,
+        selected_by_work,
+        grow_audits,
+        topology_audit,
+        search_audit,
+    ) = _resolve_topology_safe_area(
+        works,
+        desired_pixels=desired_pixels,
+        hard_min_pixels=hard_min_pixels,
+        weights=requested_weights,
+        source_region=source_region,
+        target_region=target_region,
+        scene=scene,
+        fallback_policy=plan.area_budget.fallback_policy,
+    )
+    realized_allocations = np.asarray(
+        [int(np.count_nonzero(item)) for item in selected_by_work], dtype=int
+    )
+    resolved_pixels = int(realized_allocations.sum())
+    if resolved_pixels < desired_pixels:
+        if plan.area_budget.fallback_policy != "max_feasible_below_target":
+            raise RefineContractError(
+                "exact area is not topology-safe on the selected interfaces: "
+                f"desired={desired_pixels}, maximum_safe={resolved_pixels}"
+            )
+        if resolved_pixels < hard_min_pixels:
+            raise RefineContractError(
+                "maximum topology-safe area is below the task hard minimum: "
+                f"minimum={hard_min_pixels}, maximum_safe={resolved_pixels}"
+            )
+
+    active_indices = [
+        index for index, value in enumerate(realized_allocations.tolist()) if value > 0
+    ]
+    if not active_indices:
+        raise RefineContractError("execution solver produced no topology-safe edit pixels")
+
+    binding_constraint = _binding_constraint(
+        desired_pixels=desired_pixels,
+        resolved_pixels=resolved_pixels,
+        works=works,
+        audits=grow_audits,
+    )
+    resolved_area = ResolvedAreaContract(
+        desired_pixels=int(desired_pixels),
+        hard_min_pixels=int(hard_min_pixels),
+        hard_max_pixels=int(hard_max_pixels),
+        resolved_pixels=int(resolved_pixels),
+        fallback_policy=plan.area_budget.fallback_policy,
+        used_fallback=resolved_pixels < desired_pixels,
+        binding_constraint=binding_constraint,
+        solver_version=EXECUTION_SOLVER_VERSION,
+    )
+
+    compiled_interfaces: list[PlannedInterface] = []
+    audit_interfaces: list[dict[str, Any]] = []
+    for index, work in enumerate(works):
+        allocated_pixels = int(realized_allocations[index])
+        requested = work.planned.execution_contract.depth_profile
+        selected = selected_by_work[index]
+        if allocated_pixels <= 0:
+            audit_interfaces.append(
+                {
+                    "interface_id": work.planned.interface_id,
+                    "status": "dropped_zero_safe_allocation",
+                    "requested_allocation_fraction": float(requested_weights[index]),
+                    "legal_capacity_pixels": int(work.item_capacity_px),
+                    "topology_grow": grow_audits[index],
+                }
+            )
+            continue
+
+        required_scale = work.priority[selected]
+        resolved_peak = float(max(1.0, np.max(required_scale)))
+        band_max = float(work.planned.allowed_edit_band_px[1])
+        resolved_peak = min(band_max, resolved_peak * 1.001)
+        edge_ratio = requested.edge_depth_px / max(requested.peak_depth_px, 1e-6)
+        noise_ratio = requested.noise_amplitude_px / max(
+            requested.peak_depth_px, 1e-6
+        )
+        compiled_profile = replace(
+            requested,
+            peak_depth_px=resolved_peak,
+            edge_depth_px=float(np.clip(edge_ratio, 0.0, 1.0)) * resolved_peak,
+            noise_amplitude_px=min(noise_ratio * resolved_peak, resolved_peak),
+        )
+        compiled_execution = replace(
+            work.planned.execution_contract,
+            area_allocation_fraction=allocated_pixels / max(resolved_pixels, 1),
+            depth_profile=compiled_profile,
+        )
+        compiled_interfaces.append(
+            replace(work.planned, execution_contract=compiled_execution)
+        )
+        audit_interfaces.append(
+            {
+                "interface_id": work.planned.interface_id,
+                "status": "compiled",
+                "anchor_segment_ids": list(
+                    work.planned.execution_contract.anchor_segment_ids
+                ),
+                "requested_allocation_fraction": float(requested_weights[index]),
+                "compiled_allocation_fraction": allocated_pixels
+                / max(resolved_pixels, 1),
+                "allocated_pixels": allocated_pixels,
+                "legal_capacity_pixels": int(work.item_capacity_px),
+                "source_deletion_limit_pixels": int(
+                    work.source_deletion_limit_px
+                ),
+                "requested_peak_depth_px": requested.peak_depth_px,
+                "compiled_peak_depth_px": resolved_peak,
+                "edge_to_peak_ratio": edge_ratio,
+                "noise_to_peak_ratio": noise_ratio,
+                "allowed_band_px": [
+                    float(work.planned.allowed_edit_band_px[0]),
+                    band_max,
+                ],
+                "topology_grow": grow_audits[index],
+            }
+        )
+
+    compiled_plan = replace(
+        plan,
+        candidate_interfaces=tuple(compiled_interfaces),
+        resolved_area=resolved_area,
+    )
+    return compiled_plan, {
+        "compiler_version": EXECUTION_SOLVER_VERSION,
+        "desired_pixels": int(desired_pixels),
+        "hard_allowed_pixels": [int(hard_min_pixels), int(hard_max_pixels)],
+        "resolved_pixels": int(resolved_pixels),
+        "used_fallback": bool(resolved_area.used_fallback),
+        "fallback_policy": plan.area_budget.fallback_policy,
+        "binding_constraint": binding_constraint,
+        "whole_mask_topology": topology_audit,
+        "area_search": search_audit,
+        # Backward-compatible audit key used by existing evaluation scripts.
+        "target_pixels": int(resolved_pixels),
+        "interfaces": audit_interfaces,
+    }
+
+
+def _prepare_compiler_work(
+    plan: EditPlan,
+    *,
+    source_mask: np.ndarray,
+    source_region: np.ndarray,
+    scene: SceneAnalysis,
+) -> tuple[_CompilerWork, ...]:
+    prohibited = np.zeros_like(source_mask, dtype=bool)
+    for region in scene.prohibited_region_masks.values():
+        prohibited |= np.asarray(region, dtype=bool)
+    anchor_groups = tuple(
+        tuple(
+            scene.anchor_masks[anchor_id]
+            for anchor_id in planned.execution_contract.anchor_segment_ids
+            if anchor_id in scene.anchor_masks
+        )
+        for planned in plan.candidate_interfaces
+    )
+    if any(
+        len(group) != len(planned.execution_contract.anchor_segment_ids)
+        for group, planned in zip(anchor_groups, plan.candidate_interfaces)
+    ):
+        raise RefineContractError("execution solver cannot resolve all selected anchors")
+    anchor_unions = tuple(np.logical_or.reduce(group) for group in anchor_groups)
+    assignment = np.argmin(
+        np.stack(
+            [ndimage.distance_transform_edt(~anchor) for anchor in anchor_unions]
+        ),
+        axis=0,
+    )
+    params = plan.tool_program.parameter_ranges
+    maximum_changed_fraction = min(
+        0.55, float(params.get("max_source_component_changed_fraction", 0.55))
+    )
+    minimum_remaining = max(
+        64, int(params.get("min_source_component_remaining_px", 64))
+    )
+    works: list[_CompilerWork] = []
+    for index, (planned, anchor_masks, anchor) in enumerate(
+        zip(plan.candidate_interfaces, anchor_groups, anchor_unions)
+    ):
+        interface = scene.interface_masks.get(planned.interface_id)
+        source_component = scene.component_masks.get(planned.source_component_id)
+        if interface is None or source_component is None:
+            continue
+        _, nearest_interface = ndimage.distance_transform_edt(
+            ~interface, return_indices=True
+        )
+        anchor_influence = anchor[
+            nearest_interface[0], nearest_interface[1]
+        ]
+        distance = ndimage.distance_transform_edt(~anchor)
+        requested = planned.execution_contract.depth_profile
+        peak = max(requested.peak_depth_px, 1e-6)
+        unit_profile = replace(
+            requested,
+            peak_depth_px=1.0,
+            edge_depth_px=float(
+                np.clip(requested.edge_depth_px / peak, 0.0, 1.0)
+            ),
+            noise_amplitude_px=0.0,
+        )
+        unit_depth = compile_depth_profile_map(
+            anchor_masks, profile=unit_profile, shape=source_mask.shape
+        )
+        required_scale = distance / np.maximum(unit_depth, 1e-3)
+        band_min, band_max = planned.allowed_edit_band_px
+        legal = (
+            source_component
+            & source_region
+            & ~prohibited
+            & (assignment == index)
+            & anchor_influence
+            & (distance >= max(0.0, band_min))
+            & (distance <= band_max)
+            & (required_scale <= band_max + 1e-6)
+        )
+        deletion_limit = source_deletion_limit(
+            int(np.count_nonzero(source_component)),
+            maximum_changed_fraction=maximum_changed_fraction,
+            minimum_remaining_pixels=minimum_remaining,
+        )
+        works.append(
+            _CompilerWork(
+                planned=planned,
+                anchor_masks=anchor_masks,
+                anchor_mask=anchor,
+                legal_source=legal,
+                priority=required_scale,
+                source_component=np.asarray(source_component, dtype=bool),
+                item_capacity_px=int(np.count_nonzero(legal)),
+                source_deletion_limit_px=deletion_limit,
+                protected_source_necks=protected_narrow_necks(source_component),
+            )
+        )
+    return tuple(item for item in works if item.item_capacity_px > 0)
+
+
+def _bounded_allocations(
+    works: tuple[_CompilerWork, ...],
+    *,
+    target_pixels: int,
+    weights: np.ndarray,
+) -> tuple[int, ...]:
+    """Allocate pixels with item capacities and shared source-component caps."""
+
+    if not works or target_pixels <= 0:
+        return tuple(0 for _ in works)
+    normalized = np.asarray(weights, dtype=float)
+    normalized = normalized / max(float(normalized.sum()), 1e-12)
+    capacities = np.asarray([item.item_capacity_px for item in works], dtype=int)
+    allocations = np.minimum(
+        np.floor(normalized * target_pixels).astype(int), capacities
+    )
+    group_indices: dict[str, list[int]] = {}
+    for index, work in enumerate(works):
+        group_indices.setdefault(work.planned.source_component_id, []).append(index)
+    for indices in group_indices.values():
+        limit = min(works[index].source_deletion_limit_px for index in indices)
+        observed = int(allocations[indices].sum())
+        if observed <= limit:
+            continue
+        scaled = allocations[indices].astype(float) * (limit / max(observed, 1))
+        reduced = np.floor(scaled).astype(int)
+        remainder = limit - int(reduced.sum())
+        order = sorted(
+            range(len(indices)),
+            key=lambda local: (-(scaled[local] - reduced[local]), indices[local]),
+        )
+        for local in order[:remainder]:
+            reduced[local] += 1
+        allocations[indices] = reduced
+
+    remaining = target_pixels - int(allocations.sum())
+    while remaining > 0:
+        group_used = {
+            group: int(allocations[indices].sum())
+            for group, indices in group_indices.items()
+        }
+        spare = np.zeros(len(works), dtype=int)
+        for index, work in enumerate(works):
+            group = work.planned.source_component_id
+            group_remaining = max(
+                0, work.source_deletion_limit_px - group_used[group]
+            )
+            spare[index] = min(
+                int(capacities[index] - allocations[index]), group_remaining
+            )
+        active = np.flatnonzero(spare > 0)
+        if active.size == 0:
+            break
+        active_weights = normalized[active]
+        active_weights /= max(float(active_weights.sum()), 1e-12)
+        proposal = np.floor(active_weights * remaining).astype(int)
+        proposal = np.minimum(proposal, spare[active])
+        if int(proposal.sum()) == 0:
+            chosen = int(
+                max(active.tolist(), key=lambda idx: (normalized[idx], -idx))
+            )
+            proposal[np.where(active == chosen)[0][0]] = 1
+        for local, index in enumerate(active.tolist()):
+            allocations[index] += int(proposal[local])
+        remaining = target_pixels - int(allocations.sum())
+    return tuple(int(value) for value in allocations)
+
+
+def _resolve_topology_safe_area(
+    works: tuple[_CompilerWork, ...],
+    *,
+    desired_pixels: int,
+    hard_min_pixels: int,
+    weights: np.ndarray,
+    source_region: np.ndarray,
+    target_region: np.ndarray,
+    scene: SceneAnalysis,
+    fallback_policy: str,
+) -> tuple[
+    tuple[int, ...],
+    tuple[np.ndarray, ...],
+    tuple[dict[str, Any], ...],
+    dict[str, Any],
+    dict[str, Any],
+]:
+    attempts: list[dict[str, Any]] = []
+
+    def attempt(total: int):
+        allocations = _bounded_allocations(
+            works, target_pixels=total, weights=weights
+        )
+        selected, audits = _simulate_topology_safe_execution(
+            works,
+            allocations=allocations,
+            desired_pixels=total,
+            target_region=target_region,
+            scene=scene,
+            seed=0,
+        )
+        realized = sum(int(np.count_nonzero(item)) for item in selected)
+        topology = _whole_mask_topology_audit(
+            source_region=source_region,
+            target_region=target_region,
+            selected_by_work=selected,
+            works=works,
+        )
+        valid = realized == total and bool(topology["passed"])
+        attempts.append(
+            {
+                "requested_pixels": int(total),
+                "realized_pixels": int(realized),
+                "topology_passed": bool(topology["passed"]),
+                "valid": bool(valid),
+            }
+        )
+        return allocations, selected, audits, topology, realized, valid
+
+    first = attempt(desired_pixels)
+    if first[-1]:
+        return (*first[:4], {"attempts": attempts, "selection": "desired"})
+
+    first_realized = int(first[-2])
+    if (
+        first_realized < desired_pixels
+        and bool(first[3]["passed"])
+        and first_realized >= hard_min_pixels
+    ):
+        # The full desired request exhausted every reachable safe front. Its
+        # realized prefix is therefore the maximum found by this solver.
+        realized_allocations = tuple(
+            int(np.count_nonzero(item)) for item in first[1]
+        )
+        return (
+            realized_allocations,
+            first[1],
+            first[2],
+            first[3],
+            {"attempts": attempts, "selection": "maximum_reachable_prefix"},
+        )
+
+    if fallback_policy != "max_feasible_below_target":
+        raise RefineContractError(
+            "exact area violates whole-mask topology or reachable capacity: "
+            f"desired={desired_pixels}, realized={first_realized}, "
+            f"topology={first[3]}"
+        )
+
+    upper = min(desired_pixels - 1, max(hard_min_pixels, first_realized - 1))
+    if upper < hard_min_pixels:
+        raise RefineContractError(
+            "no topology-safe area remains inside the hard allowed interval"
+        )
+    span = upper - hard_min_pixels
+    step = max(1, int(np.ceil(span / 16.0)))
+    previous_invalid = upper + 1
+    safe_total: int | None = None
+    safe_result = None
+    trial = upper
+    while trial >= hard_min_pixels:
+        result = attempt(trial)
+        if result[-1]:
+            safe_total = trial
+            safe_result = result
+            break
+        previous_invalid = trial
+        trial -= step
+    if safe_result is None and trial < hard_min_pixels:
+        if not attempts or attempts[-1]["requested_pixels"] != hard_min_pixels:
+            result = attempt(hard_min_pixels)
+            if result[-1]:
+                safe_total = hard_min_pixels
+                safe_result = result
+    if safe_result is None or safe_total is None:
+        raise RefineContractError(
+            "no whole-mask topology-safe edit reaches the task hard minimum: "
+            f"minimum={hard_min_pixels}"
+        )
+
+    # Refine the first safe descending bracket to the largest pixel count. The
+    # audit retains every tested point, so the monotone-prefix assumption is
+    # explicit and reviewable rather than hidden.
+    low = safe_total
+    high = min(upper + 1, previous_invalid)
+    best = safe_result
+    while high - low > 1:
+        middle = (low + high) // 2
+        result = attempt(middle)
+        if result[-1]:
+            low = middle
+            best = result
+        else:
+            high = middle
+    return (
+        *best[:4],
+        {
+            "attempts": attempts,
+            "selection": "largest_verified_safe_below_desired",
+            "monotone_prefix_assumption": True,
+            "selected_pixels": int(low),
+            "first_known_invalid_above": int(high),
+        },
+    )
+
+
+def _whole_mask_topology_audit(
+    *,
+    source_region: np.ndarray,
+    target_region: np.ndarray,
+    selected_by_work: tuple[np.ndarray, ...],
+    works: tuple[_CompilerWork, ...],
+) -> dict[str, Any]:
+    change = np.logical_or.reduce(selected_by_work)
+    source_after = source_region & ~change
+    target_after = target_region | change
+    structure = np.ones((3, 3), dtype=bool)
+    source_components_before = int(ndimage.label(source_region, structure=structure)[1])
+    source_components_after = int(ndimage.label(source_after, structure=structure)[1])
+    target_components_before = int(ndimage.label(target_region, structure=structure)[1])
+    target_components_after = int(ndimage.label(target_after, structure=structure)[1])
+    source_holes_before = _hole_count(source_region)
+    source_holes_after = _hole_count(source_after)
+    target_holes_before = _hole_count(target_region)
+    target_holes_after = _hole_count(target_after)
+    target_merge = target_components_after < target_components_before
+    source_hole_change_allowed = target_merge and (
+        len({item.planned.target_component_id for item in works}) > 1
+    )
+    passed = (
+        source_components_after == source_components_before
+        and target_components_after <= target_components_before
+        and (source_holes_after == source_holes_before or source_hole_change_allowed)
+        and target_holes_after == target_holes_before
+    )
+    return {
+        "passed": bool(passed),
+        "source_components_before": source_components_before,
+        "source_components_after": source_components_after,
+        "target_components_before": target_components_before,
+        "target_components_after": target_components_after,
+        "source_holes_before": source_holes_before,
+        "source_holes_after": source_holes_after,
+        "target_holes_before": target_holes_before,
+        "target_holes_after": target_holes_after,
+        "selected_target_component_ids": sorted(
+            {item.planned.target_component_id for item in works}
+        ),
+        "target_merge": bool(target_merge),
+        "source_hole_change_allowed_by_selected_target_merge": bool(
+            source_hole_change_allowed
+        ),
+    }
+
+
+def _hole_count(mask: np.ndarray) -> int:
+    holes = ndimage.binary_fill_holes(mask) & ~mask
+    return int(ndimage.label(holes, structure=np.ones((3, 3), dtype=bool))[1])
+
+
+def _simulate_topology_safe_execution(
+    works: tuple[_CompilerWork, ...],
+    *,
+    allocations: tuple[int, ...],
+    desired_pixels: int,
+    target_region: np.ndarray,
+    scene: SceneAnalysis,
+    seed: int,
+) -> tuple[tuple[np.ndarray, ...], tuple[dict[str, Any], ...]]:
+    source_states = {
+        work.planned.source_component_id: np.array(
+            scene.component_masks[work.planned.source_component_id], copy=True
+        )
+        for work in works
+    }
+    target_state = np.array(target_region, copy=True)
+    selected_target = np.zeros_like(target_region, dtype=bool)
+    for work in works:
+        selected_target |= scene.component_masks[work.planned.target_component_id]
+    unselected_target = target_region & ~selected_target
+    deleted_by_source = {
+        component_id: 0 for component_id in source_states
+    }
+    selected_by_work = [
+        np.zeros_like(target_region, dtype=bool) for _ in works
+    ]
+    audit_lists: list[list[dict[str, int]]] = [[] for _ in works]
+
+    def grow(index: int, requested: int, pass_index: int) -> int:
+        if requested <= 0:
+            return 0
+        work = works[index]
+        component_id = work.planned.source_component_id
+        frontier = work.anchor_mask | ndimage.binary_dilation(
+            selected_by_work[index], structure=np.ones((3, 3), dtype=bool)
+        )
+        selected, audit = topology_safe_priority_grow(
+            work.legal_source & ~selected_by_work[index],
+            interface_mask=frontier,
+            target_pixels=requested,
+            priority=work.priority,
+            source_component_state=source_states[component_id],
+            target_state=target_state,
+            unselected_target=unselected_target,
+            maximum_source_deletions=work.source_deletion_limit_px,
+            already_deleted_from_source=deleted_by_source[component_id],
+            protected_source_necks=work.protected_source_necks,
+            seed=seed + index * 13007 + pass_index * 104729,
+        )
+        realized = int(np.count_nonzero(selected))
+        selected_by_work[index] |= selected
+        deleted_by_source[component_id] += realized
+        audit_lists[index].append(audit.to_metadata())
+        return realized
+
+    for index, allocation in enumerate(allocations):
+        grow(index, int(allocation), 0)
+
+    # Reallocate any topology-caused deficit to the remaining selected fronts.
+    # This is the joint solver step: interface ratios are preferred, but hard
+    # topology and the total desired area take precedence over a brittle exact
+    # per-interface quota.
+    for pass_index in range(1, len(works) + 2):
+        realized_total = sum(int(np.count_nonzero(item)) for item in selected_by_work)
+        deficit = desired_pixels - realized_total
+        if deficit <= 0:
+            break
+        progress = 0
+        order = sorted(
+            range(len(works)),
+            key=lambda index: (
+                -(works[index].item_capacity_px - int(np.count_nonzero(selected_by_work[index]))),
+                index,
+            ),
+        )
+        for index in order:
+            if deficit <= 0:
+                break
+            work = works[index]
+            component_id = work.planned.source_component_id
+            item_spare = work.item_capacity_px - int(
+                np.count_nonzero(selected_by_work[index])
+            )
+            group_spare = (
+                work.source_deletion_limit_px - deleted_by_source[component_id]
+            )
+            request = min(deficit, item_spare, group_spare)
+            obtained = grow(index, int(request), pass_index)
+            progress += obtained
+            deficit -= obtained
+        if progress <= 0:
+            break
+
+    summarized: list[dict[str, Any]] = []
+    for calls in audit_lists:
+        totals: dict[str, int] = {}
+        for call in calls:
+            for key, value in call.items():
+                totals[key] = totals.get(key, 0) + int(value)
+        totals["call_count"] = len(calls)
+        summarized.append(totals)
+    return tuple(selected_by_work), tuple(summarized)
+
+
+def _binding_constraint(
+    *,
+    desired_pixels: int,
+    resolved_pixels: int,
+    works: tuple[_CompilerWork, ...],
+    audits: tuple[dict[str, Any], ...],
+) -> str:
+    if resolved_pixels >= desired_pixels:
+        return "desired_area_realized"
+    sums = {
+        "source_topology": sum(
+            int(item.get("rejected_source_connectivity", 0))
+            + int(item.get("rejected_source_hole_change", 0))
+            for item in audits
+        ),
+        "target_topology": sum(
+            int(item.get("rejected_target_hole_change", 0))
+            + int(item.get("rejected_target_island", 0))
+            + int(item.get("rejected_unselected_target_contact", 0))
+            for item in audits
+        ),
+        "source_retention": sum(
+            int(item.get("rejected_source_retention", 0)) for item in audits
+        ),
+    }
+    if max(sums.values(), default=0) > 0:
+        return max(sums, key=lambda key: (sums[key], key))
+    total_legal = sum(item.item_capacity_px for item in works)
+    return (
+        "legal_interface_capacity"
+        if total_legal < desired_pixels
+        else "reachable_interface_capacity"
+    )

@@ -1,0 +1,165 @@
+{
+  "skill_id": "breast-invasive-carcinoma-v1",
+  "skill_kind": "pathology_domain",
+  "version": "1.1.0-draft",
+  "review_status": "draft",
+  "summary": "Breast carcinoma architecture rules for benign terminal duct-lobular units, in-situ disease, invasive fronts, adipose tissue, and vascular spaces.",
+  "capabilities": {
+    "organ": "breast",
+    "cancer_family": "carcinoma",
+    "recognized_structures": [
+      "terminal_duct_lobular_unit", "benign_duct", "dcis_involved_duct", "invasive_nst_nest_or_gland", "discohesive_or_single_file_invasion", "desmoplastic_stroma", "adipose_tissue", "vascular_or_lymphatic_space"
+    ],
+    "retrieval_strata": ["invasive_histologic_type", "in_situ_status", "grade", "adipose_interface", "vascular_interface"]
+  },
+  "rules": [
+    {
+      "rule_id": "breast.preserve_benign_duct_lobule_units",
+      "scope": "interface_selection_and_critic",
+      "applies_when": {"structure": ["terminal_duct_lobular_unit", "benign_duct"]},
+      "claim": "Do not partially transect, notch, or erase a recognizable benign duct or lobule during a generic tumor burden edit.",
+      "required_observation": "Trace the full epithelial rim, lumen, lobular grouping, and surrounding specialized stroma on H&E before accepting a nearby anchor.",
+      "severity": "hard",
+      "deterministic_check_id": null,
+      "critic_requirement": "veto_benign_duct_lobule_transection",
+      "exceptions": ["A dedicated benign-to-malignant transformation or invasion primitive with its own structural contract."],
+      "counterexamples": ["Replacing one wall of a round benign duct while leaving the other wall intact.", "Cutting through half of a lobule to meet an area target."],
+      "expected_morphology": ["Benign duct/lobule contours and lumina remain continuous and recognizable."],
+      "forbidden_morphology": ["Partial epithelial-rim deletion, abrupt ductal notch, lobule bisection, or isolated residual epithelial fragments."],
+      "evidence_citations": [
+        "https://tumourclassification.iarc.who.int/chapters/32",
+        "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
+      ],
+      "dataset_statistics": {},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Myoepithelial and basement-membrane status may not be resolvable at low patch magnification."]
+    },
+    {
+      "rule_id": "breast.dcis_remains_duct_confined_in_burden_edit",
+      "scope": "semantic_contract_and_critic",
+      "applies_when": {"structure": "dcis_involved_duct"},
+      "claim": "A generic burden edit must not convert a duct-confined in-situ component into invasive carcinoma or deform it as if it were an unconstrained solid tumor.",
+      "required_observation": "Identify the involved ductal outline, peripheral myoepithelial/basement-membrane context when visible, lumen, and any central necrosis before selecting an interface.",
+      "severity": "hard",
+      "deterministic_check_id": "label_transition",
+      "critic_requirement": "veto_dcis_confinement_violation",
+      "exceptions": ["An explicit, reviewed DCIS-to-invasion primitive."],
+      "counterexamples": ["Growing a DCIS label beyond one side of its duct during generic tumor increase.", "Carving a wedge through a comedo-type involved duct and its central necrosis."],
+      "expected_morphology": ["Duct-confined geometry, lumen/necrosis relationship, and fine label remain intact unless specifically targeted."],
+      "forbidden_morphology": ["Unrequested duct-wall breach, loss of a coherent duct outline, or silent DCIS/invasive relabeling."],
+      "evidence_citations": [
+        "https://tumourclassification.iarc.who.int/chapters/32",
+        "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
+      ],
+      "dataset_statistics": {},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["An annotation profile without a DCIS fine label cannot support this distinction and must preserve the coarse component conservatively."]
+    },
+    {
+      "rule_id": "breast.invasive_nst_growth_follows_compatible_front",
+      "scope": "interface_selection_and_critic",
+      "applies_when": {"structure": "invasive_nst_nest_or_gland", "primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1"]},
+      "claim": "Prefer a broad existing invasive tumor-stroma front where adjacent H&E matches the same nests, cords, trabeculae, sheets, or irregular glands.",
+      "required_observation": "Compare the anchor and nearby same-component tumor for epithelial cohesion, architecture, stromal reaction, and local boundary direction.",
+      "severity": "hard",
+      "deterministic_check_id": "depth_span_ratio",
+      "critic_requirement": "veto_invasive_front_morphology_mismatch",
+      "exceptions": ["A visibly discohesive histologic type should use the discohesive rule rather than a cohesive-front template."],
+      "counterexamples": ["A short deep bite into a large cohesive nest.", "Expanding a solid nest into H&E tissue whose cells and architecture do not resemble the tumor component."],
+      "expected_morphology": ["A distributed boundary displacement along an established invasive front with locally consistent tumor architecture."],
+      "forbidden_morphology": ["Deep narrow slots, geometric wedges, remote islands, or abrupt architecture changes."],
+      "evidence_citations": [
+        "https://tumourclassification.iarc.who.int/chapters/32",
+        "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
+      ],
+      "dataset_statistics": {},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Subtype and grade must be supplied or visually estimated with uncertainty."]
+    },
+    {
+      "rule_id": "breast.discohesive_invasion_is_not_forced_into_a_bulk_mass",
+      "scope": "planner_and_critic",
+      "applies_when": {"structure": "discohesive_or_single_file_invasion"},
+      "claim": "When H&E shows discohesive cells or single-file infiltration, do not impose a smooth cohesive mass boundary or fill intervening stroma wholesale.",
+      "required_observation": "Look for single cells, linear files, targetoid growth around ducts, and low-cohesion infiltration before choosing a tool family.",
+      "severity": "hard",
+      "deterministic_check_id": null,
+      "critic_requirement": "veto_bulk_boundary_for_discohesive_invasion",
+      "exceptions": ["A separate coarse annotation profile may represent a reviewed aggregate tumor region, but the edit must still match its local H&E support."],
+      "counterexamples": ["Morphological closing that turns single-file infiltration into a solid blob.", "Using a convex hull around sparse invasive cells as the tumor expansion."],
+      "expected_morphology": ["Sparse, infiltrative geometry remains compatible with visible discohesive growth and does not invent bulk tumor between files."],
+      "forbidden_morphology": ["Forced solidification, broad stroma filling, or a capsule-like smooth outline around dispersed cells."],
+      "evidence_citations": ["https://tumourclassification.iarc.who.int/chapters/32"],
+      "dataset_statistics": {},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Single-cell disease may be below the resolution of a semantic mask."]
+    },
+    {
+      "rule_id": "breast.adipose_invasion_preserves_adipocyte_space_pattern",
+      "scope": "interface_selection_and_critic",
+      "applies_when": {"adjacent_structure": "adipose_tissue"},
+      "claim": "At an adipose interface, tumor expansion should follow visible tongues, nests, cords, or cells between adipocytes rather than replacing a rectangular block of fat.",
+      "required_observation": "Inspect adipocyte outlines, septa, and the geometry of the same tumor component at the invasive edge.",
+      "severity": "hard",
+      "deterministic_check_id": "boundary_naturalness",
+      "critic_requirement": "veto_adipose_interface_fill",
+      "exceptions": ["A genuinely broad confluent tumor front may displace adipose over a wider band when H&E supports it."],
+      "counterexamples": ["A filled polygon that removes whole adipocyte fields with a straight edge.", "A smooth disk grown into fat despite an interstitial infiltrative pattern."],
+      "expected_morphology": ["Irregular but continuous advance respecting adipocyte spaces and local septa."],
+      "forbidden_morphology": ["Rectangular fat replacement, remote tumor islands, or loss of unrelated adipose gaps."],
+      "evidence_citations": ["https://tumourclassification.iarc.who.int/chapters/32"],
+      "dataset_statistics": {},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Adipocyte spaces may be conflated with background by some annotation profiles; profile rules take precedence."]
+    },
+    {
+      "rule_id": "breast.vascular_space_is_not_generic_stroma",
+      "scope": "semantic_contract_and_critic",
+      "applies_when": {"adjacent_structure": "vascular_or_lymphatic_space"},
+      "claim": "Do not grow or regress tumor across a vessel/lymphatic boundary as a generic tumor-stroma edit, and do not alter angioinvasion without a dedicated primitive.",
+      "required_observation": "Identify a continuous endothelial-lined space, luminal contents, and any intraluminal tumor cluster on H&E and mask overlay.",
+      "severity": "hard",
+      "deterministic_check_id": "unrequested_labels_preserved",
+      "critic_requirement": "veto_vascular_space_violation",
+      "exceptions": ["A reviewed lymphovascular-invasion primitive with a vessel containment constraint."],
+      "counterexamples": ["Expanding extravascular tumor through a vessel label.", "Connecting intravascular and extravascular tumor by filling the vessel wall."],
+      "expected_morphology": ["Unrequested vascular labels and intraluminal tumor relationships remain unchanged."],
+      "forbidden_morphology": ["Vessel-wall crossing, lumen filling, or implicit creation/removal of angioinvasion."],
+      "evidence_citations": [
+        "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates",
+        "https://tumourclassification.iarc.who.int/chapters/32"
+      ],
+      "dataset_statistics": {},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Vessel walls and lymphatics may require immunohistochemistry for definitive classification."]
+    },
+    {
+      "rule_id": "breast.desmoplastic_stroma_is_not_all_non_tumor_tissue",
+      "scope": "planner_and_critic",
+      "applies_when": {"target_or_source": "Stroma"},
+      "claim": "Use a stroma-specific edit only where H&E shows compatible stromal tissue; do not substitute secretion, fat, necrosis, immune aggregates, lumen, or generic Other tissue.",
+      "required_observation": "Verify collagenous/myxoid/desmoplastic matrix and stromal cells at the proposed band and consult the annotation profile's class collapses.",
+      "severity": "hard",
+      "deterministic_check_id": "semantic_capability_guard",
+      "critic_requirement": "veto_nonstromal_source_for_stroma_edit",
+      "exceptions": ["A coarse profile may support only a generic non-tumor burden edit, not a stroma-specific statement."],
+      "counterexamples": ["Calling BCSS glandular secretion true stroma after the unified remap.", "Using fat or necrosis as the source of stroma expansion."],
+      "expected_morphology": ["The selected interface is tumor against visually compatible stromal matrix."],
+      "forbidden_morphology": ["Stroma edit through duct lumen, secretion, adipose, necrosis, immune aggregate, vessel, or zero/background."],
+      "evidence_citations": [
+        "https://tumourclassification.iarc.who.int/chapters/32",
+        "https://doi.org/10.1093/bioinformatics/btz083"
+      ],
+      "dataset_statistics": {},
+      "version": "1.1.0-draft",
+      "review_status": "draft",
+      "known_limitations": ["Stromal subtype and activation state are not directly encoded by most semantic profiles."]
+    }
+  ]
+}

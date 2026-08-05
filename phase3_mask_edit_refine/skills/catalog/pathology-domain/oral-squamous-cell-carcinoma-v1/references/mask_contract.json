@@ -1,0 +1,64 @@
+{
+  "skill_id": "oral-squamous-cell-carcinoma-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Mask-stage constraints for coarse carcinoma interfaces, component topology, encoded protected tissues, and immutable non-tissue; SCC architecture is downstream.",
+  "constraints": [
+    {
+      "constraint_id": "oral_scc.mask.only_declared_carcinoma_transition",
+      "applies_when": {},
+      "mask_statement": "Change only the declared source label to carcinoma or carcinoma to the declared target; preserve every unrequested semantic label exactly and never reinterpret a coarse label as a finer tissue class.",
+      "observability": ["semantic_mask", "provenance"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved", "semantic_capability_guard"],
+      "critic_requirement": null,
+      "required_inputs": ["semantic mask", "verified annotation profile"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Render carcinoma morphology without claiming that coarse Other tissue was specifically stroma, muscle, mucosa, or salivary tissue."],
+      "known_limitations": ["ORCA cannot distinguish non-carcinoma tissue subtypes."]
+    },
+    {
+      "constraint_id": "oral_scc.mask.protect_surface_keratin_nerve_vessel_when_encoded",
+      "applies_when": {},
+      "mask_statement": "Use native/auxiliary maps to prohibit overlap with surface epithelium, keratin centers, nerves, and vessels; when visible only on H&E, mask edit cannot guarantee preservation and must abstain on ambiguous overlap.",
+      "observability": ["native_annotation", "auxiliary_structure_map", "source_he"],
+      "enforcement": "conditional",
+      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
+      "checker_ids": ["prohibited_region", "unrequested_labels_preserved"],
+      "critic_requirement": "veto_unencoded_oral_structure_overlap",
+      "required_inputs": ["source H&E", "native/auxiliary structure map when available"],
+      "failure_action": "abstain_case",
+      "generation_handoff": ["Nest/cord cohesion, keratin pearls, satellites, and perineural/vascular relationships must be preserved or rendered downstream and re-audited."],
+      "known_limitations": ["ORCA mask alone cannot encode these structures."]
+    },
+    {
+      "constraint_id": "oral_scc.mask.broad_existing_tissue_interface_only",
+      "applies_when": {},
+      "mask_statement": "Start only from an existing carcinoma/non-carcinoma-tissue interface, stay inside the selected band, and reject short/deep or detached edits.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["interface_contact", "tumor_stroma_interface", "depth_span_ratio", "boundary_naturalness"],
+      "critic_requirement": null,
+      "required_inputs": ["component/interface scene graph"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Use a same-nest/cord/keratinization context for H&E generation."],
+      "known_limitations": ["An ORCA tissue interface is semantically legal but still requires H&E compatibility review."]
+    },
+    {
+      "constraint_id": "oral_scc.mask.no_satellite_bridge_or_nest_split",
+      "applies_when": {},
+      "mask_statement": "Do not create islands, bridge separate carcinoma foci, split a source nest/component, merge targets, or add/fill holes.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["mask_gate"],
+      "checker_ids": ["component_topology", "edited_label_topology"],
+      "critic_requirement": null,
+      "required_inputs": ["source and candidate masks"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": [],
+      "known_limitations": ["True satellite creation or removal requires a dedicated primitive and cannot reuse burden-edit topology rules."]
+    }
+  ]
+}

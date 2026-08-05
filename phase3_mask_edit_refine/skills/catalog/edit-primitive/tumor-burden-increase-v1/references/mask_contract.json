@@ -1,0 +1,36 @@
+{
+  "skill_id": "tumor-burden-increase-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable source-to-Tumor expansion contract.",
+  "constraints": [
+    {
+      "constraint_id": "primitive.mask.tumor_increase_declared_transition_and_area",
+      "applies_when": {},
+      "mask_statement": "Convert only the resolved source label to Tumor, preserve every other pixel, and satisfy the immutable caller-provided area budget.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved", "changed_area"],
+      "critic_requirement": null,
+      "required_inputs": ["source mask", "area budget"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Render tumor morphology appropriate to the domain/profile; the Tumor ID alone is not a histologic guarantee."],
+      "known_limitations": []
+    },
+    {
+      "constraint_id": "primitive.mask.tumor_increase_interface_and_topology",
+      "applies_when": {},
+      "mask_statement": "Start from one existing source-to-Tumor interface, stay in its band, and reject remote islands, splits, merges, holes, prohibited overlap, or unnatural depth/shape.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["interface_contact", "prohibited_region", "component_topology", "edited_label_topology", "depth_span_ratio", "boundary_naturalness"],
+      "critic_requirement": null,
+      "required_inputs": ["component/interface scene graph"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": [],
+      "known_limitations": []
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "skill_id": "breast-invasive-carcinoma-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Mask-stage constraints only; detailed breast morphology remains in rules.json and is handed to image generation.",
+  "constraints": [
+    {
+      "constraint_id": "breast.mask.preserve_unrequested_fine_labels",
+      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"]},
+      "mask_statement": "Only the declared source fine IDs may change to the declared target fine ID; DCIS, angioinvasion, normal epithelium, vessel, immune, necrosis, and every other unrequested label remain pixel-identical.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved"],
+      "critic_requirement": null,
+      "required_inputs": ["fine-ID semantic mask"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Render the retained/new tumor subtype without changing protected fine-label regions."],
+      "known_limitations": ["A coarse profile without DCIS or angioinvasion IDs cannot enforce subtype preservation beyond its available labels."]
+    },
+    {
+      "constraint_id": "breast.mask.protect_encoded_glandular_and_vascular_regions",
+      "applies_when": {},
+      "mask_statement": "When ducts, lobules, lumina, or vessels are encoded in a native or auxiliary structure map, rasterize them as prohibited regions and reject any overlap; when they are visible only on H&E, do not claim deterministic mask protection and abstain if the interface cannot avoid them.",
+      "observability": ["native_annotation", "auxiliary_structure_map", "source_he"],
+      "enforcement": "conditional",
+      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
+      "checker_ids": ["prohibited_region", "unrequested_labels_preserved"],
+      "critic_requirement": "veto_unencoded_breast_structure_overlap",
+      "required_inputs": ["source H&E", "native/auxiliary structure map when available"],
+      "failure_action": "abstain_case",
+      "generation_handoff": ["Preserve duct/lobule lumina and vessel walls visually; mask protection alone does not create their microscopic architecture."],
+      "known_limitations": ["Most semantic profiles do not encode myoepithelial layers, basement membrane, or gland lumina explicitly."]
+    },
+    {
+      "constraint_id": "breast.mask.use_one_existing_interface_band",
+      "applies_when": {},
+      "mask_statement": "Every changed component must start from one selected existing source-to-target component interface and remain inside its allowed band; spread area along the interface before increasing depth.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["interface_contact", "tumor_stroma_interface", "depth_span_ratio", "boundary_naturalness"],
+      "critic_requirement": null,
+      "required_inputs": ["component/interface scene graph"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Match the selected local invasive growth pattern in the generated H&E."],
+      "known_limitations": ["Geometric naturalness does not prove histologic subtype compatibility."]
+    },
+    {
+      "constraint_id": "breast.mask.no_component_or_hole_repair",
+      "applies_when": {},
+      "mask_statement": "Do not create islands, split a source component, merge target components, or add/fill source/target holes during a burden edit.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["mask_gate"],
+      "checker_ids": ["component_topology", "edited_label_topology"],
+      "critic_requirement": null,
+      "required_inputs": ["source and candidate masks"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": [],
+      "known_limitations": ["Dedicated topology-changing primitives are outside v1."]
+    }
+  ]
+}

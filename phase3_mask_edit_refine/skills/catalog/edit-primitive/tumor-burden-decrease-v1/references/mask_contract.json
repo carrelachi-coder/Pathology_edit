@@ -1,0 +1,36 @@
+{
+  "skill_id": "tumor-burden-decrease-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable Tumor-to-resolved-non-tumor retreat contract.",
+  "constraints": [
+    {
+      "constraint_id": "primitive.mask.tumor_decrease_declared_transition_and_area",
+      "applies_when": {},
+      "mask_statement": "Convert only Tumor pixels to the resolved target, preserve every other pixel, and satisfy the immutable caller-provided area budget.",
+      "observability": ["semantic_mask"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["label_transition", "unrequested_labels_preserved", "changed_area"],
+      "critic_requirement": null,
+      "required_inputs": ["source mask", "area budget"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": ["Render the resolved non-tumor tissue appropriately; its coarse target ID does not determine microscopic appearance."],
+      "known_limitations": []
+    },
+    {
+      "constraint_id": "primitive.mask.tumor_decrease_no_internal_notch_or_topology_change",
+      "applies_when": {},
+      "mask_statement": "Retreat only from an existing broad Tumor-to-target interface and reject deep notches, detached regions, source splits, target merges, islands, holes, or prohibited overlap.",
+      "observability": ["semantic_mask", "scene_graph"],
+      "enforcement": "deterministic",
+      "enforcement_stages": ["candidate_generation", "mask_gate"],
+      "checker_ids": ["interface_contact", "prohibited_region", "component_topology", "edited_label_topology", "depth_span_ratio", "boundary_naturalness"],
+      "critic_requirement": null,
+      "required_inputs": ["component/interface scene graph"],
+      "failure_action": "reject_candidate",
+      "generation_handoff": [],
+      "known_limitations": ["Depth/span thresholds remain draft until expert calibration."]
+    }
+  ]
+}

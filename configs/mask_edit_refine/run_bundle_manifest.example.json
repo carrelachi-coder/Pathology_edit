@@ -1,0 +1,13 @@
+{
+  "schema_version": "mask-edit-refine-run-bundle-v1",
+  "case_id": "152",
+  "artifacts": {
+    "source_image": {"path": "/read-only/path/source.png", "sha256": "REPLACE_WITH_SHA256"},
+    "source_mask": {"path": "/read-only/path/source.npy", "sha256": "REPLACE_WITH_SHA256"},
+    "target_mask": {"path": "/read-only/path/target.npy", "sha256": "REPLACE_WITH_SHA256"},
+    "instruction": {"path": "/read-only/path/instruction.json", "sha256": "REPLACE_WITH_SHA256"},
+    "planner_response": {"path": "/read-only/path/planner_response.json", "sha256": "REPLACE_WITH_SHA256"},
+    "run_manifest": {"path": "/read-only/path/run_manifest.json", "sha256": "REPLACE_WITH_SHA256"},
+    "code_snapshot": {"path": "/read-only/path/code_snapshot.tar", "sha256": "REPLACE_WITH_SHA256"}
+  }
+}
