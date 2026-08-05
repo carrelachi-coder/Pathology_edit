@@ -26,7 +26,7 @@ Current state:
 |---|---|---|
 | Mask semantic edit | Frozen and complete | Preserve artifacts and report the final Instruction/GT results; do not reopen model or threshold selection. |
 | CellDistNet / nuclei layout | Engineering-accepted and closed | Keep CellDistNet as a tissue-aware placement prior, preserve the Section 5.8 artifacts, and do not reopen checkpoint or sampler selection. |
-| Segmentator | Fine V2 accepted; gated ablations active | Finish the pre-registered Boundary and CellViT-teacher comparisons on real human tissue masks, then freeze one evaluator. |
+| Segmentator | Production evaluator frozen to `segmentator-fine-legacy-anchor-v1` | Keep `/data1/zhao/wqx/segmentator_fine/legacy_anchor_fine_seed42/best_composite.pt` immutable for the active benchmark. Treat C-line and any small-LR continuation as research candidates until they pass group-disjoint validation and a new clinician-labelled endpoint. |
 | Generation consistency | Pilot implementation only | Run paired target-condition consistency, edit-local fidelity/preservation, and seed robustness with the final evaluator. |
 | Patho-KID | Automatic-condition interim complete | Run the clinician-condition primary analysis and the paired automatic-condition sensitivity analysis on identical accepted sample IDs. |
 | Representation insight | Paired U1/U2 analysis complete | Preserve the frozen tumor-burden and stromal-immune cohorts, report measured spatial overlap and cross-fitted axes, and do not expand into a general downstream-utility claim. |
@@ -52,9 +52,11 @@ Confirmed scope:
   unchanged drift and a narrow boundary ring as secondary safety diagnostics.
 - Formal Inpaint outputs are evaluated as generated. Reference RGB is never
   pasted back after synthesis.
-- CellDistNet is a supporting component. Counts and exact type quotas come from
-  the frozen patch/profile statistical policy. The epoch-29 C3 checkpoint
-  contributes only `P(nucleus) = 1 - P(background)` for spatial landing.
+- CellDistNet is a supporting component. Counts come from the frozen
+  patch/profile statistical policy. The epoch-29 C3 checkpoint contributes
+  `P(nucleus) = 1 - P(background)` for spatial landing and local type
+  posterior evidence for cumulative type assignment; it does not set the
+  total count.
   Count-head, density-head, and inference-grid model selection are retired.
   Its required claim is engineering validity, not learned point-process
   superiority: it must realize valid layouts safely and provide a useful
@@ -1383,7 +1385,7 @@ The benchmark and production endpoint use:
 
 `density_scale_json = none`
 
-`gamma = 1.5`
+`gamma = 3.0`
 
 `local_density_direct_min_area = 20,000`
 
@@ -1448,33 +1450,53 @@ The scalar ProbNet field, its integral, and any learned count/density head are
 absent from this definition. A missing dataset-by-tissue density is a profile
 coverage failure and must not silently reactivate a probability-derived count.
 
-Position is sampled only after total, tissue, type, and disconnected-component
+Position is sampled only after total, tissue, and disconnected-component
 quotas are fixed. For each tissue-component pair, let
 `C = C_poisson union C_retry` be its frozen candidate pool and define:
 
 ```text
 P_nuc(x) = 1 - P_theta(background | x)
 
-w(x) = P_nuc(x)^gamma + epsilon,  x in C
+w(x) = (P_nuc(x) / (1 - P_nuc(x)))^gamma,  x in C
 
 Pr(x_k = x | C_k) = w(x) / sum_{u in C_k} w(u)
 
 C_{k+1} = C_k \ {x_k}
 ```
 
-This is probability-weighted sampling without replacement with `gamma = 1.5`.
+This is odds-mass sampling without replacement with `gamma = 3.0`.
 The benchmark implements the equivalent stochastic ordering
 `rank_score(x) = log(w(x)) + g_x`, where
 `g_x ~ Gumbel(0, 1)`, and tries candidates in decreasing score order. Thus
 ProbNet changes only the order in which spatial candidates are attempted; it
 does not change any count or quota.
 
-Counts and type proportions use reliable patch-local observations directly.
-Sparse observations shrink toward the matching
-`dataset/reference_profile` library; BCSS is never a universal fallback.
-Type and disconnected-component quotas use exact largest remainder. Same-class
-reference shapes are preferred and the matching profile library supplies only
-same-class shortages. A transformed shape `S` is accepted only when
+The formal ProbNet spatial ablation in this section keeps `gamma=3.0` fixed so
+samplers remain directly comparable. The online product adds a separate,
+release-pinned sampling feedback controller after this policy: it evaluates
+every attempt against the same `gamma=3.0` probability mass, allows at most
+three attempts, and permits at most one directional sampling-gamma update
+(`x0.75` for statistically supported over-concentration, `x4/3` for
+under-following, clamped to `[1.5,5]`). Count, type allocation, connected-
+component quotas, edit regions, shape-source rules and spacing are immutable.
+This online controller is an operational recovery mechanism and is not an
+additional ProbNet benchmark arm.
+
+Attempt-budget evidence comes from the completed nuclei stage at
+`/data1/zhao/wqx/benchmark_v1/g2_600_run_20260802_v2`: 595 cases passed the
+first attempt, three the second and two the third; zero required a fourth
+attempt. Because those 600 outputs were generated and selected by the existing
+audit, they validate the three-attempt budget and regression coverage only.
+They must not be used to fit the v3 directional threshold or as independent
+biological quality ground truth.
+
+Counts use reliable patch-local observations directly. Sparse observations
+shrink toward the matching `dataset/reference_profile` library; BCSS is never
+a universal fallback. Disconnected-component quotas use exact largest
+remainder. Cell types are assigned from local ProbNet posterior evidence
+log-pooled with the target-tissue empirical prior and cumulative posterior
+balancing. Same-class reference shapes are preferred and the matching profile
+library supplies only same-class shortages. A transformed shape `S` is accepted only when
 `|S intersect N_current| = 0` and `S` is wholly contained in valid biological
 tissue. Valid biological tissue is non-background tissue excluding
 dataset-specific skipped labels; crossing between two valid tissue classes is

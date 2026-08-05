@@ -59,7 +59,12 @@ from phase3_mask_edit.core.mask_io import (
     save_id_mask,
     save_metadata,
 )
-from phase3_mask_edit.core.gland_region import glas_whole_gland_generation_region
+from phase3_mask_edit.core.gland_region import (
+    GLAS_WHOLE_GLAND_CELL_REGION_POLICY,
+    SEMANTIC_CELL_DELETION_REGION_POLICY,
+    SEMANTIC_NUCLEI_GENERATION_REGION_POLICY,
+    glas_whole_gland_generation_region,
+)
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.instruction_parser import (
     InstructionParserConfig,
@@ -71,6 +76,14 @@ from phase3_mask_edit.parser.qwen_local_parser import (
 )
 from phase3_mask_edit.parser.semantic_diff import save_semantic_diff
 from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
+from inpaint_cells.generate import (
+    DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+    DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR,
+)
 from controlnet_train.inference.router import AgenticRoutingConfig, route_agentic_edit_request
 from controlnet_train.inference.model_paths import (
     DEFAULT_CELLVIT_MODEL,
@@ -114,7 +127,13 @@ DEFAULT_SEGMENTATOR_RELEASE = (
     REPO_ROOT
     / "benchmark_configs"
     / "releases"
-    / "segmentator_fine_c_epoch2.json"
+    / "segmentator_fine_legacy_anchor.json"
+)
+DEFAULT_ONLINE_PRODUCT_RELEASE = (
+    REPO_ROOT
+    / "benchmark_configs"
+    / "releases"
+    / "online_agent_product_v1.json"
 )
 DEFAULT_SEGMENTATOR_PYTHON = os.environ.get(
     "PATHOLOGY_SEGMENTATOR_PYTHON",
@@ -176,9 +195,9 @@ GENERATION_DEVICE_CHOICES = ["cuda", *CUDA_DEVICE_CHOICES, "cpu"]
 
 
 def _canonical_profile(profile: str) -> str:
-    if profile == "GlaS":
-        return "GlaS"
-    return (profile or "BCSS").upper()
+    return MaskProfileSchema.from_reference_profile(
+        profile or "BCSS"
+    ).reference_profile
 
 
 def _profile_defaults(profile: str) -> dict[str, str]:
@@ -334,7 +353,7 @@ def _run_segmentator_tissue_mask(
         selected_prediction = prediction_dir / "coarse_mask.png"
     if not selected_prediction.is_file():
         raise gr.Error(
-            "C-line Segmentator finished without a fine or coarse tissue mask; "
+            "Frozen Segmentator finished without a fine or coarse tissue mask; "
             f"see {output_dir / 'segmentator.log'}"
         )
     shutil.copy2(selected_prediction, output_path)
@@ -356,7 +375,24 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
         "probnet_ckpt": None,
         "nuclei_library": None,
         "probnet_device": "auto",
-        "probnet_gamma_values": "1.5",
+        "probnet_gamma_values": "3",
+        "probnet_sampling_feedback_attempts": DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS,
+        "probnet_sampling_feedback_gamma_down_factor": (
+            DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR
+        ),
+        "probnet_sampling_feedback_gamma_up_factor": (
+            DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR
+        ),
+        "probnet_sampling_feedback_gamma_min": (
+            DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN
+        ),
+        "probnet_sampling_feedback_gamma_max": (
+            DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX
+        ),
+        "probnet_sampling_feedback_concentration_z_threshold": (
+            DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD
+        ),
+        "minimum_mask_width": 33,
         "density_scale_json": None,
         "reference_shape_min_area": 8,
         "reference_shape_max_area_ratio": 0.0,
@@ -367,7 +403,7 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
         "library_size_log_area_jitter": 0.05,
         "generation_mode": "dry-run",
         "cross_backend": "cross-v1",
-        "route_threshold": 0.35,
+        "route_threshold": 0.30,
         "pretrained_model_name_or_path": None,
         "inpaint_checkpoint": None,
         "cross_v1_checkpoint": None,
@@ -383,6 +419,69 @@ def _make_args(state: dict[str, Any], **overrides: Any) -> SimpleNamespace:
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
+
+
+def _validate_g2_probnet_ui_inputs(
+    state: dict[str, Any],
+    *,
+    cell_fill_mode: str,
+    gamma_values: str,
+    density_scale_json: str,
+) -> str:
+    if cell_fill_mode != "probnet":
+        return gamma_values or "3"
+    runtime = dict(state.get("verification_runtime") or {})
+    release_path = Path(
+        runtime.get("product_release") or DEFAULT_ONLINE_PRODUCT_RELEASE
+    )
+    release = json.loads(release_path.read_text(encoding="utf-8"))
+    expected_gamma = float(release["nuclei_generation"]["gamma"])
+    requested = [
+        float(value.strip())
+        for value in (gamma_values or str(expected_gamma)).split(",")
+        if value.strip()
+    ]
+    if requested != [expected_gamma]:
+        raise gr.Error(
+            "The online G2 nuclei policy is frozen to one gamma value: "
+            f"{expected_gamma:g}."
+        )
+    if (density_scale_json or "").strip():
+        raise gr.Error(
+            "The online G2 nuclei policy does not use a density-scale JSON override."
+        )
+    return f"{expected_gamma:g}"
+
+
+def _online_nuclei_feedback_config(state: dict[str, Any]) -> dict[str, Any]:
+    """Load the non-user-editable nuclei feedback loop from the release."""
+
+    runtime = dict(state.get("verification_runtime") or {})
+    release_path = Path(
+        runtime.get("product_release") or DEFAULT_ONLINE_PRODUCT_RELEASE
+    )
+    release = json.loads(release_path.read_text(encoding="utf-8"))
+    nuclei = release["nuclei_generation"]
+    return {
+        "probnet_sampling_feedback_attempts": int(
+            nuclei["sampling_feedback_max_attempts"]
+        ),
+        "probnet_sampling_feedback_gamma_down_factor": float(
+            nuclei["sampling_feedback_gamma_down_factor"]
+        ),
+        "probnet_sampling_feedback_gamma_up_factor": float(
+            nuclei["sampling_feedback_gamma_up_factor"]
+        ),
+        "probnet_sampling_feedback_gamma_min": float(
+            nuclei["sampling_feedback_gamma_min"]
+        ),
+        "probnet_sampling_feedback_gamma_max": float(
+            nuclei["sampling_feedback_gamma_max"]
+        ),
+        "probnet_sampling_feedback_concentration_z_threshold": float(
+            nuclei["sampling_feedback_concentration_z_threshold"]
+        ),
+    }
 
 
 def _json_text(payload: dict[str, Any]) -> str:
@@ -2708,6 +2807,8 @@ def _strength_denominator_pixels(
     schema: MaskProfileSchema,
 ) -> int:
     name = primitive_config.get("name")
+    if name == "stroma_increase":
+        return int(mask.size)
     if name in {"tumor_burden_increase", "tumor_burden_decrease"}:
         return int(np.count_nonzero(np.isin(mask, schema.tumor_fine_ids)))
     if name in {"necrosis_appearance", "intratumoral_immune_infiltration"}:
@@ -2768,7 +2869,7 @@ def _recommendation_legal_pixels(
             return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, source)))
     if name == "stromal_immune_infiltration":
         return int(np.count_nonzero(_safe_schema_label_mask(mask, schema, "Stroma")))
-    if name == "stromal_desmoplasia":
+    if name in {"stroma_increase", "stromal_desmoplasia"}:
         sources = [
             *_labels_from_operation(operation.get("primary_sources")),
             *_labels_from_operation(operation.get("secondary_sources")),
@@ -2908,8 +3009,8 @@ def _resolve_ui_cell_regions(
     reference_nuclei: np.ndarray,
     semantic_change_region: np.ndarray,
     cell_fill_mode: str,
-) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    """Resolve destructive and buffered supports exactly as the CLI pipeline."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    """Resolve image, deletion, and nuclei supports exactly as the CLI."""
 
     generation_region, gland_structure_policy = (
         glas_whole_gland_generation_region(
@@ -2923,13 +3024,34 @@ def _resolve_ui_cell_regions(
         str(profile).upper() == "GLAS"
         and gland_structure_policy.get("applied")
     )
-    deletion_region = (
-        np.asarray(generation_region, dtype=bool).copy()
-        if whole_glas_component
-        else np.asarray(semantic_change_region, dtype=bool).copy()
-    )
-    nuclei_boundary_context = None
-    if cell_fill_mode in {"blank", "probnet"} and np.any(generation_region):
+    if whole_glas_component:
+        deletion_region = np.asarray(generation_region, dtype=bool).copy()
+        nuclei_generation_region = np.asarray(
+            generation_region,
+            dtype=bool,
+        ).copy()
+        nuclei_boundary_context = {
+            "policy": "disabled_for_glas_whole_connected_component",
+            "reason": (
+                "whole_gland_is_shared_image_and_nuclei_regeneration_region"
+            ),
+            "generation_pixels": int(np.count_nonzero(generation_region)),
+        }
+    else:
+        deletion_region = np.asarray(
+            semantic_change_region,
+            dtype=bool,
+        ).copy()
+        nuclei_generation_region = np.asarray(
+            semantic_change_region,
+            dtype=bool,
+        ).copy()
+        nuclei_boundary_context = None
+    if (
+        not whole_glas_component
+        and cell_fill_mode in {"blank", "probnet"}
+        and np.any(generation_region)
+    ):
         generation_region, nuclei_boundary_context = (
             _build_nucleus_aware_generation_region(
                 deletion_region=deletion_region,
@@ -2944,17 +3066,29 @@ def _resolve_ui_cell_regions(
         **gland_structure_policy,
         "nuclei_boundary_context": nuclei_boundary_context,
         "cell_deletion_region_policy": (
-            "whole_glas_connected_component"
+            GLAS_WHOLE_GLAND_CELL_REGION_POLICY
             if whole_glas_component
-            else "semantic_change_region"
+            else SEMANTIC_CELL_DELETION_REGION_POLICY
+        ),
+        "nuclei_generation_region_policy": (
+            GLAS_WHOLE_GLAND_CELL_REGION_POLICY
+            if whole_glas_component
+            else SEMANTIC_NUCLEI_GENERATION_REGION_POLICY
+        ),
+        "nuclei_generation_pixels": int(
+            np.count_nonzero(nuclei_generation_region)
         ),
         "generation_change_pixels": int(
             np.count_nonzero(generation_region)
+        ),
+        "image_and_nuclei_region_equal": bool(
+            np.array_equal(generation_region, nuclei_generation_region)
         ),
     }
     return (
         np.asarray(generation_region, dtype=bool),
         deletion_region,
+        nuclei_generation_region,
         gland_structure_policy,
     )
 
@@ -2981,6 +3115,7 @@ def run_cell_stage(
     (
         change_region,
         cell_deletion_region,
+        cell_generation_region,
         gland_structure_policy,
     ) = _resolve_ui_cell_regions(
         profile=state.get("profile", "BCSS"),
@@ -2999,6 +3134,17 @@ def run_cell_stage(
         change_region=change_region,
     )
     profile_defaults = _profile_defaults(state.get("profile", "BCSS"))
+    gamma_values = _validate_g2_probnet_ui_inputs(
+        state,
+        cell_fill_mode=cell_fill_mode,
+        gamma_values=gamma_values,
+        density_scale_json=density_scale_json,
+    )
+    feedback_config = (
+        _online_nuclei_feedback_config(state)
+        if cell_fill_mode == "probnet"
+        else {}
+    )
     density_scale_text = (density_scale_json or "").strip()
     args = _make_args(
         state,
@@ -3010,7 +3156,8 @@ def run_cell_stage(
             Path(density_scale_text) if density_scale_text else None
         ),
         probnet_device=probnet_device,
-        probnet_gamma_values=gamma_values or "1.5",
+        probnet_gamma_values=gamma_values,
+        **feedback_config,
     )
     probnet_release = None
     if cell_fill_mode == "probnet":
@@ -3027,7 +3174,7 @@ def run_cell_stage(
             reference_tissue,
             target_tissue,
             cell_deletion_region,
-            change_region,
+            cell_generation_region,
             output_dir,
         )
     except subprocess.CalledProcessError as exc:
@@ -3088,6 +3235,20 @@ def _build_online_agent_command(
             "Agentic verification requires runtime settings captured during input loading: "
             + ", ".join(missing_runtime)
         )
+    product_release = Path(
+        runtime.get("product_release") or DEFAULT_ONLINE_PRODUCT_RELEASE
+    )
+    if not product_release.is_file():
+        raise gr.Error(f"Online product release not found: {product_release}")
+    release = json.loads(product_release.read_text(encoding="utf-8"))
+    generation = release["image_generation"]
+    inference = generation["inference"]
+    routing = generation["routing"]
+    if abs(float(route_threshold) - float(routing["t_cross"])) > 1e-9:
+        raise gr.Error(
+            "Agentic generation uses the frozen G2 routing threshold "
+            f"{routing['t_cross']}; received {route_threshold}."
+        )
     output_dir = Path(state["output_dir"])
     agent_output_dir = output_dir / "agentic_generation"
     command = [
@@ -3121,12 +3282,24 @@ def _build_online_agent_command(
         str(args.pix2pix_checkpoint),
         "--device",
         str(args.device),
+        "--num-inference-steps",
+        str(inference["num_inference_steps"]),
+        "--guidance-scale",
+        str(inference["guidance_scale"]),
+        "--controlnet-conditioning-scale",
+        str(inference["controlnet_conditioning_scale"]),
+        "--torch-dtype",
+        str(inference["torch_dtype"]),
+        "--seed",
+        str(inference["seed"]),
         "--t-inpaint",
-        str(min(0.12, float(route_threshold))),
+        str(routing["t_inpaint"]),
         "--t-cross",
-        str(float(route_threshold)),
+        str(routing["t_cross"]),
         "--max-attempts",
-        "2",
+        str(routing["max_generation_attempts"]),
+        "--product-release",
+        str(product_release),
         "--segmentator-release",
         str(runtime["segmentator_release"]),
         "--segmentator-env",
@@ -3178,16 +3351,24 @@ def _run_agentic_generation_stage(
         args=args,
         route_threshold=route_threshold,
     )
+    runner_env = dict(os.environ)
+    runner_env[PRODUCTION_PIX2PIX_ENV] = str(
+        Path(args.pix2pix_checkpoint).expanduser().resolve()
+    )
     result = subprocess.run(
         command,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        env=runner_env,
     )
     log_path = output_dir / "agentic_runner.log"
     log_path.write_text(
         "command: "
         + " ".join(command)
+        + "\n"
+        + f"{PRODUCTION_PIX2PIX_ENV}: "
+        + runner_env[PRODUCTION_PIX2PIX_ENV]
         + "\n\nstdout:\n"
         + (result.stdout or "")
         + "\n\nstderr:\n"
@@ -3211,6 +3392,8 @@ def _run_agentic_generation_stage(
     shutil.copy2(generated, final_path)
     selected_attempt = workflow.get("selected_attempt") or {}
     artifact = selected_attempt.get("artifact") or {}
+    verification = selected_attempt.get("verification") or {}
+    generation_report = workflow.get("generation_report") or {}
     info = dict(artifact.get("metadata") or {})
     info.update(
         {
@@ -3220,6 +3403,16 @@ def _run_agentic_generation_stage(
             "selected_mode": artifact.get("mode") or "noop",
             "change_ratio": _change_area_fraction(change_region),
             "route_threshold": route_threshold,
+            "quality_score": verification.get(
+                "quality_score", verification.get("score")
+            ),
+            "evidence_coverage": verification.get("evidence_coverage"),
+            "component_scores": verification.get("component_scores") or {},
+            "evaluator_applicability": verification.get("applicability") or {},
+            "scientific_status": verification.get("scientific_status"),
+            "failed_checks": verification.get("failed_checks") or [],
+            "reason_codes": verification.get("reason_codes") or [],
+            "generation_report": generation_report,
             "agentic_workflow": workflow,
             "agentic_runner_summary": str(summary_path),
             "agentic_runner_log": str(log_path),
@@ -3402,6 +3595,7 @@ def run_large_patch_stitch_generation(
     (
         change_region,
         cell_deletion_region,
+        cell_generation_region,
         gland_structure_policy,
     ) = _resolve_ui_cell_regions(
         profile=state.get("profile", "BCSS"),
@@ -3428,6 +3622,17 @@ def run_large_patch_stitch_generation(
     _validate_same_size(reference_image, change_region, "change_region")
 
     profile_defaults = _profile_defaults(state.get("profile", "BCSS"))
+    gamma_values = _validate_g2_probnet_ui_inputs(
+        state,
+        cell_fill_mode=cell_fill_mode,
+        gamma_values=gamma_values,
+        density_scale_json=density_scale_json,
+    )
+    feedback_config = (
+        _online_nuclei_feedback_config(state)
+        if cell_fill_mode == "probnet"
+        else {}
+    )
     density_scale_text = (density_scale_json or "").strip()
     base_args = _make_args(
         state,
@@ -3447,8 +3652,9 @@ def run_large_patch_stitch_generation(
             Path(density_scale_text) if density_scale_text else None
         ),
         probnet_device=probnet_device,
-        probnet_gamma_values=gamma_values or "1.5",
+        probnet_gamma_values=gamma_values,
         prompt=None,
+        **feedback_config,
     )
     if cell_fill_mode == "probnet":
         try:
@@ -3457,7 +3663,7 @@ def run_large_patch_stitch_generation(
             raise gr.Error(str(exc)) from exc
     if generation_mode == "agentic" and patch_size != 512:
         raise gr.Error(
-            "C-line Segmentator release inference is fixed at 512x512; "
+            "Frozen Segmentator release inference is fixed at 512x512; "
             "agentic large-patch generation therefore requires patch size 512."
         )
 
@@ -3529,6 +3735,13 @@ def run_large_patch_stitch_generation(
             patch_size,
             fill_value=False,
         )
+        cell_generation_patch = _extract_patch_array(
+            cell_generation_region,
+            y,
+            x,
+            patch_size,
+            fill_value=False,
+        )
         target_tissue_patch = _extract_patch_array(target_tissue, y, x, patch_size, fill_value=0)
         reference_tissue_patch = _extract_patch_array(reference_tissue, y, x, patch_size, fill_value=0)
         reference_nuclei_patch = _extract_patch_array(reference_nuclei, y, x, patch_size, fill_value=0)
@@ -3582,7 +3795,7 @@ def run_large_patch_stitch_generation(
                 reference_tissue_patch,
                 target_tissue_patch,
                 deletion_change_patch,
-                change_patch,
+                cell_generation_patch,
                 patch_dir,
             )
         except subprocess.CalledProcessError as exc:
@@ -4307,6 +4520,18 @@ def _resolve_instruction_semantic_diff(
             api_base_url=_defaulted_text(api_base_url, DEFAULT_API_BASE_URL).rstrip("/"),
             api_key_env=_defaulted_text(api_key_env, DEFAULT_API_KEY_ENV),
             timeout_sec=60.0,
+            max_retries=max(
+                0,
+                int(os.getenv("PATHOLOGY_INSTRUCTION_API_MAX_RETRIES", "4")),
+            ),
+            retry_backoff_sec=max(
+                0.0,
+                float(
+                    os.getenv(
+                        "PATHOLOGY_INSTRUCTION_API_RETRY_BACKOFF_SEC", "5"
+                    )
+                ),
+            ),
             temperature=0.0,
             debug_dir=str(output_dir / "phase3_mask_edit" / "instruction_parser_debug"),
         )
@@ -4432,7 +4657,7 @@ def build_ui() -> gr.Blocks:
                     segmentator_env = gr.Textbox(value=DEFAULT_SEGMENTATOR_ENV, label="segmentator conda env")
                     segmentator_release = gr.Textbox(
                         value=str(DEFAULT_SEGMENTATOR_RELEASE),
-                        label="C-line Segmentator release",
+                        label="Frozen Segmentator release",
                     )
                 with gr.Row():
                     segmentator_python = gr.Textbox(
@@ -4477,6 +4702,7 @@ def build_ui() -> gr.Blocks:
                         "tumor_burden_increase",
                         "tumor_burden_decrease",
                         "immune_infiltration_decrease",
+                        "stroma_increase",
                         "stromal_desmoplasia",
                         "stroma_decrease",
                         "stromal_reduction",
@@ -4526,14 +4752,14 @@ def build_ui() -> gr.Blocks:
         with gr.Accordion("Advanced ProbNet inputs", open=False):
             gr.Markdown(
                 "Production policy: frozen epoch29 checkpoint, profile-specific "
-                "library, gamma=1.5, density_scale=1.0, no density-scale JSON."
+                "library, gamma=3, density_scale=1.0, no density-scale JSON."
             )
             with gr.Row():
                 probnet_ckpt = gr.Textbox(value=profile_default_values["probnet_ckpt"], label="ProbNet checkpoint")
                 nuclei_library = gr.Textbox(value=profile_default_values["nuclei_library"], label="nuclei library directory")
                 density_scale_json = gr.Textbox(value=profile_default_values["density_scale_json"], label="density scale JSON")
             probnet_device = gr.Dropdown(PROBNET_DEVICE_CHOICES, value="auto", label="ProbNet device")
-            gamma_values = gr.Textbox(value="1.5", label="gamma values")
+            gamma_values = gr.Textbox(value="3", label="gamma values")
         cell_button = gr.Button("3. Build target cell mask")
         cell_log = gr.Code(label="cell log", language="json")
         with gr.Row():

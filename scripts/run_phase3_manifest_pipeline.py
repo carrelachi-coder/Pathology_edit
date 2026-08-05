@@ -18,8 +18,18 @@ import traceback
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from phase3_mask_edit.audit.staged_review import (  # noqa: E402
+    build_mask_stage_review,
+    build_nuclei_stage_review,
+    normalize_stop_after,
+    sha256_file,
+    sha256_text,
+)
+
 REPO_DEFAULT_MANIFEST = (
     REPO_ROOT
     / "docs"
@@ -49,12 +59,43 @@ FIELD_SUBDIRS = {
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
+    args.stop_after = normalize_stop_after(args.stop_after)
     manifest = _load_json(args.manifest)
     runtime = _mapping(manifest.get("runtime"))
     runtime["defaults"] = _mapping(manifest.get("defaults"))
     dataset_roots = _dataset_roots(manifest, args)
     variants = _selected_variants(runtime, args.variants)
     cases = _selected_cases(manifest, args)
+    approved_mask_manifest = (
+        _load_json(args.approved_mask_manifest)
+        if args.approved_mask_manifest is not None
+        else None
+    )
+    approved_mask_entries = _approved_mask_entries(approved_mask_manifest)
+    if approved_mask_entries and args.stop_after == "mask":
+        raise SystemExit(
+            "--approved-mask-manifest is for nuclei/image continuation; "
+            "the approved mask stage is already complete."
+        )
+    approved_nuclei_manifest = (
+        _load_json(args.approved_nuclei_manifest)
+        if args.approved_nuclei_manifest is not None
+        else None
+    )
+    approved_nuclei_entries = _approved_nuclei_entries(
+        approved_nuclei_manifest
+    )
+    if approved_nuclei_entries:
+        if args.stop_after != "image":
+            raise SystemExit(
+                "--approved-nuclei-manifest is only for image continuation; "
+                "the approved nuclei stage is already complete."
+            )
+        if not approved_mask_entries:
+            raise SystemExit(
+                "--approved-nuclei-manifest also requires "
+                "--approved-mask-manifest."
+            )
 
     batch_dir = args.output_root / (args.run_id or time.strftime("%Y%m%d_%H%M%S"))
     batch_dir.mkdir(parents=True, exist_ok=True)
@@ -65,7 +106,18 @@ def main(argv: list[str] | None = None) -> int:
     ]
     batch_plan = {
         "manifest": str(args.manifest),
+        "approved_mask_manifest": (
+            str(args.approved_mask_manifest)
+            if args.approved_mask_manifest is not None
+            else None
+        ),
+        "approved_nuclei_manifest": (
+            str(args.approved_nuclei_manifest)
+            if args.approved_nuclei_manifest is not None
+            else None
+        ),
         "output_root": str(batch_dir),
+        "stop_after": args.stop_after,
         "case_count": len(cases),
         "variant_count": len(variants),
         "run_count": len(runs),
@@ -110,15 +162,77 @@ def main(argv: list[str] | None = None) -> int:
         try:
             paths = _resolve_case_paths(case, dataset_roots, require_exists=True)
             _write_json({"case": case, "variant": variant, "paths": _stringify(paths)}, run_dir / "run_config.json")
-            state = _prepare_state(ui, case, paths, run_dir)
-            state, tissue_info = _run_tissue_stage(ui, state, case, variant, runtime, args)
-            result_record["tissue"] = tissue_info
+            state = _prepare_state(
+                ui,
+                case,
+                paths,
+                run_dir,
+                runtime=runtime,
+                args=args,
+            )
+            if approved_mask_entries:
+                approved_entry = approved_mask_entries.get(case_id)
+                if approved_entry is None:
+                    raise KeyError(
+                        f"Approved mask manifest has no entry for {case_id}."
+                    )
+                state, tissue_info, mask_stage = _resume_approved_mask_stage(
+                    ui=ui,
+                    state=state,
+                    case=case,
+                    variant=variant,
+                    approved_entry=approved_entry,
+                    approved_manifest_path=args.approved_mask_manifest,
+                    run_dir=run_dir,
+                )
+                result_record["tissue"] = tissue_info
+                result_record["mask_stage"] = mask_stage
+            else:
+                state, tissue_info = _run_tissue_stage(
+                    ui, state, case, variant, runtime, args
+                )
+                result_record["tissue"] = tissue_info
+                result_record["mask_stage"] = build_mask_stage_review(
+                    run_dir=run_dir,
+                    case=case,
+                    variant=variant,
+                    state=state,
+                    tissue_info=tissue_info,
+                )
 
-            if args.stop_after in {"cell", "generation"}:
-                state, cell_info = _run_cell_stage(ui, state, case, runtime, args)
-                result_record["cell"] = cell_info
+            if args.stop_after in {"nuclei", "image"}:
+                if approved_nuclei_entries:
+                    approved_entry = approved_nuclei_entries.get(case_id)
+                    if approved_entry is None:
+                        raise KeyError(
+                            "Approved nuclei manifest has no entry for "
+                            f"{case_id}."
+                        )
+                    state, cell_info, nuclei_stage = (
+                        _resume_approved_nuclei_stage(
+                            state=state,
+                            case=case,
+                            approved_entry=approved_entry,
+                            approved_manifest_path=args.approved_nuclei_manifest,
+                            run_dir=run_dir,
+                        )
+                    )
+                    result_record["cell"] = cell_info
+                    result_record["nuclei_stage"] = nuclei_stage
+                else:
+                    state, cell_info = _run_cell_stage(
+                        ui, state, case, runtime, args
+                    )
+                    result_record["cell"] = cell_info
+                    result_record["nuclei_stage"] = build_nuclei_stage_review(
+                        run_dir=run_dir,
+                        case=case,
+                        state=state,
+                        cell_info=cell_info,
+                        approved_mask_stage=result_record["mask_stage"],
+                    )
 
-            if args.stop_after == "generation":
+            if args.stop_after == "image":
                 state, generation_info = _run_generation_stage(ui, state, case, runtime, args)
                 result_record["generation"] = generation_info
 
@@ -146,6 +260,12 @@ def main(argv: list[str] | None = None) -> int:
     summary["completed"] = sum(1 for item in summary["results"] if item.get("status") == "completed")
     summary["failed"] = failed
     _write_json(summary, batch_dir / "batch_summary.json")
+    if args.stop_after == "mask":
+        _write_mask_stage_manifest(summary, batch_dir / "mask_stage_manifest.json")
+    elif args.stop_after == "nuclei":
+        _write_nuclei_stage_manifest(
+            summary, batch_dir / "nuclei_stage_manifest.json"
+        )
     print(json.dumps({"output_root": _path_text(batch_dir), "completed": summary["completed"], "failed": failed}, indent=2))
     return 1 if failed else 0
 
@@ -167,7 +287,31 @@ def _load_ui_backend():
     return ui
 
 
-def _prepare_state(ui, case: dict[str, Any], paths: dict[str, Path], output_dir: Path) -> dict[str, Any]:
+def _prepare_state(
+    ui,
+    case: dict[str, Any],
+    paths: dict[str, Path],
+    output_dir: Path,
+    *,
+    runtime: dict[str, Any] | None = None,
+    args: argparse.Namespace | None = None,
+) -> dict[str, Any]:
+    verification_cfg = _mapping((runtime or {}).get("verification"))
+
+    def verification_option(name: str, default: Any) -> Any:
+        explicit = getattr(args, name, None) if args is not None else None
+        return _option(explicit, verification_cfg.get(name), default)
+
+    product_release = str(
+        verification_option(
+            "product_release", ui.DEFAULT_ONLINE_PRODUCT_RELEASE
+        )
+    )
+    segmentator_release_default = _segmentator_release_from_product_release(
+        product_release,
+        fallback=ui.DEFAULT_SEGMENTATOR_RELEASE,
+    )
+
     inputs_dir = output_dir / "inputs"
     inputs_dir.mkdir(parents=True, exist_ok=True)
     image_path = _copy_input(paths["source_image"], inputs_dir / _input_name(paths["source_image"], "source_image.png"))
@@ -196,7 +340,515 @@ def _prepare_state(ui, case: dict[str, Any], paths: dict[str, Path], output_dir:
         "source_mask_rgb": stage_paths["source_mask_rgb"],
         "target_mask_rgb": stage_paths["source_mask_rgb"],
         "manifest_case_id": case.get("case_id"),
+        "verification_runtime": {
+            "product_release": product_release,
+            "segmentator_env": str(
+                verification_option(
+                    "segmentator_env", ui.DEFAULT_SEGMENTATOR_ENV
+                )
+            ),
+            "segmentator_release": str(
+                verification_option(
+                    "segmentator_release", segmentator_release_default
+                )
+            ),
+            "segmentator_python": str(
+                verification_option(
+                    "segmentator_python", ui.DEFAULT_SEGMENTATOR_PYTHON
+                )
+            ),
+            "segmentator_device": str(
+                verification_option(
+                    "segmentator_device", ui.DEFAULT_SEGMENTATOR_DEVICE
+                )
+            ),
+            "cellvit_script": str(
+                verification_option(
+                    "cellvit_script", ui.DEFAULT_CELLVIT_SCRIPT
+                )
+            ),
+            "cellvit_model": str(
+                verification_option(
+                    "cellvit_model", ui.DEFAULT_CELLVIT_MODEL
+                )
+            ),
+            "cellvit_root": str(
+                verification_option("cellvit_root", ui.DEFAULT_CELLVIT_ROOT)
+            ),
+            "cellvit_python": str(
+                verification_option(
+                    "cellvit_python", ui.DEFAULT_CELLVIT_PYTHON
+                )
+            ),
+            "cellvit_device": str(
+                verification_option(
+                    "cellvit_device", ui.DEFAULT_CELLVIT_DEVICE
+                )
+            ),
+        },
     }
+
+
+def _segmentator_release_from_product_release(
+    product_release: str | Path,
+    *,
+    fallback: str | Path,
+) -> Path:
+    """Resolve the evaluator model from the same frozen product contract."""
+
+    release_path = Path(product_release)
+    if not release_path.is_file():
+        return Path(fallback)
+    payload = json.loads(release_path.read_text(encoding="utf-8"))
+    raw = _mapping(payload.get("verification")).get("segmentator_release")
+    if not raw:
+        return Path(fallback)
+    resolved = Path(str(raw))
+    if not resolved.is_absolute():
+        resolved = REPO_ROOT / resolved
+    return resolved
+
+
+def _approved_mask_entries(
+    manifest: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    if not manifest:
+        return {}
+    if str(manifest.get("stage") or "") != "mask":
+        raise ValueError("Approved mask manifest must have stage='mask'.")
+    entries = manifest.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Approved mask manifest must contain non-empty entries.")
+    indexed: dict[str, dict[str, Any]] = {}
+    for raw in entries:
+        if not isinstance(raw, dict):
+            raise ValueError("Approved mask manifest entries must be objects.")
+        case_id = str(raw.get("case_id") or "")
+        if not case_id:
+            raise ValueError("Approved mask entry is missing case_id.")
+        if case_id in indexed:
+            raise ValueError(f"Duplicate approved mask case_id: {case_id}")
+        if str(raw.get("approval") or "") != "approved":
+            raise ValueError(f"Mask entry is not approved: {case_id}")
+        if not raw.get("approved_target_sha256"):
+            raise ValueError(f"Approved mask entry has no target hash: {case_id}")
+        indexed[case_id] = raw
+    return indexed
+
+
+def _approved_nuclei_entries(
+    manifest: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    if not manifest:
+        return {}
+    if str(manifest.get("stage") or "") != "nuclei":
+        raise ValueError("Approved nuclei manifest must have stage='nuclei'.")
+    entries = manifest.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(
+            "Approved nuclei manifest must contain non-empty entries."
+        )
+    indexed: dict[str, dict[str, Any]] = {}
+    for raw in entries:
+        if not isinstance(raw, dict):
+            raise ValueError("Approved nuclei manifest entries must be objects.")
+        case_id = str(raw.get("case_id") or "")
+        if not case_id:
+            raise ValueError("Approved nuclei entry is missing case_id.")
+        if case_id in indexed:
+            raise ValueError(f"Duplicate approved nuclei case_id: {case_id}")
+        if str(raw.get("approval") or "") != "approved":
+            raise ValueError(f"Nuclei entry is not approved: {case_id}")
+        if not raw.get("approved_target_nuclei_sha256"):
+            raise ValueError(
+                f"Approved nuclei entry has no target hash: {case_id}"
+            )
+        indexed[case_id] = raw
+    return indexed
+
+
+def _resume_approved_mask_stage(
+    *,
+    ui,
+    state: dict[str, Any],
+    case: dict[str, Any],
+    variant: dict[str, Any],
+    approved_entry: dict[str, Any],
+    approved_manifest_path: Path,
+    run_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Reuse an approved mask asset after validating every provenance hash."""
+
+    case_id = str(case.get("case_id") or "")
+    lock_path = Path(str(approved_entry.get("lock_path") or ""))
+    lock = _load_json(lock_path)
+    expected_hash = str(approved_entry["approved_target_sha256"])
+    locked_hash = str(
+        (lock.get("asset_sha256") or {}).get("target_tissue") or ""
+    )
+    lock_approval = _mapping(lock.get("approval"))
+    if str(lock_approval.get("status") or "") != "approved":
+        raise ValueError(f"Mask lock is not approved for {case_id}: {lock_path}")
+    if str(lock_approval.get("approved_target_sha256") or "") != expected_hash:
+        raise ValueError(f"Approved target hash differs from lock for {case_id}.")
+    if locked_hash != expected_hash:
+        raise ValueError(f"Locked target hash differs from manifest for {case_id}.")
+
+    expected_fields = {
+        "case_id": case_id,
+        "dataset": str(case.get("dataset") or ""),
+        "profile": str(case.get("profile") or case.get("dataset") or ""),
+        "variant_id": str(
+            variant.get("variant_id") or variant.get("edit_mode") or ""
+        ),
+    }
+    for field, expected in expected_fields.items():
+        locked = str(lock.get(field) or "")
+        if locked and locked != expected:
+            raise ValueError(
+                f"Approved mask {field} mismatch for {case_id}: "
+                f"lock={locked!r}, current={expected!r}."
+            )
+    instruction = str(case.get("instruction") or "")
+    if str(lock.get("instruction_sha256") or "") != sha256_text(instruction):
+        raise ValueError(f"Instruction hash mismatch for approved mask {case_id}.")
+
+    asset_hashes = _mapping(lock.get("asset_sha256"))
+    source_assets = {
+        "source_image": Path(str(state["reference_image"])),
+        "source_tissue": Path(str(state["reference_tissue_mask"])),
+    }
+    for name, source in source_assets.items():
+        expected = str(asset_hashes.get(name) or "")
+        if not expected or sha256_file(source) != expected:
+            raise ValueError(
+                f"Source asset hash mismatch for approved mask {case_id}: {name}."
+            )
+
+    approved_target_source = Path(
+        str(
+            approved_entry.get("target_tissue_mask_path")
+            or lock.get("target_tissue_mask_path")
+            or ""
+        )
+    )
+    if sha256_file(approved_target_source) != expected_hash:
+        raise ValueError(f"Approved target asset changed on disk for {case_id}.")
+    approved_change_source = Path(str(lock.get("change_region_path") or ""))
+    expected_change_hash = str(asset_hashes.get("change_region") or "")
+    if (
+        not expected_change_hash
+        or sha256_file(approved_change_source) != expected_change_hash
+    ):
+        raise ValueError(f"Approved change-region asset changed for {case_id}.")
+
+    target_path = _copy_input(
+        approved_target_source,
+        run_dir / "approved_target_mask.png",
+    )
+    change_path = _copy_input(
+        approved_change_source,
+        run_dir / "approved_semantic_change_region.png",
+    )
+    if sha256_file(target_path) != expected_hash:
+        raise ValueError(f"Approved target copy changed bytes for {case_id}.")
+    if sha256_file(change_path) != expected_change_hash:
+        raise ValueError(f"Approved change-region copy changed bytes for {case_id}.")
+
+    reference_tissue = ui.load_id_mask(state["reference_tissue_mask"])
+    target_tissue = ui.load_id_mask(target_path)
+    change_region = ui.load_change_region(change_path)
+    if reference_tissue.shape != target_tissue.shape:
+        raise ValueError(f"Approved target shape mismatch for {case_id}.")
+    if not ui.np.array_equal(
+        reference_tissue != target_tissue,
+        ui.np.asarray(change_region, dtype=bool),
+    ):
+        raise ValueError(
+            f"Approved change region does not equal source/target diff for {case_id}."
+        )
+
+    provenance = {
+        "schema_version": 1,
+        "status": "approved_mask_reused",
+        "approved_mask_manifest": str(approved_manifest_path),
+        "approved_entry_case_id": case_id,
+        "original_lock_path": str(lock_path),
+        "approved_target_source": str(approved_target_source),
+        "approved_change_region_source": str(approved_change_source),
+        "approved_target_sha256": expected_hash,
+        "approved_change_region_sha256": expected_change_hash,
+        "tissue_stage_rerun": False,
+    }
+    provenance_path = run_dir / "approved_mask_provenance.json"
+    _write_json(provenance, provenance_path)
+    state.update(
+        {
+            "target_tissue_mask": str(target_path),
+            "semantic_change_region": str(change_path),
+            "change_region": str(change_path),
+            "approved_mask_provenance": str(provenance_path),
+        }
+    )
+    tissue_info = {
+        "status": "approved_mask_reused",
+        "projection_mode": "organic_v2",
+        "target_tissue_mask": str(target_path),
+        "change_region": str(change_path),
+        "approved_target_sha256": expected_hash,
+        "tissue_stage_rerun": False,
+    }
+    mask_stage = {
+        "stage": "mask",
+        "status": "approved_mask_reused",
+        "approval": "approved",
+        "audit_passed": bool(approved_entry.get("audit_passed", True)),
+        "approved_mask_manifest": str(approved_manifest_path),
+        "original_lock_path": str(lock_path),
+        "lock_path": str(lock_path),
+        "target_tissue_mask_path": str(target_path),
+        "target_tissue_sha256": expected_hash,
+        "approved_target_sha256": expected_hash,
+        "change_region_path": str(change_path),
+        "change_region_sha256": expected_change_hash,
+        "tissue_stage_rerun": False,
+    }
+    return state, tissue_info, mask_stage
+
+
+def _resume_approved_nuclei_stage(
+    *,
+    state: dict[str, Any],
+    case: dict[str, Any],
+    approved_entry: dict[str, Any],
+    approved_manifest_path: Path,
+    run_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Reuse approved nuclei and every downstream input without rerunning ProbNet."""
+
+    case_id = str(case.get("case_id") or "")
+    lock_path = Path(str(approved_entry.get("lock_path") or ""))
+    lock = _load_json(lock_path)
+    approval = _mapping(lock.get("approval"))
+    if str(approval.get("status") or "") != "approved":
+        raise ValueError(f"Nuclei lock is not approved for {case_id}: {lock_path}")
+
+    expected_fields = {
+        "case_id": case_id,
+        "dataset": str(case.get("dataset") or ""),
+        "profile": str(
+            case.get("profile") or case.get("dataset") or ""
+        ),
+    }
+    for field, expected in expected_fields.items():
+        locked = str(lock.get(field) or "")
+        if locked and locked != expected:
+            raise ValueError(
+                f"Approved nuclei {field} mismatch for {case_id}: "
+                f"lock={locked!r}, current={expected!r}."
+            )
+
+    asset_hashes = _mapping(lock.get("asset_sha256"))
+    expected_nuclei_hash = str(
+        approved_entry.get("approved_target_nuclei_sha256") or ""
+    )
+    if (
+        str(approval.get("approved_target_nuclei_sha256") or "")
+        != expected_nuclei_hash
+        or str(asset_hashes.get("target_nuclei") or "")
+        != expected_nuclei_hash
+    ):
+        raise ValueError(
+            f"Approved target nuclei hash differs from lock for {case_id}."
+        )
+
+    current_tissue_hash = sha256_file(state["target_tissue_mask"])
+    expected_tissue_hash = str(
+        approved_entry.get("approved_target_tissue_sha256")
+        or approval.get("approved_target_tissue_sha256")
+        or lock.get("parent_target_tissue_sha256")
+        or ""
+    )
+    if (
+        not expected_tissue_hash
+        or current_tissue_hash != expected_tissue_hash
+        or str(asset_hashes.get("target_tissue") or "")
+        != expected_tissue_hash
+    ):
+        raise ValueError(
+            f"Approved parent tissue hash differs for {case_id}."
+        )
+
+    source_run_dir = Path(
+        str(approved_entry.get("run_dir") or lock_path.parent.parent)
+    )
+    source_paths = {
+        "target_nuclei": Path(
+            str(
+                approved_entry.get("target_nuclei_mask_path")
+                or lock.get("target_nuclei_mask_path")
+                or ""
+            )
+        ),
+        "new_nuclei": _locked_asset_path(
+            lock, "new_nuclei", source_run_dir / "new_nuclei_mask.png"
+        ),
+        "semantic_change_region": _locked_asset_path(
+            lock,
+            "semantic_change_region",
+            Path(str(state["semantic_change_region"])),
+        ),
+        "generation_change_region": _locked_asset_path(
+            lock,
+            "generation_change_region",
+            source_run_dir / "change_region.png",
+        ),
+        "probnet_diagnostics": _locked_asset_path(
+            lock,
+            "probnet_diagnostics",
+            source_run_dir
+            / "probnet_cell_fill"
+            / "target_nuclei.diagnostics.json",
+        ),
+        "cell_fill_log": _locked_asset_path(
+            lock, "cell_fill_log", source_run_dir / "cell_fill_log.json"
+        ),
+        "erased_image": _locked_asset_path(
+            lock, "erased_image", source_run_dir / "erased_image.png"
+        ),
+    }
+    optional_paths = {
+        "retained_nuclei": _locked_asset_path(
+            lock,
+            "retained_nuclei",
+            source_run_dir / "retained_nuclei_mask.png",
+        ),
+        "target_combined": _locked_asset_path(
+            lock,
+            "target_combined",
+            source_run_dir / "target_combined_mask.png",
+        ),
+    }
+    for name, source in source_paths.items():
+        if not source.is_file():
+            raise ValueError(
+                f"Missing approved {name} asset for {case_id}: {source}"
+            )
+        expected_hash = str(asset_hashes.get(name) or "")
+        if not expected_hash or sha256_file(source) != expected_hash:
+            raise ValueError(
+                f"Approved {name} asset changed for {case_id}."
+            )
+    if sha256_file(source_paths["target_nuclei"]) != expected_nuclei_hash:
+        raise ValueError(
+            f"Approved target nuclei asset changed for {case_id}."
+        )
+    if (
+        sha256_file(state["semantic_change_region"])
+        != str(asset_hashes["semantic_change_region"])
+    ):
+        raise ValueError(
+            f"Approved semantic change region differs for {case_id}."
+        )
+
+    destinations = {
+        "target_nuclei": run_dir / "target_nuclei_mask.png",
+        "new_nuclei": run_dir / "new_nuclei_mask.png",
+        "semantic_change_region": run_dir
+        / "approved_semantic_change_region.png",
+        "generation_change_region": run_dir / "change_region.png",
+        "probnet_diagnostics": run_dir
+        / "probnet_cell_fill"
+        / "target_nuclei.diagnostics.json",
+        "cell_fill_log": run_dir / "cell_fill_log.json",
+        "erased_image": run_dir / "erased_image.png",
+    }
+    copied: dict[str, Path] = {}
+    for name, destination in destinations.items():
+        copied[name] = _copy_input(source_paths[name], destination)
+        if sha256_file(copied[name]) != str(asset_hashes[name]):
+            raise ValueError(
+                f"Approved {name} copy changed bytes for {case_id}."
+            )
+    for name, source in optional_paths.items():
+        expected_hash = str(asset_hashes.get(name) or "")
+        if source.is_file() and expected_hash:
+            destination = run_dir / (
+                "retained_nuclei_mask.png"
+                if name == "retained_nuclei"
+                else "target_combined_mask.png"
+            )
+            copied[name] = _copy_input(source, destination)
+            if sha256_file(copied[name]) != expected_hash:
+                raise ValueError(
+                    f"Approved {name} copy changed bytes for {case_id}."
+                )
+
+    cell_fill = _load_json(copied["cell_fill_log"])
+    provenance = {
+        "schema_version": 1,
+        "status": "approved_nuclei_reused",
+        "approved_nuclei_manifest": str(approved_manifest_path),
+        "approved_entry_case_id": case_id,
+        "original_lock_path": str(lock_path),
+        "approved_target_tissue_sha256": expected_tissue_hash,
+        "approved_target_nuclei_sha256": expected_nuclei_hash,
+        "asset_sha256": {
+            name: str(asset_hashes[name]) for name in destinations
+        },
+        "tissue_stage_rerun": False,
+        "nuclei_stage_rerun": False,
+    }
+    provenance_path = run_dir / "approved_nuclei_provenance.json"
+    _write_json(provenance, provenance_path)
+    state.update(
+        {
+            "target_nuclei_mask": str(copied["target_nuclei"]),
+            "cell_fill": cell_fill,
+            "cell_fill_log": str(copied["cell_fill_log"]),
+            "semantic_change_region": str(
+                copied["semantic_change_region"]
+            ),
+            "change_region": str(copied["generation_change_region"]),
+            "gland_structure_policy": dict(
+                cell_fill.get("gland_structure_policy") or {}
+            ),
+            "approved_nuclei_provenance": str(provenance_path),
+        }
+    )
+    if "target_combined" in copied:
+        state["target_combined_mask"] = str(copied["target_combined"])
+    cell_info = {
+        **cell_fill,
+        "status": "approved_nuclei_reused",
+        "target_nuclei_mask": str(copied["target_nuclei"]),
+        "new_nuclei_mask": str(copied["new_nuclei"]),
+        "nuclei_stage_rerun": False,
+    }
+    nuclei_stage = {
+        "stage": "nuclei",
+        "status": "approved_nuclei_reused",
+        "approval": "approved",
+        "audit_passed": bool(approved_entry.get("audit_passed", True)),
+        "approved_nuclei_manifest": str(approved_manifest_path),
+        "original_lock_path": str(lock_path),
+        "lock_path": str(lock_path),
+        "target_nuclei_mask_path": str(copied["target_nuclei"]),
+        "target_nuclei_sha256": expected_nuclei_hash,
+        "approved_target_nuclei_sha256": expected_nuclei_hash,
+        "approved_target_tissue_sha256": expected_tissue_hash,
+        "tissue_stage_rerun": False,
+        "nuclei_stage_rerun": False,
+    }
+    return state, cell_info, nuclei_stage
+
+
+def _locked_asset_path(
+    lock: dict[str, Any],
+    name: str,
+    fallback: Path,
+) -> Path:
+    return Path(str(lock.get(f"{name}_path") or fallback))
 
 
 def _run_tissue_stage(
@@ -467,7 +1119,7 @@ def _run_cell_stage(
         nuclei_library,
         density_scale_json,
         _option(args.probnet_device, cell_cfg.get("probnet_device"), "auto"),
-        str(_option(args.probnet_gamma_values, cell_cfg.get("probnet_gamma_values"), "1.0")),
+        str(_option(args.probnet_gamma_values, cell_cfg.get("probnet_gamma_values"), "3")),
     )
     return state, _loads_maybe(cell_log)
 
@@ -486,7 +1138,7 @@ def _run_generation_stage(
         state,
         _option(args.generation_mode, generation_cfg.get("generation_mode"), "dry-run"),
         _option(args.cross_backend, generation_cfg.get("cross_backend"), "cross-v1"),
-        float(_option(args.route_threshold, generation_cfg.get("route_threshold"), 0.35)),
+        float(_option(args.route_threshold, generation_cfg.get("route_threshold"), 0.30)),
         _format_profile_path(
             _option(
                 args.pretrained_model_name_or_path,
@@ -951,11 +1603,110 @@ def _write_json(payload: Any, path: Path) -> None:
     path.write_text(json.dumps(_stringify(payload), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _write_mask_stage_manifest(
+    summary: dict[str, Any],
+    output_path: Path,
+) -> None:
+    entries = []
+    for result in summary.get("results", []):
+        mask_stage = result.get("mask_stage")
+        if not isinstance(mask_stage, dict):
+            continue
+        entries.append(
+            {
+                "case_id": result.get("case_id"),
+                "condition_id": _condition_id_from_case_id(result.get("case_id")),
+                "dataset": result.get("dataset"),
+                "variant_id": result.get("variant_id"),
+                "run_dir": result.get("output_dir"),
+                **mask_stage,
+            }
+        )
+    payload = {
+        "schema_version": 1,
+        "stage": "mask",
+        "approval": {
+            "status": "pending",
+            "required_entry_count": len(entries),
+            "approved_entry_count": 0,
+        },
+        "frozen_target_mask_consumed": False,
+        "entry_count": len(entries),
+        "all_automatic_checks_passed": bool(entries)
+        and all(bool(item.get("audit_passed")) for item in entries),
+        "entries": entries,
+    }
+    _write_json(payload, output_path)
+
+
+def _write_nuclei_stage_manifest(
+    summary: dict[str, Any],
+    output_path: Path,
+) -> None:
+    entries = []
+    for result in summary.get("results", []):
+        nuclei_stage = result.get("nuclei_stage")
+        if not isinstance(nuclei_stage, dict):
+            continue
+        entries.append(
+            {
+                "case_id": result.get("case_id"),
+                "condition_id": _condition_id_from_case_id(
+                    result.get("case_id")
+                ),
+                "dataset": result.get("dataset"),
+                "variant_id": result.get("variant_id"),
+                "run_dir": result.get("output_dir"),
+                **nuclei_stage,
+            }
+        )
+    payload = {
+        "schema_version": 1,
+        "stage": "nuclei",
+        "approval": {
+            "status": "pending",
+            "required_entry_count": len(entries),
+            "approved_entry_count": 0,
+        },
+        "entry_count": len(entries),
+        "all_automatic_checks_passed": bool(entries)
+        and all(bool(item.get("audit_passed")) for item in entries),
+        "image_generation_started": False,
+        "entries": entries,
+    }
+    _write_json(payload, output_path)
+
+
+def _condition_id_from_case_id(case_id: Any) -> str:
+    text = str(case_id or "")
+    if "_" not in text:
+        return text
+    return text.split("_", 1)[1]
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run Phase 3 mask-edit manifest cases through the UI organic_v2 backend.",
     )
     parser.add_argument("--manifest", type=Path, default=_default_manifest_path())
+    parser.add_argument(
+        "--approved-mask-manifest",
+        type=Path,
+        help=(
+            "Resume from a fully approved mask-stage manifest. Every source, "
+            "instruction, target, and change-region hash is verified and the "
+            "tissue stage is not rerun."
+        ),
+    )
+    parser.add_argument(
+        "--approved-nuclei-manifest",
+        type=Path,
+        help=(
+            "Resume image generation from a fully approved nuclei-stage "
+            "manifest. Every downstream input hash is verified and neither "
+            "the tissue nor nuclei stage is rerun."
+        ),
+    )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--run-id", help="Optional output subdirectory name; defaults to a timestamp.")
     parser.add_argument("--plan-only", action="store_true", help="Write and print the expanded batch plan only.")
@@ -965,7 +1716,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, help="Limit cases after filters.")
     parser.add_argument("--data-root", type=Path, help="Override all dataset roots as DATA_ROOT/<dataset>.")
     parser.add_argument("--dataset-root", action="append", help="Override one dataset root, e.g. GlaS=/data/.../GlaS.")
-    parser.add_argument("--stop-after", choices=("tissue", "cell", "generation"), default="generation")
+    parser.add_argument(
+        "--stop-after",
+        choices=("mask", "nuclei", "image", "tissue", "cell", "generation"),
+        default="generation",
+        help=(
+            "Stop after the public mask/nuclei/image stage. Legacy "
+            "tissue/cell/generation values remain accepted."
+        ),
+    )
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--continue-on-phase3-failure", action="store_true")
     parser.add_argument("--execute-no-op-cases", action="store_true", help="Send no-op cases through parser/contour instead of writing zero-change outputs.")
@@ -1006,6 +1765,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--inpaint-checkpoint")
     parser.add_argument("--cross-v1-checkpoint")
     parser.add_argument("--pix2pix-checkpoint")
+
+    parser.add_argument("--segmentator-env")
+    parser.add_argument("--product-release")
+    parser.add_argument("--segmentator-release")
+    parser.add_argument("--segmentator-python")
+    parser.add_argument("--segmentator-device")
+    parser.add_argument("--cellvit-script")
+    parser.add_argument("--cellvit-model")
+    parser.add_argument("--cellvit-root")
+    parser.add_argument("--cellvit-python")
+    parser.add_argument("--cellvit-device")
     return parser
 
 

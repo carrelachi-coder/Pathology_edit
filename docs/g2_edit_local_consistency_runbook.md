@@ -55,63 +55,64 @@ this runbook when details differ.
 
 ### 1.1 Segmentator
 
-The engineering-frozen Segmentator C checkpoint is Boundary + CellViT
-Teacher joint epoch 2:
+The final production tissue evaluator is the frozen legacy-anchor fine
+checkpoint:
 
 ```text
-/data1/zhao/wqx/segmentator_fine/fine_boundary_teacher_joint_seed42/best_composite.pt
+/data1/zhao/wqx/segmentator_fine/legacy_anchor_fine_seed42/best_composite.pt
 ```
 
 Checkpoint identity:
 
-- size: `2,820,003,238` bytes;
+- size: `2,817,774,455` bytes;
 - SHA256:
-  `ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34`;
-- runtime input: image only; CellViT was a training teacher and is not an
-  inference dependency.
+  `5165e0fb20aca68f64fb06403eff846173fba3a3373deeedb36b3feb81727b3f`;
+- runtime input: image only; CellViT is not part of this checkpoint's training
+  or inference architecture;
+- initial coarse checkpoint:
+  `/data1/zhao/wqx/segmentator/best_mIoU.pt`, SHA256
+  `5e4b5587359527e0e988428b8cd7fa453255de8729f0fde1ef375fb21d64f112`;
+- fine-stage policy: `legacy_final_depth`, frozen shared/coarse parameters and
+  fine-only loss.
 
-Its corrected grouped validation metrics are:
+Its grouped validation metrics are:
 
-- coarse dataset-native macro mIoU: `0.691264`;
-- pooled unified-eight-class diagnostic mIoU: `0.619820`;
-- Boundary-F1@2/4/8: `0.413745 / 0.520756 / 0.637244`;
-- supported fine dataset-macro mIoU: `0.669412`;
-- HD95: `80.6823`.
+- coarse dataset-native macro mIoU: `0.724986`;
+- pooled unified-eight-class diagnostic mIoU: `0.645508`;
+- Boundary-F1@4: `0.512012`;
+- supported fine dataset-macro mIoU: `0.812287`;
+- HD95: `74.1973`.
 
-Its grouped held-out internal test metrics are coarse dataset-native macro
-mIoU `0.627313` and supported fine dataset-macro mIoU `0.601549`. These are
-internal grouped patch-test results, not external validation or a uniform
-unseen full-WSI cohort. The complete metric contract is in
-`docs/segmentator_fine_validation.md`.
+These are internal grouped patch-validation results, not external validation
+or a uniform unseen full-WSI cohort. The complete metric contract and
+historical C-line comparison are in `docs/segmentator_fine_validation.md`.
 
 The repository release definition is:
 
 ```text
-benchmark_configs/releases/segmentator_fine_c_epoch2.json
+benchmark_configs/releases/segmentator_fine_legacy_anchor.json
 ```
 
-It is deliberately marked
-`engineering_frozen_pending_independent_doctor_review`. This allows G2
-interface work and canary execution, but not final publication evaluation.
-The release becomes `final_frozen` only after the implementation commit and
-independent doctor-reviewed report path/hash are recorded.
+It is marked `production_frozen_online_evaluator`. This freezes the online
+engineering evaluator but does not turn its output into independent clinical
+ground truth. The historical C-line release is research comparison only.
 
 Before any formal G2 generation, the evaluator release block in the freeze
 manifest must contain:
 
 ```yaml
 segmentator:
-  release_status: final_frozen
-  release_id: segmentator-fine-c-joint-epoch2-v1
-  checkpoint: /data1/zhao/wqx/segmentator_fine/fine_boundary_teacher_joint_seed42/best_composite.pt
-  checkpoint_sha256: ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34
+  release_status: production_frozen_online_evaluator
+  release_id: segmentator-fine-legacy-anchor-v1
+  checkpoint: /data1/zhao/wqx/segmentator_fine/legacy_anchor_fine_seed42/best_composite.pt
+  checkpoint_sha256: 5165e0fb20aca68f64fb06403eff846173fba3a3373deeedb36b3feb81727b3f
   code_commit: <release_implementation_git_sha>
   decoder: mask2former
   architecture:
     hierarchical_fine: true
-    boundary_refinement: true
-    refinement_gate_mode: learned_soft
-    cellvit_mode: teacher
+    boundary_refinement: false
+    refinement_gate_mode: hard
+    cellvit_mode: none
   input:
     image_size: [512, 512]
     mpp: 0.25
@@ -132,6 +133,15 @@ No formal G2 job may resolve the Segmentator from an implicit code default.
 The checkpoint, model-construction flags, preprocessing, label map, and hash
 must come from the freeze manifest. A checkpoint that cannot be loaded with
 `strict=True` under the frozen architecture is invalid.
+
+The fixed `metadata_cross_val.json` and every frozen G2 row are evaluation
+inputs. They must not be used for continued Segmentator training. In
+particular, the G2-600 cohort contains 506 grouped-train, 32 grouped-validation
+and 62 grouped-test patches; using the complete cohort would directly leak 94
+held-out patches. A small-learning-rate experiment is allowed only under a new
+checkpoint identity, outside the production path, with frozen endpoint rows
+excluded and a new group-disjoint clinician-labelled evaluation reserved in
+advance.
 
 The independent doctor-reviewed TCGA result must be reported separately from
 the grouped validation metrics above. Until its path and hash are present in

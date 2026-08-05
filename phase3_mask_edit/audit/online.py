@@ -117,6 +117,7 @@ class OnlineSemanticAuditor:
         generated_prediction: SemanticPrediction,
         class_ids: tuple[int, ...] = tuple(range(8)),
         semantic_change_region: np.ndarray | None = None,
+        preservation_exclusion_region: np.ndarray | None = None,
         source_fine_mask: np.ndarray | None = None,
         target_fine_mask: np.ndarray | None = None,
         source_fine_prediction: SemanticPrediction | None = None,
@@ -143,6 +144,7 @@ class OnlineSemanticAuditor:
             class_ids=class_ids,
             ignore_index=ignore_index,
             semantic_change_region=semantic_change_region,
+            preservation_exclusion_region=preservation_exclusion_region,
         )
         p1_result = None
         p1_metrics = None
@@ -167,6 +169,7 @@ class OnlineSemanticAuditor:
                 class_ids=class_ids,
                 ignore_index=ignore_index,
                 semantic_change_region=semantic_change_region,
+                preservation_exclusion_region=preservation_exclusion_region,
             )
         fine_inputs = (
             source_fine_mask,
@@ -195,6 +198,7 @@ class OnlineSemanticAuditor:
                 generated_entropy=generated_fine_prediction.entropy,
                 confidence_policy=self.policy.confidence,
                 semantic_change_region=semantic_change_region,
+                preservation_exclusion_region=preservation_exclusion_region,
             )
         decision_input = (
             "p1_audited"
@@ -223,6 +227,7 @@ class OnlineSemanticAuditor:
         class_ids: tuple[int, ...],
         ignore_index: int,
         semantic_change_region: np.ndarray | None,
+        preservation_exclusion_region: np.ndarray | None,
     ) -> dict[str, Any]:
         return source_relative_tissue_metrics(
             source_mask=source_mask,
@@ -238,4 +243,5 @@ class OnlineSemanticAuditor:
             generated_entropy=generated_prediction.entropy,
             confidence_policy=self.policy.confidence,
             semantic_change_region=semantic_change_region,
+            preservation_exclusion_region=preservation_exclusion_region,
         )

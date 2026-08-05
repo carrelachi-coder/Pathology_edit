@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import inspect
 import sys
 import tempfile
@@ -42,6 +43,7 @@ from scripts.phase3_end_to_end_ui import (
     DEFAULT_API_MODEL,
     DEFAULT_CELLVIT_MODEL,
     DEFAULT_CELLVIT_ROOT,
+    PRODUCTION_PIX2PIX_ENV,
     _auto_feasible_strengths_for_primitive,
     _build_online_agent_command,
     _estimate_recommendation_capacity,
@@ -49,6 +51,7 @@ from scripts.phase3_end_to_end_ui import (
     _primitive_config,
     _profile_defaults,
     _resolve_ui_cell_regions,
+    _run_agentic_generation_stage,
     _run_segmentator_tissue_mask,
     _with_default_contour_labels,
     run_cell_stage,
@@ -63,10 +66,12 @@ GENERIC_RECIPE = Path("phase3_mask_edit/recipes/generic.yaml")
 class OnlineProductIntegrationTests(unittest.TestCase):
     def test_probnet_ui_defaults_match_frozen_sampling_policy(self):
         defaults = _profile_defaults("BCSS")
+        glas_defaults = _profile_defaults("GLAS")
 
         self.assertTrue(defaults["probnet_ckpt"].endswith("best_epoch29_c29607f1b609accb.pt"))
         self.assertEqual(defaults["density_scale_json"], "")
         self.assertTrue(defaults["nuclei_library"].endswith("/BCSS"))
+        self.assertTrue(glas_defaults["nuclei_library"].endswith("/GlaS"))
 
     def test_agentic_ui_delegates_to_release_driven_production_runner(self):
         state = {
@@ -112,6 +117,7 @@ class OnlineProductIntegrationTests(unittest.TestCase):
 
         self.assertTrue(command[1].endswith("scripts/run_agentic_edit_workflow.py"))
         self.assertEqual(value("--segmentator-release"), "/tmp/segmentator-release.json")
+        self.assertEqual(value("--segmentator-python"), "/tmp/segmentator-python")
         self.assertNotIn("--segmentator-checkpoint", command)
         self.assertEqual(value("--semantic-change-region"), "/tmp/semantic.png")
         self.assertEqual(value("--generation-change-region"), "/tmp/generation.png")
@@ -119,11 +125,130 @@ class OnlineProductIntegrationTests(unittest.TestCase):
         self.assertEqual(value("--cellvit-script"), "/tmp/cellvit-wrapper.py")
         self.assertEqual(value("--cellvit-python"), "/tmp/cellvit-python")
         self.assertEqual(value("--pix2pix-checkpoint"), "/tmp/pix2pix_epoch26_step214895.pt")
+        self.assertEqual(value("--num-inference-steps"), "28")
+        self.assertEqual(value("--guidance-scale"), "3.5")
+        self.assertEqual(value("--controlnet-conditioning-scale"), "1.0")
+        self.assertEqual(value("--torch-dtype"), "bf16")
+        self.assertEqual(value("--seed"), "42")
+        self.assertEqual(value("--t-inpaint"), "0.12")
+        self.assertEqual(value("--t-cross"), "0.3")
+        self.assertEqual(value("--max-attempts"), "2")
         self.assertEqual(
             value("--nuclei-generation-log"),
             "/tmp/ui-run/cell_fill_log.json",
         )
         self.assertEqual(output_dir, Path("/tmp/ui-run/agentic_generation"))
+
+    def test_agentic_ui_exports_the_explicit_pix2pix_selector(self):
+        state = {
+            "profile": "BCSS",
+            "output_dir": "/tmp/ui-run",
+            "reference_image": "/tmp/source.png",
+            "reference_tissue_mask": "/tmp/source_tissue.png",
+            "reference_nuclei_mask": "/tmp/source_nuclei.png",
+            "target_tissue_mask": "/tmp/target_tissue.png",
+            "target_nuclei_mask": "/tmp/target_nuclei.png",
+            "semantic_change_region": "/tmp/semantic.png",
+            "change_region": "/tmp/generation.png",
+            "cell_fill_log": "/tmp/ui-run/cell_fill_log.json",
+            "verification_runtime": {
+                "segmentator_env": "segmentator-env",
+                "segmentator_release": "/tmp/segmentator-release.json",
+                "segmentator_device": "cuda:1",
+                "cellvit_script": "/tmp/cellvit-wrapper.py",
+                "cellvit_model": "/tmp/cellvit.pt",
+                "cellvit_root": "/tmp/cellvit",
+                "cellvit_python": "/tmp/cellvit-python",
+                "cellvit_device": "cuda:2",
+            },
+        }
+        args = SimpleNamespace(
+            pretrained_model_name_or_path="/tmp/flux",
+            inpaint_checkpoint="/tmp/inpaint",
+            cross_v1_checkpoint="/tmp/cross",
+            pix2pix_checkpoint="/tmp/pix2pix_epoch26_step214895.pt",
+            device="cuda:0",
+        )
+        summary = {
+            "status": "needs_review",
+            "generated_image": "/tmp/ui-run/agentic_generation/generated_image.png",
+            "selected_attempt": {
+                "artifact": {
+                    "mode": "inpaint",
+                    "metadata": {},
+                },
+                "verification": {
+                    "quality_score": 0.81,
+                    "evidence_coverage": 0.72,
+                    "component_scores": {
+                        "semantic": 0.77,
+                        "preservation": 0.91,
+                    },
+                    "applicability": {
+                        "semantic": True,
+                        "boundary": False,
+                    },
+                    "scientific_status": "needs_review",
+                    "failed_checks": ["evidence_coverage"],
+                    "reason_codes": ["boundary_evaluator_abstained"],
+                },
+            },
+            "generation_report": {
+                "final_reason": "preservation_preferred",
+            },
+        }
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs["env"]
+            output_dir = Path(state["output_dir"]) / "agentic_generation"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            Image.new("RGB", (8, 8), "white").save(
+                output_dir / "generated_image.png"
+            )
+            (output_dir / "pipeline_summary.json").write_text(
+                __import__("json").dumps(summary),
+                encoding="utf-8",
+            )
+            return SimpleNamespace(returncode=2, stdout="", stderr="")
+
+        with patch(
+            "scripts.phase3_end_to_end_ui.subprocess.run",
+            side_effect=fake_run,
+        ):
+            final_path, info = _run_agentic_generation_stage(
+                state=state,
+                args=args,
+                route_threshold=0.30,
+                reference_image=np.zeros((8, 8, 3), dtype=np.uint8),
+                change_region=np.ones((8, 8), dtype=bool),
+            )
+
+        self.assertEqual(
+            captured["env"][PRODUCTION_PIX2PIX_ENV],
+            str(Path(args.pix2pix_checkpoint).resolve()),
+        )
+        runner_image = Path(state["output_dir"]) / "agentic_generation" / "generated_image.png"
+        self.assertEqual(
+            hashlib.sha256(final_path.read_bytes()).hexdigest(),
+            hashlib.sha256(runner_image.read_bytes()).hexdigest(),
+        )
+        verification = summary["selected_attempt"]["verification"]
+        self.assertEqual(info["quality_score"], verification["quality_score"])
+        self.assertEqual(
+            info["evidence_coverage"],
+            verification["evidence_coverage"],
+        )
+        self.assertEqual(
+            info["component_scores"],
+            verification["component_scores"],
+        )
+        self.assertEqual(
+            info["evaluator_applicability"],
+            verification["applicability"],
+        )
+        self.assertEqual(info["agentic_workflow"], summary)
 
     def test_agentic_ui_rejects_target_nuclei_without_current_cell_log(self):
         state = {
@@ -352,21 +477,59 @@ class OnlineProductIntegrationTests(unittest.TestCase):
                 {"policy": "deleted_nucleus_diameter_buffer_v1"},
             ),
         ):
-            generation, deletion, policy = _resolve_ui_cell_regions(
+            generation, deletion, nuclei_generation, policy = (
+                _resolve_ui_cell_regions(
                 profile="BCSS",
                 reference_tissue=source_tissue,
                 target_tissue=target_tissue,
                 reference_nuclei=source_nuclei,
                 semantic_change_region=semantic,
                 cell_fill_mode="probnet",
+                )
             )
 
         np.testing.assert_array_equal(deletion, semantic)
+        np.testing.assert_array_equal(nuclei_generation, semantic)
         np.testing.assert_array_equal(generation, buffered)
         self.assertEqual(
             policy["cell_deletion_region_policy"],
             "semantic_change_region",
         )
+
+    def test_ui_glas_structure_context_is_the_full_cell_regeneration_region(self):
+        source_tissue = np.full((48, 48), 2, dtype=np.uint8)
+        source_tissue[16:32, 16:32] = 11
+        target_tissue = source_tissue.copy()
+        target_tissue[12:36, 12:36] = 11
+        semantic = source_tissue != target_tissue
+        with patch(
+            "scripts.phase3_end_to_end_ui._build_nucleus_aware_generation_region",
+            side_effect=AssertionError("GLaS whole-gland rewrite must not buffer"),
+        ) as build_region:
+            generation, deletion, nuclei_generation, policy = (
+                _resolve_ui_cell_regions(
+                    profile="GLaS",
+                    reference_tissue=source_tissue,
+                    target_tissue=target_tissue,
+                    reference_nuclei=np.zeros_like(source_tissue),
+                    semantic_change_region=semantic,
+                    cell_fill_mode="probnet",
+                )
+            )
+
+        self.assertGreater(np.count_nonzero(generation), np.count_nonzero(semantic))
+        np.testing.assert_array_equal(deletion, generation)
+        np.testing.assert_array_equal(nuclei_generation, generation)
+        build_region.assert_not_called()
+        self.assertEqual(
+            policy["cell_deletion_region_policy"],
+            "whole_glas_connected_component",
+        )
+        self.assertEqual(
+            policy["nuclei_generation_region_policy"],
+            "whole_glas_connected_component",
+        )
+        self.assertTrue(policy["image_and_nuclei_region_equal"])
 
 
 class Phase3AutoRecommendUiTests(unittest.TestCase):

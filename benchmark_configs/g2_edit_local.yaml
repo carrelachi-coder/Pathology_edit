@@ -1,7 +1,7 @@
-schema_version: 1
-status: engineering_interface_freeze
+schema_version: 2
+status: ready_for_human_gt_mask_only_build
 
-segmentator_release: benchmark_configs/releases/segmentator_fine_c_epoch2.json
+segmentator_release: benchmark_configs/releases/segmentator_fine_legacy_anchor.json
 
 evaluation_frame:
   image_size: [512, 512]
@@ -17,26 +17,39 @@ fine_policy:
   other_profiles_status: not_applicable
 
 confidence_policy:
-  status: calibration_required
+  status: diagnostic_export
   top1_probability_min: null
   top1_top2_margin_min: null
   normalized_entropy_max: null
 
 evaluator_clean_policy:
-  status: calibration_required
-  source_region_accuracy_min: null
-  source_class_recall_min: null
+  status: frozen_engineering
+  source_region_accuracy_min: 0.70
+  source_macro_miou_min: 0.55
+  source_class_recall_min: 0.70
+  target_reference_min_pixels: 256
+  target_reference_recall_min: 0.55
+  source_to_target_confusion_max: 0.30
   source_mean_normalized_entropy_max: null
-  source_boundary_f1_4_min: null
+  source_boundary_f1_4_min: 0.45
   stratification: organ_and_source_class_with_pooled_fallback
 
 verifier_gates:
-  status: pilot_not_formal
-  changed_region_accuracy_min: 0.70
-  changed_region_macro_iou_min: 0.55
-  cross_preservation_drift_u_far_max: 0.08
-  nuclei_occupied_area_relative_error_max: 0.35
-  formal_validated_status_enabled: false
+  policy_id: online-quality-evaluator-v2.4
+  status: frozen_engineering_not_clinical
+  quality_score_min: 0.75
+  evidence_coverage_min: 0.80
+  relative_evidence_coverage_min: 0.70
+  semantic_score_min: 0.60
+  relative_semantic_score_min: 0.60
+  relative_semantic_evidence_weight: 0.35
+  relative_semantic_direction_epsilon: 0.0001
+  preservation_drift_u_far_max: 0.08
+  preservation_exclusion_region: full_generation_change_region
+  nuclei_detection_count_relative_error_max: 0.35
+  nuclei_type_composition_error_max: 0.35
+  formal_validated_status_enabled: true
+  validated_interpretation: engineering_evaluator_pass_not_clinical_correctness
 
 online_self_audit:
   scope: product_runtime
@@ -55,20 +68,53 @@ online_self_audit:
     max_changed_fraction: 0.0005
     enforce_requires: [disjoint_60_condition_calibration, blinded_visual_review]
 
-online_agent_canary:
-  role: validate_product_loop_without_changing_behavior
-  condition_count: 18
-  manifest: /data1/zhao/wqx/benchmark_v1/g2_online_agent_canary_v1/manifests/online_agent_canary_18.jsonl
-  output_root: /data1/zhao/wqx/benchmark_v1/g2_online_agent_canary_v1
-  coverage:
-    organs: 6
-    route_strata: [inpaint, gray, cross]
-    conditions_per_stratum: 6
-  can_tune_scientific_thresholds: false
-  can_enable_p1_enforce: false
+g2_600:
+  eval_metadata: /home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/cross_meta/metadata_cross_val.json
+  source_mask_policy: human_dataset_annotation_only
+  forbidden_mask_sources: [model_masks, segmentator_outputs, predictions]
+  cohort_size: 600
+  unique_patch_count: 600
+  conditions_per_patch: 1
+  organs: [breast, colorectal, lung, oral, prostate, skin]
+  organ_quota: 100
+  desired_primitive_quota: 75
+  minimum_effective_primitive_quota: 30
+  effective_primitive_quotas:
+    tumor_increase: 163
+    tumor_decrease: 159
+    stroma_increase: 49
+    stroma_decrease: 109
+    immune_increase: 30
+    immune_decrease: 30
+    necrosis_increase: 30
+    necrosis_decrease: 30
+  primitive_quota_policy: organ_stratified_minimax_with_annotation_capacity
+  strength: moderate
+  projection: organic_v2
+  de_novo_edits: forbidden
+  grade_edits: forbidden
+  fine_subtype_edits: forbidden
+  background_edits: forbidden
+  preferred_patches_per_wsi: 1
+  desired_maximum_patches_per_wsi: 2
+  effective_maximum_patches_per_wsi: annotation_pool_minimum_reported_by_builder
+  coverage_constraint_policy: ground_truth_annotation_support_with_same_cell_reserves
+  minimum_reserves_per_active_organ_primitive: 5
+  constraint_adjustments_must_be_reported: true
+  seed: 42
+  cohort_builder: scripts/build_g2_600_manifest.py
+  orchestrator: scripts/run_g2_600.py
+  product_manifest_runner: scripts/run_phase3_manifest_pipeline.py
+  mask_failure_policy: reserve_same_organ_and_primitive_or_stop
+  benchmark_private_generation_or_evaluator: forbidden
 
 reporting:
-  primary: all_cases
+  primary: coarse_final_selected
+  attempts: all
+  selected_final: true
+  fine_metrics: diagnostic_only
+  engineering_validated_rate: true
+  clinical_success_claim: forbidden
   sensitivities:
     - evaluator_clean
     - evaluator_uncertain_audit

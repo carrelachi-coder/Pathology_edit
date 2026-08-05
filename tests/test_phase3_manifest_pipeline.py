@@ -7,15 +7,35 @@ from pathlib import Path
 from scripts.run_phase3_manifest_pipeline import (
     REPO_DEFAULT_MANIFEST,
     _case_path_candidates,
+    _condition_id_from_case_id,
     _dataset_roots,
     _normalize_model_path_key,
     _resolve_case_paths,
     _resolve_model_path,
+    _segmentator_release_from_product_release,
     _selected_variants,
 )
 
 
 class Phase3ManifestPipelineTests(unittest.TestCase):
+    def test_segmentator_release_is_derived_from_product_contract(self):
+        product_release = (
+            Path(__file__).resolve().parents[1]
+            / "benchmark_configs"
+            / "releases"
+            / "online_agent_product_v1.json"
+        )
+
+        resolved = _segmentator_release_from_product_release(
+            product_release,
+            fallback=Path("unused.json"),
+        )
+
+        self.assertEqual(
+            resolved.name,
+            "segmentator_fine_legacy_anchor.json",
+        )
+
     def test_debug_manifest_has_prompt_and_instruction_inputs(self):
         manifest = json.loads(REPO_DEFAULT_MANIFEST.read_text(encoding="utf-8"))
 
@@ -151,6 +171,12 @@ class Phase3ManifestPipelineTests(unittest.TestCase):
 
         self.assertEqual(len(variants), 1)
         self.assertEqual(variants[0]["edit_mode"], "instruction")
+
+    def test_condition_id_is_recovered_from_review_case_id(self):
+        self.assertEqual(
+            _condition_id_from_case_id("01_d1771b59457f64f06fcd"),
+            "d1771b59457f64f06fcd",
+        )
 
     def test_model_path_prefers_dataset_mapping_over_template(self):
         model_paths = {
