@@ -63,6 +63,7 @@ class FamilyFeatureFiLM(nn.Module):
         target_mask: torch.Tensor,
         reference_mask: torch.Tensor,
         min_pixels: int,
+        target_gain_map: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         mean, log_std, support = masked_channel_stats(
             reference_feature,
@@ -78,6 +79,13 @@ class FamilyFeatureFiLM(nn.Module):
             size=target_feature.shape[-2:],
             mode="area",
         ).clamp(0.0, 1.0).to(dtype=target_feature.dtype)
+        if target_gain_map is not None:
+            gain = F.interpolate(
+                _as_mask(target_gain_map).to(device=target_feature.device).float(),
+                size=target_feature.shape[-2:],
+                mode="area",
+            ).clamp_min(1.0).to(dtype=target_feature.dtype)
+            target_weight = target_weight * gain
         gamma = self.identity_gamma.clamp(-self.gamma_max, self.gamma_max).to(target_feature.dtype)
         update = gamma * support[:, :, None, None] * target_weight * (
             target_feature * delta_scale + delta_bias
@@ -142,6 +150,7 @@ class FamilyWSIIdentityAdapter(nn.Module):
         target_nuclei_mask: torch.Tensor,
         reference_tissue_mask: torch.Tensor,
         reference_nuclei_mask: torch.Tensor,
+        tissue_gain_map: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         target_tissue, target_nuclei = self._family_masks(target_tissue_mask, target_nuclei_mask)
         reference_tissue, reference_nuclei = self._family_masks(
@@ -157,6 +166,7 @@ class FamilyWSIIdentityAdapter(nn.Module):
                 target_mask=target_tissue,
                 reference_mask=reference_tissue,
                 min_pixels=self.min_tissue_pixels,
+                target_gain_map=tissue_gain_map,
             )
             logs["tissue_support"] = float(support.detach().float().mean().item())
         if scale in self.nuclei_adapters:

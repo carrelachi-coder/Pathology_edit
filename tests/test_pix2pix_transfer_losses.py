@@ -797,6 +797,96 @@ class Pix2PixTextureLossTests(unittest.TestCase):
         self.assertGreater(float(output.masked_select(~resized_nuclei.expand_as(output)).mean()), 0.0)
         self.assertAlmostEqual(abs(tissue_film.effective_gamma()), 0.30, places=5)
 
+    def test_identity_adapter_uses_global_same_wsi_tissue_family(self):
+        class RecordingFiLM(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.reference_masks = []
+
+            def forward(
+                self,
+                target_feature,
+                reference_feature,
+                *,
+                target_mask,
+                reference_mask,
+                min_pixels,
+                target_gain_map=None,
+            ):
+                self.reference_masks.append(reference_mask.detach().clone())
+                support = reference_mask.flatten(1).any(dim=1).to(target_feature.dtype)
+                return target_feature, support[:, None]
+
+        adapter = FamilyWSIIdentityAdapter(
+            channels_by_scale={"1/4": 2},
+            tissue_scales=("1/4",),
+            nuclei_scales=(),
+            min_tissue_pixels=1,
+        )
+        recorder = RecordingFiLM()
+        adapter.tissue_adapters["1/4"] = recorder
+        tissue = torch.ones(1, 1, 8, 8, dtype=torch.long)
+        tissue[:, :, :, 4:] = 2
+        nuclei = torch.zeros_like(tissue)
+
+        _, logs = adapter.forward_scale(
+            "1/4",
+            torch.zeros(1, 2, 4, 4),
+            torch.zeros(1, 2, 4, 4),
+            target_tissue_mask=tissue,
+            target_nuclei_mask=nuclei,
+            reference_tissue_mask=tissue,
+            reference_nuclei_mask=nuclei,
+        )
+
+        self.assertEqual(len(recorder.reference_masks), 1)
+        self.assertEqual(int(recorder.reference_masks[0].sum().item()), 64)
+        self.assertEqual(logs["tissue_support"], 1.0)
+
+    def test_identity_adapter_continuous_gain_preserves_supported_region(self):
+        adapter = FamilyWSIIdentityAdapter(
+            channels_by_scale={"1/4": 2},
+            tissue_scales=("1/4",),
+            nuclei_scales=(),
+            min_tissue_pixels=1,
+        )
+        film = adapter.tissue_adapters["1/4"]
+        with torch.no_grad():
+            film.output.bias[film.channels :].fill_(1.0)
+            film.identity_gamma.fill_(0.2)
+        target = torch.zeros(1, 2, 4, 4)
+        reference = torch.ones_like(target)
+        tissue = torch.ones(1, 1, 8, 8, dtype=torch.long)
+        nuclei = torch.zeros_like(tissue)
+
+        baseline, _ = adapter.forward_scale(
+            "1/4",
+            target,
+            reference,
+            target_tissue_mask=tissue,
+            target_nuclei_mask=nuclei,
+            reference_tissue_mask=tissue,
+            reference_nuclei_mask=nuclei,
+        )
+        gain = torch.ones_like(tissue, dtype=torch.float32)
+        gain[:, :, :, 4:] = 1.5
+        adaptive, _ = adapter.forward_scale(
+            "1/4",
+            target,
+            reference,
+            target_tissue_mask=tissue,
+            target_nuclei_mask=nuclei,
+            reference_tissue_mask=tissue,
+            reference_nuclei_mask=nuclei,
+            tissue_gain_map=gain,
+        )
+
+        torch.testing.assert_close(adaptive[:, :, :, :2], baseline[:, :, :, :2])
+        self.assertGreater(
+            float(adaptive[:, :, :, 2:].mean()),
+            float(baseline[:, :, :, 2:].mean()),
+        )
+
     def test_identity_model_loads_old_weights_and_zero_init_matches_old_output(self):
         torch.manual_seed(7)
         old_model = Pix2PixCrossAttnUNet(in_ch=25, base=8, num_heads=4)

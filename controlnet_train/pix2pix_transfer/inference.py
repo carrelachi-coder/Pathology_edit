@@ -21,7 +21,10 @@ from .dataset import (
 )
 from .regional_cross_attention import Pix2PixCrossAttnUNet
 from .inference_orientation import build_fine_texture_steering_weights
-from .trust_gate import build_highres_nuclei_reference_trust_map
+from .trust_gate import (
+    build_highres_nuclei_reference_trust_map,
+    build_reference_trust_map,
+)
 
 
 @dataclass(frozen=True)
@@ -65,6 +68,12 @@ class Pix2PixPostprocessConfig:
     highres_nuclei_matched_floor: float = 0.60
     highres_nuclei_sufficient_tokens: int = 4
     highres_nuclei_min_reference_pixels: int = 64
+    class_reference_trust_enabled: bool = True
+    class_reference_fallback_scale: float = 0.05
+    class_reference_min_region_pixels: int = 8
+    class_reference_matched_tissue_floor: float = 0.05
+    class_reference_matched_nuclei_floor: float = 0.05
+    same_wsi_identity_low_support_max_gain: float = 1.50
 
     @classmethod
     def from_checkpoint_args(cls, args: Mapping[str, Any] | None) -> "Pix2PixPostprocessConfig":
@@ -145,6 +154,24 @@ class Pix2PixPostprocessConfig:
             highres_nuclei_min_reference_pixels=int(
                 values.get("highres_nuclei_min_reference_pixels", 64)
             ),
+            class_reference_trust_enabled=bool(
+                values.get("class_reference_trust_enabled", True)
+            ),
+            class_reference_fallback_scale=float(
+                values.get("class_reference_fallback_scale", 0.05)
+            ),
+            class_reference_min_region_pixels=int(
+                values.get("class_reference_min_region_pixels", 8)
+            ),
+            class_reference_matched_tissue_floor=float(
+                values.get("class_reference_matched_tissue_floor", 0.05)
+            ),
+            class_reference_matched_nuclei_floor=float(
+                values.get("class_reference_matched_nuclei_floor", 0.05)
+            ),
+            same_wsi_identity_low_support_max_gain=float(
+                values.get("same_wsi_identity_low_support_max_gain", 1.50)
+            ),
         )
 
 
@@ -159,12 +186,13 @@ class LoadedPix2PixPostprocessor:
 
 @dataclass(frozen=True)
 class CrossLowStainProtectionConfig:
-    """Inference-only guard that preserves low-stain Cross structures."""
+    """Inference-only guard that preserves near-white Cross background."""
 
-    policy: str = "cross_rgb_od_low_stain_v1"
-    minimum_luma: float = 0.70
-    maximum_chroma: float = 0.28
-    maximum_otsu_od: float = 0.35
+    policy: str = "cross_rgb_od_near_white_v2"
+    minimum_luma: float = 0.90
+    minimum_rgb_channel: float = 0.86
+    maximum_chroma: float = 0.10
+    maximum_otsu_od: float = 0.12
     nuclei_exclusion_radius_at_512: int = 5
     closing_iterations_at_512: int = 4
     opening_iterations_at_512: int = 2
@@ -263,6 +291,68 @@ def run_pix2pix_postprocess(
         reference_tissue, reference_nuclei, label_mode=config.region_label_mode
     ).unsqueeze(0).to(device=device)
 
+    class_reference_trust_map = None
+    class_reference_trust_info: dict[str, Any] = {"enabled": False}
+    if config.class_reference_trust_enabled:
+        class_reference_trust_map, class_reference_trust_stats = build_reference_trust_map(
+            target_region,
+            reference_region,
+            fallback_scale=config.class_reference_fallback_scale,
+            min_region_pixels=config.class_reference_min_region_pixels,
+            matched_tissue_floor=config.class_reference_matched_tissue_floor,
+            matched_nuclei_floor=config.class_reference_matched_nuclei_floor,
+        )
+        class_reference_trust_map = class_reference_trust_map.to(
+            device=device,
+            dtype=torch_dtype,
+        )
+        class_reference_trust_info = {
+            "enabled": True,
+            "policy": "class_area_reference_support_v1",
+            "fallback_scale": config.class_reference_fallback_scale,
+            "min_region_pixels": config.class_reference_min_region_pixels,
+            "matched_tissue_floor": config.class_reference_matched_tissue_floor,
+            "matched_nuclei_floor": config.class_reference_matched_nuclei_floor,
+            **class_reference_trust_stats,
+        }
+
+    identity_tissue_gain_map = None
+    identity_gain_info: dict[str, Any] = {
+        "enabled": config.use_wsi_identity,
+        "policy": "continuous_inverse_class_support_v1",
+        "maximum_gain": config.same_wsi_identity_low_support_max_gain,
+        "support_gated": False,
+        "posthoc_color_match": False,
+        "changes_tissue_or_nuclei_layout": False,
+    }
+    if config.use_wsi_identity and class_reference_trust_map is not None:
+        maximum_gain = max(
+            1.0,
+            float(config.same_wsi_identity_low_support_max_gain),
+        )
+        support = class_reference_trust_map.float().clamp(0.0, 1.0)
+        identity_tissue_gain_map = 1.0 + (1.0 - support) * (
+            maximum_gain - 1.0
+        )
+        target_tissue_on_device = (
+            target_tissue.unsqueeze(0).to(device=device).ne(0)
+        )
+        identity_tissue_gain_map = torch.where(
+            target_tissue_on_device,
+            identity_tissue_gain_map,
+            torch.ones_like(identity_tissue_gain_map),
+        ).to(dtype=torch_dtype)
+        tissue_gains = identity_tissue_gain_map[target_tissue_on_device]
+        identity_gain_info.update(
+            {
+                "mean_tissue_gain": float(tissue_gains.float().mean().item()),
+                "maximum_observed_gain": float(
+                    tissue_gains.float().max().item()
+                ),
+                "high_support_gain": 1.0,
+            }
+        )
+
     steering_weights = None
     steering_info: dict[str, Any] = {"enabled": False}
     if config.cross4_texture_steering:
@@ -343,7 +433,8 @@ def run_pix2pix_postprocess(
         reference_cond,
         target_region=target_region,
         reference_region=reference_region,
-        target_trust_map=highres_nuclei_trust_map,
+        target_trust_map=class_reference_trust_map,
+        identity_tissue_gain_map=identity_tissue_gain_map,
         highres_nuclei_trust_map=highres_nuclei_trust_map,
         target_tissue_mask=target_tissue.unsqueeze(0).to(device=device),
         target_nuclei_mask=target_nuclei.unsqueeze(0).to(device=device),
@@ -394,6 +485,8 @@ def run_pix2pix_postprocess(
             if highres_nuclei_trust_map is not None
             else "removed_from_production_inference"
         ),
+        "tissue_reference_trust": class_reference_trust_info,
+        "same_wsi_identity": identity_gain_info,
         "nuclei_reference_trust": nuclei_trust_info,
         "texture_steering": steering_info,
         "cross_rgb_od_low_stain_protection": protection_info,
@@ -409,7 +502,7 @@ def apply_cross_low_stain_protection(
     protection_region: torch.Tensor | np.ndarray | None = None,
     config: CrossLowStainProtectionConfig | None = None,
 ) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
-    """Blend low-stain, cell-free Cross components back over Pix2Pix output."""
+    """Blend near-white, cell-free Cross background over Pix2Pix output."""
 
     from scipy import ndimage
 
@@ -474,6 +567,7 @@ def apply_cross_low_stain_protection(
         region
         & ~nuclei_exclusion
         & (luma >= float(config.minimum_luma))
+        & (rgb.min(axis=2) >= float(config.minimum_rgb_channel))
         & (chroma <= float(config.maximum_chroma))
         & (optical_density <= od_threshold)
     )
@@ -515,6 +609,7 @@ def apply_cross_low_stain_protection(
         "effective_od_threshold": float(od_threshold),
         "maximum_otsu_od": float(config.maximum_otsu_od),
         "minimum_luma": float(config.minimum_luma),
+        "minimum_rgb_channel": float(config.minimum_rgb_channel),
         "maximum_chroma": float(config.maximum_chroma),
         "nuclei_exclusion_radius_px": nuclei_radius,
         "minimum_component_area_px": minimum_component_area,

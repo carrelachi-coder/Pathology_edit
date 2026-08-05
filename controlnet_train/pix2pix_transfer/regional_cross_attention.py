@@ -729,6 +729,7 @@ class Pix2PixCrossAttnUNet(nn.Module):
         target_region: torch.Tensor | None = None,
         reference_region: torch.Tensor | None = None,
         target_trust_map: torch.Tensor | None = None,
+        identity_tissue_gain_map: torch.Tensor | None = None,
         highres_nuclei_trust_map: torch.Tensor | None = None,
         ref_fallback_scale: float = 1.0,
         ref_soft_context_scale: float = 0.0,
@@ -890,6 +891,7 @@ class Pix2PixCrossAttnUNet(nn.Module):
                 target_nuclei_mask=target_nuclei_mask,
                 reference_tissue_mask=reference_tissue_mask,
                 reference_nuclei_mask=reference_nuclei_mask,
+                tissue_gain_map=identity_tissue_gain_map,
             )
         x = self.up3(z, e3)
         if self.cross_8 is not None:
@@ -929,6 +931,7 @@ class Pix2PixCrossAttnUNet(nn.Module):
                 target_nuclei_mask=target_nuclei_mask,
                 reference_tissue_mask=reference_tissue_mask,
                 reference_nuclei_mask=reference_nuclei_mask,
+                tissue_gain_map=identity_tissue_gain_map,
             )
         x = self.up2(x, e2)
         if self.cross_4 is not None:
@@ -992,6 +995,7 @@ class Pix2PixCrossAttnUNet(nn.Module):
                 target_nuclei_mask=target_nuclei_mask,
                 reference_tissue_mask=reference_tissue_mask,
                 reference_nuclei_mask=reference_nuclei_mask,
+                tissue_gain_map=identity_tissue_gain_map,
             )
         x = self.up1(x, e1)
         if cross4_rotation_weights is not None and "1/2" in steering_scales:
