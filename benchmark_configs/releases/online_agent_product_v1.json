@@ -1,13 +1,24 @@
 {
   "schema_version": 1,
-  "release_id": "online-agent-product-v1-2026-07-29",
+  "release_id": "online-agent-product-v3-g2-2026-08-01",
   "release_status": "engineering_frozen_pending_blinded_g2_calibration",
   "formal_publication_ready": false,
-  "code_commit": "64de2f5d6d6637053bdb1ea050493fc6fbbfb27b",
+  "code_commit": "b35c9013d02630151c6270dd70b4cea1e8e74b9e",
+  "implementation_source": {
+    "mask_code_snapshot": "/data1/zhao/wqx/code_validation/mask_stage_review_20260730",
+    "approved_mask_manifest": "/data1/zhao/wqx/benchmark_v1/g2_online_agent_mask_stage_20260730/approved_mask_stage_manifest.json",
+    "approved_nuclei_contract": "/data1/zhao/wqx/benchmark_v1/g2_online_agent_image_stage_20260730/nuclei_contract_stage2_approved_g3.json",
+    "g2_image_run": "/data1/zhao/wqx/benchmark_v1/g2_online_agent_image_stage_20260730/runs/stage3_agentic_g3_confidence_balanced_full18_v2",
+    "cross_fallback_fix_run": "/data1/zhao/wqx/benchmark_v1/g2_online_agent_image_stage_20260730/runs/stage3_agentic_crossfix_smoke03_20260731"
+  },
   "entrypoints": {
     "ui": "scripts/phase3_end_to_end_ui.py",
+    "manifest_pipeline": "scripts/run_phase3_manifest_pipeline.py",
     "agent_runner": "scripts/run_agentic_edit_workflow.py",
-    "generation_core": "scripts/run_phase3_inpaint_pipeline.py"
+    "generation_core": "scripts/run_phase3_inpaint_pipeline.py",
+    "cross_v1": "scripts/generate_cross_v1_no_ip_strict.py",
+    "staged_review": "phase3_mask_edit/audit/staged_review.py",
+    "evaluator_replay": "scripts/replay_product_quality_evaluator.py"
   },
   "mask_edit": {
     "reference_profiles": [
@@ -30,7 +41,9 @@
     "instruction_policy": "independent_multi_intent_with_clause_local_strength",
     "execution_policy": "ordered_sequential_current_mask",
     "replacement_policy": "backfill_is_fallback_not_independent_primary",
-    "manual_policy": "multi_label_working_mask_then_finalize"
+    "manual_policy": "multi_label_working_mask_then_finalize",
+    "staged_approval_policy": "hash_locked_target_mask_and_change_region",
+    "approved_g2_cases": 18
   },
   "nuclei_generation": {
     "checkpoint": "/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/best_epoch29_c29607f1b609accb.pt",
@@ -40,18 +53,25 @@
     "repo_id": "Qinxin11/pathology-probnet",
     "repo_checkpoint_path": "best_epoch29_c29607f1b609accb.pt",
     "repo_checkpoint_revision": "add6970449cf3a94997375a665c832e91b188251",
-    "spatial_policy": "probnet_p_nucleus_landing_weight_only",
-    "candidate_queue_policy": "probnet_log_odds_quality_diversity_prefix",
-    "candidate_quality_score": "gamma_times_logit_probnet_probability",
-    "candidate_diversity_score": "min_nearest_selected_distance_over_coverage_radius_capped_at_one",
-    "candidate_diversity_weight": 1.0,
-    "quota_coverage_basis": "sqrt(component_or_tissue_area / quota)",
-    "quota_coverage_spacing_scale": 0.75,
-    "quota_coverage_max_radius": 48.0,
-    "retry_tail_policy": "stable_descending_probnet_score",
+    "spatial_policy": "probnet_odds_mass_without_replacement",
+    "candidate_queue_policy": "probnet_odds_mass_without_replacement",
+    "candidate_quality_score": "gamma_times_logit_probnet_probability_plus_seeded_gumbel",
+    "candidate_probability_mass_exponent": 3.0,
+    "candidate_diversity_score": "none_poisson_candidates_only",
+    "candidate_diversity_weight": 0.0,
+    "quota_coverage_basis": "disabled",
+    "quota_coverage_spacing_scale": 0.0,
+    "quota_coverage_max_radius": 0.0,
+    "retry_tail_policy": "same_probnet_mass_permutation_then_component_pixel_backfill_then_same_tissue_quota_reassignment",
+    "component_quota_reassignment_policy": "unplaceable_component_quota_to_same_tissue_probnet_mass_tail",
+    "failed_reference_shape_policy": "quarantine_within_current_candidate_try_alternative_reference_or_library_then_restore",
+    "exact_backfill_candidate_policy": "quota_scaled_budget_exhaustion_advances_to_next_deterministic_seed_without_relaxing_count_type_or_shape",
+    "exact_backfill_candidates_per_missing": 128,
+    "exact_backfill_candidate_floor": 512,
+    "exact_backfill_candidate_ceiling": 4096,
     "count_policy": "pre_edit_source_tissue_density_or_target_prior_calibrated_by_pre_edit_source_times_post_edit_target_area",
-    "type_quota_routing_policy": "changed_target_tissue_density_head_unchanged_target_tissue_pre_edit_patch",
-    "gamma": 1.5,
+    "type_quota_routing_policy": "prior_total_count_then_probnet_local_type_log_pool_with_cumulative_posterior_balancing",
+    "gamma": 3.0,
     "density_scale": 1.0,
     "density_scale_json": null,
     "shape_policy": "component_local_same_class_reference_then_component_calibrated_library",
@@ -66,14 +86,67 @@
       "no_same_class_reference": "leave_library_shape_unscaled_and_record_diagnostic"
     },
     "placement_policy": "strict_zero_overlap_one_pixel_separation_and_full_tissue_containment",
+    "instance_connectivity_policy": "largest_8_connected_component_after_transform",
     "nucleus_spacing_margin_px": 1,
     "source_nucleus_erasure_policy": "complete_component_on_any_deletion_region_intersection",
     "buffer_nucleus_policy": "retain_generation_buffer_only_nuclei_as_placement_obstacles",
-    "glas_gland_rewrite_policy": "whole_connected_component_then_nucleus_aware_generation_buffer",
-    "spatial_validation_status": "engineering_canary_pass_formal_rerun_pending"
+    "glas_gland_rewrite_policy": "whole_connected_component_shared_by_image_deletion_and_nuclei_regeneration",
+    "nuclei_generation_region_policy": "semantic_region_for_generic_edits_whole_connected_gland_for_glas_structure_edits",
+    "organ_specific_constraints": false,
+    "sampling_audit_policy": "probnet_patch_relative_count_type_spatial_v3",
+    "compatible_frozen_audit_policies": {
+      "probnet_patch_relative_count_type_spatial_v2": {
+        "scope": "hash_locked_approved_nuclei_replay_only",
+        "sampling_audit_max_attempts": 6,
+        "sampling_feedback_required": false
+      }
+    },
+    "sampling_audit_probability_bin_tv_role": "diagnostic_score_term_not_hard_gate_under_constrained_without_replacement_sampling",
+    "sampling_audit_attempts": 3,
+    "sampling_audit_required": true,
+    "sampling_feedback_policy": "reason_directed_gamma_then_seed_v1",
+    "sampling_feedback_max_attempts": 3,
+    "sampling_feedback_gamma_down_factor": 0.75,
+    "sampling_feedback_gamma_up_factor": 1.3333333333333333,
+    "sampling_feedback_gamma_min": 1.5,
+    "sampling_feedback_gamma_max": 5.0,
+    "sampling_feedback_concentration_z_threshold": 1.96,
+    "sampling_feedback_immutable_parameters": [
+      "target_count",
+      "tissue_and_component_allocation",
+      "deletion_and_generation_regions",
+      "shape_source_policy",
+      "nucleus_spacing_margin_px"
+    ],
+    "sampling_feedback_g2_600_validation": {
+      "run": "/data1/zhao/wqx/benchmark_v1/g2_600_run_20260802_v2",
+      "cases": 600,
+      "first_attempt_passed": 595,
+      "second_attempt_passed": 3,
+      "third_attempt_passed": 2,
+      "required_more_than_three_attempts": 0,
+      "role": "attempt_budget_and_regression_validation_not_biological_threshold_calibration"
+    },
+    "sampling_feedback_v3_validation": {
+      "run": "/data1/zhao/wqx/benchmark_v1/g2_600_nuclei_feedback_v3_probe_20260802",
+      "status": "targeted_probe_passed",
+      "probe_case": "g2_126_colorectal_tumor_decrease_23677b03f3",
+      "probe_result": "passed_attempt_3_after_two_probnet_coverage_gap_seed_retries",
+      "probe_selected_gamma": 3.0,
+      "full_600_replay": "not_required_and_stopped_to_avoid_competing_with_image_generation",
+      "threshold_calibration": false
+    },
+    "spatial_validation_status": "g2_600_v2_nuclei_pass_v3_targeted_probe_pass_image_stage_in_progress"
   },
   "image_generation": {
     "base_model": "black-forest-labs/FLUX.1-dev",
+    "inference": {
+      "num_inference_steps": 28,
+      "guidance_scale": 3.5,
+      "controlnet_conditioning_scale": 1.0,
+      "torch_dtype": "bf16",
+      "seed": 42
+    },
     "inpaint": {
       "checkpoint": "/home/lyw/wqx-DL/flow-edit/hf_generation_release/pathology-inpaint-controlnet",
       "environment_selector": "PATHOLOGY_INPAINT_CHECKPOINT",
@@ -120,18 +193,16 @@
       "t_inpaint": 0.12,
       "t_cross": 0.3,
       "max_generation_attempts": 2,
-      "fallback_policy": "single_alternate_backend"
+      "fallback_policy": "single_alternate_backend_on_any_non_validation_including_evaluator_abstention"
     }
   },
   "verification": {
-    "segmentator_release": "benchmark_configs/releases/segmentator_fine_c_epoch2.json",
-    "segmentator_release_id": "segmentator-fine-c-joint-epoch2-v1",
-    "segmentator_checkpoint_sha256": "ddb95a7be8a2d80f6d8a77672b265f261fbe79ca2c3e35215c9ed871da604c34",
-    "segmentator_checkpoint_size_bytes": 2820003238,
+    "segmentator_release": "benchmark_configs/releases/segmentator_fine_legacy_anchor.json",
+    "segmentator_release_id": "segmentator-fine-legacy-anchor-v1",
+    "segmentator_checkpoint_sha256": "5165e0fb20aca68f64fb06403eff846173fba3a3373deeedb36b3feb81727b3f",
+    "segmentator_checkpoint_size_bytes": 2817774455,
     "segmentator_checkpoint_environment_selector": "PATHOLOGY_SEGMENTATOR_CHECKPOINT",
-    "segmentator_repo_id": "Qinxin11/pathology-segmentator",
-    "segmentator_repo_checkpoint_path": "segmentator_fine_c_joint_epoch2_ddb95a7b.pt",
-    "segmentator_repo_checkpoint_revision": "afe195eaa3a4c2c1d24a41932669f5e55ac987bf",
+    "segmentator_distribution": "local_checkpoint_release",
     "cellvit_checkpoint": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/CellViT-plus-plus-main/checkpoints/CellViT-SAM-H-x40-AMP-001.pth",
     "cellvit_checkpoint_sha256": "356418f19d9d478f164c7a31f85274584fefaa02355815c09f52346c658c8ec4",
     "cellvit_policy": "cellvit-sam-h-x40-amp-001-512px-0.25mpp-v1",
@@ -139,7 +210,61 @@
     "semantic_region": "exact_source_target_tissue_difference",
     "generation_region": "semantic_superset_when_structure_or_minimum_width_requires_it",
     "preservation_reference": "source_image_evaluator_prediction",
-    "formal_threshold_status": "pending_blinded_calibration"
+    "formal_threshold_status": "frozen_engineering_policy_not_clinical_validation",
+    "evaluator": {
+      "policy_id": "online-quality-evaluator-v2.4",
+      "schema_version": 2,
+      "quality_score_min": 0.75,
+      "evidence_coverage_min": 0.8,
+      "relative_evidence_coverage_min": 0.7,
+      "semantic_score_min": 0.6,
+      "relative_semantic_score_min": 0.6,
+      "relative_semantic_evidence_weight": 0.35,
+      "relative_semantic_direction_epsilon": 0.0001,
+      "source_region_accuracy_min": 0.7,
+      "source_macro_miou_min": 0.55,
+      "source_transition_recall_min": 0.7,
+      "target_reference_min_pixels": 256,
+      "target_reference_recall_min": 0.55,
+      "source_to_target_confusion_max": 0.3,
+      "semantic_core_min_pixels": 256,
+      "semantic_core_min_fraction": 0.2,
+      "source_boundary_f1_4_min": 0.45,
+      "boundary_support_min_pixels": 256,
+      "off_target_drift_u_far_max": 0.08,
+      "nuclei_detection_error_max": 0.35,
+      "nuclei_type_error_max": 0.35,
+      "nuclei_min_instances": 10,
+      "component_weights": {
+        "semantic": 0.5,
+        "preservation": 0.2,
+        "boundary": 0.1,
+        "nuclei_count": 0.12,
+        "nuclei_type": 0.08
+      },
+      "semantic_formula": "0.35*target_core_accuracy+0.35*changed_union_macro_miou+0.15*normalized_accuracy_gain+0.15*normalized_soft_margin_gain",
+      "relative_semantic_formula": "normalized_available_whole_region_direction_weights after class-conditioned global-appearance calibration: mean target_probability_increase=0.40, mean source_probability_suppression=0.40, mean target_minus_source_margin_increase=0.20; positive/neutral/negative directions score 1/0.5/0; one supported side uses that side only",
+      "relative_semantic_policy": "fallback_when_absolute_source_calibration_fails but semantic scale and at least one dataset-supported transition side are evaluable; unsupported and Other labels are never scored; broad full-image stain or texture probability bias is estimated on stable U_far anchors and removed before direction testing; measures direction_only_not_target_attainment; requires 0.70 evidence coverage so relative semantic plus preservation plus at least 0.15 independent nuclei_or_boundary evidence remains mandatory",
+      "preservation_formula": "1-appearance_calibrated_high_confidence_prediction_drift_U_far",
+      "global_appearance_redraw_policy": "Cross may redraw stain, brightness, and texture over the full image; class-conditioned probability bias estimated from stable unchanged-region anchors is allowed, while residual high-confidence class flips remain semantic drift; insufficient stable anchors cause abstention rather than calibrating away broad semantic replacement",
+      "preservation_exclusion_region": "full_generation_change_region",
+      "boundary_formula": "absolute mode when source BF1@4 is reliable: 0.50*BF1@4+0.25*(1-inner_error)+0.25*(1-outer_spillover); otherwise relative mode with >=64 inner transition pixels and calibrated outer anchors: 0.50*whole-region inner direction+0.50*(1-appearance-calibrated outer drift)",
+      "nuclei_count_formula": "1-min(abs(generated_detected-alpha*target_count)/max(alpha*target_count,10),1)",
+      "nuclei_type_formula": "1-TV(target_type_distribution,generated_type_distribution)",
+      "class_policy": "dataset_native_target_or_prediction_present_excluding_ignore_and_other",
+      "fine_metrics": "diagnostic_only_not_in_quality_score",
+      "status_semantics": {
+        "validated_first_pass": "first candidate passed frozen engineering evaluator",
+        "recovered": "alternate candidate passed frozen engineering evaluator",
+        "evaluator_uncertain": "no candidate may be auto-validated because reliable evidence is insufficient",
+        "needs_review": "reliable evidence exists but neither candidate passed"
+      },
+      "report_artifacts": [
+        "generation_report.json",
+        "generation_report.md"
+      ],
+      "validated_interpretation": "engineering_evaluator_pass_not_clinical_correctness"
+    }
   },
   "retired_or_forbidden": [
     "pix2pix epoch25",

@@ -58,12 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     mask = rasterize_cells_json(cells_json, image_path)
-    if not np.any(mask > 0):
-        raise RuntimeError(
-            "CellViT produced an empty nuclei mask. "
-            f"Selected JSON: {cells_json}\n"
-            f"Candidate JSON diagnostics:\n{_cellvit_json_diagnostics(run_dir)}"
-        )
+    detected_cell_count = int(_json_cell_count(cells_json) or 0)
 
     output_mask.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(mask, mode="L").save(output_mask)
@@ -75,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
         "model": str(model_path),
         "mpp": args.mpp,
         "magnification": args.magnification,
+        "detected_cell_count": detected_cell_count,
+        "zero_detections": detected_cell_count == 0,
         "unique_mask_ids": sorted(int(v) for v in np.unique(mask).tolist()),
     }
     summary_path = output_mask.with_suffix(".cellvit_single_patch.json")
@@ -216,7 +213,7 @@ def _run_cellvit_source_flow(
     env = os.environ.copy()
     env["PYTHONPATH"] = str(cellvit_root) + os.pathsep + env.get("PYTHONPATH", "")
     try:
-        subprocess.run(
+        completed = subprocess.run(
             cmd,
             cwd=cellvit_root,
             env=env,
@@ -235,18 +232,38 @@ def _run_cellvit_source_flow(
             parts.append(f"stderr:\n{stderr}")
         raise RuntimeError("\n".join(parts)) from exc
 
+    (run_dir / "detector_stdout.log").write_text(completed.stdout or "", encoding="utf-8")
+    (run_dir / "detector_stderr.log").write_text(completed.stderr or "", encoding="utf-8")
+
     cells_json = _find_cellvit_cells_json(run_dir=run_dir, result_dir=result_dir)
     if cells_json is None:
+        if _detector_reported_zero_cells(completed.stdout, completed.stderr):
+            cells_json = result_dir / f"{cellvit_image_path.stem}_cells.json"
+            cells_json.write_text(
+                json.dumps(
+                    {
+                        "cells": [],
+                        "wsi_metadata": {
+                            "slide_mpp": float(mpp),
+                            "magnification": float(magnification),
+                        },
+                        "detector_status": "completed_no_cells",
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            return cells_json
         raise FileNotFoundError(
             "CellViT finished but no JSON with a top-level 'cells' list was found.\n"
             f"Candidate JSON diagnostics:\n{_cellvit_json_diagnostics(run_dir)}"
         )
-    if _json_cell_count(cells_json) == 0:
-        raise RuntimeError(
-            "CellViT finished but all detected-cell JSON files are empty.\n"
-            f"Candidate JSON diagnostics:\n{_cellvit_json_diagnostics(run_dir)}"
-        )
     return cells_json
+
+
+def _detector_reported_zero_cells(stdout: str | None, stderr: str | None) -> bool:
+    output = "\n".join(part for part in (stdout, stderr) if part)
+    return "No cells have been extracted" in output
 
 
 def _stage_openslide_image(*, image_path: Path, run_dir: Path, cellvit_python: Path) -> Path:
@@ -372,6 +389,50 @@ def rasterize_cells_json(cells_json: str | Path, image_path: str | Path) -> np.n
         raise ValueError(f"Invalid cells JSON, expected list at key 'cells': {cells_path}")
     metadata = payload.get("wsi_metadata", {})
     return rasterize_cells(cells, width=width, height=height, metadata=metadata)
+
+
+def cellvit_instance_counts_in_region(
+    cells_json: str | Path,
+    image_path: str | Path,
+    region: np.ndarray,
+) -> dict[int, int]:
+    """Count CellViT instances by type using local contour centroids."""
+
+    cells_path = Path(cells_json)
+    with Image.open(image_path) as image:
+        width, height = image.size
+    selected_region = np.asarray(region, dtype=bool)
+    if selected_region.shape != (height, width):
+        raise ValueError(
+            "CellViT count region must match image dimensions: "
+            f"{selected_region.shape} != {(height, width)}"
+        )
+    payload = json.loads(cells_path.read_text(encoding="utf-8"))
+    cells = payload.get("cells", [])
+    if not isinstance(cells, list):
+        raise ValueError(f"Invalid cells JSON, expected list at key 'cells': {cells_path}")
+    metadata = payload.get("wsi_metadata", {})
+    counts: dict[int, int] = {}
+    for cell in cells:
+        mask_id = CELL_TYPE_TO_MASK_ID.get(int(cell.get("type", 0)))
+        contour = _cellvit_contour_for_single_patch(
+            cell,
+            width=width,
+            height=height,
+            metadata=metadata,
+        )
+        points = [
+            (float(point[0]), float(point[1]))
+            for point in contour
+            if _is_xy_pair(point)
+        ]
+        if mask_id is None or not points:
+            continue
+        center_x = int(np.clip(np.rint(np.mean([point[0] for point in points])), 0, width - 1))
+        center_y = int(np.clip(np.rint(np.mean([point[1] for point in points])), 0, height - 1))
+        if selected_region[center_y, center_x]:
+            counts[mask_id] = counts.get(mask_id, 0) + 1
+    return counts
 
 
 def rasterize_cells(

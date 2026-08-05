@@ -57,16 +57,56 @@ class GenerationModelPackagingTests(unittest.TestCase):
             self.assertEqual(metadata["epoch_human"], 29)
             self.assertEqual(
                 metadata["runtime_role"],
-                "per_pixel_placement_and_changed_tissue_type_evidence_"
+                "per_pixel_placement_and_local_type_evidence_"
                 "without_total_count",
             )
             self.assertEqual(
                 metadata["candidate_queue_policy"],
-                "probnet_log_odds_quality_diversity_prefix",
+                "probnet_odds_mass_without_replacement",
             )
+            self.assertEqual(metadata["gamma"], 3.0)
+            self.assertEqual(metadata["candidate_diversity_weight"], 0.0)
             self.assertEqual(
                 metadata["retry_tail_policy"],
-                "stable_descending_probnet_score",
+                "same_probnet_mass_permutation_then_component_pixel_backfill_"
+                "then_same_tissue_quota_reassignment",
+            )
+            self.assertEqual(
+                metadata["component_quota_reassignment_policy"],
+                "unplaceable_component_quota_to_same_tissue_probnet_mass_tail",
+            )
+            self.assertEqual(
+                metadata["failed_reference_shape_policy"],
+                "quarantine_within_current_candidate_try_alternative_"
+                "reference_or_library_then_restore",
+            )
+            self.assertEqual(
+                metadata["exact_backfill_candidate_policy"],
+                "quota_scaled_budget_exhaustion_advances_to_next_"
+                "deterministic_seed_without_relaxing_count_type_or_shape",
+            )
+            self.assertEqual(metadata["exact_backfill_candidates_per_missing"], 128)
+            self.assertEqual(metadata["exact_backfill_candidate_floor"], 512)
+            self.assertEqual(metadata["exact_backfill_candidate_ceiling"], 4096)
+            self.assertEqual(
+                metadata["instance_connectivity_policy"],
+                "largest_8_connected_component_after_transform",
+            )
+            self.assertEqual(
+                metadata["sampling_audit_policy"],
+                "probnet_patch_relative_count_type_spatial_v3",
+            )
+            self.assertEqual(metadata["sampling_audit_max_attempts"], 3)
+            self.assertEqual(
+                metadata["sampling_feedback_policy"],
+                "reason_directed_gamma_then_seed_v1",
+            )
+            self.assertEqual(metadata["sampling_feedback_gamma_min"], 1.5)
+            self.assertEqual(metadata["sampling_feedback_gamma_max"], 5.0)
+            self.assertEqual(
+                metadata["nuclei_generation_region_policy"],
+                "semantic_region_for_generic_edits_whole_connected_gland_"
+                "for_glas_structure_edits",
             )
             self.assertEqual(
                 manifest["loading"]["environment_variables"][

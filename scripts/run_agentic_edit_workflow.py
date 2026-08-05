@@ -4,13 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -23,6 +25,7 @@ from controlnet_train.inference.agentic import (
     GenerationArtifact,
     VerificationResult,
     run_agentic_workflow,
+    semantic_mask_instance_counts,
     verify_mask_fidelity,
 )
 from controlnet_train.inference.router import AgenticRoutingConfig
@@ -47,19 +50,24 @@ from phase3_mask_edit.core.gland_region import bound_generation_context_region
 from phase3_mask_edit.audit import (
     OnlineAuditPolicy,
     OnlineSemanticAuditor,
+    QualityPolicy,
     SemanticPrediction,
     dataset_native_metric_class_ids,
+    evaluate_product_quality,
     profile_supports_fine,
     source_evaluator_quality,
     to_coarse_mask,
+    write_generation_report,
 )
 from segmentator.release import load_segmentator_release
 from scripts.run_phase3_inpaint_pipeline import (
     _load_rgb_image,
     _load_uint8_mask,
+    _release_generation_model_caches,
     _run_generation_stage,
     _validate_same_size,
 )
+from scripts.run_cellvit_single_patch import cellvit_instance_counts_in_region
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -68,7 +76,7 @@ DEFAULT_SEGMENTATOR_RELEASE = (
     REPO_ROOT
     / "benchmark_configs"
     / "releases"
-    / "segmentator_fine_c_epoch2.json"
+    / "segmentator_fine_legacy_anchor.json"
 )
 DEFAULT_ONLINE_PRODUCT_RELEASE = (
     REPO_ROOT
@@ -169,6 +177,9 @@ def build_parser() -> argparse.ArgumentParser:
             "changed_region_accuracy",
             "changed_region_macro_iou",
             "off_target_drift",
+            "nuclei_count_relative_error",
+            "nuclei_detection_count_relative_error",
+            "nuclei_type_composition_error",
             "nuclei_density_relative_error",
         ),
         default=None,
@@ -183,7 +194,34 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-region-accuracy-min", type=float, default=0.70)
     parser.add_argument("--changed-region-macro-iou-min", type=float, default=0.55)
     parser.add_argument("--off-target-drift-max", type=float, default=0.08)
-    parser.add_argument("--nuclei-density-relative-error-max", type=float, default=0.35)
+    parser.add_argument("--quality-score-min", type=float, default=0.75)
+    parser.add_argument("--evidence-coverage-min", type=float, default=0.80)
+    parser.add_argument("--semantic-score-min", type=float, default=0.60)
+    parser.add_argument("--source-boundary-f1-min", type=float, default=0.45)
+    parser.add_argument("--boundary-support-min-pixels", type=int, default=256)
+    parser.add_argument(
+        "--nuclei-count-relative-error-max",
+        "--nuclei-density-relative-error-max",
+        dest="nuclei_count_relative_error_max",
+        type=float,
+        default=0.35,
+        help=(
+            "Maximum relative error in the total CellViT instance count. "
+            "The legacy density flag is retained as a CLI alias."
+        ),
+    )
+    parser.add_argument(
+        "--nuclei-type-composition-error-max",
+        type=float,
+        default=0.35,
+        help="Maximum total-variation error in typed nucleus proportions.",
+    )
+    parser.add_argument(
+        "--nuclei-type-min-instances",
+        type=int,
+        default=10,
+        help="Minimum target and detected nuclei needed to enforce the type gate.",
+    )
     parser.add_argument(
         "--semantic-postprocess-mode",
         choices=("off", "shadow", "enforce"),
@@ -242,6 +280,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     inputs = _load_and_validate_inputs(args)
     nuclei_generation = _validate_nuclei_generation_contract(args)
+    image_generation = _validate_image_generation_contract(args)
     output_dir = args.output.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     semantic_change_region_path = save_change_region(
@@ -258,10 +297,49 @@ def main(argv: Sequence[str] | None = None) -> int:
         changed_region_accuracy_min=args.changed_region_accuracy_min,
         changed_region_macro_iou_min=args.changed_region_macro_iou_min,
         off_target_drift_max=args.off_target_drift_max,
-        nuclei_density_relative_error_max=args.nuclei_density_relative_error_max,
+        quality_score_min=args.quality_score_min,
+        evidence_coverage_min=args.evidence_coverage_min,
+        semantic_score_min=args.semantic_score_min,
+        source_boundary_f1_min=args.source_boundary_f1_min,
+        boundary_support_min_pixels=args.boundary_support_min_pixels,
+        nuclei_count_relative_error_max=args.nuclei_count_relative_error_max,
+        nuclei_type_composition_error_max=(
+            args.nuclei_type_composition_error_max
+        ),
+        nuclei_type_min_instances=args.nuclei_type_min_instances,
+    )
+    quality_policy = QualityPolicy(
+        quality_score_min=thresholds.quality_score_min,
+        evidence_coverage_min=thresholds.evidence_coverage_min,
+        semantic_score_min=thresholds.semantic_score_min,
+        source_region_accuracy_min=thresholds.changed_region_accuracy_min,
+        source_macro_miou_min=thresholds.changed_region_macro_iou_min,
+        source_transition_recall_min=thresholds.changed_region_accuracy_min,
+        target_reference_min_pixels=256,
+        target_reference_recall_min=thresholds.changed_region_macro_iou_min,
+        source_to_target_confusion_max=(
+            1.0 - thresholds.changed_region_accuracy_min
+        ),
+        semantic_core_min_pixels=thresholds.semantic_core_min_pixels,
+        semantic_core_min_fraction=thresholds.semantic_core_min_fraction,
+        source_boundary_f1_min=thresholds.source_boundary_f1_min,
+        boundary_support_min_pixels=thresholds.boundary_support_min_pixels,
+        off_target_drift_max=thresholds.off_target_drift_max,
+        nuclei_detection_error_max=thresholds.nuclei_count_relative_error_max,
+        nuclei_type_error_max=(
+            thresholds.nuclei_type_composition_error_max
+        ),
+        nuclei_min_instances=thresholds.nuclei_type_min_instances,
+    )
+    quality_policy.validate()
+    target_nuclei_instance_counts = semantic_mask_instance_counts(
+        inputs["target_nuclei"],
+        region=inputs["semantic_change_region"],
     )
     source_segmentator = None
+    source_quality = None
     source_semantic_prediction = None
+    source_nuclei_calibration = None
     semantic_auditor = OnlineSemanticAuditor(
         OnlineAuditPolicy(postprocess_mode=args.semantic_postprocess_mode)
     )
@@ -285,9 +363,93 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_dir / "source_verification" / "evaluator_quality.json",
             source_quality,
         )
+        changed_region_coarse_quality = _source_region_quality_or_abstain(
+            level="coarse",
+            source_mask=inputs["reference_coarse_tissue"],
+            source_prediction=source_semantic_prediction.mask,
+            source_probabilities=source_semantic_prediction.probabilities,
+            class_ids=dataset_native_metric_class_ids(
+                args.profile, level="coarse"
+            ),
+            region=inputs["semantic_change_region"],
+        )
+        changed_region_quality: dict[str, Any] = {
+            "coarse": changed_region_coarse_quality
+        }
+        if profile_supports_fine(args.profile):
+            source_fine_prediction = _load_fine_prediction(source_segmentator)
+            if source_fine_prediction is None:
+                raise RuntimeError(
+                    f"{args.profile} requires source fine evaluator artifacts"
+                )
+            changed_region_quality["fine"] = (
+                _source_region_quality_or_abstain(
+                    level="fine",
+                    source_mask=inputs["reference_tissue"],
+                    source_prediction=source_fine_prediction.mask,
+                    source_probabilities=source_fine_prediction.probabilities,
+                    class_ids=dataset_native_metric_class_ids(
+                        args.profile, level="fine"
+                    ),
+                    region=inputs["semantic_change_region"],
+                )
+            )
+        _write_json(
+            output_dir
+            / "source_verification"
+            / "changed_region_evaluator_quality.json",
+            changed_region_quality,
+        )
+        source_cellvit_dir = output_dir / "source_nuclei_verification"
+        source_predicted_nuclei_path = _run_cellvit(
+            args=args,
+            image_path=args.reference_image.resolve(),
+            output_dir=source_cellvit_dir,
+        )
+        full_region = np.ones_like(
+            inputs["semantic_change_region"],
+            dtype=bool,
+        )
+        source_nuclei_calibration = {
+            "changed_region": {
+                "reference": semantic_mask_instance_counts(
+                    inputs["reference_nuclei"],
+                    region=inputs["semantic_change_region"],
+                ),
+                "predicted": _cellvit_counts_from_wrapper_summary(
+                    predicted_nuclei_path=source_predicted_nuclei_path,
+                    image_path=args.reference_image.resolve(),
+                    region=inputs["semantic_change_region"],
+                ),
+            },
+            "full_image": {
+                "reference": semantic_mask_instance_counts(
+                    inputs["reference_nuclei"],
+                    region=full_region,
+                ),
+                "predicted": _cellvit_counts_from_wrapper_summary(
+                    predicted_nuclei_path=source_predicted_nuclei_path,
+                    image_path=args.reference_image.resolve(),
+                    region=full_region,
+                ),
+            },
+        }
+        _write_json(
+            source_cellvit_dir / "evaluator_calibration_counts.json",
+            source_nuclei_calibration,
+        )
+
+    previous_generation_mode: str | None = None
 
     def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
+        nonlocal previous_generation_mode
         generation_mode = _generation_backend_mode(mode)
+        if (
+            previous_generation_mode is not None
+            and previous_generation_mode != generation_mode
+        ):
+            _release_generation_model_caches()
+        previous_generation_mode = generation_mode
         _validate_generation_runtime(args, generation_mode)
         existing_image = attempt_dir / "generated_image.png"
         existing_metadata = attempt_dir / "generation_info.json"
@@ -320,7 +482,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return GenerationArtifact(mode=mode, image_path=image_path, metadata=metadata)
 
     def verify(artifact: GenerationArtifact):
-        _validate_verification_runtime(args)
+        _prepare_verification_runtime(args)
         verification_dir = artifact.image_path.parent / "verification"
         verification_dir.mkdir(parents=True, exist_ok=True)
         attempt_index = _attempt_index_from_path(artifact.image_path.parent)
@@ -345,6 +507,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             image_path=artifact.image_path,
             output_dir=verification_dir,
         )
+        predicted_nuclei_instance_counts = _cellvit_counts_from_wrapper_summary(
+            predicted_nuclei_path=predicted_nuclei_path,
+            image_path=artifact.image_path,
+            region=inputs["semantic_change_region"],
+        )
         generated_semantic_prediction = _load_semantic_prediction(predicted_tissue)
         online_audit = semantic_auditor.audit(
             source_mask=inputs["reference_coarse_tissue"],
@@ -355,6 +522,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.profile, level="coarse"
             ),
             semantic_change_region=inputs["semantic_change_region"],
+            preservation_exclusion_region=inputs[
+                "generation_change_region"
+            ],
             **_fine_audit_inputs(
                 args=args,
                 inputs=inputs,
@@ -400,8 +570,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             change_region=inputs["semantic_change_region"],
             target_nuclei_mask=inputs["target_nuclei"],
             predicted_nuclei_mask=_load_uint8_mask(predicted_nuclei_path),
+            target_nuclei_instance_counts=target_nuclei_instance_counts,
+            predicted_nuclei_instance_counts=predicted_nuclei_instance_counts,
             thresholds=thresholds,
-            enforce_off_target_drift=artifact.mode != "inpaint",
+            enforce_off_target_drift=True,
+        )
+        decision_metrics = (
+            online_audit.p1_metrics
+            if online_audit.decision_input == "p1_audited"
+            else online_audit.raw_metrics
+        )
+        if decision_metrics is None or source_quality is None:
+            raise RuntimeError("product quality evaluator inputs are incomplete")
+        quality = evaluate_product_quality(
+            coarse_metrics=decision_metrics,
+            source_quality=online_audit.source_quality,
+            base_metrics=result.metrics,
+            source_nuclei_calibration=source_nuclei_calibration,
+            target_nuclei_counts=target_nuclei_instance_counts,
+            generated_nuclei_counts=predicted_nuclei_instance_counts,
+            policy=quality_policy,
+        )
+        result = VerificationResult(
+            passed=quality.passed,
+            score=quality.quality_score,
+            metrics=quality.metrics,
+            failed_checks=quality.failed_checks,
+            component_scores=quality.component_scores,
+            applicability=quality.applicability,
+            evidence_coverage=quality.evidence_coverage,
+            quality_score=quality.quality_score,
+            scientific_status=quality.scientific_status,
+            reason_codes=quality.reason_codes,
         )
         if (
             args.inject_verifier_failed_check
@@ -415,26 +615,51 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
             )
-            result = VerificationResult(
+            result = replace(
+                result,
                 passed=False,
-                score=result.score,
                 metrics={
                     **dict(result.metrics),
                     "injected_canary_failure": 1.0,
                 },
                 failed_checks=failed_checks,
+                scientific_status="needs_review",
+                reason_codes=tuple(
+                    dict.fromkeys(
+                        (*result.reason_codes, "injected_canary_failure")
+                    )
+                ),
             )
         _write_json(
             verification_dir / "verification.json",
             {
+                "schema_version": result.schema_version,
                 "passed": result.passed,
                 "score": result.score,
+                "quality_score": result.quality_score,
+                "evidence_coverage": result.evidence_coverage,
+                "component_scores": dict(result.component_scores),
+                "applicability": dict(result.applicability),
+                "scientific_status": result.scientific_status,
+                "reason_codes": list(result.reason_codes),
                 "metrics": dict(result.metrics),
                 "failed_checks": list(result.failed_checks),
-                "off_target_drift_enforced": artifact.mode != "inpaint",
+                "off_target_drift_enforced": True,
+                "preservation_exclusion_region_policy": (
+                    "full_generation_change_region"
+                ),
+                "preservation_exclusion_region": str(
+                    generation_change_region_path
+                ),
+                "quality_policy": quality.to_metadata()["policy"],
                 "source_segmentator": source_segmentator,
                 "predicted_tissue": predicted_tissue,
                 "predicted_nuclei_mask": str(predicted_nuclei_path),
+                "target_nuclei_instance_counts": target_nuclei_instance_counts,
+                "predicted_nuclei_instance_counts": predicted_nuclei_instance_counts,
+                "source_nuclei_evaluator_calibration": (
+                    source_nuclei_calibration
+                ),
                 "cellvit_release": args.cellvit_release,
                 "online_semantic_audit": str(
                     verification_dir / "online_semantic_audit.json"
@@ -467,23 +692,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = workflow.to_metadata()
     summary["generated_image"] = str(final_path) if final_path.exists() else None
     summary["nuclei_generation"] = nuclei_generation
+    summary["image_generation_contract"] = image_generation
     summary["image_generation_provenance"] = (
         _selected_image_generation_provenance(summary)
     )
+    report_json_path, report_markdown_path, generation_report = (
+        write_generation_report(summary, output_dir=output_dir)
+    )
+    summary["generation_report"] = {
+        "json": str(report_json_path),
+        "markdown": str(report_markdown_path),
+        "content": generation_report,
+    }
     summary["online_self_audit"] = {
         "scope": "product_runtime",
         "benchmark_independent": True,
         "semantic_postprocess_mode": args.semantic_postprocess_mode,
-        "verifier_policy_status": "pilot_not_formal",
-        "formal_validated": False,
-        "engineering_status": (
-            "engineering_pass_uncalibrated"
-            if workflow.status == "validated"
-            else workflow.status
-        ),
+        "verifier_policy_status": "frozen_engineering_policy",
+        "policy_id": quality_policy.policy_id,
+        "formal_validated": workflow.status
+        in {"validated_first_pass", "recovered"},
+        "engineering_status": workflow.status,
         "reason": (
-            "Confidence, evaluator-clean, and acceptance thresholds require "
-            "a separately frozen blinded calibration cohort."
+            "Validation denotes a frozen automated engineering evaluator pass; "
+            "it is not a clinical correctness claim."
         ),
     }
     summary["change_regions"] = {
@@ -505,7 +737,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     _write_json(output_dir / "pipeline_summary.json", summary)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
-    return 0 if workflow.status in {"validated", "noop"} else 2
+    return (
+        0
+        if workflow.status in {"validated_first_pass", "recovered", "noop"}
+        else 2
+    )
 
 
 def _generation_backend_mode(agent_mode: str) -> str:
@@ -518,6 +754,38 @@ def _generation_backend_mode(agent_mode: str) -> str:
     }:
         return "cross-v1"
     raise ValueError(f"Unsupported agent generation mode: {agent_mode}")
+
+
+def _prepare_verification_runtime(args: argparse.Namespace) -> None:
+    _validate_verification_runtime(args)
+    _release_generation_model_caches()
+
+
+def _source_region_quality_or_abstain(
+    *,
+    level: str,
+    source_mask: np.ndarray,
+    source_prediction: np.ndarray,
+    source_probabilities: np.ndarray,
+    class_ids: Sequence[int],
+    region: np.ndarray,
+) -> dict[str, Any]:
+    try:
+        return source_evaluator_quality(
+            source_mask=source_mask,
+            source_prediction=source_prediction,
+            source_probabilities=source_probabilities,
+            class_ids=class_ids,
+            region=region,
+        )
+    except ValueError as error:
+        if "no evaluable pixels" not in str(error):
+            raise
+        return {
+            "available": False,
+            "reason": "no_dataset_native_evaluable_pixels",
+            "interpretation": f"{level}_evaluator_abstained",
+        }
 
 
 def _selected_image_generation_provenance(
@@ -569,6 +837,7 @@ def _validate_nuclei_generation_contract(
         "product_release": str(release_path.resolve()),
         "release_id": release.get("release_id"),
         "expected_candidate_queue_policy": expected["candidate_queue_policy"],
+        "expected_gamma": expected["gamma"],
         "expected_checkpoint_sha256": expected["checkpoint_sha256"],
         "expected_count_policy": expected["count_policy"],
         "expected_type_quota_routing_policy": expected[
@@ -597,6 +866,7 @@ def _validate_nuclei_generation_contract(
         }
 
     sampling = payload.get("shape_sampling") or {}
+    diagnostics = _probnet_diagnostics_contract(sampling)
     actual_policy = sampling.get("candidate_queue_policy")
     if actual_policy != expected["candidate_queue_policy"]:
         raise ValueError(
@@ -605,13 +875,28 @@ def _validate_nuclei_generation_contract(
             f"{expected['candidate_queue_policy']!r}"
         )
     for field in (
+        "candidate_quality_score",
+        "candidate_diversity_score",
+        "candidate_diversity_weight",
+    ):
+        actual_value = sampling.get(field, diagnostics.get(field))
+        expected_value = expected.get(field)
+        if not _contract_values_equal(actual_value, expected_value):
+            raise ValueError(
+                "Target nuclei spatial sampling does not match the online "
+                f"product release for {field}: "
+                f"{actual_value!r} != {expected_value!r}"
+            )
+    for field in (
         "quota_coverage_spacing_scale",
         "quota_coverage_max_radius",
         "retry_tail_policy",
+        "component_quota_reassignment_policy",
         "count_policy",
         "type_quota_routing_policy",
         "shape_policy",
         "nucleus_spacing_margin_px",
+        "instance_connectivity_policy",
         "source_nucleus_erasure_policy",
         "buffer_nucleus_policy",
     ):
@@ -636,17 +921,89 @@ def _validate_nuclei_generation_contract(
             "Target nuclei provenance must explicitly disable organ-specific "
             "placement constraints."
         )
+    sampling_audit = sampling.get("sampling_audit") or diagnostics.get(
+        "sampling_audit"
+    )
+    actual_audit_policy = sampling_audit.get("policy")
+    audit_compatibility = None
+    if actual_audit_policy != expected.get("sampling_audit_policy"):
+        audit_compatibility = _validate_frozen_nuclei_replay_compatibility(
+            args=args,
+            log_path=log_path,
+            actual_policy=actual_audit_policy,
+            expected=expected,
+        )
+    if sampling_audit.get("organ_specific_constraints") is not False:
+        raise ValueError(
+            "Target nuclei sampling audit must be patch-relative and disable "
+            "organ-specific constraints."
+        )
+    if sampling_audit.get("passed") is not True:
+        raise ValueError(
+            "Target nuclei did not pass the frozen count/type/spatial sampling audit."
+        )
+    sampling_feedback = sampling.get("sampling_feedback") or diagnostics.get(
+        "sampling_feedback"
+    )
+    if audit_compatibility is None:
+        _validate_nuclei_sampling_feedback(
+            sampling=sampling,
+            sampling_audit=sampling_audit,
+            sampling_feedback=sampling_feedback,
+            expected=expected,
+            diagnostics=diagnostics,
+        )
+        expected_audit_attempts = expected.get("sampling_audit_attempts")
+    else:
+        expected_audit_attempts = audit_compatibility[
+            "sampling_audit_max_attempts"
+        ]
+        if (
+            not audit_compatibility["sampling_feedback_required"]
+            and sampling_feedback is not None
+        ):
+            raise ValueError(
+                "Frozen nuclei replay unexpectedly contains a feedback trace."
+            )
+    if not _contract_values_equal(
+        sampling.get("sampling_audit_max_attempts"),
+        expected_audit_attempts,
+    ):
+        raise ValueError(
+            "Target nuclei sampling audit attempt budget does not match the "
+            "applicable online product contract."
+        )
     return {
         **result,
         "status": "validated",
         "validated": True,
         "log": str(log_path.resolve()),
         "candidate_queue_policy": actual_policy,
+        "gamma": sampling.get("gamma", diagnostics.get("gamma")),
+        "candidate_quality_score": sampling.get(
+            "candidate_quality_score",
+            diagnostics.get("candidate_quality_score"),
+        ),
+        "candidate_probability_mass_exponent": sampling.get(
+            "candidate_probability_mass_exponent",
+            diagnostics.get("candidate_probability_mass_exponent"),
+        ),
+        "candidate_diversity_score": sampling.get(
+            "candidate_diversity_score",
+            diagnostics.get("candidate_diversity_score"),
+        ),
+        "candidate_diversity_weight": sampling.get(
+            "candidate_diversity_weight",
+            diagnostics.get("candidate_diversity_weight"),
+        ),
         "quota_coverage_spacing_scale": sampling[
             "quota_coverage_spacing_scale"
         ],
         "quota_coverage_max_radius": sampling["quota_coverage_max_radius"],
         "retry_tail_policy": sampling["retry_tail_policy"],
+        "component_quota_reassignment_policy": sampling[
+            "component_quota_reassignment_policy"
+        ],
         "count_policy": sampling["count_policy"],
         "type_quota_routing_policy": sampling[
             "type_quota_routing_policy"
@@ -654,6 +1011,9 @@ def _validate_nuclei_generation_contract(
         "shape_policy": sampling["shape_policy"],
         "nucleus_spacing_margin_px": sampling[
             "nucleus_spacing_margin_px"
+        ],
+        "instance_connectivity_policy": sampling[
+            "instance_connectivity_policy"
         ],
         "source_nucleus_erasure_policy": sampling[
             "source_nucleus_erasure_policy"
@@ -665,6 +1025,528 @@ def _validate_nuclei_generation_contract(
         "accepted_center_probability_by_tissue": sampling.get(
             "accepted_center_probability_by_tissue"
         ),
+        "sampling_audit": sampling_audit,
+        "sampling_audit_attempts": sampling.get("sampling_audit_attempts"),
+        "sampling_audit_max_attempts": sampling.get(
+            "sampling_audit_max_attempts"
+        ),
+        "sampling_audit_selected_attempt": sampling.get(
+            "sampling_audit_selected_attempt"
+        ),
+        "sampling_audit_resampled": sampling.get("sampling_audit_resampled"),
+        "sampling_feedback": sampling_feedback,
+        "sampling_audit_compatibility": audit_compatibility,
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_frozen_nuclei_replay_compatibility(
+    *,
+    args: argparse.Namespace,
+    log_path: Path,
+    actual_policy: Any,
+    expected: Mapping[str, Any],
+) -> dict[str, Any]:
+    policies = expected.get("compatible_frozen_audit_policies") or {}
+    compatibility = policies.get(actual_policy) if isinstance(policies, dict) else None
+    expected_policy = expected.get("sampling_audit_policy")
+    if not isinstance(compatibility, dict):
+        raise ValueError(
+            "Target nuclei sampling audit does not match the online product "
+            f"release: {actual_policy!r} != {expected_policy!r}"
+        )
+    if compatibility.get("scope") != "hash_locked_approved_nuclei_replay_only":
+        raise ValueError("Frozen nuclei replay compatibility has an invalid scope.")
+
+    provenance_path = log_path.parent / "approved_nuclei_provenance.json"
+    if not provenance_path.is_file():
+        raise ValueError(
+            "Legacy nuclei audit policies require hash-locked approval provenance."
+        )
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    if (
+        provenance.get("schema_version") != 1
+        or provenance.get("status") != "approved_nuclei_reused"
+        or provenance.get("tissue_stage_rerun") is not False
+        or provenance.get("nuclei_stage_rerun") is not False
+    ):
+        raise ValueError("Frozen nuclei approval provenance is not replay-only.")
+
+    target_tissue_path = Path(args.target_tissue_mask)
+    target_nuclei_path = Path(args.target_nuclei_mask)
+    for label, path in (
+        ("target tissue mask", target_tissue_path),
+        ("target nuclei mask", target_nuclei_path),
+    ):
+        if not path.is_file():
+            raise FileNotFoundError(f"Frozen {label} not found: {path}")
+    tissue_sha256 = _sha256_file(target_tissue_path)
+    nuclei_sha256 = _sha256_file(target_nuclei_path)
+    log_sha256 = _sha256_file(log_path)
+    if tissue_sha256 != provenance.get("approved_target_tissue_sha256"):
+        raise ValueError("Frozen target tissue hash does not match its approval.")
+    if nuclei_sha256 != provenance.get("approved_target_nuclei_sha256"):
+        raise ValueError("Frozen target nuclei hash does not match its approval.")
+    asset_sha256 = provenance.get("asset_sha256") or {}
+    if asset_sha256.get("target_nuclei") != nuclei_sha256:
+        raise ValueError("Frozen target nuclei asset hash is inconsistent.")
+    if asset_sha256.get("cell_fill_log") != log_sha256:
+        raise ValueError("Frozen cell-fill provenance hash is inconsistent.")
+
+    manifest_path = Path(str(provenance.get("approved_nuclei_manifest", "")))
+    if not manifest_path.is_file():
+        raise ValueError("Approved nuclei manifest is missing.")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    approval = manifest.get("approval") or {}
+    if (
+        manifest.get("schema_version") != 1
+        or manifest.get("stage") != "nuclei"
+        or manifest.get("all_automatic_checks_passed") is not True
+        or approval.get("status") != "approved"
+    ):
+        raise ValueError("Approved nuclei manifest is not a completed approval.")
+    case_id = provenance.get("approved_entry_case_id")
+    entries = [
+        entry
+        for entry in manifest.get("entries", [])
+        if entry.get("case_id") == case_id
+    ]
+    if len(entries) != 1:
+        raise ValueError("Approved nuclei manifest does not contain one matching case.")
+    entry = entries[0]
+    if (
+        entry.get("approval") != "approved"
+        or entry.get("audit_passed") is not True
+        or entry.get("approved_target_nuclei_sha256") != nuclei_sha256
+        or entry.get("parent_target_tissue_sha256") != tissue_sha256
+    ):
+        raise ValueError("Approved nuclei manifest entry does not match frozen assets.")
+
+    max_attempts = compatibility.get("sampling_audit_max_attempts")
+    if not isinstance(max_attempts, int) or max_attempts <= 0:
+        raise ValueError("Frozen nuclei compatibility has no valid attempt budget.")
+    return {
+        "mode": "hash_locked_approved_nuclei_replay",
+        "scope": compatibility["scope"],
+        "actual_policy": actual_policy,
+        "current_policy": expected_policy,
+        "sampling_audit_max_attempts": max_attempts,
+        "sampling_feedback_required": bool(
+            compatibility.get("sampling_feedback_required", False)
+        ),
+        "approval_provenance": str(provenance_path.resolve()),
+        "approved_manifest": str(manifest_path.resolve()),
+        "approved_case_id": case_id,
+        "target_tissue_sha256": tissue_sha256,
+        "target_nuclei_sha256": nuclei_sha256,
+        "cell_fill_log_sha256": log_sha256,
+    }
+
+
+def _validate_nuclei_sampling_feedback(
+    *,
+    sampling: dict[str, Any],
+    sampling_audit: dict[str, Any],
+    sampling_feedback: dict[str, Any],
+    expected: dict[str, Any],
+    diagnostics: dict[str, Any],
+) -> None:
+    if not isinstance(sampling_feedback, dict):
+        raise ValueError("Target nuclei feedback trace is missing.")
+    if sampling_feedback.get("policy") != expected.get(
+        "sampling_feedback_policy"
+    ):
+        raise ValueError(
+            "Target nuclei feedback policy does not match the online product "
+            "release."
+        )
+    field_pairs = (
+        ("max_attempts", "sampling_feedback_max_attempts"),
+        ("gamma_down_factor", "sampling_feedback_gamma_down_factor"),
+        ("gamma_up_factor", "sampling_feedback_gamma_up_factor"),
+        ("gamma_min", "sampling_feedback_gamma_min"),
+        ("gamma_max", "sampling_feedback_gamma_max"),
+        (
+            "concentration_z_threshold",
+            "sampling_feedback_concentration_z_threshold",
+        ),
+    )
+    for actual_field, expected_field in field_pairs:
+        if not _contract_values_equal(
+            sampling_feedback.get(actual_field),
+            expected.get(expected_field),
+        ):
+            raise ValueError(
+                "Target nuclei feedback contract does not match the online "
+                f"product release for {actual_field}."
+            )
+    if sampling_feedback.get("immutable_parameters") != expected.get(
+        "sampling_feedback_immutable_parameters"
+    ):
+        raise ValueError(
+            "Target nuclei feedback loop changed a frozen biological parameter."
+        )
+    initial_gamma = sampling_feedback.get("initial_gamma")
+    selected_gamma = sampling_feedback.get("selected_gamma")
+    if not _contract_values_equal(initial_gamma, expected.get("gamma")):
+        raise ValueError("Target nuclei feedback loop used the wrong initial gamma.")
+    try:
+        selected_gamma_float = float(selected_gamma)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Target nuclei feedback loop omitted selected gamma.") from exc
+    if not (
+        float(expected["sampling_feedback_gamma_min"])
+        <= selected_gamma_float
+        <= float(expected["sampling_feedback_gamma_max"])
+    ):
+        raise ValueError("Target nuclei feedback selected gamma outside release bounds.")
+    actual_gamma = sampling.get("gamma", diagnostics.get("gamma"))
+    actual_exponent = sampling.get(
+        "candidate_probability_mass_exponent",
+        diagnostics.get("candidate_probability_mass_exponent"),
+    )
+    if not _contract_values_equal(actual_gamma, selected_gamma_float) or not (
+        _contract_values_equal(actual_exponent, selected_gamma_float)
+    ):
+        raise ValueError(
+            "Target nuclei selected gamma, diagnostics gamma and candidate "
+            "probability exponent must agree."
+        )
+    if not _contract_values_equal(
+        sampling_audit.get("evaluation_gamma"),
+        expected.get("gamma"),
+    ) or not _contract_values_equal(
+        sampling_audit.get("sampling_gamma"),
+        selected_gamma_float,
+    ):
+        raise ValueError(
+            "Target nuclei audit must keep the frozen evaluation gamma while "
+            "reporting the selected sampling gamma."
+        )
+    attempts = sampling_feedback.get("attempts")
+    if not isinstance(attempts, list) or not attempts:
+        raise ValueError("Target nuclei feedback loop must record every attempt.")
+    if len(attempts) > int(expected["sampling_feedback_max_attempts"]):
+        raise ValueError("Target nuclei feedback loop exceeded its attempt budget.")
+    if attempts != sampling.get("sampling_audit_attempts"):
+        raise ValueError(
+            "Target nuclei feedback and sampling-audit attempt ledgers differ."
+        )
+    gamma_actions = [
+        item
+        for item in attempts
+        if item.get("action") in {"decrease_gamma", "increase_gamma"}
+    ]
+    if len(gamma_actions) > 1:
+        raise ValueError("Target nuclei feedback loop adjusted gamma more than once.")
+    previous_gamma = float(initial_gamma)
+    previous_failure_reasons: list[str] = []
+    base_seed = None
+    for position, item in enumerate(attempts):
+        if int(item.get("attempt_index", -1)) != position:
+            raise ValueError("Target nuclei feedback attempts are not contiguous.")
+        if base_seed is None:
+            base_seed = int(item.get("seed"))
+        if int(item.get("seed", -1)) != base_seed + position:
+            raise ValueError("Target nuclei feedback seeds are not deterministic.")
+        action = item.get("action")
+        if action not in {"initial_sample", "resample_seed", "decrease_gamma", "increase_gamma"}:
+            raise ValueError(f"Unknown target nuclei feedback action: {action!r}")
+        reasons = set(item.get("trigger_reasons") or ())
+        if position == 0:
+            if action != "initial_sample" or reasons:
+                raise ValueError("Target nuclei feedback trace has an invalid first attempt.")
+        elif reasons != set(previous_failure_reasons):
+            raise ValueError(
+                "Target nuclei feedback action is not linked to the preceding failure."
+            )
+        attempt_gamma = float(item.get("sampling_gamma"))
+        if action == "decrease_gamma" and "PROBNET_OVERCONCENTRATED" not in reasons:
+            raise ValueError("Gamma decrease lacks an overconcentration reason.")
+        if action == "increase_gamma" and "PROBNET_UNDERFOLLOW" not in reasons:
+            raise ValueError("Gamma increase lacks an under-follow reason.")
+        if action == "decrease_gamma":
+            expected_gamma = max(
+                float(expected["sampling_feedback_gamma_min"]),
+                previous_gamma * float(expected["sampling_feedback_gamma_down_factor"]),
+            )
+        elif action == "increase_gamma":
+            expected_gamma = min(
+                float(expected["sampling_feedback_gamma_max"]),
+                previous_gamma * float(expected["sampling_feedback_gamma_up_factor"]),
+            )
+        else:
+            expected_gamma = previous_gamma
+        if not _contract_values_equal(attempt_gamma, expected_gamma):
+            raise ValueError(
+                "Target nuclei feedback gamma does not match its recorded action."
+            )
+        previous_gamma = attempt_gamma
+        previous_failure_reasons = list(item.get("failure_reasons") or ())
+
+    selected_attempt = int(sampling_feedback.get("selected_attempt", -1))
+    selected_records = [
+        item
+        for item in attempts
+        if int(item.get("attempt_index", -1)) == selected_attempt
+        and item.get("stage") == "sampling_audit"
+    ]
+    if len(selected_records) != 1:
+        raise ValueError("Target nuclei feedback selected attempt is not auditable.")
+    selected_record = selected_records[0]
+    if not _contract_values_equal(
+        selected_record.get("sampling_gamma"), selected_gamma_float
+    ) or int(selected_record.get("seed", -1)) != int(
+        sampling_feedback.get("selected_seed", -2)
+    ):
+        raise ValueError("Target nuclei feedback selected record is inconsistent.")
+    if selected_record.get("passed") is not True:
+        raise ValueError("Target nuclei feedback selected a failed attempt.")
+    if int(sampling_audit.get("attempt_index", -1)) != selected_attempt:
+        raise ValueError("Target nuclei audit and feedback selected attempts differ.")
+
+
+def _contract_values_equal(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+        try:
+            return abs(float(actual) - float(expected)) <= 1e-9
+        except (TypeError, ValueError):
+            return False
+    return actual == expected
+
+
+def _probnet_diagnostics_contract(sampling: dict[str, Any]) -> dict[str, Any]:
+    diagnostics_path = sampling.get("diagnostics_path")
+    if not diagnostics_path:
+        return {}
+    path = Path(diagnostics_path)
+    if not path.is_file():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list) or not payload:
+        return {}
+    first = payload[0]
+    if not isinstance(first, dict):
+        return {}
+    result: dict[str, Any] = {
+        "gamma": first.get("gamma"),
+        "sampling_audit": first.get("sampling_audit"),
+        "sampling_feedback": first.get("sampling_feedback"),
+    }
+    tissues = first.get("tissues") or {}
+    for field in (
+        "candidate_quality_score",
+        "candidate_probability_mass_exponent",
+        "candidate_diversity_score",
+        "candidate_diversity_weight",
+    ):
+        values = {
+            item[field]
+            for item in tissues.values()
+            if isinstance(item, dict) and item.get(field) is not None
+        }
+        if len(values) == 1:
+            result[field] = next(iter(values))
+    return result
+
+
+def _validate_image_generation_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    release_path = Path(args.product_release)
+    if not release_path.is_file():
+        raise FileNotFoundError(f"Online product release not found: {release_path}")
+    release = json.loads(release_path.read_text(encoding="utf-8"))
+    generation = release["image_generation"]
+    expected_inference = generation["inference"]
+    runtime_inference = {
+        "num_inference_steps": args.num_inference_steps,
+        "guidance_scale": args.guidance_scale,
+        "controlnet_conditioning_scale": args.controlnet_conditioning_scale,
+        "torch_dtype": args.torch_dtype,
+        "seed": args.seed,
+    }
+    for field, actual_value in runtime_inference.items():
+        expected_value = expected_inference[field]
+        if not _contract_values_equal(actual_value, expected_value):
+            raise ValueError(
+                "Image-generation inference does not match the online "
+                f"product release for {field}: "
+                f"{actual_value!r} != {expected_value!r}"
+            )
+
+    expected_routing = generation["routing"]
+    runtime_routing = {
+        "t_inpaint": args.t_inpaint,
+        "t_cross": args.t_cross,
+        "max_generation_attempts": args.max_attempts,
+    }
+    for field, actual_value in runtime_routing.items():
+        expected_value = expected_routing[field]
+        if not _contract_values_equal(actual_value, expected_value):
+            raise ValueError(
+                "Image-generation routing does not match the online "
+                f"product release for {field}: "
+                f"{actual_value!r} != {expected_value!r}"
+            )
+
+    expected_verification = release["verification"]
+    if args.semantic_postprocess_mode != expected_verification[
+        "semantic_postprocess_mode"
+    ]:
+        raise ValueError(
+            "Semantic verification mode does not match the online product "
+            f"release: {args.semantic_postprocess_mode!r} != "
+            f"{expected_verification['semantic_postprocess_mode']!r}"
+        )
+    if args.segmentator_checkpoint is not None:
+        raise ValueError(
+            "The online G2 product requires its release-driven "
+            "Segmentator; a raw checkpoint override is not allowed."
+        )
+    segmentator_path = Path(args.segmentator_release)
+    if not segmentator_path.is_file():
+        raise FileNotFoundError(
+            f"Segmentator release not found: {segmentator_path}"
+        )
+    segmentator = json.loads(segmentator_path.read_text(encoding="utf-8"))
+    for actual_value, expected_field in (
+        (segmentator.get("release_id"), "segmentator_release_id"),
+        (segmentator.get("checkpoint_sha256"), "segmentator_checkpoint_sha256"),
+    ):
+        expected_value = expected_verification[expected_field]
+        if actual_value != expected_value:
+            raise ValueError(
+                "Segmentator release does not match the online G2 product "
+                f"for {expected_field}: "
+                f"{actual_value!r} != {expected_value!r}"
+            )
+    expected_evaluator = expected_verification["evaluator"]
+    evaluator_defaults = FidelityThresholds()
+    runtime_evaluator = {
+        "policy_id": QualityPolicy().policy_id,
+        "schema_version": 2,
+        "preservation_exclusion_region": (
+            "full_generation_change_region"
+        ),
+        "quality_score_min": getattr(
+            args, "quality_score_min", evaluator_defaults.quality_score_min
+        ),
+        "evidence_coverage_min": getattr(
+            args,
+            "evidence_coverage_min",
+            evaluator_defaults.evidence_coverage_min,
+        ),
+        "relative_evidence_coverage_min": (
+            QualityPolicy().relative_evidence_coverage_min
+        ),
+        "semantic_score_min": getattr(
+            args, "semantic_score_min", evaluator_defaults.semantic_score_min
+        ),
+        "relative_semantic_score_min": (
+            QualityPolicy().relative_semantic_score_min
+        ),
+        "relative_semantic_evidence_weight": (
+            QualityPolicy().relative_semantic_evidence_weight
+        ),
+        "relative_semantic_direction_epsilon": (
+            QualityPolicy().relative_semantic_direction_epsilon
+        ),
+        "source_region_accuracy_min": getattr(
+            args,
+            "changed_region_accuracy_min",
+            evaluator_defaults.changed_region_accuracy_min,
+        ),
+        "source_macro_miou_min": getattr(
+            args,
+            "changed_region_macro_iou_min",
+            evaluator_defaults.changed_region_macro_iou_min,
+        ),
+        "source_transition_recall_min": getattr(
+            args,
+            "changed_region_accuracy_min",
+            evaluator_defaults.changed_region_accuracy_min,
+        ),
+        "target_reference_min_pixels": 256,
+        "target_reference_recall_min": getattr(
+            args,
+            "changed_region_macro_iou_min",
+            evaluator_defaults.changed_region_macro_iou_min,
+        ),
+        "source_to_target_confusion_max": (
+            1.0
+            - getattr(
+                args,
+                "changed_region_accuracy_min",
+                evaluator_defaults.changed_region_accuracy_min,
+            )
+        ),
+        "semantic_core_min_pixels": (
+            evaluator_defaults.semantic_core_min_pixels
+        ),
+        "semantic_core_min_fraction": (
+            evaluator_defaults.semantic_core_min_fraction
+        ),
+        "source_boundary_f1_4_min": getattr(
+            args,
+            "source_boundary_f1_min",
+            evaluator_defaults.source_boundary_f1_min,
+        ),
+        "boundary_support_min_pixels": getattr(
+            args,
+            "boundary_support_min_pixels",
+            evaluator_defaults.boundary_support_min_pixels,
+        ),
+        "off_target_drift_u_far_max": getattr(
+            args,
+            "off_target_drift_max",
+            evaluator_defaults.off_target_drift_max,
+        ),
+        "nuclei_detection_error_max": getattr(
+            args,
+            "nuclei_count_relative_error_max",
+            evaluator_defaults.nuclei_count_relative_error_max,
+        ),
+        "nuclei_type_error_max": getattr(
+            args,
+            "nuclei_type_composition_error_max",
+            evaluator_defaults.nuclei_type_composition_error_max,
+        ),
+        "nuclei_min_instances": getattr(
+            args,
+            "nuclei_type_min_instances",
+            evaluator_defaults.nuclei_type_min_instances,
+        ),
+        "component_weights": dict(QualityPolicy().component_weights),
+    }
+    for field, actual_value in runtime_evaluator.items():
+        expected_value = expected_evaluator[field]
+        if not _contract_values_equal(actual_value, expected_value):
+            raise ValueError(
+                "Quality evaluator does not match the online product release "
+                f"for {field}: {actual_value!r} != {expected_value!r}"
+            )
+    return {
+        "status": "validated",
+        "validated": True,
+        "product_release": str(release_path.resolve()),
+        "release_id": release.get("release_id"),
+        "inference": runtime_inference,
+        "routing": runtime_routing,
+        "semantic_postprocess_mode": args.semantic_postprocess_mode,
+        "segmentator_release": str(segmentator_path.resolve()),
+        "segmentator_release_id": segmentator.get("release_id"),
+        "segmentator_checkpoint_sha256": segmentator.get(
+            "checkpoint_sha256"
+        ),
+        "quality_evaluator": runtime_evaluator,
     }
 
 
@@ -998,6 +1880,28 @@ def _run_cellvit(*, args: argparse.Namespace, image_path: Path, output_dir: Path
     if not output_path.exists():
         raise RuntimeError(f"CellViT completed without writing {output_path}")
     return output_path
+
+
+def _cellvit_counts_from_wrapper_summary(
+    *,
+    predicted_nuclei_path: Path,
+    image_path: Path,
+    region: np.ndarray,
+) -> dict[int, int]:
+    summary_path = predicted_nuclei_path.with_suffix(".cellvit_single_patch.json")
+    if not summary_path.is_file():
+        raise RuntimeError(
+            f"CellViT wrapper completed without writing instance provenance: {summary_path}"
+        )
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    cells_json = payload.get("cells_json")
+    if not cells_json:
+        raise RuntimeError(f"CellViT wrapper summary has no cells_json: {summary_path}")
+    return cellvit_instance_counts_in_region(
+        cells_json,
+        image_path,
+        region,
+    )
 
 
 def _run_logged(command: list[str], log_path: Path) -> None:

@@ -336,13 +336,12 @@ Private inference-only ProbNet release used by the online nuclei-generation
 workflow.
 
 The frozen epoch-29 checkpoint supplies the per-pixel nucleus placement score
-and changed-tissue type evidence. Counts are estimated from the unedited source
-patch, with target-grade dataset-prior calibration only when the exact source
-tissue is unavailable. Unchanged target tissue preserves its pre-edit type
-mixture. The primary quota prefix balances ProbNet log-odds quality with
-generic spatial diversity; the complete retry tail remains in stable
-descending ProbNet-score order. Nucleus shapes use component-local same-class
-source-patch instances before a locally size-calibrated library fallback.
+and local type evidence. Counts are estimated from the unedited source patch,
+with target-grade dataset-prior calibration only when the exact source tissue
+is unavailable. The G2 policy samples without replacement from seeded
+`odds(P(nucleus))^3` mass, with no added diversity or coverage-radius term.
+Nucleus shapes use component-local same-class source-patch instances before a
+locally size-calibrated library fallback.
 
 ```bash
 hf download {args.hf_namespace}/pathology-probnet \\
@@ -368,33 +367,72 @@ python scripts/phase4_single_sample_smoke.py --help
             "val_loss": float(checkpoint["val_loss"]),
             "val_metrics": checkpoint.get("val_metrics", {}),
             "runtime_role": (
-                "per_pixel_placement_and_changed_tissue_type_evidence_"
+                "per_pixel_placement_and_local_type_evidence_"
                 "without_total_count"
             ),
-            "candidate_queue_policy": (
-                "probnet_log_odds_quality_diversity_prefix"
+            "candidate_queue_policy": "probnet_odds_mass_without_replacement",
+            "candidate_quality_score": (
+                "gamma_times_logit_probnet_probability_plus_seeded_gumbel"
             ),
-            "quota_coverage_spacing_scale": 0.75,
-            "quota_coverage_max_radius": 48.0,
-            "retry_tail_policy": "stable_descending_probnet_score",
+            "candidate_probability_mass_exponent": 3.0,
+            "candidate_diversity_score": "none_poisson_candidates_only",
+            "candidate_diversity_weight": 0.0,
+            "quota_coverage_spacing_scale": 0.0,
+            "quota_coverage_max_radius": 0.0,
+            "retry_tail_policy": (
+                "same_probnet_mass_permutation_then_component_pixel_backfill_"
+                "then_same_tissue_quota_reassignment"
+            ),
+            "component_quota_reassignment_policy": (
+                "unplaceable_component_quota_to_same_tissue_probnet_mass_tail"
+            ),
+            "failed_reference_shape_policy": (
+                "quarantine_within_current_candidate_try_alternative_"
+                "reference_or_library_then_restore"
+            ),
+            "exact_backfill_candidate_policy": (
+                "quota_scaled_budget_exhaustion_advances_to_next_"
+                "deterministic_seed_without_relaxing_count_type_or_shape"
+            ),
+            "exact_backfill_candidates_per_missing": 128,
+            "exact_backfill_candidate_floor": 512,
+            "exact_backfill_candidate_ceiling": 4096,
+            "gamma": 3.0,
             "count_policy": (
                 "pre_edit_source_tissue_density_or_target_prior_calibrated_by_"
                 "pre_edit_source_times_post_edit_target_area"
             ),
             "type_quota_routing_policy": (
-                "changed_target_tissue_density_head_"
-                "unchanged_target_tissue_pre_edit_patch"
+                "prior_total_count_then_probnet_local_type_log_pool_with_"
+                "cumulative_posterior_balancing"
             ),
             "shape_policy": (
                 "component_local_same_class_reference_then_"
                 "component_calibrated_library"
             ),
             "nucleus_spacing_margin_px": 1,
+            "instance_connectivity_policy": (
+                "largest_8_connected_component_after_transform"
+            ),
+            "sampling_audit_policy": (
+                "probnet_patch_relative_count_type_spatial_v3"
+            ),
+            "sampling_audit_max_attempts": 3,
+            "sampling_feedback_policy": "reason_directed_gamma_then_seed_v1",
+            "sampling_feedback_gamma_down_factor": 0.75,
+            "sampling_feedback_gamma_up_factor": 4.0 / 3.0,
+            "sampling_feedback_gamma_min": 1.5,
+            "sampling_feedback_gamma_max": 5.0,
+            "sampling_feedback_concentration_z_threshold": 1.96,
             "source_nucleus_erasure_policy": (
                 "complete_component_on_any_deletion_region_intersection"
             ),
             "buffer_nucleus_policy": (
                 "retain_generation_buffer_only_nuclei_as_placement_obstacles"
+            ),
+            "nuclei_generation_region_policy": (
+                "semantic_region_for_generic_edits_whole_connected_gland_"
+                "for_glas_structure_edits"
             ),
             "nuclei_library_included": False,
         },
