@@ -381,6 +381,13 @@ class SegmentatorDataTests(unittest.TestCase):
 
         self.assertAlmostEqual(value, (2.0 / 3.0) / 2.0)
 
+    def test_majority_child_baseline_accepts_uint8_targets(self):
+        target = torch.tensor([[[8, 8, 9, 255]]], dtype=torch.uint8)
+
+        value = _majority_child_miou(target, evaluated_class_ids=(8, 9))
+
+        self.assertTrue(math.isfinite(value))
+
     def test_fine_checkpoint_selection_enforces_coarse_floor(self):
         config = BaselineConfig(
             hierarchical_fine=True,
@@ -827,6 +834,22 @@ class SegmentatorModelTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "requires 4 feature maps"):
             pyramid([torch.randn(2, 32, 16, 16)])
+
+    def test_simple_feature_pyramid_legacy_mode_reuses_final_depth(self):
+        pyramid = SimpleFeaturePyramid(
+            in_channels=32,
+            out_channels=32,
+            source_mode="legacy_final_depth",
+        )
+        pyramid.eval()
+        feats = [torch.full((1, 32, 8, 8), float(idx + 1)) for idx in range(4)]
+
+        with torch.no_grad():
+            outputs = pyramid(feats)
+            expected = [stage(feats[-1]) for stage in pyramid.stages]
+
+        for actual, reference in zip(outputs, expected):
+            self.assertTrue(torch.equal(actual, reference))
 
     def test_boundary_refinement_and_cell_heads_preserve_expected_shapes(self):
         refinement = BoundaryRefinementHead(num_classes=8)

@@ -1,14 +1,104 @@
-# Segmentator Fine Validation Report
+# Segmentator Fine Validation and Production Selection
 
-Last verified: 2026-07-29
+Last verified: 2026-08-03
 
-This document is the canonical metric card for the current Segmentator Fine
-release candidate. Historical pooled unified-label metrics remain useful for
-diagnostics, but they are not the primary checkpoint or paper metrics.
+This document separates the final production evaluator from the historical
+C-line research candidate. Historical pooled unified-label metrics remain
+useful for diagnostics, but they are not independent clinical validation.
 
-## Selected checkpoint
+## Final production checkpoint
 
-The selected model is Boundary + CellViT Teacher joint epoch 2:
+The online Agent, UI and image-edit evaluator use:
+
+```text
+/data1/zhao/wqx/segmentator_fine/legacy_anchor_fine_seed42/best_composite.pt
+```
+
+- Release: `segmentator-fine-legacy-anchor-v1`.
+- Release definition:
+  `benchmark_configs/releases/segmentator_fine_legacy_anchor.json`.
+- Size: `2,817,774,455` bytes.
+- SHA256: `5165e0fb20aca68f64fb06403eff846173fba3a3373deeedb36b3feb81727b3f`.
+- Runtime inputs: image only.
+- Production selection date: 2026-08-03.
+
+The checkpoint was initialized from the historical coarse checkpoint:
+
+```text
+/data1/zhao/wqx/segmentator/best_mIoU.pt
+SHA256 5e4b5587359527e0e988428b8cd7fa453255de8729f0fde1ef375fb21d64f112
+```
+
+The fine stage used `feature_pyramid_source=legacy_final_depth`,
+`freeze_shared_for_fine=true` and `fine_only_loss=true`. Therefore the coarse
+shared parameters were not updated; the production checkpoint intentionally
+retains the old coarse endpoint and adds the hierarchical fine head.
+The old coarse model used
+`segmentator_runs/stage4_multidataset_manifest.json`, a per-dataset patch-level
+seed-42 split rather than a source-group-disjoint split. Of the current G2-600
+source patches, 545 were in that coarse manifest's training split and 55 were
+in its validation split. Segmentator-derived G2 measurements must therefore
+remain labelled verifier-coupled engineering evidence, not independent
+generalization results.
+
+Its grouped validation record is:
+
+| Metric | Legacy-anchor production checkpoint |
+| --- | ---: |
+| Coarse dataset-macro mIoU | `0.724986` |
+| Pooled unified mIoU, diagnostic only | `0.645508` |
+| Fine dataset-macro mIoU | `0.812287` |
+| Boundary-F1@4 | `0.512012` |
+| HD95 | `74.1973` |
+
+## Frozen evaluation-data boundary
+
+`phase5_runs/cross_meta/metadata_cross_val.json` is fixed evaluation metadata,
+not a continued-training set. It contains samples assigned by
+`grouped_seed42.json` to train, validation and test. An exact audit found
+10,137 unique target/reference samples: 8,692 train, 433 validation, 991 test
+and 21 unresolved ORCA reference identifiers. The frozen G2-600 cohort itself
+contains 506 train, 32 validation and 62 test patches.
+
+Training on the complete `eval_meta` would therefore expose validation/test
+labels and invalidate same-endpoint comparisons. It is forbidden for the
+production checkpoint. Any small-learning-rate continuation must use a new
+candidate name, exclude frozen evaluation rows, preserve this checkpoint, and
+be promoted only after group-disjoint validation and evaluation on a new
+clinician-labelled endpoint. Reusing the `eval_meta` rows already assigned to
+the grouped train split adds no new labelled images because those samples were
+already available to the original fine training.
+
+After the present paper benchmark has been frozen and reported, clinician
+corrections from this endpoint may be used to train a separately versioned
+post-benchmark product model. That later model must not be evaluated against
+or substituted into the already reported benchmark.
+
+### Safe small-learning-rate candidate
+
+No continuation was launched as part of the 2026-08-03 production decision.
+If a new coarse-improvement experiment is opened, it should:
+
+- initialize from the frozen legacy-anchor checkpoint but write to a new
+  output directory and release ID;
+- train only on the grouped train split after excluding every frozen benchmark
+  patch/group, never on complete `eval_meta`;
+- use joint coarse and fine supervision rather than the existing
+  `fine_only_loss`, because fine-only training cannot improve the old coarse
+  endpoint;
+- keep the UNI encoder frozen initially, use decoder learning rate
+  `1e-6` to `5e-6`, run at most two to three epochs with early stopping, and
+  reject any per-dataset/common-class regression;
+- reserve a new source-group-disjoint, clinician-labelled endpoint before
+  checkpoint selection.
+
+This is a research-candidate protocol, not authorization to mutate the frozen
+production checkpoint.
+
+## Historical C-line research candidate
+
+The Boundary + CellViT Teacher joint epoch-2 checkpoint remains a research
+comparison and manual diagnostic, not the production selector:
 
 ```text
 /data1/zhao/wqx/segmentator_fine/fine_boundary_teacher_joint_seed42/best_composite.pt
@@ -21,7 +111,7 @@ The selected model is Boundary + CellViT Teacher joint epoch 2:
   checkpoint commit `afe195eaa3a4c2c1d24a41932669f5e55ac987bf`.
 - Runtime inputs: image only. CellViT is a training teacher and is not required
   at inference.
-- Safety fallback:
+- Historical safety-comparison source:
   `/data1/zhao/wqx/segmentator_fine/fine_cellvit_teacher_v2_seed42/best_composite.pt`.
 
 ## Metric contract
@@ -46,7 +136,7 @@ Fine dataset-macro mIoU includes only BCSS, GlaS, and PANDA:
 Angioinvasion has training support but no validation or test support, so the
 current held-out splits do not provide an Angioinvasion performance estimate.
 
-## Grouped validation
+## Historical C-line grouped validation
 
 | Metric | Joint epoch 2 |
 | --- | ---: |
@@ -77,7 +167,7 @@ Fine validation mIoU by supervised dataset:
 | GlaS | `0.703010` |
 | PANDA | `0.430166` |
 
-## Held-out internal test
+## Historical C-line held-out internal test
 
 The test split contains `10,012` patches from `114` held-out source groups.
 The grouped manifest has zero sample, image, and source-group overlap among
@@ -107,8 +197,9 @@ validation only.
 
 ## Interpretation and release decision
 
-- Joint epoch 2 remains the primary internal release candidate because it
-  improves both corrected coarse and supported-fine test macro over Teacher V2.
+- Joint epoch 2 remains a useful internal C-line research candidate because it
+  improves both corrected coarse and supported-fine test macro over Teacher V2;
+  it is not the selected online production evaluator.
 - BCSS coarse mIoU is `0.026550` lower than Teacher V2 on the test split and
   remains the main regression risk.
 - DCIS recognition is not claimed and DCIS-dependent downstream operations

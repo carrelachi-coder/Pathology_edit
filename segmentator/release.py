@@ -130,6 +130,9 @@ def release_model_kwargs(release: Mapping[str, Any]) -> dict[str, Any]:
         "mask2former_ignore_index": int(
             architecture["mask2former_ignore_index"]
         ),
+        "feature_pyramid_source": str(
+            architecture.get("feature_pyramid_source", "distinct_depths")
+        ),
         "symmetric_padding": bool(architecture["symmetric_padding"]),
         "boundary_refinement": bool(architecture["boundary_refinement"]),
         "refinement_gate_mode": str(architecture["refinement_gate_mode"]),

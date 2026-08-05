@@ -57,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decoder", choices=["upernet", "mask2former"], default="upernet")
     parser.add_argument("--mask2former-queries", type=int, default=100)
     parser.add_argument("--mask2former-ignore-index", type=int, default=255)
+    parser.add_argument(
+        "--feature-pyramid-source",
+        choices=["distinct_depths", "legacy_final_depth"],
+        default="distinct_depths",
+        help="Select distinct UNI2-h depths or reproduce the legacy final-depth pyramid.",
+    )
     parser.add_argument("--symmetric-padding", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--boundary-refinement", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--refinement-loss-weight", type=float, default=1.0)
@@ -260,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         decoder=args.decoder,
         mask2former_queries=args.mask2former_queries,
         mask2former_ignore_index=args.mask2former_ignore_index,
+        feature_pyramid_source=args.feature_pyramid_source,
         symmetric_padding=args.symmetric_padding,
         boundary_refinement=args.boundary_refinement,
         refinement_loss_weight=args.refinement_loss_weight,

@@ -127,6 +127,7 @@ class BaselineConfig:
     decoder: str = "upernet"
     mask2former_queries: int = 100
     mask2former_ignore_index: int = 255
+    feature_pyramid_source: str = "distinct_depths"
     symmetric_padding: bool = False
     boundary_refinement: bool = False
     refinement_loss_weight: float = 1.0

@@ -117,7 +117,7 @@ def _majority_child_miou(
     if evaluated_class_ids is not None:
         evaluated = torch.zeros(NUM_FINE, dtype=torch.bool, device=target.device)
         evaluated[list(evaluated_class_ids)] = True
-        valid &= evaluated[target.clamp(0, NUM_FINE - 1)]
+        valid &= evaluated[target.clamp(0, NUM_FINE - 1).long()]
     if not valid.any():
         return float("nan")
     counts = torch.bincount(target[valid].long(), minlength=NUM_FINE)
@@ -1276,6 +1276,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
         mask2former_queries=config.mask2former_queries,
         mask2former_ignore_index=config.mask2former_ignore_index,
         mask2former_class_weights=tuple(float(value) for value in class_weights.tolist()) if class_weights is not None else None,
+        feature_pyramid_source=config.feature_pyramid_source,
         symmetric_padding=config.symmetric_padding,
         boundary_refinement=config.boundary_refinement,
         refinement_loss_weight=config.refinement_loss_weight,
@@ -1547,6 +1548,7 @@ def run_stage4_baseline(dataset_root: str | Path, config: BaselineConfig, uni2h_
                     "metric_sample_limit": config.metric_sample_limit,
                     "mask2former_sanity_check_passed": sanity_check_passed,
                     "mask2former_feature_shapes": mask2former_feature_shapes,
+                    "feature_pyramid_source": config.feature_pyramid_source,
                     "effective_invalid_target": config.mask2former_ignore_index if config.decoder == "mask2former" else config.ignore_index,
                     "class_weighting": config.class_weighting,
                     "label_space_summary_path": str(config.label_space_summary_path) if config.label_space_summary_path is not None else None,

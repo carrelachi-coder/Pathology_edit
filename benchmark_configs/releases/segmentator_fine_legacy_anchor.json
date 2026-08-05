@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "release_id": "segmentator-fine-legacy-anchor-v1",
+  "release_status": "production_frozen_online_evaluator",
+  "formal_publication_ready": false,
+  "publication_blockers": [
+    "engineering evaluator anchor only; not an external clinical validation endpoint"
+  ],
+  "checkpoint": "/data1/zhao/wqx/segmentator_fine/legacy_anchor_fine_seed42/best_composite.pt",
+  "checkpoint_size_bytes": 2817774455,
+  "checkpoint_sha256": "5165e0fb20aca68f64fb06403eff846173fba3a3373deeedb36b3feb81727b3f",
+  "checkpoint_environment_selector": "PATHOLOGY_SEGMENTATOR_CHECKPOINT",
+  "production_selection": {
+    "selected": true,
+    "decision_date": "2026-08-03",
+    "scope": "online_agent_and_image_edit_evaluator",
+    "supersedes_for_production": "benchmark_configs/releases/segmentator_fine_c_epoch2.json",
+    "c_line_role": "research_comparison_and_manual_safety_diagnostic_only"
+  },
+  "distribution": {
+    "mode": "local_checkpoint_release",
+    "reason": "G2 source-calibrated evaluator anchor"
+  },
+  "code_commit": "b35c9013d02630151c6270dd70b4cea1e8e74b9e",
+  "training_provenance": {
+    "initial_coarse_checkpoint": "/data1/zhao/wqx/segmentator/best_mIoU.pt",
+    "initial_coarse_checkpoint_sha256": "5e4b5587359527e0e988428b8cd7fa453255de8729f0fde1ef375fb21d64f112",
+    "initial_coarse_training_manifest": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/segmentator_runs/stage4_multidataset_manifest.json",
+    "initial_coarse_split_policy": "patch_level_per_dataset_seed42_not_group_disjoint",
+    "feature_pyramid_source": "legacy_final_depth",
+    "fine_training_manifest": "/data1/zhao/wqx/segmentator_manifests/grouped_seed42.json",
+    "fine_training_policy": "freeze_shared_for_fine_and_fine_only_loss",
+    "coarse_parameters_updated_during_fine_stage": false
+  },
+  "continued_training_policy": {
+    "production_checkpoint_is_immutable": true,
+    "full_eval_meta_training_allowed": false,
+    "forbidden_training_source": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/phase5_runs/cross_meta/metadata_cross_val.json",
+    "reason": "fixed evaluator and G2 benchmark source; training on its validation or test rows would leak evaluation labels",
+    "new_candidate_required_for_any_continuation": true,
+    "promotion_requires_group_disjoint_validation_and_new_human_gt_endpoint": true
+  },
+  "decoder": "mask2former",
+  "architecture": {
+    "num_classes": 8,
+    "mask2former_queries": 100,
+    "mask2former_ignore_index": 255,
+    "hierarchical_fine": true,
+    "boundary_refinement": false,
+    "refinement_gate_mode": "hard",
+    "symmetric_padding": false,
+    "cellvit_mode": "none",
+    "fine_supported_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      15
+    ]
+  },
+  "runtime": {
+    "local_repo": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h",
+    "runtime_inputs": "image_only",
+    "cellvit_required_at_inference": false,
+    "strict_checkpoint_load": true
+  },
+  "input": {
+    "image_size": [512, 512],
+    "mpp": 0.25,
+    "color_mode": "RGB",
+    "normalization": {
+      "id": "imagenet-rgb-v1",
+      "mean": [0.485, 0.456, 0.406],
+      "std": [0.229, 0.224, 0.225]
+    },
+    "padding": {
+      "id": "mask2former-reflect-right-bottom-align56-v1",
+      "alignment": 56,
+      "mode": "reflect",
+      "symmetric": false
+    }
+  },
+  "output": {
+    "coarse_class_ids": [0, 1, 2, 3, 4, 5, 6, 7],
+    "coarse_probability_layout": "CHW",
+    "entropy": "normalized_shannon_log_k",
+    "fine_entropy": "normalized_shannon_log_dataset_allowed_children_per_parent",
+    "save_argmax_png": true,
+    "save_probability_npz": true,
+    "save_entropy_npy": true,
+    "fine_output_policy": "dataset_constrained",
+    "fine_metric_unsupported_ids": {
+      "bcss": [14]
+    }
+  },
+  "metric_contract": {
+    "coarse": "dataset_native_annotated_biological_classes_excluding_background_and_other",
+    "fine": "supported_dataset_native_classes_only_excluding_dcis",
+    "validation": {
+      "coarse_dataset_macro_miou": 0.7249856193860372,
+      "pooled_unified_miou_diagnostic": 0.6455080509185791,
+      "fine_dataset_macro_miou": 0.8122873107592264,
+      "boundary_f1_4": 0.5120123401725114,
+      "hd95": 74.19725900194481
+    },
+    "interpretation": "internal source-calibration anchor for reliability-adaptive engineering evaluation"
+  },
+  "safety_fallback": {
+    "release": "benchmark_configs/releases/segmentator_fine_c_epoch2.json",
+    "selection": "manual_only"
+  }
+}

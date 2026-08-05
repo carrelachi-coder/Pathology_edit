@@ -172,14 +172,22 @@ class UPerLikeDecoder(nn.Module):
 
 
 class SimpleFeaturePyramid(nn.Module):
-    """Build patch14-compatible feature levels from distinct ViT depths."""
+    """Build patch14-compatible feature levels from UNI2-h feature maps."""
 
-    def __init__(self, in_channels: int | tuple[int, int, int, int] = 1536, out_channels: int = 256) -> None:
+    def __init__(
+        self,
+        in_channels: int | tuple[int, int, int, int] = 1536,
+        out_channels: int = 256,
+        source_mode: str = "distinct_depths",
+    ) -> None:
         super().__init__()
         if isinstance(in_channels, int):
             in_channels = (in_channels, in_channels, in_channels, in_channels)
         if len(in_channels) != 4:
             raise ValueError(f"SimpleFeaturePyramid expects 4 input channel counts, got {len(in_channels)}")
+        if source_mode not in {"distinct_depths", "legacy_final_depth"}:
+            raise ValueError(f"unsupported feature pyramid source mode: {source_mode}")
+        self.source_mode = source_mode
         self.out_channels = (out_channels, out_channels, out_channels, out_channels)
         self.strides = (7, 14, 28, 56)
         self.stages = nn.ModuleList(
@@ -211,8 +219,11 @@ class SimpleFeaturePyramid(nn.Module):
 
     def forward(self, feats: list[torch.Tensor]) -> list[torch.Tensor]:
         if len(feats) != 4:
-            raise RuntimeError(f"SimpleFeaturePyramid requires 4 feature maps from distinct depths, got {len(feats)}")
-        return [stage(feat) for stage, feat in zip(self.stages, feats)]
+            raise RuntimeError(f"SimpleFeaturePyramid requires 4 feature maps, got {len(feats)}")
+        sources = feats
+        if self.source_mode == "legacy_final_depth":
+            sources = [feats[-1]] * len(self.stages)
+        return [stage(feat) for stage, feat in zip(self.stages, sources)]
 
 
 class BoundaryRefinementHead(nn.Module):
@@ -613,6 +624,7 @@ class BaselineSegmenter(nn.Module):
         mask2former_queries: int = 100,
         mask2former_ignore_index: int = 255,
         mask2former_class_weights: tuple[float, ...] | None = None,
+        feature_pyramid_source: str = "distinct_depths",
         symmetric_padding: bool = False,
         boundary_refinement: bool = False,
         refinement_loss_weight: float = 1.0,
@@ -638,6 +650,7 @@ class BaselineSegmenter(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.decoder_name = decoder
+        self.feature_pyramid_source = feature_pyramid_source
         self.symmetric_padding = symmetric_padding
         self.refinement_loss_weight = refinement_loss_weight
         self.refinement_boundary_weight = refinement_boundary_weight
@@ -673,13 +686,19 @@ class BaselineSegmenter(nn.Module):
             raise ValueError("fine_only_loss and refinement_only_loss are mutually exclusive")
         if cellvit_mode not in {"none", "teacher", "input"}:
             raise ValueError(f"unsupported CellViT mode: {cellvit_mode}")
+        if feature_pyramid_source not in {"distinct_depths", "legacy_final_depth"}:
+            raise ValueError(f"unsupported feature pyramid source: {feature_pyramid_source}")
         encoder_layers = (5, 11, 17, 23)
         self.encoder = Uni2hFeatureEncoder(local_repo=local_repo, freeze=freeze_encoder, intermediate_layers=encoder_layers)
         if decoder == "upernet":
             self.feature_pyramid = None
             self.decoder = UPerLikeDecoder((1536, 1536, 1536, 1536), num_classes)
         elif decoder == "mask2former":
-            self.feature_pyramid = SimpleFeaturePyramid(self.encoder.feature_channels, 256)
+            self.feature_pyramid = SimpleFeaturePyramid(
+                self.encoder.feature_channels,
+                256,
+                source_mode=feature_pyramid_source,
+            )
             self.decoder = OfficialMask2FormerDecoder(
                 self.feature_pyramid.out_channels,
                 num_classes,
