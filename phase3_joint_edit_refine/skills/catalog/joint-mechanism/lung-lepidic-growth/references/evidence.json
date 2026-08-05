@@ -1,0 +1,23 @@
+{
+  "review_status": "draft",
+  "claims": [
+    {
+      "rule_id": "lung-lepidic-growth.claim.1",
+      "claim": "open alveolar spaces",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    },
+    {
+      "rule_id": "lung-lepidic-growth.claim.2",
+      "claim": "septal-aligned epithelial population",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    }
+  ]
+}

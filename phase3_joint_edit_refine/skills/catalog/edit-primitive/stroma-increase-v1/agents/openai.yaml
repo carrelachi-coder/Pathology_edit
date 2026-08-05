@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stroma Increase"
+  short_description: "Plan joint stromal area expansion"
+  default_prompt: "Use $stroma-increase-v1 to compile a joint stromal expansion contract."

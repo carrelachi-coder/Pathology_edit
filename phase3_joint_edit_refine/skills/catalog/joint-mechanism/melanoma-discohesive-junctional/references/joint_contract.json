@@ -1,0 +1,128 @@
+{
+  "mechanism_id": "melanoma-discohesive-junctional",
+  "pathology_domain_id": "melanoma-v1",
+  "supported_primitives": ["neoplastic-cell-infiltration-increase-v1"],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Represent verified sparse junctional or discohesive spread with complete single cells or small clusters, without creating a false bulk tissue island.",
+  "recognition_contract": {
+    "required_observations": [
+      "verified epidermal/junctional relationship",
+      "sparse source neoplastic cells or small clusters",
+      "legal bounded halo"
+    ],
+    "contraindications": [
+      "unresolved epidermis",
+      "cohesive bulk-only source",
+      "non-tissue fragment"
+    ],
+    "minimum_confidence": 0.8
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [1],
+    "required_auxiliary_structures": [
+      "epidermis_or_junction_map"
+    ],
+    "allow_semantic_instance_fallback": false,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "preserve_tissue_for_cell_dominant_spread",
+    "primitive_label_contracts": {
+      "neoplastic-cell-infiltration-increase-v1": {
+        "source_labels": ["Stroma", "Other tissue"],
+        "target_labels": ["Stroma", "Other tissue"]
+      }
+    },
+    "allowed_tools": ["preserve_tissue"],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "epidermis",
+      "vessel",
+      "necrosis",
+      "non_tissue"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1
+    ],
+    "layout_programs": [
+      "single",
+      "pair",
+      "small_cluster"
+    ],
+    "core_policy": "retain_source_population",
+    "halo_policy": "add_neoplastic_cells_in_verified_interface_halo",
+    "halo_distance_px": [
+      4,
+      32
+    ],
+    "cluster_size_range": [
+      1,
+      4
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution"
+    ]
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "melanoma-discohesive-junctional.tissue_cell_compatibility",
+      "melanoma-discohesive-junctional.protected_structure_coupling"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": true,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": false,
+    "cell_only_target_fraction": 0.0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "sparse junction-compatible cells",
+      "no false bulk tumor mask"
+    ],
+    "veto_findings": [
+      "large tumor island",
+      "epidermis loss",
+      "random dermal scatter"
+    ],
+    "mask_guarantees": [
+      "complete-instance cell edits",
+      "protected-structure raster preservation"
+    ],
+    "render_only_claims": [
+      "pagetoid/junctional identity",
+      "melanocytic cytology"
+    ]
+  },
+  "evidence_citations": [
+    "https://tumourclassification.iarc.who.int/",
+    "https://www.iccr-cancer.org/datasets/"
+  ],
+  "counterexamples": [
+    "large tumor island",
+    "epidermis loss",
+    "random dermal scatter"
+  ]
+}

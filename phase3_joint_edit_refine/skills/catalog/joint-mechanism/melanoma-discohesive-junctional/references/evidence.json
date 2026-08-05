@@ -1,0 +1,23 @@
+{
+  "review_status": "draft",
+  "claims": [
+    {
+      "rule_id": "melanoma-discohesive-junctional.claim.1",
+      "claim": "sparse junction-compatible cells",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    },
+    {
+      "rule_id": "melanoma-discohesive-junctional.claim.2",
+      "claim": "no false bulk tumor mask",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "review_status": "draft",
+  "claims": [
+    {
+      "rule_id": "lung-acinar-papillary-growth.claim.1",
+      "claim": "preserved lumen/core",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    },
+    {
+      "rule_id": "lung-acinar-papillary-growth.claim.2",
+      "claim": "boundary-compatible tumor population",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "review_status": "draft",
+  "claims": [
+    {
+      "rule_id": "prostate-pattern-4-growth.claim.1",
+      "claim": "pattern-compatible unit continuity",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    },
+    {
+      "rule_id": "prostate-pattern-4-growth.claim.2",
+      "claim": "empty native lumina/internal spaces",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    }
+  ]
+}

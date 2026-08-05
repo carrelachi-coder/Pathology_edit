@@ -1,0 +1,4 @@
+interface:
+  display_name: "colorectal-gland-forming-front"
+  short_description: "Plan and audit one atomic joint pathology mechanism"
+  default_prompt: "Use $colorectal-gland-forming-front to plan a tissue-cell joint pathology edit."

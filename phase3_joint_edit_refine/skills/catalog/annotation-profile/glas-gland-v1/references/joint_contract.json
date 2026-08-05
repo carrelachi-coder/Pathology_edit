@@ -1,0 +1,12 @@
+{
+  "annotation_profile_id": "glas-gland-v1",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "prohibited_fine_ids": [0],
+  "prohibit_cell_placement_fine_ids": [0],
+  "prohibit_generation_support_fine_ids": [0],
+  "required_provenance_fields": ["preprocessing_revision", "original_instance_mask_digest", "patch_grade"],
+  "unavailable_mechanisms": [],
+  "conditional_mechanisms": ["colorectal-tumor-budding-front"],
+  "required_checker_ids": ["profile_provenance", "prohibited_cell_region", "prohibited_generation_support", "native_structure_preserved"]
+}

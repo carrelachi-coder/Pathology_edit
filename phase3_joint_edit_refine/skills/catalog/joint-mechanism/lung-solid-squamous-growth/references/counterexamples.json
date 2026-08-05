@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "lung-solid-squamous-growth.counterexample.1",
+      "description": "rectangular bulk",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "lung-solid-squamous-growth.counterexample.2",
+      "description": "airway overwrite",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "lung-solid-squamous-growth.counterexample.3",
+      "description": "necrosis used as generic stroma",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

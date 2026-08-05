@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tumor Burden Increase"
+  short_description: "Plan joint tissue and cell tumor expansion"
+  default_prompt: "Use $tumor-burden-increase-v1 to compile a joint tumor expansion contract."

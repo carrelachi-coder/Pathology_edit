@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cellularity Decrease"
+  short_description: "Plan a local cell-density decrease"
+  default_prompt: "Use $cellularity-decrease-v1 to compile a local cellularity decrease contract."

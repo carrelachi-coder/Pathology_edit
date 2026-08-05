@@ -1,0 +1,67 @@
+{
+  "mechanism_id": "breast-cohesive-nst-front",
+  "pathology_domain_id": "breast-invasive-carcinoma-v1",
+  "supported_primitives": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Move a verified cohesive invasive breast tumor front and rebuild a compatible neoplastic/stromal population without cutting benign or in-situ units.",
+  "recognition_contract": {
+    "required_observations": ["cohesive invasive nests, cords, trabeculae, sheets, or irregular glands", "broad compatible tumor/non-tumor interface", "absence of a benign duct, lobule, DCIS boundary, vessel, secretion, fat void, or necrosis in the edit band"],
+    "contraindications": ["single-file or markedly discohesive invasion", "duct-confined in-situ component", "angioinvasion"],
+    "minimum_confidence": 0.75
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [1, 3],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "broad_interface_displacement",
+    "primitive_label_contracts": {
+      "tumor-burden-increase-v1": {
+        "source_labels": ["Stroma", "Other tissue"],
+        "target_labels": ["Tumor"]
+      },
+      "tumor-burden-decrease-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma", "Other tissue"]
+      },
+      "stroma-increase-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma"]
+      }
+    },
+    "allowed_tools": ["interface_band_sdf", "topology_safe_morphology", "organic_v2"],
+    "required_checker_ids": ["tissue_gate_binding", "native_structure_preserved"],
+    "prohibited_structures": ["benign_duct", "benign_lobule", "dcis_unit", "vessel", "necrosis"]
+  },
+  "cell_program": {
+    "actions": ["retain", "remove_whole", "add"],
+    "allowed_cell_classes": [1, 2, 3, 5],
+    "layout_programs": ["population_replacement", "small_cluster", "short_cord", "boundary_aligned"],
+    "core_policy": "replace_complete_instances_in_tissue_change",
+    "halo_policy": "no_cell_only_halo_without_separate_discohesive_evidence",
+    "halo_distance_px": [0, 16],
+    "cluster_size_range": [2, 12],
+    "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution"]
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": ["breast.joint.cohesive_front_population", "breast.joint.protect_benign_in_situ_vessel"],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0.0,
+    "render_support_policy_id": "joint_change_plus_bounded_cell_halo_v1"
+  },
+  "joint_gate_ids": ["joint_area", "tissue_floor", "cell_tissue_compatibility", "cell_zone_localization", "joint_provenance"],
+  "render_contract": {
+    "required_findings": ["cohesive invasive architecture compatible with the selected source front", "continuous transition into retained surrounding tissue"],
+    "veto_findings": ["invented single-file invasion", "partial benign duct or lobule", "rectangular tumor fill", "lost vessel or DCIS unit"],
+    "mask_guarantees": ["paired tissue/nuclei condition", "complete-instance preservation outside joint support"],
+    "render_only_claims": ["specific breast carcinoma subtype", "cytologic atypia", "desmoplastic reaction"]
+  },
+  "evidence_citations": ["https://tumourclassification.iarc.who.int/chapters/32", "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"],
+  "counterexamples": ["radial balloon expansion across a benign lobule", "connecting discohesive cells into a solid mass", "using a vascular lumen as editable stroma"]
+}

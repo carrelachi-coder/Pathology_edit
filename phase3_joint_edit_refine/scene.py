@@ -1,0 +1,444 @@
+"""Build a deterministic tissue--cell scene graph without model inference."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+
+import numpy as np
+from scipy import ndimage
+from scipy.spatial import cKDTree
+from skimage.measure import regionprops
+
+from phase3_mask_edit.core.labels import MaskProfileSchema
+from phase3_mask_edit_refine.evidence import load_id_mask
+from phase3_mask_edit_refine.scene import SceneAnalysis, build_scene_analysis
+
+from .models import (
+    CellGraphEdge,
+    CellSceneGraph,
+    JointContractError,
+    NucleusInstance,
+    PopulationGraph,
+    PopulationZone,
+)
+from .nuclei import (
+    instance_bbox,
+    instance_centroid,
+    iter_instances,
+    load_native_instances,
+    normalize_nuclei_mask,
+    touches_border,
+)
+
+
+@dataclass(frozen=True)
+class JointSceneAnalysis:
+    tissue: SceneAnalysis
+    cells: CellSceneGraph
+    source_nuclei: np.ndarray
+    instance_masks: dict[str, np.ndarray]
+    auxiliary_structure_masks: dict[str, np.ndarray]
+    population: PopulationGraph
+    population_zone_masks: dict[str, np.ndarray]
+
+    def to_metadata(self) -> dict:
+        return {
+            "tissue": self.tissue.graph.to_metadata(),
+            "cells": self.cells.to_metadata(),
+            "population": self.population.to_metadata(),
+            "auxiliary_structures": {
+                key: {"pixels": int(np.count_nonzero(value))}
+                for key, value in sorted(self.auxiliary_structure_masks.items())
+            },
+        }
+
+
+def build_joint_scene_analysis(
+    tissue_mask: np.ndarray,
+    nuclei_mask: np.ndarray,
+    *,
+    schema: MaskProfileSchema,
+    pixel_size_um: float | None,
+    nuclei_instances_path: str | None = None,
+    auxiliary_structure_paths: dict[str, str] | None = None,
+) -> JointSceneAnalysis:
+    tissue = np.asarray(tissue_mask)
+    nuclei = normalize_nuclei_mask(nuclei_mask)
+    if tissue.ndim != 2 or tissue.shape != nuclei.shape:
+        raise JointContractError("tissue and nuclei masks must be aligned 2-D arrays")
+    tissue_scene = build_scene_analysis(
+        tissue,
+        schema=schema,
+        pixel_size_um=pixel_size_um,
+    )
+    auxiliary_masks = {}
+    for structure_id, path in sorted((auxiliary_structure_paths or {}).items()):
+        current = load_id_mask(path)
+        if current.shape != tissue.shape:
+            raise JointContractError(
+                f"auxiliary structure {structure_id!r} is not aligned to the case"
+            )
+        region = np.asarray(current) != 0
+        if not np.any(region):
+            raise JointContractError(
+                f"auxiliary structure {structure_id!r} is empty"
+            )
+        auxiliary_masks[structure_id] = region
+    instances: list[NucleusInstance] = []
+    masks: dict[str, np.ndarray] = {}
+    centers: list[tuple[float, float]] = []
+    counts = {class_id: 0 for class_id in range(1, 6)}
+    height, width = tissue.shape
+    component_id_map, component_ids = _component_id_map(tissue_scene)
+    interface_tree, interface_point_ids = _interface_point_index(tissue_scene)
+    native_instances = (
+        load_native_instances(
+            nuclei_instances_path,
+            shape=tissue.shape,
+            semantic_mask=nuclei,
+        )
+        if nuclei_instances_path
+        else None
+    )
+    source_instances = native_instances if native_instances is not None else tuple(iter_instances(nuclei))
+    for instance_id, class_id, component in source_instances:
+        cx, cy = instance_centroid(component)
+        row = int(np.clip(round(cy), 0, height - 1))
+        col = int(np.clip(round(cx), 0, width - 1))
+        component_index = int(component_id_map[row, col])
+        tissue_component_id = (
+            component_ids[component_index - 1] if component_index > 0 else None
+        )
+        nearest_interface_id = None
+        interface_distance = None
+        if interface_tree is not None:
+            interface_distance, nearest_index = interface_tree.query((cy, cx), k=1)
+            nearest_interface_id = interface_point_ids[int(nearest_index)]
+        shape_metrics = _shape_metrics(component)
+        instances.append(
+            NucleusInstance(
+                instance_id=instance_id,
+                class_id=class_id,
+                area_px=int(component.sum()),
+                bbox_xyxy=instance_bbox(component),
+                centroid_xy=(cx, cy),
+                tissue_fine_id=int(tissue[row, col]),
+                touches_border=touches_border(component),
+                source=("instance_json" if native_instances is not None else "semantic_component"),
+                tissue_component_id=tissue_component_id,
+                nearest_interface_id=nearest_interface_id,
+                distance_to_interface_px=(
+                    float(interface_distance)
+                    if interface_distance is not None
+                    else None
+                ),
+                perimeter_px=shape_metrics["perimeter_px"],
+                solidity=shape_metrics["solidity"],
+                eccentricity=shape_metrics["eccentricity"],
+                completeness_status=(
+                    "patch_boundary_censored"
+                    if touches_border(component)
+                    else "complete"
+                ),
+            )
+        )
+        masks[instance_id] = component
+        centers.append((cy, cx))
+        counts[class_id] += 1
+    instances = _mark_instance_quality(instances)
+    mean_nnd: float | None = None
+    if len(centers) >= 2:
+        distances, _ = cKDTree(np.asarray(centers, dtype=float)).query(
+            np.asarray(centers, dtype=float), k=2
+        )
+        mean_nnd = float(np.mean(distances[:, 1]))
+    warnings: list[str] = []
+    if native_instances is None:
+        warnings.append(
+            "instance identity reconstructed by per-class distance watershed"
+        )
+    if any(item.touches_border for item in instances):
+        warnings.append("border-touching nuclei are protected and cannot be resampled")
+    edges = _cell_edges(instances)
+    cell_graph = CellSceneGraph(
+        width=width,
+        height=height,
+        instances=tuple(instances),
+        class_counts=counts,
+        mean_nearest_neighbor_px=mean_nnd,
+        observation_quality=("native_instance" if native_instances is not None else "semantic_fallback"),
+        warnings=tuple(warnings),
+        edges=edges,
+        interface_relation_count=sum(
+            item.nearest_interface_id is not None for item in instances
+        ),
+        merged_suspect_instance_ids=tuple(
+            item.instance_id
+            for item in instances
+            if "merged_suspect" in item.quality_flags
+        ),
+        border_censored_instance_ids=tuple(
+            item.instance_id for item in instances if item.touches_border
+        ),
+    )
+    population, population_masks = _build_population_graph(
+        tissue_scene=tissue_scene,
+        instances=tuple(instances),
+        observation_quality=cell_graph.observation_quality,
+        shape=tissue.shape,
+    )
+    return JointSceneAnalysis(
+        tissue_scene,
+        cell_graph,
+        nuclei,
+        masks,
+        auxiliary_masks,
+        population,
+        population_masks,
+    )
+
+
+def _component_id_map(scene: SceneAnalysis) -> tuple[np.ndarray, tuple[str, ...]]:
+    result = np.zeros((scene.graph.height, scene.graph.width), dtype=np.int32)
+    ids = tuple(item.component_id for item in scene.graph.components)
+    for index, component_id in enumerate(ids, start=1):
+        result[scene.component_masks[component_id]] = index
+    return result, ids
+
+
+def _interface_point_index(
+    scene: SceneAnalysis,
+) -> tuple[cKDTree | None, tuple[str, ...]]:
+    points: list[tuple[int, int]] = []
+    ids: list[str] = []
+    for interface in scene.graph.interfaces:
+        rows, cols = np.nonzero(scene.interface_masks[interface.interface_id])
+        points.extend((int(row), int(col)) for row, col in zip(rows, cols))
+        ids.extend([interface.interface_id] * len(rows))
+    if not points:
+        return None, ()
+    return cKDTree(np.asarray(points, dtype=float)), tuple(ids)
+
+
+def _shape_metrics(component: np.ndarray) -> dict[str, float | None]:
+    labeled = np.asarray(component, dtype=np.uint8)
+    props = regionprops(labeled)
+    if not props:
+        return {"perimeter_px": None, "solidity": None, "eccentricity": None}
+    item = props[0]
+    return {
+        "perimeter_px": float(item.perimeter),
+        "solidity": float(item.solidity),
+        "eccentricity": float(item.eccentricity),
+    }
+
+
+def _mark_instance_quality(
+    instances: list[NucleusInstance],
+) -> list[NucleusInstance]:
+    areas_by_class: dict[int, list[float]] = {}
+    for item in instances:
+        if not item.touches_border:
+            areas_by_class.setdefault(item.class_id, []).append(float(item.area_px))
+    limits: dict[int, float] = {}
+    for class_id, values in areas_by_class.items():
+        array = np.asarray(values, dtype=float)
+        if array.size < 4:
+            limits[class_id] = float(np.median(array) * 3.0) if array.size else np.inf
+            continue
+        q1, q3 = np.quantile(array, (0.25, 0.75))
+        limits[class_id] = float(max(q3 + 3.0 * (q3 - q1), np.median(array) * 3.0))
+    result = []
+    for item in instances:
+        flags = list(item.quality_flags)
+        if item.touches_border:
+            flags.append("patch_boundary_censored")
+        if item.area_px > limits.get(item.class_id, np.inf):
+            flags.append("merged_suspect")
+        if item.solidity is not None and item.solidity < 0.45:
+            flags.append("irregular_or_fragmented_shape")
+        result.append(replace(item, quality_flags=tuple(sorted(set(flags)))))
+    return result
+
+
+def _cell_edges(instances: list[NucleusInstance], k: int = 6) -> tuple[CellGraphEdge, ...]:
+    if len(instances) < 2:
+        return ()
+    points = np.asarray(
+        [(item.centroid_xy[1], item.centroid_xy[0]) for item in instances],
+        dtype=float,
+    )
+    query_k = min(k + 1, len(instances))
+    distances, neighbors = cKDTree(points).query(points, k=query_k)
+    edges: dict[tuple[int, int], CellGraphEdge] = {}
+    for source_index in range(len(instances)):
+        for distance, target_index in zip(
+            np.atleast_1d(distances[source_index])[1:],
+            np.atleast_1d(neighbors[source_index])[1:],
+        ):
+            left, right = sorted((source_index, int(target_index)))
+            key = (left, right)
+            if key in edges:
+                continue
+            source, target = instances[left], instances[right]
+            edges[key] = CellGraphEdge(
+                source_instance_id=source.instance_id,
+                target_instance_id=target.instance_id,
+                relation="knn",
+                distance_px=float(distance),
+                same_class=source.class_id == target.class_id,
+                same_tissue_component=(
+                    source.tissue_component_id is not None
+                    and source.tissue_component_id == target.tissue_component_id
+                ),
+            )
+    return tuple(edges[key] for key in sorted(edges))
+
+
+def _build_population_graph(
+    *,
+    tissue_scene: SceneAnalysis,
+    instances: tuple[NucleusInstance, ...],
+    observation_quality: str,
+    shape: tuple[int, int],
+) -> tuple[PopulationGraph, dict[str, np.ndarray]]:
+    complete_areas = [
+        item.area_px
+        for item in instances
+        if not item.touches_border and "merged_suspect" not in item.quality_flags
+    ]
+    median_area = float(np.median(complete_areas)) if complete_areas else None
+    nominal_diameter = (
+        float(2.0 * np.sqrt(median_area / np.pi))
+        if median_area is not None and median_area > 0
+        else 8.0
+    )
+    band_width = max(2, int(round(nominal_diameter)))
+    masks: dict[str, np.ndarray] = {}
+    adjacency: set[tuple[str, str]] = set()
+    component_zone_ids: dict[str, str] = {}
+    for component in tissue_scene.graph.components:
+        zone_id = f"pop:component:{component.component_id}"
+        masks[zone_id] = np.asarray(
+            tissue_scene.component_masks[component.component_id], dtype=bool
+        )
+        component_zone_ids[component.component_id] = zone_id
+    for interface in tissue_scene.graph.interfaces:
+        interface_mask = tissue_scene.interface_masks[interface.interface_id]
+        for side, component_id in (
+            ("source", interface.source_component_id),
+            ("target", interface.target_component_id),
+        ):
+            component = tissue_scene.component_masks[component_id]
+            distance = ndimage.distance_transform_edt(~interface_mask)
+            previous = None
+            for band_index, (low, high) in enumerate(
+                ((0, band_width), (band_width, 2 * band_width)), start=1
+            ):
+                zone_id = (
+                    f"pop:interface:{interface.interface_id}:{side}:band:{band_index}"
+                )
+                masks[zone_id] = component & (distance > low) & (distance <= high)
+                adjacency.add((component_zone_ids[component_id], zone_id))
+                if previous is not None:
+                    adjacency.add((previous, zone_id))
+                previous = zone_id
+    del shape
+    zones = tuple(
+        _summarize_population_zone(
+            zone_id,
+            mask,
+            instances=instances,
+            observation_quality=observation_quality,
+            band_width_px=band_width,
+        )
+        for zone_id, mask in sorted(masks.items())
+    )
+    warnings = []
+    if observation_quality != "native_instance":
+        warnings.append("population_statistics_use_semantic_instance_fallback")
+    return (
+        PopulationGraph(
+            zones=zones,
+            adjacency=tuple(sorted(adjacency)),
+            median_nucleus_area_px=median_area,
+            nominal_nucleus_diameter_px=nominal_diameter,
+            warnings=tuple(warnings),
+        ),
+        masks,
+    )
+
+
+def _summarize_population_zone(
+    zone_id: str,
+    mask: np.ndarray,
+    *,
+    instances: tuple[NucleusInstance, ...],
+    observation_quality: str,
+    band_width_px: int,
+) -> PopulationZone:
+    area = int(np.count_nonzero(mask))
+    selected = []
+    for item in instances:
+        x, y = item.centroid_xy
+        row, col = int(round(y)), int(round(x))
+        if 0 <= row < mask.shape[0] and 0 <= col < mask.shape[1] and mask[row, col]:
+            selected.append(item)
+    class_counts = {class_id: 0 for class_id in range(1, 6)}
+    for item in selected:
+        class_counts[item.class_id] += 1
+    centers = np.asarray(
+        [(item.centroid_xy[1], item.centroid_xy[0]) for item in selected],
+        dtype=float,
+    )
+    nnd = []
+    if len(centers) >= 2:
+        distances, _ = cKDTree(centers).query(centers, k=2)
+        nnd = list(np.asarray(distances)[:, 1])
+    area_values = [float(item.area_px) for item in selected]
+    zone_kind = "interface_band" if zone_id.startswith("pop:interface:") else "component"
+    component_id = None
+    interface_id = None
+    side = None
+    distance_band = None
+    if zone_kind == "component":
+        component_id = zone_id.removeprefix("pop:component:")
+    else:
+        marker = ":source:band:" if ":source:band:" in zone_id else ":target:band:"
+        interface_id, band_index = zone_id.removeprefix("pop:interface:").split(marker)
+        side = "source" if marker.startswith(":source") else "target"
+        distance_band = (
+            (0.0, float(band_width_px))
+            if band_index == "1"
+            else (float(band_width_px), float(2 * band_width_px))
+        )
+    return PopulationZone(
+        zone_id=zone_id,
+        zone_kind=zone_kind,
+        tissue_component_id=component_id,
+        interface_id=interface_id,
+        side=side,
+        distance_band_px=distance_band,
+        area_px=area,
+        nucleus_count=len(selected),
+        density_per_10k_px=(10000.0 * len(selected) / area if area else 0.0),
+        class_counts=class_counts,
+        class_density_per_10k_px={
+            key: (10000.0 * value / area if area else 0.0)
+            for key, value in class_counts.items()
+        },
+        nucleus_area_quantiles=_quantiles(area_values),
+        nearest_neighbor_quantiles=_quantiles(nnd),
+        observation_quality=observation_quality,
+    )
+
+
+def _quantiles(values: list[float]) -> dict[str, float]:
+    if not values:
+        return {}
+    array = np.asarray(values, dtype=float)
+    return {
+        "p05": float(np.quantile(array, 0.05)),
+        "p50": float(np.quantile(array, 0.50)),
+        "p95": float(np.quantile(array, 0.95)),
+    }

@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "lung-lepidic-growth.counterexample.1",
+      "description": "airspace fill",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "lung-lepidic-growth.counterexample.2",
+      "description": "free tumor island in airspace",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "lung-lepidic-growth.counterexample.3",
+      "description": "destroyed alveolar framework",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

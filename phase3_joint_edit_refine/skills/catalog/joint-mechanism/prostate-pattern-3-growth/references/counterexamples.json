@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "prostate-pattern-3-growth.counterexample.1",
+      "description": "gland fusion",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "prostate-pattern-3-growth.counterexample.2",
+      "description": "lumen fill",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "prostate-pattern-3-growth.counterexample.3",
+      "description": "partial gland notch",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

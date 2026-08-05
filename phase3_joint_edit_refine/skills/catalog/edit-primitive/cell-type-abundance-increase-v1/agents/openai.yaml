@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cell Type Increase"
+  short_description: "Plan a local cell-type abundance increase"
+  default_prompt: "Use $cell-type-abundance-increase-v1 to compile a cell-type abundance increase contract."

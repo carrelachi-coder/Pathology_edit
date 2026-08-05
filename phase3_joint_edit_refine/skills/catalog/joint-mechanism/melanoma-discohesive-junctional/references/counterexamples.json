@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "melanoma-discohesive-junctional.counterexample.1",
+      "description": "large tumor island",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "melanoma-discohesive-junctional.counterexample.2",
+      "description": "epidermis loss",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "melanoma-discohesive-junctional.counterexample.3",
+      "description": "random dermal scatter",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

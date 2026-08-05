@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "oral-scc-cohesive-nest-cord.counterexample.1",
+      "description": "keratin pearl fill",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "oral-scc-cohesive-nest-cord.counterexample.2",
+      "description": "surface epithelium overwrite",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "oral-scc-cohesive-nest-cord.counterexample.3",
+      "description": "island bridge",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

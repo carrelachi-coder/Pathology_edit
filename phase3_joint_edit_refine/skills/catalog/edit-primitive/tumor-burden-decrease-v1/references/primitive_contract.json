@@ -1,0 +1,14 @@
+{
+  "primitive_id": "tumor-burden-decrease-v1",
+  "version": "2.0.0-draft",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Decrease tumor tissue burden and regenerate the exposed non-tumor population.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [],
+  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_shape_distribution", "local_population_density", "interface_seam_continuity"]
+}

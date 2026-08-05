@@ -1,0 +1,4 @@
+interface:
+  display_name: "breast-discohesive-single-file"
+  short_description: "Plan and audit one atomic joint pathology mechanism"
+  default_prompt: "Use $breast-discohesive-single-file to plan a tissue-cell joint pathology edit."

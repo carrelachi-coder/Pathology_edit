@@ -1,0 +1,467 @@
+"""Strict multimodal Planner/Critic adapters for the joint pipeline."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from phase3_mask_edit_refine.agents import AgentProviderError, OpenAIResponsesJSONClient
+from phase3_mask_edit_refine.models import EditPlan
+
+from .models import (
+    CellEditPlan,
+    CouplingPlan,
+    JointCaseContext,
+    JointContractError,
+    JointCriticRanking,
+    JointCriticResult,
+    JointEditPlan,
+    JointGateReport,
+)
+from .planner import JOINT_PLAN_SCHEMA_VERSION
+from .scene import JointSceneAnalysis
+from .skills.repository import JointSkillBundle
+from .skills.schema import JointMechanismSkill
+
+
+@dataclass(frozen=True)
+class OpenAIMultimodalJointPlanner:
+    client: OpenAIResponsesJSONClient
+    name: str = "openai_multimodal_joint_planner"
+    supports_pathology_vision: bool = True
+
+    def select_mechanism(
+        self,
+        *,
+        case: JointCaseContext,
+        scene: JointSceneAnalysis,
+        mechanisms: Sequence[JointMechanismSkill],
+        image_paths: Sequence[str | Path],
+    ) -> tuple[str, dict[str, Any]]:
+        payload = {
+            "case": case.to_metadata(),
+            "scene": scene.to_metadata(),
+            "available_mechanisms": [
+                {
+                    "mechanism_id": item.mechanism_id,
+                    "summary": item.summary,
+                    "required_observations": list(item.recognition.required_observations),
+                    "contraindications": list(item.recognition.contraindications),
+                    "minimum_confidence": item.recognition.minimum_confidence,
+                    "representability": item.representability.__dict__,
+                }
+                for item in mechanisms
+            ],
+            "requirements": {
+                "choose_only_listed_mechanism": True,
+                "use_H&E_and_both_overlays": True,
+                "abstain_if_required_observations_are_not_visible": True,
+                "do_not_infer_annotation_or_population_profile": True,
+            },
+        }
+        raw, usage = self.client.call(
+            system_prompt=(
+                "You are the mechanism-selection stage of a joint pathology editor. "
+                "Interpret H&E, tissue architecture and nuclei layout together. Select only "
+                "a listed mechanism when its observations are visible and representable. "
+                "Do not output pixels, coordinates, counts or density multipliers."
+            ),
+            user_prompt=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            image_paths=image_paths,
+            schema_name="joint_pathology_mechanism_selection",
+            json_schema=MECHANISM_SELECTION_SCHEMA,
+        )
+        mechanism_id = _required_string(raw, "mechanism_id")
+        available = {item.mechanism_id: item for item in mechanisms}
+        if mechanism_id not in available:
+            raise JointContractError("joint Planner selected an unavailable mechanism")
+        confidence = _unit(raw, "confidence")
+        observations = _strings(raw.get("supporting_observations"), "supporting_observations")
+        contraindications = _strings(raw.get("observed_contraindications", []), "observed_contraindications", allow_empty=True)
+        if contraindications or confidence < available[mechanism_id].recognition.minimum_confidence:
+            raise JointContractError("joint mechanism evidence is contraindicated or below its confidence threshold")
+        return mechanism_id, {
+            "provider": self.name,
+            "stage": "mechanism_selection",
+            "selection": {
+                "mechanism_id": mechanism_id,
+                "supporting_observations": list(observations),
+                "confidence": confidence,
+            },
+            **usage,
+        }
+
+    def create_plan(
+        self,
+        *,
+        case: JointCaseContext,
+        scene: JointSceneAnalysis,
+        bundle: JointSkillBundle,
+        tissue_plan: EditPlan | None,
+        image_paths: Sequence[str | Path],
+    ) -> tuple[JointEditPlan, dict[str, Any]]:
+        payload = {
+            "case": case.to_metadata(),
+            "scene": scene.to_metadata(),
+            "selected_mechanism": bundle.to_metadata(),
+            "mechanism_contract": {
+                "recognition": bundle.mechanism.recognition.__dict__,
+                "representability": bundle.mechanism.representability.__dict__,
+                "tissue_program": bundle.mechanism.tissue_program.__dict__,
+                "cell_program": bundle.mechanism.cell_program.__dict__,
+                "coupling": bundle.mechanism.coupling.__dict__,
+                "render": bundle.mechanism.render.__dict__,
+            },
+            "compiled_tissue_plan": (
+                tissue_plan.to_metadata() if tissue_plan is not None else None
+            ),
+            "primitive_contract": bundle.primitive.__dict__,
+            "requirements": {
+                "accept_only_if_tissue_plan_matches_visible_mechanism": True,
+                "cell_plan_is_required_even_when_policy_is_retain": True,
+                "cite_only_active_rule_ids": True,
+                "select_only_skill_allowed_layout": True,
+                "do_not_output_polygons_pixels_coordinates_counts_or_density_multipliers": True,
+                "area_budget_is_immutable_and_compiler_owned": True,
+                "cell_only_primitive_must_preserve_tissue": (
+                    bundle.primitive.scope == "cell_only"
+                ),
+                "select_interface_and_anchor_ids_not_coordinates": True,
+                "choose_baseline_and_mechanism_program_separately": True,
+            },
+        }
+        raw, usage = self.client.call(
+            system_prompt=(
+                "You are a multimodal joint pathology edit Planner. Review the already compiled "
+                "deterministic tissue interface plan (or an explicit preserve-tissue contract) "
+                "together with H&E and nuclei. Output a tissue binding, cell intent and coupling "
+                "intent. Deterministic tools own every pixel, "
+                "coordinate, count and numeric spatial parameter. Abstain instead of guessing."
+            ),
+            user_prompt=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            image_paths=image_paths,
+            schema_name="joint_pathology_edit_plan",
+            json_schema=JOINT_PLAN_JSON_SCHEMA,
+        )
+        if raw.get("tissue_plan_accepted") is not True:
+            raise JointContractError("joint Planner rejected the tissue execution contract")
+        bound_interfaces = set(_strings(raw.get("bound_interface_ids"), "bound_interface_ids"))
+        if bundle.primitive.scope == "tissue_and_cell":
+            if tissue_plan is None:
+                raise JointContractError("tissue primitive lacks compiled tissue plan")
+            expected_interfaces = {
+                item.interface_id for item in tissue_plan.candidate_interfaces
+            }
+            if bound_interfaces != expected_interfaces:
+                raise JointContractError(
+                    "joint Planner did not bind every compiled tissue interface"
+                )
+        else:
+            if tissue_plan is not None:
+                raise JointContractError("cell-only primitive received a tissue plan")
+            known_interfaces = {
+                item.interface_id: item for item in scene.tissue.graph.interfaces
+            }
+            unknown = bound_interfaces - set(known_interfaces)
+            if unknown:
+                raise JointContractError(
+                    "joint Planner selected unknown cell interfaces: "
+                    + ", ".join(sorted(unknown))
+                )
+            host = set(bundle.primitive.host_tissue_labels)
+            incompatible = [
+                interface_id
+                for interface_id in bound_interfaces
+                if not (
+                    (
+                        known_interfaces[interface_id].source_label in host
+                        and known_interfaces[interface_id].target_label == "Tumor"
+                    )
+                    or (
+                        known_interfaces[interface_id].target_label in host
+                        and known_interfaces[interface_id].source_label == "Tumor"
+                    )
+                )
+            ]
+            if incompatible:
+                raise JointContractError(
+                    "cell-only Planner selected a non tumor/host interface: "
+                    + ", ".join(incompatible)
+                )
+        if _required_string(raw, "selected_mechanism_id") != bundle.mechanism.mechanism_id:
+            raise JointContractError("joint Planner changed the selected mechanism")
+        supporting_rules = _strings(raw.get("supporting_rule_ids"), "supporting_rule_ids")
+        unknown_rules = set(supporting_rules) - set(bundle.active_rule_ids)
+        if unknown_rules:
+            raise JointContractError("joint Planner cited unknown rules: " + ", ".join(sorted(unknown_rules)))
+        mechanism = bundle.mechanism
+        raw_cell_plan = raw.get("cell_plan")
+        if not isinstance(raw_cell_plan, Mapping):
+            raise JointContractError("cell_plan is required")
+        raw_cell_plan = dict(raw_cell_plan)
+        mandatory_protected = tuple(
+            item.instance_id
+            for item in scene.cells.instances
+            if item.touches_border or bundle.primitive.scope == "cell_only"
+        )
+        raw_cell_plan["protected_instance_ids"] = list(mandatory_protected)
+        raw_cell_plan["interface_ids"] = sorted(bound_interfaces)
+        cell_plan = CellEditPlan.from_mapping(raw_cell_plan)
+        known_anchors = {
+            anchor.anchor_segment_id: anchor
+            for anchor in scene.tissue.graph.anchor_segments
+            if anchor.interface_id in bound_interfaces
+        }
+        if not cell_plan.anchor_ids or set(cell_plan.anchor_ids) - set(known_anchors):
+            raise JointContractError(
+                "joint Planner cell anchor IDs are empty or outside bound interfaces"
+            )
+        missing_auxiliary = sorted(
+            set(mechanism.representability.required_auxiliary_structures)
+            - set(scene.auxiliary_structure_masks)
+        )
+        if missing_auxiliary:
+            raise JointContractError(
+                "joint mechanism lacks required auxiliary maps: "
+                + ", ".join(missing_auxiliary)
+            )
+        if (
+            not mechanism.representability.allow_semantic_instance_fallback
+            and scene.cells.observation_quality != "native_instance"
+        ):
+            raise JointContractError(
+                "mechanism requires native nucleus instances; semantic fallback is forbidden"
+            )
+        label_contract = mechanism.tissue_program.primitive_label_contracts.get(case.primitive_id)
+        if label_contract is None:
+            raise JointContractError("joint mechanism has no primitive label contract")
+        if tissue_plan is not None:
+            if not set(tissue_plan.source_labels).issubset(label_contract["source_labels"]):
+                raise JointContractError("compiled tissue source labels violate the joint mechanism")
+            if tissue_plan.target_label not in label_contract["target_labels"]:
+                raise JointContractError("compiled tissue target label violates the joint mechanism")
+        if set(cell_plan.actions) - set(mechanism.cell_program.actions):
+            raise JointContractError("joint Planner cell actions exceed the mechanism contract")
+        if set(cell_plan.allowed_cell_classes) - set(mechanism.cell_program.allowed_cell_classes):
+            raise JointContractError("joint Planner cell classes exceed the mechanism contract")
+        if cell_plan.layout_program_id not in mechanism.cell_program.layout_programs:
+            raise JointContractError("joint Planner selected a layout outside the mechanism contract")
+        if cell_plan.baseline_mode not in bundle.primitive.allowed_baseline_modes:
+            raise JointContractError("joint Planner selected an illegal baseline mode")
+        if cell_plan.mechanism_quota_role not in bundle.primitive.allowed_quota_roles:
+            raise JointContractError("joint Planner selected an illegal mechanism quota role")
+        if cell_plan.mechanism_program_id not in mechanism.cell_program.layout_programs:
+            raise JointContractError("joint Planner selected an illegal mechanism program")
+        if bundle.primitive.target_cell_classes and set(
+            cell_plan.allowed_cell_classes
+        ) - set(bundle.primitive.target_cell_classes):
+            raise JointContractError(
+                "joint Planner selected a class outside the primitive contract"
+            )
+        raw_coupling = raw.get("coupling_plan")
+        if not isinstance(raw_coupling, Mapping):
+            raise JointContractError("coupling_plan is required")
+        coupling_rules = _strings(raw_coupling.get("compatibility_rule_ids"), "compatibility_rule_ids")
+        if set(coupling_rules) - set(mechanism.coupling.compatibility_rule_ids):
+            raise JointContractError("joint Planner changed the coupling rules")
+        coupling = CouplingPlan(
+            compatibility_rule_ids=coupling_rules,
+            area_contract_id=(
+                "cell-count-extent-v1"
+                if bundle.primitive.scope == "cell_only"
+                else "joint-union-g2-v1"
+            ),
+            render_support_policy_id=mechanism.coupling.render_support_policy_id,
+            allow_neoplastic_in_non_tumor_tissue=mechanism.coupling.allow_neoplastic_in_non_tumor_tissue,
+            maximum_halo_px=mechanism.cell_program.halo_distance_px[1],
+        )
+        plan = JointEditPlan(
+            schema_version=JOINT_PLAN_SCHEMA_VERSION,
+            case_id=case.case_id,
+            normalized_intent=_required_string(raw, "normalized_intent"),
+            selected_mechanism_id=mechanism.mechanism_id,
+            supporting_observations=_strings(raw.get("supporting_observations"), "supporting_observations"),
+            supporting_rule_ids=supporting_rules,
+            representability_confidence=_unit(raw, "representability_confidence"),
+            tissue_plan=tissue_plan,
+            cell_plan=cell_plan,
+            coupling_plan=coupling,
+            uncertainties=_strings(raw.get("uncertainties", []), "uncertainties", allow_empty=True),
+            escalation_reason=_optional_string(raw.get("escalation_reason")),
+        )
+        return plan, {"provider": self.name, "stage": "joint_plan", **usage}
+
+
+@dataclass(frozen=True)
+class OpenAIMultimodalJointCritic:
+    client: OpenAIResponsesJSONClient
+    name: str = "openai_multimodal_joint_critic"
+    supports_pathology_vision: bool = True
+
+    def review(self, *, case, bundle, candidates, gate_reports, image_paths):
+        passed_ids = [item.candidate_id for item in gate_reports if item.passed]
+        payload = {
+            "case": {
+                "case_id": case.case_id,
+                "instruction": case.instruction,
+                "pathology_domain_id": case.pathology_domain_id,
+                "annotation_profile_id": case.annotation_profile_id,
+            },
+            "mechanism_id": bundle.mechanism.mechanism_id,
+            "gate_passing_candidate_ids": passed_ids,
+            "gate_reports": [item.to_metadata() for item in gate_reports if item.passed],
+            "active_rule_ids": list(bundle.active_rule_ids),
+            "required_findings": list(bundle.mechanism.render.required_findings),
+            "veto_findings": list(bundle.mechanism.render.veto_findings),
+            "render_only_claims": list(bundle.mechanism.render.render_only_claims),
+            "requirements": {
+                "rank_only_gate_passing_candidates": True,
+                "review_tissue_and_nuclei_as_one_condition": True,
+                "do_not_restore_gate_failures": True,
+                "veto_if_mechanism_is_not_visually_supported": True,
+            },
+        }
+        raw, usage = self.client.call(
+            system_prompt=(
+                "You are an independent multimodal pathology critic. You receive no Planner "
+                "free-form reasoning. Rank only deterministic-gate-passing joint candidates, "
+                "considering tissue geometry, complete nuclei layouts, their coupling and the "
+                "original H&E. A hard-gate failure can never be waived."
+            ),
+            user_prompt=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            image_paths=image_paths,
+            schema_name="joint_pathology_critic",
+            json_schema=JOINT_CRITIC_JSON_SCHEMA,
+        )
+        rankings = []
+        for item in raw.get("rankings", []):
+            if not isinstance(item, Mapping):
+                raise JointContractError("joint critic ranking must be an object")
+            candidate_id = _required_string(item, "candidate_id")
+            if candidate_id not in passed_ids:
+                raise JointContractError("joint critic ranked a gate-failing or unknown candidate")
+            rule_ids = _strings(item.get("supporting_rule_ids"), "supporting_rule_ids")
+            if set(rule_ids) - set(bundle.active_rule_ids):
+                raise JointContractError("joint critic cited unknown rules")
+            rankings.append(
+                JointCriticRanking(
+                    candidate_id=candidate_id,
+                    score=_unit(item, "score"),
+                    confidence=_unit(item, "confidence"),
+                    supporting_rule_ids=rule_ids,
+                    veto_reasons=_strings(item.get("veto_reasons", []), "veto_reasons", allow_empty=True),
+                )
+            )
+        return JointCriticResult(
+            rankings=tuple(rankings),
+            abstain=_required_bool(raw, "abstain"),
+            summary=_required_string(raw, "summary"),
+            usage={"provider": self.name, **usage},
+        )
+
+
+MECHANISM_SELECTION_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["mechanism_id", "supporting_observations", "observed_contraindications", "confidence"],
+    "properties": {
+        "mechanism_id": {"type": "string"},
+        "supporting_observations": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "observed_contraindications": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
+JOINT_PLAN_JSON_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["normalized_intent", "selected_mechanism_id", "supporting_observations", "supporting_rule_ids", "representability_confidence", "tissue_plan_accepted", "bound_interface_ids", "cell_plan", "coupling_plan", "uncertainties", "escalation_reason"],
+    "properties": {
+        "normalized_intent": {"type": "string"},
+        "selected_mechanism_id": {"type": "string"},
+        "supporting_observations": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "supporting_rule_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "representability_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "tissue_plan_accepted": {"type": "boolean"},
+        "bound_interface_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "cell_plan": {
+            "type": "object", "additionalProperties": False,
+            "required": ["core_zone", "halo_zone", "actions", "allowed_cell_classes", "layout_program_id", "anchor_ids", "baseline_mode", "mechanism_program_id", "mechanism_quota_role", "supporting_rule_ids", "expected_morphology"],
+            "properties": {
+                "core_zone": {"type": "string"}, "halo_zone": {"type": ["string", "null"]},
+                "actions": {"type": "array", "minItems": 1, "items": {"type": "string", "enum": ["retain", "remove_whole", "add"]}},
+                "allowed_cell_classes": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1, "maximum": 5}},
+                "layout_program_id": {"type": "string"},
+                "anchor_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                "baseline_mode": {"type": "string", "enum": ["preserve", "regenerate_target_population", "selective_remove", "structured_add"]},
+                "mechanism_program_id": {"type": "string"},
+                "mechanism_quota_role": {"type": "string", "enum": ["within_total_quota", "explicit_increment", "explicit_decrement"]},
+                "supporting_rule_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                "expected_morphology": {"type": "string"},
+            },
+        },
+        "coupling_plan": {
+            "type": "object", "additionalProperties": False,
+            "required": ["compatibility_rule_ids"],
+            "properties": {"compatibility_rule_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}}},
+        },
+        "uncertainties": {"type": "array", "items": {"type": "string"}},
+        "escalation_reason": {"type": ["string", "null"]},
+    },
+}
+
+JOINT_CRITIC_JSON_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["rankings", "abstain", "summary"],
+    "properties": {
+        "rankings": {"type": "array", "items": {
+            "type": "object", "additionalProperties": False,
+            "required": ["candidate_id", "score", "confidence", "supporting_rule_ids", "veto_reasons"],
+            "properties": {
+                "candidate_id": {"type": "string"}, "score": {"type": "number", "minimum": 0, "maximum": 1},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "supporting_rule_ids": {"type": "array", "items": {"type": "string"}},
+                "veto_reasons": {"type": "array", "items": {"type": "string"}},
+            },
+        }},
+        "abstain": {"type": "boolean"}, "summary": {"type": "string"},
+    },
+}
+
+
+def _required_string(payload: Mapping[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise JointContractError(f"{key} must be a non-empty string")
+    return value.strip()
+
+
+def _optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise JointContractError("optional string must be non-empty")
+    return value.strip()
+
+
+def _strings(value: Any, label: str, *, allow_empty: bool = False) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+        raise JointContractError(f"{label} must be a list of non-empty strings")
+    if not value and not allow_empty:
+        raise JointContractError(f"{label} cannot be empty")
+    return tuple(item.strip() for item in value)
+
+
+def _unit(payload: Mapping[str, Any], key: str) -> float:
+    value = payload.get(key)
+    if not isinstance(value, (int, float)) or not 0 <= float(value) <= 1:
+        raise JointContractError(f"{key} must be in [0, 1]")
+    return float(value)
+
+
+def _required_bool(payload: Mapping[str, Any], key: str) -> bool:
+    value = payload.get(key)
+    if not isinstance(value, bool):
+        raise JointContractError(f"{key} must be boolean")
+    return value

@@ -1,0 +1,17 @@
+{
+  "annotation_profile_id": "panda-gleason-v1",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "prohibited_fine_ids": [0],
+  "prohibit_cell_placement_fine_ids": [0],
+  "prohibit_generation_support_fine_ids": [0],
+  "required_provenance_fields": ["provider", "preprocessing_revision", "original_label_map_digest"],
+  "unavailable_mechanisms": [],
+  "conditional_mechanisms": ["prostate-pattern-4-growth", "prostate-pattern-5-growth"],
+  "mechanism_required_fine_ids": {
+    "prostate-pattern-3-growth": [8],
+    "prostate-pattern-4-growth": [9],
+    "prostate-pattern-5-growth": [10]
+  },
+  "required_checker_ids": ["profile_provenance", "prohibited_cell_region", "prohibited_generation_support", "native_structure_preserved", "fine_pattern_preserved"]
+}

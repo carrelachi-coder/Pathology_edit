@@ -1,0 +1,149 @@
+{
+  "mechanism_id": "melanoma-cohesive-nest-sheet",
+  "pathology_domain_id": "melanoma-v1",
+  "supported_primitives": [
+    "tumor-burden-increase-v1",
+    "tumor-burden-decrease-v1",
+    "stroma-increase-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Edit a verified cohesive melanoma nest or sheet while preserving epidermis, vessels and necrosis and rebuilding a coherent neoplastic population.",
+  "recognition_contract": {
+    "required_observations": [
+      "verified cohesive neoplastic nest or sheet",
+      "legal dermal or junctional interface",
+      "source-matched neoplastic nuclei"
+    ],
+    "contraindications": [
+      "discohesive-only junctional spread",
+      "necrosis-only field",
+      "unresolved epidermal boundary"
+    ],
+    "minimum_confidence": 0.8
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "cohesive_nest_sheet_displacement",
+    "primitive_label_contracts": {
+      "tumor-burden-increase-v1": {
+        "source_labels": ["Stroma", "Other tissue"],
+        "target_labels": ["Tumor"]
+      },
+      "tumor-burden-decrease-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma", "Other tissue"]
+      },
+      "stroma-increase-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma"]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "epidermis",
+      "vessel",
+      "necrosis",
+      "non_tissue"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3
+    ],
+    "layout_programs": [
+      "population_replacement",
+      "dense_sheet",
+      "small_cluster"
+    ],
+    "core_policy": "replace_complete_instances_in_tissue_change",
+    "halo_policy": "preserve_cells_outside_tissue_change",
+    "halo_distance_px": [
+      0,
+      20
+    ],
+    "cluster_size_range": [
+      3,
+      28
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution"
+    ]
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "melanoma-cohesive-nest-sheet.tissue_cell_compatibility",
+      "melanoma-cohesive-nest-sheet.protected_structure_coupling"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "cohesive neoplastic population",
+      "preserved epidermal relationship"
+    ],
+    "veto_findings": [
+      "epidermis overwrite",
+      "satellite bridge",
+      "necrosis conversion"
+    ],
+    "mask_guarantees": [
+      "complete-instance cell edits",
+      "protected-structure raster preservation"
+    ],
+    "render_only_claims": [
+      "melanocytic atypia",
+      "pigmentation",
+      "primary/metastatic identity"
+    ]
+  },
+  "evidence_citations": [
+    "https://tumourclassification.iarc.who.int/",
+    "https://www.iccr-cancer.org/datasets/"
+  ],
+  "counterexamples": [
+    "epidermis overwrite",
+    "satellite bridge",
+    "necrosis conversion"
+  ]
+}

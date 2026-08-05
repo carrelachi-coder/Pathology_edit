@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cellularity Increase"
+  short_description: "Plan a local cell-density increase"
+  default_prompt: "Use $cellularity-increase-v1 to compile a local cellularity increase contract."

@@ -1,0 +1,14 @@
+{
+  "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+  "version": "2.0.0-draft",
+  "review_status": "draft",
+  "scope": "cell_only",
+  "summary": "Add a cancer-mechanism-specific sparse neoplastic population without changing tissue labels.",
+  "tissue_action": "forbidden",
+  "budget_mode": "count_extent",
+  "allowed_baseline_modes": ["preserve", "structured_add"],
+  "allowed_quota_roles": ["explicit_increment"],
+  "host_tissue_labels": ["Stroma", "Other tissue", "Normal epithelium"],
+  "target_cell_classes": [1],
+  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_shape_distribution", "local_population_density", "interface_seam_continuity", "mechanism_realization"]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tumor Burden Decrease"
+  short_description: "Plan joint tissue and cell tumor retreat"
+  default_prompt: "Use $tumor-burden-decrease-v1 to compile a joint tumor retreat contract."

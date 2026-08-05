@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "lung-acinar-papillary-growth.counterexample.1",
+      "description": "filled lumen",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "lung-acinar-papillary-growth.counterexample.2",
+      "description": "severed fibrovascular core",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "lung-acinar-papillary-growth.counterexample.3",
+      "description": "acinar-papillary identity guessed",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "oral-scc-dispersed-invasive-front.counterexample.1",
+      "description": "bulk mask bridge",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "oral-scc-dispersed-invasive-front.counterexample.2",
+      "description": "random cells outside halo",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "oral-scc-dispersed-invasive-front.counterexample.3",
+      "description": "nerve/muscle overwrite",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

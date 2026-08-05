@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "prostate-pattern-4-growth.counterexample.1",
+      "description": "filled cribriform holes",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "prostate-pattern-4-growth.counterexample.2",
+      "description": "cut glomeruloid tuft",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "prostate-pattern-4-growth.counterexample.3",
+      "description": "implicit fine-label conversion",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

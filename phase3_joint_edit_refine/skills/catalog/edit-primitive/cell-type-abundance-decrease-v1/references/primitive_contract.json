@@ -1,0 +1,14 @@
+{
+  "primitive_id": "cell-type-abundance-decrease-v1",
+  "version": "2.0.0-draft",
+  "review_status": "draft",
+  "scope": "cell_only",
+  "summary": "Decrease one explicitly resolved observable cell class by complete-instance removal.",
+  "tissue_action": "forbidden",
+  "budget_mode": "count_extent",
+  "allowed_baseline_modes": ["selective_remove"],
+  "allowed_quota_roles": ["explicit_decrement"],
+  "host_tissue_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"],
+  "target_cell_classes": [],
+  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_population_density"]
+}

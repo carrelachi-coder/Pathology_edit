@@ -1,0 +1,4 @@
+interface:
+  display_name: "oral-scc-cohesive-nest-cord"
+  short_description: "Plan and audit one atomic joint pathology mechanism"
+  default_prompt: "Use $oral-scc-cohesive-nest-cord to plan a tissue-cell joint pathology edit."

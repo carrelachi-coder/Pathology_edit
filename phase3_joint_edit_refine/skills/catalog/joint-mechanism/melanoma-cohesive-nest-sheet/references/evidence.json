@@ -1,0 +1,23 @@
+{
+  "review_status": "draft",
+  "claims": [
+    {
+      "rule_id": "melanoma-cohesive-nest-sheet.claim.1",
+      "claim": "cohesive neoplastic population",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    },
+    {
+      "rule_id": "melanoma-cohesive-nest-sheet.claim.2",
+      "claim": "preserved epidermal relationship",
+      "evidence_type": "authoritative_pathology_plus_source_observation",
+      "citations": [
+        "https://tumourclassification.iarc.who.int/"
+      ],
+      "production_eligible": false
+    }
+  ]
+}

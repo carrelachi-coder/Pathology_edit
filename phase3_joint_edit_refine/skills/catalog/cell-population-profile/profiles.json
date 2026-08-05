@@ -1,0 +1,59 @@
+{
+  "schema_version": "joint-cell-population-profiles-v1",
+  "profiles": [
+    {
+      "profile_id": "breast-cellvit-source-first-v1",
+      "pathology_domain_id": "breast-invasive-carcinoma-v1",
+      "version": "1.0.0-draft",
+      "source_first": true,
+      "allow_cross_domain_fallback": false,
+      "probnet_cancer_id": 0,
+      "allowed_cell_classes": [1, 2, 3, 4, 5]
+    },
+    {
+      "profile_id": "colorectal-cellvit-source-first-v1",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "version": "1.0.0-draft",
+      "source_first": true,
+      "allow_cross_domain_fallback": false,
+      "probnet_cancer_id": 2,
+      "allowed_cell_classes": [1, 2, 3, 4, 5]
+    },
+    {
+      "profile_id": "prostate-cellvit-source-first-v1",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "version": "1.0.0-draft",
+      "source_first": true,
+      "allow_cross_domain_fallback": false,
+      "probnet_cancer_id": 1,
+      "allowed_cell_classes": [1, 2, 3, 4, 5]
+    },
+    {
+      "profile_id": "lung-cellvit-source-first-v1",
+      "pathology_domain_id": "lung-carcinoma-v1",
+      "version": "1.0.0-draft",
+      "source_first": true,
+      "allow_cross_domain_fallback": false,
+      "probnet_cancer_id": 3,
+      "allowed_cell_classes": [1, 2, 3, 4, 5]
+    },
+    {
+      "profile_id": "melanoma-cellvit-source-first-v1",
+      "pathology_domain_id": "melanoma-v1",
+      "version": "1.0.0-draft",
+      "source_first": true,
+      "allow_cross_domain_fallback": false,
+      "probnet_cancer_id": 4,
+      "allowed_cell_classes": [1, 2, 3, 4, 5]
+    },
+    {
+      "profile_id": "oral-scc-cellvit-source-first-v1",
+      "pathology_domain_id": "oral-squamous-cell-carcinoma-v1",
+      "version": "1.0.0-draft",
+      "source_first": true,
+      "allow_cross_domain_fallback": false,
+      "probnet_cancer_id": 5,
+      "allowed_cell_classes": [1, 2, 3, 4, 5]
+    }
+  ]
+}

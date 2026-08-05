@@ -1,0 +1,151 @@
+{
+  "mechanism_id": "prostate-pattern-3-growth",
+  "pathology_domain_id": "prostate-adenocarcinoma-v1",
+  "supported_primitives": [
+    "tumor-burden-increase-v1",
+    "tumor-burden-decrease-v1",
+    "stroma-increase-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Preserve separated, complete gland units and lumina while rebuilding a boundary-aligned epithelial/neoplastic population.",
+  "recognition_contract": {
+    "required_observations": [
+      "verified discrete malignant glands",
+      "preserved native lumen support",
+      "no fused or cribriform architecture in the edit band"
+    ],
+    "contraindications": [
+      "fused glands",
+      "cribriform sheet",
+      "solid non-glandular growth",
+      "unresolved benign gland"
+    ],
+    "minimum_confidence": 0.8
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [
+      "native_pattern_and_lumen_map"
+    ],
+    "allow_semantic_instance_fallback": false,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "separated_complete_gland_displacement",
+    "primitive_label_contracts": {
+      "tumor-burden-increase-v1": {
+        "source_labels": ["Stroma", "Other tissue"],
+        "target_labels": ["Tumor"]
+      },
+      "tumor-burden-decrease-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma", "Other tissue"]
+      },
+      "stroma-increase-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma"]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "benign_gland",
+      "gland_lumen",
+      "cribriform_space",
+      "vessel",
+      "nerve"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "population_replacement",
+      "boundary_aligned"
+    ],
+    "core_policy": "replace_complete_instances_in_tissue_change",
+    "halo_policy": "preserve_cells_outside_tissue_change",
+    "halo_distance_px": [
+      0,
+      20
+    ],
+    "cluster_size_range": [
+      3,
+      18
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution"
+    ]
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "prostate-pattern-3-growth.tissue_cell_compatibility",
+      "prostate-pattern-3-growth.protected_structure_coupling"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "separated complete gland units",
+      "boundary-aligned epithelial population"
+    ],
+    "veto_findings": [
+      "gland fusion",
+      "lumen fill",
+      "partial gland notch"
+    ],
+    "mask_guarantees": [
+      "complete-instance cell edits",
+      "protected-structure raster preservation"
+    ],
+    "render_only_claims": [
+      "basal-cell absence",
+      "Gleason identity"
+    ]
+  },
+  "evidence_citations": [
+    "https://tumourclassification.iarc.who.int/",
+    "https://www.iccr-cancer.org/datasets/"
+  ],
+  "counterexamples": [
+    "gland fusion",
+    "lumen fill",
+    "partial gland notch"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": "joint-cell-observation-profiles-v1",
+  "profiles": [
+    {
+      "profile_id": "cellvit-five-class-v1",
+      "version": "2026-07-frozen",
+      "class_ids": [1, 2, 3, 4, 5],
+      "class_names": {
+        "1": "neoplastic",
+        "2": "inflammatory",
+        "3": "connective",
+        "4": "dead",
+        "5": "epithelial"
+      },
+      "required_checker_ids": [
+        "whole_instance_changes",
+        "protected_nuclei_preserved",
+        "nuclei_overlap",
+        "nuclei_tissue_containment",
+        "cell_quota"
+      ]
+    }
+  ]
+}

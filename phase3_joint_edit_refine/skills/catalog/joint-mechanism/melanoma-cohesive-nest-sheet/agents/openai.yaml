@@ -1,0 +1,4 @@
+interface:
+  display_name: "melanoma-cohesive-nest-sheet"
+  short_description: "Plan and audit one atomic joint pathology mechanism"
+  default_prompt: "Use $melanoma-cohesive-nest-sheet to plan a tissue-cell joint pathology edit."

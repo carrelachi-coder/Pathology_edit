@@ -1,0 +1,20 @@
+{
+  "review_status": "draft",
+  "examples": [
+    {
+      "counterexample_id": "melanoma-cohesive-nest-sheet.counterexample.1",
+      "description": "epidermis overwrite",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "melanoma-cohesive-nest-sheet.counterexample.2",
+      "description": "satellite bridge",
+      "required_action": "veto_or_abstain"
+    },
+    {
+      "counterexample_id": "melanoma-cohesive-nest-sheet.counterexample.3",
+      "description": "necrosis conversion",
+      "required_action": "veto_or_abstain"
+    }
+  ]
+}

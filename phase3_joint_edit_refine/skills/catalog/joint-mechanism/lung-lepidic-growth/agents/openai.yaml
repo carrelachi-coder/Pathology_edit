@@ -1,0 +1,4 @@
+interface:
+  display_name: "lung-lepidic-growth"
+  short_description: "Plan and audit one atomic joint pathology mechanism"
+  default_prompt: "Use $lung-lepidic-growth to plan a tissue-cell joint pathology edit."

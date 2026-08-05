@@ -1,0 +1,149 @@
+{
+  "mechanism_id": "prostate-pattern-5-growth",
+  "pathology_domain_id": "prostate-adenocarcinoma-v1",
+  "supported_primitives": [
+    "tumor-burden-increase-v1",
+    "tumor-burden-decrease-v1",
+    "stroma-increase-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Represent verified non-gland-forming sheet, cord or single-cell pattern-5 growth without inventing gland lumina.",
+  "recognition_contract": {
+    "required_observations": [
+      "verified pattern-5 fine label or clear non-gland-forming source",
+      "compatible tumor/stroma interface"
+    ],
+    "contraindications": [
+      "unresolved pattern-4 cribriform unit",
+      "benign gland field",
+      "necrosis-only target"
+    ],
+    "minimum_confidence": 0.8
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "non_gland_forming_front_displacement",
+    "primitive_label_contracts": {
+      "tumor-burden-increase-v1": {
+        "source_labels": ["Stroma", "Other tissue"],
+        "target_labels": ["Tumor"]
+      },
+      "tumor-burden-decrease-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma", "Other tissue"]
+      },
+      "stroma-increase-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Stroma"]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "benign_gland",
+      "native_lumen",
+      "vessel",
+      "nerve",
+      "unverified_necrosis"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      3,
+      4
+    ],
+    "layout_programs": [
+      "population_replacement",
+      "dense_sheet",
+      "short_cord",
+      "single"
+    ],
+    "core_policy": "replace_complete_instances_in_tissue_change",
+    "halo_policy": "preserve_cells_outside_tissue_change",
+    "halo_distance_px": [
+      0,
+      20
+    ],
+    "cluster_size_range": [
+      1,
+      32
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution"
+    ]
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "prostate-pattern-5-growth.tissue_cell_compatibility",
+      "prostate-pattern-5-growth.protected_structure_coupling"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "non-gland-forming tumor population",
+      "continuous legal front"
+    ],
+    "veto_findings": [
+      "invented lumen",
+      "pattern-4 space destruction",
+      "necrosis relabeled as tumor"
+    ],
+    "mask_guarantees": [
+      "complete-instance cell edits",
+      "protected-structure raster preservation"
+    ],
+    "render_only_claims": [
+      "comedonecrosis",
+      "high-grade nuclear atypia"
+    ]
+  },
+  "evidence_citations": [
+    "https://tumourclassification.iarc.who.int/",
+    "https://www.iccr-cancer.org/datasets/"
+  ],
+  "counterexamples": [
+    "invented lumen",
+    "pattern-4 space destruction",
+    "necrosis relabeled as tumor"
+  ]
+}
