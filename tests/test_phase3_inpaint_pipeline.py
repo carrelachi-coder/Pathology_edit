@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -10,6 +11,7 @@ from PIL import Image
 from phase3_mask_edit.core.mask_io import save_id_mask
 from phase3_mask_edit.parser.semantic_diff import DEFAULT_SEMANTIC_DIFF
 from scripts.run_phase3_inpaint_pipeline import (
+    _build_target_nuclei,
     _build_nucleus_aware_generation_region,
     _probnet_sampling_contract,
     _retain_complete_reference_cells,
@@ -40,6 +42,42 @@ def _source_mask() -> np.ndarray:
 
 
 class Phase3InpaintPipelineTests(unittest.TestCase):
+    def test_new_nuclei_mask_preserves_complete_instance_across_change_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            source_nuclei = np.zeros((20, 20), dtype=np.uint8)
+            source_tissue = np.ones((20, 20), dtype=np.uint8)
+            target_tissue = source_tissue.copy()
+            change = np.zeros((20, 20), dtype=bool)
+            change[:, :10] = True
+            generated = np.zeros_like(source_nuclei)
+            generated[8:13, 8:13] = 101
+
+            args = SimpleNamespace(
+                crossing_cell_policy="delete",
+                cell_fill_mode="probnet",
+            )
+            with patch(
+                "scripts.run_phase3_inpaint_pipeline._run_probnet_cell_fill",
+                return_value=(generated, "generated", None),
+            ):
+                target, _ = _build_target_nuclei(
+                    args,
+                    source_nuclei,
+                    source_tissue,
+                    target_tissue,
+                    change,
+                    change,
+                    output_dir,
+                )
+
+            saved_new = np.asarray(
+                Image.open(output_dir / "new_nuclei_mask.png").convert("L")
+            )
+            np.testing.assert_array_equal(target, generated)
+            np.testing.assert_array_equal(saved_new, generated)
+            self.assertTrue(np.any(saved_new[:, 10:] == 101))
+
     def test_nucleus_boundary_context_uses_largest_deleted_diameter(self):
         change = np.zeros((20, 20), dtype=bool)
         change[8:12, 10:14] = True
@@ -133,32 +171,61 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             {
                 "tissues": {
                     "2": {
-                        "candidate_queue_policy": (
-                            "probnet_log_odds_quality_diversity_prefix"
+                        "candidate_queue_policy": "probnet_odds_mass_without_replacement",
+                        "candidate_quality_score": (
+                            "gamma_times_logit_probnet_probability_plus_seeded_gumbel"
                         ),
-                        "quota_coverage_spacing_scale": 0.75,
-                        "quota_coverage_max_radius": 48.0,
-                        "retry_tail_policy": "stable_descending_probnet_score",
+                        "candidate_probability_mass_exponent": 3.0,
+                        "candidate_diversity_score": "none_poisson_candidates_only",
+                        "candidate_diversity_weight": 0.0,
+                        "quota_coverage_spacing_scale": 0.0,
+                        "quota_coverage_max_radius": 0.0,
+                        "retry_tail_policy": (
+                            "same_probnet_mass_permutation_then_component_pixel_"
+                            "backfill_then_same_tissue_quota_reassignment"
+                        ),
+                        "exact_count_backfill": {
+                            "quota_reassignment_policy": (
+                                "unplaceable_component_quota_to_same_tissue_"
+                                "probnet_mass_tail"
+                            ),
+                        },
                         "accepted_center_probability": {
                             "median": 0.81,
                         },
                     },
                     "7": {
-                        "candidate_queue_policy": (
-                            "probnet_log_odds_quality_diversity_prefix"
+                        "candidate_queue_policy": "probnet_odds_mass_without_replacement",
+                        "candidate_quality_score": (
+                            "gamma_times_logit_probnet_probability_plus_seeded_gumbel"
                         ),
-                        "quota_coverage_spacing_scale": 0.75,
-                        "quota_coverage_max_radius": 48.0,
-                        "retry_tail_policy": "stable_descending_probnet_score",
+                        "candidate_probability_mass_exponent": 3.0,
+                        "candidate_diversity_score": "none_poisson_candidates_only",
+                        "candidate_diversity_weight": 0.0,
+                        "quota_coverage_spacing_scale": 0.0,
+                        "quota_coverage_max_radius": 0.0,
+                        "retry_tail_policy": (
+                            "same_probnet_mass_permutation_then_component_pixel_"
+                            "backfill_then_same_tissue_quota_reassignment"
+                        ),
+                        "exact_count_backfill": {
+                            "quota_reassignment_policy": (
+                                "unplaceable_component_quota_to_same_tissue_"
+                                "probnet_mass_tail"
+                            ),
+                        },
                         "accepted_center_probability": {
                             "median": 0.74,
                         },
                     },
                 },
                 "nucleus_spacing_margin_px": 1,
+                "instance_connectivity_policy": (
+                    "largest_8_connected_component_after_transform"
+                ),
                 "type_quota_routing_policy": (
-                    "changed_target_tissue_density_head_"
-                    "unchanged_target_tissue_pre_edit_patch"
+                    "prior_total_count_then_probnet_local_type_log_pool_with_"
+                    "cumulative_posterior_balancing"
                 ),
                 "patch_adaptive_priors": {
                     "count_policy": (
@@ -181,19 +248,41 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                         "component_calibrated_library"
                     ),
                 },
+                "sampling_audit": {
+                    "policy": "probnet_patch_relative_count_type_spatial_v3",
+                    "organ_specific_constraints": False,
+                    "sampling_gamma": 3.0,
+                    "evaluation_gamma": 3.0,
+                    "passed": True,
+                    "score": 0.91,
+                },
+                "sampling_audit_max_attempts": 3,
+                "sampling_feedback": {
+                    "policy": "reason_directed_gamma_then_seed_v1",
+                    "initial_gamma": 3.0,
+                    "selected_gamma": 3.0,
+                    "max_attempts": 3,
+                },
             }
         )
 
         self.assertEqual(
             contract["candidate_queue_policy"],
-            "probnet_log_odds_quality_diversity_prefix",
+            "probnet_odds_mass_without_replacement",
         )
+        self.assertEqual(contract["candidate_probability_mass_exponent"], 3.0)
+        self.assertEqual(contract["candidate_diversity_weight"], 0.0)
         self.assertFalse(contract["organ_specific_constraints"])
-        self.assertEqual(contract["quota_coverage_spacing_scale"], 0.75)
-        self.assertEqual(contract["quota_coverage_max_radius"], 48.0)
+        self.assertEqual(contract["quota_coverage_spacing_scale"], 0.0)
+        self.assertEqual(contract["quota_coverage_max_radius"], 0.0)
         self.assertEqual(
             contract["retry_tail_policy"],
-            "stable_descending_probnet_score",
+            "same_probnet_mass_permutation_then_component_pixel_backfill_"
+            "then_same_tissue_quota_reassignment",
+        )
+        self.assertEqual(
+            contract["component_quota_reassignment_policy"],
+            "unplaceable_component_quota_to_same_tissue_probnet_mass_tail",
         )
         self.assertEqual(
             contract["accepted_center_probability_by_tissue"]["7"]["median"],
@@ -201,9 +290,19 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
         )
         self.assertEqual(contract["nucleus_spacing_margin_px"], 1)
         self.assertEqual(
+            contract["instance_connectivity_policy"],
+            "largest_8_connected_component_after_transform",
+        )
+        self.assertTrue(contract["sampling_audit"]["passed"])
+        self.assertEqual(contract["sampling_audit_max_attempts"], 3)
+        self.assertEqual(
+            contract["sampling_feedback"]["policy"],
+            "reason_directed_gamma_then_seed_v1",
+        )
+        self.assertEqual(
             contract["type_quota_routing_policy"],
-            "changed_target_tissue_density_head_"
-            "unchanged_target_tissue_pre_edit_patch",
+            "prior_total_count_then_probnet_local_type_log_pool_with_"
+            "cumulative_posterior_balancing",
         )
 
     def test_glas_boundary_change_rewrites_complete_gland_component(self):
@@ -221,6 +320,7 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             target_mask = source_mask.copy()
             target_mask[20:52, 20:52] = 11
             source_nuclei = np.zeros((96, 96), dtype=np.uint8)
+            source_nuclei[20:23, 20:23] = 103
             source_nuclei[32:36, 32:36] = 101
             source_nuclei[68:72, 68:72] = 105
 
@@ -266,6 +366,7 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
             self.assertTrue(np.all(generation[semantic]))
             self.assertTrue(np.all(generation[20:52, 20:52]))
             self.assertFalse(np.any(generation[64:80, 64:80]))
+            self.assertFalse(np.any(retained[20:23, 20:23] == 103))
             self.assertFalse(np.any(retained[32:36, 32:36] == 101))
             self.assertTrue(np.any(retained[68:72, 68:72] == 105))
 
@@ -281,6 +382,21 @@ class Phase3InpaintPipelineTests(unittest.TestCase):
                     "cell_deletion_region_policy"
                 ],
                 "whole_glas_connected_component",
+            )
+            self.assertEqual(
+                summary["gland_structure_policy"][
+                    "nuclei_generation_region_policy"
+                ],
+                "whole_glas_connected_component",
+            )
+            self.assertTrue(
+                summary["gland_structure_policy"][
+                    "image_and_nuclei_region_equal"
+                ]
+            )
+            self.assertEqual(
+                summary["gland_structure_policy"]["nuclei_generation_pixels"],
+                int(np.count_nonzero(generation)),
             )
 
     def test_gen_dry_run_writes_generation_artifacts(self):

@@ -16,6 +16,7 @@ validate artifact layout without real data, GPU checkpoints, or model weights.
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import subprocess
@@ -46,6 +47,14 @@ from controlnet_train.inference import (
     validate_production_pix2pix_checkpoint,
 )
 from controlnet_train.data.common import default_prompt_for_dataset
+from inpaint_cells.generate import (
+    DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+    DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN,
+    DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR,
+)
 from inpaint_cells.sampling_policy import widen_locally_thin_mask
 from phase3_mask_edit.core.mask_io import (
     load_change_region,
@@ -56,6 +65,9 @@ from phase3_mask_edit.core.mask_io import (
     save_rgb_mask,
 )
 from phase3_mask_edit.core.gland_region import (
+    GLAS_WHOLE_GLAND_CELL_REGION_POLICY,
+    SEMANTIC_CELL_DELETION_REGION_POLICY,
+    SEMANTIC_NUCLEI_GENERATION_REGION_POLICY,
     bound_generation_context_region,
     glas_whole_gland_generation_region,
 )
@@ -70,6 +82,16 @@ from phase3_mask_edit.rules.semantic_to_intent import plan_edit_intents
 
 _INPAINT_BUNDLE_CACHE: dict[tuple[str, str, str], Any] = {}
 _CROSS_V1_NO_IP_CACHE: dict[tuple[str, str, str, str, int, float, float], Any] = {}
+
+
+def _release_generation_model_caches() -> None:
+    """Release one backend before the agent switches to the other."""
+
+    _INPAINT_BUNDLE_CACHE.clear()
+    _CROSS_V1_NO_IP_CACHE.clear()
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,18 +153,36 @@ def main(argv: list[str] | None = None) -> int:
             "capped": False,
             "generation_pixels": int(np.count_nonzero(change_region)),
         }
-        cell_deletion_region = np.asarray(change_region, dtype=bool).copy()
     else:
         change_region, final_context_bound = bound_generation_context_region(
             semantic_change_region,
             change_region,
         )
+    if whole_glas_component:
+        cell_deletion_region = np.asarray(change_region, dtype=bool).copy()
+        cell_generation_region = np.asarray(change_region, dtype=bool).copy()
+        nuclei_boundary_context = {
+            "policy": "disabled_for_glas_whole_connected_component",
+            "reason": (
+                "whole_gland_is_shared_image_and_nuclei_regeneration_region"
+            ),
+            "generation_pixels": int(np.count_nonzero(change_region)),
+        }
+    else:
         cell_deletion_region = np.asarray(
             semantic_change_region,
             dtype=bool,
         ).copy()
-    nuclei_boundary_context = None
-    if args.cell_fill_mode in {"blank", "probnet"} and np.any(change_region):
+        cell_generation_region = np.asarray(
+            semantic_change_region,
+            dtype=bool,
+        ).copy()
+        nuclei_boundary_context = None
+    if (
+        not whole_glas_component
+        and args.cell_fill_mode in {"blank", "probnet"}
+        and np.any(change_region)
+    ):
         change_region, nuclei_boundary_context = (
             _build_nucleus_aware_generation_region(
                 deletion_region=cell_deletion_region,
@@ -157,12 +197,23 @@ def main(argv: list[str] | None = None) -> int:
         **gland_structure_policy,
         "post_width_context_bound": final_context_bound,
         "cell_deletion_region_policy": (
-            "whole_glas_connected_component"
+            GLAS_WHOLE_GLAND_CELL_REGION_POLICY
             if whole_glas_component
-            else "semantic_change_region"
+            else SEMANTIC_CELL_DELETION_REGION_POLICY
+        ),
+        "nuclei_generation_region_policy": (
+            GLAS_WHOLE_GLAND_CELL_REGION_POLICY
+            if whole_glas_component
+            else SEMANTIC_NUCLEI_GENERATION_REGION_POLICY
         ),
         "nuclei_boundary_context": nuclei_boundary_context,
+        "nuclei_generation_pixels": int(
+            np.count_nonzero(cell_generation_region)
+        ),
         "generation_change_pixels": int(np.count_nonzero(change_region)),
+        "image_and_nuclei_region_equal": bool(
+            np.array_equal(change_region, cell_generation_region)
+        ),
     }
 
     stage_paths = _save_pre_generation_artifacts(
@@ -180,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         reference_tissue,
         target_tissue,
         cell_deletion_region,
-        change_region,
+        cell_generation_region,
         output_dir,
     )
     target_nuclei_path = save_id_mask(target_nuclei, output_dir / "target_nuclei_mask.png")
@@ -448,7 +499,6 @@ def _build_target_nuclei(
         )
         new = np.array(target, copy=True)
         new[np.asarray(retained) > 0] = 0
-        new[~np.asarray(change_region, dtype=bool)] = 0
 
     save_id_mask(new, output_dir / "new_nuclei_mask.png")
     return target, {
@@ -752,10 +802,60 @@ def _run_probnet_cell_fill(
         str(deletion_region_path),
         "--output",
         str(output_nuclei),
+        "--vis-dir",
+        str(cell_dir / "vis"),
         "--device",
         probnet_device,
         "--gamma-values",
         args.probnet_gamma_values,
+        "--sampling-audit-attempts",
+        str(
+            getattr(
+                args,
+                "probnet_sampling_feedback_attempts",
+                DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS,
+            )
+        ),
+        "--sampling-feedback-gamma-down-factor",
+        str(
+            getattr(
+                args,
+                "probnet_sampling_feedback_gamma_down_factor",
+                DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR,
+            )
+        ),
+        "--sampling-feedback-gamma-up-factor",
+        str(
+            getattr(
+                args,
+                "probnet_sampling_feedback_gamma_up_factor",
+                DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR,
+            )
+        ),
+        "--sampling-feedback-gamma-min",
+        str(
+            getattr(
+                args,
+                "probnet_sampling_feedback_gamma_min",
+                DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN,
+            )
+        ),
+        "--sampling-feedback-gamma-max",
+        str(
+            getattr(
+                args,
+                "probnet_sampling_feedback_gamma_max",
+                DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX,
+            )
+        ),
+        "--sampling-feedback-concentration-z-threshold",
+        str(
+            getattr(
+                args,
+                "probnet_sampling_feedback_concentration_z_threshold",
+                DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+            )
+        ),
         "--minimum-mask-width",
         str(args.minimum_mask_width),
         "--no-widen-edit-region",
@@ -810,6 +910,7 @@ def _run_probnet_cell_fill(
         if diagnostics:
             first = diagnostics[0]
             shape_sampling.update({
+                "gamma": first.get("gamma"),
                 "reference_pool": first.get("reference_pool"),
                 "placed_by_shape_source": first.get("placed_by_shape_source"),
                 "sampling": first.get("shape_sampling"),
@@ -846,16 +947,53 @@ def _probnet_sampling_contract(diagnostics: dict[str, Any]) -> dict[str, Any]:
         for item in tissues.values()
         if item.get("retry_tail_policy")
     }
+    quota_reassignment_policies = {
+        str(item["exact_count_backfill"]["quota_reassignment_policy"])
+        for item in tissues.values()
+        if (item.get("exact_count_backfill") or {}).get(
+            "quota_reassignment_policy"
+        )
+    }
+    candidate_quality_scores = {
+        str(item["candidate_quality_score"])
+        for item in tissues.values()
+        if item.get("candidate_quality_score")
+    }
+    candidate_probability_mass_exponents = {
+        float(item["candidate_probability_mass_exponent"])
+        for item in tissues.values()
+        if item.get("candidate_probability_mass_exponent") is not None
+    }
+    candidate_diversity_scores = {
+        str(item["candidate_diversity_score"])
+        for item in tissues.values()
+        if item.get("candidate_diversity_score")
+    }
+    candidate_diversity_weights = {
+        float(item["candidate_diversity_weight"])
+        for item in tissues.values()
+        if item.get("candidate_diversity_weight") is not None
+    }
     if (
         len(coverage_scales) != 1
         or len(coverage_max_radii) != 1
         or len(retry_tail_policies) != 1
+        or len(quota_reassignment_policies) != 1
+        or len(candidate_quality_scores) != 1
+        or len(candidate_probability_mass_exponents) != 1
+        or len(candidate_diversity_scores) != 1
+        or len(candidate_diversity_weights) != 1
     ):
         raise RuntimeError(
-            "ProbNet diagnostics must report one quota coverage contract; "
+            "ProbNet diagnostics must report one spatial sampling contract; "
             f"scales={sorted(coverage_scales)}, "
             f"max_radii={sorted(coverage_max_radii)}, "
-            f"retry_tails={sorted(retry_tail_policies)}"
+            f"retry_tails={sorted(retry_tail_policies)}, "
+            f"quota_reassignment={sorted(quota_reassignment_policies)}, "
+            f"quality={sorted(candidate_quality_scores)}, "
+            f"mass_exponents={sorted(candidate_probability_mass_exponents)}, "
+            f"diversity={sorted(candidate_diversity_scores)}, "
+            f"diversity_weights={sorted(candidate_diversity_weights)}"
         )
     prior = diagnostics.get("patch_adaptive_priors") or {}
     generation_support = prior.get("generation_support") or {}
@@ -868,6 +1006,9 @@ def _probnet_sampling_contract(diagnostics: dict[str, Any]) -> dict[str, Any]:
         "shape_policy": shape_sampling.get("policy"),
         "nucleus_spacing_margin_px": diagnostics.get(
             "nucleus_spacing_margin_px"
+        ),
+        "instance_connectivity_policy": diagnostics.get(
+            "instance_connectivity_policy"
         ),
         "source_nucleus_erasure_policy": generation_support.get(
             "source_nucleus_erasure_policy"
@@ -886,15 +1027,38 @@ def _probnet_sampling_contract(diagnostics: dict[str, Any]) -> dict[str, Any]:
         )
     return {
         "candidate_queue_policy": next(iter(policies)),
+        "candidate_quality_score": next(iter(candidate_quality_scores)),
+        "candidate_probability_mass_exponent": next(
+            iter(candidate_probability_mass_exponents)
+        ),
+        "candidate_diversity_score": next(iter(candidate_diversity_scores)),
+        "candidate_diversity_weight": next(
+            iter(candidate_diversity_weights)
+        ),
         "quota_coverage_spacing_scale": next(iter(coverage_scales)),
         "quota_coverage_max_radius": next(iter(coverage_max_radii)),
         "retry_tail_policy": next(iter(retry_tail_policies)),
+        "component_quota_reassignment_policy": next(
+            iter(quota_reassignment_policies)
+        ),
         "organ_specific_constraints": False,
         **production_contract,
         "accepted_center_probability_by_tissue": {
             str(tissue_id): item.get("accepted_center_probability")
             for tissue_id, item in tissues.items()
         },
+        "sampling_audit": diagnostics.get("sampling_audit"),
+        "sampling_audit_attempts": diagnostics.get("sampling_audit_attempts"),
+        "sampling_audit_max_attempts": diagnostics.get(
+            "sampling_audit_max_attempts"
+        ),
+        "sampling_audit_selected_attempt": diagnostics.get(
+            "sampling_audit_selected_attempt"
+        ),
+        "sampling_audit_resampled": diagnostics.get(
+            "sampling_audit_resampled"
+        ),
+        "sampling_feedback": diagnostics.get("sampling_feedback"),
     }
 
 
@@ -1438,7 +1602,37 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probnet-ckpt", type=Path, default=Path(DEFAULT_PROBNET_CHECKPOINT))
     parser.add_argument("--nuclei-library", type=Path)
     parser.add_argument("--probnet-device", default="auto", choices=("auto", "cuda", "cpu"))
-    parser.add_argument("--probnet-gamma-values", default="1.5")
+    parser.add_argument("--probnet-gamma-values", default="3")
+    parser.add_argument(
+        "--probnet-sampling-feedback-attempts",
+        type=int,
+        default=DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS,
+    )
+    parser.add_argument(
+        "--probnet-sampling-feedback-gamma-down-factor",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR,
+    )
+    parser.add_argument(
+        "--probnet-sampling-feedback-gamma-up-factor",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR,
+    )
+    parser.add_argument(
+        "--probnet-sampling-feedback-gamma-min",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN,
+    )
+    parser.add_argument(
+        "--probnet-sampling-feedback-gamma-max",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX,
+    )
+    parser.add_argument(
+        "--probnet-sampling-feedback-concentration-z-threshold",
+        type=float,
+        default=DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+    )
     parser.add_argument("--minimum-mask-width", type=int, default=33)
     parser.add_argument("--density-scale-json", type=Path)
     parser.add_argument("--reference-shape-min-area", type=int, default=8)

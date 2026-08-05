@@ -773,6 +773,16 @@ def fill_nuclei_in_region(output_map, edit_mask, library):
 #  Layered storage variants (AD-1)
 # ============================================================
 
+def _largest_eight_connected_component(mask):
+    binary = np.asarray(mask, dtype=np.uint8)
+    component_count, labels = cv2.connectedComponents(binary, connectivity=8)
+    if component_count <= 1:
+        return binary.astype(bool)
+    areas = np.bincount(labels.ravel(), minlength=component_count)
+    areas[0] = 0
+    return labels == int(np.argmax(areas))
+
+
 def place_nucleus_layered(
     nuclei_map,
     center_y,
@@ -855,6 +865,10 @@ def place_nucleus_layered(
                 nuc_mask.astype(np.uint8), (new_w, new_h),
                 interpolation=cv2.INTER_NEAREST
             ).astype(bool)
+
+    nuc_mask = _largest_eight_connected_component(nuc_mask)
+    if not np.any(nuc_mask):
+        return False
 
     h, w = nuc_mask.shape
     H, W = nuclei_map.shape

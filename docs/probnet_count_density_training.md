@@ -90,9 +90,10 @@ are excluded from the frozen endpoint until their defaults are aligned. They
 must not be used to claim that the policy in this document was executed.
 
 The online product entrypoint `scripts/phase3_end_to_end_ui.py` is aligned with
-the frozen endpoint: it pins the epoch-29 checkpoint by SHA256, uses gamma
-`1.5`, leaves `density_scale_json` unset, and delegates agentic generation and
-verification to `scripts/run_agentic_edit_workflow.py`.
+the frozen endpoint: it pins the epoch-29 checkpoint by SHA256, starts from
+gamma `3.0`, leaves `density_scale_json` unset, and delegates agentic generation
+and verification to `scripts/run_agentic_edit_workflow.py`. Any bounded retry
+gamma is release-controlled rather than a UI parameter.
 
 ## Frozen Sampling Policy
 
@@ -123,23 +124,24 @@ target_density_t =
    If a GLaS target grade is absent, retain the target grade's dataset prior and
    multiply it by a gland-family cellularity factor measured from the pre-edit
    patch.
-6. For unchanged target tissue, use the pre-edit patch type distribution for
-   exact quotas. For a genuinely changed target tissue/grade, normalize the
-   density-head class evidence and use it for exact quotas; fall back to the
-   matching profile prior only when head evidence is unavailable.
-7. Convert type proportions to exact integer quotas with largest remainder.
-   Per-center semantic type probabilities assign those exact quotas spatially;
-   they do not change the quota totals.
+6. Use the patch-local target-tissue composition as a type prior when it is
+   available. Log-pool that prior with the local ProbNet type posterior over
+   supported same-class shapes.
+7. The prior fixes only the total tissue count. Assign cell types center by
+   center using the pooled local posterior and cumulative posterior balancing;
+   do not create an independent density-head type quota.
 8. Allocate each tissue-level target across disconnected components strictly
    by component area with largest remainder. Do not reserve one nucleus for
    every small component; a component with expected count below one may receive
    zero.
-9. Generate candidates independently in every positive-quota component. Build
-   the primary prefix greedily from
-   `gamma * logit(P(nucleus)) + min(nearest_distance / radius, 1)`, where
-   `radius = min(0.75 * sqrt(component_area / component_quota), 48)`.
-   Preserve every unused candidate in a complete stable-descending ProbNet
-   quality retry tail. Use `gamma=1.5`.
+9. Generate candidates independently in every positive-quota component.
+   Order candidates by seeded Gumbel sampling from
+   `odds(P(nucleus))^gamma`, starting from `gamma=3.0`. Do not add a diversity
+   score or coverage-radius term. The online feedback loop keeps the evaluation
+   mass fixed at `gamma=3.0`; after a failed spatial audit it may decrease gamma
+   once for over-concentration or increase it once for under-following. The
+   remaining retry changes only the seed. ProbNet-mass pixel backfill and all
+   biological quotas remain unchanged.
 10. For unchanged tissue, draw same-class shapes from the corresponding
     source-patch component. Failed reference shapes return to the pool and are
     never resized during retries. A component-local shortage uses a library
@@ -165,7 +167,13 @@ component. Complete generated shapes may extend across the support boundary.
 prob_count_weight = 0.0
 density_scale = 1.0
 density_scale_json = none
-gamma = 1.5
+gamma = 3.0
+sampling_feedback_max_attempts = 3
+sampling_feedback_gamma_updates = 1
+sampling_feedback_gamma_range = [1.5, 5.0]
+sampling_feedback_overconcentrated_factor = 0.75
+sampling_feedback_underfollow_factor = 4 / 3
+sampling_feedback_evaluation_gamma = 3.0
 local_density_direct_min_area = 20,000
 local_density_direct_min_count = 10
 minimum_mask_width = 33
@@ -177,9 +185,9 @@ dense_retry_quota_threshold = 20
 dense_retry_occupancy_threshold = 0.12
 dense_retry_candidate_multiplier = 24
 dense_retry_candidate_floor = 128
-quota_coverage_spacing_scale = 0.75
-quota_coverage_max_radius = 48
-retry_tail_policy = stable_descending_probnet_score
+quota_coverage_spacing_scale = 0.0
+quota_coverage_max_radius = 0.0
+retry_tail_policy = same_probnet_mass_permutation_then_probnet_mass_pixel_backfill
 max_nucleus_overlap_fraction = 0.0
 nucleus_spacing_margin_px = 1
 type_density_head_weight_for_changed_tissue = 1.0

@@ -296,6 +296,29 @@ def test_layered_placement_spacing_margin_prevents_component_merging():
     np.testing.assert_array_equal(nuclei, original)
 
 
+def test_layered_placement_removes_disconnected_shape_satellites():
+    nuclei = np.zeros((20, 20), dtype=np.int64)
+    mask = np.zeros((7, 7), dtype=bool)
+    mask[2:5, 2:5] = True
+    mask[0, 0] = True
+    instance = {
+        "mask": mask,
+        "type": 101,
+        "source": "reference",
+    }
+
+    placed = place_nucleus_layered(
+        nuclei,
+        10,
+        10,
+        instance,
+        augment=False,
+    )
+
+    assert placed is True
+    assert np.count_nonzero(nuclei) == 9
+
+
 def test_reference_shape_ignores_retry_scale_and_preserves_patch_area():
     nuclei = np.zeros((20, 20), dtype=np.int64)
     instance = {

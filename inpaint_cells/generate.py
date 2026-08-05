@@ -5,8 +5,12 @@ Unified ProbNet-centered nuclei mask generation.
 This is the Phase 4 inference entry point. The frozen ProbNet checkpoint's
 scalar P(nucleus) = 1 - P(background) field weights spatial landing positions.
 Total counts remain controlled by tissue densities measured from the unedited
-source patch. Exact type quotas are controlled by the normalized density-head
-evidence in the production configuration.
+source patch. ProbNet's feasible joint class intensity controls spatial landing
+positions. Its local categorical nucleus posterior is log-pooled with the
+target-tissue empirical type prior so OOD edits retain local evidence without
+discarding the expected tissue composition. Tissue-local cumulative posterior
+balancing removes the high variance of independent categorical draws in small
+edited regions.
 
 Nucleus shapes are sampled from the current reference patch first, preserving
 the reference morphology domain. The global nuclei library only fills a
@@ -44,6 +48,7 @@ from inpaint_cells.nuclei_library.library import (
 from inpaint_cells.utils.mask_utils import (
     NUM_NUCLEI,
     NUCLEI_CLASSES,
+    NUCLEI_RGB,
     load_tissue_mask,
     load_nuclei_mask,
     overlay,
@@ -62,11 +67,25 @@ COUNT_POLICY_NAME = (
     "pre_edit_source_times_post_edit_target_area"
 )
 TYPE_QUOTA_ROUTING_POLICY_NAME = (
-    "changed_target_tissue_density_head_unchanged_target_tissue_pre_edit_patch"
+    "prior_total_count_then_probnet_local_type_log_pool_with_"
+    "cumulative_posterior_balancing"
 )
 COMPONENT_SHAPE_POLICY_NAME = (
     "component_local_same_class_reference_then_component_calibrated_library"
 )
+SPATIAL_PRIOR_POLICY_NAME = (
+    "expanded_support_context_cleared_probnet"
+)
+DEFAULT_PROBNET_ODDS_GAMMA = 3.0
+DEFAULT_LOCAL_TYPE_PRIOR_WEIGHT = 2.0 / 3.0
+SAMPLING_AUDIT_POLICY_NAME = "probnet_patch_relative_count_type_spatial_v3"
+SAMPLING_FEEDBACK_POLICY_NAME = "reason_directed_gamma_then_seed_v1"
+DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS = 3
+DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR = 0.75
+DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR = 4.0 / 3.0
+DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN = 1.5
+DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX = 5.0
+DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD = 1.96
 
 
 def parse_float_list(value):
@@ -301,6 +320,64 @@ def quota_coverage_radius(
     )
 
 
+def adaptive_quota_coverage_count(
+    candidates,
+    nuc_prob,
+    quota,
+    *,
+    minimum_fraction=0.2,
+):
+    """Reduce coverage when ProbNet has a genuinely sharp high-score tail.
+
+    A flat or broad field needs quality-diversity coverage. A sharp field
+    should retain more of the stable score-descending order. The ratio is
+    computed from each component's own score distribution, without any
+    dataset, tissue, or organ branch.
+    """
+
+    quota = int(max(quota, 0))
+    minimum_fraction = float(np.clip(minimum_fraction, 0.0, 1.0))
+    if quota <= 0 or not candidates:
+        return 0, {
+            "policy": "adaptive_probnet_tail_sharpness",
+            "quota": quota,
+            "coverage_count": 0,
+            "coverage_fraction": 0.0,
+            "tail_sharpness": 0.0,
+            "probability_quantiles": {},
+        }
+
+    ys = np.asarray([point[0] for point in candidates], dtype=np.int64)
+    xs = np.asarray([point[1] for point in candidates], dtype=np.int64)
+    values = np.asarray(nuc_prob, dtype=np.float64)[ys, xs]
+    q10, q50, q90, q99 = (
+        float(value)
+        for value in np.quantile(values, (0.10, 0.50, 0.90, 0.99))
+    )
+    bulk_span = max(q90 - q10, 1e-8)
+    tail_sharpness = float(np.clip((q99 - q90) / bulk_span, 0.0, 1.0))
+    coverage_fraction = float(
+        1.0 - (1.0 - minimum_fraction) * tail_sharpness
+    )
+    coverage_count = int(
+        np.clip(np.ceil(quota * coverage_fraction), 1, quota)
+    )
+    return coverage_count, {
+        "policy": "adaptive_probnet_tail_sharpness",
+        "quota": quota,
+        "coverage_count": coverage_count,
+        "coverage_fraction": coverage_fraction,
+        "minimum_coverage_fraction": minimum_fraction,
+        "tail_sharpness": tail_sharpness,
+        "probability_quantiles": {
+            "q10": q10,
+            "q50": q50,
+            "q90": q90,
+            "q99": q99,
+        },
+    }
+
+
 def choose_weighted_centers(
     candidates,
     nuc_prob,
@@ -310,59 +387,193 @@ def choose_weighted_centers(
     coverage_count=None,
     coverage_radius=0.0,
 ):
-    """Build a ProbNet quality-diversity prefix and stable score retry tail."""
+    """Sample a deterministic-seeded retry queue from ProbNet probability mass.
+
+    The legacy queue took the highest-scoring centers, which converted a mild
+    spatial preference into a hard ring whenever an edit boundary was slightly
+    brighter. Gumbel ranking gives a weighted sample without replacement:
+    candidates remain proportional to ProbNet mass instead of becoming Top-N.
+
+    The generic calibration mass is ``odds(probability) ** gamma``. It preserves
+    flat fields while expressing sharp ProbNet structure without a dataset,
+    tissue, or organ threshold.
+    """
 
     if target_count <= 0 or not candidates:
         return []
+    del coverage_count, coverage_radius
     n = min(target_count, len(candidates))
     ys = np.array([p[0] for p in candidates], dtype=np.int64)
     xs = np.array([p[1] for p in candidates], dtype=np.int64)
-    probability = np.clip(nuc_prob[ys, xs], 1e-6, 1.0 - 1e-6)
-    quality = float(gamma) * (
-        np.log(probability) - np.log1p(-probability)
+    log_mass = probability_sampling_log_mass(
+        np.asarray(nuc_prob, dtype=np.float64)[ys, xs],
+        gamma,
     )
-    score_order = np.argsort(-quality, kind="stable")
-
-    prefix_target = min(
-        n,
-        int(coverage_count) if coverage_count is not None else 0,
+    gumbel = np.random.gumbel(size=log_mass.shape[0])
+    order = np.argsort(
+        -(log_mass + gumbel),
+        kind="stable",
     )
-    radius = float(coverage_radius)
-    if prefix_target <= 1 or radius <= 0:
-        return [candidates[int(i)] for i in score_order[:n]]
+    return [candidates[int(index)] for index in order[:n]]
 
-    prefix_indices = [int(score_order[0])]
-    first_index = prefix_indices[0]
-    min_distance_sq = (
-        (ys - ys[first_index]) ** 2
-        + (xs - xs[first_index]) ** 2
-    ).astype(np.float64)
-    while len(prefix_indices) < prefix_target:
-        diversity = np.minimum(
-            np.sqrt(min_distance_sq) / radius,
-            1.0,
-        )
-        utility = quality + diversity
-        utility[np.asarray(prefix_indices, dtype=np.int64)] = -np.inf
-        candidate_index = int(np.argmax(utility))
-        prefix_indices.append(candidate_index)
-        candidate_distance_sq = (
-            (ys - ys[candidate_index]) ** 2
-            + (xs - xs[candidate_index]) ** 2
-        )
-        min_distance_sq = np.minimum(
-            min_distance_sq,
-            candidate_distance_sq,
-        )
 
-    prefix_set = set(prefix_indices)
-    retry_tail = [
-        int(candidate_index)
-        for candidate_index in score_order
-        if int(candidate_index) not in prefix_set
-    ]
-    queue = prefix_indices + retry_tail
-    return [candidates[candidate_index] for candidate_index in queue[:n]]
+def probability_sampling_log_mass(probability, gamma):
+    """Convert ProbNet occupancy probability to calibrated log intensity."""
+
+    values = np.clip(
+        np.asarray(probability, dtype=np.float64),
+        1e-6,
+        1.0 - 1e-6,
+    )
+    return float(gamma) * (
+        np.log(values) - np.log1p(-values)
+    )
+
+
+def probability_sampling_mass(probability, gamma):
+    """Return finite relative odds mass for allocation and diagnostics."""
+
+    log_mass = probability_sampling_log_mass(probability, gamma)
+    log_mass = log_mass - float(np.max(log_mass))
+    return np.exp(log_mass)
+
+
+def probability_mass_region_centers(region_mask, nuc_prob, gamma):
+    """Return supported pixels in a ProbNet-mass weighted retry order."""
+
+    region = np.asarray(region_mask, dtype=bool)
+    probability_map = np.asarray(nuc_prob)
+    if region.shape != probability_map.shape:
+        raise ValueError("region_mask and nuc_prob must share one shape")
+    flat_indices = np.flatnonzero(region.ravel())
+    if flat_indices.size == 0:
+        return np.empty((0, 2), dtype=np.int64)
+    log_mass = probability_sampling_log_mass(
+        probability_map.ravel()[flat_indices],
+        gamma,
+    )
+    gumbel = np.random.gumbel(size=log_mass.shape[0])
+    order = np.argsort(
+        -(log_mass + gumbel),
+        kind="stable",
+    )
+    ranked = flat_indices[order]
+    width = int(region.shape[1])
+    return np.column_stack((ranked // width, ranked % width)).astype(
+        np.int64,
+        copy=False,
+    )
+
+
+def exact_backfill_candidate_budget(shortfall, available, args):
+    """Bound one deterministic exact-count search before the next seed.
+
+    Exact-count placement is still mandatory. This budget only prevents an
+    infeasible geometry from trying every pixel in a large tissue component;
+    the outer sampling loop then retries with the next deterministic seed.
+    """
+
+    missing = max(0, int(shortfall))
+    available = max(0, int(available))
+    per_missing = max(
+        1,
+        int(getattr(args, "exact_backfill_candidates_per_missing", 128)),
+    )
+    floor = max(
+        1,
+        int(getattr(args, "exact_backfill_candidate_floor", 512)),
+    )
+    ceiling = max(
+        floor,
+        int(getattr(args, "exact_backfill_candidate_ceiling", 4096)),
+    )
+    requested = min(ceiling, max(floor, missing * per_missing))
+    return min(available, requested), {
+        "policy": "quota_scaled_bounded_search_then_next_deterministic_seed",
+        "shortfall": missing,
+        "available_candidates": available,
+        "candidates_per_missing": per_missing,
+        "floor": floor,
+        "ceiling": ceiling,
+        "budget": min(available, requested),
+        "truncated": bool(available > requested),
+    }
+
+
+def same_tissue_quota_reassignment_centers(
+    tissue_region,
+    output,
+    nuc_prob,
+    gamma,
+    separation,
+):
+    """Rank currently available centers across one target tissue."""
+
+    occupied = np.asarray(output) > 0
+    margin = max(0, int(separation))
+    if margin > 0:
+        occupied = ndimage.binary_dilation(
+            occupied,
+            structure=np.ones((2 * margin + 1, 2 * margin + 1), dtype=bool),
+        )
+    return probability_mass_region_centers(
+        np.asarray(tissue_region, dtype=bool) & ~occupied,
+        nuc_prob,
+        gamma,
+    )
+
+
+def initialize_component_sampling_diagnostics(
+    component_areas,
+    component_limits,
+    component_mass_by_id,
+):
+    """Register every component before quota placement or reassignment."""
+
+    total_mass = float(sum(component_mass_by_id.values()))
+    diagnostics = {}
+    for component_id, area in component_areas:
+        mass = float(component_mass_by_id.get(component_id, 0.0))
+        diagnostics[str(component_id)] = {
+            "area": int(area),
+            "quota": int(component_limits.get(component_id, 0)),
+            "dense_retry": False,
+            "expected_occupancy_fraction": 0.0,
+            "retry_pool_target": 0,
+            "num_candidates": 0,
+            "selected_centers": 0,
+            "attempted_centers": 0,
+            "placed": 0,
+            "integrated_probnet_mass": mass,
+            "probnet_mass_fraction": (
+                float(mass / total_mass) if total_mass > 0 else 0.0
+            ),
+            "component_count_policy": (
+                "integrated_probnet_mass_largest_remainder"
+            ),
+        }
+    return diagnostics
+
+
+def shape_sampling_diagnostics(
+    shape_sampler,
+    component_shape_sampling,
+    placed_by_shape_source,
+    *,
+    component_policy_active,
+):
+    """Report the active product policy even when this stage places no shape."""
+
+    diagnostics = shape_sampler.diagnostics()
+    if component_policy_active:
+        diagnostics.update(
+            {
+                "policy": COMPONENT_SHAPE_POLICY_NAME,
+                "selected_by_source": dict(placed_by_shape_source),
+                "component_local": dict(component_shape_sampling),
+            }
+        )
+    return diagnostics
 
 
 def allocate_component_counts(component_areas, target_count, minimum_area):
@@ -441,6 +652,45 @@ def allocate_area_proportional_counts(component_areas, target_count, minimum_are
     }
 
 
+def allocate_weight_proportional_counts(component_weights, target_count):
+    """Allocate a fixed total according to integrated ProbNet mass."""
+
+    items = [
+        (int(component_id), max(float(weight), 0.0))
+        for component_id, weight in component_weights
+    ]
+    if target_count <= 0 or not items:
+        return {}
+    total_weight = float(sum(weight for _, weight in items))
+    if total_weight <= 0:
+        items = [(component_id, 1.0) for component_id, _ in items]
+        total_weight = float(len(items))
+    raw = {
+        component_id: int(target_count) * weight / total_weight
+        for component_id, weight in items
+    }
+    quotas = {
+        component_id: int(np.floor(value))
+        for component_id, value in raw.items()
+    }
+    leftover = int(target_count) - sum(quotas.values())
+    order = sorted(
+        items,
+        key=lambda item: (
+            -(raw[item[0]] - quotas[item[0]]),
+            -item[1],
+            item[0],
+        ),
+    )
+    for component_id, _ in order[:leftover]:
+        quotas[component_id] += 1
+    return {
+        component_id: count
+        for component_id, count in quotas.items()
+        if count > 0
+    }
+
+
 def allocate_type_counts(type_proportions, target_count):
     """Turn a tissue-local type distribution into an exact integer quota."""
     items = [
@@ -466,17 +716,122 @@ def allocate_type_counts(type_proportions, target_count):
     return {nuc_type: count for nuc_type, count in quotas.items() if count > 0}
 
 
+def supported_nucleus_shape_types(
+    library,
+    reference_pool,
+    tissue_id,
+    *,
+    force_tissue_library,
+):
+    """Return classes with a real same-class shape available to this tissue."""
+
+    supported = set()
+    if not force_tissue_library and reference_pool is not None:
+        supported.update(
+            int(nuc_type)
+            for nuc_type, count in reference_pool.counts().items()
+            if int(count) > 0
+        )
+    library_instances = getattr(library, "instances", {})
+    if force_tissue_library or int(tissue_id) == 3:
+        buckets = [library_instances.get(int(tissue_id), ())]
+    else:
+        buckets = library_instances.values()
+    for bucket in buckets:
+        supported.update(
+            int(instance["type"])
+            for instance in bucket
+            if int(instance.get("type", 0)) in NUCLEI_CLASSES
+        )
+    return supported
+
+
+def constrain_type_quota_to_shape_support(
+    requested_counts,
+    type_evidence,
+    supported_types,
+):
+    """Redistribute only unsupported quota while preserving the total count."""
+
+    requested = {
+        int(nuc_type): int(count)
+        for nuc_type, count in (requested_counts or {}).items()
+        if int(count) > 0
+    }
+    supported = {
+        int(nuc_type)
+        for nuc_type in supported_types
+        if int(nuc_type) in NUCLEI_CLASSES
+    }
+    unsupported = {
+        nuc_type: count
+        for nuc_type, count in requested.items()
+        if nuc_type not in supported
+    }
+    feasible = {
+        nuc_type: count
+        for nuc_type, count in requested.items()
+        if nuc_type in supported
+    }
+    redistributed_count = int(sum(unsupported.values()))
+    if redistributed_count > 0:
+        weights = {
+            int(nuc_type): float(weight)
+            for nuc_type, weight in (type_evidence or {}).items()
+            if int(nuc_type) in supported and float(weight) > 0
+        }
+        if not weights:
+            weights = {int(nuc_type): 1.0 for nuc_type in sorted(supported)}
+        if not weights:
+            raise RuntimeError(
+                "Nucleus type quota has no same-class reference or library "
+                "shape support."
+            )
+        redistributed = allocate_type_counts(weights, redistributed_count)
+        for nuc_type, count in redistributed.items():
+            feasible[nuc_type] = feasible.get(nuc_type, 0) + int(count)
+    if sum(feasible.values()) != sum(requested.values()):
+        raise AssertionError("shape-support quota must preserve total count")
+    audit = {
+        "policy": (
+            "preserve_supported_quota_then_redistribute_unsupported_by_"
+            "target_type_evidence"
+        ),
+        "supported_types": sorted(int(value) for value in supported),
+        "requested_by_type": {
+            str(key): int(value) for key, value in requested.items()
+        },
+        "unsupported_requested_by_type": {
+            str(key): int(value) for key, value in unsupported.items()
+        },
+        "feasible_by_type": {
+            str(key): int(value) for key, value in feasible.items()
+        },
+        "redistributed_count": redistributed_count,
+    }
+    return feasible, audit
+
+
 def fuse_density_head_with_tissue_prior(
     density_by_class,
     tissue_prior,
     *,
     density_weight=0.5,
+    adaptive=False,
 ):
-    """Fuse normalized target-conditioned type evidence and tissue prior."""
+    """Fuse normalized target-conditioned type evidence and tissue prior.
 
-    weight = float(density_weight)
-    if not 0.0 <= weight <= 1.0:
+    When ``adaptive`` is enabled, ``density_weight`` is an upper bound. The
+    effective head weight is reduced by normalized head entropy and
+    Jensen-Shannon agreement with the target-tissue prior. This prevents an
+    uncertain density head from copying source-context cell types into a newly
+    introduced target tissue.
+    """
+
+    requested_weight = float(density_weight)
+    if not 0.0 <= requested_weight <= 1.0:
         raise ValueError("density_weight must be between 0 and 1")
+    weight = requested_weight
 
     density_values = np.asarray(density_by_class, dtype=np.float64).reshape(-1)
     density_values = np.clip(density_values, 0.0, None)
@@ -495,7 +850,12 @@ def fuse_density_head_with_tissue_prior(
     prior_total = float(sum(prior_distribution.values()))
     if density_total <= 0 and prior_total <= 0:
         return {}, {
+            "adaptive_weighting": bool(adaptive),
+            "requested_density_head_weight": requested_weight,
             "density_head_weight": weight,
+            "density_head_certainty": 0.0,
+            "density_prior_agreement": 0.0,
+            "jensen_shannon_divergence": None,
             "density_head_distribution": {},
             "tissue_prior_distribution": {},
             "fused_distribution": {},
@@ -518,6 +878,60 @@ def fuse_density_head_with_tissue_prior(
         int(nuc_type): float(value / prior_total)
         for nuc_type, value in prior_distribution.items()
     }
+    density_head_certainty = 0.0
+    density_prior_agreement = 0.0
+    jensen_shannon_divergence = None
+    if density_total > 0:
+        density_vector = np.asarray(
+            [
+                density_normalized.get(int(nuc_type), 0.0)
+                for nuc_type in NUCLEI_CLASSES
+            ],
+            dtype=np.float64,
+        )
+        nonzero = density_vector[density_vector > 0]
+        entropy = float(-np.sum(nonzero * np.log(nonzero)))
+        density_head_certainty = float(
+            np.clip(
+                1.0 - entropy / np.log(max(len(NUCLEI_CLASSES), 2)),
+                0.0,
+                1.0,
+            )
+        )
+    if density_total > 0 and prior_total > 0:
+        prior_vector = np.asarray(
+            [
+                prior_normalized.get(int(nuc_type), 0.0)
+                for nuc_type in NUCLEI_CLASSES
+            ],
+            dtype=np.float64,
+        )
+        midpoint = 0.5 * (density_vector + prior_vector)
+
+        def _kl_divergence(left, right):
+            support = left > 0
+            return float(
+                np.sum(left[support] * np.log2(left[support] / right[support]))
+            )
+
+        jensen_shannon_divergence = float(
+            np.clip(
+                0.5 * _kl_divergence(density_vector, midpoint)
+                + 0.5 * _kl_divergence(prior_vector, midpoint),
+                0.0,
+                1.0,
+            )
+        )
+        density_prior_agreement = 1.0 - jensen_shannon_divergence
+        if adaptive:
+            weight = float(
+                requested_weight
+                * density_head_certainty
+                * density_prior_agreement
+            )
+    elif density_total > 0:
+        density_prior_agreement = 1.0
+
     fused = {
         int(nuc_type): (
             weight * density_normalized.get(int(nuc_type), 0.0)
@@ -531,7 +945,12 @@ def fuse_density_head_with_tissue_prior(
         if value > 0
     }
     return fused, {
+        "adaptive_weighting": bool(adaptive),
+        "requested_density_head_weight": requested_weight,
         "density_head_weight": float(weight),
+        "density_head_certainty": density_head_certainty,
+        "density_prior_agreement": density_prior_agreement,
+        "jensen_shannon_divergence": jensen_shannon_divergence,
         "density_head_distribution": {
             str(key): float(value)
             for key, value in density_normalized.items()
@@ -545,6 +964,115 @@ def fuse_density_head_with_tissue_prior(
             for key, value in fused.items()
         },
         "fallback": fallback,
+    }
+
+
+def spatial_context_halo_radius(
+    expected_nucleus_area,
+    *,
+    diameter_scale=1.25,
+    minimum=4,
+    maximum=24,
+):
+    """Return a generic one-nucleus-scale context clearance radius."""
+
+    diameter = 2.0 * np.sqrt(max(float(expected_nucleus_area), 1.0) / np.pi)
+    return int(
+        np.clip(
+            np.ceil(diameter * float(diameter_scale)),
+            int(minimum),
+            int(maximum),
+        )
+    )
+
+
+def blend_context_stabilized_probability(
+    context_probability,
+    halo_cleared_probability,
+    *,
+    halo_weight=0.25,
+):
+    """Geometrically blend raw context and halo-cleared spatial priors."""
+
+    weight = float(halo_weight)
+    if not 0.0 <= weight <= 1.0:
+        raise ValueError("halo_weight must be between 0 and 1")
+    context = np.clip(
+        np.asarray(context_probability, dtype=np.float64),
+        1e-6,
+        1.0,
+    )
+    stabilized = np.clip(
+        np.asarray(halo_cleared_probability, dtype=np.float64),
+        1e-6,
+        1.0,
+    )
+    if context.shape != stabilized.shape:
+        raise ValueError("spatial probability maps must share one shape")
+    return np.exp(
+        (1.0 - weight) * np.log(context)
+        + weight * np.log(stabilized)
+    ).astype(np.float32)
+
+
+def quota_conditioned_spatial_probability(
+    nucleus_probability,
+    type_probability,
+    type_quota,
+    region_mask,
+):
+    """Condition spatial scoring on the exact target type composition.
+
+    ProbNet emits one spatial channel per nucleus class. Sharing only the
+    summed P(nucleus) field lets a strong but minority class pull every target
+    type toward its preferred locations. This mixture uses the already
+    determined exact quota as generic weights, then preserves the mean scale
+    of P(nucleus) so downstream quality/diversity behavior remains calibrated.
+    """
+
+    base = np.asarray(nucleus_probability, dtype=np.float64)
+    typed = np.asarray(type_probability, dtype=np.float64)
+    region = np.asarray(region_mask, dtype=bool)
+    if typed.shape != (len(NUCLEI_CLASSES), *base.shape):
+        raise ValueError("type_probability must be [num_types, height, width]")
+    if region.shape != base.shape:
+        raise ValueError("region_mask and nucleus_probability must share shape")
+
+    quota = {
+        int(nuc_type): int(count)
+        for nuc_type, count in (type_quota or {}).items()
+        if int(count) > 0
+    }
+    total = int(sum(quota.values()))
+    if total <= 0 or not np.any(region):
+        return base.astype(np.float32), {
+            "policy": "unconditioned_no_type_quota",
+            "quota_weights": {},
+            "mean_scale": 1.0,
+        }
+
+    weights = np.asarray(
+        [
+            float(quota.get(int(nuc_type), 0)) / float(total)
+            for nuc_type in NUCLEI_CLASSES
+        ],
+        dtype=np.float64,
+    )
+    mixed = np.tensordot(weights, np.clip(typed, 0.0, None), axes=(0, 0))
+    base_mean = float(np.mean(base[region]))
+    mixed_mean = float(np.mean(mixed[region]))
+    mean_scale = base_mean / mixed_mean if mixed_mean > 0 else 1.0
+    conditioned = np.clip(mixed * mean_scale, 1e-6, 1.0)
+    return conditioned.astype(np.float32), {
+        "policy": "exact_type_quota_weighted_probnet_semantic_channels",
+        "quota_weights": {
+            str(nuc_type): float(weights[index])
+            for index, nuc_type in enumerate(NUCLEI_CLASSES)
+            if weights[index] > 0
+        },
+        "base_mean_probability": base_mean,
+        "mixed_mean_probability_before_rescale": mixed_mean,
+        "mean_scale": float(mean_scale),
     }
 
 
@@ -865,14 +1393,231 @@ def compute_patch_adaptive_priors(
     return density_scales, type_proportions, audit
 
 
-def sample_type_at_center(prob, cy, cx, args):
-    type_probs = prob[1:, cy, cx].astype(np.float64)
+def calibrated_local_type_distribution(
+    type_probs,
+    *,
+    supported_types=None,
+    tissue_type_prior=None,
+    prior_weight=0.5,
+    prior_floor=1e-4,
+):
+    """Log-pool local ProbNet evidence with a generic target-tissue prior."""
+
+    type_probs = np.asarray(type_probs, dtype=np.float64).copy()
+    if type_probs.shape != (len(NUCLEI_CLASSES),):
+        raise ValueError("type_probs must contain one value per nucleus class")
+    supported_mask = np.ones(len(NUCLEI_CLASSES), dtype=bool)
+    if supported_types is not None:
+        supported = {int(value) for value in supported_types}
+        supported_mask = np.asarray(
+            [
+                int(nucleus_type) in supported
+                for nucleus_type in NUCLEI_CLASSES
+            ],
+            dtype=bool,
+        )
+        type_probs[~supported_mask] = 0.0
+    type_probs = np.clip(type_probs, 0.0, None)
     total = type_probs.sum()
-    if total < args.type_prob_floor:
+    if not np.isfinite(total) or total <= 0:
         return None
     type_probs = type_probs / total
+
+    weight = float(np.clip(prior_weight, 0.0, 1.0))
+    if not tissue_type_prior or weight <= 0.0:
+        return type_probs
+    prior = np.asarray(
+        [
+            float(
+                tissue_type_prior.get(
+                    int(nucleus_type),
+                    tissue_type_prior.get(str(int(nucleus_type)), 0.0),
+                )
+            )
+            for nucleus_type in NUCLEI_CLASSES
+        ],
+        dtype=np.float64,
+    )
+    prior = np.clip(prior, 0.0, None)
+    prior[~supported_mask] = 0.0
+    if not np.isfinite(prior).all() or prior.sum() <= 0:
+        return type_probs
+    floor = max(float(prior_floor), 0.0)
+    prior[supported_mask] = np.maximum(prior[supported_mask], floor)
+    prior = prior / prior.sum()
+
+    if weight >= 1.0:
+        return prior
+    log_pool = (
+        (1.0 - weight) * np.log(np.maximum(type_probs, 1e-12))
+        + weight * np.log(np.maximum(prior, 1e-12))
+    )
+    log_pool[~supported_mask] = -np.inf
+    log_pool = log_pool - float(np.max(log_pool[supported_mask]))
+    pooled = np.exp(log_pool)
+    pooled[~supported_mask] = 0.0
+    pooled_total = pooled.sum()
+    if not np.isfinite(pooled_total) or pooled_total <= 0:
+        return type_probs
+    return pooled / pooled_total
+
+
+def confidence_adaptive_type_prior_weights(
+    prior_audit,
+    *,
+    maximum_weight=DEFAULT_LOCAL_TYPE_PRIOR_WEIGHT,
+):
+    """Trust the tissue prior only where source-patch type support is weak."""
+
+    maximum = float(np.clip(maximum_weight, 0.0, 1.0))
+    weights = {}
+    for tissue_id, info in (prior_audit.get("tissues") or {}).items():
+        confidence = float(
+            np.clip(info.get("effective_local_confidence", 0.0), 0.0, 1.0)
+        )
+        weights[int(tissue_id)] = maximum * (1.0 - confidence)
+    return weights
+
+
+def sample_type_at_center(
+    type_prob,
+    cy,
+    cx,
+    args,
+    *,
+    supported_types=None,
+    tissue_type_prior=None,
+):
+    """Sample a locally informed type with target-tissue prior calibration."""
+
+    probabilities = np.asarray(type_prob, dtype=np.float64)
+    if probabilities.shape[0] == len(NUCLEI_CLASSES) + 1:
+        probabilities = probabilities[1:]
+    if probabilities.shape[0] != len(NUCLEI_CLASSES):
+        raise ValueError("type_prob must contain one channel per nucleus class")
+    type_probs = calibrated_local_type_distribution(
+        probabilities[:, cy, cx],
+        supported_types=supported_types,
+        tissue_type_prior=tissue_type_prior,
+        prior_weight=float(
+            getattr(
+                args,
+                "local_type_prior_weight",
+                DEFAULT_LOCAL_TYPE_PRIOR_WEIGHT,
+            )
+        ),
+        prior_floor=float(
+            getattr(args, "local_type_prior_floor", 1e-4)
+        ),
+    )
+    if type_probs is None:
+        return None
     idx = int(np.random.choice(len(type_probs), p=type_probs))
     return NUCLEI_CLASSES[idx]
+
+
+def select_low_variance_type(
+    type_probs,
+    *,
+    placed_by_type,
+    expected_type_mass,
+):
+    """Track cumulative posterior mass while keeping integer counts stable."""
+
+    probabilities = np.asarray(type_probs, dtype=np.float64)
+    if probabilities.shape != (len(NUCLEI_CLASSES),):
+        raise ValueError("type_probs must contain one value per nucleus class")
+    total = probabilities.sum()
+    if not np.isfinite(probabilities).all() or total <= 0:
+        return None
+    probabilities = probabilities / total
+    expected = np.asarray(expected_type_mass, dtype=np.float64)
+    if expected.shape != probabilities.shape:
+        raise ValueError(
+            "expected_type_mass must contain one value per nucleus class"
+        )
+    assigned = np.asarray(
+        [
+            int(placed_by_type.get(int(nucleus_type), 0))
+            for nucleus_type in NUCLEI_CLASSES
+        ],
+        dtype=np.float64,
+    )
+    projected_deficit = expected + probabilities - assigned
+    # Probability is a deterministic tie-breaker; the cumulative deficit is
+    # the primary signal and keeps realized small-sample counts near the
+    # aggregate local posterior rather than relying on a lucky random draw.
+    score = projected_deficit + probabilities * 1e-9
+    return int(NUCLEI_CLASSES[int(np.argmax(score))])
+
+
+def balanced_type_at_center(
+    type_prob,
+    cy,
+    cx,
+    args,
+    *,
+    placed_by_type,
+    expected_type_mass,
+    supported_types=None,
+    tissue_type_prior=None,
+    prior_weight=None,
+):
+    """Choose a local type and return the posterior mass to commit on success."""
+
+    probabilities = np.asarray(type_prob, dtype=np.float64)
+    if probabilities.shape[0] == len(NUCLEI_CLASSES) + 1:
+        probabilities = probabilities[1:]
+    if probabilities.shape[0] != len(NUCLEI_CLASSES):
+        raise ValueError("type_prob must contain one channel per nucleus class")
+    type_probs = calibrated_local_type_distribution(
+        probabilities[:, cy, cx],
+        supported_types=supported_types,
+        tissue_type_prior=tissue_type_prior,
+        prior_weight=(
+            float(prior_weight)
+            if prior_weight is not None
+            else float(
+                getattr(
+                    args,
+                    "local_type_prior_weight",
+                    DEFAULT_LOCAL_TYPE_PRIOR_WEIGHT,
+                )
+            )
+        ),
+        prior_floor=float(
+            getattr(args, "local_type_prior_floor", 1e-4)
+        ),
+    )
+    if type_probs is None:
+        return None, None
+    nucleus_type = select_low_variance_type(
+        type_probs,
+        placed_by_type=placed_by_type,
+        expected_type_mass=expected_type_mass,
+    )
+    return nucleus_type, type_probs
+
+
+def supported_joint_nucleus_probability(type_prob, supported_types):
+    """Marginalize ProbNet joint intensity over realizable nucleus classes."""
+
+    probabilities = np.asarray(type_prob, dtype=np.float64)
+    if probabilities.shape[0] != len(NUCLEI_CLASSES):
+        raise ValueError("type_prob must contain one channel per nucleus class")
+    supported = {int(value) for value in supported_types}
+    indices = [
+        index
+        for index, nucleus_type in enumerate(NUCLEI_CLASSES)
+        if int(nucleus_type) in supported
+    ]
+    if not indices:
+        return np.zeros(probabilities.shape[1:], dtype=np.float32)
+    return np.clip(
+        np.sum(probabilities[indices], axis=0),
+        1e-12,
+        1.0,
+    ).astype(np.float32)
 
 
 def build_reference_pool(nuclei_mask, args):
@@ -949,50 +1694,69 @@ def place_candidate_with_retries(
         else args.placement_transform_trials
     )
     attempts = 0
-    for _ in range(max(1, shape_trials)):
-        instance, shape_source = sample_instance_for_center(
-            shape_sampler,
-            tissue_id,
-            nucleus_type,
-            force_tissue_library=force_tissue_library,
-        )
-        if instance is None:
-            break
-        for spec in retry_transform_specs(args, trial_count=transform_trials):
-            offset_y, offset_x = spec["offset_yx"]
-            center_y = int(candidate_y + offset_y)
-            center_x = int(candidate_x + offset_x)
-            attempts += 1
-            if (
-                center_y < 0
-                or center_y >= center_region.shape[0]
-                or center_x < 0
-                or center_x >= center_region.shape[1]
-                or not bool(center_region[center_y, center_x])
-            ):
-                continue
-            placed = place_nucleus_layered(
-                output,
-                center_y,
-                center_x,
-                instance,
-                augment=not args.no_augment_instances,
-                max_overlap_fraction=float(args.max_nucleus_overlap_fraction),
-                valid_tissue_mask=valid_tissue_mask,
-                require_full_tissue_containment=bool(
-                    args.require_full_tissue_containment
-                ),
-                rotation_quarters=int(spec["rotation_quarters"]),
-                flip_horizontal=bool(spec["flip_horizontal"]),
-                flip_vertical=bool(spec["flip_vertical"]),
-                scale=float(spec["scale"]),
-                minimum_separation_px=int(
-                    getattr(args, "nucleus_spacing_margin_px", 1)
-                ),
+    quarantined_reference_shapes = []
+    try:
+        for _ in range(max(1, shape_trials)):
+            instance, shape_source = sample_instance_for_center(
+                shape_sampler,
+                tissue_id,
+                nucleus_type,
+                force_tissue_library=force_tissue_library,
             )
-            if placed:
-                return True, str(shape_source), attempts, (center_y, center_x)
-        shape_sampler.release_failed_instance(instance, shape_source)
+            if instance is None:
+                break
+            for spec in retry_transform_specs(
+                args,
+                trial_count=transform_trials,
+            ):
+                offset_y, offset_x = spec["offset_yx"]
+                center_y = int(candidate_y + offset_y)
+                center_x = int(candidate_x + offset_x)
+                attempts += 1
+                if (
+                    center_y < 0
+                    or center_y >= center_region.shape[0]
+                    or center_x < 0
+                    or center_x >= center_region.shape[1]
+                    or not bool(center_region[center_y, center_x])
+                ):
+                    continue
+                placed = place_nucleus_layered(
+                    output,
+                    center_y,
+                    center_x,
+                    instance,
+                    augment=not args.no_augment_instances,
+                    max_overlap_fraction=float(
+                        args.max_nucleus_overlap_fraction
+                    ),
+                    valid_tissue_mask=valid_tissue_mask,
+                    require_full_tissue_containment=bool(
+                        args.require_full_tissue_containment
+                    ),
+                    rotation_quarters=int(spec["rotation_quarters"]),
+                    flip_horizontal=bool(spec["flip_horizontal"]),
+                    flip_vertical=bool(spec["flip_vertical"]),
+                    scale=float(spec["scale"]),
+                    minimum_separation_px=int(
+                        getattr(args, "nucleus_spacing_margin_px", 1)
+                    ),
+                )
+                if placed:
+                    return (
+                        True,
+                        str(shape_source),
+                        attempts,
+                        (center_y, center_x),
+                    )
+            if str(shape_source) == "reference":
+                # Do not immediately resample the same unplaceable reference
+                # shape at this center. Restore it after alternate shapes and
+                # the library fallback have had a chance.
+                quarantined_reference_shapes.append(instance)
+    finally:
+        for instance in quarantined_reference_shapes:
+            shape_sampler.release_failed_instance(instance, "reference")
     return False, None, attempts, None
 
 
@@ -1011,8 +1775,30 @@ def generate_for_gamma(
     library_only_tissue_ids=None,
     clear_edit_mask=True,
     type_proportions_by_tissue=None,
+    type_prior_weights_by_tissue=None,
+    placement_nuc_prob=None,
+    placement_type_prob=None,
+    retained_by_type_overrides=None,
 ):
-    nuc_prob = 1.0 - prob[0]
+    nuc_prob = (
+        np.asarray(placement_nuc_prob, dtype=np.float32)
+        if placement_nuc_prob is not None
+        else 1.0 - prob[0]
+    )
+    if nuc_prob.shape != tissue.shape:
+        raise ValueError("placement probability and tissue must share one shape")
+    stabilized_type_prob = (
+        np.asarray(placement_type_prob, dtype=np.float32)
+        if placement_type_prob is not None
+        else np.asarray(prob[1:], dtype=np.float32)
+    )
+    if stabilized_type_prob.shape != (
+        len(NUCLEI_CLASSES),
+        *tissue.shape,
+    ):
+        raise ValueError(
+            "placement type probability must be [num_types, height, width]"
+        )
     output = input_nuclei.copy()
     if clear_edit_mask:
         output[edit_mask] = 0
@@ -1047,6 +1833,9 @@ def generate_for_gamma(
         "nucleus_spacing_margin_px": int(
             getattr(args, "nucleus_spacing_margin_px", 1)
         ),
+        "instance_connectivity_policy": (
+            "largest_8_connected_component_after_transform"
+        ),
         "type_quota_routing_policy": TYPE_QUOTA_ROUTING_POLICY_NAME,
         "placed": 0,
         "placed_by_shape_source": {"reference": 0, "library": 0},
@@ -1054,6 +1843,9 @@ def generate_for_gamma(
         "tissues": {},
     }
     component_shape_sampling = {}
+    component_policy_active = bool(
+        density is None and getattr(args, "component_aware_sampling", False)
+    )
 
     for tissue_id in np.unique(tissue[edit_mask]):
         tissue_id = int(tissue_id)
@@ -1095,12 +1887,28 @@ def generate_for_gamma(
                 "clipped_count": target_count,
             }
 
-        type_limits = None
-        type_fusion = None
-        retained_by_type = count_retained_centers_by_type(
-            input_nuclei,
-            tissue_region,
+        retained_override = (retained_by_type_overrides or {}).get(
+            str(tissue_id)
         )
+        if retained_override is None:
+            retained_override = (retained_by_type_overrides or {}).get(
+                tissue_id
+            )
+        if retained_override is None:
+            retained_by_type = count_retained_centers_by_type(
+                input_nuclei,
+                tissue_region,
+            )
+            retained_count_source = "raster_connected_components"
+        else:
+            retained_by_type = {
+                int(nuc_type): int(count)
+                for nuc_type, count in retained_override.items()
+                if int(count) > 0
+            }
+            retained_count_source = (
+                "original_retained_plus_exact_core_placement_ledger"
+            )
         retained_count = int(sum(retained_by_type.values()))
         expected_target_count = int(target_count)
         if class_counts is not None:
@@ -1119,6 +1927,7 @@ def generate_for_gamma(
             {
                 "expected_total_count_in_generation_region": expected_target_count,
                 "retained_centroid_count_in_generation_region": retained_count,
+                "retained_centroid_count_source": retained_count_source,
                 "retained_centroid_count_by_type": {
                     str(key): int(value)
                     for key, value in retained_by_type.items()
@@ -1130,68 +1939,80 @@ def generate_for_gamma(
                 ),
             }
         )
-        if density is None and type_proportions_by_tissue:
-            local_type_proportions = type_proportions_by_tissue.get(tissue_id)
-            if local_type_proportions:
-                if (
-                    type_density is not None
-                    and tissue_id in library_only_tissue_ids
-                ):
-                    density_by_class = type_density[:, tissue_region].sum(axis=1)
-                    (
-                        local_type_proportions,
-                        type_fusion,
-                    ) = fuse_density_head_with_tissue_prior(
-                        density_by_class,
-                        local_type_proportions,
-                        density_weight=float(
-                            getattr(args, "type_density_head_weight", 0.5)
-                        ),
-                    )
-                    desired_total_by_type = {
-                        int(nuc_type): (
-                            float(local_type_proportions.get(int(nuc_type), 0.0))
-                            * float(expected_target_count)
-                        )
-                        for nuc_type in NUCLEI_CLASSES
-                    }
-                    residual_type_evidence = {
-                        int(nuc_type): max(
-                            0.0,
-                            desired_total_by_type[int(nuc_type)]
-                            - float(retained_by_type.get(int(nuc_type), 0)),
-                        )
-                        for nuc_type in NUCLEI_CLASSES
-                    }
-                    if sum(residual_type_evidence.values()) > 0:
-                        local_type_proportions = residual_type_evidence
-                    type_fusion.update(
-                        {
-                            "expected_total_count": int(expected_target_count),
-                            "desired_total_by_type_before_retained_subtraction": {
-                                str(key): float(value)
-                                for key, value in desired_total_by_type.items()
-                            },
-                            "retained_count_by_type": {
-                                str(key): int(value)
-                                for key, value in retained_by_type.items()
-                                if int(value) > 0
-                            },
-                            "residual_new_type_evidence": {
-                                str(key): float(value)
-                                for key, value in residual_type_evidence.items()
-                                if float(value) > 0
-                            },
-                            "buffer_subtraction_policy": (
-                                "normalize_to_expected_total_then_subtract_retained_by_type"
-                            ),
-                        }
-                    )
-                type_limits = allocate_type_counts(
-                    local_type_proportions,
-                    target_count,
+        supported_types = supported_nucleus_shape_types(
+            library,
+            reference_pool,
+            tissue_id,
+            force_tissue_library=(
+                tissue_id in library_only_tissue_ids
+            ),
+        )
+        if target_count > 0 and not supported_types:
+            raise RuntimeError(
+                "ProbNet requested nuclei for a tissue with no supported "
+                f"same-class instance shapes: tissue_id={tissue_id}."
+            )
+        type_shape_support = {
+            "policy": (
+                "probnet_local_posterior_renormalized_to_available_"
+                "same_class_shapes"
+            ),
+            "supported_types": sorted(int(value) for value in supported_types),
+        }
+        tissue_nuc_prob = supported_joint_nucleus_probability(
+            stabilized_type_prob,
+            supported_types,
+        )
+        tissue_sampling_mass = probability_sampling_mass(
+            tissue_nuc_prob,
+            gamma,
+        )
+        tissue_type_prior = (type_proportions_by_tissue or {}).get(tissue_id)
+        if tissue_type_prior is None:
+            tissue_type_prior = (type_proportions_by_tissue or {}).get(
+                str(tissue_id)
+            )
+        local_type_prior_weight = (
+            (type_prior_weights_by_tissue or {}).get(tissue_id)
+        )
+        if local_type_prior_weight is None:
+            local_type_prior_weight = (
+                (type_prior_weights_by_tissue or {}).get(str(tissue_id))
+            )
+        if local_type_prior_weight is None:
+            local_type_prior_weight = float(
+                getattr(
+                    args,
+                    "local_type_prior_weight",
+                    DEFAULT_LOCAL_TYPE_PRIOR_WEIGHT,
                 )
-
+            )
+        local_type_prior_weight = float(local_type_prior_weight)
+        type_routing_audit = {
+            "policy": TYPE_QUOTA_ROUTING_POLICY_NAME,
+            "prior_role": "total_count_only",
+            "density_head_role": "none",
+            "tissue_type_prior_role": (
+                "target_tissue_empirical_composition_log_pool"
+                if tissue_type_prior
+                else "unavailable"
+            ),
+            "tissue_type_prior_weight": local_type_prior_weight,
+            "tissue_type_prior": (
+                {
+                    str(key): float(value)
+                    for key, value in tissue_type_prior.items()
+                }
+                if tissue_type_prior
+                else None
+            ),
+            "local_probnet_role": "position_and_local_type_evidence",
+            "position_marginalization": (
+                "sum_joint_intensity_over_supported_types"
+            ),
+            "legacy_type_proportions_ignored": False,
+            "legacy_type_density_ignored": bool(type_density is not None),
+        }
         oversample_factor = args.oversample_base * (1.0 + args.oversample_gamma_scale * max(gamma - 1.0, 0.0))
         oversample_factor = float(np.clip(oversample_factor, args.oversample_min, args.oversample_max))
         min_distance = adaptive_min_distance(expected_area, args, oversample_factor)
@@ -1205,9 +2026,11 @@ def generate_for_gamma(
         )
         typed_centers = None
         center_component_ids = None
+        component_labels = None
         component_limits = {0: target_count}
         component_dense_retry = {0: False}
         component_sampling = None
+        global_sampling = None
         component_shape_samplers = {}
         if density is None:
             if component_mode:
@@ -1221,34 +2044,35 @@ def generate_for_gamma(
                 ]
                 # Tissue-level filtering already removes biologically empty
                 # regions. Keep every non-empty disconnected component in the
-                # largest-remainder allocation so the requested tissue count
-                # is never silently dropped by a component-size threshold.
-                minimum_component_area = 1
-                component_quota_policy = getattr(
-                    args,
-                    "component_quota_policy",
-                    "minimum_one_then_area_largest_remainder",
+                # ProbNet-mass allocation so prior controls only the total.
+                component_weights = [
+                    (
+                        component_id,
+                        float(
+                            np.sum(
+                                tissue_sampling_mass[
+                                    component_labels == component_id
+                                ]
+                            )
+                        ),
+                    )
+                    for component_id, _ in component_areas
+                ]
+                component_limits = allocate_weight_proportional_counts(
+                    component_weights,
+                    target_count,
                 )
-                if component_quota_policy == "area_largest_remainder":
-                    component_limits = allocate_area_proportional_counts(
-                        component_areas,
-                        target_count,
-                        minimum_component_area,
-                    )
-                else:
-                    component_limits = allocate_component_counts(
-                        component_areas,
-                        target_count,
-                        minimum_component_area,
-                    )
+                component_mass_by_id = dict(component_weights)
+                component_sampling = initialize_component_sampling_diagnostics(
+                    component_areas,
+                    component_limits,
+                    component_mass_by_id,
+                )
                 centers = []
                 center_component_ids = []
                 candidates = []
-                component_sampling = {}
                 for component_id, area in component_areas:
                     quota = int(component_limits.get(component_id, 0))
-                    if quota <= 0:
-                        continue
                     component_region = component_labels == component_id
                     local_reference_pool = (
                         reference_pool.subset_by_center_region(component_region)
@@ -1269,6 +2093,8 @@ def generate_for_gamma(
                             ),
                         )
                     )
+                    if quota <= 0:
+                        continue
                     component_candidates = poisson_candidates(
                         component_region,
                         min_distance,
@@ -1293,41 +2119,22 @@ def generate_for_gamma(
                             retry_pool_size,
                         )
                         requested = len(component_candidates)
-                    coverage_radius = quota_coverage_radius(
-                        region_area=area,
-                        quota=quota,
-                        candidate_min_distance=min_distance,
-                        spacing_scale=float(
-                            getattr(args, "quota_coverage_spacing_scale", 0.75)
-                        ),
-                        maximum=float(
-                            getattr(args, "quota_coverage_max_radius", 48.0)
-                        ),
-                    )
                     selected = choose_weighted_centers(
                         component_candidates,
-                        nuc_prob,
+                        tissue_nuc_prob,
                         requested,
                         gamma,
-                        coverage_count=quota,
-                        coverage_radius=coverage_radius,
                     )
                     candidates.extend(component_candidates)
                     centers.extend(selected)
                     center_component_ids.extend([component_id] * len(selected))
-                    component_sampling[str(component_id)] = {
-                        "area": int(area),
-                        "quota": quota,
+                    component_sampling[str(component_id)].update({
                         "dense_retry": dense_retry,
                         "expected_occupancy_fraction": expected_occupancy,
                         "retry_pool_target": retry_pool_size,
                         "num_candidates": len(component_candidates),
                         "selected_centers": len(selected),
-                        "attempted_centers": 0,
-                        "placed": 0,
-                        "coverage_prefix_target": quota,
-                        "coverage_radius": coverage_radius,
-                    }
+                    })
             else:
                 requested_centers = target_count
                 (
@@ -1348,26 +2155,23 @@ def generate_for_gamma(
                         retry_pool_size,
                     )
                     requested_centers = len(candidates)
-                coverage_radius = quota_coverage_radius(
-                    region_area=int(np.count_nonzero(tissue_region)),
-                    quota=target_count,
-                    candidate_min_distance=min_distance,
-                    spacing_scale=float(
-                        getattr(args, "quota_coverage_spacing_scale", 0.75)
-                    ),
-                    maximum=float(
-                        getattr(args, "quota_coverage_max_radius", 48.0)
-                    ),
-                )
                 centers = choose_weighted_centers(
                     candidates,
-                    nuc_prob,
+                    tissue_nuc_prob,
                     requested_centers,
                     gamma,
-                    coverage_count=target_count,
-                    coverage_radius=coverage_radius,
                 )
                 center_component_ids = [0] * len(centers)
+                global_sampling = {
+                    "area": int(np.count_nonzero(tissue_region)),
+                    "quota": int(target_count),
+                    "integrated_probnet_mass": float(
+                        np.sum(tissue_sampling_mass[tissue_region])
+                    ),
+                    "component_count_policy": (
+                        "single_component_total_count"
+                    ),
+                }
         else:
             available = list(candidates)
             typed_centers = []
@@ -1422,11 +2226,16 @@ def generate_for_gamma(
         attempted = 0
         placement_trials = 0
         accepted_center_probabilities = []
+        accepted_centers = []
         placed_by_component = {component_id: 0 for component_id in component_limits}
         placed_by_type = {
             int(nuc_type): 0
-            for nuc_type in (type_limits or {})
+            for nuc_type in NUCLEI_CLASSES
         }
+        expected_type_mass = np.zeros(
+            len(NUCLEI_CLASSES),
+            dtype=np.float64,
+        )
         for cy, cx, density_type, component_id, dense_retry in center_records:
             if placed_by_component.get(component_id, 0) >= component_limits.get(
                 component_id, target_count
@@ -1437,16 +2246,19 @@ def generate_for_gamma(
                 component_sampling[str(component_id)]["attempted_centers"] += 1
             if density_type is not None:
                 nuc_type = density_type
-            elif type_limits is not None:
-                nuc_type = choose_type_with_remaining_quota_at_center(
-                    type_limits,
-                    placed_by_type,
-                    prob,
+                proposed_type_mass = None
+            else:
+                nuc_type, proposed_type_mass = balanced_type_at_center(
+                    stabilized_type_prob,
                     cy,
                     cx,
+                    args,
+                    placed_by_type=placed_by_type,
+                    expected_type_mass=expected_type_mass,
+                    supported_types=supported_types,
+                    tissue_type_prior=tissue_type_prior,
+                    prior_weight=local_type_prior_weight,
                 )
-            else:
-                nuc_type = sample_type_at_center(prob, cy, cx, args)
             if nuc_type is None:
                 continue
             (
@@ -1475,16 +2287,314 @@ def generate_for_gamma(
                 placed += 1
                 accepted_y, accepted_x = accepted_center
                 accepted_center_probabilities.append(
-                    float(nuc_prob[accepted_y, accepted_x])
+                    float(tissue_nuc_prob[accepted_y, accepted_x])
+                )
+                accepted_centers.append(
+                    {
+                        "row": int(accepted_y),
+                        "col": int(accepted_x),
+                        "nucleus_type": int(nuc_type),
+                        "tissue_id": int(tissue_id),
+                    }
                 )
                 placed_by_component[component_id] = (
                     placed_by_component.get(component_id, 0) + 1
                 )
                 if component_sampling is not None:
                     component_sampling[str(component_id)]["placed"] += 1
-                if type_limits is not None:
-                    placed_by_type[nuc_type] = placed_by_type.get(nuc_type, 0) + 1
+                if proposed_type_mass is not None:
+                    expected_type_mass += proposed_type_mass
+                placed_by_type[nuc_type] = placed_by_type.get(nuc_type, 0) + 1
                 placed_by_shape_source[str(shape_source)] += 1
+
+        exact_backfill = {
+            "policy": "component_quota_probnet_mass_weighted_pixel_retry",
+            "quota_reassignment_policy": (
+                "unplaceable_component_quota_to_same_tissue_probnet_mass_tail"
+            ),
+            "candidate_budget_policy": (
+                "quota_scaled_bounded_search_then_next_deterministic_seed"
+            ),
+            "triggered": bool(placed < target_count),
+            "candidate_centers": 0,
+            "attempted_centers": 0,
+            "placement_trials": 0,
+            "placed": 0,
+            "placed_by_component": {},
+            "component_candidate_budgets": {},
+            "unfilled_component_quota_before_reassignment": {},
+            "reassignment_candidate_centers": 0,
+            "reassignment_candidate_budget": None,
+            "reassignment_attempted_centers": 0,
+            "reassignment_placement_trials": 0,
+            "reassigned_placed": 0,
+            "reassigned_placed_by_component": {},
+        }
+        if (
+            placed < target_count
+            and getattr(args, "backfill_failed_placements", False)
+        ):
+            occupied = output > 0
+            separation = max(
+                0,
+                int(getattr(args, "nucleus_spacing_margin_px", 1)),
+            )
+            if separation > 0:
+                occupied = ndimage.binary_dilation(
+                    occupied,
+                    structure=np.ones(
+                        (2 * separation + 1, 2 * separation + 1),
+                        dtype=bool,
+                    ),
+                )
+            for component_id, component_limit in sorted(
+                component_limits.items()
+            ):
+                component_remaining = int(component_limit) - int(
+                    placed_by_component.get(component_id, 0)
+                )
+                if component_remaining <= 0:
+                    continue
+                component_region = (
+                    component_labels == component_id
+                    if component_labels is not None
+                    else tissue_region
+                )
+                fallback_region = component_region & ~occupied
+                ranked_centers = probability_mass_region_centers(
+                    fallback_region,
+                    tissue_nuc_prob,
+                    gamma,
+                )
+                exact_backfill["candidate_centers"] += int(
+                    ranked_centers.shape[0]
+                )
+                component_budget, component_budget_audit = (
+                    exact_backfill_candidate_budget(
+                        component_remaining,
+                        ranked_centers.shape[0],
+                        args,
+                    )
+                )
+                exact_backfill["component_candidate_budgets"][
+                    str(component_id)
+                ] = component_budget_audit
+                component_backfill_placed = 0
+                for cy, cx in ranked_centers[:component_budget]:
+                    if component_backfill_placed >= component_remaining:
+                        break
+                    cy = int(cy)
+                    cx = int(cx)
+                    exact_backfill["attempted_centers"] += 1
+                    attempted += 1
+                    if component_sampling is not None:
+                        component_sampling[str(component_id)][
+                            "attempted_centers"
+                        ] += 1
+                    nuc_type, proposed_type_mass = balanced_type_at_center(
+                        stabilized_type_prob,
+                        cy,
+                        cx,
+                        args,
+                        placed_by_type=placed_by_type,
+                        expected_type_mass=expected_type_mass,
+                        supported_types=supported_types,
+                        tissue_type_prior=tissue_type_prior,
+                        prior_weight=local_type_prior_weight,
+                    )
+                    if nuc_type is None:
+                        continue
+                    (
+                        placed_ok,
+                        shape_source,
+                        local_trials,
+                        accepted_center,
+                    ) = place_candidate_with_retries(
+                        output=output,
+                        candidate_y=cy,
+                        candidate_x=cx,
+                        nucleus_type=nuc_type,
+                        tissue_id=tissue_id,
+                        shape_sampler=component_shape_samplers.get(
+                            component_id,
+                            shape_sampler,
+                        ),
+                        center_region=component_region,
+                        valid_tissue_mask=valid_tissue_mask,
+                        dense_retry=True,
+                        force_tissue_library=(
+                            tissue_id in library_only_tissue_ids
+                        ),
+                        args=args,
+                    )
+                    placement_trials += int(local_trials)
+                    exact_backfill["placement_trials"] += int(local_trials)
+                    if not placed_ok:
+                        continue
+                    placed += 1
+                    component_backfill_placed += 1
+                    exact_backfill["placed"] += 1
+                    accepted_y, accepted_x = accepted_center
+                    accepted_center_probabilities.append(
+                        float(tissue_nuc_prob[accepted_y, accepted_x])
+                    )
+                    accepted_centers.append(
+                        {
+                            "row": int(accepted_y),
+                            "col": int(accepted_x),
+                            "nucleus_type": int(nuc_type),
+                            "tissue_id": int(tissue_id),
+                        }
+                    )
+                    placed_by_component[component_id] = (
+                        placed_by_component.get(component_id, 0) + 1
+                    )
+                    if component_sampling is not None:
+                        component_sampling[str(component_id)]["placed"] += 1
+                    if proposed_type_mass is not None:
+                        expected_type_mass += proposed_type_mass
+                    placed_by_type[nuc_type] = (
+                        placed_by_type.get(nuc_type, 0) + 1
+                    )
+                    placed_by_shape_source[str(shape_source)] += 1
+                exact_backfill["placed_by_component"][str(component_id)] = (
+                    int(component_backfill_placed)
+                )
+
+            component_shortfalls = {
+                str(component_id): max(
+                    0,
+                    int(component_limit)
+                    - int(placed_by_component.get(component_id, 0)),
+                )
+                for component_id, component_limit in component_limits.items()
+                if int(placed_by_component.get(component_id, 0))
+                < int(component_limit)
+            }
+            exact_backfill[
+                "unfilled_component_quota_before_reassignment"
+            ] = component_shortfalls
+
+            remaining = int(target_count) - int(placed)
+            if remaining > 0:
+                ranked_centers = same_tissue_quota_reassignment_centers(
+                    tissue_region,
+                    output,
+                    tissue_nuc_prob,
+                    gamma,
+                    separation,
+                )
+                exact_backfill["reassignment_candidate_centers"] = int(
+                    ranked_centers.shape[0]
+                )
+                reassignment_budget, reassignment_budget_audit = (
+                    exact_backfill_candidate_budget(
+                        remaining,
+                        ranked_centers.shape[0],
+                        args,
+                    )
+                )
+                exact_backfill["reassignment_candidate_budget"] = (
+                    reassignment_budget_audit
+                )
+                for cy, cx in ranked_centers[:reassignment_budget]:
+                    if int(placed) >= int(target_count):
+                        break
+                    cy = int(cy)
+                    cx = int(cx)
+                    component_id = (
+                        int(component_labels[cy, cx])
+                        if component_labels is not None
+                        else 0
+                    )
+                    if component_id <= 0:
+                        continue
+                    component_region = (
+                        component_labels == component_id
+                        if component_labels is not None
+                        else tissue_region
+                    )
+                    exact_backfill["reassignment_attempted_centers"] += 1
+                    attempted += 1
+                    if component_sampling is not None:
+                        component_sampling[str(component_id)][
+                            "attempted_centers"
+                        ] += 1
+                    nuc_type, proposed_type_mass = balanced_type_at_center(
+                        stabilized_type_prob,
+                        cy,
+                        cx,
+                        args,
+                        placed_by_type=placed_by_type,
+                        expected_type_mass=expected_type_mass,
+                        supported_types=supported_types,
+                        tissue_type_prior=tissue_type_prior,
+                        prior_weight=local_type_prior_weight,
+                    )
+                    if nuc_type is None:
+                        continue
+                    (
+                        placed_ok,
+                        shape_source,
+                        local_trials,
+                        accepted_center,
+                    ) = place_candidate_with_retries(
+                        output=output,
+                        candidate_y=cy,
+                        candidate_x=cx,
+                        nucleus_type=nuc_type,
+                        tissue_id=tissue_id,
+                        shape_sampler=component_shape_samplers.get(
+                            component_id,
+                            shape_sampler,
+                        ),
+                        center_region=component_region,
+                        valid_tissue_mask=valid_tissue_mask,
+                        dense_retry=True,
+                        force_tissue_library=(
+                            tissue_id in library_only_tissue_ids
+                        ),
+                        args=args,
+                    )
+                    placement_trials += int(local_trials)
+                    exact_backfill["placement_trials"] += int(local_trials)
+                    exact_backfill["reassignment_placement_trials"] += int(
+                        local_trials
+                    )
+                    if not placed_ok:
+                        continue
+                    placed += 1
+                    exact_backfill["placed"] += 1
+                    exact_backfill["reassigned_placed"] += 1
+                    reassigned_by_component = exact_backfill[
+                        "reassigned_placed_by_component"
+                    ]
+                    reassigned_by_component[str(component_id)] = int(
+                        reassigned_by_component.get(str(component_id), 0)
+                    ) + 1
+                    accepted_y, accepted_x = accepted_center
+                    accepted_center_probabilities.append(
+                        float(tissue_nuc_prob[accepted_y, accepted_x])
+                    )
+                    accepted_centers.append(
+                        {
+                            "row": int(accepted_y),
+                            "col": int(accepted_x),
+                            "nucleus_type": int(nuc_type),
+                            "tissue_id": int(tissue_id),
+                        }
+                    )
+                    placed_by_component[component_id] = (
+                        placed_by_component.get(component_id, 0) + 1
+                    )
+                    if component_sampling is not None:
+                        component_sampling[str(component_id)]["placed"] += 1
+                    if proposed_type_mass is not None:
+                        expected_type_mass += proposed_type_mass
+                    placed_by_type[nuc_type] = (
+                        placed_by_type.get(nuc_type, 0) + 1
+                    )
+                    placed_by_shape_source[str(shape_source)] += 1
 
         diagnostics["placed"] += placed
         for source, count in placed_by_shape_source.items():
@@ -1502,20 +2612,22 @@ def generate_for_gamma(
             "placed": placed,
             "placed_by_shape_source": placed_by_shape_source,
             "candidate_queue_policy": (
-                "probnet_log_odds_quality_diversity_prefix"
+                "probnet_odds_mass_without_replacement"
             ),
-            "candidate_quality_score": "gamma_times_logit_probnet_probability",
-            "candidate_diversity_score": (
-                "min_nearest_selected_distance_over_coverage_radius_capped_at_one"
+            "candidate_quality_score": (
+                "gamma_times_logit_probnet_probability_plus_seeded_gumbel"
             ),
-            "candidate_diversity_weight": 1.0,
-            "quota_coverage_spacing_scale": float(
-                getattr(args, "quota_coverage_spacing_scale", 0.75)
+            "candidate_probability_mass_exponent": float(gamma),
+            "candidate_diversity_score": "none_poisson_candidates_only",
+            "candidate_diversity_weight": 0.0,
+            "quota_coverage_spacing_scale": 0.0,
+            "quota_coverage_max_radius": 0.0,
+            "quota_coverage_min_fraction": 0.0,
+            "adaptive_quota_coverage": False,
+            "retry_tail_policy": (
+                "same_probnet_mass_permutation_then_component_pixel_backfill_"
+                "then_same_tissue_quota_reassignment"
             ),
-            "quota_coverage_max_radius": float(
-                getattr(args, "quota_coverage_max_radius", 48.0)
-            ),
-            "retry_tail_policy": "stable_descending_probnet_score",
             "accepted_center_probability": (
                 {
                     "minimum": float(np.min(accepted_center_probabilities)),
@@ -1526,35 +2638,35 @@ def generate_for_gamma(
                 if accepted_center_probabilities
                 else None
             ),
-            "type_quota_policy": (
-                "density_head_for_changed_tissue_exact_quota"
-                if type_limits is not None and type_fusion is not None
-                else "pre_edit_patch_type_preserving_exact_quota"
-                if type_limits is not None
-                else "probnet_per_center_sampling"
-            ),
-            "type_quota_fusion": type_fusion,
+            "accepted_centers": accepted_centers,
+            "type_quota_policy": "none_prior_controls_total_count_only",
+            "type_quota_fusion": None,
+            "type_shape_support": type_shape_support,
+            "quota_conditioned_spatial_prior": None,
+            "type_routing": type_routing_audit,
             "center_type_assignment_policy": (
-                "greedy_local_probnet_type_score_with_exact_remaining_quota"
-                if type_limits is not None
-                else "probnet_per_center_sampling"
+                "probnet_local_log_pool_then_tissue_cumulative_"
+                "posterior_balancing"
             ),
+            "posterior_expected_by_type": {
+                str(nucleus_type): float(expected_type_mass[index])
+                for index, nucleus_type in enumerate(NUCLEI_CLASSES)
+                if expected_type_mass[index] > 0
+            },
             "shape_source_policy": (
                 "exact_target_tissue_and_type_library_without_patch_size_calibration"
                 if tissue_id in library_only_tissue_ids
                 else "reference_first_same_type_then_library"
             ),
-            "target_by_type": (
-                {str(key): int(value) for key, value in type_limits.items()}
-                if type_limits is not None
-                else None
-            ),
-            "placed_by_type": (
-                {str(key): int(value) for key, value in placed_by_type.items()}
-                if type_limits is not None
-                else None
-            ),
+            "target_by_type": None,
+            "placed_by_type": {
+                str(key): int(value)
+                for key, value in placed_by_type.items()
+                if int(value) > 0
+            },
             "component_sampling": component_sampling,
+            "global_sampling": global_sampling,
+            "exact_count_backfill": exact_backfill,
         }
         if component_shape_samplers:
             component_shape_sampling[str(tissue_id)] = {
@@ -1568,21 +2680,17 @@ def generate_for_gamma(
             strict=bool(getattr(args, "require_exact_target_count", True)),
         )
 
-    shape_sampling = shape_sampler.diagnostics()
-    if component_shape_sampling:
-        shape_sampling.update(
-            {
-                "policy": (
-                    COMPONENT_SHAPE_POLICY_NAME
-                ),
-                "selected_by_source": dict(
-                    diagnostics["placed_by_shape_source"]
-                ),
-                "component_local": component_shape_sampling,
-            }
-        )
-    diagnostics["shape_sampling"] = shape_sampling
+    diagnostics["shape_sampling"] = shape_sampling_diagnostics(
+        shape_sampler,
+        component_shape_sampling,
+        diagnostics["placed_by_shape_source"],
+        component_policy_active=component_policy_active,
+    )
     return output, diagnostics
+
+
+class PlacementQuotaError(RuntimeError):
+    """A deterministic placement attempt could not satisfy an exact quota."""
 
 
 def _require_complete_target_count(
@@ -1596,7 +2704,7 @@ def _require_complete_target_count(
 
     shortfall = int(target_count) - int(placed)
     if strict and shortfall > 0:
-        raise RuntimeError(
+        raise PlacementQuotaError(
             "ProbNet placement did not satisfy the target-tissue count quota: "
             f"tissue_id={int(tissue_id)}, target={int(target_count)}, "
             f"placed={int(placed)}, shortfall={shortfall}."
@@ -1618,6 +2726,59 @@ def _sum_count_dicts(first, second):
     }
 
 
+def _sum_float_dicts(first, second):
+    keys = set(first or {}) | set(second or {})
+    return {
+        str(key): float((first or {}).get(str(key), 0.0))
+        + float((second or {}).get(str(key), 0.0))
+        for key in keys
+        if (
+            float((first or {}).get(str(key), 0.0))
+            + float((second or {}).get(str(key), 0.0))
+        )
+        > 0.0
+    }
+
+
+def build_buffer_retained_by_type_overrides(
+    tissue,
+    input_nuclei,
+    generation_mask,
+    core_tissues,
+):
+    """Build an exact retained-cell ledger for the second regeneration stage."""
+
+    overrides = {}
+    for tissue_id in np.unique(tissue[generation_mask]):
+        tissue_id = int(tissue_id)
+        core_info = (core_tissues or {}).get(str(tissue_id), {})
+        core_placed = int(core_info.get("placed", 0))
+        core_by_type = {
+            int(nuc_type): int(count)
+            for nuc_type, count in (
+                core_info.get("placed_by_type") or {}
+            ).items()
+            if int(count) > 0
+        }
+        if sum(core_by_type.values()) != core_placed:
+            continue
+
+        full_tissue_region = generation_mask & (tissue == tissue_id)
+        original_by_type = count_retained_centers_by_type(
+            input_nuclei,
+            full_tissue_region,
+        )
+        merged = {
+            int(nuc_type): int(count)
+            for nuc_type, count in original_by_type.items()
+            if int(count) > 0
+        }
+        for nuc_type, count in core_by_type.items():
+            merged[nuc_type] = int(merged.get(nuc_type, 0)) + int(count)
+        overrides[str(tissue_id)] = merged
+    return overrides
+
+
 def generate_two_stage_for_gamma(
     prob,
     tissue,
@@ -1633,6 +2794,9 @@ def generate_two_stage_for_gamma(
     type_density=None,
     library_only_tissue_ids=None,
     type_proportions_by_tissue=None,
+    type_prior_weights_by_tissue=None,
+    placement_nuc_prob=None,
+    placement_type_prob=None,
 ):
     """Fill the destructive core first, then only the buffered count deficit."""
 
@@ -1650,6 +2814,9 @@ def generate_two_stage_for_gamma(
         library_only_tissue_ids=library_only_tissue_ids,
         clear_edit_mask=False,
         type_proportions_by_tissue=type_proportions_by_tissue,
+        type_prior_weights_by_tissue=type_prior_weights_by_tissue,
+        placement_nuc_prob=placement_nuc_prob,
+        placement_type_prob=placement_type_prob,
     )
     if np.array_equal(
         np.asarray(deletion_mask, dtype=bool),
@@ -1662,6 +2829,12 @@ def generate_two_stage_for_gamma(
         }
         return core_output, core_diagnostics
 
+    buffer_retained_by_type = build_buffer_retained_by_type_overrides(
+        tissue,
+        input_nuclei,
+        generation_mask,
+        core_diagnostics["tissues"],
+    )
     output, buffer_diagnostics = generate_for_gamma(
         prob,
         tissue,
@@ -1676,6 +2849,10 @@ def generate_two_stage_for_gamma(
         library_only_tissue_ids=library_only_tissue_ids,
         clear_edit_mask=False,
         type_proportions_by_tissue=type_proportions_by_tissue,
+        type_prior_weights_by_tissue=type_prior_weights_by_tissue,
+        placement_nuc_prob=placement_nuc_prob,
+        placement_type_prob=placement_type_prob,
+        retained_by_type_overrides=buffer_retained_by_type,
     )
     buffer_tissues = buffer_diagnostics["tissues"]
     core_tissues = core_diagnostics["tissues"]
@@ -1705,8 +2882,16 @@ def generate_two_stage_for_gamma(
             core_info.get("placed_by_type"),
             buffer_info.get("placed_by_type"),
         )
+        buffer_info["posterior_expected_by_type"] = _sum_float_dicts(
+            core_info.get("posterior_expected_by_type"),
+            buffer_info.get("posterior_expected_by_type"),
+        )
+        buffer_info["accepted_centers"] = [
+            *(core_info.get("accepted_centers") or []),
+            *(buffer_info.get("accepted_centers") or []),
+        ]
         buffer_info["two_stage_count_policy"] = (
-            "fill_deletion_core_then_generation_buffer_expected_total_deficit"
+            "fill_core_then_buffer_deficit_from_exact_placement_ledger"
         )
 
     core_sources = core_diagnostics["placed_by_shape_source"]
@@ -1720,8 +2905,18 @@ def generate_two_stage_for_gamma(
         + int(buffer_sources.get(source, 0))
         for source in {"reference", "library"}
     }
+    buffer_shape_sampling = buffer_diagnostics.get("shape_sampling") or {}
+    core_shape_sampling = core_diagnostics.get("shape_sampling") or {}
+    buffer_shape_sampling["selected_by_source"] = dict(
+        buffer_diagnostics["placed_by_shape_source"]
+    )
+    buffer_shape_sampling["component_local_by_regeneration_stage"] = {
+        "core": core_shape_sampling.get("component_local") or {},
+        "buffer_increment": buffer_shape_sampling.get("component_local") or {},
+    }
+    buffer_diagnostics["shape_sampling"] = buffer_shape_sampling
     buffer_diagnostics["regeneration_stages"] = {
-        "policy": "core_first_then_buffer_deficit_v1",
+        "policy": "core_first_then_exact_placement_ledger_buffer_deficit_v2",
         "core": core_tissues,
         "buffer_increment": {
             tissue_id: {
@@ -1779,6 +2974,741 @@ def make_comparison(tissue, input_nuclei, outputs_by_gamma, nuc_prob, edit_mask)
     for i, label in enumerate(labels):
         cv2.putText(labeled, label, (i * w + 6, 23), font, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
     return labeled
+
+
+def make_accepted_centers_overlay(
+    nuc_prob,
+    input_nuclei,
+    output_nuclei,
+    edit_mask,
+):
+    """Render final new-instance centroids over the raw ProbNet heatmap."""
+
+    rgb = heatmap_rgb(nuc_prob, edit_mask)
+    new_nuclei = np.asarray(output_nuclei).copy()
+    new_nuclei[np.asarray(input_nuclei) > 0] = 0
+    structure = np.ones((3, 3), dtype=np.uint8)
+    for class_index in range(1, NUM_NUCLEI):
+        labels, count = ndimage.label(
+            new_nuclei == class_index,
+            structure=structure,
+        )
+        if not count:
+            continue
+        color = tuple(int(value) for value in NUCLEI_RGB[class_index])
+        for center_y, center_x in ndimage.center_of_mass(
+            new_nuclei == class_index,
+            labels,
+            range(1, count + 1),
+        ):
+            cv2.circle(
+                rgb,
+                (int(round(center_x)), int(round(center_y))),
+                4,
+                color,
+                -1,
+                lineType=cv2.LINE_AA,
+            )
+            cv2.circle(
+                rgb,
+                (int(round(center_x)), int(round(center_y))),
+                5,
+                (255, 255, 255),
+                1,
+                lineType=cv2.LINE_AA,
+            )
+    return draw_edit_contour(rgb, edit_mask)
+
+
+def _new_nucleus_centers(input_nuclei, output_nuclei, region_mask, tissue):
+    """Return every generated instance without counting retained nuclei.
+
+    Placement centers are constrained to ``region_mask``, but an asymmetric
+    nucleus placed near its boundary can have a geometric centroid just
+    outside that region.  The component is still a valid generated instance;
+    dropping it here makes the raster audit under-count an otherwise exact
+    placement ledger.  Use a component pixel inside the generation region for
+    tissue attribution while keeping every independent output component in
+    the global count.
+    """
+
+    new_nuclei = np.asarray(output_nuclei).copy()
+    new_nuclei[np.asarray(input_nuclei) > 0] = 0
+    region = np.asarray(region_mask, dtype=bool)
+    records = []
+    structure = np.ones((3, 3), dtype=np.uint8)
+    for class_index, raw_type in enumerate(NUCLEI_CLASSES, start=1):
+        labels, count = ndimage.label(
+            new_nuclei == class_index,
+            structure=structure,
+        )
+        if not count:
+            continue
+        centers = ndimage.center_of_mass(
+            new_nuclei == class_index,
+            labels,
+            range(1, count + 1),
+        )
+        for component_id, (center_y, center_x) in enumerate(centers, start=1):
+            component_in_region = (labels == component_id) & region
+            if np.any(component_in_region):
+                component_rows, component_cols = np.nonzero(component_in_region)
+                nearest = int(
+                    np.argmin(
+                        (component_rows - float(center_y)) ** 2
+                        + (component_cols - float(center_x)) ** 2
+                    )
+                )
+                row = int(component_rows[nearest])
+                col = int(component_cols[nearest])
+            else:
+                row = int(np.clip(round(center_y), 0, region.shape[0] - 1))
+                col = int(np.clip(round(center_x), 0, region.shape[1] - 1))
+            records.append(
+                {
+                    "row": row,
+                    "col": col,
+                    "nucleus_type": int(raw_type),
+                    "tissue_id": int(tissue[row, col]),
+                }
+            )
+    return records
+
+
+def _weighted_quantiles(values, weights, quantiles):
+    values = np.asarray(values, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    quantiles = np.asarray(quantiles, dtype=np.float64)
+    valid = np.isfinite(values) & np.isfinite(weights) & (weights > 0)
+    if not np.any(valid):
+        return np.full(quantiles.shape, np.nan, dtype=np.float64)
+    values = values[valid]
+    weights = weights[valid]
+    order = np.argsort(values, kind="stable")
+    values = values[order]
+    cumulative = np.cumsum(weights[order])
+    cumulative /= cumulative[-1]
+    return np.interp(quantiles, cumulative, values)
+
+
+def _weighted_midrank_cdf(values, weights, observations):
+    """Map observations to tie-aware CDF positions under weighted mass."""
+
+    values = np.asarray(values, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    observations = np.asarray(observations, dtype=np.float64)
+    valid = np.isfinite(values) & np.isfinite(weights) & (weights > 0)
+    if not np.any(valid) or observations.size == 0:
+        return np.asarray([], dtype=np.float64), {
+            "unique_values": 0,
+            "largest_tied_mass_fraction": None,
+        }
+    values = values[valid]
+    weights = weights[valid]
+    unique_values, inverse = np.unique(values, return_inverse=True)
+    grouped_mass = np.bincount(
+        inverse,
+        weights=weights,
+        minlength=unique_values.size,
+    ).astype(np.float64)
+    total_mass = float(grouped_mass.sum())
+    if total_mass <= 0:
+        return np.asarray([], dtype=np.float64), {
+            "unique_values": int(unique_values.size),
+            "largest_tied_mass_fraction": None,
+        }
+    cumulative = np.cumsum(grouped_mass)
+    midrank = (cumulative - 0.5 * grouped_mass) / total_mass
+    mapped = np.interp(
+        observations,
+        unique_values,
+        midrank,
+        left=float(midrank[0]),
+        right=float(midrank[-1]),
+    )
+    return mapped, {
+        "unique_values": int(unique_values.size),
+        "largest_tied_mass_fraction": float(grouped_mass.max() / total_mass),
+    }
+
+
+def probability_concentration_diagnostics(
+    region_probability,
+    region_mass,
+    accepted_probability,
+    *,
+    z_threshold=DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+):
+    """Return a signed, sample-size-aware ProbNet concentration diagnostic.
+
+    Under the frozen evaluation mass, tie-aware CDF positions should be
+    centered on one half. Positive z means accepted centers over-concentrate
+    on the sharpest ProbNet peaks; negative z means they under-follow them.
+    This diagnostic directs a bounded gamma update but is not itself a new
+    biological pass threshold.
+    """
+
+    accepted_probability = np.asarray(accepted_probability, dtype=np.float64)
+    mass_quantiles, mass_info = _weighted_midrank_cdf(
+        region_probability,
+        region_mass,
+        accepted_probability,
+    )
+    probability_span = (
+        float(np.ptp(np.asarray(region_probability, dtype=np.float64)))
+        if np.asarray(region_probability).size
+        else 0.0
+    )
+    applicable = bool(
+        mass_quantiles.size >= 4
+        and probability_span > 1e-6
+        and int(mass_info["unique_values"]) >= 16
+        and float(mass_info["largest_tied_mass_fraction"] or 1.0) < 0.25
+    )
+    if not applicable:
+        return {
+            "applicable": False,
+            "mass_quantile_mean": None,
+            "bias": None,
+            "standard_error": None,
+            "z_score": None,
+            "z_threshold": float(z_threshold),
+            "direction": "not_applicable",
+            **mass_info,
+        }
+    bias = float(np.mean(mass_quantiles) - 0.5)
+    standard_error = float(np.sqrt(1.0 / (12.0 * mass_quantiles.size)))
+    z_score = float(bias / max(standard_error, 1e-12))
+    threshold = max(float(z_threshold), 0.0)
+    if z_score > threshold:
+        direction = "overconcentrated"
+    elif z_score < -threshold:
+        direction = "underfollow"
+    else:
+        direction = "aligned"
+    return {
+        "applicable": True,
+        "mass_quantile_mean": float(np.mean(mass_quantiles)),
+        "bias": bias,
+        "standard_error": standard_error,
+        "z_score": z_score,
+        "z_threshold": threshold,
+        "direction": direction,
+        **mass_info,
+    }
+
+
+def _distribution_tv(expected, observed):
+    keys = sorted(set(expected) | set(observed))
+    expected_total = float(sum(max(float(expected.get(key, 0.0)), 0.0) for key in keys))
+    observed_total = float(sum(max(float(observed.get(key, 0.0)), 0.0) for key in keys))
+    if expected_total <= 0 or observed_total <= 0:
+        return None
+    return 0.5 * float(
+        sum(
+            abs(
+                max(float(expected.get(key, 0.0)), 0.0) / expected_total
+                - max(float(observed.get(key, 0.0)), 0.0) / observed_total
+            )
+            for key in keys
+        )
+    )
+
+
+def probnet_sampling_alignment_audit(
+    *,
+    input_nuclei,
+    output_nuclei,
+    tissue,
+    generation_region,
+    placement_type_prob,
+    gamma,
+    generation_diagnostics,
+    evaluation_gamma=None,
+    concentration_z_threshold=DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+):
+    """Audit count, type, and spatial fidelity against this patch's ProbNet.
+
+    The audit contains no dataset, organ, or tissue-specific branch. A sharp
+    boundary prior is expected to produce boundary-aligned centers; a broad
+    prior is expected to cover the corresponding broad probability mass.
+    """
+
+    tissue = np.asarray(tissue)
+    generation_region = np.asarray(generation_region, dtype=bool)
+    mask_instance_records = _new_nucleus_centers(
+        input_nuclei,
+        output_nuclei,
+        generation_region,
+        tissue,
+    )
+    tissue_results = {}
+    weighted_scores = []
+    all_passed = True
+    failure_reasons = []
+    total_target = 0
+    audited_target = 0
+    fixed_evaluation_gamma = float(
+        gamma if evaluation_gamma is None else evaluation_gamma
+    )
+    for tissue_key, info in (generation_diagnostics.get("tissues") or {}).items():
+        tissue_id = int(tissue_key)
+        region = generation_region & (tissue == tissue_id)
+        target_count = int(info.get("target_count", 0))
+        total_target += target_count
+        mask_attributed_records = [
+            record
+            for record in mask_instance_records
+            if record["tissue_id"] == tissue_id
+        ]
+        accepted_center_field_present = "accepted_centers" in info
+        accepted_centers = []
+        for raw_record in info.get("accepted_centers") or []:
+            row = int(raw_record.get("row", -1))
+            col = int(raw_record.get("col", -1))
+            if (
+                row < 0
+                or row >= tissue.shape[0]
+                or col < 0
+                or col >= tissue.shape[1]
+                or not generation_region[row, col]
+                or int(tissue[row, col]) != tissue_id
+            ):
+                continue
+            accepted_centers.append(
+                {
+                    "row": row,
+                    "col": col,
+                    "nucleus_type": int(raw_record["nucleus_type"]),
+                    "tissue_id": tissue_id,
+                }
+            )
+        if (
+            accepted_center_field_present
+            and len(accepted_centers) == int(info.get("placed", 0))
+        ):
+            tissue_records = accepted_centers
+            center_record_policy = "accepted_placement_center_ledger"
+        else:
+            tissue_records = mask_attributed_records
+            center_record_policy = "output_component_centroid_fallback"
+        observed_count = len(tissue_records)
+        count_passed = observed_count == target_count
+        placed_by_type = {
+            int(key): int(value)
+            for key, value in (info.get("placed_by_type") or {}).items()
+        }
+        observed_by_type = {}
+        for record in tissue_records:
+            nuc_type = int(record["nucleus_type"])
+            observed_by_type[nuc_type] = observed_by_type.get(nuc_type, 0) + 1
+        expected_by_type = {
+            int(key): float(value)
+            for key, value in (info.get("posterior_expected_by_type") or {}).items()
+        }
+        type_tv = _distribution_tv(expected_by_type, observed_by_type)
+        type_threshold = max(
+            0.25,
+            1.0 / np.sqrt(max(target_count, 1)),
+        )
+        type_applicable = bool(target_count >= 4 and type_tv is not None)
+        type_passed = bool(not type_applicable or type_tv <= type_threshold)
+
+        spatial_applicable = bool(target_count >= 4 and observed_count >= 4 and np.any(region))
+        probability_bin_tv = None
+        probability_threshold = None
+        largest_tied_mass_fraction = None
+        probability_concentration = {
+            "applicable": False,
+            "direction": "not_applicable",
+        }
+        boundary_quantile_error = None
+        probability_mass_coverage_ratio = None
+        spatial_score = None
+        spatial_passed = True
+        if spatial_applicable:
+            supported_types = [
+                int(value)
+                for value in (
+                    (info.get("type_shape_support") or {}).get("supported_types")
+                    or NUCLEI_CLASSES
+                )
+            ]
+            joint_probability = supported_joint_nucleus_probability(
+                np.asarray(placement_type_prob, dtype=np.float32),
+                supported_types,
+            )
+            region_probability = joint_probability[region]
+            region_mass = probability_sampling_mass(
+                region_probability,
+                fixed_evaluation_gamma,
+            )
+            mass_total = float(np.sum(region_mass))
+            accepted_rows = np.asarray(
+                [record["row"] for record in tissue_records], dtype=np.int64
+            )
+            accepted_cols = np.asarray(
+                [record["col"] for record in tissue_records], dtype=np.int64
+            )
+            accepted_probability = joint_probability[
+                accepted_rows, accepted_cols
+            ]
+
+            accepted_mass_quantiles, mass_info = _weighted_midrank_cdf(
+                region_probability,
+                region_mass,
+                accepted_probability,
+            )
+            largest_tied_mass_fraction = mass_info[
+                "largest_tied_mass_fraction"
+            ]
+            probability_concentration = probability_concentration_diagnostics(
+                region_probability,
+                region_mass,
+                accepted_probability,
+                z_threshold=concentration_z_threshold,
+            )
+            if probability_concentration["applicable"]:
+                observed_bins, _ = np.histogram(
+                    accepted_mass_quantiles,
+                    bins=np.linspace(0.0, 1.0, 5),
+                )
+                observed_fraction = observed_bins / max(observed_bins.sum(), 1)
+                probability_bin_tv = 0.5 * float(
+                    np.sum(np.abs(observed_fraction - 0.25))
+                )
+
+            boundary_distance = ndimage.distance_transform_edt(
+                np.pad(region, 1, mode="constant", constant_values=False)
+            )[1:-1, 1:-1]
+            expected_boundary_quantiles = _weighted_quantiles(
+                boundary_distance[region],
+                region_mass,
+                (0.25, 0.50, 0.75),
+            )
+            accepted_boundary_quantiles = np.quantile(
+                boundary_distance[accepted_rows, accepted_cols],
+                (0.25, 0.50, 0.75),
+            )
+            spacing = np.sqrt(
+                float(np.count_nonzero(region)) / max(float(target_count), 1.0)
+            )
+            boundary_scale = max(
+                float(expected_boundary_quantiles[2] - expected_boundary_quantiles[0]),
+                0.5 * spacing,
+                1.0,
+            )
+            boundary_quantile_error = float(
+                np.mean(
+                    np.abs(
+                        accepted_boundary_quantiles
+                        - expected_boundary_quantiles
+                    )
+                )
+                / boundary_scale
+            )
+
+            center_mask = np.zeros(region.shape, dtype=bool)
+            center_mask[accepted_rows, accepted_cols] = True
+            nearest_center = ndimage.distance_transform_edt(~center_mask)
+            weighted_mean_distance = float(
+                np.sum(nearest_center[region] * region_mass)
+                / max(mass_total, 1e-12)
+            )
+            probability_mass_coverage_ratio = float(
+                weighted_mean_distance / max(spacing, 1.0)
+            )
+            score_terms = [
+                float(np.exp(-boundary_quantile_error)),
+                float(np.exp(-probability_mass_coverage_ratio)),
+            ]
+            if probability_bin_tv is not None:
+                score_terms.append(max(0.0, 1.0 - probability_bin_tv))
+            spatial_score = float(np.mean(score_terms))
+            probability_threshold = max(
+                0.40,
+                1.0 / np.sqrt(max(target_count, 1)),
+            )
+            spatial_passed = bool(
+                boundary_quantile_error <= 1.25
+                and probability_mass_coverage_ratio <= 1.10
+                and spatial_score >= 0.45
+            )
+
+        tissue_failure_reasons = []
+        if not count_passed:
+            tissue_failure_reasons.append("COUNT_QUOTA_SHORTFALL")
+        if not type_passed:
+            tissue_failure_reasons.append("TYPE_POSTERIOR_MISMATCH")
+        if not spatial_passed:
+            direction = probability_concentration.get("direction")
+            if direction == "overconcentrated":
+                tissue_failure_reasons.append("PROBNET_OVERCONCENTRATED")
+            elif direction == "underfollow":
+                tissue_failure_reasons.append("PROBNET_UNDERFOLLOW")
+            else:
+                tissue_failure_reasons.append("PROBNET_COVERAGE_GAP")
+            if (
+                boundary_quantile_error is not None
+                and boundary_quantile_error > 1.25
+            ):
+                tissue_failure_reasons.append("PROBNET_BOUNDARY_MISMATCH")
+        failure_reasons.extend(tissue_failure_reasons)
+
+        count_score = 1.0 if count_passed else max(
+            0.0,
+            1.0 - abs(observed_count - target_count) / max(target_count, 1),
+        )
+        type_score = 1.0 if type_tv is None else max(0.0, 1.0 - type_tv)
+        tissue_score_terms = [(0.25, count_score)]
+        if type_applicable:
+            tissue_score_terms.append((0.25, type_score))
+        if spatial_applicable and spatial_score is not None:
+            tissue_score_terms.append((0.50, spatial_score))
+        score_weight = sum(weight for weight, _ in tissue_score_terms)
+        tissue_score = sum(
+            weight * score for weight, score in tissue_score_terms
+        ) / max(score_weight, 1e-12)
+        tissue_passed = bool(count_passed and type_passed and spatial_passed)
+        all_passed &= tissue_passed
+        if spatial_applicable or type_applicable:
+            audited_target += target_count
+        weighted_scores.append((max(target_count, 1), tissue_score))
+        tissue_results[str(tissue_id)] = {
+            "target_count": target_count,
+            "observed_new_instance_count": observed_count,
+            "mask_component_attributed_count": len(mask_attributed_records),
+            "center_record_policy": center_record_policy,
+            "count_passed": count_passed,
+            "diagnostic_placed_by_type": {
+                str(key): int(value) for key, value in placed_by_type.items()
+            },
+            "observed_by_type": {
+                str(key): int(value) for key, value in observed_by_type.items()
+            },
+            "expected_by_type": {
+                str(key): float(value) for key, value in expected_by_type.items()
+            },
+            "type_tv": type_tv,
+            "type_threshold": float(type_threshold),
+            "type_applicable": type_applicable,
+            "type_passed": type_passed,
+            "spatial_applicable": spatial_applicable,
+            "probability_bin_tv": probability_bin_tv,
+            "probability_bin_tv_role": (
+                "diagnostic_score_term_not_hard_gate_under_constrained_"
+                "without_replacement_sampling"
+            ),
+            "probability_bin_tv_reference_threshold": probability_threshold,
+            "largest_tied_probability_mass_fraction": (
+                largest_tied_mass_fraction
+            ),
+            "probability_concentration": probability_concentration,
+            "boundary_quantile_error": boundary_quantile_error,
+            "probability_mass_coverage_ratio": probability_mass_coverage_ratio,
+            "spatial_score": spatial_score,
+            "spatial_passed": spatial_passed,
+            "score": tissue_score,
+            "passed": tissue_passed,
+            "failure_reasons": tissue_failure_reasons,
+        }
+
+    total_weight = float(sum(weight for weight, _ in weighted_scores))
+    score = (
+        float(sum(weight * value for weight, value in weighted_scores) / total_weight)
+        if total_weight > 0
+        else 1.0
+    )
+    global_instance_count_passed = len(mask_instance_records) == total_target
+    all_passed &= global_instance_count_passed
+    if not global_instance_count_passed:
+        failure_reasons.append("RASTER_INSTANCE_COUNT_MISMATCH")
+    failure_reasons = list(dict.fromkeys(failure_reasons))
+    return {
+        "policy": SAMPLING_AUDIT_POLICY_NAME,
+        "organ_specific_constraints": False,
+        "gamma": float(gamma),
+        "sampling_gamma": float(gamma),
+        "evaluation_gamma": fixed_evaluation_gamma,
+        "passed": bool(all_passed),
+        "score": score,
+        "evidence_coverage": float(audited_target / max(total_target, 1)),
+        "new_instance_count": len(mask_instance_records),
+        "accepted_center_count": int(
+            sum(
+                len(info.get("accepted_centers") or [])
+                for info in (generation_diagnostics.get("tissues") or {}).values()
+            )
+        ),
+        "global_instance_count_passed": bool(global_instance_count_passed),
+        "failure_reasons": failure_reasons,
+        "primary_failure_reason": failure_reasons[0] if failure_reasons else None,
+        "tissues": tissue_results,
+    }
+
+
+def next_sampling_feedback_parameters(
+    *,
+    initial_gamma,
+    current_gamma,
+    base_seed,
+    attempt_index,
+    previous_failure_reasons,
+    gamma_already_adjusted,
+    gamma_down_factor=DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR,
+    gamma_up_factor=DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR,
+    gamma_min=DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN,
+    gamma_max=DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX,
+):
+    """Return one bounded, reason-directed sampling update.
+
+    Count, tissue, deletion, shape-source and spacing contracts are immutable.
+    The controller changes gamma at most once; all other retries only change
+    the deterministic seed so the feedback loop remains interpretable.
+    """
+
+    reasons = tuple(str(value) for value in (previous_failure_reasons or ()))
+    selected_gamma = float(current_gamma)
+    action = "initial_sample" if int(attempt_index) == 0 else "resample_seed"
+    adjusted = bool(gamma_already_adjusted)
+    if int(attempt_index) > 0 and not adjusted:
+        overconcentrated = "PROBNET_OVERCONCENTRATED" in reasons
+        underfollowing = "PROBNET_UNDERFOLLOW" in reasons
+        if overconcentrated and not underfollowing:
+            selected_gamma = float(
+                np.clip(
+                    selected_gamma * float(gamma_down_factor),
+                    float(gamma_min),
+                    float(gamma_max),
+                )
+            )
+            action = "decrease_gamma"
+            adjusted = not np.isclose(selected_gamma, current_gamma)
+        elif underfollowing and not overconcentrated:
+            selected_gamma = float(
+                np.clip(
+                    selected_gamma * float(gamma_up_factor),
+                    float(gamma_min),
+                    float(gamma_max),
+                )
+            )
+            action = "increase_gamma"
+            adjusted = not np.isclose(selected_gamma, current_gamma)
+    return {
+        "attempt_index": int(attempt_index),
+        "seed": int(base_seed) + int(attempt_index),
+        "initial_gamma": float(initial_gamma),
+        "previous_gamma": float(current_gamma),
+        "sampling_gamma": selected_gamma,
+        "action": action,
+        "trigger_reasons": list(reasons),
+        "gamma_adjusted": adjusted,
+    }
+
+
+def predict_context_stabilized_spatial_probability(
+    model,
+    tissue,
+    input_nuclei,
+    edit_mask,
+    cancer_id,
+    device,
+    context_prob,
+    args,
+):
+    """Remove the artificial changed-region boundary from the placement prior.
+
+    ProbNet receives the edit mask as an input channel. Reusing the exact
+    changed-region mask can therefore turn that artificial contour into a
+    spatial cue. The production forward expands the prediction support by one
+    generic nucleus scale and clears nuclei throughout that support. Placement
+    remains restricted to the original changed region.
+    """
+
+    context_nuc_prob = np.asarray(1.0 - context_prob[0], dtype=np.float32)
+    weight = float(getattr(args, "spatial_context_halo_weight", 1.0))
+    radius = spatial_context_halo_radius(
+        getattr(args, "expected_nucleus_area", 80.0),
+        diameter_scale=float(
+            getattr(args, "spatial_context_halo_diameter_scale", 1.25)
+        ),
+        minimum=int(getattr(args, "spatial_context_halo_min_px", 4)),
+        maximum=int(getattr(args, "spatial_context_halo_max_px", 24)),
+    )
+    if weight <= 0.0:
+        return context_nuc_prob, np.asarray(context_prob[1:], dtype=np.float32), {
+            "policy": "raw_context_probnet_only",
+            "halo_weight": 0.0,
+            "halo_radius_px": radius,
+            "cleared_retained_nucleus_pixels": 0,
+        }
+
+    support_mask = ndimage.binary_dilation(
+        np.asarray(edit_mask, dtype=bool),
+        iterations=radius,
+    )
+    support_input = np.asarray(input_nuclei).copy()
+    cleared_pixels = int(
+        np.count_nonzero((support_input > 0) & support_mask)
+    )
+    support_input[support_mask] = 0
+
+    support_prob, _ = predict_fields(
+        model,
+        tissue,
+        support_input,
+        support_mask,
+        cancer_id,
+        device,
+    )
+    support_nuc_prob = np.asarray(1.0 - support_prob[0], dtype=np.float32)
+    placement_type_prob = np.stack(
+        [
+            blend_context_stabilized_probability(
+                context_prob[class_index],
+                support_prob[class_index],
+                halo_weight=weight,
+            )
+            for class_index in range(1, len(NUCLEI_CLASSES) + 1)
+        ],
+        axis=0,
+    )
+    placement_nuc_prob = np.clip(
+        np.sum(placement_type_prob, axis=0),
+        1e-6,
+        1.0,
+    ).astype(np.float32)
+    support = np.asarray(edit_mask, dtype=bool)
+
+    def _quantiles(values):
+        if not np.any(support):
+            return {}
+        return {
+            f"q{int(quantile * 100):02d}": float(
+                np.quantile(values[support], quantile)
+            )
+            for quantile in (0.10, 0.50, 0.90, 0.99)
+        }
+
+    return placement_nuc_prob, placement_type_prob, {
+        "policy": SPATIAL_PRIOR_POLICY_NAME,
+        "halo_weight": weight,
+        "halo_radius_px": radius,
+        "cleared_retained_nucleus_pixels": cleared_pixels,
+        "second_forward_skipped": False,
+        "edit_mask_area": int(np.count_nonzero(edit_mask)),
+        "prediction_support_area": int(np.count_nonzero(support_mask)),
+        "prediction_support_policy": (
+            "binary_dilation_one_nucleus_scale_placement_cropped_to_edit"
+        ),
+        "raw_probability_quantiles": _quantiles(context_nuc_prob),
+        "support_cleared_probability_quantiles": _quantiles(
+            support_nuc_prob
+        ),
+        "placement_probability_quantiles": _quantiles(
+            placement_nuc_prob
+        ),
+    }
 
 
 def run_single(args, model, library, config, density_scales, device):
@@ -1857,6 +3787,10 @@ def run_single(args, model, library, config, density_scales, device):
         local_density_direct_min_count=args.local_density_direct_min_count,
         dataset_name=args.dataset,
     )
+    type_prior_weights = confidence_adaptive_type_prior_weights(
+        prior_audit,
+        maximum_weight=float(args.local_type_prior_weight),
+    )
     prior_audit["generation_support"] = {
         "semantic_pixels": semantic_edit_pixels,
         "generation_pixels": int(np.count_nonzero(edit_mask)),
@@ -1885,6 +3819,18 @@ def run_single(args, model, library, config, density_scales, device):
     prob, type_density = predict_fields(
         model, tissue, input_nuclei, edit_mask, config.cancer_type_index, device
     )
+    placement_nuc_prob, placement_type_prob, spatial_prior_audit = (
+        predict_context_stabilized_spatial_probability(
+            model,
+            tissue,
+            input_nuclei,
+            edit_mask,
+            config.cancer_type_index,
+            device,
+            prob,
+            args,
+        )
+    )
     outputs = []
     diagnostics = []
 
@@ -1892,23 +3838,186 @@ def run_single(args, model, library, config, density_scales, device):
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     gamma_values = parse_float_list(args.gamma_values)
+    if not gamma_values or any(value <= 0 for value in gamma_values):
+        raise ValueError("gamma-values must contain positive values")
+    if int(args.sampling_audit_attempts) < 1:
+        raise ValueError("sampling-audit-attempts must be at least one")
+    if float(args.sampling_feedback_gamma_min) <= 0:
+        raise ValueError("sampling-feedback-gamma-min must be positive")
+    if float(args.sampling_feedback_gamma_max) < float(
+        args.sampling_feedback_gamma_min
+    ):
+        raise ValueError("sampling feedback gamma max must be >= gamma min")
+    if float(args.sampling_feedback_gamma_down_factor) <= 0 or float(
+        args.sampling_feedback_gamma_up_factor
+    ) <= 0:
+        raise ValueError("sampling feedback gamma factors must be positive")
+    if float(args.sampling_feedback_concentration_z_threshold) <= 0:
+        raise ValueError("sampling feedback concentration z threshold must be positive")
     for idx, gamma in enumerate(gamma_values):
-        nuclei, diag = generate_two_stage_for_gamma(
-            prob,
-            tissue,
-            input_nuclei,
-            deletion_mask,
-            edit_mask,
-            library,
-            reference_pool,
-            gamma,
-            args,
-            calibrated_scales,
-            type_density=type_density,
-            library_only_tissue_ids=library_only_tissue_ids,
-            type_proportions_by_tissue=type_proportions,
+        initial_gamma = float(gamma)
+        attempts = []
+        attempt_records = []
+        maximum_attempts = max(1, int(args.sampling_audit_attempts))
+        current_gamma = initial_gamma
+        gamma_already_adjusted = False
+        previous_failure_reasons = []
+        for attempt_index in range(maximum_attempts):
+            feedback_parameters = next_sampling_feedback_parameters(
+                initial_gamma=initial_gamma,
+                current_gamma=current_gamma,
+                base_seed=int(args.seed),
+                attempt_index=attempt_index,
+                previous_failure_reasons=previous_failure_reasons,
+                gamma_already_adjusted=gamma_already_adjusted,
+                gamma_down_factor=float(args.sampling_feedback_gamma_down_factor),
+                gamma_up_factor=float(args.sampling_feedback_gamma_up_factor),
+                gamma_min=float(args.sampling_feedback_gamma_min),
+                gamma_max=float(args.sampling_feedback_gamma_max),
+            )
+            attempt_seed = int(feedback_parameters["seed"])
+            attempt_gamma = float(feedback_parameters["sampling_gamma"])
+            current_gamma = attempt_gamma
+            gamma_already_adjusted = bool(
+                feedback_parameters["gamma_adjusted"]
+            )
+            random.seed(attempt_seed)
+            np.random.seed(attempt_seed)
+            torch.manual_seed(attempt_seed)
+            try:
+                nuclei, diag = generate_two_stage_for_gamma(
+                    prob,
+                    tissue,
+                    input_nuclei,
+                    deletion_mask,
+                    edit_mask,
+                    library,
+                    reference_pool,
+                    attempt_gamma,
+                    args,
+                    calibrated_scales,
+                    type_density=type_density,
+                    library_only_tissue_ids=library_only_tissue_ids,
+                    type_proportions_by_tissue=type_proportions,
+                    type_prior_weights_by_tissue=type_prior_weights,
+                    placement_nuc_prob=placement_nuc_prob,
+                    placement_type_prob=placement_type_prob,
+                )
+            except PlacementQuotaError as exc:
+                attempt_records.append(
+                    {
+                        **feedback_parameters,
+                        "attempt_index": int(attempt_index),
+                        "seed": int(attempt_seed),
+                        "stage": "exact_count_placement",
+                        "passed": False,
+                        "score": 0.0,
+                        "evidence_coverage": 0.0,
+                        "failure_reasons": ["COUNT_QUOTA_SHORTFALL"],
+                        "error": str(exc),
+                    }
+                )
+                previous_failure_reasons = ["COUNT_QUOTA_SHORTFALL"]
+                continue
+            diag["patch_adaptive_priors"] = prior_audit
+            diag["spatial_prior"] = spatial_prior_audit
+            audit = probnet_sampling_alignment_audit(
+                input_nuclei=input_nuclei,
+                output_nuclei=nuclei,
+                tissue=tissue,
+                generation_region=edit_mask,
+                placement_type_prob=placement_type_prob,
+                gamma=attempt_gamma,
+                generation_diagnostics=diag,
+                evaluation_gamma=initial_gamma,
+                concentration_z_threshold=float(
+                    args.sampling_feedback_concentration_z_threshold
+                ),
+            )
+            audit["attempt_index"] = attempt_index
+            audit["seed"] = attempt_seed
+            diag["sampling_audit"] = audit
+            attempts.append((attempt_index, nuclei, diag))
+            attempt_records.append(
+                {
+                    **feedback_parameters,
+                    "attempt_index": int(attempt_index),
+                    "seed": int(attempt_seed),
+                    "stage": "sampling_audit",
+                    "passed": bool(audit["passed"]),
+                    "score": float(audit["score"]),
+                    "evidence_coverage": float(audit["evidence_coverage"]),
+                    "failure_reasons": list(audit["failure_reasons"]),
+                    "primary_failure_reason": audit[
+                        "primary_failure_reason"
+                    ],
+                    "error": None,
+                }
+            )
+            if audit["passed"]:
+                break
+            previous_failure_reasons = list(audit["failure_reasons"])
+
+        if not attempts:
+            placement_errors = "; ".join(
+                str(record["error"])
+                for record in attempt_records
+                if record["stage"] == "exact_count_placement"
+            )
+            raise RuntimeError(
+                "ProbNet exact-count placement failed for every deterministic "
+                f"attempt ({maximum_attempts}): {placement_errors}"
+            )
+
+        selected_attempt_position = max(
+            range(len(attempts)),
+            key=lambda position: (
+                bool(attempts[position][2]["sampling_audit"]["passed"]),
+                float(attempts[position][2]["sampling_audit"]["score"]),
+                -attempts[position][0],
+            ),
         )
-        diag["patch_adaptive_priors"] = prior_audit
+        selected_attempt, nuclei, diag = attempts[selected_attempt_position]
+        selected_record = next(
+            record
+            for record in attempt_records
+            if record["stage"] == "sampling_audit"
+            and int(record["attempt_index"]) == int(selected_attempt)
+        )
+        diag["sampling_audit_attempts"] = attempt_records
+        diag["sampling_audit_max_attempts"] = maximum_attempts
+        diag["sampling_audit_selected_attempt"] = int(selected_attempt)
+        diag["sampling_audit_resampled"] = bool(selected_attempt > 0)
+        diag["sampling_feedback"] = {
+            "policy": SAMPLING_FEEDBACK_POLICY_NAME,
+            "initial_gamma": initial_gamma,
+            "selected_gamma": float(selected_record["sampling_gamma"]),
+            "selected_seed": int(selected_record["seed"]),
+            "max_attempts": maximum_attempts,
+            "gamma_down_factor": float(
+                args.sampling_feedback_gamma_down_factor
+            ),
+            "gamma_up_factor": float(args.sampling_feedback_gamma_up_factor),
+            "gamma_min": float(args.sampling_feedback_gamma_min),
+            "gamma_max": float(args.sampling_feedback_gamma_max),
+            "concentration_z_threshold": float(
+                args.sampling_feedback_concentration_z_threshold
+            ),
+            "immutable_parameters": [
+                "target_count",
+                "tissue_and_component_allocation",
+                "deletion_and_generation_regions",
+                "shape_source_policy",
+                "nucleus_spacing_margin_px",
+            ],
+            "attempts": attempt_records,
+            "selected_attempt": int(selected_attempt),
+            "resampled": bool(selected_attempt > 0),
+            "parameter_adjusted": any(
+                record.get("action") in {"decrease_gamma", "increase_gamma"}
+                for record in attempt_records
+            ),
+        }
         diagnostics.append(diag)
 
         if idx == 0:
@@ -1916,10 +4025,12 @@ def run_single(args, model, library, config, density_scales, device):
         else:
             save_path = output_path.with_name(f"{output_path.stem}_gamma_{safe_name_float(gamma)}{output_path.suffix}")
         save_nuclei_mask(nuclei, str(save_path))
-        outputs.append((gamma, nuclei))
+        selected_gamma = float(diag["sampling_feedback"]["selected_gamma"])
+        outputs.append((selected_gamma, nuclei))
         source_counts = diag["placed_by_shape_source"]
         print(
-            f"gamma={gamma:g}: placed {diag['placed']} nuclei "
+            f"gamma={initial_gamma:g}->{selected_gamma:g}: "
+            f"placed {diag['placed']} nuclei "
             f"(reference={source_counts['reference']}, library={source_counts['library']}) "
             f"-> {save_path}"
         )
@@ -1932,10 +4043,55 @@ def run_single(args, model, library, config, density_scales, device):
     if args.vis_dir:
         vis_dir = Path(args.vis_dir)
         vis_dir.mkdir(parents=True, exist_ok=True)
-        comparison = make_comparison(tissue, input_nuclei, outputs, 1.0 - prob[0], edit_mask)
+        comparison = make_comparison(
+            tissue,
+            input_nuclei,
+            outputs,
+            placement_nuc_prob,
+            edit_mask,
+        )
         cv2.imwrite(str(vis_dir / "gamma_comparison.png"), cv2.cvtColor(comparison, cv2.COLOR_RGB2BGR))
+        raw_heatmap = draw_edit_contour(
+            heatmap_rgb(1.0 - prob[0], edit_mask),
+            edit_mask,
+        )
+        cv2.imwrite(
+            str(vis_dir / "probnet_heatmap.png"),
+            cv2.cvtColor(raw_heatmap, cv2.COLOR_RGB2BGR),
+        )
+        stabilized_heatmap = draw_edit_contour(
+            heatmap_rgb(placement_nuc_prob, edit_mask),
+            edit_mask,
+        )
+        cv2.imwrite(
+            str(vis_dir / "stabilized_probnet_heatmap.png"),
+            cv2.cvtColor(stabilized_heatmap, cv2.COLOR_RGB2BGR),
+        )
+        accepted_overlay = make_accepted_centers_overlay(
+            placement_nuc_prob,
+            input_nuclei,
+            outputs[0][1],
+            edit_mask,
+        )
+        cv2.imwrite(
+            str(vis_dir / "accepted_centers_overlay.png"),
+            cv2.cvtColor(accepted_overlay, cv2.COLOR_RGB2BGR),
+        )
         with open(vis_dir / "diagnostics.json", "w") as f:
             json.dump(diagnostics, f, indent=2)
+
+    failed_audits = [
+        diag["sampling_audit"]
+        for diag in diagnostics
+        if not bool((diag.get("sampling_audit") or {}).get("passed"))
+    ]
+    if bool(args.require_sampling_audit) and failed_audits:
+        raise RuntimeError(
+            "ProbNet count/type/spatial sampling audit failed after "
+            f"{int(args.sampling_audit_attempts)} deterministic attempts; "
+            f"best_score={max(float(item['score']) for item in failed_audits):.4f}. "
+            f"Diagnostics: {diagnostics_path}"
+        )
 
 
 def discover_batch_samples(data_dir):
@@ -2014,6 +4170,10 @@ def run_batch(args, model, library, config, density_scales, device):
             local_density_direct_min_count=args.local_density_direct_min_count,
             dataset_name=args.dataset,
         )
+        type_prior_weights = confidence_adaptive_type_prior_weights(
+            prior_audit,
+            maximum_weight=float(args.local_type_prior_weight),
+        )
         prior_audit["generation_support"] = {
             "semantic_pixels": semantic_edit_pixels,
             "generation_pixels": int(np.count_nonzero(edit_mask)),
@@ -2032,6 +4192,18 @@ def run_batch(args, model, library, config, density_scales, device):
         prob, type_density = predict_fields(
             model, tissue, input_nuclei, edit_mask, config.cancer_type_index, device
         )
+        placement_nuc_prob, placement_type_prob, spatial_prior_audit = (
+            predict_context_stabilized_spatial_probability(
+                model,
+                tissue,
+                input_nuclei,
+                edit_mask,
+                config.cancer_type_index,
+                device,
+                prob,
+                args,
+            )
+        )
         outputs = []
         sample_diag = []
         for gamma in gamma_values:
@@ -2049,8 +4221,12 @@ def run_batch(args, model, library, config, density_scales, device):
                 type_density=type_density,
                 library_only_tissue_ids=(),
                 type_proportions_by_tissue=type_proportions,
+                type_prior_weights_by_tissue=type_prior_weights,
+                placement_nuc_prob=placement_nuc_prob,
+                placement_type_prob=placement_type_prob,
             )
             diag["patch_adaptive_priors"] = prior_audit
+            diag["spatial_prior"] = spatial_prior_audit
             suffix = "" if len(gamma_values) == 1 else f"_gamma_{safe_name_float(gamma)}"
             out_path = nuclei_dir / f"{name}{suffix}_nuclei.png"
             save_nuclei_mask(nuclei, str(out_path))
@@ -2058,7 +4234,13 @@ def run_batch(args, model, library, config, density_scales, device):
             sample_diag.append(diag)
 
         if args.vis_dir:
-            comparison = make_comparison(tissue, input_nuclei, outputs, 1.0 - prob[0], edit_mask)
+            comparison = make_comparison(
+                tissue,
+                input_nuclei,
+                outputs,
+                placement_nuc_prob,
+                edit_mask,
+            )
             cv2.imwrite(str(vis_dir / f"{idx:03d}_{name}.png"), cv2.cvtColor(comparison, cv2.COLOR_RGB2BGR))
 
         all_diag[name] = sample_diag
@@ -2112,8 +4294,61 @@ def build_parser():
     parser.add_argument("--n", type=int, default=10, help="Batch sample limit; <=0 means all")
     parser.add_argument("--vis-dir", default=None, help="Write gamma comparison PNGs and diagnostics")
 
-    parser.add_argument("--gamma-values", default="1.5",
-                        help="Comma-separated gamma values for weighted center sampling")
+    parser.add_argument(
+        "--gamma-values",
+        default=str(DEFAULT_PROBNET_ODDS_GAMMA),
+        help=(
+            "Comma-separated exponents for odds-calibrated ProbNet center "
+            "sampling"
+        ),
+    )
+    parser.add_argument(
+        "--sampling-audit-attempts",
+        type=int,
+        default=DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS,
+        help=(
+            "Maximum reason-directed gamma/seed attempts evaluated by the "
+            "generic ProbNet count/type/spatial audit."
+        ),
+    )
+    parser.add_argument(
+        "--sampling-feedback-gamma-down-factor",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_DOWN_FACTOR,
+    )
+    parser.add_argument(
+        "--sampling-feedback-gamma-up-factor",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR,
+    )
+    parser.add_argument(
+        "--sampling-feedback-gamma-min",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_MIN,
+    )
+    parser.add_argument(
+        "--sampling-feedback-gamma-max",
+        type=float,
+        default=DEFAULT_SAMPLING_FEEDBACK_GAMMA_MAX,
+    )
+    parser.add_argument(
+        "--sampling-feedback-concentration-z-threshold",
+        type=float,
+        default=DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+        help=(
+            "Two-sided standard-normal threshold used only to direct a "
+            "bounded gamma update after the frozen spatial audit fails."
+        ),
+    )
+    parser.add_argument(
+        "--require-sampling-audit",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Fail before image generation when no deterministic sampling "
+            "attempt passes the patch-relative count/type/spatial audit."
+        ),
+    )
     parser.add_argument("--prob-count-weight", type=float, default=0.0,
                         help="Frozen default is zero: checkpoint never determines count")
     parser.add_argument("--density-scale", type=float, default=1.0,
@@ -2130,14 +4365,57 @@ def build_parser():
     parser.add_argument("--min-region-area", type=int, default=50)
     parser.add_argument("--type-prob-floor", type=float, default=0.03)
     parser.add_argument(
+        "--local-type-prior-weight",
+        type=float,
+        default=DEFAULT_LOCAL_TYPE_PRIOR_WEIGHT,
+        help=(
+            "Log-pooling weight for the target-tissue empirical type prior; "
+            "the complementary weight retains local ProbNet evidence."
+        ),
+    )
+    parser.add_argument(
+        "--local-type-prior-floor",
+        type=float,
+        default=1e-4,
+        help=(
+            "Generic smoothing floor applied to supported empirical type "
+            "prior entries before log pooling."
+        ),
+    )
+    parser.add_argument(
         "--type-density-head-weight",
         type=float,
         default=1.0,
         help=(
-            "Weight of normalized ProbNet density-head type evidence in the "
-            "type quota; the remaining weight uses the dataset+tissue prior."
+            "Maximum weight of normalized ProbNet density-head type evidence "
+            "in the type quota; the remainder uses the target-tissue prior."
         ),
     )
+    parser.add_argument(
+        "--adaptive-type-density-weight",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Reduce density-head type weight using head certainty and "
+            "agreement with the target-tissue prior."
+        ),
+    )
+    parser.add_argument(
+        "--spatial-context-halo-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "Weight for a ProbNet pass with retained nuclei cleared within "
+            "one nucleus diameter of the edit; 1.0 is the production default."
+        ),
+    )
+    parser.add_argument(
+        "--spatial-context-halo-diameter-scale",
+        type=float,
+        default=1.25,
+    )
+    parser.add_argument("--spatial-context-halo-min-px", type=int, default=4)
+    parser.add_argument("--spatial-context-halo-max-px", type=int, default=24)
     parser.add_argument("--local-density-direct-min-area", type=int, default=20000)
     parser.add_argument("--local-density-direct-min-count", type=int, default=10)
     parser.add_argument("--minimum-mask-width", type=int, default=33)
@@ -2177,6 +4455,25 @@ def build_parser():
         default=24.0,
     )
     parser.add_argument("--dense-retry-candidate-floor", type=int, default=128)
+    parser.add_argument(
+        "--exact-backfill-candidates-per-missing",
+        type=int,
+        default=128,
+        help=(
+            "Candidate-center budget multiplier for one exact-count attempt; "
+            "the next deterministic seed is used when this budget is exhausted."
+        ),
+    )
+    parser.add_argument(
+        "--exact-backfill-candidate-floor",
+        type=int,
+        default=512,
+    )
+    parser.add_argument(
+        "--exact-backfill-candidate-ceiling",
+        type=int,
+        default=4096,
+    )
     parser.add_argument("--placement-shape-trials", type=int, default=4)
     parser.add_argument("--placement-transform-trials", type=int, default=12)
     parser.add_argument("--dense-placement-shape-trials", type=int, default=6)
@@ -2276,6 +4573,24 @@ def build_parser():
         type=float,
         default=48.0,
         help="Maximum generic spacing radius for the primary quota prefix.",
+    )
+    parser.add_argument(
+        "--adaptive-quota-coverage",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use component-local ProbNet tail sharpness to choose how much "
+            "of the exact quota receives quality-diversity coverage."
+        ),
+    )
+    parser.add_argument(
+        "--quota-coverage-min-fraction",
+        type=float,
+        default=0.2,
+        help=(
+            "Minimum quota fraction assigned to the coverage prefix when the "
+            "ProbNet high-score tail is maximally sharp."
+        ),
     )
     parser.add_argument("--skip-tissue-ids", type=int, nargs="*", default=[],
                         help="Additional tissue IDs to skip")
