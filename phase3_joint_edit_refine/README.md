@@ -11,12 +11,15 @@ candidates, runs inherited tissue gates and new joint gates, and returns
 `review_required` after deterministic ranking. Production mode rejects every
 draft or unreviewed skill.
 
-The tissue budget is compiled provisionally and may be re-brokered once when
-complete-instance removal necessarily adds cell-only pixels outside `T`. This
-keeps the final union `J` close to the immutable target without partially
-cutting a nucleus. Auxiliary gland/lumen, alveolar, epidermal or pattern maps
-are accepted only as aligned files with SHA-256 provenance; a metadata string
-alone never activates a protection rule.
+The tissue budget is solved as a bounded fixed point. A provisional candidate
+first reserves complete-instance erasure `E` outside `T`. If fully executed
+cell candidates still all miss the desired `J` interval, the workflow records
+the exact removed-instance spill and newly placed footprint spill separately,
+re-brokers `T`, and re-runs both the tissue tool and mature cell pipeline. It
+never crops a nucleus or relaxes the joint-area gate after generation.
+Auxiliary gland/lumen, alveolar, epidermal or pattern maps are accepted only as
+aligned files with SHA-256 provenance; a metadata string alone never activates
+a protection rule.
 
 G2 research manifests use `capacity_floor_policy=lower_to_proven_max_safe`:
 19% remains the desired target and 14% the standard tissue floor, but a case
@@ -58,11 +61,14 @@ The adapter preserves patch-adaptive density/type priors, context-stabilized
 ProbNet sampling, source-first complete shapes, exact quotas and its sampling
 audit. Production refuses the research substitute.
 
-Every cell plan is compiled into four non-interchangeable regions: `E` removes
+Every cell plan is compiled into five non-interchangeable regions: `T_pop` is
+the target-tissue population area used for abundance and density, `E` removes
 complete source instances, `P` admits centers, `V` contains complete new
-footprints, and `S` supplies cleared model/render context. A footprint may cross
-the edge of `P` while remaining inside `V`; this prevents the artificial
-nucleus-free seam caused by treating the center region as a footprint region.
+footprints, and `S` supplies cleared model/render context. `T_pop` is never
+replaced by the smaller legal-center domain `P`. A footprint may cross the edge
+of `P` while remaining inside `V`; this prevents both under-counting and the
+artificial nucleus-free seam caused by treating the center region as a
+footprint region.
 
 Cell-only primitives use a separate count/extent budget and a preserve-tissue
 tool. Tumor budding, discohesive breast invasion, junctional melanoma spread

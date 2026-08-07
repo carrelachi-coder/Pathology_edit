@@ -44,6 +44,19 @@ JOINT_TISSUE_DECISION_SCHEMA = {
 }
 
 
+def _normalize_integer_allocations(
+    allocations: Sequence[int],
+) -> tuple[float, ...]:
+    """Convert realized integer pixel allocations into unit-sum weights."""
+
+    total = sum(int(item) for item in allocations)
+    if total <= 0:
+        raise RefineContractError(
+            "interface allocation produced no executable tissue pixels"
+        )
+    return tuple(int(item) / total for item in allocations)
+
+
 @dataclass(frozen=True)
 class OpenAIJointAwareTissuePlanner:
     """Multimodal tissue Planner that sees the mechanism and cell capacity."""
@@ -230,6 +243,10 @@ class MultiInterfaceResearchTissuePlanner:
         feedback = dict(execution_feedback or {})
         retry_index = max(0, int(feedback.get("retry_index", 0)))
         failed_interface_ids = set(feedback.get("failed_interface_ids", ()))
+        component_turnover = (
+            joint_bundle.primitive.tissue_geometry_mode
+            == "component_boundary_turnover"
+        )
 
         # One connected source component can border several independent target
         # components.  Collapsing those contacts to its single longest edge was
@@ -249,6 +266,29 @@ class MultiInterfaceResearchTissuePlanner:
                 if preflight_item is not None
                 else 0
             )
+        if component_turnover:
+            # Rasterization can split one biological component boundary into
+            # several directed segments. Independent quotas on those segments
+            # create wedge seams and concentric cut lines, so retain one
+            # representative per source/target component pair. A retry can
+            # choose an alternative segment when the prior one failed.
+            by_component_pair = {}
+            for item in legal:
+                by_component_pair.setdefault(
+                    (item.source_component_id, item.target_component_id), []
+                ).append(item)
+            legal = [
+                min(
+                    items,
+                    key=lambda item: (
+                        item.interface_id in failed_interface_ids,
+                        -item.contact_pixels,
+                        -capacity_by_id[item.interface_id],
+                        item.interface_id,
+                    ),
+                )
+                for _, items in sorted(by_component_pair.items())
+            ]
         labels = sorted({item.source_label for item in legal})
         source_label = max(
             labels,
@@ -292,8 +332,11 @@ class MultiInterfaceResearchTissuePlanner:
         # cell-feasibility retries retain the gradual diversification policy.
         extra_after_capacity = (
             len(ranked)
-            if retry_index > 0
-            and feedback.get("stage") == "planning_or_compilation"
+            if component_turnover
+            or (
+                retry_index > 0
+                and feedback.get("stage") == "planning_or_compilation"
+            )
             else retry_index * 2
         )
         capacity_reached_at: int | None = None
@@ -331,15 +374,56 @@ class MultiInterfaceResearchTissuePlanner:
         if not selected:
             raise RefineContractError("preflight left no executable tissue capacity")
         total_capacity = max(1, sum(capacities))
+        if joint_bundle.primitive.allow_source_component_resolution:
+            # Prefer completing whole biological compartments instead of
+            # shaving the same proportion from every component. Proportional
+            # erosion leaves multiple equal-depth residual ribbons; greedy
+            # completion leaves at most one partially resolved compartment.
+            remaining = target_pixels
+            component_allocations = []
+            retained_selected = []
+            retained_capacities = []
+            for item, capacity in zip(selected, capacities):
+                requested = min(capacity, max(0, remaining))
+                if requested <= 0:
+                    continue
+                retained_selected.append(item)
+                retained_capacities.append(capacity)
+                component_allocations.append(requested)
+                remaining -= requested
+            if remaining > 0:
+                raise RefineContractError(
+                    "component resolution capacity cannot realize the tissue target"
+                )
+            selected = retained_selected
+            capacities = retained_capacities
+        else:
+            component_allocations = [
+                min(
+                    capacity,
+                    max(1, round(target_pixels * capacity / total_capacity)),
+                )
+                for capacity in capacities
+            ]
+        # ``component_allocations`` are integer pixel requests.  In the
+        # proportional branch, independent rounding can make their sum differ
+        # from ``target_pixels`` by one or more pixels.  The execution contract
+        # stores relative weights, so normalize by the realized integer sum
+        # instead of the nominal target.  Otherwise a valid multi-interface
+        # plan can fail closed only because its weights add up to e.g.
+        # 1.00002008.
+        allocation_fractions = _normalize_integer_allocations(
+            component_allocations
+        )
         rule_ids = tuple(rule.rule_id for rule in bundle.active_rules) + tuple(item.constraint_id for item in bundle.active_mask_constraints)
         front_contract = joint_bundle.mechanism.tissue_program.front
         planned = []
-        for interface, capacity in zip(selected, capacities):
-            fraction = capacity / total_capacity
-            requested_allocation = min(
-                capacity,
-                max(1, round(target_pixels * fraction)),
-            )
+        for interface, capacity, requested_allocation, fraction in zip(
+            selected,
+            capacities,
+            component_allocations,
+            allocation_fractions,
+        ):
             preflight_item = (
                 nuclei_preflight.interface(interface.interface_id)
                 if nuclei_preflight is not None
@@ -350,7 +434,13 @@ class MultiInterfaceResearchTissuePlanner:
                 if preflight_item is not None
                 else max(1, min(128, int(interface.contact_pixels)))
             )
-            if (
+            if component_turnover:
+                # A closed compartment is one biological object even when the
+                # raster graph splits its boundary into several directed
+                # segments. Use the complete selected boundary; candidate-local
+                # cell feasibility remains authoritative.
+                anchor_ids = tuple(interface.anchor_segment_ids)
+            elif (
                 retry_index > 0
                 and feedback.get("stage") == "planning_or_compilation"
             ):
@@ -392,7 +482,9 @@ class MultiInterfaceResearchTissuePlanner:
             # obsolete preflight heuristic and made valid multi-interface
             # capacity disappear between planning and compilation.
             depth_cap = float(
-                min(
+                initial_depth_cap
+                if component_turnover
+                else min(
                     initial_depth_cap,
                     max(
                         2,
@@ -410,7 +502,11 @@ class MultiInterfaceResearchTissuePlanner:
             # simple area/contact average.  It is nevertheless clamped by the
             # same preflight depth cap that the downstream gate audits.
             peak = float(np.clip(np.ceil(estimated_depth * 2.0), 2, depth_cap))
-            requested_mode = front_contract.profile_mode
+            requested_mode = (
+                "uniform_front"
+                if joint_bundle.primitive.allow_source_component_resolution
+                else front_contract.profile_mode
+            )
             if peak < 5 and requested_mode == "multi_lobe":
                 requested_mode = "tapered_lobe"
             lobe_count = (
@@ -441,13 +537,17 @@ class MultiInterfaceResearchTissuePlanner:
                                 np.clip(interface.contact_pixels / 6.0, 6.0, 20.0)
                             ),
                         ),
-                        min_anchor_coverage_fraction=0.35,
+                        min_anchor_coverage_fraction=0.50,
                         max_off_anchor_contact_fraction=0.02,
                         allocation_tolerance_fraction=0.02,
                     ),
                     prohibited_region_ids=(),
                     supporting_rule_ids=rule_ids,
-                    expected_morphology="distributed shallow-to-moderate lobes over independent legal source components",
+                    expected_morphology=(
+                        "continuous component-boundary turnover without remote islands"
+                        if component_turnover
+                        else "distributed shallow-to-moderate lobes over independent legal source components"
+                    ),
                     confidence=0.45,
                 )
             )
@@ -480,9 +580,24 @@ class MultiInterfaceResearchTissuePlanner:
                     ),
                     "max_bbox_fill_fraction": 0.985,
                     "max_boundary_compactness": 40.0,
-                    "max_source_component_changed_fraction": 0.55,
-                    "min_source_component_remaining_px": 64,
-                    "min_parallel_front_depth_cv": 0.25,
+                    "max_source_component_changed_fraction": (
+                        joint_bundle.primitive.maximum_source_component_changed_fraction
+                    ),
+                    "min_source_component_remaining_px": (
+                        joint_bundle.primitive.minimum_source_component_remaining_px
+                    ),
+                    "allow_source_component_resolution": (
+                        joint_bundle.primitive.allow_source_component_resolution
+                    ),
+                    "allow_target_hole_resolution": (
+                        joint_bundle.primitive.allow_target_hole_resolution
+                    ),
+                    "tissue_geometry_mode": (
+                        joint_bundle.primitive.tissue_geometry_mode
+                    ),
+                    "min_parallel_front_depth_cv": (
+                        0.10 if component_turnover else 0.25
+                    ),
                     "parallel_front_linearity_ratio": 20.0,
                     "parallel_front_min_depth_px": 5.0,
                     "parallel_front_min_pixels": 64,

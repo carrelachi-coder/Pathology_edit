@@ -35,7 +35,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v2"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v3"
 
 
 @dataclass(frozen=True)
@@ -196,7 +196,19 @@ def build_joint_nuclei_preflight(
         scene,
         class_id=target_class,
     )
+    required_clearance_classes = set(
+        joint_bundle.primitive.required_source_clearance_classes
+    )
+    target_compatible_classes = set(
+        joint_bundle.cell_observation_profile.tissue_compatible_classes.get(
+            target_label, ()
+        )
+    )
     maximum_halo = int(joint_bundle.mechanism.cell_program.halo_distance_px[1])
+    source_generation_prohibited = np.isin(
+        source_tissue,
+        joint_bundle.annotation_profile.prohibit_generation_support_fine_ids,
+    )
     removable: list[str] = []
     protected: list[str] = []
     tissue_exclusions: list[str] = []
@@ -215,16 +227,38 @@ def build_joint_nuclei_preflight(
             reason = "merged_suspect_instance"
         elif "irregular_or_fragmented_shape" in item.quality_flags:
             reason = "irregular_or_fragmented_instance"
+        elif np.any(component & source_generation_prohibited):
+            reason = "instance_spans_prohibited_generation_region"
         if reason is None:
             removable.append(item.instance_id)
         else:
             protected.append(item.instance_id)
             protected_reasons[item.instance_id] = reason
-            # The downstream executable contract rejects any intersection
-            # between E/T and a protected source instance.  Preflight must use
-            # the same rule so tissue capacity is not overstated.
-            tissue_exclusions.append(item.instance_id)
-            protected_mask |= component
+            # A censored/irregular source shape is never eligible for shape
+            # migration and remains pixel-frozen. It need not, however, veto a
+            # tissue transition when its observed class is already compatible
+            # with the target tissue and the primitive does not require that
+            # class to be cleared. This distinction prevents border-shape
+            # filtering from deleting a large, otherwise executable T region.
+            if (
+                item.class_id in required_clearance_classes
+                or item.class_id not in target_compatible_classes
+            ):
+                tissue_exclusions.append(item.instance_id)
+                protected_mask |= component
+
+    if protected:
+        protected_set = set(protected)
+        references = tuple(
+            item
+            for item in references
+            if item.instance_id not in protected_set
+        )
+        for instance_id in protected:
+            rejected.setdefault(
+                instance_id,
+                protected_reasons[instance_id],
+            )
 
     required_auxiliary = set(
         joint_bundle.mechanism.representability.required_auxiliary_structures
@@ -254,18 +288,7 @@ def build_joint_nuclei_preflight(
         in joint_bundle.mechanism.cell_program.render_owned_clearance_primitives
     )
     requires_add = not render_owned_clearance
-    required_removal_classes = (
-        tuple(
-            sorted(
-                {
-                    target_cell_class_for_tissue(label, schema)
-                    for label in allowed_sources
-                }
-            )
-        )
-        if render_owned_clearance
-        else ()
-    )
+    required_removal_classes = tuple(sorted(required_clearance_classes))
     removable_set = set(removable)
     capacity_quantile = joint_bundle.mechanism.cell_program.seam.reference_area_quantiles[1]
     reference = _reference_at_quantile(references, capacity_quantile)
@@ -314,25 +337,41 @@ def build_joint_nuclei_preflight(
         # still compiled by the tool program, while the skill-owned ratio is
         # the audited hard depth/span maximum shared with the mask gate.
         front_contract = joint_bundle.mechanism.tissue_program.front
-        depth_cap = max(
-            1,
-            min(
-                front_contract.maximum_band_px,
-                int(
-                    np.floor(
-                        interface.contact_pixels
-                        * front_contract.maximum_depth_span_ratio
-                    )
+        if joint_bundle.primitive.allow_source_component_resolution:
+            # Resolution may consume any safe part of a source compartment,
+            # including its final pixels. Its executable depth is therefore
+            # the observed component depth, not a generic front-band cap.
+            distance = ndimage.distance_transform_edt(~interface_mask)
+            observed_depth = distance[source_component & ~prohibited_tissue]
+            depth_cap = max(
+                1,
+                int(np.ceil(float(observed_depth.max(initial=0.0)))),
+            )
+        elif (
+            joint_bundle.primitive.tissue_geometry_mode
+            == "component_boundary_turnover"
+        ):
+            # Closed intratumoral compartments are edited from their complete
+            # boundary. A single raster segment's contact length is not the
+            # biological span and must not cap radial/component turnover.
+            depth_cap = int(front_contract.maximum_band_px)
+        else:
+            depth_cap = max(
+                1,
+                min(
+                    front_contract.maximum_band_px,
+                    int(
+                        np.floor(
+                            interface.contact_pixels
+                            * front_contract.maximum_depth_span_ratio
+                        )
+                    ),
                 ),
-            ),
-        )
+            )
         distance = ndimage.distance_transform_edt(~interface_mask)
-        raw_envelope = (
-            source_component
-            & (distance <= depth_cap)
-            & ~prohibited_tissue
-            & ~protected_mask
-        )
+        raw_envelope = source_component & ~prohibited_tissue & ~protected_mask
+        if not joint_bundle.primitive.allow_source_component_resolution:
+            raw_envelope &= distance <= depth_cap
         anchor_continuity_reports: list[dict[str, Any]] = []
         feasible_anchor_ids: list[str] = []
         feasible_anchor_envelope = np.zeros_like(raw_envelope, dtype=bool)
@@ -498,7 +537,11 @@ def build_joint_nuclei_preflight(
             reasons.append("no_cell_feasible_anchor_segment")
         if requires_add and add_capacity < required_count:
             reasons.append("insufficient_complete_shape_placement_capacity")
-        if render_owned_clearance and not removal_targets:
+        if (
+            joint_bundle.primitive.minimum_source_clearance_instances > 0
+            and len(removal_targets)
+            < joint_bundle.primitive.minimum_source_clearance_instances
+        ):
             reasons.append("no_complete_viable_instance_for_render_clearance")
         if (
             joint_bundle.mechanism.coupling.cell_only_target_fraction > 0
@@ -649,11 +692,7 @@ def assess_candidate_cell_feasibility(
         core,
         iterations=max(1, preflight.whole_instance_closure_px),
     )
-    closure_removals = (
-        removal_targets
-        if preflight.required_removal_cell_classes
-        else removals
-    )
+    closure_removals = removals
     nonlocal_extensions = tuple(
         sorted(
             instance_id
@@ -724,17 +763,17 @@ def assess_candidate_cell_feasibility(
         reasons.append("tissue_change_intersects_unclassified_instance")
     if nonlocal_extensions:
         reasons.append("whole_instance_removal_exceeds_authorized_halo")
-    if preflight.required_removal_cell_classes and not removal_targets:
+    if (
+        joint_bundle.primitive.minimum_source_clearance_instances > 0
+        and len(removal_targets)
+        < joint_bundle.primitive.minimum_source_clearance_instances
+    ):
         reasons.append("candidate_has_no_complete_viable_instance_to_clear")
     if not np.any(legal_core):
         reasons.append("candidate_has_no_legal_cell_core")
-    capacity_adaptive_tissue_fallback = bool(
-        candidate.tool_trace.get("area_fallback_used")
-    ) and joint_bundle.mechanism.coupling.cell_only_target_fraction == 0
     if (
         "add" in joint_bundle.mechanism.cell_program.actions
         and add_capacity < required_count
-        and not capacity_adaptive_tissue_fallback
     ):
         reasons.append("candidate_cannot_fit_required_complete_reference_shapes")
     if adaptive_seam.requires_new_target_cells:

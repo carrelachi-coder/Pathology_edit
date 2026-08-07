@@ -16,18 +16,20 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v4"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v5"
 
 
 @dataclass(frozen=True)
 class CompiledCellToolProgram:
     """Masks that separate cell semantics from model execution.
 
-    E erases whole source instances, P accepts new centers, V must contain every
-    new footprint, S is model context/render support, M is the mechanism zone,
-    C is the candidate-local continuity region and A is the Planner-selected
-    active anchor. Only E may destroy source cells; only P may supply centers;
-    S never enters the edit budget.
+    T_pop is the target-tissue population accounting region, E erases whole
+    source instances, P accepts new centers, V must contain every new footprint,
+    S is model context/render support, M is the mechanism zone, C is the
+    candidate-local continuity region and A is the Planner-selected active
+    anchor. Cell abundance is computed from T_pop, never from P. Only E may
+    destroy source cells; only P may supply centers; S never enters the edit
+    budget.
     """
 
     program_id: str
@@ -36,6 +38,7 @@ class CompiledCellToolProgram:
     baseline_mode: str
     mechanism_program_id: str
     quota_role: str
+    population_target_region: np.ndarray
     erasure_region: np.ndarray
     placement_center_region: np.ndarray
     valid_footprint_region: np.ndarray
@@ -61,6 +64,7 @@ class CompiledCellToolProgram:
     def to_metadata(self) -> dict:
         result = asdict(self)
         for key in (
+            "population_target_region",
             "erasure_region",
             "placement_center_region",
             "valid_footprint_region",
@@ -127,6 +131,7 @@ class CellToolProgramCompiler:
                     "tissue primitive requires a nonempty tissue plan"
                 )
             center_region = tissue_change.copy()
+            population_target_region = tissue_change.copy()
             mechanism_region = anchor_zone & (
                 ndimage.binary_dilation(
                     tissue_change,
@@ -165,6 +170,7 @@ class CellToolProgramCompiler:
                     ),
                 )
             mechanism_region = center_region.copy()
+            population_target_region = center_region.copy()
 
         prohibited = tuple(bundle.annotation_profile.prohibit_cell_placement_fine_ids)
         valid = ~np.isin(target_tissue, prohibited)
@@ -201,6 +207,8 @@ class CellToolProgramCompiler:
             valid &= np.isin(target_tissue, tuple(sorted(host_ids)))
         center_region &= valid
         mechanism_region &= valid
+        if primitive.scope == "cell_only":
+            population_target_region = center_region.copy()
         if not np.any(center_region):
             raise JointContractError(
                 "compiled cell program has no legal placement center"
@@ -273,7 +281,26 @@ class CellToolProgramCompiler:
                 erasure |= np.asarray(scene.instance_masks[instance_id], dtype=bool)
             resolved_delta = len(selected)
         elif cell.baseline_mode == "regenerate_target_population":
-            erasure = tissue_change.copy()
+            # E is an exact union of complete, removable source instances. It
+            # is not the tissue-change raster T. Conflating the two previously
+            # made every incomplete/border nucleus an implicit destructive
+            # edit and also encouraged downstream code to use the eroded
+            # center domain P as the population denominator.
+            protected_ids = set(cell.protected_instance_ids)
+            erasure = np.zeros_like(tissue_change)
+            for item in scene.cells.instances:
+                if (
+                    item.instance_id in protected_ids
+                    or item.touches_border
+                    or item.completeness_status != "complete"
+                    or item.quality_flags
+                ):
+                    continue
+                component = np.asarray(
+                    scene.instance_masks[item.instance_id], dtype=bool
+                )
+                if np.any(component & tissue_change):
+                    erasure |= component
         else:
             erasure = np.zeros_like(tissue_change)
         diameter = float(scene.population.nominal_nucleus_diameter_px or 8.0)
@@ -324,6 +351,7 @@ class CellToolProgramCompiler:
             baseline_mode=cell.baseline_mode,
             mechanism_program_id=cell.mechanism_program_id,
             quota_role=cell.mechanism_quota_role,
+            population_target_region=population_target_region,
             erasure_region=erasure,
             placement_center_region=center_region,
             valid_footprint_region=valid,
@@ -349,6 +377,11 @@ class CellToolProgramCompiler:
             target_delta_count=(resolved_delta),
             biological_target_delta_count=biological_delta,
             policies={
+                "T_pop": (
+                    "changed-target-tissue-population-area"
+                    if primitive.scope == "tissue_and_cell"
+                    else "authorized-cell-only-population-zone"
+                ),
                 "E": cell.erasure_policy,
                 "P": cell.placement_center_policy,
                 "V": cell.valid_footprint_policy,

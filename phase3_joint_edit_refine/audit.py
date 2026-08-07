@@ -236,6 +236,9 @@ class JointAuditWriter:
         directory = self.case_dir / "executable_contracts" / contract.contract_id
         directory.mkdir(parents=True, exist_ok=True)
         masks = {
+            "T_pop_population_target": (
+                contract.cell_program.population_target_region
+            ),
             "E_erasure": contract.cell_program.erasure_region,
             "P_placement_centers": contract.cell_program.placement_center_region,
             "V_valid_footprints": contract.cell_program.valid_footprint_region,
@@ -299,8 +302,17 @@ class JointAuditWriter:
         source_nuclei: np.ndarray,
         candidates: tuple[JointCandidate, ...],
         gate_reports,
+        plan=None,
+        scene=None,
+        executable_contracts=None,
     ) -> str | None:
-        """Write one reader-facing view of the best paired candidate."""
+        """Write an eight-stage reader-facing view of one paired candidate.
+
+        The board makes Planner selection, deterministic tissue execution,
+        the distinct T_pop/E/P cell contract, cell realization and final
+        joint/generation ledgers visible in one artifact.  It is written even
+        when the candidate fails, so a gate rejection remains diagnosable.
+        """
 
         if not candidates:
             return None
@@ -317,21 +329,124 @@ class JointAuditWriter:
             ),
         )
         report = reports[candidate.candidate_id]
+        if isinstance(executable_contracts, dict):
+            contract = executable_contracts.get(candidate.candidate_id)
+        else:
+            contract = executable_contracts
         image = Image.open(source_image_path).convert("RGB").resize(
             (source_tissue.shape[1], source_tissue.shape[0])
         )
         base = np.asarray(image, dtype=np.uint8)
         empty = np.zeros_like(source_tissue, dtype=bool)
         source_panel = _overlay(base, source_tissue, source_nuclei, empty)
-        target_panel = _overlay(
+        planner_panel = np.array(base, copy=True)
+        selected_interfaces = np.zeros_like(source_tissue, dtype=bool)
+        selected_anchors = np.zeros_like(source_tissue, dtype=bool)
+        if plan is not None and scene is not None:
+            tissue_scene = getattr(scene, "tissue", scene)
+            interface_ids = set(getattr(plan.cell_plan, "interface_ids", ()))
+            anchor_ids = set(getattr(plan.cell_plan, "anchor_ids", ()))
+            if getattr(plan, "tissue_plan", None) is not None:
+                for planned in plan.tissue_plan.candidate_interfaces:
+                    interface_ids.add(planned.interface_id)
+                    anchor_ids.update(
+                        planned.execution_contract.anchor_segment_ids
+                    )
+            for interface_id in interface_ids:
+                current = tissue_scene.interface_masks.get(interface_id)
+                if current is not None:
+                    selected_interfaces |= np.asarray(current, dtype=bool)
+            for anchor_id in anchor_ids:
+                current = tissue_scene.anchor_masks.get(anchor_id)
+                if current is not None:
+                    selected_anchors |= np.asarray(current, dtype=bool)
+            if not interface_ids and getattr(plan.cell_plan, "core_zone", None):
+                component_id = str(plan.cell_plan.core_zone)
+                component_id = component_id.removeprefix("pop:component:")
+                component = tissue_scene.component_masks.get(component_id)
+                if component is not None:
+                    component = np.asarray(component, dtype=bool)
+                    selected_interfaces |= (
+                        component ^ ndimage_binary_erosion(component)
+                    )
+        planner_panel[selected_interfaces] = [0, 235, 255]
+        planner_panel[selected_anchors] = [255, 225, 0]
+
+        tissue_panel = _overlay(
+            base,
+            candidate.target_tissue_mask,
+            source_nuclei,
+            candidate.tissue_change,
+        )
+        tissue_change = np.asarray(candidate.tissue_change, dtype=bool)
+        tissue_panel[tissue_change] = np.clip(
+            0.35 * tissue_panel[tissue_change]
+            + 0.65 * np.asarray([255, 0, 210]),
+            0,
+            255,
+        ).astype(np.uint8)
+
+        contract_panel = np.array(base, copy=True)
+        if contract is not None:
+            t_pop = np.asarray(
+                contract.cell_program.population_target_region, dtype=bool
+            )
+            erasure = np.asarray(
+                contract.cell_program.erasure_region, dtype=bool
+            )
+            placement = np.asarray(
+                contract.cell_program.placement_center_region, dtype=bool
+            )
+            continuity = np.asarray(
+                contract.cell_program.continuity_region, dtype=bool
+            )
+            contract_panel[t_pop] = np.clip(
+                0.35 * contract_panel[t_pop]
+                + 0.65 * np.asarray([255, 0, 210]),
+                0,
+                255,
+            ).astype(np.uint8)
+            contract_panel[placement] = np.clip(
+                0.30 * contract_panel[placement]
+                + 0.70 * np.asarray([0, 225, 255]),
+                0,
+                255,
+            ).astype(np.uint8)
+            contract_panel[erasure] = [35, 235, 80]
+            contract_panel[continuity] = [255, 225, 0]
+
+        removed = (np.asarray(source_nuclei) > 0) & (
+            np.asarray(candidate.target_nuclei_mask) == 0
+        )
+        added = (np.asarray(source_nuclei) == 0) & (
+            np.asarray(candidate.target_nuclei_mask) > 0
+        )
+        erasure_panel = _overlay(
+            base,
+            candidate.target_tissue_mask,
+            source_nuclei,
+            empty,
+        )
+        erasure_panel[removed] = [35, 235, 80]
+        if contract is not None and scene is not None:
+            for instance_id in contract.protected_instance_ids:
+                component = scene.instance_masks.get(instance_id)
+                if component is None:
+                    continue
+                boundary = np.asarray(component, dtype=bool) ^ ndimage_binary_erosion(
+                    component
+                )
+                erasure_panel[boundary] = [255, 45, 45]
+
+        placement_panel = _overlay(
             base,
             candidate.target_tissue_mask,
             candidate.target_nuclei_mask,
-            candidate.joint_change,
+            empty,
         )
+        placement_panel[added] = [255, 145, 20]
 
         diff_panel = np.array(base, copy=True)
-        tissue_change = np.asarray(candidate.tissue_change, dtype=bool)
         cell_change = np.asarray(candidate.cell_change, dtype=bool)
         diff_panel[tissue_change] = np.clip(
             0.30 * diff_panel[tissue_change] + 0.70 * np.asarray([255, 0, 210]),
@@ -349,40 +464,56 @@ class JointAuditWriter:
             0,
             255,
         ).astype(np.uint8)
-        removed = (np.asarray(source_nuclei) > 0) & (
-            np.asarray(candidate.target_nuclei_mask) == 0
-        )
-        added = (np.asarray(source_nuclei) == 0) & (
-            np.asarray(candidate.target_nuclei_mask) > 0
-        )
         support_panel[removed] = [35, 235, 80]
         support_panel[added] = [255, 145, 20]
 
         labels = [
-            "1 SOURCE joint condition",
-            "2 TARGET joint condition",
-            "3 DIFF magenta=T green=C-only yellow=overlap",
-            "4 GENERATION blue=G green=removed orange=added",
+            "1 SOURCE H&E + tissue/nuclei",
+            "2 PLANNER cyan=interface yellow=anchor",
+            "3 TISSUE TOOL magenta=T",
+            "4 CELL CONTRACT magenta=T_pop cyan=P green=E yellow=seam",
+            "5 CELL ERASE green=removed red=protected",
+            "6 CELL PLACE orange=added",
+            "7 JOINT LEDGER magenta=T green=C-only yellow=overlap",
+            "8 GENERATION blue=G green=removed orange=added",
         ]
-        panels = [source_panel, target_panel, diff_panel, support_panel]
+        panels = [
+            source_panel,
+            planner_panel,
+            tissue_panel,
+            contract_panel,
+            erasure_panel,
+            placement_panel,
+            diff_panel,
+            support_panel,
+        ]
         tile_h, tile_w = source_tissue.shape
         header = 28
         footer = 54
-        canvas = Image.new("RGB", (tile_w * 4, tile_h + header + footer), "black")
+        columns = 4
+        rows = 2
+        canvas = Image.new(
+            "RGB",
+            (tile_w * columns, (tile_h + header) * rows + footer),
+            "black",
+        )
         draw = ImageDraw.Draw(canvas)
         for index, (panel, label) in enumerate(zip(panels, labels)):
-            x = index * tile_w
-            canvas.paste(Image.fromarray(panel), (x, header))
-            draw.text((x + 5, 7), label, fill="white")
+            row, column = divmod(index, columns)
+            x = column * tile_w
+            y = row * (tile_h + header)
+            canvas.paste(Image.fromarray(panel), (x, y + header))
+            draw.text((x + 5, y + 7), label, fill="white")
         failed = [
             item.check_id
             for item in report.checks
             if item.severity == "hard" and not item.passed
         ]
         status = "PASS: READY FOR INDEPENDENT VISUAL CRITIC" if report.passed else "STOP: JOINT GATE"
-        draw.text((6, tile_h + header + 7), status, fill=(255, 220, 70))
+        footer_y = (tile_h + header) * rows
+        draw.text((6, footer_y + 7), status, fill=(255, 220, 70))
         draw.text(
-            (6, tile_h + header + 27),
+            (6, footer_y + 27),
             (
                 f"candidate={candidate.candidate_id} | "
                 + (", ".join(failed) if failed else "all deterministic hard gates passed")

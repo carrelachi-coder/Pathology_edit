@@ -113,6 +113,42 @@ class JointFeasibilitySolver:
             reserved_complete_instance_pixels=closure,
         )
 
+    def reserve_observed_cell_spill(
+        self,
+        allocation: JointBudgetAllocation,
+        *,
+        complete_instance_pixels: int,
+        footprint_spill_pixels: int,
+    ) -> JointBudgetAllocation:
+        """Re-broker T from an executed candidate's exact C-only spill.
+
+        ``complete_instance_pixels`` is the part of removed whole source
+        instances outside T. ``footprint_spill_pixels`` is the part of newly
+        placed complete target nuclei outside T.  They are kept separate in
+        provenance because E and placement footprints have different
+        semantics, even though both contribute to the union J.
+        """
+
+        complete = max(0, int(complete_instance_pixels))
+        footprint = max(0, int(footprint_spill_pixels))
+        total_reserve = (
+            allocation.reserved_layout_halo_pixels + complete + footprint
+        )
+        tissue_target = max(
+            allocation.tissue_execution_floor_pixels,
+            allocation.joint_target_pixels - total_reserve,
+        )
+        tissue_target = min(tissue_target, allocation.joint_target_pixels)
+        return replace(
+            allocation,
+            tissue_target_pixels=tissue_target,
+            reserved_cell_only_pixels=max(
+                0, allocation.joint_target_pixels - tissue_target
+            ),
+            reserved_complete_instance_pixels=complete,
+            reserved_cell_footprint_spill_pixels=footprint,
+        )
+
     def bind_tissue_plan(
         self,
         plan: EditPlan,

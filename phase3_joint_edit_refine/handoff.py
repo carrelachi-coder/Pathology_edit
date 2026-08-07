@@ -34,6 +34,12 @@ def write_generation_handoff(
         "cell_change": candidate.cell_change.astype(np.uint8) * 255,
         "joint_change": candidate.joint_change.astype(np.uint8) * 255,
         "generation_support": candidate.generation_support.astype(np.uint8) * 255,
+        "contract_T_population": (
+            executable_contract.cell_program.population_target_region.astype(
+                np.uint8
+            )
+            * 255
+        ),
         "contract_E_erasure": (
             executable_contract.cell_program.erasure_region.astype(np.uint8) * 255
         ),
@@ -69,7 +75,7 @@ def write_generation_handoff(
         paths[name] = str(path)
         digests[name + "_sha256"] = _sha256(path)
     manifest = {
-        "schema_version": "joint-generation-handoff-v2",
+        "schema_version": "joint-generation-handoff-v3",
         "case_id": case.case_id,
         "candidate_id": candidate.candidate_id,
         "executable_contract_id": executable_contract.contract_id,
@@ -119,7 +125,7 @@ def write_generation_handoff(
     paths["executable_contract"] = str(contract_path)
     digests["executable_contract_sha256"] = _sha256(contract_path)
     manifest["result_binding"] = {
-        "schema_version": "joint-result-binding-v1",
+        "schema_version": "joint-result-binding-v2",
         "contract_id": executable_contract.contract_id,
         "candidate_id": candidate.candidate_id,
         "target_tissue_sha256": digests["target_tissue_mask_sha256"],
@@ -128,6 +134,9 @@ def write_generation_handoff(
         "cell_change_sha256": digests["cell_change_sha256"],
         "joint_change_sha256": digests["joint_change_sha256"],
         "generation_support_sha256": digests["generation_support_sha256"],
+        "contract_T_population_sha256": digests[
+            "contract_T_population_sha256"
+        ],
     }
     manifest["result_binding"]["binding_id"] = _canonical_digest(
         manifest["result_binding"]

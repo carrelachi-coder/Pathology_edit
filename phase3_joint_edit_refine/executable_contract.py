@@ -203,6 +203,13 @@ class ExecutableJointContract:
             errors.append("tissue_change_digest_mismatch")
         program = self.cell_program
         changed = np.asarray(cell_change, dtype=bool)
+        population = np.asarray(program.population_target_region, dtype=bool)
+        if not np.any(population):
+            errors.append("population_target_region_is_empty")
+        if np.any(population & ~program.valid_footprint_region):
+            errors.append("population_target_region_outside_target_host")
+        if np.any(population & ~program.support_context_region):
+            errors.append("population_target_region_outside_contract_support")
         if np.any(changed & ~program.support_context_region):
             errors.append("cell_change_outside_contract_support")
         if np.any(program.placement_center_region & ~program.valid_footprint_region):
@@ -434,7 +441,20 @@ class ExecutableJointContractCompiler:
         support_radius = max(
             1, int(np.ceil(1.5 * base_program.nominal_nucleus_diameter_px))
         )
-        support_seed = erasure | tissue_change | placement | mechanism_region
+        population = np.asarray(
+            base_program.population_target_region, dtype=bool
+        ) & valid
+        if not np.any(population):
+            raise JointContractError(
+                "compiled target population region is empty"
+            )
+        support_seed = (
+            erasure
+            | tissue_change
+            | population
+            | placement
+            | mechanism_region
+        )
         if np.any(support_seed & ~generation_allowed):
             raise JointContractError(
                 "required T/E/P/mechanism support intersects a profile-prohibited region"
@@ -446,6 +466,7 @@ class ExecutableJointContractCompiler:
         support |= support_seed
         program = replace(
             base_program,
+            population_target_region=population,
             erasure_region=erasure,
             placement_center_region=placement,
             valid_footprint_region=valid,
@@ -456,6 +477,9 @@ class ExecutableJointContractCompiler:
             target_classes=allowed_classes,
             policies={
                 **base_program.policies,
+                "T_pop": (
+                    "target-population-abundance-denominator-distinct-from-P"
+                ),
                 "E": "exact-union-of-complete-source-instance-footprints",
                 "P": "contract-centers-with-nominal-full-footprint-fit",
                 "V": "profile-and-target-host-fine-id-containment",

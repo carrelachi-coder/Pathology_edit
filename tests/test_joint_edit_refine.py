@@ -44,6 +44,9 @@ from phase3_joint_edit_refine.profile_statistics import (
 )
 from phase3_joint_edit_refine.scene import build_joint_scene_analysis
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
+from phase3_joint_edit_refine.tissue_planner import (
+    _normalize_integer_allocations,
+)
 from phase3_joint_edit_refine.workflow import JointPathologyEditWorkflow
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import HeuristicInterfacePlanner
@@ -212,6 +215,18 @@ class JointSkillTests(unittest.TestCase):
             revised.tissue_target_pixels + revised.reserved_cell_only_pixels,
             revised.joint_target_pixels,
         )
+        less_conservative = solver.reserve_complete_instances(
+            revised,
+            reserve_pixels=2000,
+        )
+        self.assertGreater(
+            less_conservative.tissue_target_pixels,
+            revised.tissue_target_pixels,
+        )
+        self.assertEqual(
+            less_conservative.reserved_complete_instance_pixels,
+            2000,
+        )
 
     def test_budget_broker_keeps_seam_footprint_reserve_distinct_from_halo(self):
         repository = JointSkillRepository()
@@ -240,6 +255,34 @@ class JointSkillTests(unittest.TestCase):
             allocation.tissue_target_pixels
             + allocation.reserved_cell_only_pixels,
             allocation.joint_target_pixels,
+        )
+
+    def test_budget_broker_rebalances_from_exact_executed_cell_spill(self):
+        repository = JointSkillRepository()
+        case = _case_stub()
+        bundle = repository.compose(
+            case=case,
+            mechanism_id="colorectal-gland-forming-front",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        solver = JointFeasibilitySolver()
+        initial = solver.allocate(
+            shape=(512, 512), budget=case.joint_area_budget, bundle=bundle
+        )
+        revised = solver.reserve_observed_cell_spill(
+            initial,
+            complete_instance_pixels=4_457,
+            footprint_spill_pixels=3_220,
+        )
+        self.assertEqual(revised.reserved_complete_instance_pixels, 4_457)
+        self.assertEqual(revised.reserved_cell_footprint_spill_pixels, 3_220)
+        self.assertEqual(
+            revised.tissue_target_pixels,
+            max(
+                revised.tissue_execution_floor_pixels,
+                revised.joint_target_pixels - 4_457 - 3_220,
+            ),
         )
 
     def test_capacity_adaptive_budget_can_compile_below_standard_floor(self):
@@ -329,9 +372,13 @@ class JointSkillTests(unittest.TestCase):
             target_tissue_path=Path("target.png"),
             source_tissue_path=Path("source.png"),
             source_nuclei_path=Path("nuclei.png"),
+            reference_nuclei_shapes_path=Path("reference-shapes.png"),
             generation_region_path=Path("G.png"),
+            population_region_path=Path("T-pop.png"),
             placement_region_path=Path("P.png"),
             erasure_region_path=Path("E.png"),
+            required_placement_region_path=Path("seam.png"),
+            minimum_required_placements=1,
             output_path=Path("out.png"),
             prohibited_tissue_ids=(0, 9),
             allowed_new_cell_classes=(1, 3),
@@ -342,11 +389,22 @@ class JointSkillTests(unittest.TestCase):
         self.assertIn("--require-exact-target-count", command)
         self.assertIn("--reference-nuclei-shapes", command)
         self.assertIn("--placement-region", command)
+        self.assertIn("--population-region", command)
+        self.assertIn("--required-placement-region", command)
+        self.assertIn("--minimum-required-placements", command)
         self.assertIn("--trust-complete-deletion-region", command)
         self.assertIn("--allowed-nucleus-types", command)
         self.assertIn("101", command)
         self.assertIn("103", command)
-        self.assertEqual(command[-3:], ["--skip-tissue-ids", "0", "9"])
+        self.assertEqual(
+            command[-4:],
+            [
+                "--required-placement-region",
+                "seam.png",
+                "--minimum-required-placements",
+                "1",
+            ],
+        )
 
     def test_api_planner_schema_exposes_cell_execution_linkage(self):
         cell_schema = JOINT_PLAN_JSON_SCHEMA["properties"]["cell_plan"]
@@ -556,6 +614,12 @@ class _RetryThenPassingTissueGate(GateRegistry):
 
 
 class JointWorkflowTests(unittest.TestCase):
+    def test_integer_interface_allocations_are_normalized_after_rounding(self):
+        # Independent integer rounding used to produce 1.00002008 for breast
+        # case 073 and incorrectly fail a valid multi-interface plan.
+        weights = _normalize_integer_allocations((16_603, 16_603, 16_602))
+        self.assertTrue(np.isclose(sum(weights), 1.0, rtol=0.0, atol=1e-12))
+
     def test_tissue_gate_failure_is_replanned_and_retooled_before_abstain(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -646,13 +710,14 @@ class JointWorkflowTests(unittest.TestCase):
             manifest = Path(result.artifact_paths["handoff_manifest"])
             self.assertTrue(manifest.is_file())
             payload = json.loads(manifest.read_text(encoding="utf-8"))
-            self.assertEqual(payload["schema_version"], "joint-generation-handoff-v2")
+            self.assertEqual(payload["schema_version"], "joint-generation-handoff-v3")
             self.assertEqual(
                 payload["result_binding"]["schema_version"],
-                "joint-result-binding-v1",
+                "joint-result-binding-v2",
             )
             self.assertIn("joint_change", payload["paths"])
             self.assertIn("generation_support", payload["paths"])
+            self.assertIn("contract_T_population", payload["paths"])
             self.assertIn("contract_E_erasure", payload["paths"])
             self.assertIn("contract_S_support_context", payload["paths"])
             self.assertIn("contract_C_continuity_region", payload["paths"])
@@ -666,6 +731,14 @@ class JointWorkflowTests(unittest.TestCase):
                 contract["contract_id"], result.condition.executable_contract_id
             )
             program = contract["cell_program"]
+            self.assertEqual(
+                program["population_target_region_pixels"],
+                result.condition.ledger.tissue_pixels,
+            )
+            self.assertGreaterEqual(
+                program["population_target_region_pixels"],
+                program["placement_center_region_pixels"],
+            )
             self.assertEqual(
                 program["continuity_mode"],
                 "adaptive_population_continuity",
@@ -707,6 +780,16 @@ class JointWorkflowTests(unittest.TestCase):
                 np.asarray(Image.open(payload["paths"]["contract_E_erasure"])) > 0
             )
             np.testing.assert_array_equal(actual_erasure, expected_erasure)
+            actual_population = (
+                np.asarray(
+                    Image.open(payload["paths"]["contract_T_population"])
+                )
+                > 0
+            )
+            np.testing.assert_array_equal(
+                actual_population,
+                result.condition.tissue_change,
+            )
             execution = json.loads(
                 (
                     root

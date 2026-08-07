@@ -252,7 +252,9 @@ def _check_background_seed_protection(context: GateContext) -> GateCheck:
 def _check_label_transition(context: GateContext) -> GateCheck:
     source = np.asarray(context.source_mask)
     target = np.asarray(context.candidate.target_mask)
-    change = np.asarray(context.candidate.change_region, dtype=bool)
+    change = np.asarray(
+        context.candidate.change_region, dtype=bool
+    ).copy()
     actual_diff = source != target
     source_ids = tuple(
         sorted(
@@ -767,16 +769,42 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
     unallowed_target_merge = bool(unallowed_merge_groups)
     source_hole_changed = source_holes_after != source_holes_before
     target_hole_changed = target_holes_after != target_holes_before
+    allow_source_resolution = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "allow_source_component_resolution", False
+        )
+    )
+    allow_target_hole_resolution = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "allow_target_hole_resolution", False
+        )
+    )
+    invalid_source_component_resolution = bool(
+        source_components_after < source_components_before
+        and not allow_source_resolution
+    )
+    invalid_target_hole_resolution = bool(
+        target_holes_after < target_holes_before
+        and not allow_target_hole_resolution
+    )
+    target_hole_created = target_holes_after > target_holes_before
+    source_hole_resolution_allowed = bool(
+        allow_source_resolution
+        and source_holes_after <= source_holes_before
+    )
     disallowed_source_hole_change = source_hole_changed and not (
-        target_merge and not unallowed_target_merge
+        source_hole_resolution_allowed
+        or (target_merge and not unallowed_target_merge)
     )
     passed = not any(
         (
             source_split,
+            invalid_source_component_resolution,
             target_split_or_island,
             unallowed_target_merge,
             disallowed_source_hole_change,
-            target_hole_changed,
+            invalid_target_hole_resolution,
+            target_hole_created,
         )
     )
     return _result(
@@ -809,7 +837,15 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             "unallowed_target_merge": unallowed_target_merge,
             "source_hole_changed": source_hole_changed,
             "disallowed_source_hole_change": disallowed_source_hole_change,
+            "source_hole_resolution_allowed": source_hole_resolution_allowed,
             "target_hole_changed": target_hole_changed,
+            "allow_source_component_resolution": allow_source_resolution,
+            "allow_target_hole_resolution": allow_target_hole_resolution,
+            "invalid_source_component_resolution": (
+                invalid_source_component_resolution
+            ),
+            "invalid_target_hole_resolution": invalid_target_hole_resolution,
+            "target_hole_created": target_hole_created,
             # Backward-compatible keys retained for older audit consumers.
             "new_source_hole": source_holes_after > source_holes_before,
             "new_target_hole": target_holes_after > target_holes_before,
@@ -822,8 +858,13 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
     component_ids = _trace_ids(
         context.candidate, plural="source_component_ids", singular="source_component_id"
     )
+    allow_source_resolution = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "allow_source_component_resolution", False
+        )
+    )
     max_fraction = min(
-        0.55,
+        1.0 if allow_source_resolution else 0.55,
         float(
             context.plan.tool_program.parameter_ranges.get(
                 "max_source_component_changed_fraction", 0.55
@@ -831,7 +872,7 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
         ),
     )
     min_remaining = max(
-        64,
+        0 if allow_source_resolution else 64,
         int(
             context.plan.tool_program.parameter_ranges.get(
                 "min_source_component_remaining_px", 64
@@ -877,6 +918,51 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
     )
 def _check_depth_span_ratio(context: GateContext) -> GateCheck:
     planned = _candidate_planned_interfaces(context)
+    change = np.asarray(
+        context.candidate.change_region, dtype=bool
+    ).copy()
+    resolved_source_components: list[str] = []
+    if (
+        context.plan.tool_program.parameter_ranges.get(
+            "tissue_geometry_mode"
+        )
+        == "component_boundary_turnover"
+        and context.plan.tool_program.parameter_ranges.get(
+            "allow_source_component_resolution", False
+        )
+    ):
+        source_ids = tuple(
+            fine_id
+            for label in context.plan.source_labels
+            for fine_id in context.schema.resolve_fine_ids(label)
+        )
+        remaining_source = np.isin(context.candidate.target_mask, source_ids)
+        for item in planned:
+            component = context.scene.component_masks.get(
+                item.source_component_id
+            )
+            if component is not None and not np.any(
+                remaining_source & component
+            ):
+                resolved_source_components.append(item.source_component_id)
+                change &= ~component
+        planned = tuple(
+            item
+            for item in planned
+            if item.source_component_id not in resolved_source_components
+        )
+        if not np.any(change):
+            return _result(
+                "depth_span_ratio",
+                True,
+                "all edited source compartments were completely resolved",
+                metrics={
+                    "resolved_source_component_ids": sorted(
+                        set(resolved_source_components)
+                    ),
+                    "partial_source_component_ids": [],
+                },
+            )
     interface_masks = [
         context.scene.interface_masks[item.interface_id]
         for item in planned
@@ -885,7 +971,6 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
     if not interface_masks or len(interface_masks) != len(planned):
         return _result("depth_span_ratio", False, "selected interface mask is empty")
     interface = np.logical_or.reduce(interface_masks)
-    change = np.asarray(context.candidate.change_region, dtype=bool)
     distances = ndimage.distance_transform_edt(~interface)[change]
     if distances.size == 0:
         return _result("depth_span_ratio", False, "change region is empty")
@@ -916,6 +1001,12 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
             "max_depth_span_ratio": ratio,
             "allowed_depth_span_ratio": max_ratio,
             "allowed_band_max_px": band_max,
+            "resolved_source_component_ids": sorted(
+                set(resolved_source_components)
+            ),
+            "partial_source_component_ids": sorted(
+                {item.source_component_id for item in planned}
+            ),
         },
     )
 
@@ -1035,8 +1126,14 @@ def _check_parallel_boundary_artifact(context: GateContext) -> GateCheck:
         for fine_id in context.schema.resolve_fine_ids(label)
     )
     remaining_source = np.isin(context.candidate.target_mask, source_ids)
+    component_turnover = (
+        context.plan.tool_program.parameter_ranges.get(
+            "tissue_geometry_mode"
+        )
+        == "component_boundary_turnover"
+    )
     minimum_depth_cv = max(
-        0.25,
+        0.08 if component_turnover else 0.25,
         float(
             context.plan.tool_program.parameter_ranges.get(
                 "min_parallel_front_depth_cv", 0.15

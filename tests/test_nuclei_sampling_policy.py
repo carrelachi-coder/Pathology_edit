@@ -1,9 +1,9 @@
 from types import SimpleNamespace
+from typing import ClassVar
 
 import numpy as np
-import inpaint_cells.generate as generate_module
-from inpaint_cells.nuclei_library.library import ReferenceNucleiInstancePool
 
+import inpaint_cells.generate as generate_module
 from inpaint_cells.generate import (
     COMPONENT_SHAPE_POLICY_NAME,
     DEFAULT_LOCAL_TYPE_PRIOR_WEIGHT,
@@ -11,9 +11,10 @@ from inpaint_cells.generate import (
     SAMPLING_AUDIT_POLICY_NAME,
     SAMPLING_FEEDBACK_POLICY_NAME,
     PlacementQuotaError,
+    _merge_required_center_stage_diagnostics,
     _require_complete_target_count,
-    allocate_weight_proportional_counts,
     allocate_type_counts,
+    allocate_weight_proportional_counts,
     balanced_type_at_center,
     blend_context_stabilized_probability,
     build_buffer_retained_by_type_overrides,
@@ -28,19 +29,20 @@ from inpaint_cells.generate import (
     initialize_component_sampling_diagnostics,
     make_accepted_centers_overlay,
     next_sampling_feedback_parameters,
-    probability_mass_region_centers,
     place_candidate_with_retries,
-    probability_concentration_diagnostics,
-    probnet_sampling_alignment_audit,
     predict_context_stabilized_spatial_probability,
-    sample_type_at_center,
+    probability_concentration_diagnostics,
+    probability_mass_region_centers,
+    probnet_sampling_alignment_audit,
     same_tissue_quota_reassignment_centers,
+    sample_type_at_center,
     select_low_variance_type,
     shape_sampling_diagnostics,
     spatial_context_halo_radius,
     supported_joint_nucleus_probability,
     supported_nucleus_shape_types,
 )
+from inpaint_cells.nuclei_library.library import ReferenceNucleiInstancePool
 from inpaint_cells.sampling_policy import (
     retry_pool_target,
     valid_biological_tissue_mask,
@@ -473,7 +475,7 @@ def test_unsupported_shape_quota_is_redistributed_without_changing_count():
 
 def test_forced_tissue_library_support_uses_stored_exact_tissue_shapes():
     class FakeLibrary:
-        instances = {
+        instances: ClassVar[dict] = {
             2: [
                 {"type": 101},
                 {"type": 102},
@@ -1132,3 +1134,61 @@ def test_accepted_centers_overlay_marks_only_new_instances():
 
     assert rendered.shape == (32, 32, 3)
     assert tuple(rendered[21, 21]) != tuple(rendered[5, 5])
+
+
+def test_required_seam_stage_merges_into_one_exact_population_ledger():
+    required = {
+        "placed": 1,
+        "placed_by_shape_source": {"reference": 1, "library": 0},
+        "tissues": {
+            "1": {
+                "target_count": 1,
+                "placed": 1,
+                "placed_by_type": {"101": 1},
+                "target_by_type": None,
+                "posterior_expected_by_type": {"101": 0.8},
+                "accepted_centers": [
+                    {"row": 10, "col": 11, "nucleus_type": 101}
+                ],
+            }
+        },
+    }
+    remainder = {
+        "placed": 12,
+        "placed_by_shape_source": {"reference": 7, "library": 5},
+        "shape_sampling": {},
+        "tissues": {
+            "1": {
+                "target_count": 12,
+                "placed": 12,
+                "placed_by_type": {"101": 12},
+                "target_by_type": None,
+                "posterior_expected_by_type": {"101": 11.2},
+                "accepted_centers": [
+                    {"row": 20 + index, "col": 21, "nucleus_type": 101}
+                    for index in range(12)
+                ],
+            }
+        },
+    }
+
+    _merge_required_center_stage_diagnostics(
+        remainder,
+        required,
+        required_tissue_id=1,
+        required_center_pixels=817,
+        minimum_required_centers=1,
+    )
+
+    assert remainder["placed"] == 13
+    assert remainder["tissues"]["1"]["target_count"] == 13
+    assert remainder["tissues"]["1"]["placed"] == 13
+    assert len(remainder["tissues"]["1"]["accepted_centers"]) == 13
+    assert remainder["placed_by_shape_source"] == {
+        "reference": 8,
+        "library": 5,
+    }
+    assert (
+        remainder["regeneration_stages"]["policy"]
+        == "required_seam_first_then_T_pop_exact_remainder_v1"
+    )

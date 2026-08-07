@@ -1779,6 +1779,8 @@ def generate_for_gamma(
     placement_nuc_prob=None,
     placement_type_prob=None,
     retained_by_type_overrides=None,
+    population_mask=None,
+    new_target_count_overrides=None,
 ):
     nuc_prob = (
         np.asarray(placement_nuc_prob, dtype=np.float32)
@@ -1846,15 +1848,26 @@ def generate_for_gamma(
     component_policy_active = bool(
         density is None and getattr(args, "component_aware_sampling", False)
     )
+    population_mask = (
+        np.asarray(edit_mask, dtype=bool)
+        if population_mask is None
+        else np.asarray(population_mask, dtype=bool)
+    )
+    if population_mask.shape != tissue.shape:
+        raise ValueError("population and placement regions must share one shape")
 
-    for tissue_id in np.unique(tissue[edit_mask]):
+    for tissue_id in np.unique(tissue[population_mask]):
         tissue_id = int(tissue_id)
         if tissue_id in args.skip_tissue_ids:
             continue
 
+        population_region = population_mask & (tissue == tissue_id)
         tissue_region = edit_mask & (tissue == tissue_id)
         same_tissue_footprint_mask = valid_tissue_mask & (tissue == tissue_id)
-        if tissue_region.sum() < args.min_region_area:
+        if (
+            population_region.sum() < args.min_region_area
+            or not np.any(tissue_region)
+        ):
             continue
 
         expected_area = weighted_mean_area(library, tissue_id, args.expected_nucleus_area)
@@ -1862,12 +1875,22 @@ def generate_for_gamma(
         class_counts = None
         if density is None:
             target_count, count_info = compute_target_count(
-                nuc_prob, tissue_region, tissue_id, library, expected_area, args, scale
+                nuc_prob,
+                population_region,
+                tissue_id,
+                library,
+                expected_area,
+                args,
+                scale,
             )
         else:
-            expected_by_class = density[:, tissue_region].sum(axis=1) * scale
+            expected_by_class = density[:, population_region].sum(axis=1) * scale
             expected_total = float(expected_by_class.sum())
-            max_allowed = args.max_density_per_10k * tissue_region.sum() / 10000.0
+            max_allowed = (
+                args.max_density_per_10k
+                * population_region.sum()
+                / 10000.0
+            )
             target_count = round(
                 float(np.clip(expected_total, args.min_count, max_allowed))
             )
@@ -1881,7 +1904,7 @@ def generate_for_gamma(
             else:
                 class_counts = np.zeros(density.shape[0], dtype=np.int64)
             count_info = {
-                "region_area": int(tissue_region.sum()),
+                "region_area": int(population_region.sum()),
                 "count_source": "center_density_integral",
                 "density_scale": float(scale),
                 "expected_count": expected_total,
@@ -1900,7 +1923,7 @@ def generate_for_gamma(
         if retained_override is None:
             retained_by_type = count_retained_centers_by_type(
                 input_nuclei,
-                tissue_region,
+                population_region,
             )
             retained_count_source = "raster_connected_components"
         else:
@@ -1926,6 +1949,21 @@ def generate_for_gamma(
             target_count = int(class_counts.sum())
         else:
             target_count = max(0, expected_target_count - retained_count)
+        explicit_new_target = (new_target_count_overrides or {}).get(
+            str(tissue_id)
+        )
+        if explicit_new_target is None:
+            explicit_new_target = (new_target_count_overrides or {}).get(
+                tissue_id
+            )
+        if explicit_new_target is not None:
+            if density is not None:
+                raise ValueError(
+                    "explicit new-target count overrides require the mature "
+                    "count-prior path, not a supplied density field"
+                )
+            target_count = max(0, int(explicit_new_target))
+            expected_target_count = retained_count + target_count
         count_info.update(
             {
                 "expected_total_count_in_generation_region": expected_target_count,
@@ -1939,6 +1977,20 @@ def generate_for_gamma(
                 "new_target_count": int(target_count),
                 "new_count_policy": (
                     "target_tissue_expected_total_minus_retained_centroids"
+                ),
+                "population_target_area_px": int(
+                    np.count_nonzero(population_region)
+                ),
+                "placement_center_domain_pixels": int(
+                    np.count_nonzero(tissue_region)
+                ),
+                "population_placement_role_separation": (
+                    "count_from_population_target_area_place_centers_only_in_P"
+                ),
+                "explicit_new_target_count_override": (
+                    int(target_count)
+                    if explicit_new_target is not None
+                    else None
                 ),
             }
         )
@@ -2811,6 +2863,9 @@ def generate_two_stage_for_gamma(
     type_prior_weights_by_tissue=None,
     placement_nuc_prob=None,
     placement_type_prob=None,
+    population_mask=None,
+    required_center_mask=None,
+    minimum_required_centers=0,
 ):
     """Fill the legal destructive core, then the remaining placement domain.
 
@@ -2820,6 +2875,118 @@ def generate_two_stage_for_gamma(
     explicit intersection E∩P; the second stage uses P and preserves the exact
     count ledger.
     """
+
+    # Joint callers provide a distinct biological population region T_pop.
+    # Its complete target quota must be computed once and realized over P;
+    # splitting T_pop into E-intersection-P and buffer stages would round and
+    # calibrate two partial quotas independently. Legacy callers that omit the
+    # mask retain the established two-stage behavior below.
+    if population_mask is not None:
+        required_center_mask = (
+            np.zeros_like(generation_mask, dtype=bool)
+            if required_center_mask is None
+            else (
+                np.asarray(required_center_mask, dtype=bool)
+                & np.asarray(generation_mask, dtype=bool)
+            )
+        )
+        minimum_required_centers = max(0, int(minimum_required_centers))
+        if minimum_required_centers and not np.any(required_center_mask):
+            raise PlacementQuotaError(
+                "required center quota has an empty legal placement region"
+            )
+        if minimum_required_centers:
+            required_tissue_ids = [
+                int(value)
+                for value in np.unique(tissue[required_center_mask])
+                if int(value) not in set(args.skip_tissue_ids)
+            ]
+            if len(required_tissue_ids) != 1:
+                raise PlacementQuotaError(
+                    "required center region must resolve to exactly one legal "
+                    "target tissue"
+                )
+            required_tissue_id = required_tissue_ids[0]
+            required_output, required_diagnostics = generate_for_gamma(
+                prob,
+                tissue,
+                input_nuclei,
+                required_center_mask,
+                library,
+                reference_pool,
+                gamma,
+                args,
+                density_scales,
+                type_density=type_density,
+                library_only_tissue_ids=library_only_tissue_ids,
+                clear_edit_mask=False,
+                type_proportions_by_tissue=type_proportions_by_tissue,
+                type_prior_weights_by_tissue=type_prior_weights_by_tissue,
+                placement_nuc_prob=placement_nuc_prob,
+                placement_type_prob=placement_type_prob,
+                population_mask=population_mask,
+                new_target_count_overrides={
+                    required_tissue_id: minimum_required_centers
+                },
+            )
+            output, diagnostics = generate_for_gamma(
+                prob,
+                tissue,
+                required_output,
+                generation_mask,
+                library,
+                reference_pool,
+                gamma,
+                args,
+                density_scales,
+                type_density=type_density,
+                library_only_tissue_ids=library_only_tissue_ids,
+                clear_edit_mask=False,
+                type_proportions_by_tissue=type_proportions_by_tissue,
+                type_prior_weights_by_tissue=type_prior_weights_by_tissue,
+                placement_nuc_prob=placement_nuc_prob,
+                placement_type_prob=placement_type_prob,
+                population_mask=population_mask,
+            )
+            _merge_required_center_stage_diagnostics(
+                diagnostics,
+                required_diagnostics,
+                required_tissue_id=required_tissue_id,
+                required_center_pixels=int(
+                    np.count_nonzero(required_center_mask)
+                ),
+                minimum_required_centers=minimum_required_centers,
+            )
+            return output, diagnostics
+        output, diagnostics = generate_for_gamma(
+            prob,
+            tissue,
+            input_nuclei,
+            generation_mask,
+            library,
+            reference_pool,
+            gamma,
+            args,
+            density_scales,
+            type_density=type_density,
+            library_only_tissue_ids=library_only_tissue_ids,
+            clear_edit_mask=False,
+            type_proportions_by_tissue=type_proportions_by_tissue,
+            type_prior_weights_by_tissue=type_prior_weights_by_tissue,
+            placement_nuc_prob=placement_nuc_prob,
+            placement_type_prob=placement_type_prob,
+            population_mask=population_mask,
+        )
+        diagnostics["regeneration_stages"] = {
+            "policy": "single_quota_from_T_pop_with_centers_constrained_to_P_v1",
+            "population_target_pixels": int(
+                np.count_nonzero(population_mask)
+            ),
+            "placement_center_pixels": int(
+                np.count_nonzero(generation_mask)
+            ),
+        }
+        return output, diagnostics
 
     core_placement_mask = (
         np.asarray(deletion_mask, dtype=bool)
@@ -2960,6 +3127,86 @@ def generate_two_stage_for_gamma(
         },
     }
     return output, buffer_diagnostics
+
+
+def _merge_required_center_stage_diagnostics(
+    diagnostics,
+    required_diagnostics,
+    *,
+    required_tissue_id,
+    required_center_pixels,
+    minimum_required_centers,
+):
+    """Merge a seam-first placement into the one exact population ledger.
+
+    The first stage reserves a small, skill-compiled subset of the final new
+    population at the edited interface.  The second stage recomputes the
+    remaining quota from the unchanged T_pop denominator after observing those
+    retained seam placements.  Adding the two ledgers therefore recovers one
+    total quota without using the seam mask as an abundance denominator.
+    """
+
+    required_info = (required_diagnostics.get("tissues") or {}).get(
+        str(required_tissue_id),
+        {},
+    )
+    final_info = (diagnostics.get("tissues") or {}).get(
+        str(required_tissue_id),
+    )
+    if final_info is None:
+        raise PlacementQuotaError(
+            "required-center target tissue is absent from final population ledger"
+        )
+    required_placed = int(required_info.get("placed", 0))
+    if required_placed < int(minimum_required_centers):
+        raise PlacementQuotaError(
+            "required center placement quota was not completed: "
+            f"required={int(minimum_required_centers)}, placed={required_placed}"
+        )
+    final_info["target_count"] = int(final_info.get("target_count", 0)) + int(
+        required_info.get("target_count", 0)
+    )
+    final_info["placed"] = int(final_info.get("placed", 0)) + required_placed
+    final_info["placed_by_type"] = _sum_count_dicts(
+        required_info.get("placed_by_type"),
+        final_info.get("placed_by_type"),
+    )
+    final_info["target_by_type"] = _sum_count_dicts(
+        required_info.get("target_by_type"),
+        final_info.get("target_by_type"),
+    )
+    final_info["posterior_expected_by_type"] = _sum_float_dicts(
+        required_info.get("posterior_expected_by_type"),
+        final_info.get("posterior_expected_by_type"),
+    )
+    final_info["accepted_centers"] = [
+        *(required_info.get("accepted_centers") or []),
+        *(final_info.get("accepted_centers") or []),
+    ]
+    diagnostics["placed"] = int(diagnostics.get("placed", 0)) + int(
+        required_diagnostics.get("placed", 0)
+    )
+    required_sources = required_diagnostics.get("placed_by_shape_source") or {}
+    final_sources = diagnostics.setdefault(
+        "placed_by_shape_source",
+        {"reference": 0, "library": 0},
+    )
+    for source in ("reference", "library"):
+        final_sources[source] = int(final_sources.get(source, 0)) + int(
+            required_sources.get(source, 0)
+        )
+    shape_sampling = diagnostics.get("shape_sampling") or {}
+    shape_sampling["selected_by_source"] = dict(final_sources)
+    diagnostics["shape_sampling"] = shape_sampling
+    diagnostics["regeneration_stages"] = {
+        "policy": "required_seam_first_then_T_pop_exact_remainder_v1",
+        "required_tissue_id": int(required_tissue_id),
+        "required_center_region_pixels": int(required_center_pixels),
+        "minimum_required_centers": int(minimum_required_centers),
+        "required_placed": required_placed,
+        "required_stage": required_diagnostics.get("tissues") or {},
+        "population_remainder_stage": diagnostics.get("tissues") or {},
+    }
 
 
 def heatmap_rgb(values, mask=None):
@@ -3764,6 +4011,31 @@ def run_single(args, model, library, config, density_scales, device):
         placement_mask = placement_mask > 128
     else:
         placement_mask = edit_mask.copy()
+    if args.population_region:
+        population_mask = cv2.imread(
+            args.population_region,
+            cv2.IMREAD_GRAYSCALE,
+        )
+        if population_mask is None:
+            raise FileNotFoundError(
+                f"Cannot load population region mask: {args.population_region}"
+            )
+        population_mask = population_mask > 128
+    else:
+        population_mask = placement_mask.copy()
+    if args.required_placement_region:
+        required_placement_mask = cv2.imread(
+            args.required_placement_region,
+            cv2.IMREAD_GRAYSCALE,
+        )
+        if required_placement_mask is None:
+            raise FileNotFoundError(
+                "Cannot load required placement region mask: "
+                f"{args.required_placement_region}"
+            )
+        required_placement_mask = required_placement_mask > 128
+    else:
+        required_placement_mask = np.zeros_like(placement_mask, dtype=bool)
     if args.deletion_region:
         deletion_mask = cv2.imread(
             args.deletion_region,
@@ -3780,10 +4052,30 @@ def run_single(args, model, library, config, density_scales, device):
         raise ValueError("deletion and generation regions must share one shape")
     if placement_mask.shape != edit_mask.shape:
         raise ValueError("placement and generation regions must share one shape")
+    if population_mask.shape != edit_mask.shape:
+        raise ValueError("population and generation regions must share one shape")
+    if required_placement_mask.shape != edit_mask.shape:
+        raise ValueError(
+            "required placement and generation regions must share one shape"
+        )
     if np.any(placement_mask & ~edit_mask):
         raise ValueError("generation region must contain every placement pixel")
     if np.any(deletion_mask & ~edit_mask):
         raise ValueError("generation region must contain every deletion pixel")
+    if np.any(population_mask & ~edit_mask):
+        raise ValueError("generation region must contain every population pixel")
+    if np.any(required_placement_mask & ~placement_mask):
+        raise ValueError(
+            "placement region must contain every required placement pixel"
+        )
+    if int(args.minimum_required_placements) < 0:
+        raise ValueError("minimum required placements cannot be negative")
+    if int(args.minimum_required_placements) > 0 and not np.any(
+        required_placement_mask
+    ):
+        raise ValueError(
+            "minimum required placements need a non-empty required placement region"
+        )
     semantic_edit_pixels = int(np.count_nonzero(deletion_mask))
     if args.widen_edit_region:
         edit_mask = widen_locally_thin_mask(
@@ -3806,9 +4098,18 @@ def run_single(args, model, library, config, density_scales, device):
         reference_pool = None
 
     if args.input_nuclei:
+        # Population abundance/type priors must use the complete observed
+        # source mask. ``--reference-nuclei-shapes`` may be a deliberately
+        # filtered pool that removes censored or protected shapes and must not
+        # silently reduce the patch density estimate.
+        population_reference_nuclei_raw = load_nuclei_mask(
+            args.input_nuclei,
+            remap=False,
+        )
         input_nuclei = load_nuclei_mask(args.input_nuclei, remap=True)
     else:
         input_nuclei = np.zeros_like(tissue, dtype=np.int64)
+        population_reference_nuclei_raw = reference_nuclei_raw
     input_nuclei = input_nuclei.copy()
     erasure_mask = (
         deletion_mask.copy()
@@ -3822,11 +4123,11 @@ def run_single(args, model, library, config, density_scales, device):
     input_nuclei[erasure_mask] = 0
 
     calibrated_scales, type_proportions, prior_audit = compute_patch_adaptive_priors(
-        reference_nuclei_raw=reference_nuclei_raw,
+        reference_nuclei_raw=population_reference_nuclei_raw,
         reference_tissue=reference_tissue,
         density_exclusion_region=deletion_mask,
         target_tissue=tissue,
-        generation_region=placement_mask,
+        generation_region=population_mask,
         library=library,
         global_density_scale=args.density_scale,
         local_density_direct_min_area=args.local_density_direct_min_area,
@@ -3841,6 +4142,7 @@ def run_single(args, model, library, config, density_scales, device):
         "semantic_pixels": semantic_edit_pixels,
         "generation_pixels": int(np.count_nonzero(edit_mask)),
         "placement_pixels": int(np.count_nonzero(placement_mask)),
+        "population_target_pixels": int(np.count_nonzero(population_mask)),
         "minimum_width_px": int(args.minimum_mask_width),
         "widening_enabled": bool(args.widen_edit_region),
         "source_nucleus_erasure_policy": (
@@ -3850,6 +4152,12 @@ def run_single(args, model, library, config, density_scales, device):
         ),
         "buffer_nucleus_policy": (
             "retain_generation_buffer_only_nuclei_as_placement_obstacles"
+        ),
+        "population_reference_policy": (
+            "complete_source_nuclei_independent_of_filtered_shape_pool"
+        ),
+        "shape_reference_policy": (
+            "separately_filtered_reference_nuclei_shapes"
         ),
     }
     for tissue_id, override in density_scales.items():
@@ -3951,6 +4259,11 @@ def run_single(args, model, library, config, density_scales, device):
                     type_prior_weights_by_tissue=type_prior_weights,
                     placement_nuc_prob=placement_nuc_prob,
                     placement_type_prob=placement_type_prob,
+                    population_mask=population_mask,
+                    required_center_mask=required_placement_mask,
+                    minimum_required_centers=int(
+                        args.minimum_required_placements
+                    ),
                 )
             except PlacementQuotaError as exc:
                 attempt_records.append(
@@ -4331,11 +4644,40 @@ def build_parser():
     )
     parser.add_argument("--edit-region", default=None, help="Single edit region mask PNG")
     parser.add_argument(
+        "--population-region",
+        default=None,
+        help=(
+            "Optional target-tissue population accounting region T_pop. "
+            "Counts and density are computed from this mask while new "
+            "nucleus centers remain restricted to --placement-region. "
+            "Defaults to the placement region for legacy callers."
+        ),
+    )
+    parser.add_argument(
         "--placement-region",
         default=None,
         help=(
             "Optional legal nucleus-center region inside --edit-region. "
             "Defaults to --edit-region for backward compatibility."
+        ),
+    )
+    parser.add_argument(
+        "--required-placement-region",
+        default=None,
+        help=(
+            "Optional skill-compiled subset of --placement-region that must "
+            "receive the first new nucleus centers. It changes placement "
+            "allocation only; population abundance is still computed from "
+            "--population-region."
+        ),
+    )
+    parser.add_argument(
+        "--minimum-required-placements",
+        type=int,
+        default=0,
+        help=(
+            "Minimum new centers reserved in --required-placement-region "
+            "before the remaining exact T_pop quota is sampled over P."
         ),
     )
     parser.add_argument(

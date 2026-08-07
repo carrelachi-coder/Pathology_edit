@@ -23,7 +23,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v2"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v3"
 
 
 @dataclass(frozen=True)
@@ -77,6 +77,7 @@ def compile_edit_plan(
     target_ids = tuple(schema.resolve_fine_ids(plan.target_label))
     source_region = np.isin(mask, source_ids)
     target_region = np.isin(mask, target_ids)
+    topology_policy = _topology_policy(plan)
     desired_pixels = plan.area_budget.target_pixels(mask, source_region)
     hard_min_pixels, hard_max_pixels = plan.area_budget.hard_pixel_interval(
         mask, source_region
@@ -113,6 +114,7 @@ def compile_edit_plan(
         target_region=target_region,
         scene=scene,
         fallback_policy=plan.area_budget.fallback_policy,
+        **topology_policy,
     )
     realized_allocations = np.asarray(
         [int(np.count_nonzero(item)) for item in selected_by_work], dtype=int
@@ -323,6 +325,7 @@ def replay_compiled_edit_plan(
         target_region=target_region,
         scene=scene,
         seed=0,
+        **_topology_policy(plan),
     )
     realized = sum(int(np.count_nonzero(item)) for item in selected)
     topology = _whole_mask_topology_audit(
@@ -330,6 +333,7 @@ def replay_compiled_edit_plan(
         target_region=target_region,
         selected_by_work=selected,
         works=works,
+        **_topology_policy(plan),
     )
     if realized != resolved or not topology["passed"]:
         raise RefineContractError(
@@ -383,11 +387,16 @@ def _prepare_compiler_work(
         raise RefineContractError("execution solver cannot resolve all selected anchors")
     anchor_unions = tuple(np.logical_or.reduce(group) for group in anchor_groups)
     params = plan.tool_program.parameter_ranges
+    allow_source_resolution = bool(
+        params.get("allow_source_component_resolution", False)
+    )
     maximum_changed_fraction = min(
-        0.55, float(params.get("max_source_component_changed_fraction", 0.55))
+        1.0 if allow_source_resolution else 0.55,
+        float(params.get("max_source_component_changed_fraction", 0.55)),
     )
     minimum_remaining = max(
-        64, int(params.get("min_source_component_remaining_px", 64))
+        0 if allow_source_resolution else 64,
+        int(params.get("min_source_component_remaining_px", 64)),
     )
     # Build each interface's executable envelope independently before assigning
     # overlapping pixels to an owner.  The former nearest-anchor-first
@@ -551,6 +560,25 @@ def _bounded_allocations(
     return tuple(int(value) for value in allocations)
 
 
+def _topology_policy(plan: EditPlan) -> dict[str, bool]:
+    """Return deterministic primitive-owned topology permissions.
+
+    These flags are compiled from reviewed primitive skills by the joint
+    tissue planner. They are not inferred from image pixels and default to the
+    conservative generic burden-edit policy for legacy callers.
+    """
+
+    params = plan.tool_program.parameter_ranges
+    return {
+        "allow_source_component_resolution": bool(
+            params.get("allow_source_component_resolution", False)
+        ),
+        "allow_target_hole_resolution": bool(
+            params.get("allow_target_hole_resolution", False)
+        ),
+    }
+
+
 def _resolve_topology_safe_area(
     works: tuple[_CompilerWork, ...],
     *,
@@ -561,6 +589,8 @@ def _resolve_topology_safe_area(
     target_region: np.ndarray,
     scene: SceneAnalysis,
     fallback_policy: str,
+    allow_source_component_resolution: bool = False,
+    allow_target_hole_resolution: bool = False,
 ) -> tuple[
     tuple[int, ...],
     tuple[np.ndarray, ...],
@@ -581,6 +611,10 @@ def _resolve_topology_safe_area(
             target_region=target_region,
             scene=scene,
             seed=0,
+            allow_source_component_resolution=(
+                allow_source_component_resolution
+            ),
+            allow_target_hole_resolution=allow_target_hole_resolution,
         )
         realized = sum(int(np.count_nonzero(item)) for item in selected)
         topology = _whole_mask_topology_audit(
@@ -588,6 +622,10 @@ def _resolve_topology_safe_area(
             target_region=target_region,
             selected_by_work=selected,
             works=works,
+            allow_source_component_resolution=(
+                allow_source_component_resolution
+            ),
+            allow_target_hole_resolution=allow_target_hole_resolution,
         )
         valid = realized == total and bool(topology["passed"])
         attempts.append(
@@ -696,6 +734,8 @@ def _whole_mask_topology_audit(
     target_region: np.ndarray,
     selected_by_work: tuple[np.ndarray, ...],
     works: tuple[_CompilerWork, ...],
+    allow_source_component_resolution: bool = False,
+    allow_target_hole_resolution: bool = False,
 ) -> dict[str, Any]:
     change = np.logical_or.reduce(selected_by_work)
     source_after = source_region & ~change
@@ -713,11 +753,29 @@ def _whole_mask_topology_audit(
     source_hole_change_allowed = target_merge and (
         len({item.planned.target_component_id for item in works}) > 1
     )
+    source_holes_valid = (
+        source_holes_after <= source_holes_before
+        if allow_source_component_resolution
+        else (
+            source_holes_after == source_holes_before
+            or source_hole_change_allowed
+        )
+    )
+    source_components_valid = (
+        source_components_after <= source_components_before
+        if allow_source_component_resolution
+        else source_components_after == source_components_before
+    )
+    target_holes_valid = (
+        target_holes_after <= target_holes_before
+        if allow_target_hole_resolution
+        else target_holes_after == target_holes_before
+    )
     passed = (
-        source_components_after == source_components_before
+        source_components_valid
         and target_components_after <= target_components_before
-        and (source_holes_after == source_holes_before or source_hole_change_allowed)
-        and target_holes_after == target_holes_before
+        and source_holes_valid
+        and target_holes_valid
     )
     return {
         "passed": bool(passed),
@@ -736,6 +794,12 @@ def _whole_mask_topology_audit(
         "source_hole_change_allowed_by_selected_target_merge": bool(
             source_hole_change_allowed
         ),
+        "allow_source_component_resolution": bool(
+            allow_source_component_resolution
+        ),
+        "allow_target_hole_resolution": bool(
+            allow_target_hole_resolution
+        ),
     }
 
 
@@ -752,6 +816,8 @@ def _simulate_topology_safe_execution(
     target_region: np.ndarray,
     scene: SceneAnalysis,
     seed: int,
+    allow_source_component_resolution: bool = False,
+    allow_target_hole_resolution: bool = False,
 ) -> tuple[tuple[np.ndarray, ...], tuple[dict[str, Any], ...]]:
     source_states = {
         work.planned.source_component_id: np.array(
@@ -790,8 +856,16 @@ def _simulate_topology_safe_execution(
             unselected_target=unselected_target,
             maximum_source_deletions=work.source_deletion_limit_px,
             already_deleted_from_source=deleted_by_source[component_id],
-            protected_source_necks=work.protected_source_necks,
+            protected_source_necks=(
+                None
+                if allow_source_component_resolution
+                else work.protected_source_necks
+            ),
             seed=seed + index * 13007 + pass_index * 104729,
+            allow_source_component_resolution=(
+                allow_source_component_resolution
+            ),
+            allow_target_hole_resolution=allow_target_hole_resolution,
         )
         realized = int(np.count_nonzero(selected))
         selected_by_work[index] |= selected

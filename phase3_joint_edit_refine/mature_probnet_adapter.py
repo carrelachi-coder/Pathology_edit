@@ -19,7 +19,7 @@ from .models import JointContractError
 from .nuclei import load_nuclei_mask, to_raw_nuclei_mask
 from .scene import JointSceneAnalysis
 
-MATURE_EXECUTION_VERSION = "online-probnet-mature-v3"
+MATURE_EXECUTION_VERSION = "online-probnet-mature-v5"
 
 
 @dataclass(frozen=True)
@@ -80,9 +80,13 @@ class MatureProbNetCellExecutor:
         target_tissue_path: Path,
         source_tissue_path: Path,
         source_nuclei_path: Path,
+        reference_nuclei_shapes_path: Path,
         generation_region_path: Path,
+        population_region_path: Path,
         placement_region_path: Path,
         erasure_region_path: Path,
+        required_placement_region_path: Path | None,
+        minimum_required_placements: int,
         output_path: Path,
         prohibited_tissue_ids: tuple[int, ...],
         allowed_new_cell_classes: tuple[int, ...],
@@ -110,9 +114,11 @@ class MatureProbNetCellExecutor:
             "--input-nuclei",
             str(source_nuclei_path),
             "--reference-nuclei-shapes",
-            str(source_nuclei_path),
+            str(reference_nuclei_shapes_path),
             "--edit-region",
             str(generation_region_path),
+            "--population-region",
+            str(population_region_path),
             "--placement-region",
             str(placement_region_path),
             "--deletion-region",
@@ -135,6 +141,15 @@ class MatureProbNetCellExecutor:
         if prohibited_tissue_ids:
             command.extend(
                 ["--skip-tissue-ids", *[str(value) for value in prohibited_tissue_ids]]
+            )
+        if required_placement_region_path is not None:
+            command.extend(
+                [
+                    "--required-placement-region",
+                    str(required_placement_region_path),
+                    "--minimum-required-placements",
+                    str(max(0, int(minimum_required_placements))),
+                ]
             )
         return command
 
@@ -163,20 +178,22 @@ class MatureProbNetCellExecutor:
         target_tissue_path = directory / "target_tissue.png"
         source_tissue_path = directory / "source_tissue.png"
         source_nuclei_path = directory / "source_nuclei.png"
+        reference_nuclei_shapes_path = directory / "reference_nuclei_shapes.png"
         generation_path = directory / "generation_region.png"
+        population_path = directory / "population_target_region.png"
         placement_path = directory / "placement_region.png"
         erasure_path = directory / "erasure_region.png"
+        required_placement_path = directory / "required_placement_region.png"
         _save_mask(target_tissue_path, target_tissue)
         _save_mask(source_tissue_path, source_tissue)
         _save_mask(source_nuclei_path, to_raw_nuclei_mask(source_nuclei))
-        # ``--edit-region`` is the mature CLI generation domain and must
-        # contain every complete-instance deletion pixel. P contains legal
-        # centers but not necessarily the full footprint of a source nucleus
-        # crossing T, so the CLI receives P union E. The executable contract
-        # still audits new centers against P/mechanism and all changed pixels
-        # against S after generation.
+        # ``--edit-region`` is the mature CLI model-support domain and must
+        # contain T_pop, every legal center in P, and every complete-instance
+        # deletion pixel in E. T_pop is an abundance denominator, not a center
+        # mask; P remains the only authority for accepted new centers.
         mature_generation_region = (
-            np.asarray(program.placement_center_region, dtype=bool)
+            np.asarray(program.population_target_region, dtype=bool)
+            | np.asarray(program.placement_center_region, dtype=bool)
             | np.asarray(program.erasure_region, dtype=bool)
         )
         if np.any(mature_generation_region & ~program.support_context_region):
@@ -184,8 +201,15 @@ class MatureProbNetCellExecutor:
                 "mature ProbNet generation region exceeds executable support"
             )
         _save_binary(generation_path, mature_generation_region)
+        _save_binary(population_path, program.population_target_region)
         _save_binary(placement_path, program.placement_center_region)
         _save_binary(erasure_path, program.erasure_region)
+        minimum_required_placements = int(
+            bool(program.continuity_requires_new_target_cells)
+            and np.any(program.continuity_region)
+        )
+        if minimum_required_placements:
+            _save_binary(required_placement_path, program.continuity_region)
 
         eligible: set[str] = set()
         rejected: dict[str, str] = {}
@@ -195,10 +219,24 @@ class MatureProbNetCellExecutor:
             )
             eligible.update(item.instance_id for item in references)
             rejected.update(current_rejected)
+        protected = set(contract.protected_instance_ids)
+        eligible.difference_update(protected)
+        for instance_id in protected:
+            rejected.setdefault(instance_id, "executable_contract_protected_instance")
         if not eligible:
             raise JointContractError(
                 "mature ProbNet execution has no complete non-border reference shape"
             )
+        reference_nuclei = np.asarray(source_nuclei).copy()
+        for instance in scene.cells.instances:
+            if instance.instance_id not in eligible:
+                reference_nuclei[
+                    np.asarray(scene.instance_masks[instance.instance_id], dtype=bool)
+                ] = 0
+        _save_mask(
+            reference_nuclei_shapes_path,
+            to_raw_nuclei_mask(reference_nuclei),
+        )
 
         checkpoint_digest = _sha256(Path(self.config.checkpoint))
         instance_library_digest = _tree_sha256(
@@ -214,9 +252,17 @@ class MatureProbNetCellExecutor:
                 target_tissue_path=target_tissue_path,
                 source_tissue_path=source_tissue_path,
                 source_nuclei_path=source_nuclei_path,
+                reference_nuclei_shapes_path=reference_nuclei_shapes_path,
                 generation_region_path=generation_path,
+                population_region_path=population_path,
                 placement_region_path=placement_path,
                 erasure_region_path=erasure_path,
+                required_placement_region_path=(
+                    required_placement_path
+                    if minimum_required_placements
+                    else None
+                ),
+                minimum_required_placements=minimum_required_placements,
                 output_path=output_path,
                 prohibited_tissue_ids=prohibited_tissue_ids,
                 allowed_new_cell_classes=contract.allowed_new_cell_classes,
@@ -328,7 +374,29 @@ class MatureProbNetCellExecutor:
                             for row, col, class_id in accepted_center_ledger
                         ],
                         "mature_generation_region_policy": (
-                            "placement_centers_union_complete_instance_erasure"
+                            "population_T_pop_union_placement_P_union_erasure_E"
+                        ),
+                        "population_quota_region_policy": (
+                            "target_tissue_population_area_T_pop_not_placement_P"
+                        ),
+                        "population_target_region_pixels": int(
+                            np.count_nonzero(program.population_target_region)
+                        ),
+                        "placement_center_region_pixels": int(
+                            np.count_nonzero(program.placement_center_region)
+                        ),
+                        "required_placement_region_pixels": int(
+                            np.count_nonzero(program.continuity_region)
+                            if minimum_required_placements
+                            else 0
+                        ),
+                        "minimum_required_placements": (
+                            minimum_required_placements
+                        ),
+                        "continuity_placement_policy": (
+                            "required_seam_first_then_T_pop_exact_remainder_v1"
+                            if minimum_required_placements
+                            else "not_required"
                         ),
                         "mature_generation_region_pixels": int(
                             np.count_nonzero(mature_generation_region)

@@ -50,6 +50,29 @@ class JointSkillBundle:
         return {
             "primitive_id": self.primitive.primitive_id,
             "primitive_scope": self.primitive.scope,
+            "primitive_tissue_geometry_mode": (
+                self.primitive.tissue_geometry_mode
+            ),
+            "primitive_tissue_topology_contract": {
+                "allow_source_component_resolution": (
+                    self.primitive.allow_source_component_resolution
+                ),
+                "allow_target_hole_resolution": (
+                    self.primitive.allow_target_hole_resolution
+                ),
+                "maximum_source_component_changed_fraction": (
+                    self.primitive.maximum_source_component_changed_fraction
+                ),
+                "minimum_source_component_remaining_px": (
+                    self.primitive.minimum_source_component_remaining_px
+                ),
+            },
+            "primitive_required_source_clearance_classes": list(
+                self.primitive.required_source_clearance_classes
+            ),
+            "primitive_minimum_source_clearance_instances": (
+                self.primitive.minimum_source_clearance_instances
+            ),
             "mechanism_id": self.mechanism.mechanism_id,
             "annotation_profile_id": self.annotation_profile.annotation_profile_id,
             "cell_observation_profile_id": self.cell_observation_profile.profile_id,

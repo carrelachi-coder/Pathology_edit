@@ -19,6 +19,9 @@ SUPPORT_STATUSES = frozenset(
 REVIEW_STATUSES = frozenset({"draft", "empirically_validated", "internally_reviewed"})
 PRIMITIVE_SCOPES = frozenset({"tissue_and_cell", "cell_only"})
 PRIMITIVE_BUDGET_MODES = frozenset({"joint_area_with_tissue_floor", "count_extent"})
+TISSUE_GEOMETRY_MODES = frozenset(
+    {"interface_front", "component_boundary_turnover"}
+)
 SEAM_MODES = frozenset(
     {"adaptive_population_continuity", "turnover_transition", "not_applicable"}
 )
@@ -299,6 +302,13 @@ class JointPrimitiveSkill:
     allowed_quota_roles: tuple[str, ...]
     host_tissue_labels: tuple[str, ...]
     target_cell_classes: tuple[int, ...]
+    tissue_geometry_mode: str
+    allow_source_component_resolution: bool
+    allow_target_hole_resolution: bool
+    maximum_source_component_changed_fraction: float
+    minimum_source_component_remaining_px: int
+    required_source_clearance_classes: tuple[int, ...]
+    minimum_source_clearance_instances: int
     required_checker_ids: tuple[str, ...]
     source_path: str
 
@@ -335,6 +345,35 @@ class JointPrimitiveSkill:
             raise JointContractError("joint primitive contains unknown cell baseline mode")
         if set(quota_roles) - CELL_QUOTA_ROLES:
             raise JointContractError("joint primitive contains unknown quota role")
+        topology = payload.get("tissue_topology_contract", {})
+        if not isinstance(topology, Mapping):
+            raise JointContractError(
+                "joint primitive tissue_topology_contract must be a mapping"
+            )
+        geometry_mode = str(
+            topology.get("geometry_mode", "interface_front")
+        )
+        if geometry_mode not in TISSUE_GEOMETRY_MODES:
+            raise JointContractError(
+                f"unknown primitive tissue geometry mode: {geometry_mode}"
+            )
+        maximum_changed = float(
+            topology.get("maximum_source_component_changed_fraction", 0.55)
+        )
+        minimum_remaining = int(
+            topology.get("minimum_source_component_remaining_px", 64)
+        )
+        minimum_clearance = int(
+            payload.get("minimum_source_clearance_instances", 0)
+        )
+        if not 0.0 < maximum_changed <= 1.0:
+            raise JointContractError(
+                "maximum source-component changed fraction must lie in (0,1]"
+            )
+        if minimum_remaining < 0 or minimum_clearance < 0:
+            raise JointContractError(
+                "primitive source retention/clearance counts must be non-negative"
+            )
         return cls(
             primitive_id=_string(payload, "primitive_id"),
             version=_string(payload, "version"),
@@ -349,6 +388,19 @@ class JointPrimitiveSkill:
                 payload, "host_tissue_labels", allow_empty=True
             ),
             target_cell_classes=_ints(payload, "target_cell_classes"),
+            tissue_geometry_mode=geometry_mode,
+            allow_source_component_resolution=bool(
+                topology.get("allow_source_component_resolution", False)
+            ),
+            allow_target_hole_resolution=bool(
+                topology.get("allow_target_hole_resolution", False)
+            ),
+            maximum_source_component_changed_fraction=maximum_changed,
+            minimum_source_component_remaining_px=minimum_remaining,
+            required_source_clearance_classes=_ints(
+                payload, "required_source_clearance_classes"
+            ),
+            minimum_source_clearance_instances=minimum_clearance,
             required_checker_ids=_strings(payload, "required_checker_ids"),
             source_path=source_path,
         )

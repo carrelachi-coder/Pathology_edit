@@ -47,6 +47,8 @@ def topology_safe_priority_grow(
     already_deleted_from_source: int,
     protected_source_necks: np.ndarray | None = None,
     seed: int,
+    allow_source_component_resolution: bool = False,
+    allow_target_hole_resolution: bool = False,
 ) -> tuple[np.ndarray, TopologyGrowAudit]:
     """Grow a front while preserving source/target digital topology.
 
@@ -124,6 +126,10 @@ def topology_safe_priority_grow(
             source_component_state=source_component_state,
             target_state=target_state,
             unselected_target=unselected_target,
+            allow_source_component_resolution=(
+                allow_source_component_resolution
+            ),
+            allow_target_hole_resolution=allow_target_hole_resolution,
         )
         if reason is not None:
             counters[reason] += 1
@@ -227,6 +233,8 @@ def _topology_rejection_reason(
     source_component_state: np.ndarray,
     target_state: np.ndarray,
     unselected_target: np.ndarray,
+    allow_source_component_resolution: bool = False,
+    allow_target_hole_resolution: bool = False,
 ) -> str | None:
     """Return the first local digital-topology violation for one conversion.
 
@@ -252,16 +260,29 @@ def _topology_rejection_reason(
     source_pattern = _neighbor_pattern_at(
         source_component_state, row, col, outside=False
     )
-    if _cached_local_component_count(source_pattern, 8, False) != 1:
+    source_neighbor_components = _cached_local_component_count(
+        source_pattern, 8, False
+    )
+    if source_neighbor_components != 1 and not (
+        allow_source_component_resolution and source_neighbor_components == 0
+    ):
         return "source_connectivity"
 
     # Removing a source pixel adds one background pixel.  Zero adjacent
     # background components creates a new source hole; more than one joins
     # previously separate background regions and removes a protected hole.
     source_background_pattern = (~source_pattern) & 0xFF
-    if _cached_local_component_count(
+    source_background_components = _cached_local_component_count(
         source_background_pattern, 4, True
-    ) != 1:
+    )
+    # Zero background neighbours means removing the center creates a new
+    # source hole and is never legal. More than one joins existing background
+    # regions and therefore resolves a source hole; that is legal only for an
+    # explicitly authorized source-component resolution primitive.
+    if source_background_components == 0 or (
+        source_background_components > 1
+        and not allow_source_component_resolution
+    ):
         return "source_hole_change"
 
     target_pattern = _neighbor_pattern_at(target_state, row, col, outside=False)
@@ -270,7 +291,7 @@ def _topology_rejection_reason(
     )
     if target_neighbor_components == 0:
         return "target_island"
-    if target_neighbor_components != 1:
+    if target_neighbor_components != 1 and not allow_target_hole_resolution:
         return "target_hole_change"
 
     # Adding a target pixel removes one background pixel.  If that pixel is a
@@ -279,9 +300,16 @@ def _topology_rejection_reason(
     # filling it silently removes a pre-existing target hole.  Both are
     # forbidden by the generic topology contract.
     target_background_pattern = (~target_pattern) & 0xFF
-    if _cached_local_component_count(
+    target_background_components = _cached_local_component_count(
         target_background_pattern, 4, True
-    ) != 1:
+    )
+    # Zero background neighbours removes an existing one-pixel target hole;
+    # more than one splits background and creates a new target hole. The
+    # latter remains forbidden even when hole *resolution* is authorized.
+    if target_background_components > 1 or (
+        target_background_components == 0
+        and not allow_target_hole_resolution
+    ):
         return "target_hole_change"
 
     if _neighbor_pattern_at(unselected_target, row, col, outside=False):

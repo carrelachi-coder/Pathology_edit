@@ -171,7 +171,7 @@ def _tool_program_binding(c):
     expected = c.plan.cell_plan
     passed = bool(
         isinstance(program, dict)
-        and program.get("compiler_version") == "joint-cell-tool-compiler-v4"
+        and program.get("compiler_version") == "joint-cell-tool-compiler-v5"
         and program.get("primitive_id") == c.case.primitive_id
         and program.get("mechanism_id") == c.plan.selected_mechanism_id
         and tuple(program.get("selected_interface_ids", ()))
@@ -186,6 +186,7 @@ def _tool_program_binding(c):
             int(program.get(f"{name}_pixels", 0)) >= 0
             for name in (
                 "erasure_region",
+                "population_target_region",
                 "placement_center_region",
                 "valid_footprint_region",
                 "support_context_region",
@@ -871,12 +872,12 @@ def _interface_seam_continuity(c):
     )
     target = np.asarray(c.candidate.target_nuclei_mask)
     target_centers = class_center_mask(target, class_id=target_class)
-    inner_density = int(np.count_nonzero(target_centers & inner)) / max(
-        1, int(np.count_nonzero(inner))
-    )
-    outer_density = int(np.count_nonzero(target_centers & outer)) / max(
-        1, int(np.count_nonzero(outer))
-    )
+    inner_count = int(np.count_nonzero(target_centers & inner))
+    outer_count = int(np.count_nonzero(target_centers & outer))
+    inner_pixels = int(np.count_nonzero(inner))
+    outer_pixels = int(np.count_nonzero(outer))
+    inner_density = inner_count / max(1, inner_pixels)
+    outer_density = outer_count / max(1, outer_pixels)
     ratio = (
         _safe_ratio(inner_density, outer_density) if np.count_nonzero(outer) else None
     )
@@ -886,7 +887,27 @@ def _interface_seam_continuity(c):
         maximum_empty_run_px=program.continuity_maximum_empty_run_px,
     )
     lower, upper = program.continuity_density_ratio_range
-    density_ok = ratio is None or lower <= ratio <= upper
+    # Raw density ratios are not executable when the local reference predicts
+    # fewer than one nucleus in the finite seam raster: for example, an
+    # expected count of 0.18 has no integer realization inside [0.04, 0.72].
+    # Compile the same ratio envelope into an integer count interval and keep
+    # the required-new-cell lower bound explicit. This accepts exactly one
+    # well-contained seam nucleus in a sparse field, but still rejects zero or
+    # an implausible cluster; it is a resolution correction, not a relaxed
+    # pathology threshold.
+    expected_inner_count = outer_density * inner_pixels
+    minimum_inner_count = int(np.ceil(lower * expected_inner_count - 1e-12))
+    if program.continuity_requires_new_target_cells:
+        minimum_inner_count = max(1, minimum_inner_count)
+    maximum_inner_count = max(
+        minimum_inner_count,
+        int(np.ceil(upper * expected_inner_count - 1e-12)),
+    )
+    density_ok = (
+        inner_count >= minimum_inner_count
+        if outer_pixels == 0 or outer_count == 0
+        else minimum_inner_count <= inner_count <= maximum_inner_count
+    )
     geometry_exists = bool(np.any(anchor) and np.any(inner))
     coverage_ok = (
         not program.continuity_requires_new_target_cells
@@ -907,6 +928,16 @@ def _interface_seam_continuity(c):
             "inner_density": inner_density,
             "outer_density": outer_density,
             "inner_outer_ratio": ratio,
+            "inner_center_count": inner_count,
+            "outer_center_count": outer_count,
+            "expected_inner_center_count": expected_inner_count,
+            "allowed_inner_center_count_interval": [
+                minimum_inner_count,
+                maximum_inner_count,
+            ],
+            "density_discretization_policy": (
+                "ratio_envelope_compiled_to_integer_center_interval_v1"
+            ),
             "continuity_mode": program.continuity_mode,
             "continuity_width_px": program.continuity_width_px,
             "maximum_empty_run_px": (

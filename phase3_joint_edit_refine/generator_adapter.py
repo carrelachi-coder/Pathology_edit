@@ -59,7 +59,11 @@ def build_frozen_generator_inputs(
 ) -> tuple[EditPipelineInputs, JointGeneratorRoute, dict[str, Any]]:
     manifest_path = Path(manifest_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("schema_version") != "joint-generation-handoff-v2":
+    schema_version = manifest.get("schema_version")
+    if schema_version not in {
+        "joint-generation-handoff-v2",
+        "joint-generation-handoff-v3",
+    }:
         raise JointContractError("unsupported joint generation handoff schema")
     paths = manifest.get("paths")
     digests = manifest.get("digests")
@@ -82,6 +86,8 @@ def build_frozen_generator_inputs(
         "contract_A_selected_anchor",
         "executable_contract",
     )
+    if schema_version == "joint-generation-handoff-v3":
+        required_artifacts += ("contract_T_population",)
     for name in required_artifacts:
         path = Path(paths.get(name, ""))
         if not path.is_file() or _sha256(path) != digests.get(name + "_sha256"):
@@ -223,7 +229,11 @@ def _validate_result_binding(manifest: dict[str, Any]) -> None:
     binding = manifest.get("result_binding")
     if not isinstance(binding, dict):
         raise JointContractError("joint handoff lacks a final result binding")
-    if binding.get("schema_version") != "joint-result-binding-v1":
+    binding_version = binding.get("schema_version")
+    if binding_version not in {
+        "joint-result-binding-v1",
+        "joint-result-binding-v2",
+    }:
         raise JointContractError("unsupported joint result binding schema")
     expected = dict(binding)
     observed_id = expected.pop("binding_id", None)
@@ -245,5 +255,9 @@ def _validate_result_binding(manifest: dict[str, Any]) -> None:
         "joint_change_sha256": "joint_change_sha256",
         "generation_support_sha256": "generation_support_sha256",
     }
+    if binding_version == "joint-result-binding-v2":
+        names["contract_T_population_sha256"] = (
+            "contract_T_population_sha256"
+        )
     if any(binding.get(left) != digests.get(right) for left, right in names.items()):
         raise JointContractError("joint result binding artifact digest drift")

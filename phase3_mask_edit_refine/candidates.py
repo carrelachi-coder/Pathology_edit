@@ -375,11 +375,16 @@ def _prepare_interfaces(
     result: list[_InterfaceWork] = []
     graph_interfaces = {item.interface_id: item for item in scene.graph.interfaces}
     params = plan.tool_program.parameter_ranges
+    allow_source_resolution = bool(
+        params.get("allow_source_component_resolution", False)
+    )
     maximum_changed_fraction = min(
-        0.55, float(params.get("max_source_component_changed_fraction", 0.55))
+        1.0 if allow_source_resolution else 0.55,
+        float(params.get("max_source_component_changed_fraction", 0.55)),
     )
     minimum_remaining = max(
-        64, int(params.get("min_source_component_remaining_px", 64))
+        0 if allow_source_resolution else 64,
+        int(params.get("min_source_component_remaining_px", 64)),
     )
     resolved_anchor_groups = tuple(
         tuple(
@@ -555,7 +560,15 @@ def _generate_one(
     protected_source_necks: np.ndarray,
     topology_seed: int,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    del parameter_ranges
+    allow_source_resolution = bool(
+        parameter_ranges.get("allow_source_component_resolution", False)
+    )
+    allow_target_hole_resolution = bool(
+        parameter_ranges.get("allow_target_hole_resolution", False)
+    )
+    effective_protected_necks = (
+        None if allow_source_resolution else protected_source_necks
+    )
     distance = ndimage.distance_transform_edt(~anchor_mask)
     band_min, band_max = planned_band
     profile = execution.depth_profile
@@ -621,8 +634,10 @@ def _generate_one(
             unselected_target=unselected_target,
             maximum_source_deletions=maximum_source_deletions,
             already_deleted_from_source=already_deleted_from_source,
-            protected_source_necks=protected_source_necks,
+            protected_source_necks=effective_protected_necks,
             seed=topology_seed + 17,
+            allow_source_component_resolution=allow_source_resolution,
+            allow_target_hole_resolution=allow_target_hole_resolution,
         )
         target = np.array(mask, copy=True)
         target[change] = int(target_fine_id)
@@ -662,8 +677,10 @@ def _generate_one(
         unselected_target=unselected_target,
         maximum_source_deletions=maximum_source_deletions,
         already_deleted_from_source=already_deleted_from_source,
-        protected_source_necks=protected_source_necks,
+        protected_source_necks=effective_protected_necks,
         seed=topology_seed,
+        allow_source_component_resolution=allow_source_resolution,
+        allow_target_hole_resolution=allow_target_hole_resolution,
     )
     target = np.array(mask, copy=True)
     target[selected] = int(target_fine_id)
