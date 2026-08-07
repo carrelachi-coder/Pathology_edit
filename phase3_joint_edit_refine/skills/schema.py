@@ -76,6 +76,7 @@ class CellProgramContract:
     halo_distance_px: tuple[int, int]
     cluster_size_range: tuple[int, int]
     seam: SeamContract
+    cellularity_depletion: CellularityDepletionContract | None
     render_owned_clearance_primitives: tuple[str, ...]
     required_checker_ids: tuple[str, ...]
 
@@ -96,6 +97,25 @@ class SeamContract:
     density_ratio_range: tuple[float, float]
     minimum_anchor_coverage_fraction: float
     requires_new_target_cells: bool
+
+
+@dataclass(frozen=True)
+class CellularityDepletionContract:
+    """Executable, skill-owned bounds for localized cellularity reduction."""
+
+    program_id: str
+    allowed_anchor_types: tuple[str, ...]
+    allowed_neighbor_labels: tuple[str, ...]
+    core_width_cell_diameters: float
+    transition_width_cell_diameters: float
+    outer_reference_width_cell_diameters: float
+    core_removal_weight: float
+    transition_removal_weight: float
+    minimum_core_residual_fraction: float
+    minimum_transition_residual_fraction: float
+    minimum_core_removals: int
+    minimum_transition_removals: int
+    maximum_new_gap_cell_diameters: float
 
 
 @dataclass(frozen=True)
@@ -202,6 +222,12 @@ class JointMechanismSkill:
                 "cell-only and footprint-spill reserves cannot exceed the patch"
             )
         seam = _seam_contract(cell.get("seam_contract"))
+        depletion = _cellularity_depletion_contract(
+            cell.get("cellularity_depletion_contract"),
+            required="cellularity-decrease-v1"
+            in _strings(payload, "supported_primitives"),
+            mechanism_id=mechanism_id,
+        )
         return cls(
             mechanism_id=mechanism_id,
             pathology_domain_id=_string(payload, "pathology_domain_id"),
@@ -248,6 +274,7 @@ class JointMechanismSkill:
                 halo_distance_px=halo,
                 cluster_size_range=cluster,
                 seam=seam,
+                cellularity_depletion=depletion,
                 render_owned_clearance_primitives=_strings(
                     cell,
                     "render_owned_clearance_primitives",
@@ -567,6 +594,83 @@ def _seam_contract(value: Any) -> SeamContract:
         requires_new_target_cells=bool(
             payload.get("requires_new_target_cells", mode == "adaptive_population_continuity")
         ),
+    )
+
+
+def _cellularity_depletion_contract(
+    value: Any, *, required: bool, mechanism_id: str
+) -> CellularityDepletionContract | None:
+    if value is None:
+        if required:
+            raise JointContractError(
+                f"{mechanism_id} supports cellularity decrease but has no "
+                "cellularity_depletion_contract"
+            )
+        return None
+    if not isinstance(value, Mapping):
+        raise JointContractError(
+            f"{mechanism_id}.cellularity_depletion_contract must be a mapping"
+        )
+    anchors = _strings(value, "allowed_anchor_types")
+    if set(anchors) - {"interface"}:
+        raise JointContractError(
+            f"{mechanism_id} contains an unsupported depletion anchor type"
+        )
+    neighbors = _strings(value, "allowed_neighbor_labels")
+    numeric = {
+        "core_width_cell_diameters": float(
+            value.get("core_width_cell_diameters", 1.25)
+        ),
+        "transition_width_cell_diameters": float(
+            value.get("transition_width_cell_diameters", 1.75)
+        ),
+        "outer_reference_width_cell_diameters": float(
+            value.get("outer_reference_width_cell_diameters", 1.50)
+        ),
+        "core_removal_weight": float(value.get("core_removal_weight", 1.0)),
+        "transition_removal_weight": float(
+            value.get("transition_removal_weight", 0.45)
+        ),
+        "minimum_core_residual_fraction": float(
+            value.get("minimum_core_residual_fraction", 0.25)
+        ),
+        "minimum_transition_residual_fraction": float(
+            value.get("minimum_transition_residual_fraction", 0.50)
+        ),
+        "maximum_new_gap_cell_diameters": float(
+            value.get("maximum_new_gap_cell_diameters", 3.0)
+        ),
+    }
+    if not all(isfinite(item) and item > 0 for item in numeric.values()):
+        raise JointContractError(
+            f"{mechanism_id} depletion numeric bounds must be finite and positive"
+        )
+    if not (
+        numeric["core_removal_weight"]
+        > numeric["transition_removal_weight"]
+    ):
+        raise JointContractError(
+            f"{mechanism_id} core removal weight must exceed transition weight"
+        )
+    for key in (
+        "minimum_core_residual_fraction",
+        "minimum_transition_residual_fraction",
+    ):
+        if not 0.0 < numeric[key] < 1.0:
+            raise JointContractError(f"{mechanism_id}.{key} must lie in (0,1)")
+    minimum_core = int(value.get("minimum_core_removals", 1))
+    minimum_transition = int(value.get("minimum_transition_removals", 1))
+    if minimum_core < 1 or minimum_transition < 1:
+        raise JointContractError(
+            f"{mechanism_id} depletion bands must each remove at least one nucleus"
+        )
+    return CellularityDepletionContract(
+        program_id=_string(value, "program_id"),
+        allowed_anchor_types=anchors,
+        allowed_neighbor_labels=neighbors,
+        minimum_core_removals=minimum_core,
+        minimum_transition_removals=minimum_transition,
+        **numeric,
     )
 
 

@@ -216,6 +216,30 @@ class ExecutableJointContract:
             errors.append("placement_region_outside_valid_footprint_region")
         if np.any(program.continuity_region & ~program.placement_center_region):
             errors.append("continuity_region_outside_placement_region")
+        if program.depletion_profile_id is not None:
+            core = np.asarray(program.depletion_core_region, dtype=bool)
+            transition = np.asarray(
+                program.depletion_transition_region, dtype=bool
+            )
+            outer = np.asarray(
+                program.depletion_outer_reference_region, dtype=bool
+            )
+            if not all(np.any(item) for item in (core, transition, outer)):
+                errors.append("depletion_three_band_contract_is_empty")
+            if np.any(core & transition) or np.any(core & outer) or np.any(
+                transition & outer
+            ):
+                errors.append("depletion_bands_overlap")
+            if not np.array_equal(
+                program.placement_center_region, core | transition
+            ):
+                errors.append("depletion_placement_region_not_core_transition")
+            if not np.array_equal(
+                program.population_target_region, core | transition | outer
+            ):
+                errors.append("depletion_population_region_not_three_bands")
+            if not np.any(program.depletion_anchor_mask):
+                errors.append("depletion_anchor_is_empty")
         if (
             program.continuity_requires_new_target_cells
             and not np.any(program.continuity_anchor_mask)
@@ -415,9 +439,14 @@ class ExecutableJointContractCompiler:
             1, int(np.ceil(base_program.nominal_nucleus_diameter_px / 2.0))
         )
         fit = ndimage.distance_transform_edt(valid) >= nominal_radius
-        placement = np.asarray(base_program.placement_center_region, dtype=bool) & fit
+        center_constraint = fit if "add" in plan.cell_plan.actions else valid
+        placement = (
+            np.asarray(base_program.placement_center_region, dtype=bool)
+            & center_constraint
+        )
         mechanism_region = (
-            np.asarray(base_program.mechanism_region, dtype=bool) & fit
+            np.asarray(base_program.mechanism_region, dtype=bool)
+            & center_constraint
         )
         continuity_region = (
             np.asarray(base_program.continuity_region, dtype=bool) & placement
@@ -481,7 +510,11 @@ class ExecutableJointContractCompiler:
                     "target-population-abundance-denominator-distinct-from-P"
                 ),
                 "E": "exact-union-of-complete-source-instance-footprints",
-                "P": "contract-centers-with-nominal-full-footprint-fit",
+                "P": (
+                    "contract-centers-with-nominal-full-footprint-fit"
+                    if "add" in plan.cell_plan.actions
+                    else "contract-existing-instance-centers"
+                ),
                 "V": "profile-and-target-host-fine-id-containment",
                 "S": "bounded-context-containing-T-E-P-and-mechanism-zone",
                 "S_footprint_margin": (

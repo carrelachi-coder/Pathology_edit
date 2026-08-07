@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -146,17 +146,17 @@ class OpenAIMultimodalJointPlanner:
             "scene": scene.to_metadata(),
             "selected_mechanism": bundle.to_metadata(),
             "mechanism_contract": {
-                "recognition": bundle.mechanism.recognition.__dict__,
-                "representability": bundle.mechanism.representability.__dict__,
-                "tissue_program": bundle.mechanism.tissue_program.__dict__,
-                "cell_program": bundle.mechanism.cell_program.__dict__,
-                "coupling": bundle.mechanism.coupling.__dict__,
-                "render": bundle.mechanism.render.__dict__,
+                "recognition": asdict(bundle.mechanism.recognition),
+                "representability": asdict(bundle.mechanism.representability),
+                "tissue_program": asdict(bundle.mechanism.tissue_program),
+                "cell_program": asdict(bundle.mechanism.cell_program),
+                "coupling": asdict(bundle.mechanism.coupling),
+                "render": asdict(bundle.mechanism.render),
             },
             "compiled_tissue_plan": (
                 tissue_plan.to_metadata() if tissue_plan is not None else None
             ),
-            "primitive_contract": bundle.primitive.__dict__,
+            "primitive_contract": asdict(bundle.primitive),
             "requirements": {
                 "accept_only_if_tissue_plan_matches_visible_mechanism": True,
                 "cell_plan_is_required_even_when_policy_is_retain": True,
@@ -169,6 +169,9 @@ class OpenAIMultimodalJointPlanner:
                 ),
                 "select_interface_and_anchor_ids_not_coordinates": True,
                 "local_population_primitives_select_component_population_zone": True,
+                "cellularity_decrease_requires_visible_interface_anchor_and_density_gradient": (
+                    case.primitive_id == "cellularity-decrease-v1"
+                ),
                 "choose_baseline_and_mechanism_program_separately": True,
             },
         }
@@ -224,11 +227,12 @@ class OpenAIMultimodalJointPlanner:
                 "joint Planner rejected the tissue execution contract"
             )
         local_population = case.primitive_id in LOCAL_POPULATION_PRIMITIVES
+        anchored_depletion = case.primitive_id == "cellularity-decrease-v1"
         bound_interfaces = set(
             _strings(
                 raw.get("bound_interface_ids"),
                 "bound_interface_ids",
-                allow_empty=local_population,
+                allow_empty=local_population and not anchored_depletion,
             )
         )
         if bundle.primitive.scope == "tissue_and_cell":
@@ -303,7 +307,7 @@ class OpenAIMultimodalJointPlanner:
             for anchor in scene.tissue.graph.anchor_segments
             if anchor.interface_id in bound_interfaces
         }
-        if not local_population and (
+        if (not local_population or anchored_depletion) and (
             not cell_plan.anchor_ids or set(cell_plan.anchor_ids) - set(known_anchors)
         ):
             raise JointContractError(
@@ -326,11 +330,51 @@ class OpenAIMultimodalJointPlanner:
                 or zone.zone_kind != "component"
                 or component_labels.get(zone.tissue_component_id)
                 not in bundle.primitive.host_tissue_labels
-                or cell_plan.interface_ids
-                or cell_plan.anchor_ids
             ):
                 raise JointContractError(
-                    "local population primitive must bind one legal component population zone and no interface anchors"
+                    "local population primitive must bind one legal component population zone"
+                )
+            if anchored_depletion:
+                depletion = bundle.mechanism.cell_program.cellularity_depletion
+                interfaces = {
+                    item.interface_id: item
+                    for item in scene.tissue.graph.interfaces
+                }
+                if (
+                    depletion is None
+                    or cell_plan.spatial_anchor_type
+                    not in depletion.allowed_anchor_types
+                    or cell_plan.layout_program_id
+                    != "localized_density_gradient"
+                    or cell_plan.mechanism_program_id
+                    != "localized_density_gradient"
+                ):
+                    raise JointContractError(
+                        "cellularity decrease lacks the skill-owned anchored gradient program"
+                    )
+                neighbor_labels = set()
+                for interface_id in cell_plan.interface_ids:
+                    interface = interfaces[interface_id]
+                    if interface.source_component_id == zone.tissue_component_id:
+                        neighbor_labels.add(interface.target_label)
+                    elif interface.target_component_id == zone.tissue_component_id:
+                        neighbor_labels.add(interface.source_label)
+                    else:
+                        raise JointContractError(
+                            "depletion interface does not touch the selected population component"
+                        )
+                if neighbor_labels - set(depletion.allowed_neighbor_labels):
+                    raise JointContractError(
+                        "depletion interface neighbor is not allowed by the mechanism skill"
+                    )
+            elif (
+                cell_plan.interface_ids
+                or cell_plan.anchor_ids
+                or cell_plan.spatial_anchor_type != "not_applicable"
+                or cell_plan.spatial_anchor_observation is not None
+            ):
+                raise JointContractError(
+                    "non-depletion local population primitive must not bind interface anchors"
                 )
             component_label = component_labels.get(zone.tissue_component_id)
             compatible_classes = set(
@@ -616,6 +660,8 @@ JOINT_PLAN_JSON_SCHEMA = {
                 "allowed_cell_classes",
                 "layout_program_id",
                 "anchor_ids",
+                "spatial_anchor_type",
+                "spatial_anchor_observation",
                 "baseline_mode",
                 "mechanism_program_id",
                 "mechanism_quota_role",
@@ -640,6 +686,11 @@ JOINT_PLAN_JSON_SCHEMA = {
                 },
                 "layout_program_id": {"type": "string"},
                 "anchor_ids": {"type": "array", "items": {"type": "string"}},
+                "spatial_anchor_type": {
+                    "type": "string",
+                    "enum": ["not_applicable", "interface"],
+                },
+                "spatial_anchor_observation": {"type": ["string", "null"]},
                 "baseline_mode": {
                     "type": "string",
                     "enum": [

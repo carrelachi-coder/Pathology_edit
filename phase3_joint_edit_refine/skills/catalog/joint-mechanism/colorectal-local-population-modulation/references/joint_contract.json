@@ -23,8 +23,9 @@
   },
   "cell_program": {
     "actions": ["retain", "remove_whole", "add"], "allowed_cell_classes": [1, 2, 3, 4, 5],
-    "layout_programs": ["single", "pair", "small_cluster", "boundary_aligned"],
+    "layout_programs": ["single", "pair", "small_cluster", "boundary_aligned", "localized_density_gradient"],
     "core_policy": "bounded_component_zone_with_local_class_composition", "halo_policy": "no_change_outside_compiled_population_extent", "halo_distance_px": [0, 48], "cluster_size_range": [1, 4],
+    "cellularity_depletion_contract": {"program_id": "localized-density-gradient-v1", "allowed_anchor_types": ["interface"], "allowed_neighbor_labels": ["Stroma"], "core_width_cell_diameters": 1.25, "transition_width_cell_diameters": 1.75, "outer_reference_width_cell_diameters": 1.5, "core_removal_weight": 1.0, "transition_removal_weight": 0.45, "minimum_core_residual_fraction": 0.4, "minimum_transition_residual_fraction": 0.5, "minimum_core_removals": 1, "minimum_transition_removals": 1, "maximum_new_gap_cell_diameters": 3.0},
     "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density"]
   },
   "coupling_contract": {"compatibility_rule_ids": ["colorectal.joint.local_population_host_compatibility", "colorectal.joint.gland_lumen_crypt_preservation"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "cell_count_extent", "tissue_floor_applies": false, "cell_only_target_fraction": 1.0, "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"},

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -361,11 +361,90 @@ class HeuristicJointPlanner:
         increase = case.primitive_id.endswith("increase-v1")
         baseline = "structured_add" if increase else "selective_remove"
         action = ("retain", "add") if increase else ("retain", "remove_whole")
-        layout = (
-            "single"
-            if "single" in bundle.mechanism.cell_program.layout_programs
-            else bundle.mechanism.cell_program.layout_programs[0]
-        )
+        interface_ids: tuple[str, ...] = ()
+        anchor_ids: tuple[str, ...] = ()
+        spatial_anchor_type = "not_applicable"
+        spatial_anchor_observation = None
+        if case.primitive_id == "cellularity-decrease-v1":
+            depletion = bundle.mechanism.cell_program.cellularity_depletion
+            raw_anchor = case.provenance.get("cellularity_depletion_anchor")
+            if depletion is None or not isinstance(raw_anchor, Mapping):
+                raise JointContractError(
+                    "cellularity decrease requires an explicit visual depletion anchor"
+                )
+            spatial_anchor_type = str(raw_anchor.get("type", ""))
+            if spatial_anchor_type not in depletion.allowed_anchor_types:
+                raise JointContractError(
+                    "depletion anchor type is not allowed by the mechanism skill"
+                )
+            raw_interfaces = raw_anchor.get("interface_ids", ())
+            raw_anchors = raw_anchor.get("anchor_ids", ())
+            if not isinstance(raw_interfaces, (list, tuple)) or not isinstance(
+                raw_anchors, (list, tuple)
+            ):
+                raise JointContractError(
+                    "depletion interface_ids and anchor_ids must be sequences"
+                )
+            interface_ids = tuple(str(value) for value in raw_interfaces)
+            anchor_ids = tuple(str(value) for value in raw_anchors)
+            spatial_anchor_observation = str(
+                raw_anchor.get("observation", "")
+            ).strip()
+            confidence = float(raw_anchor.get("confidence", 0.0))
+            interfaces = {
+                item.interface_id: item for item in scene.tissue.graph.interfaces
+            }
+            anchors = {
+                item.anchor_segment_id: item
+                for item in scene.tissue.graph.anchor_segments
+            }
+            if not interface_ids or set(interface_ids) - set(interfaces):
+                raise JointContractError(
+                    "depletion Planner selected an empty or unknown interface"
+                )
+            if not anchor_ids or set(anchor_ids) - set(anchors):
+                raise JointContractError(
+                    "depletion Planner selected an empty or unknown anchor"
+                )
+            detached = [
+                value
+                for value in anchor_ids
+                if anchors[value].interface_id not in interface_ids
+            ]
+            if detached:
+                raise JointContractError(
+                    "depletion anchors are detached from the selected interface"
+                )
+            selected_component = zone.tissue_component_id
+            neighbor_labels = set()
+            for interface_id in interface_ids:
+                interface = interfaces[interface_id]
+                if interface.source_component_id == selected_component:
+                    neighbor_labels.add(interface.target_label)
+                elif interface.target_component_id == selected_component:
+                    neighbor_labels.add(interface.source_label)
+                else:
+                    raise JointContractError(
+                        "depletion interface does not touch the selected population component"
+                    )
+            if neighbor_labels - set(depletion.allowed_neighbor_labels):
+                raise JointContractError(
+                    "depletion interface neighbor is not allowed by the mechanism skill"
+                )
+            if (
+                not spatial_anchor_observation
+                or confidence < bundle.mechanism.recognition.minimum_confidence
+            ):
+                raise JointContractError(
+                    "depletion anchor lacks a confident visible pathology observation"
+                )
+            layout = "localized_density_gradient"
+        else:
+            layout = (
+                "single"
+                if "single" in bundle.mechanism.cell_program.layout_programs
+                else bundle.mechanism.cell_program.layout_programs[0]
+            )
         plan = JointEditPlan(
             schema_version=JOINT_PLAN_SCHEMA_VERSION,
             case_id=case.case_id,
@@ -390,8 +469,10 @@ class HeuristicJointPlanner:
                     bundle.mechanism.render.required_for(case.primitive_id)
                 ),
                 baseline_mode=baseline,
-                interface_ids=(),
-                anchor_ids=(),
+                interface_ids=interface_ids,
+                anchor_ids=anchor_ids,
+                spatial_anchor_type=spatial_anchor_type,
+                spatial_anchor_observation=spatial_anchor_observation,
                 mechanism_program_id=layout,
                 mechanism_quota_role=(
                     "explicit_increment" if increase else "explicit_decrement"
@@ -416,7 +497,11 @@ class HeuristicJointPlanner:
         return plan, {
             "provider": self.name,
             "supports_pathology_vision": False,
-            "planning_mode": "explicit_population_zone_contract",
+            "planning_mode": (
+                "explicit_interface_anchored_density_gradient_contract"
+                if case.primitive_id == "cellularity-decrease-v1"
+                else "explicit_population_zone_contract"
+            ),
             "input_tokens": 0,
             "output_tokens": 0,
         }

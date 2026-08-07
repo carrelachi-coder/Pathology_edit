@@ -90,6 +90,7 @@ class JointGateRegistry:
             "fine_pattern_preserved": _fine_pattern_preserved,
             "local_shape_distribution": _local_shape_distribution,
             "local_population_density": _local_population_density,
+            "cellularity_depletion_gradient": _cellularity_depletion_gradient,
             "interface_seam_continuity": _interface_seam_continuity,
             "mechanism_realization": _mechanism_realization,
             "necrosis_cell_turnover": _necrosis_cell_turnover,
@@ -171,7 +172,7 @@ def _tool_program_binding(c):
     expected = c.plan.cell_plan
     passed = bool(
         isinstance(program, dict)
-        and program.get("compiler_version") == "joint-cell-tool-compiler-v5"
+        and program.get("compiler_version") == "joint-cell-tool-compiler-v6"
         and program.get("primitive_id") == c.case.primitive_id
         and program.get("mechanism_id") == c.plan.selected_mechanism_id
         and tuple(program.get("selected_interface_ids", ()))
@@ -193,6 +194,10 @@ def _tool_program_binding(c):
                 "mechanism_region",
                 "continuity_region",
                 "continuity_anchor_mask",
+                "depletion_core_region",
+                "depletion_transition_region",
+                "depletion_outer_reference_region",
+                "depletion_anchor_mask",
             )
         )
         and traced_program == program
@@ -732,10 +737,14 @@ def _local_population_density(c):
     if c.bundle.primitive.scope == "cell_only":
         budget = c.case.cell_count_extent_budget
         signed_delta = target_count - source_count
+        # The immutable whole-instance ledger is authoritative. Re-running a
+        # semantic watershed after deletion can split a touching residual
+        # component and make a true 8-instance removal look like a count delta
+        # of 9. That recount remains an audit signal, never the edit quota.
         delta = (
-            source_count - target_count
+            len(c.candidate.ledger.removed_instance_ids)
             if c.plan.cell_plan.mechanism_quota_role == "explicit_decrement"
-            else signed_delta
+            else len(c.candidate.ledger.added_instance_ids)
         )
         passed = bool(
             budget and budget.min_delta_count <= delta <= budget.max_delta_count
@@ -743,7 +752,7 @@ def _local_population_density(c):
         composition = {"applicable": False}
         if c.case.primitive_id.startswith("cellularity-"):
             population_region = np.asarray(
-                c.executable_contract.cell_program.placement_center_region,
+                c.executable_contract.cell_program.population_target_region,
                 dtype=bool,
             )
             source_by_class = _instance_class_counts_in_region(
@@ -775,6 +784,7 @@ def _local_population_density(c):
             "source_count": source_count,
             "target_count": target_count,
             "signed_target_minus_source": signed_delta,
+            "whole_instance_ledger_delta": delta,
             "primitive_delta_magnitude": delta,
             "quota_role": c.plan.cell_plan.mechanism_quota_role,
             "allowed_delta": (
@@ -806,6 +816,125 @@ def _local_population_density(c):
         if passed
         else "local density/count delta is inconsistent with the primitive",
         metrics=metrics,
+    )
+
+
+def _cellularity_depletion_gradient(c):
+    if c.case.primitive_id != "cellularity-decrease-v1":
+        return _result(
+            "cellularity_depletion_gradient",
+            True,
+            "depletion gradient is not applicable to this primitive",
+            metrics={"applicable": False},
+        )
+    program = c.executable_contract.cell_program
+    skill = c.bundle.mechanism.cell_program.cellularity_depletion
+    if skill is None or program.depletion_profile_id != skill.program_id:
+        return _result(
+            "cellularity_depletion_gradient",
+            False,
+            "skill-owned depletion profile is absent or mismatched",
+        )
+    core = np.asarray(program.depletion_core_region, dtype=bool)
+    transition = np.asarray(program.depletion_transition_region, dtype=bool)
+    outer = np.asarray(program.depletion_outer_reference_region, dtype=bool)
+    anchor = np.asarray(program.depletion_anchor_mask, dtype=bool)
+    allowed = set(c.plan.cell_plan.allowed_cell_classes)
+    removed = set(c.candidate.ledger.removed_instance_ids)
+    source_counts = {"core": 0, "transition": 0, "outer_reference": 0}
+    removed_counts = {"core": 0, "transition": 0, "outer_reference": 0}
+    removed_points = []
+    retained_points = []
+    centers_inside = True
+    for item in c.scene.cells.instances:
+        if item.class_id not in allowed:
+            continue
+        row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
+        if core[row, col]:
+            band = "core"
+        elif transition[row, col]:
+            band = "transition"
+        elif outer[row, col]:
+            band = "outer_reference"
+        else:
+            band = None
+        if band is not None:
+            source_counts[band] += 1
+        point = (float(item.centroid_xy[1]), float(item.centroid_xy[0]))
+        if item.instance_id in removed:
+            if band is None:
+                centers_inside = False
+            else:
+                removed_counts[band] += 1
+            removed_points.append(point)
+        else:
+            retained_points.append(point)
+    fractions = {
+        key: (
+            removed_counts[key] / source_counts[key]
+            if source_counts[key]
+            else 0.0
+        )
+        for key in source_counts
+    }
+    residuals = {key: 1.0 - fractions[key] for key in fractions}
+    outer_unchanged = bool(
+        removed_counts["outer_reference"] == 0
+        and not np.any(c.candidate.cell_change & outer)
+    )
+    maximum_gap = None
+    gap_ok = False
+    baseline_nnd = float(c.scene.cells.mean_nearest_neighbor_px or 0.0)
+    maximum_allowed_gap = max(
+        skill.maximum_new_gap_cell_diameters
+        * program.nominal_nucleus_diameter_px,
+        1.25 * baseline_nnd,
+    )
+    if removed_points and retained_points:
+        distances, _ = cKDTree(np.asarray(retained_points)).query(
+            np.asarray(removed_points), k=1
+        )
+        maximum_gap = float(np.max(distances))
+        gap_ok = maximum_gap <= maximum_allowed_gap
+    passed = bool(
+        c.plan.cell_plan.spatial_anchor_type in skill.allowed_anchor_types
+        and c.plan.cell_plan.spatial_anchor_observation
+        and c.plan.cell_plan.interface_ids
+        and c.plan.cell_plan.anchor_ids
+        and np.any(anchor)
+        and centers_inside
+        and removed_counts["core"] >= skill.minimum_core_removals
+        and removed_counts["transition"] >= skill.minimum_transition_removals
+        and fractions["core"] > fractions["transition"] > 0
+        and residuals["core"] >= skill.minimum_core_residual_fraction
+        and residuals["transition"]
+        >= skill.minimum_transition_residual_fraction
+        and outer_unchanged
+        and gap_ok
+    )
+    return _result(
+        "cellularity_depletion_gradient",
+        passed,
+        (
+            "interface-anchored core/transition depletion preserves its outer reference"
+            if passed
+            else "localized cellularity reduction is unanchored, abrupt or over-depleted"
+        ),
+        metrics={
+            "applicable": True,
+            "profile_id": program.depletion_profile_id,
+            "anchor_type": c.plan.cell_plan.spatial_anchor_type,
+            "source_counts_by_band": source_counts,
+            "removed_counts_by_band": removed_counts,
+            "removal_fractions_by_band": fractions,
+            "residual_fractions_by_band": residuals,
+            "outer_reference_unchanged": outer_unchanged,
+            "removed_centers_inside_core_or_transition": centers_inside,
+            "maximum_removed_to_retained_center_distance_px": maximum_gap,
+            "baseline_mean_nnd_px": baseline_nnd,
+            "maximum_allowed_gap_px": maximum_allowed_gap,
+            "gap_ok": gap_ok,
+        },
     )
 
 
@@ -1534,6 +1663,16 @@ def _authorized_cell_zone(c):
     if c.bundle.primitive.scope == "tissue_and_cell":
         program = c.executable_contract.cell_program
         return np.asarray(program.support_context_region, dtype=bool)
+    if (
+        c.executable_contract.cell_program.depletion_profile_id is not None
+    ):
+        # The immutable three-band contract plus exact E is stricter than a
+        # generic radial interface halo and already includes full-instance
+        # closure for every authorized deletion.
+        return np.asarray(
+            c.executable_contract.cell_program.support_context_region,
+            dtype=bool,
+        )
     if (
         not c.plan.cell_plan.interface_ids
         and c.plan.cell_plan.core_zone in c.scene.population_zone_masks

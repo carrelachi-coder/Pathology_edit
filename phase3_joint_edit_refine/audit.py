@@ -246,6 +246,14 @@ class JointAuditWriter:
             "M_mechanism_region": contract.cell_program.mechanism_region,
             "C_continuity_region": contract.cell_program.continuity_region,
             "A_selected_anchor": contract.cell_program.continuity_anchor_mask,
+            "D1_depletion_core": contract.cell_program.depletion_core_region,
+            "D2_depletion_transition": (
+                contract.cell_program.depletion_transition_region
+            ),
+            "D3_depletion_outer_reference": (
+                contract.cell_program.depletion_outer_reference_region
+            ),
+            "DA_depletion_anchor": contract.cell_program.depletion_anchor_mask,
         }
         result = {}
         for name, mask in masks.items():
@@ -387,6 +395,7 @@ class JointAuditWriter:
         ).astype(np.uint8)
 
         contract_panel = np.array(base, copy=True)
+        gradient_contract = False
         if contract is not None:
             t_pop = np.asarray(
                 contract.cell_program.population_target_region, dtype=bool
@@ -400,18 +409,52 @@ class JointAuditWriter:
             continuity = np.asarray(
                 contract.cell_program.continuity_region, dtype=bool
             )
-            contract_panel[t_pop] = np.clip(
-                0.35 * contract_panel[t_pop]
-                + 0.65 * np.asarray([255, 0, 210]),
-                0,
-                255,
-            ).astype(np.uint8)
-            contract_panel[placement] = np.clip(
-                0.30 * contract_panel[placement]
-                + 0.70 * np.asarray([0, 225, 255]),
-                0,
-                255,
-            ).astype(np.uint8)
+            gradient_contract = (
+                contract.cell_program.depletion_profile_id is not None
+            )
+            if gradient_contract:
+                core = np.asarray(
+                    contract.cell_program.depletion_core_region, dtype=bool
+                )
+                transition = np.asarray(
+                    contract.cell_program.depletion_transition_region,
+                    dtype=bool,
+                )
+                outer = np.asarray(
+                    contract.cell_program.depletion_outer_reference_region,
+                    dtype=bool,
+                )
+                contract_panel[core] = np.clip(
+                    0.25 * contract_panel[core]
+                    + 0.75 * np.asarray([255, 0, 175]),
+                    0,
+                    255,
+                ).astype(np.uint8)
+                contract_panel[transition] = np.clip(
+                    0.30 * contract_panel[transition]
+                    + 0.70 * np.asarray([255, 145, 20]),
+                    0,
+                    255,
+                ).astype(np.uint8)
+                contract_panel[outer] = np.clip(
+                    0.35 * contract_panel[outer]
+                    + 0.65 * np.asarray([0, 225, 255]),
+                    0,
+                    255,
+                ).astype(np.uint8)
+            else:
+                contract_panel[t_pop] = np.clip(
+                    0.35 * contract_panel[t_pop]
+                    + 0.65 * np.asarray([255, 0, 210]),
+                    0,
+                    255,
+                ).astype(np.uint8)
+                contract_panel[placement] = np.clip(
+                    0.30 * contract_panel[placement]
+                    + 0.70 * np.asarray([0, 225, 255]),
+                    0,
+                    255,
+                ).astype(np.uint8)
             contract_panel[erasure] = [35, 235, 80]
             contract_panel[continuity] = [255, 225, 0]
 
@@ -471,7 +514,11 @@ class JointAuditWriter:
             "1 SOURCE H&E + tissue/nuclei",
             "2 PLANNER cyan=interface yellow=anchor",
             "3 TISSUE TOOL magenta=T",
-            "4 CELL CONTRACT magenta=T_pop cyan=P green=E yellow=seam",
+            (
+                "4 CELL GRADIENT pink=core orange=transition cyan=outer green=E"
+                if gradient_contract
+                else "4 CELL CONTRACT magenta=T_pop cyan=P green=E yellow=seam"
+            ),
             "5 CELL ERASE green=removed red=protected",
             "6 CELL PLACE orange=added",
             "7 JOINT LEDGER magenta=T green=C-only yellow=overlap",

@@ -517,14 +517,45 @@ def _build_selective_removal_results(
         return ()
     metadata = {item.instance_id: item for item in scene.cells.instances}
     removed_by_class: dict[int, int] = {}
+    removed_by_band = {"core": 0, "transition": 0, "outer_reference": 0}
+    source_by_band = {"core": 0, "transition": 0, "outer_reference": 0}
+    core = np.asarray(compiled_program.depletion_core_region, dtype=bool)
+    transition = np.asarray(
+        compiled_program.depletion_transition_region, dtype=bool
+    )
+    outer = np.asarray(
+        compiled_program.depletion_outer_reference_region, dtype=bool
+    )
+    removed_set = set(removed_ids)
+    if compiled_program.depletion_profile_id is not None:
+        for item in scene.cells.instances:
+            row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
+            if core[row, col]:
+                band = "core"
+            elif transition[row, col]:
+                band = "transition"
+            elif outer[row, col]:
+                band = "outer_reference"
+            else:
+                continue
+            source_by_band[band] += 1
+            if item.instance_id in removed_set:
+                removed_by_band[band] += 1
     for instance_id in removed_ids:
         class_id = metadata[instance_id].class_id
         removed_by_class[class_id] = removed_by_class.get(class_id, 0) + 1
     trace = {
         "layout_tool_version": LAYOUT_TOOL_VERSION,
-        "execution_engine": "deterministic_complete_instance_removal_v1",
-        "ranker": "not_applicable_complete_instance_removal",
-        "ranker_provenance": {"role": "no_new_placement"},
+        "execution_engine": (
+            "deterministic_anchored_density_gradient_removal_v1"
+            if compiled_program.depletion_profile_id is not None
+            else "deterministic_complete_instance_removal_v1"
+        ),
+        "ranker": "not_applicable_removal_uses_compiled_gradient",
+        "ranker_provenance": {
+            "role": "no_new_placement",
+            "probnet_used": False,
+        },
         "layout_program_id": plan.cell_plan.layout_program_id,
         "compiled_cell_tool_program": compiled_program.to_metadata(),
         "executable_contract_id": executable_contract.contract_id,
@@ -539,6 +570,17 @@ def _build_selective_removal_results(
         "removed_count": resolved,
         "class_removed_counts": {
             str(key): value for key, value in sorted(removed_by_class.items())
+        },
+        "depletion_profile_id": compiled_program.depletion_profile_id,
+        "depletion_source_counts_by_band": source_by_band,
+        "depletion_removed_counts_by_band": removed_by_band,
+        "depletion_removal_fractions_by_band": {
+            key: (
+                removed_by_band[key] / source_by_band[key]
+                if source_by_band[key]
+                else 0.0
+            )
+            for key in source_by_band
         },
         "batch_max_attainable_count": resolved,
         "capacity_max_count": resolved,

@@ -39,6 +39,7 @@ LAYOUT_PROGRAMS = frozenset(
         "short_cord",
         "boundary_aligned",
         "dense_sheet",
+        "localized_density_gradient",
     }
 )
 
@@ -442,6 +443,8 @@ class CellEditPlan:
     baseline_mode: str = "regenerate_target_population"
     interface_ids: tuple[str, ...] = ()
     anchor_ids: tuple[str, ...] = ()
+    spatial_anchor_type: str = "not_applicable"
+    spatial_anchor_observation: str | None = None
     population_contract_id: str = "patch-adaptive-target-population-v1"
     mechanism_program_id: str = "population_replacement"
     mechanism_quota_role: str = "within_total_quota"
@@ -476,6 +479,17 @@ class CellEditPlan:
             raise JointContractError("allowed cell classes must use internal IDs 1..5")
         if not self.supporting_rule_ids:
             raise JointContractError("cell plan must cite supporting joint rules")
+        if self.spatial_anchor_type not in {"not_applicable", "interface"}:
+            raise JointContractError("unsupported cell spatial anchor type")
+        if self.spatial_anchor_type == "interface":
+            if not self.interface_ids or not self.anchor_ids:
+                raise JointContractError(
+                    "interface-anchored cell plan requires interface and anchor IDs"
+                )
+            if not self.spatial_anchor_observation:
+                raise JointContractError(
+                    "interface-anchored cell plan requires a visible observation"
+                )
 
     @classmethod
     def from_mapping(cls, payload: Any) -> CellEditPlan:
@@ -512,6 +526,12 @@ class CellEditPlan:
                 payload.get("anchor_ids", ()),
                 "cell_plan.anchor_ids",
                 allow_empty=True,
+            ),
+            spatial_anchor_type=str(
+                payload.get("spatial_anchor_type", "not_applicable")
+            ),
+            spatial_anchor_observation=_optional_string(
+                payload.get("spatial_anchor_observation")
             ),
             population_contract_id=str(
                 payload.get(

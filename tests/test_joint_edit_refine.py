@@ -905,11 +905,28 @@ class JointWorkflowTests(unittest.TestCase):
                 source = _write_synthetic_case(root)
                 if primitive.startswith("cellularity-"):
                     source = _make_stroma_multiclass(source)
+                population_zone = "pop:component:cmp:stroma:0001"
+                depletion_anchor = None
+                if primitive == "cellularity-decrease-v1":
+                    population_zone = "pop:component:cmp:tumor:0001"
+                    interface_id = "if:tumor:0001->stroma:0001:seg:0001"
+                    depletion_anchor = {
+                        "type": "interface",
+                        "interface_ids": [interface_id],
+                        "anchor_ids": [f"{interface_id}:anchor:0001"],
+                        "observation": (
+                            "visible tumor-stroma boundary supports a localized "
+                            "phenomenologic cellularity transition"
+                        ),
+                        "confidence": 0.90,
+                    }
                 provenance = {
                     **source.provenance,
                     "joint_mechanism_id": "colorectal-local-population-modulation",
-                    "joint_population_zone_id": "pop:component:cmp:stroma:0001",
+                    "joint_population_zone_id": population_zone,
                 }
+                if depletion_anchor is not None:
+                    provenance["cellularity_depletion_anchor"] = depletion_anchor
                 if explicit_class:
                     provenance["target_cell_class_ids"] = [3]
                 case = replace(
@@ -958,11 +975,75 @@ class JointWorkflowTests(unittest.TestCase):
                     }
                     self.assertEqual(set(requested), {2, 3})
                     self.assertEqual(sum(requested.values()), 3)
+                if primitive == "cellularity-decrease-v1":
+                    self.assertEqual(
+                        trace["execution_engine"],
+                        "deterministic_anchored_density_gradient_removal_v1",
+                    )
+                    self.assertFalse(trace["ranker_provenance"]["probnet_used"])
+                    fractions = trace["depletion_removal_fractions_by_band"]
+                    self.assertGreater(
+                        fractions["core"], fractions["transition"]
+                    )
+                    self.assertGreater(fractions["transition"], 0)
+                    self.assertEqual(fractions["outer_reference"], 0)
+                    reports = json.loads(
+                        (
+                            root
+                            / "local-population"
+                            / case.case_id
+                            / "joint_gate_reports.json"
+                        ).read_text(encoding="utf-8")
+                    )
+                    gradient = next(
+                        check
+                        for report in reports
+                        for check in report["checks"]
+                        if check["check_id"]
+                        == "cellularity_depletion_gradient"
+                    )
+                    self.assertTrue(gradient["passed"])
+                    self.assertTrue(
+                        gradient["metrics"]["outer_reference_unchanged"]
+                    )
                 if expected_sign > 0:
                     self.assertEqual(
                         trace["reference_shape_locality"],
                         "selected_tissue_component",
                     )
+
+    def test_cellularity_decrease_without_visible_anchor_abstains(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _write_synthetic_case(root)
+            case = replace(
+                source,
+                case_id="synthetic-unanchored-cellularity-decrease",
+                instruction="decrease local cellularity",
+                primitive_id="cellularity-decrease-v1",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    3, 3, 3, 48, 0, 48
+                ),
+                provenance={
+                    **source.provenance,
+                    "joint_mechanism_id": (
+                        "colorectal-local-population-modulation"
+                    ),
+                    "joint_population_zone_id": (
+                        "pop:component:cmp:tumor:0001"
+                    ),
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "unanchored")
+            self.assertEqual(result.status, "abstained")
+            self.assertTrue(
+                any("explicit visual depletion anchor" in reason for reason in result.abstain_reasons)
+            )
 
     def test_necrosis_appearance_and_resolution_bind_dead_viable_turnover(self):
         for primitive in ("necrosis-appearance-v1", "necrosis-resolution-v1"):
