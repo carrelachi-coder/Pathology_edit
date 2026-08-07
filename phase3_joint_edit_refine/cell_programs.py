@@ -126,6 +126,10 @@ class CellToolProgramCompiler:
 
         target_tissue = np.asarray(tissue_candidate.target_mask)
         tissue_change = np.asarray(tissue_candidate.change_region, dtype=bool)
+        valid_erasure_footprint = ~np.isin(
+            target_tissue,
+            bundle.annotation_profile.prohibit_generation_support_fine_ids,
+        )
         diameter = float(scene.population.nominal_nucleus_diameter_px or 8.0)
         empty = np.zeros_like(tissue_change, dtype=bool)
         depletion_core = empty.copy()
@@ -229,6 +233,19 @@ class CellToolProgramCompiler:
                     "transition_removal_weight": (
                         depletion.transition_removal_weight
                     ),
+                    "resolution_mode": depletion.resolution_mode,
+                    "core_target_removal_fraction": (
+                        depletion.core_target_removal_fraction
+                    ),
+                    "transition_start_removal_fraction": (
+                        depletion.transition_start_removal_fraction
+                    ),
+                    "transition_end_removal_fraction": (
+                        depletion.transition_end_removal_fraction
+                    ),
+                    "transition_subband_count": (
+                        depletion.transition_subband_count
+                    ),
                     "minimum_core_residual_fraction": (
                         depletion.minimum_core_residual_fraction
                     ),
@@ -241,6 +258,12 @@ class CellToolProgramCompiler:
                     ),
                     "maximum_new_gap_cell_diameters": (
                         depletion.maximum_new_gap_cell_diameters
+                    ),
+                    "minimum_outer_reference_instances": (
+                        depletion.minimum_outer_reference_instances
+                    ),
+                    "minimum_field_area_cell_diameter_squares": (
+                        depletion.minimum_field_area_cell_diameter_squares
                     ),
                 }
             elif cell.core_zone in scene.population_zone_masks:
@@ -370,6 +393,7 @@ class CellToolProgramCompiler:
                     transition_region=depletion_transition,
                     outer_reference_region=depletion_outer,
                     anchor_mask=depletion_anchor,
+                    valid_erasure_footprint_region=valid_erasure_footprint,
                     cell_classes=cell.allowed_cell_classes,
                     protected_instance_ids=cell.protected_instance_ids,
                     target_count=int(biological_delta or 0),
@@ -377,6 +401,11 @@ class CellToolProgramCompiler:
                         case.cell_count_extent_budget.min_delta_count
                         if case.cell_count_extent_budget is not None
                         else 0
+                    ),
+                    maximum_count=(
+                        case.cell_count_extent_budget.max_delta_count
+                        if case.cell_count_extent_budget is not None
+                        else int(biological_delta or 0)
                     ),
                     contract=depletion,
                 )
@@ -603,10 +632,12 @@ class CellToolProgramCompiler:
         transition_region: np.ndarray,
         outer_reference_region: np.ndarray,
         anchor_mask: np.ndarray,
+        valid_erasure_footprint_region: np.ndarray,
         cell_classes: tuple[int, ...],
         protected_instance_ids: tuple[str, ...],
         target_count: int,
         minimum_count: int,
+        maximum_count: int,
         contract,
     ) -> tuple[str, ...]:
         """Select complete nuclei with a stronger core than transition thinning."""
@@ -636,6 +667,8 @@ class CellToolProgramCompiler:
             component = np.asarray(
                 scene.instance_masks[item.instance_id], dtype=bool
             )
+            if np.any(component & ~valid_erasure_footprint_region):
+                continue
             if np.any(component & outer_reference_region):
                 # The outer band is an unchanged local density reference, not
                 # merely a center-exclusion band.
@@ -680,6 +713,17 @@ class CellToolProgramCompiler:
             + contract.minimum_transition_removals,
         )
         anchor_distance = ndimage.distance_transform_edt(~anchor_mask)
+        if contract.resolution_mode == "density_field":
+            return CellToolProgramCompiler._select_density_field_instances(
+                scene=scene,
+                population=population,
+                by_band=by_band,
+                anchor_distance=anchor_distance,
+                cell_classes=cell_classes,
+                minimum_count=minimum_count,
+                maximum_count=maximum_count,
+                contract=contract,
+            )
         band_availability = {
             band: {
                 class_id: sum(
@@ -781,6 +825,130 @@ class CellToolProgramCompiler:
             return None
         _, _, core_quota, transition_quota = min(feasible)
         return core_quota, transition_quota
+
+    @staticmethod
+    def _select_density_field_instances(
+        *,
+        scene: JointSceneAnalysis,
+        population: list,
+        by_band: dict[str, list],
+        anchor_distance: np.ndarray,
+        cell_classes: tuple[int, ...],
+        minimum_count: int,
+        maximum_count: int,
+        contract,
+    ) -> tuple[str, ...]:
+        """Resolve deletion count from a radial density field, not a count target."""
+
+        del population, cell_classes
+        diameter = float(scene.population.nominal_nucleus_diameter_px or 8.0)
+        core_end = contract.core_width_cell_diameters * diameter
+        transition_width = contract.transition_width_cell_diameters * diameter
+        subband_count = contract.transition_subband_count
+        radial_bands: list[tuple[str, list, float]] = [
+            (
+                "core",
+                list(by_band["core"]),
+                contract.core_target_removal_fraction,
+            )
+        ]
+        transition_groups = [[] for _ in range(subband_count)]
+        for item in by_band["transition"]:
+            row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
+            normalized = max(
+                0.0,
+                (float(anchor_distance[row, col]) - core_end)
+                / max(1e-6, transition_width),
+            )
+            index = min(subband_count - 1, int(normalized * subband_count))
+            transition_groups[index].append(item)
+        transition_targets = np.linspace(
+            contract.transition_start_removal_fraction,
+            contract.transition_end_removal_fraction,
+            subband_count,
+        )
+        radial_bands.extend(
+            (f"transition_{index + 1}", items, float(transition_targets[index]))
+            for index, items in enumerate(transition_groups)
+        )
+        quotas = []
+        for name, items, target_fraction in radial_bands:
+            residual_floor = (
+                contract.minimum_core_residual_fraction
+                if name == "core"
+                else contract.minimum_transition_residual_fraction
+            )
+            maximum_removable = max(
+                0, len(items) - int(np.ceil(len(items) * residual_floor))
+            )
+            quota = min(
+                maximum_removable,
+                int(np.floor(len(items) * target_fraction + 0.5)),
+            )
+            quotas.append(quota)
+        quotas[0] = max(quotas[0], contract.minimum_core_removals)
+        transition_total = sum(quotas[1:])
+        if transition_total < contract.minimum_transition_removals:
+            for index in range(1, len(radial_bands)):
+                capacity = len(radial_bands[index][1]) - quotas[index]
+                if capacity <= 0:
+                    continue
+                addition = min(
+                    capacity,
+                    contract.minimum_transition_removals - transition_total,
+                )
+                quotas[index] += addition
+                transition_total += addition
+                if transition_total >= contract.minimum_transition_removals:
+                    break
+        resolved = sum(quotas)
+        if resolved > maximum_count:
+            scaled = _largest_remainder_quotas(
+                {index: value for index, value in enumerate(quotas) if value > 0},
+                maximum_count,
+            )
+            quotas = [scaled.get(index, 0) for index in range(len(quotas))]
+            resolved = sum(quotas)
+        if not minimum_count <= resolved <= maximum_count:
+            raise JointContractError(
+                "density field-derived removal count is outside its safety bounds"
+            )
+        if quotas[0] < contract.minimum_core_removals or sum(
+            quotas[1:]
+        ) < contract.minimum_transition_removals:
+            raise JointContractError(
+                "density field count cap violates minimum core/transition realization"
+            )
+        selected = []
+        for (_, items, _), quota in zip(radial_bands, quotas):
+            if quota <= 0:
+                continue
+            class_counts: dict[int, int] = {}
+            for item in items:
+                class_counts[item.class_id] = class_counts.get(item.class_id, 0) + 1
+            class_quotas = _largest_remainder_quotas(class_counts, quota)
+            for class_id, class_quota in sorted(class_quotas.items()):
+                candidates = [
+                    item for item in items if item.class_id == class_id
+                ]
+                candidates.sort(
+                    key=lambda item: (
+                        _stable_instance_jitter(item.instance_id),
+                        float(
+                            anchor_distance[
+                                round(item.centroid_xy[1]),
+                                round(item.centroid_xy[0]),
+                            ]
+                        ),
+                        item.instance_id,
+                    )
+                )
+                selected.extend(candidates[:class_quota])
+        if len(selected) != resolved:
+            raise JointContractError(
+                "density field could not realize its complete-instance quotas"
+            )
+        return tuple(item.instance_id for item in selected)
 
     @staticmethod
     def _bounded_population_zone(

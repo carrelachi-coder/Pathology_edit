@@ -508,17 +508,24 @@ def _build_selective_removal_results(
             target[component] = 0
             removed_ids.append(instance_id)
     resolved = len(removed_ids)
-    desired = int(
+    biological_desired = int(
         compiled_program.biological_target_delta_count
         if compiled_program.biological_target_delta_count is not None
         else resolved
     )
+    field_driven = (
+        compiled_program.depletion_parameters.get("resolution_mode")
+        == "density_field"
+    )
+    desired = resolved if field_driven else biological_desired
     if resolved <= 0:
         return ()
     metadata = {item.instance_id: item for item in scene.cells.instances}
     removed_by_class: dict[int, int] = {}
     removed_by_band = {"core": 0, "transition": 0, "outer_reference": 0}
     source_by_band = {"core": 0, "transition": 0, "outer_reference": 0}
+    radial_source_counts: dict[str, int] = {}
+    radial_removed_counts: dict[str, int] = {}
     core = np.asarray(compiled_program.depletion_core_region, dtype=bool)
     transition = np.asarray(
         compiled_program.depletion_transition_region, dtype=bool
@@ -528,6 +535,30 @@ def _build_selective_removal_results(
     )
     removed_set = set(removed_ids)
     if compiled_program.depletion_profile_id is not None:
+        subbands = int(
+            compiled_program.depletion_parameters.get(
+                "transition_subband_count", 1
+            )
+        )
+        radial_source_counts = {
+            "core": 0,
+            **{f"transition_{index + 1}": 0 for index in range(subbands)},
+            "outer_reference": 0,
+        }
+        radial_removed_counts = dict.fromkeys(radial_source_counts, 0)
+        anchor_distance = ndimage.distance_transform_edt(
+            ~np.asarray(compiled_program.depletion_anchor_mask, dtype=bool)
+        )
+        core_end = float(
+            compiled_program.depletion_parameters.get(
+                "core_width_cell_diameters", 1.25
+            )
+        ) * compiled_program.nominal_nucleus_diameter_px
+        transition_width = float(
+            compiled_program.depletion_parameters.get(
+                "transition_width_cell_diameters", 1.75
+            )
+        ) * compiled_program.nominal_nucleus_diameter_px
         for item in scene.cells.instances:
             row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
             if core[row, col]:
@@ -541,6 +572,20 @@ def _build_selective_removal_results(
             source_by_band[band] += 1
             if item.instance_id in removed_set:
                 removed_by_band[band] += 1
+            if band == "transition":
+                normalized = max(
+                    0.0,
+                    (float(anchor_distance[row, col]) - core_end)
+                    / max(1e-6, transition_width),
+                )
+                radial_band = (
+                    f"transition_{min(subbands - 1, int(normalized * subbands)) + 1}"
+                )
+            else:
+                radial_band = band
+            radial_source_counts[radial_band] += 1
+            if item.instance_id in removed_set:
+                radial_removed_counts[radial_band] += 1
     for instance_id in removed_ids:
         class_id = metadata[instance_id].class_id
         removed_by_class[class_id] = removed_by_class.get(class_id, 0) + 1
@@ -561,7 +606,10 @@ def _build_selective_removal_results(
         "executable_contract_id": executable_contract.contract_id,
         "executable_contract_version": executable_contract.schema_version,
         "target_cell_classes": list(plan.cell_plan.allowed_cell_classes),
-        "biological_desired_count": desired,
+        "biological_desired_count": biological_desired,
+        "count_resolution_mode": (
+            "density_field" if field_driven else "explicit_count"
+        ),
         "desired_count": desired,
         "resolved_count": resolved,
         "requested_count": resolved,
@@ -582,11 +630,25 @@ def _build_selective_removal_results(
             )
             for key in source_by_band
         },
+        "depletion_radial_source_counts": radial_source_counts,
+        "depletion_radial_removed_counts": radial_removed_counts,
+        "depletion_radial_removal_fractions": {
+            key: (
+                radial_removed_counts[key] / radial_source_counts[key]
+                if radial_source_counts[key]
+                else 0.0
+            )
+            for key in radial_source_counts
+        },
         "batch_max_attainable_count": resolved,
         "capacity_max_count": resolved,
         "cell_capacity_certified": True,
-        "cell_capacity_fallback_used": resolved < desired,
-        "placement_capacity_exhausted": resolved < desired,
+        "cell_capacity_fallback_used": (
+            False if field_driven else resolved < desired
+        ),
+        "placement_capacity_exhausted": (
+            False if field_driven else resolved < desired
+        ),
         "removed_source_instance_ids": removed_ids,
         "protected_instance_ids": list(executable_contract.protected_instance_ids),
         "reference_shape_ids": [],

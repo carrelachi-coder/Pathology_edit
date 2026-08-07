@@ -104,6 +104,7 @@ class CellularityDepletionContract:
     """Executable, skill-owned bounds for localized cellularity reduction."""
 
     program_id: str
+    resolution_mode: str
     allowed_anchor_types: tuple[str, ...]
     allowed_neighbor_labels: tuple[str, ...]
     core_width_cell_diameters: float
@@ -111,11 +112,17 @@ class CellularityDepletionContract:
     outer_reference_width_cell_diameters: float
     core_removal_weight: float
     transition_removal_weight: float
+    core_target_removal_fraction: float
+    transition_start_removal_fraction: float
+    transition_end_removal_fraction: float
+    transition_subband_count: int
     minimum_core_residual_fraction: float
     minimum_transition_residual_fraction: float
     minimum_core_removals: int
     minimum_transition_removals: int
     maximum_new_gap_cell_diameters: float
+    minimum_outer_reference_instances: int
+    minimum_field_area_cell_diameter_squares: float
 
 
 @dataclass(frozen=True)
@@ -631,6 +638,15 @@ def _cellularity_depletion_contract(
         "transition_removal_weight": float(
             value.get("transition_removal_weight", 0.45)
         ),
+        "core_target_removal_fraction": float(
+            value.get("core_target_removal_fraction", 0.55)
+        ),
+        "transition_start_removal_fraction": float(
+            value.get("transition_start_removal_fraction", 0.42)
+        ),
+        "transition_end_removal_fraction": float(
+            value.get("transition_end_removal_fraction", 0.10)
+        ),
         "minimum_core_residual_fraction": float(
             value.get("minimum_core_residual_fraction", 0.25)
         ),
@@ -639,6 +655,9 @@ def _cellularity_depletion_contract(
         ),
         "maximum_new_gap_cell_diameters": float(
             value.get("maximum_new_gap_cell_diameters", 3.0)
+        ),
+        "minimum_field_area_cell_diameter_squares": float(
+            value.get("minimum_field_area_cell_diameter_squares", 60.0)
         ),
     }
     if not all(isfinite(item) and item > 0 for item in numeric.values()):
@@ -652,6 +671,16 @@ def _cellularity_depletion_contract(
         raise JointContractError(
             f"{mechanism_id} core removal weight must exceed transition weight"
         )
+    if not (
+        0.0
+        < numeric["transition_end_removal_fraction"]
+        < numeric["transition_start_removal_fraction"]
+        < numeric["core_target_removal_fraction"]
+        < 1.0
+    ):
+        raise JointContractError(
+            f"{mechanism_id} depletion target fractions must decrease outward"
+        )
     for key in (
         "minimum_core_residual_fraction",
         "minimum_transition_residual_fraction",
@@ -660,16 +689,46 @@ def _cellularity_depletion_contract(
             raise JointContractError(f"{mechanism_id}.{key} must lie in (0,1)")
     minimum_core = int(value.get("minimum_core_removals", 1))
     minimum_transition = int(value.get("minimum_transition_removals", 1))
+    transition_subbands = int(value.get("transition_subband_count", 4))
+    minimum_outer = int(value.get("minimum_outer_reference_instances", 3))
     if minimum_core < 1 or minimum_transition < 1:
         raise JointContractError(
             f"{mechanism_id} depletion bands must each remove at least one nucleus"
         )
+    if not 2 <= transition_subbands <= 8:
+        raise JointContractError(
+            f"{mechanism_id} transition_subband_count must lie in [2,8]"
+        )
+    if minimum_outer < 1:
+        raise JointContractError(
+            f"{mechanism_id} depletion needs at least one outer reference instance"
+        )
+    resolution_mode = str(value.get("resolution_mode", "density_field"))
+    if resolution_mode != "density_field":
+        raise JointContractError(
+            f"{mechanism_id} has unsupported depletion resolution mode"
+        )
+    if numeric["core_target_removal_fraction"] > (
+        1.0 - numeric["minimum_core_residual_fraction"] + 1e-9
+    ):
+        raise JointContractError(
+            f"{mechanism_id} core density target violates its residual floor"
+        )
+    if numeric["transition_start_removal_fraction"] > (
+        1.0 - numeric["minimum_transition_residual_fraction"] + 1e-9
+    ):
+        raise JointContractError(
+            f"{mechanism_id} transition density target violates its residual floor"
+        )
     return CellularityDepletionContract(
         program_id=_string(value, "program_id"),
+        resolution_mode=resolution_mode,
         allowed_anchor_types=anchors,
         allowed_neighbor_labels=neighbors,
         minimum_core_removals=minimum_core,
         minimum_transition_removals=minimum_transition,
+        transition_subband_count=transition_subbands,
+        minimum_outer_reference_instances=minimum_outer,
         **numeric,
     )
 

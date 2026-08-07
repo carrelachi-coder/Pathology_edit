@@ -430,12 +430,45 @@ class JointAuditWriter:
                     0,
                     255,
                 ).astype(np.uint8)
-                contract_panel[transition] = np.clip(
-                    0.30 * contract_panel[transition]
-                    + 0.70 * np.asarray([255, 145, 20]),
-                    0,
-                    255,
-                ).astype(np.uint8)
+                subbands = int(
+                    contract.cell_program.depletion_parameters.get(
+                        "transition_subband_count", 1
+                    )
+                )
+                distance = ndimage_distance_transform_edt(
+                    ~np.asarray(
+                        contract.cell_program.depletion_anchor_mask,
+                        dtype=bool,
+                    )
+                )
+                diameter = contract.cell_program.nominal_nucleus_diameter_px
+                core_end = float(
+                    contract.cell_program.depletion_parameters.get(
+                        "core_width_cell_diameters", 1.25
+                    )
+                ) * diameter
+                transition_width = float(
+                    contract.cell_program.depletion_parameters.get(
+                        "transition_width_cell_diameters", 1.75
+                    )
+                ) * diameter
+                for index in range(subbands):
+                    low = core_end + transition_width * index / subbands
+                    high = core_end + transition_width * (index + 1) / subbands
+                    current = transition & (distance > low) & (distance <= high)
+                    fraction = index / max(1, subbands - 1)
+                    color = np.asarray(
+                        [
+                            255 - round(65 * fraction),
+                            95 + round(125 * fraction),
+                            20 + round(65 * fraction),
+                        ]
+                    )
+                    contract_panel[current] = np.clip(
+                        0.30 * contract_panel[current] + 0.70 * color,
+                        0,
+                        255,
+                    ).astype(np.uint8)
                 contract_panel[outer] = np.clip(
                     0.35 * contract_panel[outer]
                     + 0.65 * np.asarray([0, 225, 255]),
@@ -515,7 +548,7 @@ class JointAuditWriter:
             "2 PLANNER cyan=interface yellow=anchor",
             "3 TISSUE TOOL magenta=T",
             (
-                "4 CELL GRADIENT pink=core orange=transition cyan=outer green=E"
+                "4 CELL FIELD pink=core orange->pale=falloff cyan=outer green=E"
                 if gradient_contract
                 else "4 CELL CONTRACT magenta=T_pop cyan=P green=E yellow=seam"
             ),
@@ -665,6 +698,12 @@ def _overlay(image: np.ndarray, tissue: np.ndarray, nuclei: np.ndarray, change: 
 def ndimage_binary_erosion(mask: np.ndarray) -> np.ndarray:
     from scipy import ndimage
     return ndimage.binary_erosion(np.asarray(mask, dtype=bool))
+
+
+def ndimage_distance_transform_edt(mask: np.ndarray) -> np.ndarray:
+    from scipy import ndimage
+
+    return ndimage.distance_transform_edt(np.asarray(mask, dtype=bool))
 
 
 def _json_default(value):

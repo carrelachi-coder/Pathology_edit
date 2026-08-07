@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 from scipy import ndimage
@@ -539,10 +540,16 @@ def _reference_shape_integrity(c):
 
 
 def _cell_quota(c):
+    field_driven = (
+        c.candidate.tool_trace.get("count_resolution_mode") == "density_field"
+    )
+    biological_desired = int(
+        c.candidate.tool_trace.get("biological_desired_count", -1)
+    )
     desired = int(
         c.candidate.tool_trace.get(
-            "biological_desired_count",
-            c.candidate.tool_trace.get("desired_count", -1),
+            "desired_count",
+            biological_desired,
         )
     )
     resolved = int(c.candidate.tool_trace.get("resolved_count", -1))
@@ -581,6 +588,10 @@ def _cell_quota(c):
             )
         ),
         metrics={
+            "count_resolution_mode": (
+                "density_field" if field_driven else "explicit_count"
+            ),
+            "biological_desired_count_advisory": biological_desired,
             "desired_count": desired,
             "resolved_count": resolved,
             "requested_count": requested,
@@ -772,12 +783,27 @@ def _local_population_density(c):
             )
             expected = {key: value for key, value in expected.items() if value > 0}
             realized = {key: value for key, value in realized.items() if value > 0}
+            class_ids = set(expected) | set(realized)
+            absolute_error = sum(
+                abs(expected.get(key, 0) - realized.get(key, 0))
+                for key in class_ids
+            )
+            # Whole-instance density fields are discretized independently in
+            # their radial subbands. Requiring the global largest-remainder
+            # allocation to match exactly can reject a faithful field merely
+            # because one rare-class nucleus falls in a different band. Bound
+            # the total variation instead, while still vetoing selective
+            # class depletion.
+            composition_tolerance = max(2, int(np.ceil(delta * 0.10)))
+            composition_passed = absolute_error <= composition_tolerance
             composition = {
                 "applicable": True,
                 "source_class_counts": source_by_class,
                 "expected_delta_by_class": expected,
                 "realized_delta_by_class": realized,
-                "passed": expected == realized,
+                "absolute_count_error": absolute_error,
+                "allowed_absolute_count_error": composition_tolerance,
+                "passed": composition_passed,
             }
             passed = passed and composition["passed"]
         metrics = {
@@ -878,6 +904,61 @@ def _cellularity_depletion_gradient(c):
         for key in source_counts
     }
     residuals = {key: 1.0 - fractions[key] for key in fractions}
+    field_area_cell_squares = int(
+        np.count_nonzero(core | transition | outer)
+    ) / max(1.0, program.nominal_nucleus_diameter_px**2)
+    field_area_ok = (
+        field_area_cell_squares
+        >= skill.minimum_field_area_cell_diameter_squares
+    )
+    outer_reference_count_ok = (
+        source_counts["outer_reference"]
+        >= skill.minimum_outer_reference_instances
+    )
+    trace_radial_source = c.candidate.tool_trace.get(
+        "depletion_radial_source_counts", {}
+    )
+    trace_radial_removed = c.candidate.tool_trace.get(
+        "depletion_radial_removed_counts", {}
+    )
+    radial_metrics = []
+    radial_targets = [skill.core_target_removal_fraction, *np.linspace(
+        skill.transition_start_removal_fraction,
+        skill.transition_end_removal_fraction,
+        skill.transition_subband_count,
+    )]
+    radial_names = [
+        "core",
+        *[
+            f"transition_{index + 1}"
+            for index in range(skill.transition_subband_count)
+        ],
+    ]
+    radial_fractions = []
+    radial_target_ok = True
+    for name, target_fraction in zip(radial_names, radial_targets):
+        source_value = int(trace_radial_source.get(name, 0))
+        removed_value = int(trace_radial_removed.get(name, 0))
+        realized = removed_value / source_value if source_value else 0.0
+        tolerance = max(0.12, 0.55 / max(1, source_value))
+        current_ok = source_value == 0 or abs(realized - target_fraction) <= tolerance
+        radial_target_ok = radial_target_ok and current_ok
+        if source_value:
+            radial_fractions.append(realized)
+        radial_metrics.append(
+            {
+                "band": name,
+                "source_count": source_value,
+                "removed_count": removed_value,
+                "target_removal_fraction": float(target_fraction),
+                "realized_removal_fraction": realized,
+                "within_discrete_tolerance": current_ok,
+            }
+        )
+    radial_monotonic = all(
+        outer <= inner + 0.08
+        for inner, outer in pairwise(radial_fractions)
+    )
     outer_unchanged = bool(
         removed_counts["outer_reference"] == 0
         and not np.any(c.candidate.cell_change & outer)
@@ -910,6 +991,10 @@ def _cellularity_depletion_gradient(c):
         and residuals["transition"]
         >= skill.minimum_transition_residual_fraction
         and outer_unchanged
+        and field_area_ok
+        and outer_reference_count_ok
+        and radial_target_ok
+        and radial_monotonic
         and gap_ok
     )
     return _result(
@@ -929,6 +1014,18 @@ def _cellularity_depletion_gradient(c):
             "removal_fractions_by_band": fractions,
             "residual_fractions_by_band": residuals,
             "outer_reference_unchanged": outer_unchanged,
+            "field_area_cell_diameter_squares": field_area_cell_squares,
+            "minimum_field_area_cell_diameter_squares": (
+                skill.minimum_field_area_cell_diameter_squares
+            ),
+            "field_area_ok": field_area_ok,
+            "outer_reference_instance_count_ok": outer_reference_count_ok,
+            "minimum_outer_reference_instances": (
+                skill.minimum_outer_reference_instances
+            ),
+            "radial_density_profile": radial_metrics,
+            "radial_target_ok": radial_target_ok,
+            "radial_monotonic": radial_monotonic,
             "removed_centers_inside_core_or_transition": centers_inside,
             "maximum_removed_to_retained_center_distance_px": maximum_gap,
             "baseline_mean_nnd_px": baseline_nnd,

@@ -935,7 +935,11 @@ class JointWorkflowTests(unittest.TestCase):
                     instruction=primitive,
                     primitive_id=primitive,
                     joint_area_budget=None,
-                    cell_count_extent_budget=CellCountExtentBudget(3, 3, 3, 48, 0, 48),
+                    cell_count_extent_budget=(
+                        CellCountExtentBudget(4, 3, 6, 48, 0, 48)
+                        if primitive == "cellularity-decrease-v1"
+                        else CellCountExtentBudget(3, 3, 3, 48, 0, 48)
+                    ),
                     provenance=provenance,
                 )
                 result = JointPathologyEditWorkflow(
@@ -956,7 +960,11 @@ class JointWorkflowTests(unittest.TestCase):
                 target_count = len(
                     tuple(iter_instances(result.condition.target_nuclei_mask))
                 )
-                self.assertEqual(target_count - source_count, expected_sign * 3)
+                if primitive == "cellularity-decrease-v1":
+                    self.assertGreaterEqual(source_count - target_count, 3)
+                    self.assertLessEqual(source_count - target_count, 6)
+                else:
+                    self.assertEqual(target_count - source_count, expected_sign * 3)
                 self.assertEqual(result.condition.ledger.tissue_pixels, 0)
                 candidate_manifest = json.loads(
                     Path(result.artifact_paths["candidates.json"]).read_text(
