@@ -1,0 +1,9 @@
+{
+  "skill_id": "necrosis-resolution-v1", "skill_kind": "edit_primitive", "version": "1.0.0-draft", "review_status": "draft",
+  "summary": "Interface-bound replacement of intratumoral necrosis by adjacent viable tumor.",
+  "capabilities": {"source_label_options": ["Necrosis"], "target_label": "Tumor", "allowed_tools": ["interface_sdf", "connected_morphology", "organic_v2"]},
+  "rules": [
+    {"rule_id": "primitive.necrosis_resolution.transition", "scope": "candidate_gate", "applies_when": {}, "claim": "Every changed tissue pixel converts Necrosis to Tumor and no unrelated label changes.", "required_observation": "Compare source, target and change region pixelwise.", "severity": "hard", "deterministic_check_id": "label_transition", "critic_requirement": null, "exceptions": [], "counterexamples": ["Replacing necrosis with tumor when only stroma is adjacent."], "evidence_citations": [], "dataset_statistics": {}, "version": "1.0.0-draft", "review_status": "draft", "known_limitations": ["v1 resolves only to verified adjacent viable tumor"]},
+    {"rule_id": "primitive.necrosis_resolution.interface", "scope": "candidate_gate", "applies_when": {}, "claim": "The edit starts at a real Necrosis-to-Tumor interface and does not leave artificial necrotic fragments.", "required_observation": "Run interface, topology, depth and boundary gates.", "severity": "hard", "deterministic_check_id": "interface_contact", "critic_requirement": null, "exceptions": [], "counterexamples": ["Removing isolated central pixels and leaving a necrotic ring."], "evidence_citations": [], "dataset_statistics": {}, "version": "1.0.0-draft", "review_status": "draft", "known_limitations": []}
+  ]
+}

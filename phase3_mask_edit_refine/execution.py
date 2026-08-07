@@ -23,7 +23,6 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-
 EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v2"
 
 
@@ -38,6 +37,20 @@ class _CompilerWork:
     item_capacity_px: int
     source_deletion_limit_px: int
     protected_source_necks: np.ndarray
+
+
+@dataclass(frozen=True)
+class CompiledReplayPart:
+    """One interface part reproduced by the authoritative topology solver."""
+
+    planned: PlannedInterface
+    anchor_masks: tuple[np.ndarray, ...]
+    anchor_mask: np.ndarray
+    change_region: np.ndarray
+    legal_capacity_px: int
+    source_deletion_limit_px: int
+    protected_source_necks: np.ndarray
+    topology_audit: dict[str, Any]
 
 
 def compile_edit_plan(
@@ -86,7 +99,7 @@ def compile_edit_plan(
         dtype=float,
     )
     (
-        allocations,
+        _allocations,
         selected_by_work,
         grow_audits,
         topology_audit,
@@ -228,6 +241,123 @@ def compile_edit_plan(
     }
 
 
+def replay_compiled_edit_plan(
+    plan: EditPlan,
+    *,
+    source_mask: np.ndarray,
+    schema: MaskProfileSchema,
+    scene: SceneAnalysis,
+) -> tuple[tuple[CompiledReplayPart, ...], dict[str, Any]]:
+    """Replay a compiled plan with the same owner and topology state machine.
+
+    Candidate generation used to contain a second approximation of compiler
+    ownership and growth.  Multi-interface plans could therefore compile but
+    fail to draw.  This replay is the executable baseline candidate: it uses
+    the compiled per-interface peaks, allocation fractions and the exact
+    topology solver that certified the plan.
+    """
+
+    if plan.resolved_area is None:
+        raise RefineContractError("only a compiled EditPlan can be replayed")
+    mask = np.asarray(source_mask)
+    source_ids = tuple(
+        fine_id
+        for label in plan.source_labels
+        for fine_id in schema.resolve_fine_ids(label)
+    )
+    target_ids = tuple(schema.resolve_fine_ids(plan.target_label))
+    source_region = np.isin(mask, source_ids)
+    target_region = np.isin(mask, target_ids)
+    prepared = _prepare_compiler_work(
+        plan,
+        source_mask=mask,
+        source_region=source_region,
+        scene=scene,
+    )
+    # The initial compiler explores the full allowed band and then records the
+    # maximum priority actually used as compiled peak. Replay must honor that
+    # recorded envelope rather than reopening the full band.
+    works = tuple(
+        replace(
+            work,
+            legal_source=(
+                work.legal_source
+                & (
+                    work.priority
+                    <= work.planned.execution_contract.depth_profile.peak_depth_px
+                    * 1.001
+                    + 1e-9
+                )
+            ),
+            item_capacity_px=int(
+                np.count_nonzero(
+                    work.legal_source
+                    & (
+                        work.priority
+                        <= work.planned.execution_contract.depth_profile.peak_depth_px
+                        * 1.001
+                        + 1e-9
+                    )
+                )
+            ),
+        )
+        for work in prepared
+    )
+    works = tuple(work for work in works if work.item_capacity_px > 0)
+    if not works:
+        raise RefineContractError("compiled plan replay has no legal pixels")
+    weights = np.asarray(
+        [work.planned.execution_contract.area_allocation_fraction for work in works],
+        dtype=float,
+    )
+    resolved = int(plan.resolved_area.resolved_pixels)
+    allocations = _bounded_allocations(
+        works,
+        target_pixels=resolved,
+        weights=weights,
+    )
+    selected, audits = _simulate_topology_safe_execution(
+        works,
+        allocations=allocations,
+        desired_pixels=resolved,
+        target_region=target_region,
+        scene=scene,
+        seed=0,
+    )
+    realized = sum(int(np.count_nonzero(item)) for item in selected)
+    topology = _whole_mask_topology_audit(
+        source_region=source_region,
+        target_region=target_region,
+        selected_by_work=selected,
+        works=works,
+    )
+    if realized != resolved or not topology["passed"]:
+        raise RefineContractError(
+            "compiled topology program is not replayable: "
+            f"resolved={resolved}, realized={realized}, topology={topology}"
+        )
+    parts = tuple(
+        CompiledReplayPart(
+            planned=work.planned,
+            anchor_masks=work.anchor_masks,
+            anchor_mask=work.anchor_mask,
+            change_region=change,
+            legal_capacity_px=work.item_capacity_px,
+            source_deletion_limit_px=work.source_deletion_limit_px,
+            protected_source_necks=work.protected_source_necks,
+            topology_audit=audit,
+        )
+        for work, change, audit in zip(works, selected, audits)
+        if np.any(change)
+    )
+    return parts, {
+        "replay_version": EXECUTION_SOLVER_VERSION,
+        "resolved_pixels": resolved,
+        "realized_pixels": realized,
+        "whole_mask_topology": topology,
+    }
+
+
 def _prepare_compiler_work(
     plan: EditPlan,
     *,
@@ -252,12 +382,6 @@ def _prepare_compiler_work(
     ):
         raise RefineContractError("execution solver cannot resolve all selected anchors")
     anchor_unions = tuple(np.logical_or.reduce(group) for group in anchor_groups)
-    assignment = np.argmin(
-        np.stack(
-            [ndimage.distance_transform_edt(~anchor) for anchor in anchor_unions]
-        ),
-        axis=0,
-    )
     params = plan.tool_program.parameter_ranges
     maximum_changed_fraction = min(
         0.55, float(params.get("max_source_component_changed_fraction", 0.55))
@@ -265,7 +389,15 @@ def _prepare_compiler_work(
     minimum_remaining = max(
         64, int(params.get("min_source_component_remaining_px", 64))
     )
-    works: list[_CompilerWork] = []
+    # Build each interface's executable envelope independently before assigning
+    # overlapping pixels to an owner.  The former nearest-anchor-first
+    # partition could hand a pixel to an interface whose tapered profile could
+    # not actually reach it; that pixel was then discarded even when another
+    # selected interface could execute it.  As a result, adding a legal front
+    # could *reduce* combined capacity.  Eligibility-first ownership makes the
+    # union monotone: a new interface may win overlapping pixels, but it can no
+    # longer steal and invalidate capacity from an existing one.
+    provisional: list[dict[str, Any]] = []
     for index, (planned, anchor_masks, anchor) in enumerate(
         zip(plan.candidate_interfaces, anchor_groups, anchor_unions)
     ):
@@ -295,11 +427,10 @@ def _prepare_compiler_work(
         )
         required_scale = distance / np.maximum(unit_depth, 1e-3)
         band_min, band_max = planned.allowed_edit_band_px
-        legal = (
+        legal_envelope = (
             source_component
             & source_region
             & ~prohibited
-            & (assignment == index)
             & anchor_influence
             & (distance >= max(0.0, band_min))
             & (distance <= band_max)
@@ -310,17 +441,43 @@ def _prepare_compiler_work(
             maximum_changed_fraction=maximum_changed_fraction,
             minimum_remaining_pixels=minimum_remaining,
         )
+        provisional.append(
+            {
+                "planned": planned,
+                "anchor_masks": anchor_masks,
+                "anchor_mask": anchor,
+                "legal_envelope": legal_envelope,
+                "priority": required_scale,
+                "source_component": np.asarray(source_component, dtype=bool),
+                "source_deletion_limit_px": deletion_limit,
+                "protected_source_necks": protected_narrow_necks(source_component),
+            }
+        )
+    if not provisional:
+        return ()
+
+    owner_cost = np.stack(
+        [
+            np.where(item["legal_envelope"], item["priority"], np.inf)
+            for item in provisional
+        ]
+    )
+    assignment = np.argmin(owner_cost, axis=0)
+    has_owner = np.any(np.isfinite(owner_cost), axis=0)
+    works: list[_CompilerWork] = []
+    for index, item in enumerate(provisional):
+        legal = item["legal_envelope"] & has_owner & (assignment == index)
         works.append(
             _CompilerWork(
-                planned=planned,
-                anchor_masks=anchor_masks,
-                anchor_mask=anchor,
+                planned=item["planned"],
+                anchor_masks=item["anchor_masks"],
+                anchor_mask=item["anchor_mask"],
                 legal_source=legal,
-                priority=required_scale,
-                source_component=np.asarray(source_component, dtype=bool),
+                priority=item["priority"],
+                source_component=item["source_component"],
                 item_capacity_px=int(np.count_nonzero(legal)),
-                source_deletion_limit_px=deletion_limit,
-                protected_source_necks=protected_narrow_necks(source_component),
+                source_deletion_limit_px=item["source_deletion_limit_px"],
+                protected_source_necks=item["protected_source_necks"],
             )
         )
     return tuple(item for item in works if item.item_capacity_px > 0)
@@ -492,12 +649,15 @@ def _resolve_topology_safe_area(
             break
         previous_invalid = trial
         trial -= step
-    if safe_result is None and trial < hard_min_pixels:
-        if not attempts or attempts[-1]["requested_pixels"] != hard_min_pixels:
-            result = attempt(hard_min_pixels)
-            if result[-1]:
-                safe_total = hard_min_pixels
-                safe_result = result
+    if (
+        safe_result is None
+        and trial < hard_min_pixels
+        and (not attempts or attempts[-1]["requested_pixels"] != hard_min_pixels)
+    ):
+        result = attempt(hard_min_pixels)
+        if result[-1]:
+            safe_total = hard_min_pixels
+            safe_result = result
     if safe_result is None or safe_total is None:
         raise RefineContractError(
             "no whole-mask topology-safe edit reaches the task hard minimum: "

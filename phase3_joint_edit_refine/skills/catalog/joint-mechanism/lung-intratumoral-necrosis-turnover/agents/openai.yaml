@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lung Necrosis Turnover"
+  short_description: "Audit airway-safe lung necrosis turnover"
+  default_prompt: "Use $lung-intratumoral-necrosis-turnover to plan an airway-safe necrosis edit."

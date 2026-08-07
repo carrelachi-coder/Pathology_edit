@@ -1,0 +1,24 @@
+{
+  "mechanism_id": "lung-local-population-modulation", "pathology_domain_id": "lung-carcinoma-v1",
+  "supported_primitives": ["cell-type-abundance-increase-v1", "cell-type-abundance-decrease-v1", "cellularity-increase-v1", "cellularity-decrease-v1"],
+  "version": "1.0.0-draft", "review_status": "draft",
+  "summary": "Change a bounded lung cell population without filling alveolar airspace, airway lumen, papillary core, cartilage, muscle or fluid.",
+  "recognition_contract": {"required_observations": ["one explicit bronchial, alveolar, tumor or stromal population zone", "observable compatible class", "complete local instances"], "contraindications": ["airspace or fluid treated as host", "lepidic septum and solid tumor unresolved", "papillary core or airway boundary included", "target class unsupported"], "minimum_confidence": 0.82},
+  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [], "required_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "tissue_program": {
+    "mode": "preserve_lung_architecture_select_bounded_population_zone",
+    "primitive_label_contracts": {
+      "cell-type-abundance-increase-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]},
+      "cell-type-abundance-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]},
+      "cellularity-increase-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]},
+      "cellularity-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]}
+    },
+    "allowed_tools": ["preserve_tissue"], "required_checker_ids": ["tissue_gate_binding"],
+    "prohibited_structures": ["alveolar_airspace", "airway_lumen", "papillary_core", "cartilage", "smooth_muscle", "fluid", "vessel"]
+  },
+  "cell_program": {"actions": ["retain", "remove_whole", "add"], "allowed_cell_classes": [1, 2, 3, 4, 5], "layout_programs": ["single", "pair", "small_cluster", "boundary_aligned"], "core_policy": "bounded_lung_component_zone_with_local_composition", "halo_policy": "no_change_outside_compiled_population_extent", "halo_distance_px": [0, 48], "cluster_size_range": [1, 4], "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density"]},
+  "coupling_contract": {"compatibility_rule_ids": ["lung.joint.local_population_host_compatibility", "lung.joint.airspace_airway_core_preservation"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "cell_count_extent", "tissue_floor_applies": false, "cell_only_target_fraction": 1.0, "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"},
+  "joint_gate_ids": ["cell_tissue_compatibility", "cell_zone_localization", "joint_provenance"],
+  "render_contract": {"required_findings": ["edited population follows the selected lung compartment", "alveolar or airway architecture remains open and continuous"], "veto_findings": ["nuclei in airspace or fluid", "septal alignment destroyed", "papillary core filled", "artificial uniform crowding"], "mask_guarantees": ["tissue labels unchanged", "complete nuclei only inside the compiled zone"], "render_only_claims": ["lepidic identity", "micropapillary identity", "immune activation state"]},
+  "evidence_citations": ["https://tumourclassification.iarc.who.int/"], "counterexamples": ["raising cellularity by populating alveolar airspace", "removing a continuous lepidic septal row", "using cartilage as generic stroma"]
+}

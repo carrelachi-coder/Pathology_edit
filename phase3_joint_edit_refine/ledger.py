@@ -30,8 +30,10 @@ def analyze_joint_change(
     target_nuclei: np.ndarray,
     generation_halo_px: int,
     generation_allowed_region: np.ndarray | None = None,
+    generation_support_contract: np.ndarray | None = None,
     source_instance_masks: dict[str, np.ndarray] | None = None,
     source_instance_classes: dict[str, int] | None = None,
+    erased_source_instance_ids: tuple[str, ...] | None = None,
 ) -> LedgerAnalysis:
     source_tissue = np.asarray(source_tissue)
     target_tissue = np.asarray(target_tissue)
@@ -61,7 +63,23 @@ def analyze_joint_change(
         )
     else:
         source_instances = tuple(iter_instances(source_nuclei))
+    certified_erased = (
+        set(erased_source_instance_ids)
+        if erased_source_instance_ids is not None
+        else None
+    )
+    observed_source_ids = {item[0] for item in source_instances}
+    if certified_erased is not None and not certified_erased.issubset(
+        observed_source_ids
+    ):
+        raise JointContractError(
+            "certified erasure ledger contains an unknown source instance"
+        )
     for instance_id, class_id, component in source_instances:
+        if certified_erased is not None and instance_id in certified_erased:
+            removed |= component
+            removed_ids.append(instance_id)
+            continue
         same = target_nuclei[component] == class_id
         if np.all(same):
             retained |= component
@@ -85,7 +103,17 @@ def analyze_joint_change(
 
     cell_change = removed | added
     joint_change = tissue_change | cell_change
-    if generation_halo_px and np.any(joint_change):
+    if generation_support_contract is not None:
+        generation_support = np.asarray(generation_support_contract, dtype=bool)
+        if generation_support.shape != shape:
+            raise JointContractError(
+                "generation support contract must match mask shape"
+            )
+        if np.any(joint_change & ~generation_support):
+            raise JointContractError(
+                "joint change extends outside executable generation support"
+            )
+    elif generation_halo_px and np.any(joint_change):
         structure = ndimage.generate_binary_structure(2, 1)
         generation_support = ndimage.binary_dilation(
             joint_change,
@@ -98,7 +126,13 @@ def analyze_joint_change(
         allowed = np.asarray(generation_allowed_region, dtype=bool)
         if allowed.shape != shape:
             raise JointContractError("generation allowed region must match mask shape")
-        generation_support = joint_change | (generation_support & allowed)
+        if generation_support_contract is not None:
+            if np.any(generation_support & ~allowed):
+                raise JointContractError(
+                    "executable generation support enters a prohibited source region"
+                )
+        else:
+            generation_support = joint_change | (generation_support & allowed)
     ledger = ChangeLedger(
         tissue_pixels=int(tissue_change.sum()),
         removed_nucleus_pixels=int(removed.sum()),
@@ -135,8 +169,10 @@ def build_joint_candidate(
     target_nuclei: np.ndarray,
     generation_halo_px: int,
     generation_allowed_region: np.ndarray | None = None,
+    generation_support_contract: np.ndarray | None = None,
     source_instance_masks: dict[str, np.ndarray] | None = None,
     source_instance_classes: dict[str, int] | None = None,
+    erased_source_instance_ids: tuple[str, ...] | None = None,
     tool_trace: dict,
 ) -> JointCandidate:
     analysis = analyze_joint_change(
@@ -146,8 +182,10 @@ def build_joint_candidate(
         target_nuclei=target_nuclei,
         generation_halo_px=generation_halo_px,
         generation_allowed_region=generation_allowed_region,
+        generation_support_contract=generation_support_contract,
         source_instance_masks=source_instance_masks,
         source_instance_classes=source_instance_classes,
+        erased_source_instance_ids=erased_source_instance_ids,
     )
     return JointCandidate(
         candidate_id=candidate_id,

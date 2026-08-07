@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -103,6 +103,118 @@ def generate_candidates(
     count = plan.tool_program.candidate_count
     candidates: list[CandidateMask] = []
     seen_hashes: set[bytes] = set()
+    if plan.resolved_area is not None:
+        # Local import avoids a module cycle: the compiler imports the shared
+        # depth-profile compiler from this module during initialization.
+        from phase3_mask_edit_refine.execution import replay_compiled_edit_plan
+
+        replay_parts, replay_audit = replay_compiled_edit_plan(
+            plan,
+            source_mask=mask,
+            schema=schema,
+            scene=scene,
+        )
+        replay_change = np.zeros_like(mask, dtype=bool)
+        replay_target = np.array(mask, copy=True)
+        replay_traces = []
+        replay_target_fine_ids = []
+        for part_index, part in enumerate(replay_parts):
+            target_fine_id = _target_fine_id(
+                mask,
+                schema=schema,
+                scene=scene,
+                target_component_id=part.planned.target_component_id,
+                target_label=plan.target_label,
+            )
+            change = np.asarray(part.change_region, dtype=bool)
+            replay_change |= change
+            replay_target[change] = int(target_fine_id)
+            replay_target_fine_ids.append(int(target_fine_id))
+            profile = part.planned.execution_contract.depth_profile
+            replay_traces.append(
+                {
+                    "interface_id": part.planned.interface_id,
+                    "source_component_id": part.planned.source_component_id,
+                    "target_component_id": part.planned.target_component_id,
+                    "target_fine_id": int(target_fine_id),
+                    "allocated_pixels": int(np.count_nonzero(change)),
+                    "realized_pixels": int(np.count_nonzero(change)),
+                    "requested_anchor_segment_ids": list(
+                        part.planned.execution_contract.anchor_segment_ids
+                    ),
+                    "requested_area_allocation_fraction": float(
+                        part.planned.execution_contract.area_allocation_fraction
+                    ),
+                    "allowed_band_px": list(part.planned.allowed_edit_band_px),
+                    "noise_amplitude_px": 0.0,
+                    "depth_profile": {
+                        "mode": profile.mode,
+                        "peak_depth_px": profile.peak_depth_px,
+                        "edge_depth_px": profile.edge_depth_px,
+                        "taper_fraction": profile.taper_fraction,
+                        "lobe_count": profile.lobe_count,
+                        "noise_correlation_px": profile.noise_correlation_px,
+                    },
+                    "shape_variant": 0,
+                    "available_legal_pixels": int(part.legal_capacity_px),
+                    "anchor": {
+                        "mode": "planner_selected_executable_anchors",
+                        "anchor_segment_ids": list(
+                            part.planned.execution_contract.anchor_segment_ids
+                        ),
+                        "anchor_pixels": int(np.count_nonzero(part.anchor_mask)),
+                    },
+                    "topology_safe_growth": dict(part.topology_audit),
+                    "seed": int(part_index * 13007),
+                }
+            )
+        replay_pixels = int(np.count_nonzero(replay_change))
+        if replay_pixels != target_pixels:
+            raise RefineContractError(
+                "compiled replay changed an unexpected number of pixels: "
+                f"expected={target_pixels}, observed={replay_pixels}"
+            )
+        interface_ids = [part.planned.interface_id for part in replay_parts]
+        source_component_ids = sorted(
+            {part.planned.source_component_id for part in replay_parts}
+        )
+        target_component_ids = sorted(
+            {part.planned.target_component_id for part in replay_parts}
+        )
+        target_fine_ids = sorted(set(replay_target_fine_ids))
+        replay_trace = {
+            "seed": int(seed),
+            "target_fine_id": int(target_fine_ids[0]),
+            "target_fine_ids": target_fine_ids,
+            "tool_adapter_version": TOOL_ADAPTER_VERSION,
+            "requested_target_pixels": int(target_pixels),
+            "desired_target_pixels": int(desired_pixels),
+            "resolved_target_pixels": int(target_pixels),
+            "area_fallback_used": bool(plan.resolved_area.used_fallback),
+            "area_binding_constraint": plan.resolved_area.binding_constraint,
+            "interface_ids": interface_ids,
+            "source_component_id": source_component_ids[0],
+            "source_component_ids": source_component_ids,
+            "target_component_id": target_component_ids[0],
+            "target_component_ids": target_component_ids,
+            "shape_variant": 0,
+            "parts": replay_traces,
+            "compiled_topology_replay": replay_audit,
+        }
+        candidates.append(
+            CandidateMask(
+                candidate_id="cand:001",
+                interface_id=interface_ids[0],
+                tool_name="interface_sdf",
+                target_mask=replay_target,
+                change_region=replay_change,
+                tool_trace=replay_trace,
+            )
+        )
+        seen_hashes.add(
+            np.packbits(replay_change, axis=None).tobytes()
+            + replay_target[replay_change].tobytes()
+        )
     max_attempts = max(count * 8, 48)
     for variation in range(max_attempts):
         if len(candidates) >= count:
@@ -282,15 +394,10 @@ def _prepare_interfaces(
         for group, planned in zip(resolved_anchor_groups, plan.candidate_interfaces)
     ):
         return ()
-    anchor_unions = tuple(np.logical_or.reduce(group) for group in resolved_anchor_groups)
-    # Give every pixel one deterministic owner across the complete plan.  The
-    # generator and fidelity gate must use the same non-overlapping influence
-    # zones; otherwise two nearby interfaces can execute the requested pixels
-    # correctly but be re-attributed to the other interface during audit.
-    assignment = np.argmin(
-        np.stack([ndimage.distance_transform_edt(~anchor) for anchor in anchor_unions]),
-        axis=0,
+    anchor_unions = tuple(
+        np.logical_or.reduce(group) for group in resolved_anchor_groups
     )
+    provisional: list[dict[str, Any]] = []
     for planned_index, planned in enumerate(plan.candidate_interfaces):
         interface_mask = scene.interface_masks.get(planned.interface_id)
         source_component = scene.component_masks.get(planned.source_component_id)
@@ -299,48 +406,101 @@ def _prepare_interfaces(
             continue
         selected_anchor_masks = resolved_anchor_groups[planned_index]
         anchor_mask = anchor_unions[planned_index]
-        distance, nearest = ndimage.distance_transform_edt(
+        _distance, nearest = ndimage.distance_transform_edt(
             ~interface_mask, return_indices=True
         )
         nearest_belongs_to_anchor = anchor_mask[nearest[0], nearest[1]]
         anchor_distance = ndimage.distance_transform_edt(~anchor_mask)
         band_min, band_max = planned.allowed_edit_band_px
-        peak_depth = planned.execution_contract.depth_profile.peak_depth_px
-        legal = (
+        requested = planned.execution_contract.depth_profile
+        peak_depth = max(requested.peak_depth_px, 1e-6)
+        unit_profile = replace(
+            requested,
+            peak_depth_px=1.0,
+            edge_depth_px=float(
+                np.clip(requested.edge_depth_px / peak_depth, 0.0, 1.0)
+            ),
+            noise_amplitude_px=0.0,
+        )
+        unit_depth = compile_depth_profile_map(
+            selected_anchor_masks,
+            profile=unit_profile,
+            shape=mask.shape,
+        )
+        required_scale = anchor_distance / np.maximum(unit_depth, 1e-3)
+        ownership_envelope = (
             source_component
             & source_region
             & ~prohibited
-            & (assignment == planned_index)
             & nearest_belongs_to_anchor
             & (anchor_distance >= max(0.0, band_min))
-            & (anchor_distance <= min(band_max, peak_depth))
+            & (anchor_distance <= band_max)
+            & (required_scale <= band_max + 1e-6)
         )
-        capacity = int(np.count_nonzero(legal))
-        if capacity <= 0:
-            continue
-        result.append(
-            _InterfaceWork(
-                planned=planned,
-                interface_mask=interface_mask,
-                anchor_mask=anchor_mask,
-                anchor_masks=selected_anchor_masks,
-                legal_source=legal,
-                target_fine_id=_target_fine_id(
+        legal_envelope = ownership_envelope & (
+            required_scale <= peak_depth * 1.001 + 1e-9
+        )
+        provisional.append(
+            {
+                "planned": planned,
+                "interface_mask": interface_mask,
+                "anchor_mask": anchor_mask,
+                "anchor_masks": selected_anchor_masks,
+                "ownership_envelope": ownership_envelope,
+                "legal_envelope": legal_envelope,
+                "owner_cost": required_scale,
+                "target_fine_id": _target_fine_id(
                     mask,
                     schema=schema,
                     scene=scene,
                     target_component_id=planned.target_component_id,
                     target_label=plan.target_label,
                 ),
-                capacity_px=capacity,
-                contact_px=max(1, int(observed.contact_pixels)),
-                source_component=np.asarray(source_component, dtype=bool),
-                source_deletion_limit_px=source_deletion_limit(
+                "contact_px": max(1, int(observed.contact_pixels)),
+                "source_component": np.asarray(source_component, dtype=bool),
+                "source_deletion_limit_px": source_deletion_limit(
                     int(np.count_nonzero(source_component)),
                     maximum_changed_fraction=maximum_changed_fraction,
                     minimum_remaining_pixels=minimum_remaining,
                 ),
-                protected_source_necks=protected_narrow_necks(source_component),
+                "protected_source_necks": protected_narrow_necks(
+                    source_component
+                ),
+            }
+        )
+    if not provisional:
+        return ()
+
+    # Match the compiler's eligibility-first ownership rule on the immutable
+    # full allowed band.  The compiled peak then only narrows each fixed
+    # owner's executable pixels; it must not repartition ownership after the
+    # compiler has already certified per-interface allocations.
+    owner_cost = np.stack(
+        [
+            np.where(item["ownership_envelope"], item["owner_cost"], np.inf)
+            for item in provisional
+        ]
+    )
+    assignment = np.argmin(owner_cost, axis=0)
+    has_owner = np.any(np.isfinite(owner_cost), axis=0)
+    for planned_index, item in enumerate(provisional):
+        legal = item["legal_envelope"] & has_owner & (assignment == planned_index)
+        capacity = int(np.count_nonzero(legal))
+        if capacity <= 0:
+            continue
+        result.append(
+            _InterfaceWork(
+                planned=item["planned"],
+                interface_mask=item["interface_mask"],
+                anchor_mask=item["anchor_mask"],
+                anchor_masks=item["anchor_masks"],
+                legal_source=legal,
+                target_fine_id=item["target_fine_id"],
+                capacity_px=capacity,
+                contact_px=item["contact_px"],
+                source_component=item["source_component"],
+                source_deletion_limit_px=item["source_deletion_limit_px"],
+                protected_source_necks=item["protected_source_necks"],
             )
         )
     return tuple(result)

@@ -11,8 +11,7 @@ from phase3_mask_edit_refine.models import AreaBudget, EditPlan
 from .models import JointAreaBudget, JointContractError
 from .skills.repository import JointSkillBundle
 
-
-SOLVER_VERSION = "joint-budget-broker-v1"
+SOLVER_VERSION = "joint-budget-broker-v2"
 
 
 @dataclass(frozen=True)
@@ -25,6 +24,7 @@ class JointBudgetAllocation:
     tissue_execution_floor_pixels: int
     reserved_cell_only_pixels: int
     reserved_layout_halo_pixels: int
+    reserved_cell_footprint_spill_pixels: int
     reserved_complete_instance_pixels: int
     fallback_policy: str
     solver_version: str = SOLVER_VERSION
@@ -48,8 +48,19 @@ class JointFeasibilitySolver:
             raise JointContractError("cannot allocate a budget for an empty mask")
         joint_target = budget.target_pixels(shape)
         hard_min, hard_max = budget.hard_interval_pixels(shape)
-        reserve_fraction = bundle.mechanism.coupling.cell_only_target_fraction
-        reserve = int(round(total * reserve_fraction))
+        layout_reserve = round(
+            total * bundle.mechanism.coupling.cell_only_target_fraction
+        )
+        # P is a legal *center* domain. A complete reference nucleus centered
+        # on the newly edited side of a seam may legitimately straddle the
+        # unchanged side. Those pixels belong to C/J even though no cell-only
+        # center was requested. Keep that executable footprint reserve
+        # separate from a true mechanism halo so budgeting does not change P.
+        footprint_spill_reserve = round(
+            total
+            * bundle.mechanism.coupling.cell_footprint_spill_reserve_fraction
+        )
+        reserve = layout_reserve + footprint_spill_reserve
         tissue_floor = budget.tissue_floor_pixels(shape)
         execution_floor = budget.tissue_execution_floor_pixels(shape)
         tissue_target = max(tissue_floor, joint_target - reserve)
@@ -62,7 +73,8 @@ class JointFeasibilitySolver:
             tissue_floor_pixels=tissue_floor,
             tissue_execution_floor_pixels=execution_floor,
             reserved_cell_only_pixels=max(0, joint_target - tissue_target),
-            reserved_layout_halo_pixels=reserve,
+            reserved_layout_halo_pixels=layout_reserve,
+            reserved_cell_footprint_spill_pixels=footprint_spill_reserve,
             reserved_complete_instance_pixels=0,
             fallback_policy=budget.fallback_policy,
         )
@@ -82,7 +94,11 @@ class JointFeasibilitySolver:
         """
 
         closure = max(0, int(reserve_pixels))
-        total_reserve = allocation.reserved_layout_halo_pixels + closure
+        total_reserve = (
+            allocation.reserved_layout_halo_pixels
+            + allocation.reserved_cell_footprint_spill_pixels
+            + closure
+        )
         tissue_target = max(
             allocation.tissue_execution_floor_pixels,
             allocation.joint_target_pixels - total_reserve,
@@ -111,7 +127,7 @@ class JointFeasibilitySolver:
         # not the tissue generator, owns the wider 14--24% union contract.
         tissue_budget = AreaBudget(
             target_fraction=target_fraction,
-            min_fraction=(floor_fraction if target_fraction > floor_fraction else target_fraction),
+            min_fraction=(min(target_fraction, floor_fraction)),
             max_fraction=target_fraction,
             basis="whole_mask",
             relative_tolerance=0.0,

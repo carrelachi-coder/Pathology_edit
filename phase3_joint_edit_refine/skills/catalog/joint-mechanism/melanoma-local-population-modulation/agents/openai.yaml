@@ -1,0 +1,4 @@
+interface:
+  display_name: "Melanoma Local Cell Population"
+  short_description: "Audit compartment-safe melanoma cell edits"
+  default_prompt: "Use $melanoma-local-population-modulation to plan a compartment-safe local cellularity edit."

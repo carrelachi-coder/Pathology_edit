@@ -27,9 +27,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from scipy import ndimage
 import torch
 import torch.nn.functional as F
+from scipy import ndimage
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -45,20 +45,20 @@ from inpaint_cells.nuclei_library.library import (
     ReferenceNucleiInstancePool,
     place_nucleus_layered,
 )
-from inpaint_cells.utils.mask_utils import (
-    NUM_NUCLEI,
-    NUCLEI_CLASSES,
-    NUCLEI_RGB,
-    load_tissue_mask,
-    load_nuclei_mask,
-    overlay,
-    save_nuclei_mask,
-)
 from inpaint_cells.sampling_policy import (
     retry_pool_target,
     retry_transform_specs,
     valid_biological_tissue_mask,
     widen_locally_thin_mask,
+)
+from inpaint_cells.utils.mask_utils import (
+    NUCLEI_CLASSES,
+    NUCLEI_RGB,
+    NUM_NUCLEI,
+    load_nuclei_mask,
+    load_tissue_mask,
+    overlay,
+    save_nuclei_mask,
 )
 
 GLAS_GLAND_TISSUE_IDS = frozenset({5, 11, 12, 13})
@@ -288,7 +288,7 @@ def compute_target_count(nuc_prob, tissue_region, tissue_id, library, expected_a
         max_allowed = min(max_allowed, library_count * args.max_count_factor)
 
     clipped = float(np.clip(scaled, args.min_count, max_allowed))
-    return int(round(clipped)), {
+    return round(clipped), {
         "region_area": region_area,
         "prob_count": prob_count,
         "library_density_per_10k": library_density,
@@ -1828,7 +1828,7 @@ def generate_for_gamma(
             getattr(args, "require_full_tissue_containment", True)
         ),
         "full_shape_tissue_policy": (
-            "hard_reject_outside_valid_biological_tissue_then_retry"
+            "hard_reject_outside_current_target_tissue_then_retry"
         ),
         "nucleus_spacing_margin_px": int(
             getattr(args, "nucleus_spacing_margin_px", 1)
@@ -1853,6 +1853,7 @@ def generate_for_gamma(
             continue
 
         tissue_region = edit_mask & (tissue == tissue_id)
+        same_tissue_footprint_mask = valid_tissue_mask & (tissue == tissue_id)
         if tissue_region.sum() < args.min_region_area:
             continue
 
@@ -1867,7 +1868,9 @@ def generate_for_gamma(
             expected_by_class = density[:, tissue_region].sum(axis=1) * scale
             expected_total = float(expected_by_class.sum())
             max_allowed = args.max_density_per_10k * tissue_region.sum() / 10000.0
-            target_count = int(round(float(np.clip(expected_total, args.min_count, max_allowed))))
+            target_count = round(
+                float(np.clip(expected_total, args.min_count, max_allowed))
+            )
             if expected_total > 0 and target_count > 0:
                 quotas = expected_by_class / expected_total * target_count
                 class_counts = np.floor(quotas).astype(np.int64)
@@ -1947,6 +1950,17 @@ def generate_for_gamma(
                 tissue_id in library_only_tissue_ids
             ),
         )
+        allowed_nucleus_types = {
+            int(value)
+            for value in (getattr(args, "allowed_nucleus_types", None) or NUCLEI_CLASSES)
+        }
+        unsupported_requested = allowed_nucleus_types - set(NUCLEI_CLASSES)
+        if unsupported_requested:
+            raise ValueError(
+                "allowed nucleus types are outside the configured CellViT schema: "
+                + ", ".join(map(str, sorted(unsupported_requested)))
+            )
+        supported_types &= allowed_nucleus_types
         if target_count > 0 and not supported_types:
             raise RuntimeError(
                 "ProbNet requested nuclei for a tissue with no supported "
@@ -2277,7 +2291,7 @@ def generate_for_gamma(
                     shape_sampler,
                 ),
                 center_region=tissue_region,
-                valid_tissue_mask=valid_tissue_mask,
+                valid_tissue_mask=same_tissue_footprint_mask,
                 dense_retry=dense_retry,
                 force_tissue_library=tissue_id in library_only_tissue_ids,
                 args=args,
@@ -2420,7 +2434,7 @@ def generate_for_gamma(
                             shape_sampler,
                         ),
                         center_region=component_region,
-                        valid_tissue_mask=valid_tissue_mask,
+                        valid_tissue_mask=same_tissue_footprint_mask,
                         dense_retry=True,
                         force_tissue_library=(
                             tissue_id in library_only_tissue_ids
@@ -2549,7 +2563,7 @@ def generate_for_gamma(
                             shape_sampler,
                         ),
                         center_region=component_region,
-                        valid_tissue_mask=valid_tissue_mask,
+                        valid_tissue_mask=same_tissue_footprint_mask,
                         dense_retry=True,
                         force_tissue_library=(
                             tissue_id in library_only_tissue_ids
@@ -2798,13 +2812,25 @@ def generate_two_stage_for_gamma(
     placement_nuc_prob=None,
     placement_type_prob=None,
 ):
-    """Fill the destructive core first, then only the buffered count deficit."""
+    """Fill the legal destructive core, then the remaining placement domain.
+
+    ``deletion_mask`` is an erasure footprint and may contain the tails of
+    complete source instances outside the legal center region. It must never
+    become an implicit placement region. The first stage is therefore the
+    explicit intersection E∩P; the second stage uses P and preserves the exact
+    count ledger.
+    """
+
+    core_placement_mask = (
+        np.asarray(deletion_mask, dtype=bool)
+        & np.asarray(generation_mask, dtype=bool)
+    )
 
     core_output, core_diagnostics = generate_for_gamma(
         prob,
         tissue,
         input_nuclei,
-        deletion_mask,
+        core_placement_mask,
         library,
         reference_pool,
         gamma,
@@ -2819,11 +2845,11 @@ def generate_two_stage_for_gamma(
         placement_type_prob=placement_type_prob,
     )
     if np.array_equal(
-        np.asarray(deletion_mask, dtype=bool),
+        core_placement_mask,
         np.asarray(generation_mask, dtype=bool),
     ):
         core_diagnostics["regeneration_stages"] = {
-            "policy": "single_stage_no_extra_buffer",
+            "policy": "single_stage_E_intersection_P_equals_P",
             "core": core_diagnostics["tissues"],
             "buffer_increment": {},
         }
@@ -2903,7 +2929,7 @@ def generate_two_stage_for_gamma(
     buffer_diagnostics["placed_by_shape_source"] = {
         source: int(core_sources.get(source, 0))
         + int(buffer_sources.get(source, 0))
-        for source in {"reference", "library"}
+        for source in ("reference", "library")
     }
     buffer_shape_sampling = buffer_diagnostics.get("shape_sampling") or {}
     core_shape_sampling = core_diagnostics.get("shape_sampling") or {}
@@ -3003,7 +3029,7 @@ def make_accepted_centers_overlay(
         ):
             cv2.circle(
                 rgb,
-                (int(round(center_x)), int(round(center_y))),
+                (round(center_x), round(center_y)),
                 4,
                 color,
                 -1,
@@ -3011,7 +3037,7 @@ def make_accepted_centers_overlay(
             )
             cv2.circle(
                 rgb,
-                (int(round(center_x)), int(round(center_y))),
+                (round(center_x), round(center_y)),
                 5,
                 (255, 255, 255),
                 1,
@@ -3726,6 +3752,18 @@ def run_single(args, model, library, config, density_scales, device):
     if edit_mask is None:
         raise FileNotFoundError(f"Cannot load edit region mask: {args.edit_region}")
     edit_mask = edit_mask > 128
+    if args.placement_region:
+        placement_mask = cv2.imread(
+            args.placement_region,
+            cv2.IMREAD_GRAYSCALE,
+        )
+        if placement_mask is None:
+            raise FileNotFoundError(
+                f"Cannot load placement region mask: {args.placement_region}"
+            )
+        placement_mask = placement_mask > 128
+    else:
+        placement_mask = edit_mask.copy()
     if args.deletion_region:
         deletion_mask = cv2.imread(
             args.deletion_region,
@@ -3740,6 +3778,10 @@ def run_single(args, model, library, config, density_scales, device):
         deletion_mask = edit_mask.copy()
     if deletion_mask.shape != edit_mask.shape:
         raise ValueError("deletion and generation regions must share one shape")
+    if placement_mask.shape != edit_mask.shape:
+        raise ValueError("placement and generation regions must share one shape")
+    if np.any(placement_mask & ~edit_mask):
+        raise ValueError("generation region must contain every placement pixel")
     if np.any(deletion_mask & ~edit_mask):
         raise ValueError("generation region must contain every deletion pixel")
     semantic_edit_pixels = int(np.count_nonzero(deletion_mask))
@@ -3768,9 +3810,13 @@ def run_single(args, model, library, config, density_scales, device):
     else:
         input_nuclei = np.zeros_like(tissue, dtype=np.int64)
     input_nuclei = input_nuclei.copy()
-    erasure_mask = expand_edit_mask_to_complete_instances(
-        input_nuclei,
-        deletion_mask,
+    erasure_mask = (
+        deletion_mask.copy()
+        if args.trust_complete_deletion_region
+        else expand_edit_mask_to_complete_instances(
+            input_nuclei,
+            deletion_mask,
+        )
     )
     edit_mask |= erasure_mask
     input_nuclei[erasure_mask] = 0
@@ -3780,7 +3826,7 @@ def run_single(args, model, library, config, density_scales, device):
         reference_tissue=reference_tissue,
         density_exclusion_region=deletion_mask,
         target_tissue=tissue,
-        generation_region=edit_mask,
+        generation_region=placement_mask,
         library=library,
         global_density_scale=args.density_scale,
         local_density_direct_min_area=args.local_density_direct_min_area,
@@ -3794,10 +3840,13 @@ def run_single(args, model, library, config, density_scales, device):
     prior_audit["generation_support"] = {
         "semantic_pixels": semantic_edit_pixels,
         "generation_pixels": int(np.count_nonzero(edit_mask)),
+        "placement_pixels": int(np.count_nonzero(placement_mask)),
         "minimum_width_px": int(args.minimum_mask_width),
         "widening_enabled": bool(args.widen_edit_region),
         "source_nucleus_erasure_policy": (
-            "complete_component_on_any_deletion_region_intersection"
+            "externally_certified_complete_instance_union"
+            if args.trust_complete_deletion_region
+            else "complete_component_on_any_deletion_region_intersection"
         ),
         "buffer_nucleus_policy": (
             "retain_generation_buffer_only_nuclei_as_placement_obstacles"
@@ -3890,7 +3939,7 @@ def run_single(args, model, library, config, density_scales, device):
                     tissue,
                     input_nuclei,
                     deletion_mask,
-                    edit_mask,
+                    placement_mask,
                     library,
                     reference_pool,
                     attempt_gamma,
@@ -3925,7 +3974,7 @@ def run_single(args, model, library, config, density_scales, device):
                 input_nuclei=input_nuclei,
                 output_nuclei=nuclei,
                 tissue=tissue,
-                generation_region=edit_mask,
+                generation_region=placement_mask,
                 placement_type_prob=placement_type_prob,
                 gamma=attempt_gamma,
                 generation_diagnostics=diag,
@@ -4282,11 +4331,27 @@ def build_parser():
     )
     parser.add_argument("--edit-region", default=None, help="Single edit region mask PNG")
     parser.add_argument(
+        "--placement-region",
+        default=None,
+        help=(
+            "Optional legal nucleus-center region inside --edit-region. "
+            "Defaults to --edit-region for backward compatibility."
+        ),
+    )
+    parser.add_argument(
         "--deletion-region",
         default=None,
         help=(
             "Semantic change support used for destructive instance erasure. "
             "Defaults to --edit-region for legacy callers."
+        ),
+    )
+    parser.add_argument(
+        "--trust-complete-deletion-region",
+        action="store_true",
+        help=(
+            "Treat --deletion-region as an externally certified union of "
+            "complete instances instead of expanding semantic 8-connect groups."
         ),
     )
     parser.add_argument("--output", default="nuclei_mask.png", help="Single output nuclei mask path")
@@ -4594,6 +4659,16 @@ def build_parser():
     )
     parser.add_argument("--skip-tissue-ids", type=int, nargs="*", default=[],
                         help="Additional tissue IDs to skip")
+    parser.add_argument(
+        "--allowed-nucleus-types",
+        type=int,
+        nargs="+",
+        default=list(NUCLEI_CLASSES),
+        help=(
+            "Raw CellViT nucleus IDs permitted for new placements. Existing "
+            "retained nuclei are unaffected."
+        ),
+    )
     parser.add_argument("--no-augment-instances", action="store_true")
     parser.add_argument("--reference-shape-min-area", type=int, default=8)
     parser.add_argument(

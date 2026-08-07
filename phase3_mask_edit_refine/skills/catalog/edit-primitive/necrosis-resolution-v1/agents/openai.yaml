@@ -1,0 +1,4 @@
+interface:
+  display_name: "Necrosis Resolution"
+  short_description: "Resolve necrosis toward verified viable tumor"
+  default_prompt: "Use $necrosis-resolution-v1 to resolve annotated necrosis toward verified viable tumor."

@@ -1,0 +1,24 @@
+{
+  "mechanism_id": "melanoma-local-population-modulation", "pathology_domain_id": "melanoma-v1",
+  "supported_primitives": ["cell-type-abundance-increase-v1", "cell-type-abundance-decrease-v1", "cellularity-increase-v1", "cellularity-decrease-v1"],
+  "version": "1.0.0-draft", "review_status": "draft",
+  "summary": "Change a bounded melanoma cell population while preserving epidermal, junctional, dermal, vascular and necrotic context.",
+  "recognition_contract": {"required_observations": ["one explicit epidermal, tumor or stromal population zone", "observable compatible cell class", "complete local instances and primary/metastatic context"], "contraindications": ["epidermal relationship unresolved", "necrosis or vessel included", "primary/metastatic provenance unknown when required", "melanocytic identity inferred from generic neoplastic class alone"], "minimum_confidence": 0.82},
+  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [], "required_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "tissue_program": {
+    "mode": "preserve_epidermal_dermal_architecture_select_bounded_population_zone",
+    "primitive_label_contracts": {
+      "cell-type-abundance-increase-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]},
+      "cell-type-abundance-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]},
+      "cellularity-increase-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]},
+      "cellularity-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]}
+    },
+    "allowed_tools": ["preserve_tissue"], "required_checker_ids": ["tissue_gate_binding"],
+    "prohibited_structures": ["epidermal_void", "vessel", "necrosis", "ulcer_debris"]
+  },
+  "cell_program": {"actions": ["retain", "remove_whole", "add"], "allowed_cell_classes": [1, 2, 3, 4, 5], "layout_programs": ["single", "pair", "small_cluster"], "core_policy": "bounded_epidermal_dermal_component_zone_with_local_composition", "halo_policy": "no_change_outside_compiled_population_extent", "halo_distance_px": [0, 48], "cluster_size_range": [1, 4], "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density"]},
+  "coupling_contract": {"compatibility_rule_ids": ["melanoma.joint.local_population_host_compatibility", "melanoma.joint.epidermal_vessel_necrosis_preservation"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "cell_count_extent", "tissue_floor_applies": false, "cell_only_target_fraction": 1.0, "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"},
+  "joint_gate_ids": ["cell_tissue_compatibility", "cell_zone_localization", "joint_provenance"],
+  "render_contract": {"required_findings": ["edited population remains in its epidermal, junctional, tumor or dermal compartment", "unrequested junctional relationships remain stable"], "veto_findings": ["new pagetoid spread not requested", "cells placed in necrosis or vessel", "junctional row partially removed", "melanocytic identity claimed from class ID alone"], "mask_guarantees": ["tissue labels unchanged", "complete nuclei only inside the compiled zone"], "render_only_claims": ["melanocytic lineage", "pagetoid identity", "pigmentation and cytologic atypia"]},
+  "evidence_citations": ["https://tumourclassification.iarc.who.int/"], "counterexamples": ["adding neoplastic cells to epidermis without a junctional mechanism", "removing a junctional row discontinuously", "using necrosis as a cellular host"]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prostate Local Cell Population"
+  short_description: "Audit pattern-safe prostate cell edits"
+  default_prompt: "Use $prostate-local-population-modulation to plan a pattern-safe local cellularity edit."

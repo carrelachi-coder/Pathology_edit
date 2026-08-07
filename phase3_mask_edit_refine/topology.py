@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import heapq
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 from scipy import ndimage
@@ -95,6 +96,7 @@ def topology_safe_priority_grow(
         seen[row, col] = True
 
     selected_count = 0
+    deferred = np.zeros_like(legal, dtype=bool)
     neighbor_offsets = (
         (-1, 0),
         (1, 0),
@@ -119,11 +121,19 @@ def topology_safe_priority_grow(
         reason = _topology_rejection_reason(
             row,
             col,
+            source_component_state=source_component_state,
             target_state=target_state,
             unselected_target=unselected_target,
         )
         if reason is not None:
             counters[reason] += 1
+            if reason != "unselected_target_contact":
+                # Digital simple-point status depends only on this 3x3
+                # neighborhood. Defer the pixel until (and only until) an
+                # adjacent accepted pixel changes that neighborhood. This is
+                # the fixed-point behavior the old multi-call compiler relied
+                # on, without repeatedly rescanning every rejected pixel.
+                deferred[row, col] = True
             continue
 
         selected[row, col] = True
@@ -136,6 +146,18 @@ def topology_safe_priority_grow(
                 0 <= next_row < legal.shape[0]
                 and 0 <= next_col < legal.shape[1]
             ):
+                continue
+            if deferred[next_row, next_col]:
+                deferred[next_row, next_col] = False
+                heapq.heappush(
+                    heap,
+                    (
+                        float(priority[next_row, next_col]),
+                        float(rng.random()),
+                        int(next_row),
+                        int(next_col),
+                    ),
+                )
                 continue
             if seen[next_row, next_col] or not legal[next_row, next_col]:
                 continue
@@ -202,19 +224,171 @@ def _topology_rejection_reason(
     row: int,
     col: int,
     *,
+    source_component_state: np.ndarray,
     target_state: np.ndarray,
     unselected_target: np.ndarray,
 ) -> str | None:
-    target_patch = _patch3(target_state, row, col, outside=False)
-    target_patch[1, 1] = False
-    if not np.any(target_patch):
-        return "target_island"
+    """Return the first local digital-topology violation for one conversion.
 
-    unselected_patch = _patch3(unselected_target, row, col, outside=False)
-    unselected_patch[1, 1] = False
-    if np.any(unselected_patch):
+    The previous grower only required a new target pixel to touch *some*
+    target.  Consequently a legal-looking distance band could cut a source
+    corridor or let two arms of the same target wrap around a residual island;
+    the expensive whole-mask audit discovered the split/hole only after the
+    complete area had been drawn.  A pixel is now accepted only when it is a
+    simple point for both sides of the source->target transition under the
+    same 8-connected foreground / 4-connected background convention used by
+    the whole-mask gates.
+
+    Target-component merges remain an explicit Planner/gate capability, but
+    this low-level grower deliberately does not create them.  Independent
+    fronts may approach one another while retaining a one-pixel legal
+    corridor.  A separate, auditable merge program can be added when a skill
+    positively requests coalescence; silently merging during generic burden
+    growth is not safe.
+    """
+
+    if not source_component_state[row, col]:
+        return "source_connectivity"
+    source_pattern = _neighbor_pattern_at(
+        source_component_state, row, col, outside=False
+    )
+    if _cached_local_component_count(source_pattern, 8, False) != 1:
+        return "source_connectivity"
+
+    # Removing a source pixel adds one background pixel.  Zero adjacent
+    # background components creates a new source hole; more than one joins
+    # previously separate background regions and removes a protected hole.
+    source_background_pattern = (~source_pattern) & 0xFF
+    if _cached_local_component_count(
+        source_background_pattern, 4, True
+    ) != 1:
+        return "source_hole_change"
+
+    target_pattern = _neighbor_pattern_at(target_state, row, col, outside=False)
+    target_neighbor_components = _cached_local_component_count(
+        target_pattern, 8, False
+    )
+    if target_neighbor_components == 0:
+        return "target_island"
+    if target_neighbor_components != 1:
+        return "target_hole_change"
+
+    # Adding a target pixel removes one background pixel.  If that pixel is a
+    # local articulation of target background, the new target front closes a
+    # ring and creates a target hole.  If it is an isolated background pixel,
+    # filling it silently removes a pre-existing target hole.  Both are
+    # forbidden by the generic topology contract.
+    target_background_pattern = (~target_pattern) & 0xFF
+    if _cached_local_component_count(
+        target_background_pattern, 4, True
+    ) != 1:
+        return "target_hole_change"
+
+    if _neighbor_pattern_at(unselected_target, row, col, outside=False):
         return "unselected_target_contact"
     return None
+
+
+def _neighbor_component_count(mask: np.ndarray, *, connectivity: int) -> int:
+    """Count foreground components in a 3x3 neighborhood without its center."""
+
+    return _cached_local_component_count(
+        _neighbor_pattern(mask), connectivity, False
+    )
+
+
+def _center_adjacent_component_count(
+    mask: np.ndarray, *, connectivity: int
+) -> int:
+    """Count neighbor components that the center would join.
+
+    For 4-connectivity, diagonal-only regions are intentionally ignored: a
+    newly added center pixel does not connect to them in the topology model.
+    """
+
+    return _cached_local_component_count(
+        _neighbor_pattern(mask), connectivity, True
+    )
+
+
+_NEIGHBOR_POSITIONS = (
+    (0, 0),
+    (0, 1),
+    (0, 2),
+    (1, 0),
+    (1, 2),
+    (2, 0),
+    (2, 1),
+    (2, 2),
+)
+
+_NEIGHBOR_OFFSETS = (
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+)
+
+
+def _neighbor_pattern_at(
+    array: np.ndarray, row: int, col: int, *, outside: bool
+) -> int:
+    pattern = 0
+    height, width = array.shape
+    for bit, (row_offset, col_offset) in enumerate(_NEIGHBOR_OFFSETS):
+        current_row = row + row_offset
+        current_col = col + col_offset
+        value = (
+            bool(array[current_row, current_col])
+            if 0 <= current_row < height and 0 <= current_col < width
+            else outside
+        )
+        pattern |= int(value) << bit
+    return pattern
+
+
+def _neighbor_pattern(mask: np.ndarray) -> int:
+    neighborhood = np.asarray(mask, dtype=bool)
+    pattern = 0
+    for bit, (row, col) in enumerate(_NEIGHBOR_POSITIONS):
+        pattern |= int(bool(neighborhood[row, col])) << bit
+    return pattern
+
+
+@lru_cache(maxsize=1024)
+def _cached_local_component_count(
+    pattern: int, connectivity: int, center_adjacent_only: bool
+) -> int:
+    neighborhood = np.zeros((3, 3), dtype=bool)
+    for bit, (row, col) in enumerate(_NEIGHBOR_POSITIONS):
+        neighborhood[row, col] = bool(pattern & (1 << bit))
+    structure = (
+        np.ones((3, 3), dtype=bool)
+        if connectivity == 8
+        else np.asarray(
+            [[False, True, False], [True, True, True], [False, True, False]],
+            dtype=bool,
+        )
+    )
+    labeled, count = ndimage.label(neighborhood, structure=structure)
+    if not center_adjacent_only:
+        return int(count)
+    positions = (
+        _NEIGHBOR_POSITIONS
+        if connectivity == 8
+        else ((0, 1), (1, 0), (1, 2), (2, 1))
+    )
+    return len(
+        {
+            int(labeled[position])
+            for position in positions
+            if int(labeled[position]) > 0
+        }
+    )
 
 
 def _patch3(array: np.ndarray, row: int, col: int, *, outside: bool) -> np.ndarray:

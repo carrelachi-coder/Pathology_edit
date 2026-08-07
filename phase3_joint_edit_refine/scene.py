@@ -313,7 +313,7 @@ def _build_population_graph(
         if median_area is not None and median_area > 0
         else 8.0
     )
-    band_width = max(2, int(round(nominal_diameter)))
+    band_width = max(2, round(nominal_diameter))
     masks: dict[str, np.ndarray] = {}
     adjacency: set[tuple[str, str]] = set()
     component_zone_ids: dict[str, str] = {}
@@ -381,7 +381,7 @@ def _summarize_population_zone(
     selected = []
     for item in instances:
         x, y = item.centroid_xy
-        row, col = int(round(y)), int(round(x))
+        row, col = round(y), round(x)
         if 0 <= row < mask.shape[0] and 0 <= col < mask.shape[1] and mask[row, col]:
             selected.append(item)
     class_counts = {class_id: 0 for class_id in range(1, 6)}

@@ -1,0 +1,12 @@
+{
+  "skill_id": "necrosis-appearance-v1",
+  "skill_kind": "edit_primitive",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Interface-bound expansion of existing annotated necrosis into viable tumor.",
+  "capabilities": {"source_label_options": ["Tumor"], "target_label": "Necrosis", "allowed_tools": ["interface_sdf", "connected_morphology", "organic_v2"]},
+  "rules": [
+    {"rule_id": "primitive.necrosis_appearance.transition", "scope": "candidate_gate", "applies_when": {}, "claim": "Every changed tissue pixel converts Tumor to Necrosis and no unrelated label changes.", "required_observation": "Compare source, target and change region pixelwise.", "severity": "hard", "deterministic_check_id": "label_transition", "critic_requirement": null, "exceptions": [], "counterexamples": ["Converting stroma or a lumen to necrosis."], "evidence_citations": [], "dataset_statistics": {}, "version": "1.0.0-draft", "review_status": "draft", "known_limitations": ["v1 expands an existing annotated focus only"]},
+    {"rule_id": "primitive.necrosis_appearance.interface", "scope": "candidate_gate", "applies_when": {}, "claim": "The change starts at a real Tumor-to-Necrosis interface and preserves viable-tumor topology.", "required_observation": "Run interface, topology, depth and boundary gates.", "severity": "hard", "deterministic_check_id": "interface_contact", "critic_requirement": null, "exceptions": [], "counterexamples": ["Creating a remote diamond-shaped necrosis island."], "evidence_citations": [], "dataset_statistics": {}, "version": "1.0.0-draft", "review_status": "draft", "known_limitations": []}
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lung Local Cell Population"
+  short_description: "Audit airway-safe lung cell population edits"
+  default_prompt: "Use $lung-local-population-modulation to plan an airway-safe local cellularity edit."

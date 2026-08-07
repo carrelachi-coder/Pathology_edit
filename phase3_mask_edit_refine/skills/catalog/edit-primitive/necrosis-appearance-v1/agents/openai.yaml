@@ -1,0 +1,4 @@
+interface:
+  display_name: "Necrosis Appearance"
+  short_description: "Expand existing annotated tumor necrosis"
+  default_prompt: "Use $necrosis-appearance-v1 to expand an existing annotated necrosis focus safely."

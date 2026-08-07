@@ -1,0 +1,14 @@
+{
+  "primitive_id": "necrosis-resolution-v1",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Replace verified intratumoral necrosis with adjacent viable tumor and atomically regenerate its neoplastic population.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [1],
+  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_shape_distribution", "local_population_density", "interface_seam_continuity", "necrosis_cell_turnover"]
+}

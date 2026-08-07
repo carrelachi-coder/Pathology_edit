@@ -23,7 +23,10 @@ from phase3_mask_edit_refine.candidates import (
     compile_depth_profile_map,
     generate_candidates,
 )
-from phase3_mask_edit_refine.execution import compile_edit_plan
+from phase3_mask_edit_refine.execution import (
+    _prepare_compiler_work,
+    compile_edit_plan,
+)
 from phase3_mask_edit_refine.gates import GateContext, GateRegistry
 from phase3_mask_edit_refine.models import (
     AreaBudget,
@@ -958,6 +961,66 @@ class CandidateAndSceneTests(unittest.TestCase):
                 int(candidate.change_region.sum()),
                 case.area_budget.target_pixels(mask, mask == 2),
             )
+
+    def test_adding_interface_cannot_discard_existing_executable_capacity(self):
+        size = 160
+        rows, cols = np.ogrid[:size, :size]
+        mask = np.full((size, size), 2, dtype=np.int64)
+        mask[(rows - 52) ** 2 + (cols - 48) ** 2 <= 22**2] = 12
+        mask[(rows - 108) ** 2 + (cols - 112) ** 2 <= 24**2] = 12
+        scene = build_scene_analysis(mask, schema=self.schema, pixel_size_um=0.465)
+        interfaces = sorted(
+            scene.interfaces_for(source_labels=("Stroma",), target_label="Tumor"),
+            key=lambda item: -item.contact_pixels,
+        )[:2]
+        bundle = self._bundle()
+        case = _case(primitive="tumor-burden-increase-v1", area=0.025)
+        base = _manual_plan(
+            case=case,
+            interface=interfaces[0],
+            source_label="Stroma",
+            target_label="Tumor",
+            area=0.025,
+            supporting_rules=_bundle_ids(bundle),
+            band_max=32.0,
+        )
+        planned = tuple(
+            replace(
+                base.candidate_interfaces[0],
+                interface_id=item.interface_id,
+                source_component_id=item.source_component_id,
+                target_component_id=item.target_component_id,
+                execution_contract=replace(
+                    base.candidate_interfaces[0].execution_contract,
+                    anchor_segment_ids=item.anchor_segment_ids,
+                    area_allocation_fraction=0.5,
+                ),
+            )
+            for item in interfaces
+        )
+        single_works = _prepare_compiler_work(
+            base,
+            source_mask=mask,
+            source_region=mask == 2,
+            scene=scene,
+        )
+        multi_works = _prepare_compiler_work(
+            replace(base, candidate_interfaces=planned),
+            source_mask=mask,
+            source_region=mask == 2,
+            scene=scene,
+        )
+        single_union = np.logical_or.reduce(
+            [item.legal_source for item in single_works]
+        )
+        multi_union = np.logical_or.reduce(
+            [item.legal_source for item in multi_works]
+        )
+        self.assertFalse(np.any(single_union & ~multi_union))
+        self.assertGreaterEqual(
+            int(np.count_nonzero(multi_union)),
+            int(np.count_nonzero(single_union)),
+        )
 
     def test_only_explicitly_selected_target_components_may_merge(self):
         mask = np.full((64, 64), 2, dtype=np.int64)

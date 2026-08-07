@@ -1,0 +1,24 @@
+{
+  "mechanism_id": "prostate-local-population-modulation", "pathology_domain_id": "prostate-adenocarcinoma-v1",
+  "supported_primitives": ["cell-type-abundance-increase-v1", "cell-type-abundance-decrease-v1", "cellularity-increase-v1", "cellularity-decrease-v1"],
+  "version": "1.0.0-draft", "review_status": "draft",
+  "summary": "Change a bounded prostate cell population while preserving gland/lumen units and the declared Gleason fine-label architecture.",
+  "recognition_contract": {"required_observations": ["one fine-label-compatible component population zone", "observable compatible cell class", "complete instances that do not form a protected gland rim"], "contraindications": ["Gleason pattern unresolved", "cribriform internal space or gland lumen included", "basal-layer inference requested from CellViT classes", "target class unsupported"], "minimum_confidence": 0.82},
+  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [], "required_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "tissue_program": {
+    "mode": "preserve_tissue_and_fine_label_select_bounded_population_zone",
+    "primitive_label_contracts": {
+      "cell-type-abundance-increase-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]},
+      "cell-type-abundance-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]},
+      "cellularity-increase-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]},
+      "cellularity-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium"], "target_labels": ["Tumor", "Stroma", "Normal epithelium"]}
+    },
+    "allowed_tools": ["preserve_tissue"], "required_checker_ids": ["tissue_gate_binding", "fine_pattern_preserved"],
+    "prohibited_structures": ["gland_lumen", "cribriform_internal_space", "glomeruloid_unit", "vessel", "nerve"]
+  },
+  "cell_program": {"actions": ["retain", "remove_whole", "add"], "allowed_cell_classes": [1, 2, 3, 4, 5], "layout_programs": ["single", "pair", "small_cluster", "boundary_aligned"], "core_policy": "bounded_fine_label_component_zone_with_local_composition", "halo_policy": "no_change_outside_compiled_population_extent", "halo_distance_px": [0, 40], "cluster_size_range": [1, 4], "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density"]},
+  "coupling_contract": {"compatibility_rule_ids": ["prostate.joint.local_population_host_compatibility", "prostate.joint.gland_lumen_pattern_preservation"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "cell_count_extent", "tissue_floor_applies": false, "cell_only_target_fraction": 1.0, "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"},
+  "joint_gate_ids": ["cell_tissue_compatibility", "cell_zone_localization", "fine_pattern_preserved", "joint_provenance"],
+  "render_contract": {"required_findings": ["edited population remains compatible with the declared gland pattern", "lumen-facing and stromal-facing organization remains coherent"], "veto_findings": ["nuclei fill a lumen or cribriform space", "pattern-3 gland becomes fused", "continuous gland rim is locally deleted", "basal-cell claim inferred from generic epithelial class"], "mask_guarantees": ["tissue and fine labels unchanged", "complete nuclei only inside the compiled zone"], "render_only_claims": ["basal-layer status", "Gleason identity from cells alone", "nucleolar atypia"]},
+  "evidence_citations": ["https://tumourclassification.iarc.who.int/"], "counterexamples": ["filling cribriform holes to raise cellularity", "removing one side of a pattern-3 gland", "converting generic epithelial class into a basal-cell claim"]
+}

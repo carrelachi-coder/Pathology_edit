@@ -7,21 +7,23 @@ import json
 from pathlib import Path
 
 from phase3_mask_edit_refine.agents import (
-    OpenAIMultimodalPlanner,
     OpenAIResponsesJSONClient,
 )
 
 from .agents import OpenAIMultimodalJointCritic, OpenAIMultimodalJointPlanner
 from .critic import DeterministicJointResearchCritic
-from .models import JointCaseContext
 from .mature_probnet_adapter import (
     MatureProbNetCellExecutor,
     MatureProbNetConfig,
 )
+from .models import JointCaseContext
 from .planner import HeuristicJointPlanner
 from .probnet_adapter import FrozenProbNetSpatialRanker
 from .skills.repository import JointSkillRepository
-from .tissue_planner import MultiInterfaceResearchTissuePlanner
+from .tissue_planner import (
+    MultiInterfaceResearchTissuePlanner,
+    OpenAIJointAwareTissuePlanner,
+)
 from .workflow import JointPathologyEditWorkflow, JointWorkflowConfig
 
 
@@ -38,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--production", action="store_true", help="Require internally reviewed skills; draft catalog will fail closed")
     parser.add_argument("--agent-mode", choices=("offline", "api"), default="offline")
     parser.add_argument("--model", default="gpt-5.6-terra")
+    parser.add_argument("--escalation-model", default="gpt-5.6-sol")
     parser.add_argument("--reasoning-effort", default="medium")
     parser.add_argument("--api-base-url", default="https://api.openai.com/v1")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
@@ -93,9 +96,16 @@ def main(argv: list[str] | None = None) -> int:
         if missing:
             raise ValueError(f"case IDs not present in manifest: {sorted(missing)}")
     client = None
+    escalation_client = None
     if args.agent_mode == "api":
         client = OpenAIResponsesJSONClient(
             model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            api_base_url=args.api_base_url,
+            api_key_env=args.api_key_env,
+        )
+        escalation_client = OpenAIResponsesJSONClient(
+            model=args.escalation_model,
             reasoning_effort=args.reasoning_effort,
             api_base_url=args.api_base_url,
             api_key_env=args.api_key_env,
@@ -104,9 +114,20 @@ def main(argv: list[str] | None = None) -> int:
     summaries = []
     for raw in records:
         case = JointCaseContext.from_mapping(raw)
+        population = repository.cell_population_profiles[
+            case.cell_population_profile_id
+        ]
         ranker = None
         cell_executor = None
         if args.cell_executor == "mature":
+            if (
+                args.probnet_dataset.lower()
+                != population.probnet_dataset_name.lower()
+            ):
+                raise ValueError(
+                    "--probnet-dataset does not match the case cell population profile: "
+                    f"expected {population.probnet_dataset_name}, got {args.probnet_dataset}"
+                )
             cell_executor = MatureProbNetCellExecutor(
                 MatureProbNetConfig(
                     dataset_name=args.probnet_dataset,
@@ -116,17 +137,32 @@ def main(argv: list[str] | None = None) -> int:
                     base_channels=args.probnet_base_ch,
                 )
             )
-        elif args.probnet_checkpoint:
-            population = repository.cell_population_profiles[case.cell_population_profile_id]
             ranker = FrozenProbNetSpatialRanker.from_checkpoint(
                 args.probnet_checkpoint,
                 cancer_id=population.probnet_cancer_id,
                 pathology_domain_id=case.pathology_domain_id,
                 device=args.device,
+                base_channels=args.probnet_base_ch,
+            )
+        elif args.probnet_checkpoint:
+            ranker = FrozenProbNetSpatialRanker.from_checkpoint(
+                args.probnet_checkpoint,
+                cancer_id=population.probnet_cancer_id,
+                pathology_domain_id=case.pathology_domain_id,
+                device=args.device,
+                base_channels=args.probnet_base_ch,
             )
         workflow = JointPathologyEditWorkflow(
-            tissue_planner=(OpenAIMultimodalPlanner(client) if client else MultiInterfaceResearchTissuePlanner()),
-            joint_planner=(OpenAIMultimodalJointPlanner(client) if client else HeuristicJointPlanner()),
+            tissue_planner=(
+                OpenAIJointAwareTissuePlanner(client, escalation_client)
+                if client
+                else MultiInterfaceResearchTissuePlanner()
+            ),
+            joint_planner=(
+                OpenAIMultimodalJointPlanner(client, escalation_client)
+                if client
+                else HeuristicJointPlanner()
+            ),
             critic=(OpenAIMultimodalJointCritic(client) if client else DeterministicJointResearchCritic()),
             joint_skills=repository,
             ranker=ranker,

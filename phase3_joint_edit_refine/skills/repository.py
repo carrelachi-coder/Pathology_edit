@@ -6,9 +6,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
-
 from phase3_joint_edit_refine.models import JointCaseContext, JointContractError
+from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
 
 from .schema import JointMechanismSkill, JointPrimitiveSkill, JointProfileContract
 
@@ -19,6 +18,7 @@ class CellObservationProfile:
     version: str
     class_ids: tuple[int, ...]
     class_names: dict[int, str]
+    tissue_compatible_classes: dict[str, tuple[int, ...]]
     required_checker_ids: tuple[str, ...]
 
 
@@ -31,6 +31,7 @@ class CellPopulationProfile:
     allow_cross_domain_fallback: bool
     allowed_cell_classes: tuple[int, ...]
     probnet_cancer_id: int
+    probnet_dataset_name: str
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,48 @@ class JointSkillRepository:
         self.annotation_profiles = self._load_annotation_profiles()
         self.cell_observation_profiles = self._load_cell_observation_profiles()
         self.cell_population_profiles = self._load_cell_population_profiles()
+        self.execution_scope = self._load_execution_scope()
+        self._validate_execution_scope()
+
+    def _load_execution_scope(self) -> dict:
+        payload = _read_json(self.root / "execution-scope-v1.json")
+        if payload.get("schema_version") != "joint-execution-scope-v1":
+            raise JointContractError("unsupported joint execution scope schema")
+        if payload.get("policy") != "fail_closed":
+            raise JointContractError("joint primitive scope must fail closed")
+        return payload
+
+    def _validate_execution_scope(self) -> None:
+        executable = set(self.execution_scope.get("executable_primitives", []))
+        closed = set(self.execution_scope.get("closed_primitives", {}))
+        catalog = set(self.primitives)
+        if executable & closed or executable | closed != catalog:
+            raise JointContractError(
+                "joint execution scope must classify every catalog primitive once"
+            )
+        covered = {
+            primitive_id
+            for item in self.mechanisms.values()
+            for primitive_id in item.supported_primitives
+        }
+        if executable - covered:
+            raise JointContractError(
+                "executable joint primitives have no mechanism coverage: "
+                + ", ".join(sorted(executable - covered))
+            )
+
+    @property
+    def executable_primitive_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(self.execution_scope["executable_primitives"]))
+
+    def primitive_scope_reason(self, primitive_id: str) -> str | None:
+        closed = self.execution_scope.get("closed_primitives", {})
+        legacy = self.execution_scope.get("legacy_primitives_not_yet_joint", {})
+        if primitive_id in closed:
+            return str(closed[primitive_id])
+        if primitive_id in legacy:
+            return str(legacy[primitive_id])
+        return None
 
     def _load_mechanisms(self) -> dict[str, JointMechanismSkill]:
         result: dict[str, JointMechanismSkill] = {}
@@ -122,6 +165,10 @@ class JointSkillRepository:
                 version=str(raw["version"]),
                 class_ids=tuple(int(value) for value in raw["class_ids"]),
                 class_names={int(key): str(value) for key, value in raw["class_names"].items()},
+                tissue_compatible_classes={
+                    str(label): tuple(int(value) for value in values)
+                    for label, values in raw["tissue_compatible_classes"].items()
+                },
                 required_checker_ids=tuple(str(value) for value in raw["required_checker_ids"]),
             )
         return result
@@ -140,6 +187,7 @@ class JointSkillRepository:
                 allow_cross_domain_fallback=bool(raw["allow_cross_domain_fallback"]),
                 allowed_cell_classes=tuple(int(value) for value in raw["allowed_cell_classes"]),
                 probnet_cancer_id=int(raw["probnet_cancer_id"]),
+                probnet_dataset_name=str(raw["probnet_dataset_name"]),
             )
         return result
 
@@ -188,6 +236,13 @@ class JointSkillRepository:
     ) -> tuple[tuple[JointMechanismSkill, ...], dict[str, str]]:
         """Apply all four skill axes before exposing choices to a Planner."""
 
+        if case.primitive_id not in self.execution_scope["executable_primitives"]:
+            reason = self.primitive_scope_reason(case.primitive_id)
+            return (), {
+                "execution_scope": reason
+                or "primitive is not in the reviewed joint executable scope"
+            }
+
         eligible = []
         rejected = {}
         for mechanism in self.mechanisms_for(
@@ -215,6 +270,15 @@ class JointSkillRepository:
         available_checker_ids: tuple[str, ...] | set[str],
         production: bool,
     ) -> JointSkillBundle:
+        if case.primitive_id not in self.execution_scope["executable_primitives"]:
+            reason = self.primitive_scope_reason(case.primitive_id)
+            raise JointContractError(
+                "joint primitive is explicitly closed: "
+                + (
+                    reason
+                    or "primitive is outside the reviewed executable scope"
+                )
+            )
         try:
             mechanism = self.mechanisms[mechanism_id]
             primitive_contract = self.primitives[case.primitive_id]
@@ -308,8 +372,12 @@ class JointSkillRepository:
                 dict.fromkeys(
                     [
                         *primitive_contract.required_checker_ids,
+                        *mechanism.tissue_program.required_checker_ids,
+                        *mechanism.cell_program.required_checker_ids,
                         *mechanism.joint_gate_ids,
                         *mechanism.coupling.compatibility_rule_ids,
+                        *annotation.required_checker_ids,
+                        *observation.required_checker_ids,
                     ]
                 )
             ),

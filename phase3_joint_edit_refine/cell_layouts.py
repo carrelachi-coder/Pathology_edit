@@ -8,17 +8,19 @@ from typing import Any, Protocol
 
 import numpy as np
 from scipy import ndimage
+from scipy.spatial import cKDTree
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import CandidateMask
 
 from .budget import JointBudgetAllocation
 from .cell_programs import CompiledCellToolProgram
+from .executable_contract import ExecutableJointContract
 from .models import JointContractError, JointEditPlan
 from .nuclei import iter_instances, normalize_nuclei_mask
 from .scene import JointSceneAnalysis
+from .seam import anchor_coverage_fraction, class_center_mask
 from .skills.repository import JointSkillBundle
-
 
 LAYOUT_TOOL_VERSION = "joint-cell-layout-v1"
 
@@ -74,7 +76,7 @@ def generate_cell_layouts(
     plan: JointEditPlan,
     bundle: JointSkillBundle,
     allocation: JointBudgetAllocation | None,
-    compiled_program: CompiledCellToolProgram | None = None,
+    executable_contract: ExecutableJointContract,
     seed: int,
     ranker: SpatialRanker | None = None,
     variants: int = 3,
@@ -86,20 +88,40 @@ def generate_cell_layouts(
     source_tissue = np.asarray(source_tissue)
     source_nuclei = normalize_nuclei_mask(source_nuclei)
     target_tissue = np.asarray(tissue_candidate.target_mask)
-    core = np.asarray(tissue_candidate.change_region, dtype=bool)
-    if source_tissue.shape != source_nuclei.shape or target_tissue.shape != source_tissue.shape:
+    executable_contract.validate_identity()
+    if executable_contract.tissue_candidate_id != tissue_candidate.candidate_id:
+        raise JointContractError(
+            "cell layout received a contract for another tissue candidate"
+        )
+    compiled_program = executable_contract.cell_program
+    if (
+        source_tissue.shape != source_nuclei.shape
+        or target_tissue.shape != source_tissue.shape
+    ):
         raise JointContractError("cell layout inputs must share one shape")
     ranker = ranker or DeterministicDistanceRanker()
     ranker_domain = getattr(ranker, "pathology_domain_id", None)
-    if ranker_domain is not None and ranker_domain != bundle.mechanism.pathology_domain_id:
-        raise JointContractError("spatial ranker pathology domain does not match the joint mechanism")
+    if (
+        ranker_domain is not None
+        and ranker_domain != bundle.mechanism.pathology_domain_id
+    ):
+        raise JointContractError(
+            "spatial ranker pathology domain does not match the joint mechanism"
+        )
     ranker_cancer_id = getattr(ranker, "cancer_id", None)
-    if ranker_cancer_id is not None and ranker_cancer_id != bundle.cell_population_profile.probnet_cancer_id:
-        raise JointContractError("ProbNet cancer ID does not match the cell population profile")
+    if (
+        ranker_cancer_id is not None
+        and ranker_cancer_id != bundle.cell_population_profile.probnet_cancer_id
+    ):
+        raise JointContractError(
+            "ProbNet cancer ID does not match the cell population profile"
+        )
     if plan.tissue_plan is not None:
         target_class = target_cell_class(plan.tissue_plan.target_label, schema)
     elif len(bundle.primitive.target_cell_classes) == 1:
         target_class = bundle.primitive.target_cell_classes[0]
+    elif plan.cell_plan.allowed_cell_classes:
+        target_class = plan.cell_plan.allowed_cell_classes[0]
     else:
         raise JointContractError(
             "cell-only deterministic executor requires one Planner-bound target class"
@@ -108,11 +130,72 @@ def generate_cell_layouts(
         raise JointContractError(
             f"cell class {target_class} required by target tissue is not allowed by plan"
         )
-    references, rejected_references = build_reference_shape_library(
-        scene,
-        class_id=target_class,
+    if plan.cell_plan.baseline_mode == "selective_remove":
+        return _build_selective_removal_results(
+            source_nuclei=source_nuclei,
+            scene=scene,
+            compiled_program=compiled_program,
+            executable_contract=executable_contract,
+            plan=plan,
+            seed=seed,
+            variants=variants,
+        )
+    if plan.cell_plan.baseline_mode == "render_owned_clearance":
+        results = _build_selective_removal_results(
+            source_nuclei=source_nuclei,
+            scene=scene,
+            compiled_program=compiled_program,
+            executable_contract=executable_contract,
+            plan=plan,
+            seed=seed,
+            variants=variants,
+        )
+        for result in results:
+            result.trace.update(
+                {
+                    "execution_engine": (
+                        "deterministic_complete_viable_instance_clearance_v1"
+                    ),
+                    "render_owned_debris_transition": True,
+                    "synthetic_dead_nucleus_count": 0,
+                    "render_material_policy": (
+                        "necrotic-debris-inside-generation-support"
+                    ),
+                }
+            )
+        return results
+
+    reference_classes = (
+        plan.cell_plan.allowed_cell_classes
+        if bundle.primitive.scope == "cell_only"
+        else (target_class,)
     )
-    if not references:
+    references_by_class: dict[int, tuple[ReferenceNucleusShape, ...]] = {}
+    rejected_references: dict[str, str] = {}
+    for class_id in reference_classes:
+        current, rejected = build_reference_shape_library(
+            scene,
+            class_id=class_id,
+        )
+        current = _prioritize_local_references(
+            current,
+            scene=scene,
+            interface_ids=plan.cell_plan.interface_ids,
+            core_zone=plan.cell_plan.core_zone,
+        )
+        if current:
+            references_by_class[class_id] = current
+        rejected_references.update(rejected)
+    references = references_by_class.get(target_class, ())
+    if bundle.primitive.primitive_id == "cellularity-increase-v1" and set(
+        references_by_class
+    ) != set(reference_classes):
+        missing = sorted(set(reference_classes) - set(references_by_class))
+        raise JointContractError(
+            "cellularity increase lacks complete component-local shapes for classes: "
+            + ", ".join(str(value) for value in missing)
+        )
+    if not references and len(reference_classes) == 1:
         boundary_count = sum(
             reason == "patch_boundary_censored_shape"
             for reason in rejected_references.values()
@@ -128,40 +211,39 @@ def generate_cell_layouts(
     for instance_id, component in sorted(scene.instance_masks.items()):
         if instance_id in protected:
             continue
-        erasure_region = (
-            compiled_program.erasure_region
-            if compiled_program is not None
-            else core
-        )
+        erasure_region = compiled_program.erasure_region
         if np.any(component & erasure_region):
             base[component] = 0
             removed_ids.append(instance_id)
 
-    prohibited_ids = set(bundle.annotation_profile.prohibit_cell_placement_fine_ids)
-    legal_core = (
-        np.asarray(compiled_program.placement_center_region, dtype=bool)
-        if compiled_program is not None
-        else core & ~np.isin(target_tissue, tuple(prohibited_ids))
-    )
-    valid_footprint = (
-        np.asarray(compiled_program.valid_footprint_region, dtype=bool)
-        if compiled_program is not None
-        else ~np.isin(target_tissue, tuple(prohibited_ids))
-    )
-    halo = (
-        np.asarray(compiled_program.mechanism_region, dtype=bool)
-        if compiled_program is not None
-        else _legal_halo(
-            core,
-            target_tissue=target_tissue,
-            prohibited_ids=prohibited_ids,
-            maximum_px=plan.coupling_plan.maximum_halo_px,
-            enabled=bundle.mechanism.coupling.cell_only_target_fraction > 0,
-        )
-    )
+    legal_core = np.asarray(compiled_program.placement_center_region, dtype=bool)
+    valid_footprint = np.asarray(compiled_program.valid_footprint_region, dtype=bool)
+    halo = np.asarray(compiled_program.mechanism_region, dtype=bool)
     add_zone = legal_core | halo
     if not np.any(add_zone):
         raise JointContractError("joint cell program has no legal placement zone")
+
+    if bundle.primitive.scope == "cell_only" and len(reference_classes) > 1:
+        if not references_by_class:
+            raise JointContractError(
+                "local cellularity edit has no complete compatible source shapes"
+            )
+        return _build_multiclass_addition_results(
+            source_tissue=source_tissue,
+            target_tissue=target_tissue,
+            base=base,
+            scene=scene,
+            schema=schema,
+            bundle=bundle,
+            plan=plan,
+            compiled_program=compiled_program,
+            executable_contract=executable_contract,
+            references_by_class=references_by_class,
+            rejected_references=rejected_references,
+            ranker=ranker,
+            seed=seed,
+            variants=variants,
+        )
 
     average_area = float(np.median([item.area_px for item in references]))
     if bundle.primitive.scope == "cell_only":
@@ -171,8 +253,7 @@ def generate_cell_layouts(
             )
         desired_cell_delta = int(
             compiled_program.target_delta_count
-            if compiled_program is not None
-            and compiled_program.target_delta_count is not None
+            if compiled_program.target_delta_count is not None
             else 0
         )
         if desired_cell_delta <= 0:
@@ -188,24 +269,34 @@ def generate_cell_layouts(
             raise JointContractError(
                 "tissue-and-cell layout requires a joint budget allocation"
             )
-        source_density = _class_density(
-            source_nuclei,
-            source_tissue,
+        source_density = _interface_class_density(
+            scene,
+            interface_ids=plan.cell_plan.interface_ids,
             class_id=target_class,
-            tissue_ids=_target_tissue_ids(plan.tissue_plan.target_label, schema),
         )
-        replacement_count = int(round(np.count_nonzero(legal_core) * source_density))
+        if source_density is None:
+            source_density = _class_density(
+                source_nuclei,
+                source_tissue,
+                class_id=target_class,
+                tissue_ids=_target_tissue_ids(plan.tissue_plan.target_label, schema),
+            )
+        replacement_count = round(np.count_nonzero(legal_core) * source_density)
         replacement_count = max(
             replacement_count, len(removed_ids) if removed_ids else 1
         )
-        reserve_count = int(
-            round(allocation.reserved_layout_halo_pixels / max(1.0, average_area))
+        reserve_count = round(
+            allocation.reserved_layout_halo_pixels / max(1.0, average_area)
         )
         if not np.any(halo):
             reserve_count = 0
-    requested_count = replacement_count + reserve_count
-    capacity_bound = max(1, int(np.count_nonzero(add_zone) / max(1.0, average_area * 2.0)))
-    requested_count = min(requested_count, capacity_bound)
+    biological_replacement_count = replacement_count
+    biological_reserve_count = reserve_count
+    biological_desired_count = replacement_count + reserve_count
+    capacity_bound = max(
+        1, int(np.count_nonzero(add_zone) / max(1.0, average_area * 2.0))
+    )
+    requested_count = min(biological_desired_count, capacity_bound)
     replacement_count = min(replacement_count, requested_count)
     reserve_count = min(reserve_count, max(0, requested_count - replacement_count))
 
@@ -224,6 +315,9 @@ def generate_cell_layouts(
     if score.shape != add_zone.shape or not np.all(np.isfinite(score)):
         raise JointContractError("spatial ranker returned an invalid score map")
 
+    orientation_mask = np.logical_or.reduce(
+        [scene.tissue.anchor_masks[item] for item in plan.cell_plan.anchor_ids]
+    )
     results: list[CellLayoutResult] = []
     for variant in range(variants):
         target, core_placed, core_placements = _place_layout(
@@ -237,15 +331,29 @@ def generate_cell_layouts(
             requested_count=replacement_count,
             layout_program=plan.cell_plan.layout_program_id,
             cluster_size_range=bundle.mechanism.cell_program.cluster_size_range,
+            nominal_nucleus_diameter_px=compiled_program.nominal_nucleus_diameter_px,
+            orientation_mask=orientation_mask,
+            continuity_region=compiled_program.continuity_region,
+            continuity_anchor_mask=compiled_program.continuity_anchor_mask,
+            continuity_maximum_empty_run_px=(
+                compiled_program.continuity_maximum_empty_run_px
+            ),
             seed=seed + variant * 104729,
         )
-        halo_score = ranker.score(
-            tissue_mask=target_tissue,
-            source_nuclei=target,
-            cell_class=target_class,
-            legal_zone=halo,
-            context={"mechanism_id": plan.selected_mechanism_id, "zone": "cell_only_halo"},
-        ) if np.any(halo) else np.zeros_like(score)
+        halo_score = (
+            ranker.score(
+                tissue_mask=target_tissue,
+                source_nuclei=target,
+                cell_class=target_class,
+                legal_zone=halo,
+                context={
+                    "mechanism_id": plan.selected_mechanism_id,
+                    "zone": "cell_only_halo",
+                },
+            )
+            if np.any(halo)
+            else np.zeros_like(score)
+        )
         target, halo_placed, halo_placements = _place_layout(
             base=target,
             references=references,
@@ -257,10 +365,23 @@ def generate_cell_layouts(
             requested_count=reserve_count,
             layout_program=plan.cell_plan.layout_program_id,
             cluster_size_range=bundle.mechanism.cell_program.cluster_size_range,
+            nominal_nucleus_diameter_px=compiled_program.nominal_nucleus_diameter_px,
+            orientation_mask=orientation_mask,
+            continuity_region=np.zeros_like(halo),
+            continuity_anchor_mask=np.zeros_like(halo),
+            continuity_maximum_empty_run_px=0,
             seed=seed + variant * 104729 + 8191,
         )
         placed = core_placed + halo_placed
         placements = [*core_placements, *halo_placements]
+        target_centers = class_center_mask(target, class_id=target_class)
+        continuity_coverage = anchor_coverage_fraction(
+            compiled_program.continuity_anchor_mask,
+            target_centers,
+            maximum_empty_run_px=(
+                compiled_program.continuity_maximum_empty_run_px
+            ),
+        )
         result_id = f"cells-{variant + 1:02d}"
         results.append(
             CellLayoutResult(
@@ -268,12 +389,12 @@ def generate_cell_layouts(
                 target_nuclei_mask=target,
                 trace={
                     "layout_tool_version": LAYOUT_TOOL_VERSION,
+                    "execution_engine": "deterministic_research_layout_v1",
+                    "production_density_calibrated": False,
                     "layout_program_id": plan.cell_plan.layout_program_id,
-                    "compiled_cell_tool_program": (
-                        compiled_program.to_metadata()
-                        if compiled_program is not None
-                        else None
-                    ),
+                    "compiled_cell_tool_program": (compiled_program.to_metadata()),
+                    "executable_contract_id": executable_contract.contract_id,
+                    "executable_contract_version": (executable_contract.schema_version),
                     "ranker": ranker.name,
                     "ranker_provenance": dict(getattr(ranker, "provenance", {})),
                     "target_cell_class": target_class,
@@ -283,28 +404,52 @@ def generate_cell_layouts(
                     # shape containment and collision checks.  Keeping both
                     # prevents an impossible rough area estimate from being
                     # mistaken for an execution failure.
-                    "desired_count": replacement_count + reserve_count,
+                    "biological_desired_count": biological_desired_count,
+                    "biological_replacement_count": biological_replacement_count,
+                    "biological_halo_count": biological_reserve_count,
+                    "geometric_capacity_estimate": capacity_bound,
+                    "desired_count": biological_desired_count,
                     "resolved_count": placed,
-                    "requested_count": placed,
+                    "requested_count": requested_count,
+                    "attempted_count": requested_count,
                     "placed_count": placed,
                     "placement_completion": (
                         1.0
-                        if placed == 0 and replacement_count + reserve_count == 0
-                        else placed / max(1, replacement_count + reserve_count)
+                        if placed == 0 and biological_desired_count == 0
+                        else placed / max(1, biological_desired_count)
                     ),
                     "core_requested_count": replacement_count,
                     "core_placed_count": core_placed,
                     "halo_requested_count": reserve_count,
                     "halo_placed_count": halo_placed,
-                    "placement_capacity_exhausted": placed < (replacement_count + reserve_count),
-                    "cell_capacity_fallback_used": placed < (replacement_count + reserve_count),
+                    "placement_capacity_exhausted": placed
+                    < (replacement_count + reserve_count),
+                    "cell_capacity_fallback_used": placed < biological_desired_count,
+                    "continuity_mode": compiled_program.continuity_mode,
+                    "continuity_width_px": (
+                        compiled_program.continuity_width_px
+                    ),
+                    "continuity_maximum_empty_run_px": (
+                        compiled_program.continuity_maximum_empty_run_px
+                    ),
+                    "continuity_anchor_coverage_fraction": (
+                        continuity_coverage
+                    ),
+                    "continuity_minimum_anchor_coverage_fraction": (
+                        compiled_program.continuity_minimum_anchor_coverage_fraction
+                    ),
                     "removed_source_instance_ids": removed_ids,
                     "protected_instance_ids": sorted(protected),
                     "reference_shape_count": len(references),
                     "reference_shape_ids": [item.instance_id for item in references],
-                    "reference_shape_sources": sorted({item.source for item in references}),
+                    "reference_shape_sources": sorted(
+                        {item.source for item in references}
+                    ),
                     "reference_shape_rejections": rejected_references,
                     "reference_shape_integrity_certified": True,
+                    "reference_shape_locality": _reference_shape_locality(
+                        plan.cell_plan.core_zone
+                    ),
                     "reference_first": True,
                     "cross_domain_fallback": False,
                     "overlap_pixels": 0,
@@ -324,9 +469,10 @@ def generate_cell_layouts(
         int(item.trace.get("resolved_count", 0)) for item in results
     )
     desired = max(int(item.trace.get("desired_count", 0)) for item in results)
-    zero_cell_fallback_allowed = bool(
-        tissue_candidate.tool_trace.get("area_fallback_used")
-    ) and bundle.mechanism.coupling.cell_only_target_fraction == 0
+    zero_cell_fallback_allowed = (
+        bool(tissue_candidate.tool_trace.get("area_fallback_used"))
+        and bundle.mechanism.coupling.cell_only_target_fraction == 0
+    )
     if desired > 0 and maximum_reachable <= 0 and not zero_cell_fallback_allowed:
         return ()
     certified: list[CellLayoutResult] = []
@@ -334,12 +480,294 @@ def generate_cell_layouts(
         if int(item.trace.get("resolved_count", 0)) != maximum_reachable:
             continue
         item.trace["batch_max_attainable_count"] = maximum_reachable
+        item.trace["capacity_max_count"] = maximum_reachable
+        item.trace["resolved_count"] = maximum_reachable
+        item.trace["requested_count"] = maximum_reachable
+        item.trace["placed_count"] = maximum_reachable
+        item.trace["cell_capacity_fallback_used"] = maximum_reachable < desired
         item.trace["cell_capacity_certified"] = True
-        item.trace["zero_cell_capacity_fallback_allowed"] = (
-            zero_cell_fallback_allowed
-        )
+        item.trace["zero_cell_capacity_fallback_allowed"] = zero_cell_fallback_allowed
         certified.append(item)
     return tuple(certified)
+
+
+def _build_selective_removal_results(
+    *,
+    source_nuclei: np.ndarray,
+    scene: JointSceneAnalysis,
+    compiled_program: CompiledCellToolProgram,
+    executable_contract: ExecutableJointContract,
+    plan: JointEditPlan,
+    seed: int,
+    variants: int,
+) -> tuple[CellLayoutResult, ...]:
+    target = np.asarray(source_nuclei).copy()
+    removed_ids = []
+    for instance_id, component in sorted(scene.instance_masks.items()):
+        if np.any(np.asarray(component, dtype=bool) & compiled_program.erasure_region):
+            target[component] = 0
+            removed_ids.append(instance_id)
+    resolved = len(removed_ids)
+    desired = int(
+        compiled_program.biological_target_delta_count
+        if compiled_program.biological_target_delta_count is not None
+        else resolved
+    )
+    if resolved <= 0:
+        return ()
+    metadata = {item.instance_id: item for item in scene.cells.instances}
+    removed_by_class: dict[int, int] = {}
+    for instance_id in removed_ids:
+        class_id = metadata[instance_id].class_id
+        removed_by_class[class_id] = removed_by_class.get(class_id, 0) + 1
+    trace = {
+        "layout_tool_version": LAYOUT_TOOL_VERSION,
+        "execution_engine": "deterministic_complete_instance_removal_v1",
+        "ranker": "not_applicable_complete_instance_removal",
+        "ranker_provenance": {"role": "no_new_placement"},
+        "layout_program_id": plan.cell_plan.layout_program_id,
+        "compiled_cell_tool_program": compiled_program.to_metadata(),
+        "executable_contract_id": executable_contract.contract_id,
+        "executable_contract_version": executable_contract.schema_version,
+        "target_cell_classes": list(plan.cell_plan.allowed_cell_classes),
+        "biological_desired_count": desired,
+        "desired_count": desired,
+        "resolved_count": resolved,
+        "requested_count": resolved,
+        "attempted_count": resolved,
+        "placed_count": resolved,
+        "removed_count": resolved,
+        "class_removed_counts": {
+            str(key): value for key, value in sorted(removed_by_class.items())
+        },
+        "batch_max_attainable_count": resolved,
+        "capacity_max_count": resolved,
+        "cell_capacity_certified": True,
+        "cell_capacity_fallback_used": resolved < desired,
+        "placement_capacity_exhausted": resolved < desired,
+        "removed_source_instance_ids": removed_ids,
+        "protected_instance_ids": list(executable_contract.protected_instance_ids),
+        "reference_shape_ids": [],
+        "reference_shape_rejections": {},
+        "reference_shape_integrity_certified": True,
+        "reference_shape_locality": "not_applicable_removal_only",
+        "reference_first": False,
+        "cross_domain_fallback": False,
+        "overlap_pixels": 0,
+        "partial_source_instance_edits": 0,
+        "placements": [],
+        "seed": seed,
+    }
+    return tuple(
+        CellLayoutResult(
+            cell_candidate_id=f"remove-cells-{index + 1:02d}",
+            target_nuclei_mask=target.copy(),
+            trace={**trace, "variant": index + 1},
+        )
+        for index in range(min(variants, 1))
+    )
+
+
+def _build_multiclass_addition_results(
+    *,
+    source_tissue: np.ndarray,
+    target_tissue: np.ndarray,
+    base: np.ndarray,
+    scene: JointSceneAnalysis,
+    schema: MaskProfileSchema,
+    bundle: JointSkillBundle,
+    plan: JointEditPlan,
+    compiled_program: CompiledCellToolProgram,
+    executable_contract: ExecutableJointContract,
+    references_by_class: dict[int, tuple[ReferenceNucleusShape, ...]],
+    rejected_references: dict[str, str],
+    ranker: SpatialRanker,
+    seed: int,
+    variants: int,
+) -> tuple[CellLayoutResult, ...]:
+    del source_tissue
+    desired = int(compiled_program.target_delta_count or 0)
+    if desired <= 0:
+        raise JointContractError(
+            "multiclass cellularity increase requires a positive target delta"
+        )
+    placement_zone = np.asarray(compiled_program.placement_center_region, dtype=bool)
+    local_counts = {class_id: 0 for class_id in references_by_class}
+    for item in scene.cells.instances:
+        if item.class_id not in local_counts:
+            continue
+        x, y = item.centroid_xy
+        row, col = round(y), round(x)
+        if (
+            0 <= row < placement_zone.shape[0]
+            and 0 <= col < placement_zone.shape[1]
+            and placement_zone[row, col]
+        ):
+            local_counts[item.class_id] += 1
+    if sum(local_counts.values()) == 0:
+        local_counts = {class_id: 1 for class_id in references_by_class}
+    quotas = _largest_remainder_class_quotas(local_counts, desired)
+    results = []
+    for variant in range(variants):
+        target = np.asarray(base).copy()
+        placements = []
+        placed_by_class = {}
+        for offset, class_id in enumerate(sorted(quotas)):
+            requested = quotas[class_id]
+            if requested <= 0:
+                continue
+            compatible_ids = _compatible_host_fine_ids(
+                schema=schema,
+                bundle=bundle,
+                class_id=class_id,
+            )
+            class_valid = np.asarray(
+                compiled_program.valid_footprint_region, dtype=bool
+            ) & np.isin(target_tissue, compatible_ids)
+            class_zone = placement_zone & class_valid
+            if not np.any(class_zone):
+                placed_by_class[class_id] = 0
+                continue
+            score = ranker.score(
+                tissue_mask=target_tissue,
+                source_nuclei=target,
+                cell_class=class_id,
+                legal_zone=class_zone,
+                context={
+                    "mechanism_id": plan.selected_mechanism_id,
+                    "zone": plan.cell_plan.core_zone,
+                    "population_mode": "local_composition_preserving_add",
+                },
+            )
+            target, placed, current = _place_layout(
+                base=target,
+                references=references_by_class[class_id],
+                class_id=class_id,
+                legal_zone=class_zone,
+                valid_footprint_region=class_valid,
+                halo=np.zeros_like(class_zone),
+                score=np.asarray(score, dtype=float),
+                requested_count=requested,
+                layout_program=plan.cell_plan.layout_program_id,
+                cluster_size_range=(1, 1),
+                nominal_nucleus_diameter_px=(
+                    compiled_program.nominal_nucleus_diameter_px
+                ),
+                orientation_mask=np.zeros_like(class_zone),
+                continuity_region=np.zeros_like(class_zone),
+                continuity_anchor_mask=np.zeros_like(class_zone),
+                continuity_maximum_empty_run_px=0,
+                seed=seed + variant * 104729 + offset * 8191,
+            )
+            placements.extend(current)
+            placed_by_class[class_id] = placed
+        placed_total = sum(placed_by_class.values())
+        results.append(
+            CellLayoutResult(
+                cell_candidate_id=f"multiclass-cells-{variant + 1:02d}",
+                target_nuclei_mask=target,
+                trace={
+                    "layout_tool_version": LAYOUT_TOOL_VERSION,
+                    "execution_engine": "deterministic_local_composition_add_v1",
+                    "layout_program_id": plan.cell_plan.layout_program_id,
+                    "compiled_cell_tool_program": compiled_program.to_metadata(),
+                    "executable_contract_id": executable_contract.contract_id,
+                    "executable_contract_version": executable_contract.schema_version,
+                    "ranker": ranker.name,
+                    "ranker_provenance": dict(getattr(ranker, "provenance", {})),
+                    "target_cell_classes": sorted(references_by_class),
+                    "biological_desired_count": desired,
+                    "desired_count": desired,
+                    "resolved_count": placed_total,
+                    "requested_count": desired,
+                    "attempted_count": desired,
+                    "placed_count": placed_total,
+                    "class_requested_counts": {
+                        str(key): value for key, value in sorted(quotas.items())
+                    },
+                    "class_placed_counts": {
+                        str(key): value
+                        for key, value in sorted(placed_by_class.items())
+                    },
+                    "placement_completion": placed_total / max(1, desired),
+                    "cell_capacity_fallback_used": placed_total < desired,
+                    "placement_capacity_exhausted": placed_total < desired,
+                    "removed_source_instance_ids": [],
+                    "protected_instance_ids": list(
+                        executable_contract.protected_instance_ids
+                    ),
+                    "reference_shape_ids": sorted(
+                        item.instance_id
+                        for values in references_by_class.values()
+                        for item in values
+                    ),
+                    "reference_shape_rejections": rejected_references,
+                    "reference_shape_integrity_certified": True,
+                    "reference_shape_locality": _reference_shape_locality(
+                        plan.cell_plan.core_zone
+                    ),
+                    "reference_first": True,
+                    "cross_domain_fallback": False,
+                    "overlap_pixels": 0,
+                    "partial_source_instance_edits": 0,
+                    "placements": placements,
+                    "seed": seed + variant * 104729,
+                },
+            )
+        )
+    maximum = max((int(item.trace["placed_count"]) for item in results), default=0)
+    if maximum <= 0:
+        return ()
+    certified = []
+    for item in results:
+        if int(item.trace["placed_count"]) != maximum:
+            continue
+        item.trace["resolved_count"] = maximum
+        item.trace["requested_count"] = maximum
+        item.trace["placed_count"] = maximum
+        item.trace["batch_max_attainable_count"] = maximum
+        item.trace["capacity_max_count"] = maximum
+        item.trace["cell_capacity_certified"] = True
+        item.trace["cell_capacity_fallback_used"] = maximum < desired
+        certified.append(item)
+    return tuple(certified)
+
+
+def _largest_remainder_class_quotas(
+    counts: dict[int, int], total: int
+) -> dict[int, int]:
+    denominator = max(1, sum(counts.values()))
+    raw = {key: total * value / denominator for key, value in counts.items()}
+    quotas = {key: int(np.floor(value)) for key, value in raw.items()}
+    remainder = total - sum(quotas.values())
+    order = sorted(
+        counts,
+        key=lambda key: (-(raw[key] - quotas[key]), -counts[key], key),
+    )
+    for key in order[:remainder]:
+        quotas[key] += 1
+    return quotas
+
+
+def _compatible_host_fine_ids(
+    *, schema: MaskProfileSchema, bundle: JointSkillBundle, class_id: int
+) -> tuple[int, ...]:
+    fine_ids = set()
+    for (
+        label,
+        classes,
+    ) in bundle.cell_observation_profile.tissue_compatible_classes.items():
+        if (
+            class_id in classes
+            and label in bundle.primitive.host_tissue_labels
+            and label in schema.readable_labels
+        ):
+            fine_ids.update(schema.resolve_fine_ids(label))
+    if not fine_ids:
+        raise JointContractError(
+            f"cell class {class_id} has no annotation-compatible host tissue"
+        )
+    return tuple(sorted(fine_ids))
 
 
 def target_cell_class(target_label: str, schema: MaskProfileSchema) -> int:
@@ -352,7 +780,10 @@ def target_cell_class(target_label: str, schema: MaskProfileSchema) -> int:
     if target_label == "Immune infiltrate":
         return 2
     if target_label == "Necrosis":
-        return 4
+        # Use the reliably observed inflammatory population as the primary
+        # placement/reference class. Sparse dead nuclei remain an additional
+        # legal class selected by the mature target-tissue prior.
+        return 2
     if target_label == "Normal epithelium":
         return 5
     raise JointContractError(f"no executable cell-class contract for {target_label!r}")
@@ -407,9 +838,7 @@ def build_reference_shape_library(
         if "irregular_or_fragmented_shape" in item.quality_flags:
             rejected[instance_id] = "irregular_or_fragmented_shape"
             continue
-        if ndimage.label(
-            component, structure=np.ones((3, 3), dtype=bool)
-        )[1] != 1:
+        if ndimage.label(component, structure=np.ones((3, 3), dtype=bool))[1] != 1:
             rejected[instance_id] = "disconnected_instance_shape"
             continue
         cropped = component[y0:y1, x0:x1].copy()
@@ -435,7 +864,9 @@ def build_reference_shape_library(
     return tuple(accepted), rejected
 
 
-def _class_density(mask, tissue, *, class_id: int, tissue_ids: tuple[int, ...]) -> float:
+def _class_density(
+    mask, tissue, *, class_id: int, tissue_ids: tuple[int, ...]
+) -> float:
     tissue_region = np.isin(tissue, tissue_ids)
     denominator = int(np.count_nonzero(tissue_region))
     centers = 0
@@ -443,13 +874,74 @@ def _class_density(mask, tissue, *, class_id: int, tissue_ids: tuple[int, ...]) 
         if current != class_id:
             continue
         cy, cx = ndimage.center_of_mass(component)
-        row, col = int(round(cy)), int(round(cx))
-        if 0 <= row < tissue.shape[0] and 0 <= col < tissue.shape[1] and tissue_region[row, col]:
+        row, col = round(cy), round(cx)
+        if (
+            0 <= row < tissue.shape[0]
+            and 0 <= col < tissue.shape[1]
+            and tissue_region[row, col]
+        ):
             centers += 1
     if denominator and centers:
         return centers / denominator
-    total_instances = sum(1 for _, current, _ in iter_instances(mask) if current == class_id)
+    total_instances = sum(
+        1 for _, current, _ in iter_instances(mask) if current == class_id
+    )
     return total_instances / max(1, int(np.prod(mask.shape)))
+
+
+def _interface_class_density(
+    scene: JointSceneAnalysis,
+    *,
+    interface_ids: tuple[str, ...],
+    class_id: int,
+) -> float | None:
+    zones = [
+        item
+        for item in scene.population.zones
+        if item.interface_id in interface_ids
+        and item.side == "target"
+        and item.distance_band_px is not None
+        and item.distance_band_px[0] == 0.0
+    ]
+    total_area = sum(item.area_px for item in zones)
+    total_count = sum(item.class_counts.get(class_id, 0) for item in zones)
+    if total_area <= 0 or total_count < 3:
+        return None
+    return float(total_count / total_area)
+
+
+def _prioritize_local_references(
+    references: tuple[ReferenceNucleusShape, ...],
+    *,
+    scene: JointSceneAnalysis,
+    interface_ids: tuple[str, ...],
+    core_zone: str,
+) -> tuple[ReferenceNucleusShape, ...]:
+    metadata = {item.instance_id: item for item in scene.cells.instances}
+    if core_zone.startswith("pop:component:"):
+        component_id = core_zone.removeprefix("pop:component:")
+        # Local population primitives must learn morphology from the selected
+        # tissue component.  Falling back to a distant same-class nucleus can
+        # silently import a different size distribution into the edit.
+        return tuple(
+            item
+            for item in references
+            if metadata[item.instance_id].tissue_component_id == component_id
+        )
+    local = tuple(
+        item
+        for item in references
+        if metadata[item.instance_id].nearest_interface_id in interface_ids
+    )
+    return local if len(local) >= 5 else references
+
+
+def _reference_shape_locality(core_zone: str) -> str:
+    return (
+        "selected_tissue_component"
+        if core_zone.startswith("pop:component:")
+        else "selected_interface_neighborhood_preferred"
+    )
 
 
 def _legal_halo(core, *, target_tissue, prohibited_ids, maximum_px: int, enabled: bool):
@@ -461,8 +953,23 @@ def _legal_halo(core, *, target_tissue, prohibited_ids, maximum_px: int, enabled
 
 
 def _place_layout(
-    *, base, references, class_id, legal_zone, valid_footprint_region, halo, score, requested_count,
-    layout_program, cluster_size_range, seed,
+    *,
+    base,
+    references,
+    class_id,
+    legal_zone,
+    valid_footprint_region,
+    halo,
+    score,
+    requested_count,
+    layout_program,
+    cluster_size_range,
+    nominal_nucleus_diameter_px,
+    orientation_mask,
+    continuity_region,
+    continuity_anchor_mask,
+    continuity_maximum_empty_run_px,
+    seed,
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
@@ -473,35 +980,23 @@ def _place_layout(
     order = np.argsort(-values)
     anchors = coords[order]
     if requested_count > 0 and len(coords):
-        # Keep a deterministic seam quota. Pure distance/probability ranking
-        # otherwise consumes only deep interior maxima and leaves an artificial
-        # nucleus-free strip exactly where regenerated and retained tissue meet.
-        center_distance = ndimage.distance_transform_edt(legal_zone)
-        reference_width = max(
-            2,
-            int(round(np.median([max(item.mask.shape) for item in references]))),
-        )
-        edge_mask = center_distance[coords[:, 0], coords[:, 1]] <= reference_width
-        edge_coords = coords[edge_mask]
-        edge_values = values[edge_mask]
-        edge_order = np.argsort(-edge_values)
-        edge_quota = min(
-            len(edge_coords),
-            max(1, int(np.ceil(requested_count * 0.25))),
-        )
-        preferred = edge_coords[edge_order[: max(edge_quota * 16, edge_quota)]]
-        preferred_set = {tuple(value) for value in preferred.tolist()}
-        remainder = np.asarray(
-            [value for value in anchors.tolist() if tuple(value) not in preferred_set],
-            dtype=int,
-        )
-        anchors = (
-            np.concatenate([preferred, remainder], axis=0)
-            if len(remainder)
-            else preferred
+        anchors = _continuity_first_anchors(
+            coords=coords,
+            values=values,
+            default_order=anchors,
+            continuity_region=np.asarray(continuity_region, dtype=bool),
+            continuity_anchor_mask=np.asarray(
+                continuity_anchor_mask,
+                dtype=bool,
+            ),
+            maximum_empty_run_px=max(
+                1,
+                int(continuity_maximum_empty_run_px),
+            ),
         )
     placed = 0
     placement_trace: list[dict[str, Any]] = []
+    seam_region = np.asarray(continuity_region, dtype=bool)
     anchor_index = 0
     while placed < requested_count and anchor_index < len(anchors):
         ay, ax = (int(v) for v in anchors[anchor_index])
@@ -512,7 +1007,12 @@ def _place_layout(
             anchor_y=ay,
             anchor_x=ax,
             legal_zone=legal_zone,
+            orientation_mask=orientation_mask,
+            nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
+            seed=seed,
         )
+        group_start = len(placement_trace)
+        group_id = f"cluster-{anchor_index:04d}"
         for dy, dx in offsets:
             if placed >= requested_count:
                 break
@@ -539,8 +1039,12 @@ def _place_layout(
             # to the reference nucleus footprint.
             guard_y0, guard_y1 = max(0, y0 - 1), min(target.shape[0], y1 + 1)
             guard_x0, guard_x1 = max(0, x0 - 1), min(target.shape[1], x1 + 1)
-            local_shape = np.zeros((guard_y1 - guard_y0, guard_x1 - guard_x0), dtype=bool)
-            local_shape[y0 - guard_y0 : y1 - guard_y0, x0 - guard_x0 : x1 - guard_x0] = shape
+            local_shape = np.zeros(
+                (guard_y1 - guard_y0, guard_x1 - guard_x0), dtype=bool
+            )
+            local_shape[
+                y0 - guard_y0 : y1 - guard_y0, x0 - guard_x0 : x1 - guard_x0
+            ] = shape
             collision_guard = ndimage.binary_dilation(local_shape, iterations=1)
             if np.any(collision_guard & occupied[guard_y0:guard_y1, guard_x0:guard_x1]):
                 continue
@@ -550,11 +1054,21 @@ def _place_layout(
             placement_trace.append(
                 {
                     "center_xy": [cx, cy],
+                    "cell_class": class_id,
                     "area_px": int(np.count_nonzero(shape)),
                     "in_cell_only_halo": bool(halo[cy, cx]),
+                    "in_interface_seam": bool(seam_region[cy, cx]),
+                    "in_interface_continuity_region": bool(
+                        seam_region[cy, cx]
+                    ),
                     "reference_instance_id": reference.instance_id,
                     "reference_source": reference.source,
-                    "cluster_size": min(len(offsets), requested_count),
+                    "cluster_id": group_id,
+                    "planned_cluster_size": min(len(offsets), requested_count),
+                    "spacing_px": max(
+                        2,
+                        round(nominal_nucleus_diameter_px * 0.75),
+                    ),
                     "orientation_policy": (
                         "local_interface_tangent_pca"
                         if layout_program in {"short_cord", "boundary_aligned"}
@@ -563,7 +1077,102 @@ def _place_layout(
                 }
             )
             placed += 1
+        actual_cluster_size = len(placement_trace) - group_start
+        for item in placement_trace[group_start:]:
+            item["cluster_size"] = actual_cluster_size
     return target, placed, placement_trace
+
+
+def _continuity_first_anchors(
+    *,
+    coords: np.ndarray,
+    values: np.ndarray,
+    default_order: np.ndarray,
+    continuity_region: np.ndarray,
+    continuity_anchor_mask: np.ndarray,
+    maximum_empty_run_px: int,
+) -> np.ndarray:
+    """Prioritize distributed, anchor-covering centers without a count quota."""
+
+    if not np.any(continuity_region) or not np.any(continuity_anchor_mask):
+        return default_order
+    in_region = continuity_region[coords[:, 0], coords[:, 1]]
+    region_indices = np.flatnonzero(in_region)
+    if not len(region_indices):
+        return default_order
+    region_coords = coords[region_indices]
+    region_values = values[region_indices]
+    tree = cKDTree(region_coords.astype(float))
+    anchor_points = np.argwhere(continuity_anchor_mask)
+    sampled = _sample_anchor_points(
+        anchor_points,
+        spacing_px=max(1, maximum_empty_run_px),
+    )
+    preferred_indices: list[int] = []
+    used: set[int] = set()
+    for point in sampled:
+        neighbors = tree.query_ball_point(
+            np.asarray(point, dtype=float),
+            r=max(1, maximum_empty_run_px),
+        )
+        available = [index for index in neighbors if index not in used]
+        if not available:
+            continue
+        chosen = max(
+            available,
+            key=lambda index: (
+                float(region_values[index]),
+                -int(region_coords[index, 0]),
+                -int(region_coords[index, 1]),
+            ),
+        )
+        used.add(chosen)
+        preferred_indices.append(region_indices[chosen])
+    if not preferred_indices:
+        return default_order
+    preferred = coords[np.asarray(preferred_indices, dtype=int)]
+    preferred_set = {tuple(value) for value in preferred.tolist()}
+    remainder = np.asarray(
+        [
+            value
+            for value in default_order.tolist()
+            if tuple(value) not in preferred_set
+        ],
+        dtype=int,
+    )
+    return (
+        np.concatenate([preferred, remainder], axis=0)
+        if len(remainder)
+        else preferred
+    )
+
+
+def _sample_anchor_points(
+    points: np.ndarray,
+    *,
+    spacing_px: int,
+) -> np.ndarray:
+    """Deterministically retain enough points to cover a curved anchor."""
+
+    if not len(points):
+        return points
+    ordered = points[np.lexsort((points[:, 1], points[:, 0]))]
+    selected = [ordered[0]]
+    remaining = ordered[1:]
+    while len(remaining):
+        distances = np.min(
+            np.sum(
+                (remaining[:, None, :] - np.asarray(selected)[None, :, :]) ** 2,
+                axis=2,
+            ),
+            axis=1,
+        )
+        index = int(np.argmax(distances))
+        if float(distances[index]) <= float(spacing_px**2):
+            break
+        selected.append(remaining[index])
+        remaining = np.delete(remaining, index, axis=0)
+    return np.asarray(selected, dtype=int)
 
 
 def _placement_window(shape, *, center_y: int, center_x: int, canvas_shape):
@@ -583,16 +1192,22 @@ def _layout_offsets(
     anchor_y: int,
     anchor_x: int,
     legal_zone: np.ndarray,
+    orientation_mask: np.ndarray,
+    nominal_nucleus_diameter_px: float,
+    seed: int,
 ) -> tuple[tuple[int, int], ...]:
-    upper = max(1, min(cluster_range[1], 8))
+    lower = max(1, int(cluster_range[0]))
+    upper = max(lower, int(cluster_range[1]))
+    spacing = max(2, round(float(nominal_nucleus_diameter_px) * 0.75))
+    cardinality = lower + (
+        (int(anchor_y) * 1009 + int(anchor_x) * 9176 + int(seed)) % (upper - lower + 1)
+    )
     if program in {"single", "population_replacement"}:
         return ((0, 0),)
     if program == "pair":
-        return ((0, -5), (0, 5))
+        return ((0, -spacing), (0, spacing))
     if program in {"short_cord", "boundary_aligned"}:
-        boundary = np.asarray(legal_zone, dtype=bool) ^ ndimage.binary_erosion(
-            legal_zone
-        )
+        boundary = np.asarray(orientation_mask, dtype=bool)
         rows, cols = np.nonzero(boundary)
         if len(rows):
             distances = (rows - anchor_y) ** 2 + (cols - anchor_x) ** 2
@@ -609,14 +1224,32 @@ def _layout_offsets(
             tangent_y, tangent_x = 0.0, 1.0
         return tuple(
             (
-                int(round((index - (upper - 1) / 2.0) * 6 * tangent_y)),
-                int(round((index - (upper - 1) / 2.0) * 6 * tangent_x)),
+                round((index - (cardinality - 1) / 2.0) * spacing * tangent_y),
+                round((index - (cardinality - 1) / 2.0) * spacing * tangent_x),
             )
-            for index in range(upper)
+            for index in range(cardinality)
         )
     if program == "small_cluster":
-        return tuple((dy, dx) for dy, dx in ((0, 0), (-5, -4), (-4, 5), (5, -3), (4, 5))[:upper])
+        angles = np.linspace(0.0, 2.0 * np.pi, cardinality, endpoint=False)
+        return tuple(
+            (0, 0)
+            if index == 0
+            else (
+                round(spacing * np.sin(angle)),
+                round(spacing * np.cos(angle)),
+            )
+            for index, angle in enumerate(angles)
+        )
     if program == "dense_sheet":
-        grid = tuple((dy, dx) for dy in (-6, 0, 6) for dx in (-6, 0, 6))
-        return grid[:upper]
+        side = int(np.ceil(np.sqrt(cardinality)))
+        origin = (side - 1) / 2.0
+        grid = tuple(
+            (
+                round((row - origin) * spacing),
+                round((col - origin) * spacing),
+            )
+            for row in range(side)
+            for col in range(side)
+        )
+        return grid[:cardinality]
     raise JointContractError(f"unsupported layout program: {program}")

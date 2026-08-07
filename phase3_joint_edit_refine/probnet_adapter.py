@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import numpy as np
 
@@ -32,7 +33,7 @@ class FrozenProbNetSpatialRanker:
         pathology_domain_id: str,
         device: str = "cpu",
         base_channels: int = 32,
-    ) -> "FrozenProbNetSpatialRanker":
+    ) -> FrozenProbNetSpatialRanker:
         if not 0 <= int(cancer_id) <= 5:
             raise JointContractError("ProbNet cancer_id must be in [0, 5]")
         from inpaint_cells.generate import load_checkpoint_model
