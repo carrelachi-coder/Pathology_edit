@@ -318,6 +318,7 @@ def replay_compiled_edit_plan(
         target_pixels=resolved,
         weights=weights,
     )
+    topology_policy = _topology_policy(plan)
     selected, audits = _simulate_topology_safe_execution(
         works,
         allocations=allocations,
@@ -325,7 +326,7 @@ def replay_compiled_edit_plan(
         target_region=target_region,
         scene=scene,
         seed=0,
-        **_topology_policy(plan),
+        **topology_policy,
     )
     realized = sum(int(np.count_nonzero(item)) for item in selected)
     topology = _whole_mask_topology_audit(
@@ -333,7 +334,12 @@ def replay_compiled_edit_plan(
         target_region=target_region,
         selected_by_work=selected,
         works=works,
-        **_topology_policy(plan),
+        allow_source_component_resolution=bool(
+            topology_policy["allow_source_component_resolution"]
+        ),
+        allow_target_hole_resolution=bool(
+            topology_policy["allow_target_hole_resolution"]
+        ),
     )
     if realized != resolved or not topology["passed"]:
         raise RefineContractError(
@@ -560,7 +566,7 @@ def _bounded_allocations(
     return tuple(int(value) for value in allocations)
 
 
-def _topology_policy(plan: EditPlan) -> dict[str, bool]:
+def _topology_policy(plan: EditPlan) -> dict[str, Any]:
     """Return deterministic primitive-owned topology permissions.
 
     These flags are compiled from reviewed primitive skills by the joint
@@ -575,6 +581,9 @@ def _topology_policy(plan: EditPlan) -> dict[str, bool]:
         ),
         "allow_target_hole_resolution": bool(
             params.get("allow_target_hole_resolution", False)
+        ),
+        "minimum_changed_component_area_px": max(
+            1, int(params.get("min_component_area_px", 16))
         ),
     }
 
@@ -591,6 +600,7 @@ def _resolve_topology_safe_area(
     fallback_policy: str,
     allow_source_component_resolution: bool = False,
     allow_target_hole_resolution: bool = False,
+    minimum_changed_component_area_px: int = 16,
 ) -> tuple[
     tuple[int, ...],
     tuple[np.ndarray, ...],
@@ -615,6 +625,9 @@ def _resolve_topology_safe_area(
                 allow_source_component_resolution
             ),
             allow_target_hole_resolution=allow_target_hole_resolution,
+            minimum_changed_component_area_px=(
+                minimum_changed_component_area_px
+            ),
         )
         realized = sum(int(np.count_nonzero(item)) for item in selected)
         topology = _whole_mask_topology_audit(
@@ -818,6 +831,7 @@ def _simulate_topology_safe_execution(
     seed: int,
     allow_source_component_resolution: bool = False,
     allow_target_hole_resolution: bool = False,
+    minimum_changed_component_area_px: int = 16,
 ) -> tuple[tuple[np.ndarray, ...], tuple[dict[str, Any], ...]]:
     source_states = {
         work.planned.source_component_id: np.array(
@@ -838,13 +852,28 @@ def _simulate_topology_safe_execution(
     ]
     audit_lists: list[list[dict[str, int]]] = [[] for _ in works]
 
-    def grow(index: int, requested: int, pass_index: int) -> int:
+    def grow(
+        index: int,
+        requested: int,
+        pass_index: int,
+        *,
+        continue_existing_front_only: bool = False,
+    ) -> int:
         if requested <= 0:
             return 0
         work = works[index]
         component_id = work.planned.source_component_id
-        frontier = work.anchor_mask | ndimage.binary_dilation(
+        continued_frontier = ndimage.binary_dilation(
             selected_by_work[index], structure=np.ones((3, 3), dtype=bool)
+        )
+        if continue_existing_front_only and not np.any(
+            selected_by_work[index]
+        ):
+            return 0
+        frontier = (
+            continued_frontier
+            if continue_existing_front_only
+            else work.anchor_mask | continued_frontier
         )
         selected, audit = topology_safe_priority_grow(
             work.legal_source & ~selected_by_work[index],
@@ -906,6 +935,77 @@ def _simulate_topology_safe_execution(
             )
             request = min(deficit, item_spare, group_spare)
             obtained = grow(index, int(request), pass_index)
+            progress += obtained
+            deficit -= obtained
+        if progress <= 0:
+            break
+
+    # Multiple addressable anchor chunks may seed the same biological front.
+    # Near an exact area cutoff, a low-priority chunk used to receive only a
+    # handful of pixels (case 534 produced a 4 px satellite).  Consolidate
+    # such raster fragments inside the authoritative solver, restore their
+    # source/target states atomically, and spend the reclaimed budget only by
+    # continuing already-established fronts.  The downstream gate therefore
+    # verifies the same minimum that candidate generation already guarantees.
+    minimum_component = max(1, int(minimum_changed_component_area_px))
+    for cleanup_pass in range(len(works) + 2):
+        combined = np.logical_or.reduce(selected_by_work)
+        labels, component_count = ndimage.label(
+            combined, structure=np.ones((3, 3), dtype=bool)
+        )
+        tiny = np.zeros_like(combined, dtype=bool)
+        for component_id in range(1, component_count + 1):
+            component = labels == component_id
+            if int(np.count_nonzero(component)) < minimum_component:
+                tiny |= component
+        reclaimed = int(np.count_nonzero(tiny))
+        if reclaimed <= 0:
+            break
+        for index, selected in enumerate(selected_by_work):
+            removed = selected & tiny
+            removed_count = int(np.count_nonzero(removed))
+            if removed_count <= 0:
+                continue
+            component_id = works[index].planned.source_component_id
+            selected_by_work[index][removed] = False
+            source_states[component_id][removed] = True
+            target_state[removed] = target_region[removed]
+            deleted_by_source[component_id] -= removed_count
+            audit_lists[index].append(
+                {
+                    "tiny_component_pixels_reclaimed": removed_count,
+                    "tiny_component_cleanup_calls": 1,
+                }
+            )
+        deficit = desired_pixels - sum(
+            int(np.count_nonzero(item)) for item in selected_by_work
+        )
+        progress = 0
+        order = sorted(
+            range(len(works)),
+            key=lambda index: (
+                -int(np.count_nonzero(selected_by_work[index])),
+                index,
+            ),
+        )
+        for index in order:
+            if deficit <= 0:
+                break
+            work = works[index]
+            component_id = work.planned.source_component_id
+            request = min(
+                deficit,
+                work.item_capacity_px
+                - int(np.count_nonzero(selected_by_work[index])),
+                work.source_deletion_limit_px
+                - deleted_by_source[component_id],
+            )
+            obtained = grow(
+                index,
+                max(0, int(request)),
+                len(works) + 2 + cleanup_pass,
+                continue_existing_front_only=True,
+            )
             progress += obtained
             deficit -= obtained
         if progress <= 0:

@@ -84,6 +84,7 @@ class JointFeasibilitySolver:
         allocation: JointBudgetAllocation,
         *,
         reserve_pixels: int,
+        allow_capacity_floor_fallback: bool = False,
     ) -> JointBudgetAllocation:
         """Rebalance tissue burden for inevitable whole-instance closure.
 
@@ -99,8 +100,13 @@ class JointFeasibilitySolver:
             + allocation.reserved_cell_footprint_spill_pixels
             + closure
         )
+        minimum_tissue_pixels = (
+            allocation.tissue_execution_floor_pixels
+            if allow_capacity_floor_fallback
+            else allocation.tissue_floor_pixels
+        )
         tissue_target = max(
-            allocation.tissue_execution_floor_pixels,
+            minimum_tissue_pixels,
             allocation.joint_target_pixels - total_reserve,
         )
         tissue_target = min(tissue_target, allocation.joint_target_pixels)
@@ -119,6 +125,7 @@ class JointFeasibilitySolver:
         *,
         complete_instance_pixels: int,
         footprint_spill_pixels: int,
+        allow_capacity_floor_fallback: bool = False,
     ) -> JointBudgetAllocation:
         """Re-broker T from an executed candidate's exact C-only spill.
 
@@ -134,8 +141,13 @@ class JointFeasibilitySolver:
         total_reserve = (
             allocation.reserved_layout_halo_pixels + complete + footprint
         )
+        minimum_tissue_pixels = (
+            allocation.tissue_execution_floor_pixels
+            if allow_capacity_floor_fallback
+            else allocation.tissue_floor_pixels
+        )
         tissue_target = max(
-            allocation.tissue_execution_floor_pixels,
+            minimum_tissue_pixels,
             allocation.joint_target_pixels - total_reserve,
         )
         tissue_target = min(tissue_target, allocation.joint_target_pixels)

@@ -743,6 +743,16 @@ class CandidateAndSceneTests(unittest.TestCase):
             if item.check_id == "execution_contract_fidelity"
         )
         self.assertTrue(fidelity.passed, fidelity.metrics)
+        labels, count = ndimage.label(
+            candidates[0].change_region,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        component_sizes = [
+            int(np.count_nonzero(labels == component_id))
+            for component_id in range(1, count + 1)
+        ]
+        self.assertTrue(component_sizes)
+        self.assertGreaterEqual(min(component_sizes), 16)
 
     def test_ranged_budget_uses_maximum_safe_area_below_desired(self):
         mask = _glas_circle_mask()

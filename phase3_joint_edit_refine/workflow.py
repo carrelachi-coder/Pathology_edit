@@ -60,7 +60,11 @@ class JointWorkflowConfig:
     cell_layouts_per_tissue: int = 3
     critic_confidence_threshold: float = 0.70
     require_mature_probnet_in_production: bool = True
-    maximum_tissue_planning_attempts: int = 4
+    # One initial solve, one interface-expansion retry, and up to four bounded
+    # tissue--cell footprint feedback revisions. The mature executor can only
+    # reveal exact complete-instance spill after placement, so stopping at four
+    # total attempts can terminate one iteration before the fixed point.
+    maximum_tissue_planning_attempts: int = 6
 
 
 class JointPathologyEditWorkflow:
@@ -1007,8 +1011,11 @@ class JointPathologyEditWorkflow:
             (item.ledger.joint_pixels for item in candidates), default=0
         )
         for candidate in candidates:
-            candidate.tool_trace["batch_max_safe_joint_pixels"] = batch_max_joint
-            candidate.tool_trace["batch_max_safe_joint_certified"] = True
+            candidate.tool_trace["batch_max_observed_joint_pixels"] = (
+                batch_max_joint
+            )
+            candidate.tool_trace["batch_max_safe_joint_pixels"] = -1
+            candidate.tool_trace["batch_max_safe_joint_certified"] = False
         joint_reports = tuple(
             self.joint_gates.run(
                 JointGateContext(
@@ -1030,6 +1037,48 @@ class JointPathologyEditWorkflow:
             )
             for candidate in candidates
         )
+        if not any(report.passed for report in joint_reports):
+            hard_min, _ = case.joint_area_budget.hard_interval_pixels(
+                source_tissue.shape
+            )
+            desired_min, _ = case.joint_area_budget.desired_interval_pixels(
+                source_tissue.shape
+            )
+            certified_max = _maximum_safe_below_target_joint_pixels(
+                candidates,
+                joint_reports,
+                hard_min_pixels=hard_min,
+                desired_min_pixels=desired_min,
+            )
+            if certified_max is not None:
+                for candidate in candidates:
+                    candidate.tool_trace["batch_max_safe_joint_pixels"] = (
+                        certified_max
+                    )
+                    candidate.tool_trace["batch_max_safe_joint_certified"] = (
+                        True
+                    )
+                joint_reports = tuple(
+                    self.joint_gates.run(
+                        JointGateContext(
+                            case=case,
+                            source_tissue=source_tissue,
+                            source_nuclei=source_nuclei,
+                            schema=schema,
+                            scene=scene,
+                            bundle=bundle,
+                            plan=plan,
+                            candidate=candidate,
+                            tissue_gate_report=reports_by_id[
+                                candidate.tissue_candidate_id
+                            ],
+                            executable_contract=contract_by_joint_candidate[
+                                candidate.candidate_id
+                            ],
+                        )
+                    )
+                    for candidate in candidates
+                )
         audit.write_candidates(candidates)
         audit.write_json(
             "joint_gate_reports.json",
@@ -1376,6 +1425,40 @@ class JointPathologyEditWorkflow:
             artifact_paths=dict(audit.paths),
             usage=usage,
         )
+
+
+def _maximum_safe_below_target_joint_pixels(
+    candidates,
+    reports,
+    *,
+    hard_min_pixels: int,
+    desired_min_pixels: int,
+) -> int | None:
+    """Certify the largest under-target candidate that passed every other gate.
+
+    The raw largest union is not necessarily safe: it may fail morphology,
+    topology, seam, or label constraints. The fallback maximum is therefore
+    computed only after all non-area hard gates have run.
+    """
+
+    candidates_by_id = {item.candidate_id: item for item in candidates}
+    safe_pixels = []
+    for report in reports:
+        candidate = candidates_by_id.get(report.candidate_id)
+        if candidate is None:
+            continue
+        hard_failures = {
+            check.check_id
+            for check in report.checks
+            if check.severity == "hard" and not check.passed
+        }
+        actual = int(candidate.ledger.joint_pixels)
+        if (
+            hard_failures == {"joint_area"}
+            and int(hard_min_pixels) <= actual < int(desired_min_pixels)
+        ):
+            safe_pixels.append(actual)
+    return max(safe_pixels) if safe_pixels else None
 
 
 def _complete_instance_extension_pixels(

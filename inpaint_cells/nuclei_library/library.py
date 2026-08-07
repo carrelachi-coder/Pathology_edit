@@ -22,6 +22,9 @@ from collections import defaultdict
 
 import cv2
 import numpy as np
+from scipy import ndimage
+from skimage.morphology import h_maxima
+from skimage.segmentation import watershed
 
 from ..utils.mask_utils import (
     TISSUE_NAMES, NUCLEI_CLASSES, NUM_TISSUE,
@@ -132,6 +135,39 @@ class NucleiLibrary:
         return random.choice(candidates)
 
 
+def _semantic_instance_labels(region):
+    """Split touching same-class semantic nuclei into stable instances.
+
+    This mirrors the joint scene graph's conservative distance-watershed
+    fallback.  Both the gate and the mature sampler must agree on what counts
+    as one nucleus; eight-connected components otherwise turn diagonal or
+    touching cells into oversized reusable shapes and a biased size ruler.
+    """
+
+    binary = np.asarray(region, dtype=bool)
+    if not np.any(binary):
+        return np.zeros(binary.shape, dtype=np.int32), 0
+    distance = ndimage.distance_transform_edt(binary)
+    maxima = h_maxima(distance, 1.0) & (distance >= 1.5)
+    markers, marker_count = ndimage.label(
+        maxima,
+        structure=np.ones((3, 3), dtype=np.uint8),
+    )
+    if marker_count == 0:
+        return ndimage.label(
+            binary,
+            structure=np.ones((3, 3), dtype=np.uint8),
+        )
+    labels = watershed(
+        -distance,
+        markers=markers,
+        mask=binary,
+        connectivity=np.ones((3, 3), dtype=np.uint8),
+        watershed_line=False,
+    ).astype(np.int32, copy=False)
+    return labels, int(labels.max(initial=0))
+
+
 class ReferenceNucleiInstancePool:
     """Extract reusable, class-preserving nucleus shapes from one reference mask.
 
@@ -181,15 +217,17 @@ class ReferenceNucleiInstancePool:
         height, width = raw_mask.shape
 
         for nuc_type in NUCLEI_CLASSES:
-            count, labels, stats, centroids = cv2.connectedComponentsWithStats(
-                (raw_mask == nuc_type).astype(np.uint8),
-                connectivity=8,
-            )
+            labels, count = _semantic_instance_labels(raw_mask == nuc_type)
             candidates = []
-            for component_id in range(1, count):
-                x, y, component_width, component_height, area = (
-                    int(value) for value in stats[component_id]
-                )
+            for component_id in range(1, count + 1):
+                component = labels == component_id
+                rows, cols = np.nonzero(component)
+                if not rows.size:
+                    continue
+                y, x = int(rows.min()), int(cols.min())
+                component_height = int(rows.max()) - y + 1
+                component_width = int(cols.max()) - x + 1
+                area = int(rows.size)
                 touches_border = (
                     x == 0
                     or y == 0
@@ -203,7 +241,16 @@ class ReferenceNucleiInstancePool:
                     rejected["too_small"] += 1
                     continue
                 candidates.append(
-                    (component_id, x, y, component_width, component_height, area)
+                    (
+                        component_id,
+                        x,
+                        y,
+                        component_width,
+                        component_height,
+                        float(np.mean(rows)),
+                        float(np.mean(cols)),
+                        area,
+                    )
                 )
 
             max_area = None
@@ -211,7 +258,16 @@ class ReferenceNucleiInstancePool:
                 median_area = float(np.median([item[-1] for item in candidates]))
                 max_area = median_area * float(max_area_ratio_to_median)
 
-            for component_id, x, y, component_width, component_height, area in candidates:
+            for (
+                component_id,
+                x,
+                y,
+                component_width,
+                component_height,
+                center_y,
+                center_x,
+                area,
+            ) in candidates:
                 if max_area is not None and area > max_area:
                     rejected["area_outlier"] += 1
                     continue
@@ -225,8 +281,8 @@ class ReferenceNucleiInstancePool:
                         "type": int(nuc_type),
                         "area": int(area),
                         "source": "reference",
-                        "center_y": float(centroids[component_id][1]),
-                        "center_x": float(centroids[component_id][0]),
+                        "center_y": center_y,
+                        "center_x": center_x,
                     }
                 )
 
@@ -253,6 +309,48 @@ class ReferenceNucleiInstancePool:
                 if region[row, col]:
                     instances[int(nuc_type)].append(instance)
         return ReferenceNucleiInstancePool(instances=instances)
+
+    def filtered_for_size_calibration(self):
+        """Exclude likely merged components from the empirical size ruler.
+
+        The reusable shape pool deliberately retains pleomorphic reference
+        components.  Size calibration has a narrower contract: it estimates
+        the footprint of one complete nucleus.  Use the same class-wise robust
+        upper bound as the joint scene graph so a connected semantic clump is
+        never interpreted as one unusually large nucleus.  This method returns
+        a new pool and leaves the shape-sampling pool untouched.
+        """
+
+        instances = defaultdict(list)
+        rejected = dict(self.rejected)
+        rejected.setdefault("area_outlier", 0)
+        for nuc_type, values in self.instances.items():
+            areas = np.asarray(
+                [
+                    int(value.get("area", np.count_nonzero(value["mask"])))
+                    for value in values
+                ],
+                dtype=np.float64,
+            )
+            if areas.size == 0:
+                continue
+            median_area = float(np.median(areas))
+            if areas.size < 4:
+                upper_bound = median_area * 3.0
+            else:
+                q1, q3 = np.quantile(areas, (0.25, 0.75))
+                upper_bound = float(
+                    max(q3 + 3.0 * (q3 - q1), median_area * 3.0)
+                )
+            for value, area in zip(values, areas):
+                if float(area) > upper_bound:
+                    rejected["area_outlier"] += 1
+                    continue
+                instances[int(nuc_type)].append(value)
+        return ReferenceNucleiInstancePool(
+            instances=instances,
+            rejected=rejected,
+        )
 
     def counts(self):
         return {
@@ -313,6 +411,8 @@ class ReferenceFirstNucleiSampler:
         library,
         reference_pool=None,
         *,
+        size_reference_pool=None,
+        fallback_size_reference_pool=None,
         calibrate_library_size=True,
         library_size_min_scale=0.5,
         library_size_max_scale=2.0,
@@ -325,14 +425,32 @@ class ReferenceFirstNucleiSampler:
         if library_size_log_area_jitter < 0:
             raise ValueError("library_size_log_area_jitter must be non-negative")
         self.library = library
-        self.reference_areas_by_type = {
-            int(nuc_type): (
-                reference_pool.area_samples(int(nuc_type))
-                if reference_pool is not None
+        primary_size_pool = (
+            size_reference_pool
+            if size_reference_pool is not None
+            else reference_pool
+        )
+        self.reference_areas_by_type = {}
+        self.size_reference_basis_by_type = {}
+        for nuc_type in NUCLEI_CLASSES:
+            current_type = int(nuc_type)
+            areas = (
+                primary_size_pool.area_samples(current_type)
+                if primary_size_pool is not None
                 else []
             )
-            for nuc_type in NUCLEI_CLASSES
-        }
+            basis = (
+                "target_tissue_same_class_complete_instance_reference"
+                if size_reference_pool is not None and areas
+                else "active_reference_pool_same_class_complete_instance"
+            )
+            if not areas and fallback_size_reference_pool is not None:
+                areas = fallback_size_reference_pool.area_samples(current_type)
+                if areas:
+                    basis = "patch_same_class_complete_instance_reference_fallback"
+            self.reference_areas_by_type[current_type] = list(areas)
+            if areas:
+                self.size_reference_basis_by_type[current_type] = basis
         self.calibrate_library_size = bool(calibrate_library_size)
         self.library_size_min_scale = float(library_size_min_scale)
         self.library_size_max_scale = float(library_size_max_scale)
@@ -539,6 +657,10 @@ class ReferenceFirstNucleiSampler:
                     for key, value in self.library_size_scale_clamped_by_type.items()
                 },
                 "summary_by_type": size_records,
+                "reference_basis_by_type": {
+                    str(key): value
+                    for key, value in self.size_reference_basis_by_type.items()
+                },
             },
         }
 
@@ -797,6 +919,7 @@ def place_nucleus_layered(
     flip_vertical=None,
     scale=None,
     minimum_separation_px=0,
+    placement_metadata=None,
 ):
     """
     把一个核实例贴到 nuclei_map 上 (AD-1: 分层存储, nuclei_map 值域 0-5 internal index)。
@@ -815,6 +938,8 @@ def place_nucleus_layered(
             proposal pixel outside ``valid_tissue_mask``.
         minimum_separation_px: Empty-pixel margin required between the proposal
             and every retained or newly generated nucleus.
+        placement_metadata: Optional mutable mapping populated only after a
+            successful write with the realized transformed footprint audit.
 
     Returns:
         True if placed successfully
@@ -949,6 +1074,21 @@ def place_nucleus_layered(
             return False
 
     nuclei_map[dst_y1:dst_y2, dst_x1:dst_x2][local_mask] = nuc_type_idx
+    if placement_metadata is not None:
+        placement_metadata.update(
+            {
+                "area_px": int(np.count_nonzero(local_mask)),
+                "class_id": int(nuc_type_idx),
+                "nucleus_type": int(nuc_type_raw),
+                "bbox_yxyx": [
+                    int(dst_y1),
+                    int(dst_x1),
+                    int(dst_y2),
+                    int(dst_x2),
+                ],
+                "boundary_truncated": bool(boundary_truncated),
+            }
+        )
     return True
 
 

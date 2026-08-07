@@ -18,8 +18,12 @@ from .executable_contract import ExecutableJointContract
 from .models import JointContractError
 from .nuclei import load_nuclei_mask, to_raw_nuclei_mask
 from .scene import JointSceneAnalysis
+from .seam import (
+    compile_continuity_center_quota,
+    target_cell_class_for_tissue,
+)
 
-MATURE_EXECUTION_VERSION = "online-probnet-mature-v5"
+MATURE_EXECUTION_VERSION = "online-probnet-mature-v7"
 
 
 @dataclass(frozen=True)
@@ -32,7 +36,12 @@ class MatureProbNetConfig:
     device: str = "auto"
     base_channels: int = 64
     python_executable: str = sys.executable
-    reference_shape_max_area_ratio: float = 3.0
+    # Touching semantic nuclei are already separated by the same watershed as
+    # the joint scene graph.  A second median-ratio filter would remove valid
+    # pleomorphic nuclei and make the sampler's size ruler disagree with the
+    # gate.  Complete-instance size calibration still applies the scene's
+    # explicit merged-suspect rule.
+    reference_shape_max_area_ratio: float = 0.0
 
 
 class MatureProbNetCellExecutor:
@@ -87,6 +96,8 @@ class MatureProbNetCellExecutor:
         erasure_region_path: Path,
         required_placement_region_path: Path | None,
         minimum_required_placements: int,
+        maximum_required_placements: int | None,
+        required_nucleus_class: int | None,
         output_path: Path,
         prohibited_tissue_ids: tuple[int, ...],
         allowed_new_cell_classes: tuple[int, ...],
@@ -151,6 +162,20 @@ class MatureProbNetCellExecutor:
                     str(max(0, int(minimum_required_placements))),
                 ]
             )
+        if maximum_required_placements is not None:
+            command.extend(
+                [
+                    "--maximum-required-placements",
+                    str(int(maximum_required_placements)),
+                ]
+            )
+        if required_nucleus_class is not None:
+            command.extend(
+                [
+                    "--required-nucleus-type",
+                    str(100 + int(required_nucleus_class)),
+                ]
+            )
         return command
 
     def execute(
@@ -208,7 +233,51 @@ class MatureProbNetCellExecutor:
             bool(program.continuity_requires_new_target_cells)
             and np.any(program.continuity_region)
         )
+        maximum_required_placements = None
+        required_nucleus_class = None
+        continuity_quota = None
         if minimum_required_placements:
+            required_nucleus_class = target_cell_class_for_tissue(
+                contract.target_label,
+                None,
+            )
+            continuity_quota = compile_continuity_center_quota(
+                nuclei_mask=source_nuclei,
+                target_tissue_mask=target_tissue,
+                tissue_change=(
+                    np.asarray(source_tissue) != np.asarray(target_tissue)
+                ),
+                continuity_region=program.continuity_region,
+                continuity_anchor_mask=program.continuity_anchor_mask,
+                continuity_width_px=program.continuity_width_px,
+                density_ratio_range=program.continuity_density_ratio_range,
+                requires_new_target_cells=(
+                    program.continuity_requires_new_target_cells
+                ),
+                target_class=required_nucleus_class,
+                target_fine_ids=contract.target_host_fine_ids,
+            )
+            # Balance the case-local expectation with the densest legal seam
+            # realization.  Reserving only the expectation can crowd the
+            # exterior band and select undersized shapes; taking the upper
+            # bound can over-concentrate ProbNet mass inside the seam.  Their
+            # midpoint is deterministic and remains inside the gate-compiled
+            # interval.
+            minimum_required_placements = (
+                int(
+                    np.ceil(
+                        (
+                            continuity_quota.target_count
+                            + continuity_quota.maximum_count
+                        )
+                        / 2.0
+                    )
+                )
+                if continuity_quota.maximum_count is not None
+                else continuity_quota.target_count
+            )
+            if continuity_quota.maximum_count is not None:
+                maximum_required_placements = minimum_required_placements
             _save_binary(required_placement_path, program.continuity_region)
 
         eligible: set[str] = set()
@@ -263,6 +332,8 @@ class MatureProbNetCellExecutor:
                     else None
                 ),
                 minimum_required_placements=minimum_required_placements,
+                maximum_required_placements=maximum_required_placements,
+                required_nucleus_class=required_nucleus_class,
                 output_path=output_path,
                 prohibited_tissue_ids=prohibited_tissue_ids,
                 allowed_new_cell_classes=contract.allowed_new_cell_classes,
@@ -292,6 +363,9 @@ class MatureProbNetCellExecutor:
                 raise JointContractError("mature ProbNet sampling audit did not pass")
             target = load_nuclei_mask(output_path)
             accepted_center_ledger = _accepted_center_ledger(selected)
+            accepted_instance_area_ledger = _accepted_instance_area_ledger(
+                selected
+            )
             contract_errors = contract.validate_candidate(
                 source_tissue=source_tissue,
                 source_nuclei=source_nuclei,
@@ -373,6 +447,9 @@ class MatureProbNetCellExecutor:
                             {"row": row, "col": col, "class_id": class_id}
                             for row, col, class_id in accepted_center_ledger
                         ],
+                        "accepted_instance_area_ledger": (
+                            accepted_instance_area_ledger
+                        ),
                         "mature_generation_region_policy": (
                             "population_T_pop_union_placement_P_union_erasure_E"
                         ),
@@ -393,8 +470,30 @@ class MatureProbNetCellExecutor:
                         "minimum_required_placements": (
                             minimum_required_placements
                         ),
+                        "maximum_required_placements": (
+                            maximum_required_placements
+                        ),
+                        "required_nucleus_class": required_nucleus_class,
+                        "compiled_continuity_quota": (
+                            {
+                                "minimum_count": continuity_quota.minimum_count,
+                                "maximum_count": continuity_quota.maximum_count,
+                                "target_count": continuity_quota.target_count,
+                                "selected_count": minimum_required_placements,
+                                "selection_policy": (
+                                    "midpoint_expected_and_gate_upper_bound_"
+                                    "to_balance_seam_and_exterior_capacity_v1"
+                                ),
+                                "expected_count": continuity_quota.expected_count,
+                                "outer_count": continuity_quota.outer_count,
+                                "outer_pixels": continuity_quota.outer_pixels,
+                                "inner_pixels": continuity_quota.inner_pixels,
+                            }
+                            if continuity_quota is not None
+                            else None
+                        ),
                         "continuity_placement_policy": (
-                            "required_seam_first_then_T_pop_exact_remainder_v1"
+                            "compiled_seam_quota_then_exterior_T_pop_remainder_v2"
                             if minimum_required_placements
                             else "not_required"
                         ),
@@ -459,6 +558,33 @@ def _accepted_center_ledger(
             class_id = raw_class - 100 if raw_class >= 100 else raw_class
             result.append((int(item["row"]), int(item["col"]), class_id))
     return tuple(result)
+
+
+def _accepted_instance_area_ledger(diagnostics: dict) -> list[dict]:
+    """Return the realized, transformed footprint of every accepted nucleus."""
+
+    result = []
+    for tissue in (diagnostics.get("tissues") or {}).values():
+        if not isinstance(tissue, dict):
+            continue
+        for item in tissue.get("accepted_centers") or ():
+            if not isinstance(item, dict):
+                continue
+            raw_class = int(item.get("nucleus_type", 0))
+            class_id = raw_class - 100 if raw_class >= 100 else raw_class
+            area_px = int(item.get("area_px", 0))
+            if class_id <= 0 or area_px <= 0:
+                continue
+            result.append(
+                {
+                    "row": int(item["row"]),
+                    "col": int(item["col"]),
+                    "class_id": int(class_id),
+                    "area_px": area_px,
+                    "shape_source": str(item.get("shape_source", "unknown")),
+                }
+            )
+    return result
 
 
 def _sha256(path: Path) -> str:

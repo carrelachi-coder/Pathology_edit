@@ -53,9 +53,86 @@ class AdaptiveSeam:
         }
 
 
+@dataclass(frozen=True)
+class ContinuityCenterQuota:
+    """Finite-raster compilation of a seam density envelope."""
+
+    minimum_count: int
+    maximum_count: int | None
+    target_count: int
+    expected_count: float
+    outer_count: int
+    outer_pixels: int
+    inner_pixels: int
+    outer_density: float
+
+
+def compile_continuity_center_quota(
+    *,
+    nuclei_mask: np.ndarray,
+    target_tissue_mask: np.ndarray,
+    tissue_change: np.ndarray,
+    continuity_region: np.ndarray,
+    continuity_anchor_mask: np.ndarray,
+    continuity_width_px: int,
+    density_ratio_range: tuple[float, float],
+    requires_new_target_cells: bool,
+    target_class: int,
+    target_fine_ids: tuple[int, ...],
+) -> ContinuityCenterQuota:
+    """Compile the gate's density interval into an executable center quota.
+
+    The unchanged target-tissue band is observable before cell generation, so
+    Planner/tool execution and the later gate can use the exact same integer
+    interval.  ``target_count`` is the deterministic point inside that interval
+    closest to the observed local expectation.
+    """
+
+    change = np.asarray(tissue_change, dtype=bool)
+    inner = np.asarray(continuity_region, dtype=bool)
+    anchor = np.asarray(continuity_anchor_mask, dtype=bool)
+    outer = (
+        ~change
+        & ndimage.binary_dilation(
+            anchor,
+            iterations=max(1, int(continuity_width_px)),
+        )
+        & np.isin(np.asarray(target_tissue_mask), target_fine_ids)
+    )
+    centers = class_center_mask(nuclei_mask, class_id=target_class)
+    outer_count = int(np.count_nonzero(centers & outer))
+    inner_pixels = int(np.count_nonzero(inner))
+    outer_pixels = int(np.count_nonzero(outer))
+    outer_density = outer_count / max(1, outer_pixels)
+    expected = outer_density * inner_pixels
+    lower, upper = density_ratio_range
+    minimum = int(np.ceil(lower * expected - 1e-12))
+    if requires_new_target_cells:
+        minimum = max(1, minimum)
+    maximum = None
+    if outer_pixels > 0 and outer_count > 0:
+        maximum = max(
+            minimum,
+            int(np.ceil(upper * expected - 1e-12)),
+        )
+    target = max(minimum, round(expected))
+    if maximum is not None:
+        target = min(target, maximum)
+    return ContinuityCenterQuota(
+        minimum_count=minimum,
+        maximum_count=maximum,
+        target_count=target,
+        expected_count=float(expected),
+        outer_count=outer_count,
+        outer_pixels=outer_pixels,
+        inner_pixels=inner_pixels,
+        outer_density=float(outer_density),
+    )
+
+
 def target_cell_class_for_tissue(
     target_label: str,
-    schema: MaskProfileSchema,
+    schema: MaskProfileSchema | None,
 ) -> int:
     """Resolve the executable observation class for a tissue target.
 

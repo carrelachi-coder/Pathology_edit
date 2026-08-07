@@ -566,14 +566,63 @@ def shape_sampling_diagnostics(
 
     diagnostics = shape_sampler.diagnostics()
     if component_policy_active:
+        effective_calibration = _aggregate_component_size_calibration(
+            component_shape_sampling
+        )
         diagnostics.update(
             {
                 "policy": COMPONENT_SHAPE_POLICY_NAME,
                 "selected_by_source": dict(placed_by_shape_source),
                 "component_local": dict(component_shape_sampling),
+                "library_size_calibration": effective_calibration,
             }
         )
     return diagnostics
+
+
+def _aggregate_component_size_calibration(component_shape_sampling):
+    """Summarize the samplers that actually realized component-local shapes."""
+
+    totals = {
+        "calibrated_by_type": {},
+        "uncalibrated_no_reference_by_type": {},
+        "scale_clamped_by_type": {},
+    }
+    reference_basis = {}
+    enabled = True
+    min_scale = None
+    max_scale = None
+    log_area_jitter = None
+    for tissue_components in (component_shape_sampling or {}).values():
+        for sampler in (tissue_components or {}).values():
+            calibration = (sampler or {}).get("library_size_calibration") or {}
+            enabled = enabled and bool(calibration.get("enabled", False))
+            min_scale = calibration.get("min_scale", min_scale)
+            max_scale = calibration.get("max_scale", max_scale)
+            log_area_jitter = calibration.get(
+                "log_area_jitter", log_area_jitter
+            )
+            for field, field_totals in totals.items():
+                for key, value in (calibration.get(field) or {}).items():
+                    field_totals[str(key)] = int(
+                        field_totals.get(str(key), 0)
+                    ) + int(value)
+            for key, value in (
+                calibration.get("reference_basis_by_type") or {}
+            ).items():
+                reference_basis.setdefault(str(key), set()).add(str(value))
+    return {
+        "enabled": bool(enabled),
+        "policy": "target_tissue_then_patch_same_class_empirical_area",
+        "scope": "active_component_samplers",
+        "min_scale": min_scale,
+        "max_scale": max_scale,
+        "log_area_jitter": log_area_jitter,
+        **totals,
+        "reference_basis_by_type": {
+            key: sorted(values) for key, values in sorted(reference_basis.items())
+        },
+    }
 
 
 def allocate_component_counts(component_areas, target_count, minimum_area):
@@ -1644,7 +1693,12 @@ def sample_instance_for_center(
             nuc_type,
             allow_cross_tissue=False,
             requested_type=nuc_type,
-            calibrate_size=False,
+            # A newly introduced tissue compartment must use the matching
+            # tissue library for morphology, but its scale still belongs to
+            # the observed patch.  Disabling calibration here made melanoma
+            # library nuclei several times smaller than adjacent native tumor
+            # nuclei even though complete same-class references were present.
+            calibrate_size=True,
         )
     instance, source = sampler.sample_instance(
         tissue_id,
@@ -1680,6 +1734,7 @@ def place_candidate_with_retries(
     dense_retry,
     force_tissue_library,
     args,
+    placement_audit=None,
 ):
     """Try alternate same-class shapes and transforms at one candidate center."""
 
@@ -1721,6 +1776,7 @@ def place_candidate_with_retries(
                     or not bool(center_region[center_y, center_x])
                 ):
                     continue
+                current_placement = {}
                 placed = place_nucleus_layered(
                     output,
                     center_y,
@@ -1741,8 +1797,11 @@ def place_candidate_with_retries(
                     minimum_separation_px=int(
                         getattr(args, "nucleus_spacing_margin_px", 1)
                     ),
+                    placement_metadata=current_placement,
                 )
                 if placed:
+                    if placement_audit is not None:
+                        placement_audit.update(current_placement)
                     return (
                         True,
                         str(shape_source),
@@ -1781,6 +1840,9 @@ def generate_for_gamma(
     retained_by_type_overrides=None,
     population_mask=None,
     new_target_count_overrides=None,
+    size_reference_pools_by_tissue=None,
+    fallback_size_reference_pool=None,
+    allowed_nucleus_types_override=None,
 ):
     nuc_prob = (
         np.asarray(placement_nuc_prob, dtype=np.float32)
@@ -1820,6 +1882,9 @@ def generate_for_gamma(
         int(tissue_id)
         for tissue_id in (library_only_tissue_ids or ())
     }
+    size_reference_pools_by_tissue = dict(
+        size_reference_pools_by_tissue or {}
+    )
 
     diagnostics = {
         "gamma": gamma,
@@ -2004,7 +2069,11 @@ def generate_for_gamma(
         )
         allowed_nucleus_types = {
             int(value)
-            for value in (getattr(args, "allowed_nucleus_types", None) or NUCLEI_CLASSES)
+            for value in (
+                allowed_nucleus_types_override
+                or getattr(args, "allowed_nucleus_types", None)
+                or NUCLEI_CLASSES
+            )
         }
         unsupported_requested = allowed_nucleus_types - set(NUCLEI_CLASSES)
         if unsupported_requested:
@@ -2145,10 +2214,19 @@ def generate_for_gamma(
                         if reference_pool is not None
                         else None
                     )
+                    tissue_size_reference_pool = (
+                        size_reference_pools_by_tissue.get(tissue_id)
+                    )
                     component_shape_samplers[component_id] = (
                         ReferenceFirstNucleiSampler(
                             library,
                             local_reference_pool,
+                            size_reference_pool=tissue_size_reference_pool,
+                            fallback_size_reference_pool=(
+                                fallback_size_reference_pool
+                                if fallback_size_reference_pool is not None
+                                else reference_pool
+                            ),
                             calibrate_library_size=(
                                 not args.disable_library_size_calibration
                             ),
@@ -2327,6 +2405,7 @@ def generate_for_gamma(
                 )
             if nuc_type is None:
                 continue
+            placement_audit = {}
             (
                 placed_ok,
                 shape_source,
@@ -2347,6 +2426,7 @@ def generate_for_gamma(
                 dense_retry=dense_retry,
                 force_tissue_library=tissue_id in library_only_tissue_ids,
                 args=args,
+                placement_audit=placement_audit,
             )
             placement_trials += int(local_trials)
             if placed_ok:
@@ -2361,6 +2441,8 @@ def generate_for_gamma(
                         "col": int(accepted_x),
                         "nucleus_type": int(nuc_type),
                         "tissue_id": int(tissue_id),
+                        "area_px": int(placement_audit["area_px"]),
+                        "shape_source": str(shape_source),
                     }
                 )
                 placed_by_component[component_id] = (
@@ -2470,6 +2552,7 @@ def generate_for_gamma(
                     )
                     if nuc_type is None:
                         continue
+                    placement_audit = {}
                     (
                         placed_ok,
                         shape_source,
@@ -2492,6 +2575,7 @@ def generate_for_gamma(
                             tissue_id in library_only_tissue_ids
                         ),
                         args=args,
+                        placement_audit=placement_audit,
                     )
                     placement_trials += int(local_trials)
                     exact_backfill["placement_trials"] += int(local_trials)
@@ -2510,6 +2594,8 @@ def generate_for_gamma(
                             "col": int(accepted_x),
                             "nucleus_type": int(nuc_type),
                             "tissue_id": int(tissue_id),
+                            "area_px": int(placement_audit["area_px"]),
+                            "shape_source": str(shape_source),
                         }
                     )
                     placed_by_component[component_id] = (
@@ -2599,6 +2685,7 @@ def generate_for_gamma(
                     )
                     if nuc_type is None:
                         continue
+                    placement_audit = {}
                     (
                         placed_ok,
                         shape_source,
@@ -2621,6 +2708,7 @@ def generate_for_gamma(
                             tissue_id in library_only_tissue_ids
                         ),
                         args=args,
+                        placement_audit=placement_audit,
                     )
                     placement_trials += int(local_trials)
                     exact_backfill["placement_trials"] += int(local_trials)
@@ -2648,6 +2736,8 @@ def generate_for_gamma(
                             "col": int(accepted_x),
                             "nucleus_type": int(nuc_type),
                             "tissue_id": int(tissue_id),
+                            "area_px": int(placement_audit["area_px"]),
+                            "shape_source": str(shape_source),
                         }
                     )
                     placed_by_component[component_id] = (
@@ -2720,7 +2810,7 @@ def generate_for_gamma(
                 if expected_type_mass[index] > 0
             },
             "shape_source_policy": (
-                "exact_target_tissue_and_type_library_without_patch_size_calibration"
+                "exact_target_tissue_and_type_library_with_target_tissue_size_calibration"
                 if tissue_id in library_only_tissue_ids
                 else "reference_first_same_type_then_library"
             ),
@@ -2866,6 +2956,10 @@ def generate_two_stage_for_gamma(
     population_mask=None,
     required_center_mask=None,
     minimum_required_centers=0,
+    maximum_required_centers=None,
+    required_nucleus_type=None,
+    size_reference_pools_by_tissue=None,
+    fallback_size_reference_pool=None,
 ):
     """Fill the legal destructive core, then the remaining placement domain.
 
@@ -2891,6 +2985,18 @@ def generate_two_stage_for_gamma(
             )
         )
         minimum_required_centers = max(0, int(minimum_required_centers))
+        maximum_required_centers = (
+            None
+            if maximum_required_centers is None
+            else max(0, int(maximum_required_centers))
+        )
+        if (
+            maximum_required_centers is not None
+            and maximum_required_centers < minimum_required_centers
+        ):
+            raise PlacementQuotaError(
+                "maximum required centers cannot be below the minimum"
+            )
         if minimum_required_centers and not np.any(required_center_mask):
             raise PlacementQuotaError(
                 "required center quota has an empty legal placement region"
@@ -2928,12 +3034,29 @@ def generate_two_stage_for_gamma(
                 new_target_count_overrides={
                     required_tissue_id: minimum_required_centers
                 },
+                size_reference_pools_by_tissue=(
+                    size_reference_pools_by_tissue
+                ),
+                fallback_size_reference_pool=fallback_size_reference_pool,
+                allowed_nucleus_types_override=(
+                    (int(required_nucleus_type),)
+                    if required_nucleus_type is not None
+                    else None
+                ),
             )
+            remainder_generation_mask = np.asarray(
+                generation_mask,
+                dtype=bool,
+            )
+            if maximum_required_centers == minimum_required_centers:
+                remainder_generation_mask = (
+                    remainder_generation_mask & ~required_center_mask
+                )
             output, diagnostics = generate_for_gamma(
                 prob,
                 tissue,
                 required_output,
-                generation_mask,
+                remainder_generation_mask,
                 library,
                 reference_pool,
                 gamma,
@@ -2947,6 +3070,10 @@ def generate_two_stage_for_gamma(
                 placement_nuc_prob=placement_nuc_prob,
                 placement_type_prob=placement_type_prob,
                 population_mask=population_mask,
+                size_reference_pools_by_tissue=(
+                    size_reference_pools_by_tissue
+                ),
+                fallback_size_reference_pool=fallback_size_reference_pool,
             )
             _merge_required_center_stage_diagnostics(
                 diagnostics,
@@ -2956,6 +3083,8 @@ def generate_two_stage_for_gamma(
                     np.count_nonzero(required_center_mask)
                 ),
                 minimum_required_centers=minimum_required_centers,
+                maximum_required_centers=maximum_required_centers,
+                required_nucleus_type=required_nucleus_type,
             )
             return output, diagnostics
         output, diagnostics = generate_for_gamma(
@@ -2976,6 +3105,8 @@ def generate_two_stage_for_gamma(
             placement_nuc_prob=placement_nuc_prob,
             placement_type_prob=placement_type_prob,
             population_mask=population_mask,
+            size_reference_pools_by_tissue=size_reference_pools_by_tissue,
+            fallback_size_reference_pool=fallback_size_reference_pool,
         )
         diagnostics["regeneration_stages"] = {
             "policy": "single_quota_from_T_pop_with_centers_constrained_to_P_v1",
@@ -3010,6 +3141,8 @@ def generate_two_stage_for_gamma(
         type_prior_weights_by_tissue=type_prior_weights_by_tissue,
         placement_nuc_prob=placement_nuc_prob,
         placement_type_prob=placement_type_prob,
+        size_reference_pools_by_tissue=size_reference_pools_by_tissue,
+        fallback_size_reference_pool=fallback_size_reference_pool,
     )
     if np.array_equal(
         core_placement_mask,
@@ -3046,6 +3179,8 @@ def generate_two_stage_for_gamma(
         placement_nuc_prob=placement_nuc_prob,
         placement_type_prob=placement_type_prob,
         retained_by_type_overrides=buffer_retained_by_type,
+        size_reference_pools_by_tissue=size_reference_pools_by_tissue,
+        fallback_size_reference_pool=fallback_size_reference_pool,
     )
     buffer_tissues = buffer_diagnostics["tissues"]
     core_tissues = core_diagnostics["tissues"]
@@ -3136,6 +3271,8 @@ def _merge_required_center_stage_diagnostics(
     required_tissue_id,
     required_center_pixels,
     minimum_required_centers,
+    maximum_required_centers=None,
+    required_nucleus_type=None,
 ):
     """Merge a seam-first placement into the one exact population ledger.
 
@@ -3199,10 +3336,20 @@ def _merge_required_center_stage_diagnostics(
     shape_sampling["selected_by_source"] = dict(final_sources)
     diagnostics["shape_sampling"] = shape_sampling
     diagnostics["regeneration_stages"] = {
-        "policy": "required_seam_first_then_T_pop_exact_remainder_v1",
+        "policy": "compiled_seam_quota_then_exterior_T_pop_remainder_v2",
         "required_tissue_id": int(required_tissue_id),
         "required_center_region_pixels": int(required_center_pixels),
         "minimum_required_centers": int(minimum_required_centers),
+        "maximum_required_centers": (
+            int(maximum_required_centers)
+            if maximum_required_centers is not None
+            else None
+        ),
+        "required_nucleus_type": (
+            int(required_nucleus_type)
+            if required_nucleus_type is not None
+            else None
+        ),
         "required_placed": required_placed,
         "required_stage": required_diagnostics.get("tissues") or {},
         "population_remainder_stage": diagnostics.get("tissues") or {},
@@ -3488,6 +3635,89 @@ def _distribution_tv(expected, observed):
     )
 
 
+def _spatial_geometry_metrics(
+    *,
+    region,
+    joint_probability,
+    evaluation_gamma,
+    accepted_rows,
+    accepted_cols,
+    target_count,
+):
+    """Audit ProbNet geometry inside one executable placement stratum."""
+
+    region = np.asarray(region, dtype=bool)
+    inside = region[accepted_rows, accepted_cols]
+    rows = accepted_rows[inside]
+    cols = accepted_cols[inside]
+    target_count = int(target_count)
+    if target_count <= 0:
+        return None
+    if not np.any(region) or len(rows) != target_count:
+        return {
+            "target_count": target_count,
+            "observed_count": len(rows),
+            "region_pixels": int(np.count_nonzero(region)),
+            "boundary_quantile_error": float("inf"),
+            "probability_mass_coverage_ratio": float("inf"),
+            "count_passed": False,
+        }
+    region_probability = joint_probability[region]
+    region_mass = probability_sampling_mass(
+        region_probability,
+        evaluation_gamma,
+    )
+    mass_total = float(np.sum(region_mass))
+    boundary_distance = ndimage.distance_transform_edt(
+        np.pad(region, 1, mode="constant", constant_values=False)
+    )[1:-1, 1:-1]
+    expected_boundary_quantiles = _weighted_quantiles(
+        boundary_distance[region],
+        region_mass,
+        (0.25, 0.50, 0.75),
+    )
+    accepted_boundary_quantiles = np.quantile(
+        boundary_distance[rows, cols],
+        (0.25, 0.50, 0.75),
+    )
+    spacing = np.sqrt(
+        float(np.count_nonzero(region)) / max(float(target_count), 1.0)
+    )
+    boundary_scale = max(
+        float(
+            expected_boundary_quantiles[2]
+            - expected_boundary_quantiles[0]
+        ),
+        0.5 * spacing,
+        1.0,
+    )
+    boundary_error = float(
+        np.mean(
+            np.abs(
+                accepted_boundary_quantiles
+                - expected_boundary_quantiles
+            )
+        )
+        / boundary_scale
+    )
+    center_mask = np.zeros(region.shape, dtype=bool)
+    center_mask[rows, cols] = True
+    nearest_center = ndimage.distance_transform_edt(~center_mask)
+    coverage_ratio = float(
+        np.sum(nearest_center[region] * region_mass)
+        / max(mass_total, 1e-12)
+        / max(spacing, 1.0)
+    )
+    return {
+        "target_count": target_count,
+        "observed_count": len(rows),
+        "region_pixels": int(np.count_nonzero(region)),
+        "boundary_quantile_error": boundary_error,
+        "probability_mass_coverage_ratio": coverage_ratio,
+        "count_passed": True,
+    }
+
+
 def probnet_sampling_alignment_audit(
     *,
     input_nuclei,
@@ -3499,6 +3729,8 @@ def probnet_sampling_alignment_audit(
     generation_diagnostics,
     evaluation_gamma=None,
     concentration_z_threshold=DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
+    exact_required_region=None,
+    exact_required_count=0,
 ):
     """Audit count, type, and spatial fidelity against this patch's ProbNet.
 
@@ -3597,6 +3829,8 @@ def probnet_sampling_alignment_audit(
         }
         boundary_quantile_error = None
         probability_mass_coverage_ratio = None
+        spatial_conditioning_policy = "single_unpartitioned_placement_region"
+        spatial_strata = []
         spatial_score = None
         spatial_passed = True
         if spatial_applicable:
@@ -3691,6 +3925,71 @@ def probnet_sampling_alignment_audit(
             probability_mass_coverage_ratio = float(
                 weighted_mean_distance / max(spacing, 1.0)
             )
+            if (
+                exact_required_region is not None
+                and int(exact_required_count) > 0
+                and np.any(
+                    region
+                    & np.asarray(exact_required_region, dtype=bool)
+                )
+            ):
+                required_count = min(
+                    int(exact_required_count),
+                    target_count,
+                )
+                remainder_count = target_count - required_count
+                required_region = (
+                    region
+                    & np.asarray(exact_required_region, dtype=bool)
+                )
+                remainder_region = region & ~required_region
+                spatial_strata = [
+                    _spatial_geometry_metrics(
+                        region=required_region,
+                        joint_probability=joint_probability,
+                        evaluation_gamma=fixed_evaluation_gamma,
+                        accepted_rows=accepted_rows,
+                        accepted_cols=accepted_cols,
+                        target_count=required_count,
+                    )
+                ]
+                if remainder_count > 0:
+                    spatial_strata.append(
+                        _spatial_geometry_metrics(
+                            region=remainder_region,
+                            joint_probability=joint_probability,
+                            evaluation_gamma=fixed_evaluation_gamma,
+                            accepted_rows=accepted_rows,
+                            accepted_cols=accepted_cols,
+                            target_count=remainder_count,
+                        )
+                    )
+                spatial_strata = [
+                    item for item in spatial_strata if item is not None
+                ]
+                if spatial_strata:
+                    stratum_weight = float(
+                        sum(item["target_count"] for item in spatial_strata)
+                    )
+                    boundary_quantile_error = float(
+                        sum(
+                            item["target_count"]
+                            * item["boundary_quantile_error"]
+                            for item in spatial_strata
+                        )
+                        / max(stratum_weight, 1.0)
+                    )
+                    probability_mass_coverage_ratio = float(
+                        sum(
+                            item["target_count"]
+                            * item["probability_mass_coverage_ratio"]
+                            for item in spatial_strata
+                        )
+                        / max(stratum_weight, 1.0)
+                    )
+                    spatial_conditioning_policy = (
+                        "compiled_seam_and_exterior_strata_v1"
+                    )
             score_terms = [
                 float(np.exp(-boundary_quantile_error)),
                 float(np.exp(-probability_mass_coverage_ratio)),
@@ -3779,6 +4078,8 @@ def probnet_sampling_alignment_audit(
             "probability_concentration": probability_concentration,
             "boundary_quantile_error": boundary_quantile_error,
             "probability_mass_coverage_ratio": probability_mass_coverage_ratio,
+            "spatial_conditioning_policy": spatial_conditioning_policy,
+            "spatial_strata": spatial_strata,
             "spatial_score": spatial_score,
             "spatial_passed": spatial_passed,
             "score": tissue_score,
@@ -4070,6 +4371,23 @@ def run_single(args, model, library, config, density_scales, device):
         )
     if int(args.minimum_required_placements) < 0:
         raise ValueError("minimum required placements cannot be negative")
+    if int(args.maximum_required_placements) < -1:
+        raise ValueError(
+            "maximum required placements must be -1 or non-negative"
+        )
+    if (
+        int(args.maximum_required_placements) >= 0
+        and int(args.maximum_required_placements)
+        < int(args.minimum_required_placements)
+    ):
+        raise ValueError(
+            "maximum required placements cannot be below the minimum"
+        )
+    if (
+        args.required_nucleus_type is not None
+        and int(args.required_nucleus_type) not in set(NUCLEI_CLASSES)
+    ):
+        raise ValueError("required nucleus type is outside the CellViT schema")
     if int(args.minimum_required_placements) > 0 and not np.any(
         required_placement_mask
     ):
@@ -4110,6 +4428,22 @@ def run_single(args, model, library, config, density_scales, device):
     else:
         input_nuclei = np.zeros_like(tissue, dtype=np.int64)
         population_reference_nuclei_raw = reference_nuclei_raw
+    size_reference_pools_by_tissue = {}
+    complete_size_reference_pool = (
+        reference_pool.filtered_for_size_calibration()
+        if reference_pool is not None
+        else None
+    )
+    if reference_pool is not None:
+        for tissue_id in np.unique(reference_tissue):
+            tissue_id = int(tissue_id)
+            if tissue_id == 0:
+                continue
+            current_pool = reference_pool.subset_by_center_region(
+                reference_tissue == tissue_id
+            ).filtered_for_size_calibration()
+            if sum(current_pool.counts().values()) > 0:
+                size_reference_pools_by_tissue[tissue_id] = current_pool
     input_nuclei = input_nuclei.copy()
     erasure_mask = (
         deletion_mask.copy()
@@ -4264,6 +4598,16 @@ def run_single(args, model, library, config, density_scales, device):
                     minimum_required_centers=int(
                         args.minimum_required_placements
                     ),
+                    maximum_required_centers=(
+                        int(args.maximum_required_placements)
+                        if int(args.maximum_required_placements) >= 0
+                        else None
+                    ),
+                    required_nucleus_type=args.required_nucleus_type,
+                    size_reference_pools_by_tissue=(
+                        size_reference_pools_by_tissue
+                    ),
+                    fallback_size_reference_pool=complete_size_reference_pool,
                 )
             except PlacementQuotaError as exc:
                 attempt_records.append(
@@ -4294,6 +4638,20 @@ def run_single(args, model, library, config, density_scales, device):
                 evaluation_gamma=initial_gamma,
                 concentration_z_threshold=float(
                     args.sampling_feedback_concentration_z_threshold
+                ),
+                exact_required_region=(
+                    required_placement_mask
+                    if int(args.maximum_required_placements) >= 0
+                    and int(args.maximum_required_placements)
+                    == int(args.minimum_required_placements)
+                    else None
+                ),
+                exact_required_count=(
+                    int(args.minimum_required_placements)
+                    if int(args.maximum_required_placements) >= 0
+                    and int(args.maximum_required_placements)
+                    == int(args.minimum_required_placements)
+                    else 0
                 ),
             )
             audit["attempt_index"] = attempt_index
@@ -4678,6 +5036,23 @@ def build_parser():
         help=(
             "Minimum new centers reserved in --required-placement-region "
             "before the remaining exact T_pop quota is sampled over P."
+        ),
+    )
+    parser.add_argument(
+        "--maximum-required-placements",
+        type=int,
+        default=-1,
+        help=(
+            "Maximum new centers admitted to --required-placement-region; "
+            "equal to the minimum for an exact compiled seam quota."
+        ),
+    )
+    parser.add_argument(
+        "--required-nucleus-type",
+        type=int,
+        default=None,
+        help=(
+            "Raw CellViT class required for the compiled seam quota."
         ),
     )
     parser.add_argument(

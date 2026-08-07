@@ -3,17 +3,19 @@ import random
 import numpy as np
 
 try:
-    import cv2  # noqa: F401
+    import cv2
 except ImportError:
     import pytest
 
     pytest.skip("OpenCV is required for nuclei instance extraction", allow_module_level=True)
 
+from inpaint_cells.generate import sample_instance_for_center
 from inpaint_cells.nuclei_library.library import (
     ReferenceFirstNucleiSampler,
     ReferenceNucleiInstancePool,
     place_nucleus_layered,
 )
+from phase3_joint_edit_refine.nuclei import iter_instances
 
 
 class FakeLibrary:
@@ -64,6 +66,26 @@ def test_reference_pool_accepts_internal_class_indices():
 
     assert pool.counts()[101] == 1
     assert pool.counts()[105] == 1
+
+
+def test_reference_pool_uses_same_touching_instance_recovery_as_joint_scene():
+    nuclei = np.zeros((48, 48), dtype=np.uint8)
+    cv2.circle(nuclei, (19, 24), 8, 103, thickness=-1)
+    cv2.circle(nuclei, (29, 24), 8, 103, thickness=-1)
+
+    pool = ReferenceNucleiInstancePool.from_mask(
+        nuclei,
+        min_area=2,
+        max_area_ratio_to_median=0,
+    )
+    joint_areas = sorted(
+        int(np.count_nonzero(component))
+        for _, class_id, component in iter_instances(nuclei)
+        if class_id == 3
+    )
+
+    assert len(joint_areas) == 2
+    assert sorted(pool.area_samples(103)) == joint_areas
 
 
 def test_reference_pool_can_be_partitioned_by_original_component_region():
@@ -147,6 +169,27 @@ def test_obvious_same_class_area_outlier_is_not_used_as_one_nucleus():
     assert pool.rejected["area_outlier"] == 1
 
 
+def test_size_calibration_filter_excludes_merge_without_changing_shape_pool():
+    instances = {
+        103: [
+            {
+                "mask": np.ones((1, area), dtype=bool),
+                "type": 103,
+                "area": area,
+                "source": "reference",
+            }
+            for area in (100, 110, 120, 130, 500)
+        ]
+    }
+    shape_pool = ReferenceNucleiInstancePool(instances=instances)
+
+    size_pool = shape_pool.filtered_for_size_calibration()
+
+    assert shape_pool.area_samples(103) == [100, 110, 120, 130, 500]
+    assert size_pool.area_samples(103) == [100, 110, 120, 130]
+    assert size_pool.rejected["area_outlier"] == 1
+
+
 def test_library_fallback_is_resized_to_same_class_reference_area():
     nuclei = np.zeros((40, 40), dtype=np.uint8)
     nuclei[4:8, 4:8] = 101
@@ -224,6 +267,47 @@ def test_tissue_exact_library_shape_can_skip_patch_size_calibration():
     assert instance["area"] == 9
     assert "size_calibrated" not in instance
     assert library.calls == [(2, 101, False)]
+
+
+def test_new_tissue_library_shape_uses_target_tissue_size_reference():
+    local = np.zeros((40, 40), dtype=np.uint8)
+    local[4:7, 4:7] = 102
+    target_tissue = np.zeros_like(local)
+    target_tissue[10:16, 10:16] = 101
+    patch = target_tissue.copy()
+    patch[25:29, 25:29] = 102
+    local_pool = ReferenceNucleiInstancePool.from_mask(local, min_area=2)
+    target_pool = ReferenceNucleiInstancePool.from_mask(
+        target_tissue, min_area=2
+    )
+    patch_pool = ReferenceNucleiInstancePool.from_mask(patch, min_area=2)
+    sampler = ReferenceFirstNucleiSampler(
+        FakeLibrary(),
+        local_pool,
+        size_reference_pool=target_pool,
+        fallback_size_reference_pool=patch_pool,
+        library_size_min_scale=0.25,
+        library_size_max_scale=4.0,
+        library_size_log_area_jitter=0.0,
+    )
+
+    instance, source = sample_instance_for_center(
+        sampler,
+        1,
+        101,
+        force_tissue_library=True,
+    )
+
+    assert source == "library"
+    assert instance["size_calibration"]["target_area"] == 36
+    calibration = sampler.diagnostics()["library_size_calibration"]
+    assert calibration["calibrated_by_type"] == {"101": 1}
+    assert calibration["reference_basis_by_type"]["101"] == (
+        "target_tissue_same_class_complete_instance_reference"
+    )
+    assert calibration["reference_basis_by_type"]["102"] == (
+        "patch_same_class_complete_instance_reference_fallback"
+    )
 
 
 def test_strict_layered_placement_never_overwrites_retained_nucleus():
@@ -317,6 +401,31 @@ def test_layered_placement_removes_disconnected_shape_satellites():
 
     assert placed is True
     assert np.count_nonzero(nuclei) == 9
+
+
+def test_layered_placement_records_realized_transformed_footprint():
+    nuclei = np.zeros((20, 20), dtype=np.int64)
+    instance = {
+        "mask": np.ones((3, 5), dtype=bool),
+        "type": 101,
+        "source": "reference",
+    }
+    placement = {}
+
+    placed = place_nucleus_layered(
+        nuclei,
+        10,
+        10,
+        instance,
+        augment=False,
+        placement_metadata=placement,
+    )
+
+    assert placed is True
+    assert placement["area_px"] == 15
+    assert placement["class_id"] == 1
+    assert placement["nucleus_type"] == 101
+    assert placement["boundary_truncated"] is False
 
 
 def test_reference_shape_ignores_retry_scale_and_preserves_patch_area():

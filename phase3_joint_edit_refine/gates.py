@@ -26,6 +26,7 @@ from .scene import JointSceneAnalysis
 from .seam import (
     anchor_coverage_fraction,
     class_center_mask,
+    compile_continuity_center_quota,
     target_cell_class_for_tissue,
 )
 from .skills.repository import JointSkillBundle
@@ -650,6 +651,43 @@ def _cell_spatial_distribution(c):
     )
 
 
+def _added_instance_areas_by_class(
+    source_nuclei: np.ndarray,
+    target_nuclei: np.ndarray,
+) -> dict[int, list[float]]:
+    """Measure only newly written footprints, excluding retained neighbours.
+
+    Semantic masks do not preserve instance IDs. A newly placed nucleus can
+    touch a retained same-class nucleus and merge with it under connected-
+    component analysis. Restricting the instance pass to pixels that were
+    empty in the source prevents the retained footprint from inflating the
+    measured added shape.
+    """
+
+    source = np.asarray(source_nuclei)
+    target = np.asarray(target_nuclei)
+    added_mask = np.where((target > 0) & (source == 0), target, 0)
+    result: dict[int, list[float]] = {}
+    for _, class_id, component in iter_instances(added_mask):
+        result.setdefault(int(class_id), []).append(
+            float(np.count_nonzero(component))
+        )
+    return result
+
+
+def _recorded_instance_areas_by_class(tool_trace) -> dict[int, list[float]]:
+    result: dict[int, list[float]] = {}
+    for item in tool_trace.get("accepted_instance_area_ledger") or ():
+        if not isinstance(item, dict):
+            continue
+        class_id = int(item.get("class_id", 0))
+        area_px = float(item.get("area_px", 0))
+        if class_id <= 0 or area_px <= 0:
+            continue
+        result.setdefault(class_id, []).append(area_px)
+    return result
+
+
 def _local_shape_distribution(c):
     if "add" not in c.plan.cell_plan.actions:
         return _result(
@@ -658,21 +696,58 @@ def _local_shape_distribution(c):
             "removal-only primitive does not migrate nucleus shapes",
             metrics={"applicable": False},
         )
-    placements = c.candidate.tool_trace.get("placements", ())
-    added_areas = [
-        float(item["area_px"])
-        for item in placements
-        if isinstance(item, dict) and float(item.get("area_px", 0)) > 0
-    ]
-    reference_ids = set(c.candidate.tool_trace.get("reference_shape_ids", ()))
-    local_areas = [
-        float(item.area_px)
-        for item in c.scene.cells.instances
-        if item.instance_id in reference_ids
-        and not item.touches_border
-        and "merged_suspect" not in item.quality_flags
-    ]
     mature = c.candidate.tool_trace.get("mature_probnet_contract") is True
+    recorded_by_class = _recorded_instance_areas_by_class(
+        c.candidate.tool_trace
+    )
+    added_by_class = (
+        recorded_by_class
+        if mature
+        else _added_instance_areas_by_class(
+            c.source_nuclei,
+            c.candidate.target_nuclei_mask,
+        )
+    )
+    target_fine_ids = set(c.executable_contract.target_host_fine_ids)
+    references_by_class: dict[int, list[float]] = {}
+    fallback_references_by_class: dict[int, list[float]] = {}
+    for item in c.scene.cells.instances:
+        if item.touches_border or "merged_suspect" in item.quality_flags:
+            continue
+        fallback_references_by_class.setdefault(item.class_id, []).append(
+            float(item.area_px)
+        )
+        if item.tissue_fine_id in target_fine_ids:
+            references_by_class.setdefault(item.class_id, []).append(
+                float(item.area_px)
+            )
+    class_metrics = {}
+    class_checks = []
+    for class_id, added_areas in sorted(added_by_class.items()):
+        local_areas = references_by_class.get(class_id) or (
+            fallback_references_by_class.get(class_id) or []
+        )
+        ratio = _safe_ratio(
+            float(np.median(added_areas)),
+            float(np.median(local_areas)) if local_areas else None,
+        )
+        current_passed = ratio is not None and 0.60 <= ratio <= 1.67
+        class_checks.append(current_passed)
+        class_metrics[str(class_id)] = {
+            "added_count": len(added_areas),
+            "reference_count": len(local_areas),
+            "reference_scope": (
+                "target_tissue_same_class"
+                if references_by_class.get(class_id)
+                else "patch_same_class_fallback"
+            ),
+            "added_median_area_px": float(np.median(added_areas)),
+            "reference_median_area_px": (
+                float(np.median(local_areas)) if local_areas else None
+            ),
+            "median_area_ratio": ratio,
+            "passed": current_passed,
+        }
     shape_sampling = c.candidate.tool_trace.get("shape_sampling", {})
     calibration = (
         shape_sampling.get("library_size_calibration", {})
@@ -691,18 +766,17 @@ def _local_shape_distribution(c):
         and isinstance(uncalibrated, dict)
         and sum(int(value) for value in uncalibrated.values()) == 0
     )
-    if not added_areas and int(c.candidate.tool_trace.get("placed_count", 0)) == 0:
-        passed = bool(local_areas)
-        ratio = None
-    elif not added_areas and mature_certified:
-        passed = True
-        ratio = None
-    else:
-        ratio = _safe_ratio(
-            float(np.median(added_areas)) if added_areas else None,
-            float(np.median(local_areas)) if local_areas else None,
-        )
-        passed = ratio is not None and 0.60 <= ratio <= 1.67
+    placed_count = int(c.candidate.tool_trace.get("placed_count", 0))
+    recorded_count = sum(len(items) for items in recorded_by_class.values())
+    placement_area_ledger_complete = not mature or recorded_count == placed_count
+    passed = bool(
+        placed_count > 0
+        and added_by_class
+        and class_checks
+        and all(class_checks)
+        and (not mature or mature_certified)
+        and placement_area_ledger_complete
+    )
     return _result(
         "local_shape_distribution",
         passed,
@@ -710,10 +784,17 @@ def _local_shape_distribution(c):
         if passed
         else "added nucleus size is unsupported by local complete references",
         metrics={
-            "added_count": len(added_areas),
-            "local_reference_count": len(local_areas),
-            "median_area_ratio": ratio,
+            "added_count": sum(len(items) for items in added_by_class.values()),
+            "class_metrics": class_metrics,
             "mature_shape_sampling_certified": mature_certified,
+            "measurement_source": (
+                "mature_accepted_instance_area_ledger"
+                if mature
+                else "semantic_added_footprint_fallback"
+            ),
+            "recorded_instance_count": recorded_count,
+            "placed_count": placed_count,
+            "placement_area_ledger_complete": placement_area_ledger_complete,
         },
     )
 
@@ -1088,31 +1169,35 @@ def _interface_seam_continuity(c):
         c.schema,
     )
     target_ids = c.schema.resolve_fine_ids(c.plan.tissue_plan.target_label)
-    outer = (
-        ~change
-        & ndimage.binary_dilation(
-            anchor,
-            iterations=max(1, int(program.continuity_width_px)),
-        )
-        & np.isin(c.candidate.target_tissue_mask, target_ids)
-    )
     target = np.asarray(c.candidate.target_nuclei_mask)
     target_centers = class_center_mask(target, class_id=target_class)
     inner_count = int(np.count_nonzero(target_centers & inner))
-    outer_count = int(np.count_nonzero(target_centers & outer))
     inner_pixels = int(np.count_nonzero(inner))
-    outer_pixels = int(np.count_nonzero(outer))
     inner_density = inner_count / max(1, inner_pixels)
-    outer_density = outer_count / max(1, outer_pixels)
+    quota = compile_continuity_center_quota(
+        nuclei_mask=target,
+        target_tissue_mask=c.candidate.target_tissue_mask,
+        tissue_change=change,
+        continuity_region=inner,
+        continuity_anchor_mask=anchor,
+        continuity_width_px=program.continuity_width_px,
+        density_ratio_range=program.continuity_density_ratio_range,
+        requires_new_target_cells=(
+            program.continuity_requires_new_target_cells
+        ),
+        target_class=target_class,
+        target_fine_ids=tuple(target_ids),
+    )
     ratio = (
-        _safe_ratio(inner_density, outer_density) if np.count_nonzero(outer) else None
+        _safe_ratio(inner_density, quota.outer_density)
+        if quota.outer_pixels
+        else None
     )
     coverage = anchor_coverage_fraction(
         anchor,
         target_centers,
         maximum_empty_run_px=program.continuity_maximum_empty_run_px,
     )
-    lower, upper = program.continuity_density_ratio_range
     # Raw density ratios are not executable when the local reference predicts
     # fewer than one nucleus in the finite seam raster: for example, an
     # expected count of 0.18 has no integer realization inside [0.04, 0.72].
@@ -1121,18 +1206,10 @@ def _interface_seam_continuity(c):
     # well-contained seam nucleus in a sparse field, but still rejects zero or
     # an implausible cluster; it is a resolution correction, not a relaxed
     # pathology threshold.
-    expected_inner_count = outer_density * inner_pixels
-    minimum_inner_count = int(np.ceil(lower * expected_inner_count - 1e-12))
-    if program.continuity_requires_new_target_cells:
-        minimum_inner_count = max(1, minimum_inner_count)
-    maximum_inner_count = max(
-        minimum_inner_count,
-        int(np.ceil(upper * expected_inner_count - 1e-12)),
-    )
     density_ok = (
-        inner_count >= minimum_inner_count
-        if outer_pixels == 0 or outer_count == 0
-        else minimum_inner_count <= inner_count <= maximum_inner_count
+        inner_count >= quota.minimum_count
+        if quota.maximum_count is None
+        else quota.minimum_count <= inner_count <= quota.maximum_count
     )
     geometry_exists = bool(np.any(anchor) and np.any(inner))
     coverage_ok = (
@@ -1152,14 +1229,14 @@ def _interface_seam_continuity(c):
         metrics={
             "applicable": True,
             "inner_density": inner_density,
-            "outer_density": outer_density,
+            "outer_density": quota.outer_density,
             "inner_outer_ratio": ratio,
             "inner_center_count": inner_count,
-            "outer_center_count": outer_count,
-            "expected_inner_center_count": expected_inner_count,
+            "outer_center_count": quota.outer_count,
+            "expected_inner_center_count": quota.expected_count,
             "allowed_inner_center_count_interval": [
-                minimum_inner_count,
-                maximum_inner_count,
+                quota.minimum_count,
+                quota.maximum_count,
             ],
             "density_discretization_policy": (
                 "ratio_envelope_compiled_to_integer_center_interval_v1"

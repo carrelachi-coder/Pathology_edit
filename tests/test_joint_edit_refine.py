@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
@@ -17,7 +18,11 @@ from phase3_joint_edit_refine.budget import JointFeasibilitySolver
 from phase3_joint_edit_refine.cell_layouts import build_reference_shape_library
 from phase3_joint_edit_refine.critic import DeterministicJointResearchCritic
 from phase3_joint_edit_refine.g2_pilot import build_local_joint_records
-from phase3_joint_edit_refine.gates import JointGateRegistry
+from phase3_joint_edit_refine.gates import (
+    JointGateRegistry,
+    _added_instance_areas_by_class,
+    _recorded_instance_areas_by_class,
+)
 from phase3_joint_edit_refine.generator_adapter import (
     build_frozen_generator_inputs,
     route_joint_handoff,
@@ -33,6 +38,8 @@ from phase3_joint_edit_refine.models import (
     JointCaseContext,
     JointCriticRanking,
     JointCriticResult,
+    JointGateCheck,
+    JointGateReport,
 )
 from phase3_joint_edit_refine.nuclei import iter_instances
 from phase3_joint_edit_refine.planner import HeuristicJointPlanner
@@ -43,11 +50,15 @@ from phase3_joint_edit_refine.profile_statistics import (
     build_annotation_profile_statistics,
 )
 from phase3_joint_edit_refine.scene import build_joint_scene_analysis
+from phase3_joint_edit_refine.seam import compile_continuity_center_quota
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
 from phase3_joint_edit_refine.tissue_planner import (
     _normalize_integer_allocations,
 )
-from phase3_joint_edit_refine.workflow import JointPathologyEditWorkflow
+from phase3_joint_edit_refine.workflow import (
+    JointPathologyEditWorkflow,
+    _maximum_safe_below_target_joint_pixels,
+)
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import HeuristicInterfacePlanner
 from phase3_mask_edit_refine.gates import GateRegistry
@@ -59,6 +70,78 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_added_shape_measurement_excludes_retained_same_class_neighbour(self):
+        source = np.zeros((20, 20), dtype=np.uint8)
+        source[2:6, 2:6] = 1
+        target = source.copy()
+        target[6:9, 2:6] = 1
+
+        areas = _added_instance_areas_by_class(source, target)
+
+        self.assertEqual(areas, {1: [12.0]})
+
+    def test_mature_shape_measurement_uses_realized_instance_ledger(self):
+        trace = {
+            "accepted_instance_area_ledger": [
+                {"class_id": 1, "area_px": 900},
+                {"class_id": 1, "area_px": 1050},
+                {"class_id": 2, "area_px": 420},
+            ]
+        }
+
+        self.assertEqual(
+            _recorded_instance_areas_by_class(trace),
+            {1: [900.0, 1050.0], 2: [420.0]},
+        )
+
+    def test_max_safe_area_fallback_excludes_larger_unsafe_candidate(self):
+        candidates = (
+            SimpleNamespace(
+                candidate_id="safe-1",
+                ledger=SimpleNamespace(joint_pixels=48_686),
+            ),
+            SimpleNamespace(
+                candidate_id="safe-2",
+                ledger=SimpleNamespace(joint_pixels=48_700),
+            ),
+            SimpleNamespace(
+                candidate_id="unsafe-larger",
+                ledger=SimpleNamespace(joint_pixels=49_000),
+            ),
+        )
+
+        def report(candidate_id, failures):
+            checks = tuple(
+                JointGateCheck(
+                    check_id=check_id,
+                    passed=False,
+                    severity="hard",
+                    detail="test",
+                )
+                for check_id in failures
+            )
+            return JointGateReport(
+                candidate_id=candidate_id,
+                passed=False,
+                checks=checks,
+            )
+
+        reports = (
+            report("safe-1", {"joint_area"}),
+            report("safe-2", {"joint_area"}),
+            report("unsafe-larger", {"joint_area", "local_shape_distribution"}),
+        )
+
+        self.assertEqual(
+            _maximum_safe_below_target_joint_pixels(
+                candidates,
+                reports,
+                hard_min_pixels=36_701,
+                desired_min_pixels=48_810,
+            ),
+            48_700,
+        )
+
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
         self.assertEqual(len(repository.mechanisms), 23)
@@ -280,7 +363,7 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(
             revised.tissue_target_pixels,
             max(
-                revised.tissue_execution_floor_pixels,
+                revised.tissue_floor_pixels,
                 revised.joint_target_pixels - 4_457 - 3_220,
             ),
         )
@@ -300,7 +383,11 @@ class JointSkillTests(unittest.TestCase):
         initial = solver.allocate(
             shape=(512, 512), budget=case.joint_area_budget, bundle=bundle
         )
-        revised = solver.reserve_complete_instances(initial, reserve_pixels=20000)
+        revised = solver.reserve_complete_instances(
+            initial,
+            reserve_pixels=20000,
+            allow_capacity_floor_fallback=True,
+        )
         self.assertLess(revised.tissue_target_pixels, revised.tissue_floor_pixels)
         self.assertEqual(revised.tissue_execution_floor_pixels, 0)
 
@@ -379,6 +466,8 @@ class JointSkillTests(unittest.TestCase):
             erasure_region_path=Path("E.png"),
             required_placement_region_path=Path("seam.png"),
             minimum_required_placements=1,
+            maximum_required_placements=1,
+            required_nucleus_class=1,
             output_path=Path("out.png"),
             prohibited_tissue_ids=(0, 9),
             allowed_new_cell_classes=(1, 3),
@@ -392,19 +481,51 @@ class JointSkillTests(unittest.TestCase):
         self.assertIn("--population-region", command)
         self.assertIn("--required-placement-region", command)
         self.assertIn("--minimum-required-placements", command)
+        self.assertIn("--maximum-required-placements", command)
+        self.assertIn("--required-nucleus-type", command)
         self.assertIn("--trust-complete-deletion-region", command)
         self.assertIn("--allowed-nucleus-types", command)
         self.assertIn("101", command)
         self.assertIn("103", command)
+        shape_ratio_index = command.index("--reference-shape-max-area-ratio")
+        self.assertEqual(command[shape_ratio_index + 1], "0.0")
         self.assertEqual(
-            command[-4:],
-            [
-                "--required-placement-region",
-                "seam.png",
-                "--minimum-required-placements",
-                "1",
-            ],
+            command[command.index("--maximum-required-placements") + 1],
+            "1",
         )
+        self.assertEqual(
+            command[command.index("--required-nucleus-type") + 1],
+            "101",
+        )
+
+    def test_continuity_density_interval_compiles_to_an_exact_tool_target(self):
+        nuclei = np.zeros((24, 24), dtype=np.uint8)
+        nuclei[8, 5] = 1
+        nuclei[12, 5] = 1
+        target_tissue = np.ones_like(nuclei, dtype=np.uint8)
+        change = np.zeros_like(nuclei, dtype=bool)
+        change[6:16, 8:18] = True
+        anchor = np.zeros_like(change)
+        anchor[6:16, 8] = True
+        continuity = change.copy()
+
+        quota = compile_continuity_center_quota(
+            nuclei_mask=nuclei,
+            target_tissue_mask=target_tissue,
+            tissue_change=change,
+            continuity_region=continuity,
+            continuity_anchor_mask=anchor,
+            continuity_width_px=6,
+            density_ratio_range=(0.5, 2.0),
+            requires_new_target_cells=True,
+            target_class=1,
+            target_fine_ids=(1,),
+        )
+
+        self.assertEqual(quota.outer_count, 2)
+        self.assertIsNotNone(quota.maximum_count)
+        self.assertGreaterEqual(quota.target_count, quota.minimum_count)
+        self.assertLessEqual(quota.target_count, quota.maximum_count)
 
     def test_api_planner_schema_exposes_cell_execution_linkage(self):
         cell_schema = JOINT_PLAN_JSON_SCHEMA["properties"]["cell_plan"]

@@ -36,6 +36,7 @@ from .seam import (
 from .skills.repository import JointSkillBundle
 
 PREFLIGHT_VERSION = "joint-nuclei-preflight-v3"
+SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
 @dataclass(frozen=True)
@@ -485,7 +486,11 @@ def build_joint_nuclei_preflight(
                 int(np.count_nonzero(fit_centers)),
                 int(
                     np.count_nonzero(free)
-                    / max(1.0, reference_area_capacity * 2.0)
+                    / max(
+                        1.0,
+                        reference_area_capacity
+                        * SHAPE_CAPACITY_CLEARANCE_FACTOR,
+                    )
                 ),
             )
             if reference is not None
@@ -726,7 +731,11 @@ def assess_candidate_cell_feasibility(
             int(np.count_nonzero(fit_centers)),
             int(
                 np.count_nonzero(free)
-                / max(1.0, reference_area_capacity * 2.0)
+                / max(
+                    1.0,
+                    reference_area_capacity
+                    * SHAPE_CAPACITY_CLEARANCE_FACTOR,
+                )
             ),
         )
         if reference is not None
