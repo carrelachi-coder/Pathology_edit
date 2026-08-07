@@ -23,6 +23,7 @@ CELL_BASELINE_MODES = frozenset(
         "regenerate_target_population",
         "selective_remove",
         "structured_add",
+        "render_owned_clearance",
     }
 )
 CELL_QUOTA_ROLES = frozenset(
@@ -54,6 +55,7 @@ class JointAreaBudget:
     relative_tolerance: float = 0.02
     fallback_policy: str = "max_feasible_below_target"
     capacity_floor_policy: str = "strict"
+    minimum_effective_fraction: float = 0.0
 
     def __post_init__(self) -> None:
         values = (
@@ -71,6 +73,11 @@ class JointAreaBudget:
         if not 0.0 <= self.tissue_min_fraction <= self.target_fraction:
             raise JointContractError(
                 "tissue_min_fraction must be inside [0, target_fraction]"
+            )
+        if not 0.0 <= self.minimum_effective_fraction <= self.tissue_min_fraction:
+            raise JointContractError(
+                "minimum_effective_fraction must be inside "
+                "[0, tissue_min_fraction]"
             )
         if self.basis != "whole_patch":
             raise JointContractError("v1 joint area basis must be whole_patch")
@@ -123,19 +130,33 @@ class JointAreaBudget:
             capacity_floor_policy=str(
                 value.get("capacity_floor_policy", "strict")
             ),
+            minimum_effective_fraction=float(
+                value.get("minimum_effective_fraction", 0.0)
+            ),
         )
 
     def target_pixels(self, shape: tuple[int, int]) -> int:
-        return int(round(int(np.prod(shape)) * self.target_fraction))
+        return round(int(np.prod(shape)) * self.target_fraction)
 
     def tissue_floor_pixels(self, shape: tuple[int, int]) -> int:
         return int(np.ceil(int(np.prod(shape)) * self.tissue_min_fraction))
 
     def tissue_execution_floor_pixels(self, shape: tuple[int, int]) -> int:
-        """Compiler floor; the standard floor remains a downstream gate."""
+        """Compiler floor; the standard floor remains a downstream gate.
+
+        A capacity-adaptive task may fall below its standard contribution
+        floor only when the deterministic solver proves that it returned the
+        maximum safe edit.  It must still clear the explicit meaningful-edit
+        floor; this prevents visually negligible 1--2% fallbacks from being
+        presented as successful burden edits.
+        """
 
         if self.capacity_floor_policy == "lower_to_proven_max_safe":
-            return 0
+            return int(
+                np.ceil(
+                    int(np.prod(shape)) * self.minimum_effective_fraction
+                )
+            )
         return self.tissue_floor_pixels(shape)
 
     def hard_interval_pixels(self, shape: tuple[int, int]) -> tuple[int, int]:
@@ -174,7 +195,7 @@ class CellCountExtentBudget:
             raise JointContractError("cell-only interface distance interval is invalid")
 
     @classmethod
-    def from_value(cls, value: Any) -> "CellCountExtentBudget | None":
+    def from_value(cls, value: Any) -> CellCountExtentBudget | None:
         if value is None:
             return None
         if not isinstance(value, Mapping):
@@ -723,6 +744,7 @@ class JointCriticResult:
 class JointCondition:
     case_id: str
     candidate_id: str
+    executable_contract_id: str
     target_tissue_mask: np.ndarray
     target_nuclei_mask: np.ndarray
     tissue_change: np.ndarray

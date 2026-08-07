@@ -1,0 +1,40 @@
+{
+  "mechanism_id": "colorectal-local-population-modulation",
+  "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+  "supported_primitives": ["cell-type-abundance-increase-v1", "cell-type-abundance-decrease-v1", "cellularity-increase-v1", "cellularity-decrease-v1"],
+  "version": "1.0.0-draft", "review_status": "draft",
+  "summary": "Change a bounded colorectal cell population without changing gland, crypt, lumen, mucin, necrosis or muscle geometry.",
+  "recognition_contract": {
+    "required_observations": ["one explicit tumor, stroma or epithelial component population zone", "observable compatible target cell class", "complete local instances and stable gland context"],
+    "contraindications": ["lumen, mucin or dirty necrosis treated as host tissue", "normal crypt and malignant gland unresolved", "smooth muscle, vessel or nerve included", "target class unsupported by CellViT"],
+    "minimum_confidence": 0.8
+  },
+  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [], "required_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "tissue_program": {
+    "mode": "preserve_tissue_select_bounded_component_population_zone",
+    "primitive_label_contracts": {
+      "cell-type-abundance-increase-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"]},
+      "cell-type-abundance-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"]},
+      "cellularity-increase-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"]},
+      "cellularity-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Normal epithelium", "Immune infiltrate"]}
+    },
+    "allowed_tools": ["preserve_tissue"], "required_checker_ids": ["tissue_gate_binding"],
+    "prohibited_structures": ["gland_lumen", "normal_crypt", "mucin", "dirty_necrosis", "smooth_muscle", "vessel", "nerve"]
+  },
+  "cell_program": {
+    "actions": ["retain", "remove_whole", "add"], "allowed_cell_classes": [1, 2, 3, 4, 5],
+    "layout_programs": ["single", "pair", "small_cluster", "boundary_aligned"],
+    "core_policy": "bounded_component_zone_with_local_class_composition", "halo_policy": "no_change_outside_compiled_population_extent", "halo_distance_px": [0, 48], "cluster_size_range": [1, 4],
+    "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density"]
+  },
+  "coupling_contract": {"compatibility_rule_ids": ["colorectal.joint.local_population_host_compatibility", "colorectal.joint.gland_lumen_crypt_preservation"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "cell_count_extent", "tissue_floor_applies": false, "cell_only_target_fraction": 1.0, "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"},
+  "joint_gate_ids": ["cell_tissue_compatibility", "cell_zone_localization", "joint_provenance"],
+  "render_contract": {
+    "required_findings": ["edited cells remain compatible with gland epithelium or true stroma", "gland boundary population remains continuous when affected"],
+    "veto_findings": ["nuclei placed in lumen, mucin or dirty necrosis", "crypt rim partially removed", "artificial cell-free band", "uniform artificial spacing"],
+    "mask_guarantees": ["tissue labels unchanged", "only complete nuclei added or removed inside the compiled zone"],
+    "render_only_claims": ["tumor budding identity", "immune activation", "gland differentiation grade"]
+  },
+  "evidence_citations": ["https://tumourclassification.iarc.who.int/chapters/31"],
+  "counterexamples": ["adding stromal nuclei to a gland lumen", "removing a continuous gland epithelial rim", "using dirty necrosis debris as source nuclei"]
+}

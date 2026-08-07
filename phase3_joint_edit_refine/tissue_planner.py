@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 from scipy import ndimage
 
-from phase3_mask_edit_refine.agents import EDIT_PLAN_SCHEMA_VERSION
+from phase3_mask_edit_refine.agents import (
+    EDIT_PLAN_JSON_SCHEMA,
+    EDIT_PLAN_SCHEMA_VERSION,
+    OpenAIResponsesJSONClient,
+    validate_edit_plan,
+)
 from phase3_mask_edit_refine.models import (
     CaseContext,
     DepthProfile,
@@ -22,8 +29,167 @@ from phase3_mask_edit_refine.models import (
 from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
-from .skills.repository import JointSkillBundle
 from .feasibility import JointNucleiPreflight
+from .skills.repository import JointSkillBundle
+
+JOINT_TISSUE_DECISION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["abstain", "abstain_reason", "plan"],
+    "properties": {
+        "abstain": {"type": "boolean"},
+        "abstain_reason": {"type": ["string", "null"]},
+        "plan": {"anyOf": [EDIT_PLAN_JSON_SCHEMA, {"type": "null"}]},
+    },
+}
+
+
+@dataclass(frozen=True)
+class OpenAIJointAwareTissuePlanner:
+    """Multimodal tissue Planner that sees the mechanism and cell capacity."""
+
+    client: OpenAIResponsesJSONClient
+    escalation_client: OpenAIResponsesJSONClient | None = None
+    max_contract_attempts: int = 2
+    name: str = "openai_joint_aware_tissue_planner"
+
+    def create_joint_tissue_plan(
+        self,
+        *,
+        case: CaseContext,
+        scene: SceneAnalysis,
+        bundle: ActiveKnowledgeBundle,
+        joint_bundle: JointSkillBundle,
+        image_paths: Sequence[str | Path],
+        nuclei_preflight: JointNucleiPreflight | None = None,
+        execution_feedback: Mapping[str, Any] | None = None,
+    ) -> tuple[EditPlan, dict[str, Any]]:
+        if nuclei_preflight is None:
+            raise RefineContractError(
+                "joint-aware tissue Planner requires nuclei preflight"
+            )
+        payload = {
+            "case": case.to_metadata(),
+            "tissue_scene": scene.graph.to_metadata(),
+            "tissue_skill_bundle": bundle.to_metadata(),
+            "joint_skill_bundle": joint_bundle.to_metadata(),
+            "joint_mechanism_contract": {
+                "recognition": joint_bundle.mechanism.recognition.__dict__,
+                "representability": joint_bundle.mechanism.representability.__dict__,
+                "tissue_program": joint_bundle.mechanism.tissue_program.__dict__,
+                "coupling": joint_bundle.mechanism.coupling.__dict__,
+            },
+            "nuclei_preflight": nuclei_preflight.to_metadata(),
+            "previous_execution_feedback": dict(execution_feedback or {}),
+            "requirements": {
+                "select_only_nuclei_feasible_interfaces": True,
+                "select_real_anchor_segment_ids": True,
+                "respect_immutable_area_budget": True,
+                "prefer_broad_shallow_interfaces": True,
+                "do_not_output_pixels_or_polygons": True,
+                "abstain_when_H&E_or_capacity_is_insufficient": True,
+            },
+        }
+        errors: list[str] = []
+        clients = [self.client] * self.max_contract_attempts
+        if self.escalation_client is not None:
+            clients.append(self.escalation_client)
+        for attempt, client in enumerate(clients, start=1):
+            raw, usage = client.call(
+                system_prompt=(
+                    "You are the joint-aware tissue planning stage. H&E pathology, "
+                    "annotation semantics, tissue topology, complete-nucleus capacity "
+                    "and the selected mechanism are all mandatory. Select interface and "
+                    "anchor IDs only. Return an explicit abstention when they cannot be "
+                    "jointly satisfied."
+                ),
+                user_prompt=json.dumps(
+                    {**payload, "previous_contract_errors": errors},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                image_paths=image_paths,
+                schema_name="joint_aware_tissue_plan",
+                json_schema=JOINT_TISSUE_DECISION_SCHEMA,
+            )
+            if raw.get("abstain") is True:
+                raise RefineContractError(
+                    "joint-aware tissue Planner abstained: "
+                    + str(raw.get("abstain_reason") or "insufficient evidence")
+                )
+            try:
+                raw_plan = raw.get("plan")
+                if not isinstance(raw_plan, dict):
+                    raise RefineContractError("joint tissue plan is missing")
+                plan = EditPlan.from_mapping(raw_plan)
+                validate_edit_plan(
+                    plan,
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                )
+                self._validate_joint_binding(
+                    plan=plan,
+                    joint_bundle=joint_bundle,
+                    nuclei_preflight=nuclei_preflight,
+                    scene=scene,
+                )
+            except (TypeError, ValueError) as exc:
+                errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
+                continue
+            return plan, {
+                "provider": self.name,
+                "contract_attempt": attempt,
+                "escalated": client is self.escalation_client,
+                **usage,
+            }
+        raise RefineContractError(
+            "joint-aware tissue Planner exhausted contract attempts: "
+            + "; ".join(errors)
+        )
+
+    @staticmethod
+    def _validate_joint_binding(
+        *,
+        plan: EditPlan,
+        joint_bundle: JointSkillBundle,
+        nuclei_preflight: JointNucleiPreflight,
+        scene: SceneAnalysis,
+    ) -> None:
+        feasible = set(nuclei_preflight.feasible_interface_ids)
+        selected = {item.interface_id for item in plan.candidate_interfaces}
+        if not selected or not selected.issubset(feasible):
+            raise RefineContractError(
+                "tissue Planner selected an interface without certified nuclei capacity"
+            )
+        label_contract = (
+            joint_bundle.mechanism.tissue_program.primitive_label_contracts.get(
+                plan.primitive_id
+            )
+        )
+        if label_contract is None:
+            raise RefineContractError("joint mechanism has no primitive contract")
+        if not set(plan.source_labels).issubset(label_contract["source_labels"]):
+            raise RefineContractError("tissue source labels violate joint mechanism")
+        if plan.target_label not in label_contract["target_labels"]:
+            raise RefineContractError("tissue target label violates joint mechanism")
+        anchor_to_interface = {
+            item.anchor_segment_id: item.interface_id
+            for item in scene.graph.anchor_segments
+        }
+        for item in plan.candidate_interfaces:
+            anchors = item.execution_contract.anchor_segment_ids
+            if not anchors or any(
+                anchor_to_interface.get(anchor_id) != item.interface_id
+                for anchor_id in anchors
+            ):
+                raise RefineContractError(
+                    "tissue plan contains an unknown or detached anchor"
+                )
+        if plan.planner_confidence < 0.70:
+            raise RefineContractError(
+                "joint-aware tissue plan confidence is below 0.70"
+            )
 
 
 @dataclass(frozen=True)
@@ -41,6 +207,7 @@ class MultiInterfaceResearchTissuePlanner:
         joint_bundle: JointSkillBundle,
         image_paths: Sequence[str | Path],
         nuclei_preflight: JointNucleiPreflight | None = None,
+        execution_feedback: Mapping[str, Any] | None = None,
     ) -> tuple[EditPlan, dict[str, Any]]:
         del image_paths
         mechanism_contract = joint_bundle.mechanism.tissue_program.primitive_label_contracts.get(case.primitive_id)
@@ -60,17 +227,54 @@ class MultiInterfaceResearchTissuePlanner:
             raise RefineContractError(
                 "no directed interface satisfies both the tissue and preflight nuclei contracts"
             )
-        # Avoid allocating the same source component through several target
-        # contacts. Keep its longest compatible interface, then include enough
-        # independent source components to express the immutable area request.
-        best_by_source = {}
+        feedback = dict(execution_feedback or {})
+        retry_index = max(0, int(feedback.get("retry_index", 0)))
+        failed_interface_ids = set(feedback.get("failed_interface_ids", ()))
+
+        # One connected source component can border several independent target
+        # components.  Collapsing those contacts to its single longest edge was
+        # the reason a large editable stroma/tumor component could yield a tiny
+        # 0.8--1.5% edit.  Keep every directed component-pair interface and let
+        # the pixel owner assignment downstream make their influence zones
+        # disjoint.
+        capacity_by_id: dict[str, int] = {}
         for item in legal:
-            current = best_by_source.get(item.source_component_id)
-            if current is None or (item.contact_pixels, item.interface_id) > (current.contact_pixels, current.interface_id):
-                best_by_source[item.source_component_id] = item
-        ranked = sorted(best_by_source.values(), key=lambda item: (-item.contact_pixels, item.interface_id))
-        source_label = ranked[0].source_label
-        ranked = [item for item in ranked if item.source_label == source_label]
+            preflight_item = (
+                nuclei_preflight.interface(item.interface_id)
+                if nuclei_preflight is not None
+                else None
+            )
+            capacity_by_id[item.interface_id] = int(
+                preflight_item.editable_tissue_capacity_pixels
+                if preflight_item is not None
+                else 0
+            )
+        labels = sorted({item.source_label for item in legal})
+        source_label = max(
+            labels,
+            key=lambda label: (
+                sum(
+                    capacity_by_id[item.interface_id]
+                    for item in legal
+                    if item.source_label == label
+                ),
+                sum(
+                    item.contact_pixels
+                    for item in legal
+                    if item.source_label == label
+                ),
+                label,
+            ),
+        )
+        ranked = sorted(
+            (item for item in legal if item.source_label == source_label),
+            key=lambda item: (
+                item.interface_id in failed_interface_ids,
+                -capacity_by_id[item.interface_id],
+                -item.contact_pixels,
+                item.interface_id,
+            ),
+        )
         source_region = np.zeros((scene.graph.height, scene.graph.width), dtype=bool)
         for item in ranked:
             source_region |= scene.component_masks[item.source_component_id]
@@ -78,7 +282,22 @@ class MultiInterfaceResearchTissuePlanner:
         selected = []
         capacities = []
         cumulative = 0
-        for item in ranked[:16]:
+        # A planning/compilation failure means the raw preflight capacities
+        # did not survive the shared topology compiler.  Adding only two more
+        # interfaces per retry can still stop at another optimistic capacity
+        # threshold and report a sub-maximal fallback.  On that specific
+        # feedback stage, expose every legal, cell-feasible interface to the
+        # compiler; its disjoint pixel ownership, source-retention ceiling and
+        # whole-mask topology audit then determine the actual maximum.  Gate or
+        # cell-feasibility retries retain the gradual diversification policy.
+        extra_after_capacity = (
+            len(ranked)
+            if retry_index > 0
+            and feedback.get("stage") == "planning_or_compilation"
+            else retry_index * 2
+        )
+        capacity_reached_at: int | None = None
+        for item in ranked[:32]:
             preflight_item = (
                 nuclei_preflight.interface(item.interface_id)
                 if nuclei_preflight is not None
@@ -102,18 +321,24 @@ class MultiInterfaceResearchTissuePlanner:
             # One long, cell-feasible interface is preferable to forcing a
             # small request through several disconnected fronts.  Additional
             # interfaces are selected only when their capacity is needed.
-            if cumulative >= target_pixels:
+            if cumulative >= target_pixels and capacity_reached_at is None:
+                capacity_reached_at = len(selected)
+            if (
+                capacity_reached_at is not None
+                and len(selected) >= capacity_reached_at + extra_after_capacity
+            ):
                 break
         if not selected:
             raise RefineContractError("preflight left no executable tissue capacity")
         total_capacity = max(1, sum(capacities))
         rule_ids = tuple(rule.rule_id for rule in bundle.active_rules) + tuple(item.constraint_id for item in bundle.active_mask_constraints)
+        front_contract = joint_bundle.mechanism.tissue_program.front
         planned = []
         for interface, capacity in zip(selected, capacities):
             fraction = capacity / total_capacity
             requested_allocation = min(
                 capacity,
-                max(1, int(round(target_pixels * fraction))),
+                max(1, round(target_pixels * fraction)),
             )
             preflight_item = (
                 nuclei_preflight.interface(interface.interface_id)
@@ -125,12 +350,34 @@ class MultiInterfaceResearchTissuePlanner:
                 if preflight_item is not None
                 else max(1, min(128, int(interface.contact_pixels)))
             )
-            anchor_ids = _select_executable_anchor_ids(
-                scene,
-                interface=interface,
-                required_pixels=requested_allocation,
-                maximum_depth_px=initial_depth_cap,
-            )
+            if (
+                retry_index > 0
+                and feedback.get("stage") == "planning_or_compilation"
+            ):
+                # A cell-safe anchor subset can still be too small for a
+                # topology-safe tissue edit. Expand one compilation retry to
+                # the complete selected interface; the candidate-local seam
+                # gate remains authoritative and can trigger a later pass.
+                anchor_ids = tuple(interface.anchor_segment_ids)
+            elif retry_index > 0:
+                anchor_ids = tuple(
+                    preflight_item.cell_feasible_anchor_segment_ids
+                    if preflight_item is not None
+                    and preflight_item.cell_feasible_anchor_segment_ids
+                    else interface.anchor_segment_ids
+                )
+            else:
+                anchor_ids = _select_executable_anchor_ids(
+                    scene,
+                    interface=interface,
+                    required_pixels=requested_allocation,
+                    maximum_depth_px=initial_depth_cap,
+                    allowed_anchor_ids=(
+                        preflight_item.cell_feasible_anchor_segment_ids
+                        if preflight_item is not None
+                        else ()
+                    ),
+                )
             anchor_contact = max(
                 1,
                 sum(
@@ -138,18 +385,41 @@ class MultiInterfaceResearchTissuePlanner:
                     for item in anchor_ids
                 ),
             )
+            # The allowed band is a hard executable envelope, not the desired
+            # realized depth. Keep it aligned with the mechanism-owned
+            # depth/span contract; the tapered depth profile below remains the
+            # mechanism-specific shape control.  Using 0.80 here duplicated an
+            # obsolete preflight heuristic and made valid multi-interface
+            # capacity disappear between planning and compilation.
             depth_cap = float(
-                min(initial_depth_cap, max(2, int(np.floor(anchor_contact * 0.80))))
+                min(
+                    initial_depth_cap,
+                    max(
+                        2,
+                        int(
+                            np.floor(
+                                anchor_contact
+                                * front_contract.maximum_depth_span_ratio
+                            )
+                        ),
+                    ),
+                )
             )
             estimated_depth = requested_allocation / anchor_contact
             # A tapered/multi-lobe envelope needs more peak depth than the
             # simple area/contact average.  It is nevertheless clamped by the
             # same preflight depth cap that the downstream gate audits.
             peak = float(np.clip(np.ceil(estimated_depth * 2.0), 2, depth_cap))
-            multi_lobe = interface.contact_pixels >= 24 and peak >= 5
-            lobe_count = 3 if interface.contact_pixels >= 72 else 2
-            edge_ratio = 0.10 if multi_lobe else 0.28
-            noise_ratio = 0.30 if multi_lobe else 0.20
+            requested_mode = front_contract.profile_mode
+            if peak < 5 and requested_mode == "multi_lobe":
+                requested_mode = "tapered_lobe"
+            lobe_count = (
+                front_contract.lobe_count
+                if requested_mode == "multi_lobe"
+                else 1
+            )
+            edge_ratio = front_contract.edge_depth_ratio
+            noise_ratio = front_contract.noise_depth_ratio
             planned.append(
                 PlannedInterface(
                     interface_id=interface.interface_id,
@@ -161,11 +431,11 @@ class MultiInterfaceResearchTissuePlanner:
                         anchor_segment_ids=anchor_ids,
                         area_allocation_fraction=float(fraction),
                         depth_profile=DepthProfile(
-                            mode=("multi_lobe" if multi_lobe else "tapered_lobe"),
+                            mode=requested_mode,
                             peak_depth_px=peak,
                             edge_depth_px=max(0.5, peak * edge_ratio),
-                            taper_fraction=(0.42 if multi_lobe else 0.34),
-                            lobe_count=(lobe_count if multi_lobe else 1),
+                            taper_fraction=front_contract.taper_fraction,
+                            lobe_count=lobe_count,
                             noise_amplitude_px=min(14.0, peak * noise_ratio),
                             noise_correlation_px=float(
                                 np.clip(interface.contact_pixels / 6.0, 6.0, 20.0)
@@ -194,7 +464,7 @@ class MultiInterfaceResearchTissuePlanner:
                 allowed_tools=bundle.edit_contract.allowed_tools,
                 parameter_ranges={
                     "max_changed_components": min(
-                        4,
+                        32,
                         sum(
                             max(
                                 1,
@@ -205,7 +475,9 @@ class MultiInterfaceResearchTissuePlanner:
                         ),
                     ),
                     "min_component_area_px": 16,
-                    "max_depth_span_ratio": 1.25,
+                    "max_depth_span_ratio": (
+                        front_contract.maximum_depth_span_ratio
+                    ),
                     "max_bbox_fill_fraction": 0.985,
                     "max_boundary_compactness": 40.0,
                     "max_source_component_changed_fraction": 0.55,
@@ -215,7 +487,7 @@ class MultiInterfaceResearchTissuePlanner:
                     "parallel_front_min_depth_px": 5.0,
                     "parallel_front_min_pixels": 64,
                 },
-                candidate_count=12,
+                candidate_count=min(48, 12 + retry_index * 8),
             ),
             hard_invariants=tuple(sorted(set(bundle.edit_contract.required_check_ids))),
             uncertainties=("current Codex session supplied mechanism; this tissue adapter did not inspect H&E",),
@@ -236,6 +508,8 @@ class MultiInterfaceResearchTissuePlanner:
                 else None
             ),
             "supports_pathology_vision": False,
+            "execution_retry_index": retry_index,
+            "previous_execution_feedback": feedback,
             "input_tokens": 0,
             "output_tokens": 0,
         }
@@ -247,6 +521,7 @@ def _select_executable_anchor_ids(
     interface,
     required_pixels: int,
     maximum_depth_px: float,
+    allowed_anchor_ids: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     """Choose the shortest broad anchor group with enough legal capacity.
 
@@ -266,7 +541,10 @@ def _select_executable_anchor_ids(
         if item.interface_id == interface.interface_id
     }
     records = []
+    allowed = set(allowed_anchor_ids)
     for anchor_id in interface.anchor_segment_ids:
+        if allowed and anchor_id not in allowed:
+            continue
         anchor = scene.anchor_masks[anchor_id]
         contact = max(1, int(np.count_nonzero(anchor)))
         local_depth = min(float(maximum_depth_px), max(2.0, contact * 0.80))

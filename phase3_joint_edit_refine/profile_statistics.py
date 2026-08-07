@@ -16,7 +16,6 @@ from phase3_mask_edit_refine.evidence import load_id_mask
 from .models import JointContractError
 from .skills.repository import JointSkillRepository
 
-
 STATISTICS_SCHEMA_VERSION = "joint-annotation-profile-statistics-v1"
 
 

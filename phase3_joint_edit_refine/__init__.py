@@ -5,6 +5,10 @@ It consumes the mask editor and frozen nuclei tooling through explicit adapters
 and approves only atomic tissue+nuclei conditions.
 """
 
+from .executable_contract import (
+    ExecutableJointContract,
+    ExecutableJointContractCompiler,
+)
 from .models import (
     CellEditPlan,
     CouplingPlan,
@@ -22,6 +26,8 @@ from .models import (
 __all__ = [
     "CellEditPlan",
     "CouplingPlan",
+    "ExecutableJointContract",
+    "ExecutableJointContractCompiler",
     "JointAreaBudget",
     "JointCandidate",
     "JointCaseContext",

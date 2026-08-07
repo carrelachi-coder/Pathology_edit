@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast Necrosis Turnover"
+  short_description: "Audit breast viable and dead cell turnover"
+  default_prompt: "Use $breast-intratumoral-necrosis-turnover to plan an interface-bound breast necrosis edit."

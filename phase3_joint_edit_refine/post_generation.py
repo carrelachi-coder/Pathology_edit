@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -25,6 +27,85 @@ class CellConditionEvaluator(Protocol):
 class RenderMechanismCritic(Protocol):
     name: str
     def evaluate(self, *, source_image: str | Path, generated_image: str | Path, mechanism_id: str, expectations: tuple[str, ...], vetoes: tuple[str, ...]) -> dict[str, Any]: ...
+
+
+@dataclass(frozen=True)
+class CallableTissueConditionEvaluator:
+    """Bind a frozen Segmentator inference callable to the audit contract."""
+
+    runner: Callable[..., dict[str, float]]
+    name: str = "segmentator_callable"
+
+    def evaluate(self, *, generated_image, target_tissue_mask):
+        return _numeric_mapping(
+            self.runner(
+                generated_image=Path(generated_image),
+                target_tissue_mask=Path(target_tissue_mask),
+            ),
+            required=("fidelity",),
+        )
+
+
+@dataclass(frozen=True)
+class CallableCellConditionEvaluator:
+    """Bind a frozen CellViT inference callable to the audit contract."""
+
+    runner: Callable[..., dict[str, float]]
+    name: str = "cellvit_callable"
+
+    def evaluate(self, *, generated_image, target_nuclei_mask, mechanism_id):
+        return _numeric_mapping(
+            self.runner(
+                generated_image=Path(generated_image),
+                target_nuclei_mask=Path(target_nuclei_mask),
+                mechanism_id=mechanism_id,
+            ),
+            required=(
+                "count_consistency",
+                "type_consistency",
+                "spatial_consistency",
+                "interface_distance_consistency",
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class CallableRenderMechanismCritic:
+    """Bind an independent visual critic without coupling it to the Planner."""
+
+    runner: Callable[..., dict[str, Any]]
+    name: str = "visual_mechanism_critic_callable"
+
+    def evaluate(
+        self,
+        *,
+        source_image,
+        generated_image,
+        mechanism_id,
+        expectations,
+        vetoes,
+    ):
+        result = self.runner(
+            source_image=Path(source_image),
+            generated_image=Path(generated_image),
+            mechanism_id=mechanism_id,
+            expectations=expectations,
+            vetoes=vetoes,
+        )
+        if not isinstance(result, dict) or not isinstance(
+            result.get("approved"), bool
+        ):
+            raise JointContractError(
+                "visual critic must return an approved boolean"
+            )
+        veto_reasons = result.get("veto_reasons", [])
+        if not isinstance(veto_reasons, list) or not all(
+            isinstance(item, str) for item in veto_reasons
+        ):
+            raise JointContractError(
+                "visual critic veto_reasons must be a list of strings"
+            )
+        return result
 
 
 @dataclass(frozen=True)
@@ -117,6 +198,57 @@ def audit_generated_joint_image(
     )
 
 
+def audit_joint_generation_handoff(
+    *,
+    manifest_path: str | Path,
+    generated_image: str | Path,
+    output_path: str | Path,
+    tissue_evaluator: TissueConditionEvaluator | None,
+    cell_evaluator: CellConditionEvaluator | None,
+    visual_critic: RenderMechanismCritic | None,
+    thresholds: PostGenerationThresholds | None = None,
+) -> PostGenerationAuditResult:
+    """Verify the v2 handoff and atomically audit one generated H&E result."""
+
+    # Lazy import avoids coupling condition construction to the generator.
+    from .generator_adapter import build_frozen_generator_inputs
+
+    _, _, manifest = build_frozen_generator_inputs(
+        manifest_path,
+        output_dir=Path(output_path).parent,
+    )
+    paths = manifest["paths"]
+    source = manifest["source_assets"]
+    result = audit_generated_joint_image(
+        source_image=source["image"],
+        generated_image=generated_image,
+        target_tissue_mask=paths["target_tissue_mask"],
+        target_nuclei_mask=paths["target_nuclei_mask"],
+        generation_support_mask=paths["generation_support"],
+        mechanism_id=manifest["mechanism_id"],
+        expectations=tuple(manifest.get("render_expectations", [])),
+        vetoes=tuple(manifest.get("render_vetoes", [])),
+        tissue_evaluator=tissue_evaluator,
+        cell_evaluator=cell_evaluator,
+        visual_critic=visual_critic,
+        thresholds=thresholds,
+    )
+    payload = {
+        "schema_version": "joint-post-generation-audit-v1",
+        "case_id": manifest["case_id"],
+        "candidate_id": manifest["candidate_id"],
+        "executable_contract_id": manifest["executable_contract_id"],
+        "generated_image": str(Path(generated_image)),
+        **asdict(result),
+    }
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    return result
+
+
 def _exterior_drift(source_path, generated_path, support_path) -> float:
     source = np.asarray(Image.open(source_path).convert("RGB"), dtype=float) / 255.0
     generated = np.asarray(Image.open(generated_path).convert("RGB"), dtype=float) / 255.0
@@ -127,3 +259,20 @@ def _exterior_drift(source_path, generated_path, support_path) -> float:
     if not np.any(exterior):
         return 0.0
     return float(np.mean(np.abs(source[exterior] - generated[exterior])))
+
+
+def _numeric_mapping(value: Any, *, required: tuple[str, ...]) -> dict[str, float]:
+    if not isinstance(value, dict):
+        raise JointContractError("condition evaluator must return a mapping")
+    result = {}
+    for key in required:
+        current = value.get(key)
+        if not isinstance(current, (int, float)) or not np.isfinite(current):
+            raise JointContractError(
+                f"condition evaluator returned invalid metric: {key}"
+            )
+        result[key] = float(current)
+    for key, current in value.items():
+        if key not in result and isinstance(current, (int, float)):
+            result[key] = float(current)
+    return result

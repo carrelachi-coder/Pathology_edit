@@ -8,6 +8,7 @@
       "source_first": true,
       "allow_cross_domain_fallback": false,
       "probnet_cancer_id": 0,
+      "probnet_dataset_name": "BCSS",
       "allowed_cell_classes": [1, 2, 3, 4, 5]
     },
     {
@@ -17,6 +18,7 @@
       "source_first": true,
       "allow_cross_domain_fallback": false,
       "probnet_cancer_id": 2,
+      "probnet_dataset_name": "GlaS",
       "allowed_cell_classes": [1, 2, 3, 4, 5]
     },
     {
@@ -26,6 +28,7 @@
       "source_first": true,
       "allow_cross_domain_fallback": false,
       "probnet_cancer_id": 1,
+      "probnet_dataset_name": "PANDA",
       "allowed_cell_classes": [1, 2, 3, 4, 5]
     },
     {
@@ -35,6 +38,7 @@
       "source_first": true,
       "allow_cross_domain_fallback": false,
       "probnet_cancer_id": 3,
+      "probnet_dataset_name": "IGNITE",
       "allowed_cell_classes": [1, 2, 3, 4, 5]
     },
     {
@@ -44,6 +48,7 @@
       "source_first": true,
       "allow_cross_domain_fallback": false,
       "probnet_cancer_id": 4,
+      "probnet_dataset_name": "PUMA",
       "allowed_cell_classes": [1, 2, 3, 4, 5]
     },
     {
@@ -53,6 +58,7 @@
       "source_first": true,
       "allow_cross_domain_fallback": false,
       "probnet_cancer_id": 5,
+      "probnet_dataset_name": "ORCA",
       "allowed_cell_classes": [1, 2, 3, 4, 5]
     }
   ]

@@ -6,7 +6,7 @@
   "summary": "Increase total local cellularity without changing tissue labels.",
   "tissue_action": "forbidden",
   "budget_mode": "count_extent",
-  "allowed_baseline_modes": ["structured_add", "regenerate_target_population"],
+  "allowed_baseline_modes": ["structured_add"],
   "allowed_quota_roles": ["explicit_increment"],
   "host_tissue_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"],
   "target_cell_classes": [],

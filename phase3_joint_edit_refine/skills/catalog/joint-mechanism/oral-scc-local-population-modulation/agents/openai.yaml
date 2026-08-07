@@ -1,0 +1,4 @@
+interface:
+  display_name: "Oral SCC Local Cell Population"
+  short_description: "Audit ORCA-safe oral SCC cell edits"
+  default_prompt: "Use $oral-scc-local-population-modulation to plan an ORCA-safe local cellularity edit."

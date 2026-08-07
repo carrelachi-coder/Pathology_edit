@@ -1,0 +1,14 @@
+{
+  "primitive_id": "necrosis-appearance-v1",
+  "version": "1.2.0-draft",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Expand existing annotated necrosis into adjacent tumor, regenerate a sparse Necrosis-compatible cellular population with ProbNet, and delegate only non-nuclear necrotic material to bounded H&E rendering.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [2, 4],
+  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "interface_seam_continuity", "necrosis_cell_turnover"]
+}

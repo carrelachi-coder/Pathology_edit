@@ -20,8 +20,16 @@ from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 from .skills.schema import JointMechanismSkill
 
-
 JOINT_PLAN_SCHEMA_VERSION = "joint-pathology-edit-plan-v2"
+
+LOCAL_POPULATION_PRIMITIVES = frozenset(
+    {
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+    }
+)
 
 
 class JointPlanner(Protocol):
@@ -87,22 +95,33 @@ class HeuristicJointPlanner:
     ) -> tuple[JointEditPlan, dict[str, Any]]:
         del image_paths
         mechanism = bundle.mechanism
-        label_contract = mechanism.tissue_program.primitive_label_contracts.get(case.primitive_id)
+        label_contract = mechanism.tissue_program.primitive_label_contracts.get(
+            case.primitive_id
+        )
         if label_contract is None:
-            raise JointContractError("joint mechanism has no label contract for the primitive")
+            raise JointContractError(
+                "joint mechanism has no label contract for the primitive"
+            )
         if bundle.primitive.scope == "tissue_and_cell":
             if tissue_plan is None:
                 raise JointContractError("tissue primitive requires a tissue plan")
-            if not set(tissue_plan.source_labels).issubset(label_contract["source_labels"]):
-                raise JointContractError("compiled tissue plan source label is illegal for the joint mechanism")
+            if not set(tissue_plan.source_labels).issubset(
+                label_contract["source_labels"]
+            ):
+                raise JointContractError(
+                    "compiled tissue plan source label is illegal for the joint mechanism"
+                )
             if tissue_plan.target_label not in label_contract["target_labels"]:
-                raise JointContractError("compiled tissue plan target label is illegal for the joint mechanism")
+                raise JointContractError(
+                    "compiled tissue plan target label is illegal for the joint mechanism"
+                )
         elif tissue_plan is not None:
             raise JointContractError("cell-only primitive forbids a tissue plan")
         if mechanism.representability.required_auxiliary_structures:
             available = set(scene.auxiliary_structure_masks)
             missing = sorted(
-                set(mechanism.representability.required_auxiliary_structures) - available
+                set(mechanism.representability.required_auxiliary_structures)
+                - available
             )
             if missing:
                 raise JointContractError(
@@ -117,11 +136,17 @@ class HeuristicJointPlanner:
                 "mechanism requires native nucleus instances; semantic fallback is forbidden"
             )
         protected = tuple(
-            item.instance_id
-            for item in scene.cells.instances
-            if item.touches_border or bundle.primitive.scope == "cell_only"
+            item.instance_id for item in scene.cells.instances if item.touches_border
         )
         if bundle.primitive.scope == "cell_only":
+            if case.primitive_id in LOCAL_POPULATION_PRIMITIVES:
+                return self._create_local_population_plan(
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=tissue_plan,
+                    protected=protected,
+                )
             requested_interfaces = case.provenance.get("joint_interface_ids", ())
             if isinstance(requested_interfaces, str):
                 requested_interfaces = (requested_interfaces,)
@@ -134,19 +159,13 @@ class HeuristicJointPlanner:
                 compatible = [
                     item
                     for item in scene.tissue.graph.interfaces
-                    if (
-                        item.source_label in host and item.target_label == "Tumor"
-                    )
-                    or (
-                        item.target_label in host and item.source_label == "Tumor"
-                    )
+                    if (item.source_label in host and item.target_label == "Tumor")
+                    or (item.target_label in host and item.source_label == "Tumor")
                 ]
                 compatible.sort(
                     key=lambda item: (-item.contact_pixels, item.interface_id)
                 )
-                interface_ids = tuple(
-                    item.interface_id for item in compatible[:3]
-                )
+                interface_ids = tuple(item.interface_id for item in compatible[:3])
             if not interface_ids:
                 raise JointContractError(
                     "cell-only heuristic planner found no tumor/host interface"
@@ -169,17 +188,40 @@ class HeuristicJointPlanner:
                 item.interface_id for item in tissue_plan.candidate_interfaces
             )
             anchor_ids = tuple(
-                item.anchor_segment for item in tissue_plan.candidate_interfaces
+                anchor_id
+                for item in tissue_plan.candidate_interfaces
+                for anchor_id in item.execution_contract.anchor_segment_ids
             )
-            baseline_mode = "regenerate_target_population"
+            render_owned_clearance = (
+                case.primitive_id
+                in mechanism.cell_program.render_owned_clearance_primitives
+            )
+            baseline_mode = (
+                "render_owned_clearance"
+                if render_owned_clearance
+                else "regenerate_target_population"
+            )
             quota_role = "within_total_quota"
-            layout = (
-                "population_replacement"
-                if "population_replacement" in mechanism.cell_program.layout_programs
-                else mechanism.cell_program.layout_programs[0]
-            )
-            actions = mechanism.cell_program.actions
-            classes = mechanism.cell_program.allowed_cell_classes
+            if render_owned_clearance:
+                layout = "preserve_only"
+                actions = ("retain", "remove_whole")
+                classes = bundle.primitive.target_cell_classes
+            else:
+                layout = (
+                    "population_replacement"
+                    if "population_replacement"
+                    in mechanism.cell_program.layout_programs
+                    else mechanism.cell_program.layout_programs[0]
+                )
+                actions = mechanism.cell_program.actions
+                # The primitive owns the direction-specific target population
+                # (for example necrosis appearance 2/4 versus resolution 1).
+                # The mechanism union is only a capability envelope across all
+                # primitives and must not leak irrelevant classes into one run.
+                classes = (
+                    bundle.primitive.target_cell_classes
+                    or mechanism.cell_program.allowed_cell_classes
+                )
             core_zone = "tissue_change"
             halo_zone = (
                 "skill_bounded_interface_halo"
@@ -206,7 +248,9 @@ class HeuristicJointPlanner:
                 layout_program_id=layout,
                 protected_instance_ids=protected,
                 supporting_rule_ids=mechanism.coupling.compatibility_rule_ids,
-                expected_morphology="; ".join(mechanism.render.required_findings),
+                expected_morphology="; ".join(
+                    mechanism.render.required_for(case.primitive_id)
+                ),
                 baseline_mode=baseline_mode,
                 interface_ids=interface_ids,
                 anchor_ids=anchor_ids,
@@ -234,6 +278,145 @@ class HeuristicJointPlanner:
         return plan, {
             "provider": self.name,
             "supports_pathology_vision": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        }
+
+    def _create_local_population_plan(
+        self, *, case, scene, bundle, tissue_plan, protected
+    ):
+        if tissue_plan is not None:
+            raise JointContractError(
+                "local population primitive forbids tissue changes"
+            )
+        requested_zone = case.provenance.get("joint_population_zone_id")
+        zones = {
+            item.zone_id: item
+            for item in scene.population.zones
+            if item.zone_kind == "component"
+        }
+        component_labels = {
+            item.component_id: item.label for item in scene.tissue.graph.components
+        }
+        host = set(bundle.primitive.host_tissue_labels)
+        eligible_zones = [
+            item
+            for item in zones.values()
+            if component_labels.get(item.tissue_component_id) in host
+            and item.area_px > 0
+        ]
+        eligible_zones.sort(
+            key=lambda item: (-item.nucleus_count, -item.area_px, item.zone_id)
+        )
+        if isinstance(requested_zone, str) and requested_zone in zones:
+            zone = zones[requested_zone]
+            if zone not in eligible_zones:
+                raise JointContractError(
+                    "requested population zone is not a legal host component"
+                )
+        elif eligible_zones:
+            zone = eligible_zones[0]
+        else:
+            raise JointContractError("no component population zone can host the edit")
+
+        component_label = component_labels.get(zone.tissue_component_id)
+        compatible_classes = set(
+            bundle.cell_observation_profile.tissue_compatible_classes.get(
+                component_label, ()
+            )
+        )
+
+        raw_classes = case.provenance.get("target_cell_class_ids", ())
+        if isinstance(raw_classes, int):
+            raw_classes = (raw_classes,)
+        if not isinstance(raw_classes, (list, tuple)):
+            raise JointContractError("target_cell_class_ids must be a sequence")
+        classes = tuple(
+            sorted(
+                {
+                    int(value)
+                    for value in raw_classes
+                    if int(value) in bundle.mechanism.cell_program.allowed_cell_classes
+                    and int(value) in compatible_classes
+                }
+            )
+        )
+        abundance = case.primitive_id.startswith("cell-type-abundance-")
+        if abundance and len(classes) != 1:
+            raise JointContractError(
+                "offline cell abundance planning requires exactly one target_cell_class_id"
+            )
+        if not classes:
+            classes = tuple(
+                class_id
+                for class_id, count in sorted(zone.class_counts.items())
+                if count > 0
+                and class_id in bundle.mechanism.cell_program.allowed_cell_classes
+                and class_id in compatible_classes
+            )
+        if not classes:
+            raise JointContractError(
+                "selected population zone has no observable compatible cell class"
+            )
+        increase = case.primitive_id.endswith("increase-v1")
+        baseline = "structured_add" if increase else "selective_remove"
+        action = ("retain", "add") if increase else ("retain", "remove_whole")
+        layout = (
+            "single"
+            if "single" in bundle.mechanism.cell_program.layout_programs
+            else bundle.mechanism.cell_program.layout_programs[0]
+        )
+        plan = JointEditPlan(
+            schema_version=JOINT_PLAN_SCHEMA_VERSION,
+            case_id=case.case_id,
+            normalized_intent=case.instruction,
+            selected_mechanism_id=bundle.mechanism.mechanism_id,
+            supporting_observations=(
+                "explicit component population zone selected",
+                "local class counts and complete source instances available",
+            ),
+            supporting_rule_ids=bundle.active_rule_ids,
+            representability_confidence=0.40,
+            tissue_plan=None,
+            cell_plan=CellEditPlan(
+                core_zone=zone.zone_id,
+                halo_zone=None,
+                actions=action,
+                allowed_cell_classes=classes,
+                layout_program_id=layout,
+                protected_instance_ids=protected,
+                supporting_rule_ids=bundle.mechanism.coupling.compatibility_rule_ids,
+                expected_morphology="; ".join(
+                    bundle.mechanism.render.required_for(case.primitive_id)
+                ),
+                baseline_mode=baseline,
+                interface_ids=(),
+                anchor_ids=(),
+                mechanism_program_id=layout,
+                mechanism_quota_role=(
+                    "explicit_increment" if increase else "explicit_decrement"
+                ),
+            ),
+            coupling_plan=CouplingPlan(
+                compatibility_rule_ids=(
+                    bundle.mechanism.coupling.compatibility_rule_ids
+                ),
+                area_contract_id="cell-count-extent-v1",
+                render_support_policy_id=(
+                    bundle.mechanism.coupling.render_support_policy_id
+                ),
+                allow_neoplastic_in_non_tumor_tissue=False,
+                maximum_halo_px=bundle.mechanism.cell_program.halo_distance_px[1],
+            ),
+            uncertainties=(
+                "offline heuristic did not inspect H&E; visual pathology review is required",
+            ),
+            escalation_reason="requires_multimodal_joint_planner_and_critic",
+        )
+        return plan, {
+            "provider": self.name,
+            "supports_pathology_vision": False,
+            "planning_mode": "explicit_population_zone_contract",
             "input_tokens": 0,
             "output_tokens": 0,
         }

@@ -23,14 +23,19 @@ from phase3_mask_edit_refine.models import (
 from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
+from .budget import JointBudgetAllocation
+from .executable_contract import (
+    ExecutableJointContract,
+    ExecutableJointContractCompiler,
+)
 from .feasibility import (
     CandidateCellFeasibility,
     JointNucleiPreflight,
     assess_candidate_cell_feasibility,
 )
+from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
-
 
 TISSUE_EXECUTION_VERSION = "joint-gate-aware-tissue-executor-v1"
 
@@ -41,6 +46,8 @@ class TissueExecutionBatch:
     all_candidates: tuple[CandidateMask, ...]
     tissue_gate_reports: tuple[GateReport, ...]
     cell_feasibility_reports: tuple[CandidateCellFeasibility, ...]
+    executable_contracts: tuple[ExecutableJointContract, ...]
+    executable_contract_errors: dict[str, str]
 
     def to_metadata(self) -> dict:
         return {
@@ -55,6 +62,13 @@ class TissueExecutionBatch:
             "certified_candidate_ids": [
                 item.candidate_id for item in self.certified_candidates
             ],
+            "executable_contract_ids": {
+                item.tissue_candidate_id: item.contract_id
+                for item in self.executable_contracts
+            },
+            "executable_contract_errors": dict(
+                sorted(self.executable_contract_errors.items())
+            ),
             "cell_feasibility_reports": [
                 item.to_metadata() for item in self.cell_feasibility_reports
             ],
@@ -64,14 +78,20 @@ class TissueExecutionBatch:
 def execute_gate_aware_tissue_candidates(
     source_tissue: np.ndarray,
     *,
+    source_nuclei: np.ndarray,
+    case: JointCaseContext,
     schema: MaskProfileSchema,
     tissue_scene: SceneAnalysis,
     joint_scene: JointSceneAnalysis,
     tissue_case: CaseContext,
     tissue_plan: EditPlan,
+    joint_plan: JointEditPlan,
     tissue_bundle: ActiveKnowledgeBundle,
     joint_bundle: JointSkillBundle,
     nuclei_preflight: JointNucleiPreflight,
+    allocation: JointBudgetAllocation,
+    executable_contract_compiler: ExecutableJointContractCompiler,
+    joint_required_checker_ids: tuple[str, ...],
     gates: GateRegistry,
     seed: int,
 ) -> TissueExecutionBatch:
@@ -105,16 +125,36 @@ def execute_gate_aware_tissue_candidates(
             scene=joint_scene,
             preflight=nuclei_preflight,
             joint_bundle=joint_bundle,
+            joint_plan=joint_plan,
         )
         for candidate in all_candidates
         if by_id[candidate.candidate_id].passed
     )
     cell_by_id = {item.candidate_id: item for item in cell_reports}
     certified = []
+    contracts: list[ExecutableJointContract] = []
+    contract_errors: dict[str, str] = {}
     for candidate in all_candidates:
         tissue_report = by_id[candidate.candidate_id]
         cell_report = cell_by_id.get(candidate.candidate_id)
         if not tissue_report.passed or cell_report is None or not cell_report.passed:
+            continue
+        try:
+            contract = executable_contract_compiler.compile(
+                case=case,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                schema=schema,
+                scene=joint_scene,
+                plan=joint_plan,
+                bundle=joint_bundle,
+                tissue_candidate=candidate,
+                tissue_gate_report=tissue_report,
+                allocation=allocation,
+                required_checker_ids=joint_required_checker_ids,
+            )
+        except JointContractError as exc:
+            contract_errors[candidate.candidate_id] = str(exc)
             continue
         candidate.tool_trace["tissue_execution_contract_version"] = (
             TISSUE_EXECUTION_VERSION
@@ -125,6 +165,11 @@ def execute_gate_aware_tissue_candidates(
         ]
         candidate.tool_trace["nuclei_preflight_version"] = nuclei_preflight.version
         candidate.tool_trace["candidate_cell_feasibility"] = cell_report.to_metadata()
+        candidate.tool_trace["executable_contract_id"] = contract.contract_id
+        candidate.tool_trace["executable_contract_version"] = (
+            contract.schema_version
+        )
+        contracts.append(contract)
         certified.append(candidate)
     certified.sort(
         key=lambda item: (
@@ -137,4 +182,6 @@ def execute_gate_aware_tissue_candidates(
         all_candidates=tuple(all_candidates),
         tissue_gate_reports=reports,
         cell_feasibility_reports=cell_reports,
+        executable_contracts=tuple(contracts),
+        executable_contract_errors=contract_errors,
     )

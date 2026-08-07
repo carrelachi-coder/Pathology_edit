@@ -1,0 +1,4 @@
+interface:
+  display_name: "Colorectal Local Cell Population"
+  short_description: "Audit gland-safe colorectal cell edits"
+  default_prompt: "Use $colorectal-local-population-modulation to plan a gland-safe local cellularity edit."

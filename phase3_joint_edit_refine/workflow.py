@@ -17,6 +17,7 @@ from phase3_mask_edit_refine.models import (
     CandidateMask,
     CaseContext,
     GateReport,
+    RefineContractError,
 )
 from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
 from phase3_mask_edit_refine.visualization import save_planner_panels
@@ -26,6 +27,10 @@ from .budget import JointFeasibilitySolver
 from .cell_layouts import SpatialRanker, generate_cell_layouts
 from .cell_programs import CellToolProgramCompiler
 from .critic import JointCritic
+from .executable_contract import (
+    ExecutableJointContract,
+    ExecutableJointContractCompiler,
+)
 from .feasibility import (
     augment_tissue_scene_with_nuclei_preflight,
     bind_joint_plan_to_nuclei_preflight,
@@ -34,13 +39,13 @@ from .feasibility import (
 from .gates import JointGateContext, JointGateRegistry
 from .handoff import write_generation_handoff
 from .ledger import build_joint_candidate
+from .mature_probnet_adapter import MatureProbNetCellExecutor
 from .models import (
     JointCaseContext,
     JointCondition,
     JointContractError,
     JointWorkflowResult,
 )
-from .mature_probnet_adapter import MatureProbNetCellExecutor
 from .nuclei import load_nuclei_mask
 from .planner import JointPlanner
 from .scene import build_joint_scene_analysis
@@ -55,6 +60,7 @@ class JointWorkflowConfig:
     cell_layouts_per_tissue: int = 3
     critic_confidence_threshold: float = 0.70
     require_mature_probnet_in_production: bool = True
+    maximum_tissue_planning_attempts: int = 3
 
 
 class JointPathologyEditWorkflow:
@@ -88,22 +94,33 @@ class JointPathologyEditWorkflow:
         self.cell_executor = cell_executor
         self.config = config or JointWorkflowConfig()
         self.budget_solver = JointFeasibilitySolver()
-        self.cell_program_compiler = CellToolProgramCompiler()
+        self.executable_contract_compiler = ExecutableJointContractCompiler(
+            CellToolProgramCompiler()
+        )
 
-    def run(self, case: JointCaseContext, *, output_root: str | Path) -> JointWorkflowResult:
+    def run(
+        self, case: JointCaseContext, *, output_root: str | Path
+    ) -> JointWorkflowResult:
         audit = JointAuditWriter(output_root, case_id=case.case_id)
         plan = None
         critic_result = None
         joint_reports = ()
         reasons: list[str] = []
-        usage: dict = {"mechanism_selection": {}, "tissue_planner": {}, "joint_planner": {}, "critic": {}}
+        usage: dict = {
+            "mechanism_selection": {},
+            "tissue_planner": {},
+            "joint_planner": {},
+            "critic": {},
+        }
         candidates = ()
         try:
             case.validate_local_inputs()
             _validate_digests(case)
             source_tissue = load_id_mask(case.source_tissue_mask_uri)
             source_nuclei = load_nuclei_mask(case.source_nuclei_mask_uri)
-            _validate_dimensions(case.source_image_uri, source_tissue.shape, source_nuclei.shape)
+            _validate_dimensions(
+                case.source_image_uri, source_tissue.shape, source_nuclei.shape
+            )
             schema = self.mask_skills.annotation_schema(case.annotation_profile_id)
             scene = build_joint_scene_analysis(
                 source_tissue,
@@ -127,10 +144,12 @@ class JointPathologyEditWorkflow:
                 source_nuclei=source_nuclei,
             )
             planner_images = (*tissue_panels, joint_overlay)
-            mechanisms, mechanism_rejections = self.joint_skills.eligible_mechanisms_for_case(
-                case=case,
-                available_checker_ids=set(self.joint_gates.available_checker_ids),
-                production=self.config.production,
+            mechanisms, mechanism_rejections = (
+                self.joint_skills.eligible_mechanisms_for_case(
+                    case=case,
+                    available_checker_ids=set(self.joint_gates.available_checker_ids),
+                    production=self.config.production,
+                )
             )
             if not mechanisms:
                 raise JointContractError(
@@ -201,6 +220,14 @@ class JointPathologyEditWorkflow:
                     "joint preflight lacks required annotation provenance: "
                     + ", ".join(nuclei_preflight.required_provenance_missing)
                 )
+            if not nuclei_preflight.meaningful_tissue_capacity_passed:
+                raise JointContractError(
+                    "joint preflight interface capacity cannot reach the immutable "
+                    "meaningful tissue floor: "
+                    f"required={nuclei_preflight.meaningful_tissue_floor_pixels}, "
+                    "aggregate_cell_safe_capacity="
+                    f"{nuclei_preflight.aggregate_feasible_tissue_capacity_pixels}"
+                )
             if not nuclei_preflight.feasible_interface_ids:
                 raise JointContractError(
                     "joint preflight found no interface with tissue, complete-instance, "
@@ -210,130 +237,229 @@ class JointPathologyEditWorkflow:
                 scene.tissue,
                 nuclei_preflight,
             )
-            audit.write_inputs(case=case, scene_metadata=scene.to_metadata(), skill_metadata={**bundle.to_metadata(), "budget_allocation": allocation.to_metadata(), "tissue_skill_bundle": tissue_bundle.to_metadata()})
+            audit.write_inputs(
+                case=case,
+                scene_metadata=scene.to_metadata(),
+                skill_metadata={
+                    **bundle.to_metadata(),
+                    "budget_allocation": allocation.to_metadata(),
+                    "tissue_skill_bundle": tissue_bundle.to_metadata(),
+                },
+            )
             budget_revisions = []
             tissue_pass_usage = []
+            joint_pass_usage = []
+            execution_feedback: dict = {}
+            budget_rebalanced = False
             # A provisional tissue boundary may intersect a complete semantic or
             # native nucleus whose footprint extends beyond T.  Since v1 forbids
             # partial nucleus edits, that extension necessarily belongs to C and
             # therefore J.  Re-broker once using the observed whole-instance
             # closure cost instead of silently overshooting the joint target.
-            for budget_pass in range(2):
+            for planning_pass in range(
+                self.config.maximum_tissue_planning_attempts
+            ):
                 tissue_case = _as_tissue_case(
                     case,
                     allocation=allocation,
                     shape=source_tissue.shape,
                 )
-                if hasattr(self.tissue_planner, "create_joint_tissue_plan"):
-                    raw_tissue_plan, tissue_usage = self.tissue_planner.create_joint_tissue_plan(
+                tissue_usage = {}
+                compiler_usage = {}
+                joint_usage = {}
+                try:
+                    if hasattr(self.tissue_planner, "create_joint_tissue_plan"):
+                        raw_tissue_plan, tissue_usage = (
+                            self.tissue_planner.create_joint_tissue_plan(
+                                case=tissue_case,
+                                scene=tissue_scene,
+                                bundle=tissue_bundle,
+                                joint_bundle=bundle,
+                                image_paths=planner_images,
+                                nuclei_preflight=nuclei_preflight,
+                                execution_feedback=execution_feedback,
+                            )
+                        )
+                    else:
+                        raw_tissue_plan, tissue_usage = self.tissue_planner.create_plan(
+                            case=tissue_case,
+                            scene=tissue_scene,
+                            bundle=tissue_bundle,
+                            image_paths=planner_images,
+                        )
+                    validate_edit_plan(
+                        raw_tissue_plan,
                         case=tissue_case,
                         scene=tissue_scene,
                         bundle=tissue_bundle,
-                        joint_bundle=bundle,
-                        image_paths=planner_images,
-                        nuclei_preflight=nuclei_preflight,
                     )
-                else:
-                    raw_tissue_plan, tissue_usage = self.tissue_planner.create_plan(
+                    tissue_plan, compiler_usage = compile_edit_plan(
+                        raw_tissue_plan,
+                        source_mask=source_tissue,
+                        schema=schema,
+                        scene=tissue_scene,
+                    )
+                    validate_edit_plan(
+                        tissue_plan,
                         case=tissue_case,
                         scene=tissue_scene,
                         bundle=tissue_bundle,
+                    )
+                    plan, joint_usage = self.joint_planner.create_plan(
+                        case=case,
+                        scene=scene,
+                        bundle=bundle,
+                        tissue_plan=tissue_plan,
                         image_paths=planner_images,
                     )
-                validate_edit_plan(
-                    raw_tissue_plan,
-                    case=tissue_case,
-                    scene=tissue_scene,
-                    bundle=tissue_bundle,
-                )
-                tissue_plan, compiler_usage = compile_edit_plan(
-                    raw_tissue_plan,
-                    source_mask=source_tissue,
-                    schema=schema,
-                    scene=tissue_scene,
-                )
-                validate_edit_plan(
-                    tissue_plan,
-                    case=tissue_case,
-                    scene=tissue_scene,
-                    bundle=tissue_bundle,
-                )
+                    plan = bind_joint_plan_to_nuclei_preflight(
+                        plan,
+                        nuclei_preflight,
+                    )
+                except (RefineContractError, JointContractError) as exc:
+                    execution_feedback = {
+                        "retry_index": planning_pass + 1,
+                        "stage": "planning_or_compilation",
+                        "errors": [f"{type(exc).__name__}: {exc}"],
+                        "failed_interface_ids": [],
+                    }
+                    audit.write_json(
+                        f"execution_feedback_pass_{planning_pass + 1}.json",
+                        execution_feedback,
+                    )
+                    tissue_pass_usage.append(
+                        {
+                            "pass": planning_pass + 1,
+                            **tissue_usage,
+                            "compiler": compiler_usage,
+                            "budget_allocation": allocation.to_metadata(),
+                            "execution_feedback": execution_feedback,
+                        }
+                    )
+                    if (
+                        planning_pass + 1
+                        >= self.config.maximum_tissue_planning_attempts
+                    ):
+                        raise JointContractError(
+                            "tissue planning/compilation exhausted feedback retries: "
+                            + "; ".join(execution_feedback["errors"])
+                        ) from exc
+                    continue
                 tissue_pass_usage.append(
                     {
-                        "pass": budget_pass + 1,
+                        "pass": planning_pass + 1,
                         **tissue_usage,
                         "compiler": compiler_usage,
                         "budget_allocation": allocation.to_metadata(),
                     }
                 )
+                joint_pass_usage.append(
+                    {
+                        "pass": planning_pass + 1,
+                        **joint_usage,
+                        "budget_allocation": allocation.to_metadata(),
+                    }
+                )
                 execution_batch = execute_gate_aware_tissue_candidates(
                     source_tissue,
+                    source_nuclei=source_nuclei,
+                    case=case,
                     schema=schema,
                     tissue_scene=tissue_scene,
                     joint_scene=scene,
                     tissue_case=tissue_case,
                     tissue_plan=tissue_plan,
+                    joint_plan=plan,
                     tissue_bundle=tissue_bundle,
                     joint_bundle=bundle,
                     nuclei_preflight=nuclei_preflight,
+                    allocation=allocation,
+                    executable_contract_compiler=(self.executable_contract_compiler),
+                    joint_required_checker_ids=(
+                        self.joint_gates.required_checker_ids_for(bundle)
+                    ),
                     gates=self.tissue_gates,
-                    seed=case.seed,
+                    seed=case.seed + planning_pass * 1_000_003,
                 )
-                tissue_candidates = execution_batch.all_candidates
                 tissue_reports = execution_batch.tissue_gate_reports
                 audit.write_json(
-                    f"tissue_gate_reports_pass_{budget_pass + 1}.json",
+                    f"tissue_gate_reports_pass_{planning_pass + 1}.json",
                     [item.to_metadata() for item in tissue_reports],
                 )
                 audit.write_json(
-                    f"tissue_execution_contract_pass_{budget_pass + 1}.json",
+                    f"tissue_execution_contract_pass_{planning_pass + 1}.json",
                     execution_batch.to_metadata(),
                 )
-                reports_by_id = {
-                    item.candidate_id: item for item in tissue_reports
-                }
+                audit.write_json(
+                    f"tissue_edit_plan_pass_{planning_pass + 1}.json",
+                    tissue_plan.to_metadata(),
+                )
+                audit.write_json(
+                    f"joint_edit_plan_pass_{planning_pass + 1}.json",
+                    plan.to_metadata(),
+                )
+                audit.write_tissue_execution_review(
+                    pass_index=planning_pass + 1,
+                    source_image_path=case.source_image_uri,
+                    source_tissue=source_tissue,
+                    source_nuclei=source_nuclei,
+                    tissue_scene=tissue_scene,
+                    tissue_plan=tissue_plan,
+                    execution_batch=execution_batch,
+                )
+                reports_by_id = {item.candidate_id: item for item in tissue_reports}
                 passing_tissue = list(execution_batch.certified_candidates)[
                     : self.config.maximum_tissue_candidates
                 ]
                 if not passing_tissue:
-                    raise JointContractError(
-                        "no tissue candidate passed both the inherited hard gates "
-                        "and candidate-local nuclei feasibility"
+                    execution_feedback = _summarize_tissue_execution_failure(
+                        execution_batch,
+                        retry_index=planning_pass + 1,
                     )
-                desired_min, desired_max = case.joint_area_budget.desired_interval_pixels(
-                    source_tissue.shape
+                    audit.write_json(
+                        f"execution_feedback_pass_{planning_pass + 1}.json",
+                        execution_feedback,
+                    )
+                    if (
+                        planning_pass + 1
+                        >= self.config.maximum_tissue_planning_attempts
+                    ):
+                        raise JointContractError(
+                            "no tissue candidate passed after feedback-directed "
+                            "replan/retool attempts"
+                        )
+                    continue
+                contracts_by_tissue_id = {
+                    item.tissue_candidate_id: item
+                    for item in execution_batch.executable_contracts
+                }
+                desired_min, desired_max = (
+                    case.joint_area_budget.desired_interval_pixels(source_tissue.shape)
                 )
                 predicted = [
-                    int(item.change_region.sum())
-                    + _complete_instance_extension_pixels(
-                        item.change_region,
-                        scene=scene,
-                        protected_ids={
-                            cell.instance_id
-                            for cell in scene.cells.instances
-                            if cell.instance_id
-                            in set(nuclei_preflight.protected_instance_ids)
-                        },
+                    int(
+                        np.count_nonzero(
+                            np.asarray(item.change_region, dtype=bool)
+                            | contracts_by_tissue_id[
+                                item.candidate_id
+                            ].cell_program.erasure_region
+                        )
                     )
                     for item in passing_tissue
                 ]
                 if (
-                    budget_pass == 0
+                    not budget_rebalanced
                     and predicted
                     and min(predicted) > desired_max
                 ):
                     closure = int(
                         np.median(
                             [
-                                _complete_instance_extension_pixels(
-                                    item.change_region,
-                                    scene=scene,
-                                    protected_ids={
-                                        cell.instance_id
-                                        for cell in scene.cells.instances
-                                        if cell.instance_id
-                                        in set(nuclei_preflight.protected_instance_ids)
-                                    },
+                                np.count_nonzero(
+                                    contracts_by_tissue_id[
+                                        item.candidate_id
+                                    ].cell_program.erasure_region
+                                    & ~np.asarray(item.change_region, dtype=bool)
                                 )
                                 for item in passing_tissue
                             ]
@@ -354,12 +480,45 @@ class JointPathologyEditWorkflow:
                             }
                         )
                         allocation = revised
+                        budget_rebalanced = True
+                        nuclei_preflight = build_joint_nuclei_preflight(
+                            case=case,
+                            source_tissue=source_tissue,
+                            schema=schema,
+                            scene=scene,
+                            tissue_bundle=tissue_bundle,
+                            joint_bundle=bundle,
+                            allocation=allocation,
+                        )
+                        if not nuclei_preflight.feasible_interface_ids:
+                            raise JointContractError(
+                                "revised joint budget has no feasible tissue--cell interface"
+                            )
+                        if not nuclei_preflight.meaningful_tissue_capacity_passed:
+                            raise JointContractError(
+                                "revised joint budget cannot reach the meaningful tissue floor"
+                            )
+                        tissue_scene = augment_tissue_scene_with_nuclei_preflight(
+                            scene.tissue,
+                            nuclei_preflight,
+                        )
+                        audit.write_json(
+                            f"joint_nuclei_preflight_pass_{planning_pass + 2}.json",
+                            nuclei_preflight.to_metadata(),
+                        )
+                        execution_feedback = {
+                            "retry_index": planning_pass + 1,
+                            "stage": "budget_rebalance",
+                            "errors": ["whole_instance_union_closure"],
+                            "failed_interface_ids": [],
+                        }
                         continue
                 break
             usage["tissue_planner"] = {
                 "passes": tissue_pass_usage,
                 "budget_revisions": budget_revisions,
             }
+            usage["joint_planner"] = {"passes": joint_pass_usage}
             audit.write_inputs(
                 case=case,
                 scene_metadata=scene.to_metadata(),
@@ -374,38 +533,45 @@ class JointPathologyEditWorkflow:
                 "tissue_gate_reports.json",
                 [item.to_metadata() for item in tissue_reports],
             )
-            plan, joint_usage = self.joint_planner.create_plan(
-                case=case,
-                scene=scene,
-                bundle=bundle,
-                tissue_plan=tissue_plan,
-                image_paths=planner_images,
-            )
-            plan = bind_joint_plan_to_nuclei_preflight(
-                plan,
-                nuclei_preflight,
-            )
-            usage["joint_planner"] = joint_usage
             audit.write_json("joint_edit_plan.json", plan.to_metadata())
+            contracts_by_tissue_id = {
+                item.tissue_candidate_id: item
+                for item in execution_batch.executable_contracts
+                if item.tissue_candidate_id
+                in {candidate.candidate_id for candidate in passing_tissue}
+            }
+            for contract in contracts_by_tissue_id.values():
+                audit.write_executable_contract(contract)
 
             joint_candidates = []
-            prohibited = set(bundle.annotation_profile.prohibit_generation_support_fine_ids)
+            prohibited = set(
+                bundle.annotation_profile.prohibit_generation_support_fine_ids
+            )
             generation_allowed = ~np.isin(source_tissue, tuple(prohibited))
+            contract_by_joint_candidate: dict[str, ExecutableJointContract] = {}
             for tissue_candidate in passing_tissue:
-                compiled_cell_program = self.cell_program_compiler.compile(
-                    case=case,
-                    schema=schema,
-                    scene=scene,
-                    plan=plan,
-                    bundle=bundle,
-                    tissue_candidate=tissue_candidate,
-                )
-                if (
+                executable_contract = contracts_by_tissue_id[
+                    tissue_candidate.candidate_id
+                ]
+                mature_supported = bool(
                     self.cell_executor is not None
-                    and self.cell_executor.supports(compiled_cell_program)
-                ):
+                    and self.cell_executor.supports(executable_contract)
+                )
+                requires_mature = bool(
+                    case.provenance.get(
+                        "require_mature_probnet_regeneration", False
+                    )
+                    and plan.cell_plan.baseline_mode
+                    == "regenerate_target_population"
+                )
+                if requires_mature and not mature_supported:
+                    raise JointContractError(
+                        "case contract requires the mature ProbNet regeneration "
+                        "pipeline; a checkpoint ranker plus research layout is insufficient"
+                    )
+                if mature_supported:
                     layouts = self.cell_executor.execute(
-                        program=compiled_cell_program,
+                        contract=executable_contract,
                         source_tissue=source_tissue,
                         target_tissue=tissue_candidate.target_mask,
                         source_nuclei=source_nuclei,
@@ -434,6 +600,14 @@ class JointPathologyEditWorkflow:
                             "production target-population regeneration requires "
                             "the mature ProbNet executor"
                         )
+                    if self.config.production and (
+                        self.ranker is None
+                        or getattr(self.ranker, "name", "")
+                        == "deterministic_distance_ranker"
+                    ):
+                        raise JointContractError(
+                            "production structured cell execution requires the frozen ProbNet ranker"
+                        )
                     layouts = generate_cell_layouts(
                         source_tissue=source_tissue,
                         source_nuclei=source_nuclei,
@@ -443,7 +617,7 @@ class JointPathologyEditWorkflow:
                         plan=plan,
                         bundle=bundle,
                         allocation=allocation,
-                        compiled_program=compiled_cell_program,
+                        executable_contract=executable_contract,
                         seed=case.seed,
                         ranker=self.ranker,
                         variants=self.config.cell_layouts_per_tissue,
@@ -452,15 +626,12 @@ class JointPathologyEditWorkflow:
                     audit.write_reference_shape_review(
                         source_image_path=case.source_image_uri,
                         instance_masks=scene.instance_masks,
-                        eligible_ids=layouts[0].trace.get(
-                            "reference_shape_ids", ()
-                        ),
-                        rejected=layouts[0].trace.get(
-                            "reference_shape_rejections", {}
-                        ),
+                        eligible_ids=layouts[0].trace.get("reference_shape_ids", ()),
+                        rejected=layouts[0].trace.get("reference_shape_rejections", {}),
                     )
                 for layout in layouts:
                     candidate_id = f"joint-{tissue_candidate.candidate_id}-{layout.cell_candidate_id}"
+                    contract_by_joint_candidate[candidate_id] = executable_contract
                     trace = {
                         **layout.trace,
                         "mechanism_id": mechanism_id,
@@ -480,15 +651,27 @@ class JointPathologyEditWorkflow:
                             target_nuclei=layout.target_nuclei_mask,
                             generation_halo_px=plan.coupling_plan.maximum_halo_px,
                             generation_allowed_region=generation_allowed,
+                            generation_support_contract=(
+                                executable_contract.cell_program.support_context_region
+                            ),
                             source_instance_masks=scene.instance_masks,
-                            source_instance_classes={item.instance_id: item.class_id for item in scene.cells.instances},
+                            source_instance_classes={
+                                item.instance_id: item.class_id
+                                for item in scene.cells.instances
+                            },
+                            erased_source_instance_ids=(
+                                executable_contract.erase_instance_ids
+                            ),
                             tool_trace=trace,
                         )
                     )
             candidates = tuple(joint_candidates[:12])
-            batch_max_joint = max((item.ledger.joint_pixels for item in candidates), default=0)
+            batch_max_joint = max(
+                (item.ledger.joint_pixels for item in candidates), default=0
+            )
             for candidate in candidates:
                 candidate.tool_trace["batch_max_safe_joint_pixels"] = batch_max_joint
+                candidate.tool_trace["batch_max_safe_joint_certified"] = True
             tissue_report_for_joint = reports_by_id
             joint_reports = tuple(
                 self.joint_gates.run(
@@ -501,22 +684,47 @@ class JointPathologyEditWorkflow:
                         bundle=bundle,
                         plan=plan,
                         candidate=candidate,
-                        tissue_gate_report=tissue_report_for_joint[candidate.tissue_candidate_id],
+                        tissue_gate_report=tissue_report_for_joint[
+                            candidate.tissue_candidate_id
+                        ],
+                        executable_contract=contract_by_joint_candidate[
+                            candidate.candidate_id
+                        ],
                     )
                 )
                 for candidate in candidates
             )
             audit.write_candidates(candidates)
-            audit.write_json("joint_gate_reports.json", [item.to_metadata() for item in joint_reports])
+            audit.write_json(
+                "joint_gate_reports.json",
+                [item.to_metadata() for item in joint_reports],
+            )
+            audit.write_joint_execution_review(
+                source_image_path=case.source_image_uri,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                candidates=candidates,
+                gate_reports=joint_reports,
+            )
             review_board = audit.write_review_board(
                 source_image_path=case.source_image_uri,
                 source_tissue=source_tissue,
                 source_nuclei=source_nuclei,
                 candidates=candidates,
             )
-            passing_joint = [candidate for candidate in candidates if next(item.passed for item in joint_reports if item.candidate_id == candidate.candidate_id)]
+            passing_joint = [
+                candidate
+                for candidate in candidates
+                if next(
+                    item.passed
+                    for item in joint_reports
+                    if item.candidate_id == candidate.candidate_id
+                )
+            ]
             if not passing_joint:
-                raise JointContractError("no paired tissue--cell candidate passed all joint gates")
+                raise JointContractError(
+                    "no paired tissue--cell candidate passed all joint gates"
+                )
             critic_result = self.critic.review(
                 case=case,
                 bundle=bundle,
@@ -529,22 +737,45 @@ class JointPathologyEditWorkflow:
             if critic_result.abstain or not critic_result.rankings:
                 reasons.append("independent_multimodal_critic_approval_required")
                 return self._finish(
-                    audit=audit, case=case, plan=plan, reports=joint_reports,
-                    critic=critic_result, status="review_required", reasons=reasons,
-                    selected=None, condition=None, usage=usage,
+                    audit=audit,
+                    case=case,
+                    plan=plan,
+                    reports=joint_reports,
+                    critic=critic_result,
+                    status="review_required",
+                    reasons=reasons,
+                    selected=None,
+                    condition=None,
+                    usage=usage,
                 )
             ranking = critic_result.rankings[0]
-            if ranking.confidence < self.config.critic_confidence_threshold or ranking.veto_reasons:
+            if (
+                ranking.confidence < self.config.critic_confidence_threshold
+                or ranking.veto_reasons
+            ):
                 reasons.append("joint_critic_low_confidence_or_veto")
                 return self._finish(
-                    audit=audit, case=case, plan=plan, reports=joint_reports,
-                    critic=critic_result, status="abstained", reasons=reasons,
-                    selected=None, condition=None, usage=usage,
+                    audit=audit,
+                    case=case,
+                    plan=plan,
+                    reports=joint_reports,
+                    critic=critic_result,
+                    status="abstained",
+                    reasons=reasons,
+                    selected=None,
+                    condition=None,
+                    usage=usage,
                 )
-            selected = next(item for item in passing_joint if item.candidate_id == ranking.candidate_id)
+            selected = next(
+                item
+                for item in passing_joint
+                if item.candidate_id == ranking.candidate_id
+            )
+            selected_contract = contract_by_joint_candidate[selected.candidate_id]
             condition = JointCondition(
                 case_id=case.case_id,
                 candidate_id=selected.candidate_id,
+                executable_contract_id=selected_contract.contract_id,
                 target_tissue_mask=selected.target_tissue_mask,
                 target_nuclei_mask=selected.target_nuclei_mask,
                 tissue_change=selected.tissue_change,
@@ -561,22 +792,38 @@ class JointPathologyEditWorkflow:
                 plan=plan,
                 bundle=bundle,
                 candidate=selected,
+                executable_contract=selected_contract,
             )
-            audit.paths.update({"handoff_" + key: value for key, value in handoff_paths.items()})
+            audit.paths.update(
+                {"handoff_" + key: value for key, value in handoff_paths.items()}
+            )
             return self._finish(
-                audit=audit, case=case, plan=plan, reports=joint_reports,
+                audit=audit,
+                case=case,
+                plan=plan,
+                reports=joint_reports,
                 critic=critic_result,
                 status=("selected" if self.config.production else "selected_research"),
-                reasons=(), selected=selected.candidate_id, condition=condition, usage=usage,
+                reasons=(),
+                selected=selected.candidate_id,
+                condition=condition,
+                usage=usage,
             )
         except Exception as exc:  # noqa: BLE001 - orchestration must fail closed
             reasons.append(f"{type(exc).__name__}: {exc}")
             if candidates:
                 audit.write_candidates(candidates)
             return self._finish(
-                audit=audit, case=case, plan=plan, reports=joint_reports,
-                critic=critic_result, status="abstained", reasons=reasons,
-                selected=None, condition=None, usage=usage,
+                audit=audit,
+                case=case,
+                plan=plan,
+                reports=joint_reports,
+                critic=critic_result,
+                status="abstained",
+                reasons=reasons,
+                selected=None,
+                condition=None,
+                usage=usage,
             )
 
     def _run_cell_only(
@@ -618,7 +865,11 @@ class JointPathologyEditWorkflow:
             },
         )
         audit.write_json("joint_edit_plan.json", plan.to_metadata())
-        interface_id = plan.cell_plan.interface_ids[0]
+        interface_id = (
+            plan.cell_plan.interface_ids[0]
+            if plan.cell_plan.interface_ids
+            else plan.cell_plan.core_zone
+        )
         preserved_tissue = CandidateMask(
             candidate_id="tissue-preserved",
             interface_id=interface_id,
@@ -638,17 +889,30 @@ class JointPathologyEditWorkflow:
             checks=(),
         )
         audit.write_json("tissue_gate_reports.json", [tissue_report.to_metadata()])
-        program = self.cell_program_compiler.compile(
+        executable_contract = self.executable_contract_compiler.compile(
             case=case,
+            source_tissue=source_tissue,
+            source_nuclei=source_nuclei,
             schema=schema,
             scene=scene,
             plan=plan,
             bundle=bundle,
             tissue_candidate=preserved_tissue,
+            tissue_gate_report=tissue_report,
+            allocation=None,
+            required_checker_ids=(self.joint_gates.required_checker_ids_for(bundle)),
         )
+        audit.write_executable_contract(executable_contract)
         # The mature pipeline owns target-population regeneration. Structured
         # additions are deterministic templates whose anchors may be ranked by
         # the frozen ProbNet but whose count and geometry remain skill-owned.
+        if self.config.production and (
+            self.ranker is None
+            or getattr(self.ranker, "name", "") == "deterministic_distance_ranker"
+        ):
+            raise JointContractError(
+                "production cell-only execution requires the frozen ProbNet ranker"
+            )
         layouts = generate_cell_layouts(
             source_tissue=source_tissue,
             source_nuclei=source_nuclei,
@@ -658,7 +922,7 @@ class JointPathologyEditWorkflow:
             plan=plan,
             bundle=bundle,
             allocation=None,
-            compiled_program=program,
+            executable_contract=executable_contract,
             seed=case.seed,
             ranker=self.ranker,
             variants=self.config.cell_layouts_per_tissue,
@@ -674,9 +938,7 @@ class JointPathologyEditWorkflow:
                 eligible_ids=layouts[0].trace.get("reference_shape_ids", ()),
                 rejected=layouts[0].trace.get("reference_shape_rejections", {}),
             )
-        prohibited = set(
-            bundle.annotation_profile.prohibit_generation_support_fine_ids
-        )
+        prohibited = set(bundle.annotation_profile.prohibit_generation_support_fine_ids)
         generation_allowed = ~np.isin(source_tissue, tuple(prohibited))
         candidates = []
         for layout in layouts:
@@ -699,11 +961,17 @@ class JointPathologyEditWorkflow:
                     target_nuclei=layout.target_nuclei_mask,
                     generation_halo_px=plan.coupling_plan.maximum_halo_px,
                     generation_allowed_region=generation_allowed,
+                    generation_support_contract=(
+                        executable_contract.cell_program.support_context_region
+                    ),
                     source_instance_masks=scene.instance_masks,
                     source_instance_classes={
                         item.instance_id: item.class_id
                         for item in scene.cells.instances
                     },
+                    erased_source_instance_ids=(
+                        executable_contract.erase_instance_ids
+                    ),
                     tool_trace=trace,
                 )
             )
@@ -712,6 +980,7 @@ class JointPathologyEditWorkflow:
             candidate.tool_trace["batch_max_safe_joint_pixels"] = max(
                 item.ledger.joint_pixels for item in candidates
             )
+            candidate.tool_trace["batch_max_safe_joint_certified"] = True
         reports = tuple(
             self.joint_gates.run(
                 JointGateContext(
@@ -724,6 +993,7 @@ class JointPathologyEditWorkflow:
                     plan=plan,
                     candidate=candidate,
                     tissue_gate_report=tissue_report,
+                    executable_contract=executable_contract,
                 )
             )
             for candidate in candidates
@@ -774,7 +1044,10 @@ class JointPathologyEditWorkflow:
                 usage=usage,
             )
         ranking = critic.rankings[0]
-        if ranking.confidence < self.config.critic_confidence_threshold or ranking.veto_reasons:
+        if (
+            ranking.confidence < self.config.critic_confidence_threshold
+            or ranking.veto_reasons
+        ):
             return self._finish(
                 audit=audit,
                 case=case,
@@ -793,6 +1066,7 @@ class JointPathologyEditWorkflow:
         condition = JointCondition(
             case_id=case.case_id,
             candidate_id=selected.candidate_id,
+            executable_contract_id=executable_contract.contract_id,
             target_tissue_mask=selected.target_tissue_mask,
             target_nuclei_mask=selected.target_nuclei_mask,
             tissue_change=selected.tissue_change,
@@ -809,6 +1083,7 @@ class JointPathologyEditWorkflow:
             plan=plan,
             bundle=bundle,
             candidate=selected,
+            executable_contract=executable_contract,
         )
         audit.paths.update(
             {"handoff_" + key: value for key, value in handoff_paths.items()}
@@ -826,7 +1101,20 @@ class JointPathologyEditWorkflow:
             usage=usage,
         )
 
-    def _finish(self, *, audit, case, plan, reports, critic, status, reasons, selected, condition, usage):
+    def _finish(
+        self,
+        *,
+        audit,
+        case,
+        plan,
+        reports,
+        critic,
+        status,
+        reasons,
+        selected,
+        condition,
+        usage,
+    ):
         summary = {
             "status": status,
             "selected_candidate_id": selected,
@@ -867,13 +1155,64 @@ def _complete_instance_extension_pixels(
     return int(np.count_nonzero(closure))
 
 
+def _summarize_tissue_execution_failure(
+    execution_batch,
+    *,
+    retry_index: int,
+) -> dict:
+    """Turn hard failures into structured feedback for Planner and tools."""
+
+    hard_failures: dict[str, int] = {}
+    tissue_passed_ids = set()
+    for report in execution_batch.tissue_gate_reports:
+        if report.passed:
+            tissue_passed_ids.add(report.candidate_id)
+        for check in report.checks:
+            if check.severity == "hard" and not check.passed:
+                hard_failures[check.check_id] = (
+                    hard_failures.get(check.check_id, 0) + 1
+                )
+    cell_failures: dict[str, int] = {}
+    failed_candidate_ids = set()
+    for report in execution_batch.cell_feasibility_reports:
+        if report.passed:
+            continue
+        failed_candidate_ids.add(report.candidate_id)
+        for reason in report.reasons:
+            cell_failures[reason] = cell_failures.get(reason, 0) + 1
+    candidate_by_id = {
+        item.candidate_id: item for item in execution_batch.all_candidates
+    }
+    failed_interface_ids = set()
+    for candidate_id in failed_candidate_ids or set(candidate_by_id):
+        candidate = candidate_by_id.get(candidate_id)
+        if candidate is None:
+            continue
+        failed_interface_ids.update(
+            candidate.tool_trace.get("interface_ids", (candidate.interface_id,))
+        )
+    return {
+        "retry_index": int(retry_index),
+        "stage": (
+            "cell_feasibility" if tissue_passed_ids else "tissue_gate"
+        ),
+        "hard_tissue_failure_counts": dict(sorted(hard_failures.items())),
+        "cell_feasibility_failure_counts": dict(sorted(cell_failures.items())),
+        "failed_interface_ids": sorted(failed_interface_ids),
+        "required_action": (
+            "select broader or alternative cell-feasible interfaces and anchors; "
+            "redistribute area across shallower fronts; use a new deterministic tool seed"
+        ),
+    }
+
+
 def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext:
     total = int(np.prod(shape))
     target = allocation.tissue_target_pixels / max(1, total)
     floor = allocation.tissue_execution_floor_pixels / max(1, total)
     budget = AreaBudget(
         target_fraction=target,
-        min_fraction=(floor if target > floor else target),
+        min_fraction=(min(target, floor)),
         max_fraction=target,
         basis="whole_mask",
         relative_tolerance=0.0,
@@ -916,7 +1255,9 @@ def _validate_digests(case: JointCaseContext) -> None:
                 "native nucleus instance provenance digest is missing"
             )
         expected[case.source_nuclei_instances_uri] = instance_digest
-    mismatches = [path for path, digest in expected.items() if sha256_file(path) != digest]
+    mismatches = [
+        path for path, digest in expected.items() if sha256_file(path) != digest
+    ]
     if mismatches:
         raise JointContractError("source digest mismatch: " + ", ".join(mismatches))
 

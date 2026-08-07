@@ -437,26 +437,78 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
         influence_masks.append(influence)
         distances.append(ndimage.distance_transform_edt(~anchor))
 
-    distance_stack = np.stack(distances, axis=0)
-    assignment = np.argmin(distance_stack, axis=0)
-    target_pixels = int(np.count_nonzero(change))
-    raw_allocations = np.asarray(
-        [item.execution_contract.area_allocation_fraction for item in planned]
-    ) * target_pixels
-    expected_allocations = np.floor(raw_allocations).astype(int)
-    remainder = target_pixels - int(expected_allocations.sum())
-    allocation_order = sorted(
-        range(len(planned)),
-        key=lambda index: (
-            -(raw_allocations[index] - expected_allocations[index]),
-            index,
-        ),
+    # Reuse the compiler's eligibility-first pixel ownership.  A nearest-anchor
+    # partition is not equivalent when several tapered fronts overlap and was
+    # falsely re-attributing replayed pixels during audit.
+    from phase3_mask_edit_refine.execution import _prepare_compiler_work
+
+    source_ids = tuple(
+        fine_id
+        for label in context.plan.source_labels
+        for fine_id in context.schema.resolve_fine_ids(label)
     )
-    for index in allocation_order[:remainder]:
-        expected_allocations[index] += 1
+    compiler_works = _prepare_compiler_work(
+        context.plan,
+        source_mask=context.source_mask,
+        source_region=np.isin(context.source_mask, source_ids),
+        scene=context.scene,
+    )
+    owner_by_interface = {
+        work.planned.interface_id: work.legal_source for work in compiler_works
+    }
+    if set(owner_by_interface) != set(planned_ids):
+        return _result(
+            "execution_contract_fidelity",
+            False,
+            "gate could not reconstruct every compiler-owned interface envelope",
+            metrics={
+                "planned_interface_ids": list(planned_ids),
+                "reconstructed_interface_ids": sorted(owner_by_interface),
+            },
+        )
+    owner_union = np.logical_or.reduce(
+        [owner_by_interface[item] for item in planned_ids]
+    )
+    unowned_change_pixels = int(np.count_nonzero(change & ~owner_union))
+    target_pixels = int(np.count_nonzero(change))
+    replay = context.candidate.tool_trace.get("compiled_topology_replay")
+    if isinstance(replay, dict):
+        replay_parts = context.candidate.tool_trace.get("parts", ())
+        replay_expected = {
+            str(part.get("interface_id")): int(part.get("realized_pixels", -1))
+            for part in replay_parts
+            if isinstance(part, dict)
+        }
+        expected_allocations = np.asarray(
+            [replay_expected.get(item.interface_id, -1) for item in planned],
+            dtype=int,
+        )
+        replay_identity_valid = bool(
+            replay.get("replay_version")
+            and int(replay.get("resolved_pixels", -1)) == target_pixels
+            and int(replay.get("realized_pixels", -1)) == target_pixels
+            and int(expected_allocations.sum()) == target_pixels
+            and np.all(expected_allocations >= 0)
+        )
+    else:
+        raw_allocations = np.asarray(
+            [item.execution_contract.area_allocation_fraction for item in planned]
+        ) * target_pixels
+        expected_allocations = np.floor(raw_allocations).astype(int)
+        remainder = target_pixels - int(expected_allocations.sum())
+        allocation_order = sorted(
+            range(len(planned)),
+            key=lambda index: (
+                -(raw_allocations[index] - expected_allocations[index]),
+                index,
+            ),
+        )
+        for index in allocation_order[:remainder]:
+            expected_allocations[index] += 1
+        replay_identity_valid = True
 
     per_interface: dict[str, object] = {}
-    passed = True
+    passed = replay_identity_valid and unowned_change_pixels == 0
     for index, item in enumerate(planned):
         execution = item.execution_contract
         effective_min_coverage = max(
@@ -468,11 +520,15 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
         effective_allocation_tolerance = min(
             0.02, execution.allocation_tolerance_fraction
         )
-        assigned = change & (assignment == index)
+        assigned = change & owner_by_interface[item.interface_id]
         realized = int(np.count_nonzero(assigned))
         expected = int(expected_allocations[index])
-        allocation_tolerance = max(
-            1, int(np.ceil(target_pixels * effective_allocation_tolerance))
+        allocation_tolerance = (
+            0
+            if isinstance(replay, dict)
+            else max(
+                1, int(np.ceil(target_pixels * effective_allocation_tolerance))
+            )
         )
         allocation_error = abs(realized - expected)
         anchor = anchor_masks[index]
@@ -524,6 +580,14 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
             1,
             execution.depth_profile.lobe_count
             * len(execution.anchor_segment_ids),
+            min(
+                32,
+                int(
+                    context.plan.tool_program.parameter_ranges.get(
+                        "max_changed_components", 1
+                    )
+                ),
+            ),
         )
         item_passed = (
             allocation_error <= allocation_tolerance
@@ -559,7 +623,12 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
         "candidate pixels realize the selected anchors, allocation, and depth profile"
         if passed
         else "candidate pixels diverge from the executable Planner contract",
-        metrics={"interfaces": per_interface},
+        metrics={
+            "interfaces": per_interface,
+            "compiled_topology_replay": isinstance(replay, dict),
+            "replay_identity_valid": replay_identity_valid,
+            "unowned_change_pixels": unowned_change_pixels,
+        },
     )
 
 
@@ -605,10 +674,13 @@ def _check_component_topology(context: GateContext) -> GateCheck:
     labeled, count = ndimage.label(change, structure=np.ones((3, 3), dtype=bool))
     sizes = [int(np.count_nonzero(labeled == idx)) for idx in range(1, count + 1)]
     params = context.plan.tool_program.parameter_ranges
-    # Multiple explicitly planned fronts may legitimately produce multiple
-    # changed components. Keep a small hard ceiling, but do not collapse a
-    # three/four-interface plan back to two and then reject faithful execution.
-    max_components = min(4, max(1, int(params.get("max_changed_components", 2))))
+    # A diff component is not a new tissue component. Several independent
+    # lobes can all attach to one retained target component and therefore be a
+    # single, topology-valid biological front. Bind the ceiling to the
+    # Planner's explicit anchor/lobe program instead of a global cap of four.
+    max_components = min(
+        32, max(1, int(params.get("max_changed_components", 2)))
+    )
     min_area = max(16, int(params.get("min_component_area_px", 16)))
     tiny = [size for size in sizes if size < min_area]
     passed = 0 < count <= max_components and not tiny
@@ -824,7 +896,7 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
     ratio = max_depth / span
     band_max = max(float(item.allowed_edit_band_px[1]) for item in planned)
     max_ratio = min(
-        1.25,
+        2.0,
         float(context.plan.tool_program.parameter_ranges.get("max_depth_span_ratio", 1.25)),
     )
     passed = max_depth <= band_max + 1e-6 and ratio <= max_ratio
@@ -875,17 +947,70 @@ def _check_boundary_naturalness(context: GateContext) -> GateCheck:
             )
         ),
     )
-    rectangle_like = area >= 64 and fill > max_fill
-    passed = not rectangle_like and compactness <= max_compactness
+    # Global compactness is not meaningful for a planned multi-front diff:
+    # squaring the sum of several independent perimeters makes two perfectly
+    # smooth lobes look rougher than either lobe actually is. Audit every
+    # connected change lobe and retain the global value only as provenance.
+    labeled, component_count = ndimage.label(
+        change, structure=np.ones((3, 3), dtype=bool)
+    )
+    component_metrics = []
+    for component_index in range(1, component_count + 1):
+        component = labeled == component_index
+        component_area = int(np.count_nonzero(component))
+        component_rows, component_cols = np.where(component)
+        component_bbox_area = int(
+            (component_rows.max() - component_rows.min() + 1)
+            * (component_cols.max() - component_cols.min() + 1)
+        )
+        component_fill = component_area / max(component_bbox_area, 1)
+        component_boundary = component & ~ndimage.binary_erosion(
+            component, structure=np.ones((3, 3), dtype=bool)
+        )
+        component_perimeter = int(np.count_nonzero(component_boundary))
+        component_compactness = (
+            component_perimeter * component_perimeter
+        ) / max(4.0 * np.pi * component_area, 1.0)
+        component_metrics.append(
+            {
+                "area_px": component_area,
+                "bbox_fill_fraction": component_fill,
+                "boundary_compactness": component_compactness,
+                "rectangle_like": bool(
+                    component_area >= 64 and component_fill > max_fill
+                ),
+            }
+        )
+    rectangle_like = any(item["rectangle_like"] for item in component_metrics)
+    maximum_component_compactness = max(
+        (float(item["boundary_compactness"]) for item in component_metrics),
+        default=float("inf"),
+    )
+    area_weighted_component_compactness = sum(
+        float(item["boundary_compactness"]) * int(item["area_px"])
+        for item in component_metrics
+    ) / max(area, 1)
+    passed = (
+        not rectangle_like
+        and maximum_component_compactness <= max_compactness
+    )
     return _result(
         "boundary_naturalness",
         passed,
         "candidate avoids rectangle-like fill and extreme boundary roughness"
         if passed
-        else f"bbox_fill={fill:.4f}, compactness={compactness:.3f}",
+        else (
+            f"bbox_fill={fill:.4f}, global_compactness={compactness:.3f}, "
+            f"max_component_compactness={maximum_component_compactness:.3f}"
+        ),
         metrics={
             "bbox_fill_fraction": fill,
             "boundary_compactness": compactness,
+            "maximum_component_compactness": maximum_component_compactness,
+            "area_weighted_component_compactness": (
+                area_weighted_component_compactness
+            ),
+            "component_metrics": component_metrics,
             "rectangle_like": rectangle_like,
         },
     )

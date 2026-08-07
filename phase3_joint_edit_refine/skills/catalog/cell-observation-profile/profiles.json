@@ -12,6 +12,14 @@
         "4": "dead",
         "5": "epithelial"
       },
+      "tissue_compatible_classes": {
+        "Tumor": [1, 2, 3, 4, 5],
+        "Stroma": [2, 3],
+        "Other tissue": [2, 3, 5],
+        "Immune infiltrate": [2],
+        "Normal epithelium": [2, 5],
+        "Necrosis": [2, 4]
+      },
       "required_checker_ids": [
         "whole_instance_changes",
         "protected_nuclei_preserved",

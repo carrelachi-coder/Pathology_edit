@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast Local Cell Population"
+  short_description: "Audit bounded breast cell population edits"
+  default_prompt: "Use $breast-local-population-modulation to plan a bounded breast cellularity edit."

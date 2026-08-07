@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any
 
-from phase3_joint_edit_refine.models import CELL_ACTIONS, LAYOUT_PROGRAMS, JointContractError
+from phase3_joint_edit_refine.models import (
+    CELL_ACTIONS,
+    LAYOUT_PROGRAMS,
+    JointContractError,
+)
 
 SUPPORT_STATUSES = frozenset(
     {"supported", "conditionally_supported", "render_only", "unsupported"}
@@ -14,6 +19,9 @@ SUPPORT_STATUSES = frozenset(
 REVIEW_STATUSES = frozenset({"draft", "empirically_validated", "internally_reviewed"})
 PRIMITIVE_SCOPES = frozenset({"tissue_and_cell", "cell_only"})
 PRIMITIVE_BUDGET_MODES = frozenset({"joint_area_with_tissue_floor", "count_extent"})
+SEAM_MODES = frozenset(
+    {"adaptive_population_continuity", "turnover_transition", "not_applicable"}
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +47,20 @@ class TissueProgramContract:
     allowed_tools: tuple[str, ...]
     required_checker_ids: tuple[str, ...]
     prohibited_structures: tuple[str, ...]
+    front: TissueFrontContract
+
+
+@dataclass(frozen=True)
+class TissueFrontContract:
+    """Mechanism-owned executable shape bounds for tissue displacement."""
+
+    profile_mode: str
+    edge_depth_ratio: float
+    taper_fraction: float
+    lobe_count: int
+    noise_depth_ratio: float
+    maximum_band_px: int
+    maximum_depth_span_ratio: float
 
 
 @dataclass(frozen=True)
@@ -50,7 +72,27 @@ class CellProgramContract:
     halo_policy: str
     halo_distance_px: tuple[int, int]
     cluster_size_range: tuple[int, int]
+    seam: SeamContract
+    render_owned_clearance_primitives: tuple[str, ...]
     required_checker_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SeamContract:
+    """Skill-owned cellular continuity contract at an edited tissue seam.
+
+    The seam is compiled only after Planner-selected anchors and a concrete
+    tissue candidate exist.  Distances are expressed in local cell scales so
+    the same executor works across organs and resolutions.
+    """
+
+    mode: str
+    width_cell_diameters: tuple[float, float]
+    reference_area_quantiles: tuple[float, float]
+    maximum_empty_run_cell_diameters: float
+    density_ratio_range: tuple[float, float]
+    minimum_anchor_coverage_fraction: float
+    requires_new_target_cells: bool
 
 
 @dataclass(frozen=True)
@@ -60,6 +102,7 @@ class CouplingContract:
     joint_area_mode: str
     tissue_floor_applies: bool
     cell_only_target_fraction: float
+    cell_footprint_spill_reserve_fraction: float
     render_support_policy_id: str
 
 
@@ -69,6 +112,18 @@ class RenderContract:
     veto_findings: tuple[str, ...]
     mask_guarantees: tuple[str, ...]
     render_only_claims: tuple[str, ...]
+    required_findings_by_primitive: dict[str, tuple[str, ...]]
+    veto_findings_by_primitive: dict[str, tuple[str, ...]]
+
+    def required_for(self, primitive_id: str) -> tuple[str, ...]:
+        return self.required_findings_by_primitive.get(
+            primitive_id, self.required_findings
+        )
+
+    def vetoes_for(self, primitive_id: str) -> tuple[str, ...]:
+        return self.veto_findings_by_primitive.get(
+            primitive_id, self.veto_findings
+        )
 
 
 @dataclass(frozen=True)
@@ -99,6 +154,11 @@ class JointMechanismSkill:
         recognition = _mapping(payload, "recognition_contract")
         representability = _mapping(payload, "representability_contract")
         tissue = _mapping(payload, "tissue_program")
+        front = tissue.get("front_contract", {})
+        if not isinstance(front, Mapping):
+            raise JointContractError(
+                f"{mechanism_id}.tissue_program.front_contract must be a mapping"
+            )
         cell = _mapping(payload, "cell_program")
         coupling = _mapping(payload, "coupling_contract")
         render = _mapping(payload, "render_contract")
@@ -127,6 +187,18 @@ class JointMechanismSkill:
         cell_only_fraction = float(coupling.get("cell_only_target_fraction", 0.0))
         if not 0.0 <= cell_only_fraction <= 1.0:
             raise JointContractError("cell_only_target_fraction must be in [0,1]")
+        footprint_spill_fraction = float(
+            coupling.get("cell_footprint_spill_reserve_fraction", 0.0)
+        )
+        if not 0.0 <= footprint_spill_fraction <= 1.0:
+            raise JointContractError(
+                "cell_footprint_spill_reserve_fraction must be in [0,1]"
+            )
+        if cell_only_fraction + footprint_spill_fraction > 1.0:
+            raise JointContractError(
+                "cell-only and footprint-spill reserves cannot exceed the patch"
+            )
+        seam = _seam_contract(cell.get("seam_contract"))
         return cls(
             mechanism_id=mechanism_id,
             pathology_domain_id=_string(payload, "pathology_domain_id"),
@@ -162,6 +234,7 @@ class JointMechanismSkill:
                 prohibited_structures=_strings(
                     tissue, "prohibited_structures", allow_empty=True
                 ),
+                front=_tissue_front_contract(front, mechanism_id=mechanism_id),
             ),
             cell_program=CellProgramContract(
                 actions=actions,
@@ -171,6 +244,12 @@ class JointMechanismSkill:
                 halo_policy=_string(cell, "halo_policy"),
                 halo_distance_px=halo,
                 cluster_size_range=cluster,
+                seam=seam,
+                render_owned_clearance_primitives=_strings(
+                    cell,
+                    "render_owned_clearance_primitives",
+                    allow_empty=True,
+                ),
                 required_checker_ids=_strings(cell, "required_checker_ids"),
             ),
             coupling=CouplingContract(
@@ -181,6 +260,7 @@ class JointMechanismSkill:
                 joint_area_mode=_string(coupling, "joint_area_mode"),
                 tissue_floor_applies=bool(coupling.get("tissue_floor_applies", True)),
                 cell_only_target_fraction=cell_only_fraction,
+                cell_footprint_spill_reserve_fraction=footprint_spill_fraction,
                 render_support_policy_id=_string(coupling, "render_support_policy_id"),
             ),
             joint_gate_ids=_strings(payload, "joint_gate_ids"),
@@ -189,6 +269,14 @@ class JointMechanismSkill:
                 veto_findings=_strings(render, "veto_findings"),
                 mask_guarantees=_strings(render, "mask_guarantees", allow_empty=True),
                 render_only_claims=_strings(render, "render_only_claims", allow_empty=True),
+                required_findings_by_primitive=_string_sequence_mapping(
+                    render.get("required_findings_by_primitive", {}),
+                    key="render_contract.required_findings_by_primitive",
+                ),
+                veto_findings_by_primitive=_string_sequence_mapping(
+                    render.get("veto_findings_by_primitive", {}),
+                    key="render_contract.veto_findings_by_primitive",
+                ),
             ),
             evidence_citations=_strings(payload, "evidence_citations"),
             counterexamples=_strings(payload, "counterexamples"),
@@ -217,7 +305,7 @@ class JointPrimitiveSkill:
     @classmethod
     def from_mapping(
         cls, payload: Mapping[str, Any], *, source_path: str
-    ) -> "JointPrimitiveSkill":
+    ) -> JointPrimitiveSkill:
         status = _string(payload, "review_status")
         if status not in REVIEW_STATUSES:
             raise JointContractError(f"unknown primitive review status: {status}")
@@ -337,6 +425,22 @@ def _strings(payload: Mapping[str, Any], key: str, *, allow_empty: bool = False)
     return result
 
 
+def _string_sequence_mapping(value: Any, *, key: str) -> dict[str, tuple[str, ...]]:
+    if not isinstance(value, Mapping):
+        raise JointContractError(f"{key} must be a mapping")
+    result = {}
+    for current_key, items in value.items():
+        if not isinstance(current_key, str) or not current_key.strip():
+            raise JointContractError(f"{key} contains an empty key")
+        if not isinstance(items, Sequence) or isinstance(items, (str, bytes)):
+            raise JointContractError(f"{key}.{current_key} must be a sequence")
+        normalized = tuple(str(item).strip() for item in items if str(item).strip())
+        if not normalized or len(normalized) != len(items):
+            raise JointContractError(f"{key}.{current_key} contains empty values")
+        result[current_key.strip()] = normalized
+    return result
+
+
 def _ints(payload: Mapping[str, Any], key: str) -> tuple[int, ...]:
     value = payload.get(key, ())
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
@@ -349,6 +453,114 @@ def _pair(payload: Mapping[str, Any], key: str) -> tuple[int, int]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or len(value) != 2:
         raise JointContractError(f"{key} must contain two integers")
     return int(value[0]), int(value[1])
+
+
+def _float_pair(value: Any, *, name: str) -> tuple[float, float]:
+    if (
+        not isinstance(value, Sequence)
+        or isinstance(value, (str, bytes))
+        or len(value) != 2
+    ):
+        raise JointContractError(f"{name} must contain two numbers")
+    result = float(value[0]), float(value[1])
+    if not all(isfinite(item) for item in result):
+        raise JointContractError(f"{name} must contain finite numbers")
+    return result
+
+
+def _seam_contract(value: Any) -> SeamContract:
+    # Existing draft mechanisms remain loadable, but the default itself is a
+    # complete, auditable contract rather than the old fixed 25% quota.
+    payload = value if isinstance(value, Mapping) else {}
+    mode = str(payload.get("mode", "adaptive_population_continuity"))
+    if mode not in SEAM_MODES:
+        raise JointContractError(f"unknown seam mode: {mode}")
+    width = _float_pair(
+        payload.get("width_cell_diameters", (1.0, 1.5)),
+        name="seam width_cell_diameters",
+    )
+    quantiles = _float_pair(
+        payload.get("reference_area_quantiles", (0.25, 0.75)),
+        name="seam reference_area_quantiles",
+    )
+    density = _float_pair(
+        payload.get("density_ratio_range", (0.25, 4.0)),
+        name="seam density_ratio_range",
+    )
+    maximum_empty_run = float(
+        payload.get("maximum_empty_run_cell_diameters", 2.0)
+    )
+    coverage = float(payload.get("minimum_anchor_coverage_fraction", 0.5))
+    if not 0.25 <= width[0] <= width[1] <= 4.0:
+        raise JointContractError("seam width_cell_diameters is outside [0.25,4]")
+    if not 0.0 <= quantiles[0] <= quantiles[1] <= 1.0:
+        raise JointContractError("seam reference quantiles must lie in [0,1]")
+    if not 0.0 < density[0] <= density[1]:
+        raise JointContractError("seam density ratio range is invalid")
+    if not 0.5 <= maximum_empty_run <= 6.0:
+        raise JointContractError(
+            "maximum_empty_run_cell_diameters is outside [0.5,6]"
+        )
+    if not 0.0 <= coverage <= 1.0:
+        raise JointContractError(
+            "minimum_anchor_coverage_fraction must lie in [0,1]"
+        )
+    return SeamContract(
+        mode=mode,
+        width_cell_diameters=width,
+        reference_area_quantiles=quantiles,
+        maximum_empty_run_cell_diameters=maximum_empty_run,
+        density_ratio_range=density,
+        minimum_anchor_coverage_fraction=coverage,
+        requires_new_target_cells=bool(
+            payload.get("requires_new_target_cells", mode == "adaptive_population_continuity")
+        ),
+    )
+
+
+def _tissue_front_contract(
+    payload: Mapping[str, Any], *, mechanism_id: str
+) -> TissueFrontContract:
+    """Parse executable front geometry, with a conservative legacy default."""
+
+    mode = str(payload.get("profile_mode", "multi_lobe"))
+    if mode not in {"tapered_lobe", "uniform_front", "multi_lobe"}:
+        raise JointContractError(
+            f"{mechanism_id} has unsupported tissue front profile: {mode}"
+        )
+    edge = float(payload.get("edge_depth_ratio", 0.10))
+    taper = float(payload.get("taper_fraction", 0.42))
+    lobe_count = int(payload.get("lobe_count", 3))
+    noise = float(payload.get("noise_depth_ratio", 0.30))
+    maximum_band = int(payload.get("maximum_band_px", 128))
+    depth_span = float(payload.get("maximum_depth_span_ratio", 1.25))
+    if not 0.0 <= edge <= 1.0:
+        raise JointContractError("tissue front edge_depth_ratio must lie in [0,1]")
+    if not 0.0 <= taper <= 0.5:
+        raise JointContractError("tissue front taper_fraction must lie in [0,0.5]")
+    if not 1 <= lobe_count <= 3:
+        raise JointContractError("tissue front lobe_count must lie in [1,3]")
+    if not 0.0 <= noise <= 1.0:
+        raise JointContractError("tissue front noise_depth_ratio must lie in [0,1]")
+    if not 1 <= maximum_band <= 256:
+        raise JointContractError("tissue front maximum_band_px must lie in [1,256]")
+    if not 0.25 <= depth_span <= 2.0:
+        raise JointContractError(
+            "tissue front maximum_depth_span_ratio must lie in [0.25,2.0]"
+        )
+    if mode == "uniform_front":
+        edge = 1.0
+        taper = 0.0
+        lobe_count = 1
+    return TissueFrontContract(
+        profile_mode=mode,
+        edge_depth_ratio=edge,
+        taper_fraction=taper,
+        lobe_count=lobe_count,
+        noise_depth_ratio=noise,
+        maximum_band_px=maximum_band,
+        maximum_depth_span_ratio=depth_span,
+    )
 
 
 def _primitive_label_contracts(payload: Mapping[str, Any], key: str) -> dict[str, dict[str, tuple[str, ...]]]:
