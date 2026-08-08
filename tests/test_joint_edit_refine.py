@@ -14,13 +14,26 @@ import numpy as np
 from PIL import Image
 
 from phase3_joint_edit_refine.agents import JOINT_PLAN_JSON_SCHEMA
+from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
 from phase3_joint_edit_refine.budget import JointFeasibilitySolver
-from phase3_joint_edit_refine.cell_layouts import build_reference_shape_library
+from phase3_joint_edit_refine.cell_layouts import (
+    ReferenceNucleusShape,
+    build_reference_shape_library,
+)
+from phase3_joint_edit_refine.cell_programs import (
+    _cap_density_field_quotas,
+    _depletion_band_edges,
+)
 from phase3_joint_edit_refine.critic import DeterministicJointResearchCritic
+from phase3_joint_edit_refine.feasibility import (
+    _target_interface_population_density,
+    augment_tissue_scene_with_nuclei_preflight,
+)
 from phase3_joint_edit_refine.g2_pilot import build_local_joint_records
 from phase3_joint_edit_refine.gates import (
     JointGateRegistry,
     _added_instance_areas_by_class,
+    _fine_pattern_preserved,
     _recorded_instance_areas_by_class,
 )
 from phase3_joint_edit_refine.generator_adapter import (
@@ -31,17 +44,20 @@ from phase3_joint_edit_refine.ledger import analyze_joint_change
 from phase3_joint_edit_refine.mature_probnet_adapter import (
     MatureProbNetCellExecutor,
     MatureProbNetConfig,
+    _mature_nucleus_area_medians,
 )
 from phase3_joint_edit_refine.models import (
     CellCountExtentBudget,
     JointAreaBudget,
     JointCaseContext,
+    JointContractError,
     JointCriticRanking,
     JointCriticResult,
     JointGateCheck,
     JointGateReport,
 )
 from phase3_joint_edit_refine.nuclei import iter_instances
+from phase3_joint_edit_refine.packing import certify_complete_footprint_packing
 from phase3_joint_edit_refine.planner import HeuristicJointPlanner
 from phase3_joint_edit_refine.post_generation import (
     audit_joint_generation_handoff,
@@ -50,19 +66,29 @@ from phase3_joint_edit_refine.profile_statistics import (
     build_annotation_profile_statistics,
 )
 from phase3_joint_edit_refine.scene import build_joint_scene_analysis
-from phase3_joint_edit_refine.seam import compile_continuity_center_quota
+from phase3_joint_edit_refine.seam import (
+    compile_continuity_center_quota,
+    compile_executable_continuity_count,
+)
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
 from phase3_joint_edit_refine.tissue_planner import (
+    _effective_tissue_topology,
     _normalize_integer_allocations,
 )
 from phase3_joint_edit_refine.workflow import (
     JointPathologyEditWorkflow,
+    _as_tissue_case,
+    _candidate_preserving_closure_pixels,
+    _joint_area_feedback_candidate_ids,
     _maximum_safe_below_target_joint_pixels,
+    _minimum_safe_above_target_joint_pixels,
+    _provisional_union_requires_rebalance,
 )
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import HeuristicInterfacePlanner
-from phase3_mask_edit_refine.gates import GateRegistry
+from phase3_mask_edit_refine.gates import GateRegistry, _check_edited_label_topology
 from phase3_mask_edit_refine.models import GateReport
+from phase3_mask_edit_refine.scene import build_scene_analysis
 
 
 def _sha(path: Path) -> str:
@@ -70,6 +96,198 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_preflight_density_matches_mature_semantic_component_ruler(self):
+        tissue = np.full((32, 32), 11, dtype=np.uint8)
+        nuclei = np.zeros_like(tissue)
+        nuclei[4:7, 4:7] = 1
+        nuclei[6:9, 6:9] = 1  # one 8-connected semantic component
+        nuclei[20:23, 20:23] = 2
+        scene = build_joint_scene_analysis(
+            tissue,
+            nuclei,
+            schema=MaskProfileSchema.from_reference_profile("GLaS"),
+            pixel_size_um=None,
+        )
+
+        density, by_class = _target_interface_population_density(
+            scene,
+            source_tissue=tissue,
+            target_classes=(1,),
+            target_label="Tumor",
+            schema=MaskProfileSchema.from_reference_profile("GLaS"),
+            reference_area_p95=9.0,
+        )
+
+        self.assertAlmostEqual(density, 2 / tissue.size)
+        self.assertAlmostEqual(by_class[1], 1 / tissue.size)
+
+    def test_packing_total_is_at_least_required_seam_quota(self):
+        shape = (24, 24)
+        region = np.zeros(shape, dtype=bool)
+        region[3:21, 3:21] = True
+        reference = ReferenceNucleusShape(
+            instance_id="complete-ref-1",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="semantic_complete_instance",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=region,
+            valid_footprint_region=region,
+            references_by_class={1: (reference,)},
+            requested_count=1,
+            continuity_region=region,
+            required_seam_count=3,
+            required_seam_class=1,
+        )
+
+        self.assertTrue(certificate.passed)
+        self.assertEqual(certificate.requested_count, 3)
+        self.assertEqual(certificate.placed_count, 3)
+
+    def test_typed_seam_does_not_exclude_other_compatible_classes(self):
+        shape = (32, 32)
+        region = np.zeros(shape, dtype=bool)
+        region[3:29, 3:29] = True
+        references = {
+            class_id: (
+                ReferenceNucleusShape(
+                    instance_id=f"complete-ref-{class_id}",
+                    class_id=class_id,
+                    mask=np.ones((1, 1), dtype=bool),
+                    source="semantic_complete_instance",
+                    area_px=1,
+                ),
+            )
+            for class_id in (2, 3)
+        }
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=region,
+            valid_footprint_region=region,
+            references_by_class=references,
+            requested_count=10,
+            class_request_weights={2: 0.8, 3: 0.2},
+            # The complete placement domain is also the seam.  A spatial seam
+            # exclusion would leave no remainder capacity, while the typed
+            # contract correctly permits class 2 beside the two class-3 cells.
+            continuity_region=region,
+            required_seam_count=2,
+            required_seam_class=3,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertEqual(certificate.class_requested_counts, {2: 8, 3: 2})
+        self.assertEqual(certificate.class_placed_counts, {2: 8, 3: 2})
+        self.assertEqual(certificate.placed_seam_count, 2)
+
+    def test_packing_witness_excludes_locally_unsupported_shape_sizes(self):
+        shape = (48, 48)
+        region = np.zeros(shape, dtype=bool)
+        region[2:46, 2:46] = True
+        references = tuple(
+            ReferenceNucleusShape(
+                instance_id=f"shape-{area}",
+                class_id=1,
+                mask=np.ones((1, area), dtype=bool),
+                source="semantic_complete_instance",
+                area_px=area,
+            )
+            for area in (1, 10, 100)
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=region,
+            valid_footprint_region=region,
+            references_by_class={1: references},
+            requested_count=3,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertEqual(certificate.class_reference_median_area_px, {1: 10.0})
+        self.assertEqual(
+            {item.area_px for item in certificate.placements},
+            {10},
+        )
+
+    def test_packing_uses_eight_connected_instance_separation(self):
+        shape = (12, 12)
+        centers = np.zeros(shape, dtype=bool)
+        centers[5, 5] = True
+        centers[6, 6] = True  # diagonal contact under 8-connectivity
+        reference = ReferenceNucleusShape(
+            instance_id="unit-shape",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="semantic_complete_instance",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=2,
+            allow_finite_count_fallback=False,
+        )
+
+        self.assertFalse(certificate.passed)
+        self.assertEqual(certificate.placed_count, 1)
+
+    def test_packing_uses_bounded_max_safe_finite_count(self):
+        shape = (20, 20)
+        centers = np.zeros(shape, dtype=bool)
+        for row in (3, 8, 13):
+            for col in (3, 8, 13):
+                centers[row, col] = True
+        reference = ReferenceNucleusShape(
+            instance_id="unit-shape",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="semantic_complete_instance",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=10,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertTrue(certificate.finite_count_fallback_used)
+        self.assertEqual(certificate.nominal_requested_count, 10)
+        self.assertEqual(certificate.minimum_safe_count, 9)
+        self.assertEqual(certificate.requested_count, 9)
+        self.assertEqual(certificate.placed_count, 9)
+
+        strict_recheck = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=10,
+            allow_finite_count_fallback=False,
+        )
+        self.assertFalse(strict_recheck.passed)
+        self.assertFalse(strict_recheck.finite_count_fallback_used)
+        self.assertEqual(strict_recheck.requested_count, 10)
+        self.assertEqual(strict_recheck.placed_count, 9)
+
     def test_added_shape_measurement_excludes_retained_same_class_neighbour(self):
         source = np.zeros((20, 20), dtype=np.uint8)
         source[2:6, 2:6] = 1
@@ -142,6 +360,120 @@ class JointSkillTests(unittest.TestCase):
             48_700,
         )
 
+    def test_depletion_band_edges_reserve_outer_band_under_extent_cap(self):
+        core_end, transition_end, outer_end = _depletion_band_edges(
+            diameter_px=28.0,
+            core_width_cell_diameters=1.25,
+            transition_width_cell_diameters=6.0,
+            outer_width_cell_diameters=2.0,
+            maximum_extent_px=192,
+            maximum_observed_distance_px=240.0,
+        )
+        self.assertLess(core_end, transition_end)
+        self.assertLess(transition_end, outer_end)
+        self.assertAlmostEqual(outer_end, 192.0)
+        self.assertAlmostEqual(outer_end - transition_end, 28.0)
+
+    def test_density_field_count_cap_preserves_radial_targets(self):
+        quotas = _cap_density_field_quotas(
+            quotas=[3, 6, 4, 3, 2, 0, 0],
+            source_counts=[5, 14, 12, 12, 9, 2, 0],
+            target_fractions=[0.55, 0.42, 0.348, 0.276, 0.204, 0.132, 0.06],
+            maximum_count=15,
+            minimum_core=1,
+            minimum_transition=1,
+        )
+        self.assertEqual(quotas, [3, 5, 4, 2, 1, 0, 0])
+
+    def test_min_safe_over_target_requires_tissue_floor_and_other_gates(self):
+        candidates = (
+            SimpleNamespace(
+                candidate_id="safe-nearest",
+                ledger=SimpleNamespace(joint_pixels=51_252, tissue_pixels=36_701),
+            ),
+            SimpleNamespace(
+                candidate_id="safe-larger",
+                ledger=SimpleNamespace(joint_pixels=51_364, tissue_pixels=36_701),
+            ),
+            SimpleNamespace(
+                candidate_id="not-at-floor",
+                ledger=SimpleNamespace(joint_pixels=50_900, tissue_pixels=37_000),
+            ),
+            SimpleNamespace(
+                candidate_id="unsafe-smaller",
+                ledger=SimpleNamespace(joint_pixels=51_000, tissue_pixels=36_701),
+            ),
+        )
+
+        def report(candidate_id, failures):
+            return JointGateReport(
+                candidate_id=candidate_id,
+                passed=False,
+                checks=tuple(
+                    JointGateCheck(
+                        check_id=check_id,
+                        passed=False,
+                        severity="hard",
+                        detail="test",
+                    )
+                    for check_id in failures
+                ),
+            )
+
+        reports = (
+            report("safe-nearest", {"joint_area"}),
+            report("safe-larger", {"joint_area"}),
+            report("not-at-floor", {"joint_area"}),
+            report("unsafe-smaller", {"joint_area", "whole_instance_changes"}),
+        )
+        self.assertEqual(
+            _minimum_safe_above_target_joint_pixels(
+                candidates,
+                reports,
+                desired_max_pixels=50_804,
+                hard_max_pixels=62_914,
+                tissue_floor_pixels=36_701,
+            ),
+            51_252,
+        )
+        self.assertEqual(
+            _minimum_safe_above_target_joint_pixels(
+                candidates,
+                reports,
+                desired_max_pixels=50_804,
+                hard_max_pixels=62_914,
+                tissue_floor_pixels=36_701,
+                require_tissue_floor=False,
+            ),
+            50_900,
+        )
+
+    def test_area_feedback_uses_safe_sibling_despite_bad_shape_variant(self):
+        def report(candidate_id, failures):
+            return JointGateReport(
+                candidate_id=candidate_id,
+                passed=False,
+                checks=tuple(
+                    JointGateCheck(
+                        check_id=check_id,
+                        passed=False,
+                        severity="hard",
+                        detail="test",
+                    )
+                    for check_id in failures
+                ),
+            )
+
+        reports = (
+            report("shape-bad", {"joint_area", "local_shape_distribution"}),
+            report("safe-for-feedback", {"joint_area"}),
+        )
+
+        self.assertEqual(
+            _joint_area_feedback_candidate_ids(reports),
+            {"safe-for-feedback"},
+        )
+
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
         self.assertEqual(len(repository.mechanisms), 23)
@@ -169,6 +501,21 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(seam.reference_area_quantiles, (0.25, 0.75))
         self.assertGreater(seam.maximum_empty_run_cell_diameters, 0)
         self.assertTrue(seam.requires_new_target_cells)
+
+    def test_melanoma_stromal_backfill_uses_density_not_cell_wall_coverage(self):
+        mechanism = JointSkillRepository().mechanisms[
+            "melanoma-cohesive-nest-sheet"
+        ]
+        increase = mechanism.cell_program.seam_for(
+            "tumor-burden-increase-v1"
+        )
+        decrease = mechanism.cell_program.seam_for(
+            "tumor-burden-decrease-v1"
+        )
+
+        self.assertEqual(increase.minimum_anchor_coverage_fraction, 0.5)
+        self.assertEqual(decrease.minimum_anchor_coverage_fraction, 0.0)
+        self.assertTrue(decrease.requires_new_target_cells)
 
     def test_joint_primitive_execution_scope_is_explicit(self):
         repository = JointSkillRepository()
@@ -340,6 +687,30 @@ class JointSkillTests(unittest.TestCase):
             allocation.joint_target_pixels,
         )
 
+    def test_fixed_point_uses_candidate_preserving_closure(self):
+        self.assertEqual(
+            _candidate_preserving_closure_pixels([5200, 1800, 3400]),
+            1800,
+        )
+        self.assertEqual(_candidate_preserving_closure_pixels([]), 0)
+
+    def test_provisional_union_cannot_trigger_underfill_rebalance(self):
+        self.assertFalse(
+            _provisional_union_requires_rebalance(
+                [36_701, 41_000], hard_max_pixels=62_914
+            )
+        )
+        self.assertTrue(
+            _provisional_union_requires_rebalance(
+                [62_915, 64_000], hard_max_pixels=62_914
+            )
+        )
+        self.assertFalse(
+            _provisional_union_requires_rebalance(
+                [50_000, 63_000], hard_max_pixels=62_914
+            )
+        )
+
     def test_budget_broker_rebalances_from_exact_executed_cell_spill(self):
         repository = JointSkillRepository()
         case = _case_stub()
@@ -414,6 +785,34 @@ class JointSkillTests(unittest.TestCase):
             initial.tissue_floor_pixels,
         )
 
+    def test_tissue_tool_rejects_allocation_below_binding_public_floor(self):
+        repository = JointSkillRepository()
+        case = _case_stub(
+            budget=JointAreaBudget(
+                capacity_floor_policy="lower_to_proven_max_safe",
+                minimum_effective_fraction=0.05,
+            )
+        )
+        bundle = repository.compose(
+            case=case,
+            mechanism_id="colorectal-gland-forming-front",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        allocation = JointFeasibilitySolver().allocate(
+            shape=(512, 512), budget=case.joint_area_budget, bundle=bundle
+        )
+        allocation = replace(
+            allocation,
+            tissue_target_pixels=20_000,
+            tissue_execution_floor_pixels=13_108,
+        )
+
+        with self.assertRaisesRegex(
+            JointContractError, "below the binding meaningful floor"
+        ):
+            _as_tissue_case(case, allocation=allocation, shape=(512, 512))
+
     def test_joint_router_recognizes_nuclei_only_change_as_non_noop(self):
         route = route_joint_handoff(
             {
@@ -452,6 +851,7 @@ class JointSkillTests(unittest.TestCase):
                 dataset_name="GlaS",
                 checkpoint="/models/probnet.pt",
                 instance_library="/models/nuclei-library",
+                device="cuda:0",
             )
         )
         command = executor.build_command(
@@ -465,6 +865,7 @@ class JointSkillTests(unittest.TestCase):
             placement_region_path=Path("P.png"),
             erasure_region_path=Path("E.png"),
             required_placement_region_path=Path("seam.png"),
+            packing_witness_path=Path("packing-witness.json"),
             minimum_required_placements=1,
             maximum_required_placements=1,
             required_nucleus_class=1,
@@ -483,10 +884,12 @@ class JointSkillTests(unittest.TestCase):
         self.assertIn("--minimum-required-placements", command)
         self.assertIn("--maximum-required-placements", command)
         self.assertIn("--required-nucleus-type", command)
+        self.assertIn("--packing-witness", command)
         self.assertIn("--trust-complete-deletion-region", command)
         self.assertIn("--allowed-nucleus-types", command)
         self.assertIn("101", command)
         self.assertIn("103", command)
+        self.assertEqual(command[command.index("--device") + 1], "cuda")
         shape_ratio_index = command.index("--reference-shape-max-area-ratio")
         self.assertEqual(command[shape_ratio_index + 1], "0.0")
         self.assertEqual(
@@ -496,6 +899,14 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(
             command[command.index("--required-nucleus-type") + 1],
             "101",
+        )
+
+    def test_packing_witness_maps_cellvit_classes_to_mature_schema(self):
+        self.assertEqual(
+            _mature_nucleus_area_medians(
+                {"class_reference_median_area_px": {"1": 626.5, "3": 260}}
+            ),
+            {"101": 626.5, "103": 260.0},
         )
 
     def test_continuity_density_interval_compiles_to_an_exact_tool_target(self):
@@ -526,6 +937,42 @@ class JointSkillTests(unittest.TestCase):
         self.assertIsNotNone(quota.maximum_count)
         self.assertGreaterEqual(quota.target_count, quota.minimum_count)
         self.assertLessEqual(quota.target_count, quota.maximum_count)
+
+        executable_count = compile_executable_continuity_count(
+            quota,
+            anchor_pixels=1000,
+            maximum_empty_run_px=50,
+            minimum_anchor_coverage_fraction=0.5,
+        )
+        self.assertGreaterEqual(executable_count, quota.minimum_count)
+        self.assertLessEqual(executable_count, quota.maximum_count)
+
+    def test_continuity_quota_can_use_executor_center_ledger(self):
+        nuclei = np.zeros((24, 24), dtype=np.uint8)
+        target_tissue = np.ones_like(nuclei, dtype=np.uint8)
+        change = np.zeros_like(nuclei, dtype=bool)
+        change[6:16, 8:18] = True
+        anchor = np.zeros_like(change)
+        anchor[6:16, 8] = True
+        centers = np.zeros_like(change)
+        centers[8, 5] = True
+        centers[12, 5] = True
+
+        quota = compile_continuity_center_quota(
+            nuclei_mask=nuclei,
+            target_tissue_mask=target_tissue,
+            tissue_change=change,
+            continuity_region=change,
+            continuity_anchor_mask=anchor,
+            continuity_width_px=6,
+            density_ratio_range=(0.5, 2.0),
+            requires_new_target_cells=True,
+            target_class=1,
+            target_fine_ids=(1,),
+            target_center_mask=centers,
+        )
+
+        self.assertEqual(quota.outer_count, 2)
 
     def test_api_planner_schema_exposes_cell_execution_linkage(self):
         cell_schema = JOINT_PLAN_JSON_SCHEMA["properties"]["cell_plan"]
@@ -660,6 +1107,20 @@ class JointLedgerTests(unittest.TestCase):
         self.assertEqual(len(instances), 2)
         self.assertEqual(
             sum(int(mask.sum()) for _, _, mask in instances), int(touching.sum())
+        )
+
+    def test_semantic_fallback_keeps_unseeded_disconnected_small_nuclei(self):
+        nuclei = np.zeros((48, 48), dtype=np.uint8)
+        for row, col in ((3, 3), (3, 12), (12, 3), (12, 12)):
+            nuclei[row:row + 2, col:col + 2] = 1
+        nuclei[25:30, 25:30] = 1
+
+        instances = tuple(iter_instances(nuclei))
+
+        self.assertEqual(len(instances), 5)
+        self.assertEqual(
+            sum(int(mask.sum()) for _, _, mask in instances),
+            int(np.count_nonzero(nuclei)),
         )
 
 
@@ -850,6 +1311,11 @@ class JointWorkflowTests(unittest.TestCase):
             contract = payload["execution_contract"]["executable_contract"]
             self.assertEqual(
                 contract["contract_id"], result.condition.executable_contract_id
+            )
+            packing = contract["packing_certificate"]
+            self.assertTrue(packing["passed"])
+            self.assertEqual(
+                len(packing["placements"]), packing["requested_count"]
             )
             program = contract["cell_program"]
             self.assertEqual(
@@ -1430,7 +1896,17 @@ def _write_synthetic_case(root: Path) -> JointCaseContext:
         "source_tissue_mask_sha256": _sha(tissue_path),
         "source_nuclei_mask_sha256": _sha(nuclei_path),
         "source_nuclei_instances_sha256": _sha(instances_path),
+        "original_label_map_digest": _sha(tissue_path),
         "auxiliary_structure_sha256": {"gland_or_lumen_support": _sha(auxiliary_path)},
+        "auxiliary_structure_provenance": {
+            "gland_or_lumen_support": {
+                "producer_id": "synthetic-test-auxiliary",
+                "producer_version": "synthetic-test-auxiliary-v1",
+                "observation_scope": "synthetic_fixture",
+                "source_tissue_mask_sha256": _sha(tissue_path),
+                "output_sha256": _sha(auxiliary_path),
+            }
+        },
         "preprocessing_revision": "synthetic-glas-v1",
         "original_instance_mask_digest": _sha(instances_path),
         "patch_grade": "moderately_differentiated",
@@ -1600,6 +2076,254 @@ def _remove_native_necrosis_interface(source: JointCaseContext) -> JointCaseCont
             "original_label_map_digest": _sha(tissue_path),
         },
     )
+
+
+class StructuralHierarchyTests(unittest.TestCase):
+    def test_colorectal_component_resolution_is_retry_only(self):
+        repository = JointSkillRepository()
+        bundle = SimpleNamespace(
+            primitive=repository.primitives["tumor-burden-decrease-v1"],
+            mechanism=repository.mechanisms[
+                "colorectal-gland-forming-front"
+            ],
+        )
+
+        initial = _effective_tissue_topology(
+            bundle,
+            primitive_id="tumor-burden-decrease-v1",
+            retry_index=0,
+            feedback_stage=None,
+        )
+        fallback = _effective_tissue_topology(
+            bundle,
+            primitive_id="tumor-burden-decrease-v1",
+            retry_index=1,
+            feedback_stage="planning_or_compilation",
+        )
+
+        self.assertFalse(initial["allow_source_component_resolution"])
+        self.assertFalse(initial["fallback_activated"])
+        self.assertTrue(fallback["allow_source_component_resolution"])
+        self.assertTrue(fallback["allow_target_hole_resolution"])
+        self.assertEqual(fallback["geometry_mode"], "component_boundary_turnover")
+        self.assertTrue(fallback["fallback_activated"])
+
+    def test_prostate_mechanism_topology_and_shape_bounds_are_skill_owned(self):
+        repository = JointSkillRepository()
+        pattern3 = repository.mechanisms["prostate-pattern-3-growth"]
+        pattern4 = repository.mechanisms["prostate-pattern-4-growth"]
+        self.assertEqual(
+            pattern3.tissue_program.target_component_merge_policy, "forbid"
+        )
+        self.assertEqual(
+            pattern4.tissue_program.target_component_merge_policy,
+            "selected_only",
+        )
+        self.assertGreater(
+            pattern4.tissue_program.front.maximum_boundary_compactness,
+            pattern3.tissue_program.front.maximum_boundary_compactness,
+        )
+        for mechanism in (pattern3, pattern4):
+            self.assertEqual(
+                mechanism.cell_program.seam_for(
+                    "tumor-burden-increase-v1"
+                ).minimum_anchor_coverage_fraction,
+                0.5,
+            )
+            self.assertEqual(
+                mechanism.cell_program.seam_for(
+                    "tumor-burden-decrease-v1"
+                ).minimum_anchor_coverage_fraction,
+                0.0,
+            )
+
+    def test_pattern3_skill_forbids_selected_gland_component_merge(self):
+        schema = MaskProfileSchema.from_reference_profile("PANDA")
+        source = np.full((24, 32), 2, dtype=np.uint8)
+        source[8:16, 3:10] = 8
+        source[8:16, 22:29] = 8
+        target = source.copy()
+        target[11:13, 10:22] = 8
+        scene = build_scene_analysis(source, schema=schema)
+        interfaces = tuple(
+            item
+            for item in scene.graph.interfaces
+            if item.source_label == "Stroma" and item.target_label == "Tumor"
+        )
+        self.assertEqual(len(interfaces), 2)
+        plan = SimpleNamespace(
+            source_labels=("Stroma",),
+            target_label="Tumor",
+            candidate_interfaces=interfaces,
+            tool_program=SimpleNamespace(
+                parameter_ranges={
+                    "target_component_merge_policy": "forbid",
+                    "allow_source_component_resolution": False,
+                    "allow_target_hole_resolution": False,
+                }
+            ),
+        )
+        result = _check_edited_label_topology(
+            SimpleNamespace(
+                source_mask=source,
+                candidate=SimpleNamespace(
+                    target_mask=target,
+                    change_region=source != target,
+                ),
+                schema=schema,
+                scene=scene,
+                plan=plan,
+            )
+        )
+        self.assertFalse(result.passed)
+        self.assertTrue(result.metrics["target_merge"])
+        self.assertEqual(
+            result.metrics["target_component_merge_policy"], "forbid"
+        )
+
+    def test_panda_pattern_gate_checks_tumor_side_of_burden_transition(self):
+        schema = MaskProfileSchema.from_reference_profile("PANDA")
+        required = SimpleNamespace(
+            mechanism_required_fine_ids={"prostate-pattern-3-growth": (8,)}
+        )
+
+        def run(source, target):
+            source = np.asarray(source, dtype=np.uint8)
+            target = np.asarray(target, dtype=np.uint8)
+            return _fine_pattern_preserved(
+                SimpleNamespace(
+                    source_tissue=source,
+                    candidate=SimpleNamespace(
+                        target_tissue_mask=target,
+                        tissue_change=source != target,
+                    ),
+                    schema=schema,
+                    bundle=SimpleNamespace(annotation_profile=required),
+                    plan=SimpleNamespace(
+                        selected_mechanism_id="prostate-pattern-3-growth"
+                    ),
+                )
+            )
+
+        increase = run([[8, 2]], [[8, 8]])
+        decrease = run([[8, 8]], [[8, 2]])
+        wrong_pattern = run([[8, 2]], [[8, 9]])
+        self.assertTrue(increase.passed)
+        self.assertTrue(decrease.passed)
+        self.assertFalse(wrong_pattern.passed)
+        self.assertEqual(
+            increase.metrics["observed_changed_pattern_fine_ids"], [8]
+        )
+
+    def test_required_auxiliary_is_a_pre_candidate_tissue_exclusion(self):
+        tissue = np.full((24, 24), 2, dtype=np.uint8)
+        tissue[8:16, 8:16] = 8
+        scene = build_scene_analysis(
+            tissue,
+            schema=MaskProfileSchema.from_reference_profile("PANDA"),
+        )
+        lumen = np.zeros_like(tissue, dtype=bool)
+        lumen[10:14, 10:14] = True
+        augmented = augment_tissue_scene_with_nuclei_preflight(
+            scene,
+            SimpleNamespace(
+                protected_tissue_change_mask=np.zeros_like(tissue, dtype=bool)
+            ),
+            auxiliary_structure_masks={"native_pattern_and_lumen_map": lumen},
+            required_auxiliary_structure_ids=(
+                "native_pattern_and_lumen_map",
+            ),
+        )
+        self.assertTrue(
+            np.array_equal(
+                augmented.prohibited_region_masks[
+                    "joint:auxiliary:native_pattern_and_lumen_map"
+                ],
+                lumen,
+            )
+        )
+        with self.assertRaises(JointContractError):
+            augment_tissue_scene_with_nuclei_preflight(
+                scene,
+                SimpleNamespace(
+                    protected_tissue_change_mask=np.zeros_like(
+                        tissue, dtype=bool
+                    )
+                ),
+                auxiliary_structure_masks={},
+                required_auxiliary_structure_ids=(
+                    "native_pattern_and_lumen_map",
+                ),
+            )
+
+    def test_semantic_auxiliary_binds_gland_unit_lumen_and_component(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _write_synthetic_case(root)
+            rows, cols = np.ogrid[:128, :128]
+            radius = (rows - 64) ** 2 + (cols - 64) ** 2
+            tissue = np.full((128, 128), 2, dtype=np.uint8)
+            tissue[(radius >= 15**2) & (radius <= 31**2)] = 12
+            np.save(source.source_tissue_mask_uri, tissue, allow_pickle=False)
+            digest = _sha(Path(source.source_tissue_mask_uri))
+            provenance = dict(source.provenance)
+            provenance.pop("auxiliary_structure_sha256", None)
+            provenance.pop("auxiliary_structure_provenance", None)
+            provenance["source_tissue_mask_sha256"] = digest
+            provenance["original_label_map_digest"] = digest
+            case = replace(
+                source,
+                auxiliary_structure_uris={},
+                provenance=provenance,
+            )
+
+            effective, produced = materialize_profile_auxiliaries(
+                case,
+                source_tissue=tissue,
+                output_dir=root / "auxiliary",
+            )
+            self.assertEqual(
+                [item.structure_id for item in produced],
+                ["gland_or_lumen_support"],
+            )
+            producer = effective.provenance[
+                "auxiliary_structure_provenance"
+            ]["gland_or_lumen_support"]
+            self.assertEqual(producer["enclosed_space_count"], 1)
+            scene = build_joint_scene_analysis(
+                tissue,
+                np.asarray(Image.open(source.source_nuclei_mask_uri)),
+                schema=MaskProfileSchema.from_reference_profile("GlaS"),
+                pixel_size_um=source.pixel_size_um,
+                nuclei_instances_path=source.source_nuclei_instances_uri,
+                auxiliary_structure_paths=effective.auxiliary_structure_uris,
+                auxiliary_structure_provenance=effective.provenance[
+                    "auxiliary_structure_provenance"
+                ],
+            )
+            units = scene.structural_hierarchy["structure_units"]
+            self.assertTrue(units)
+            self.assertTrue(
+                all(item["parent_tissue_component_id"] for item in units)
+            )
+            self.assertEqual(
+                scene.structural_hierarchy["levels"],
+                [
+                    "tissue_component",
+                    "structural_unit",
+                    "interface",
+                    "population_field",
+                    "nucleus_instance",
+                ],
+            )
+            self.assertGreater(
+                np.count_nonzero(
+                    scene.auxiliary_structure_masks[
+                        "gland_or_lumen_support"
+                    ]
+                ),
+                0,
+            )
 
 
 if __name__ == "__main__":

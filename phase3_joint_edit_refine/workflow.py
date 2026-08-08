@@ -23,6 +23,7 @@ from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepositor
 from phase3_mask_edit_refine.visualization import save_planner_panels
 
 from .audit import JointAuditWriter
+from .auxiliary import materialize_profile_auxiliaries
 from .budget import JointFeasibilitySolver
 from .cell_layouts import SpatialRanker, generate_cell_layouts
 from .cell_programs import CellToolProgramCompiler
@@ -65,6 +66,10 @@ class JointWorkflowConfig:
     # reveal exact complete-instance spill after placement, so stopping at four
     # total attempts can terminate one iteration before the fixed point.
     maximum_tissue_planning_attempts: int = 6
+    # Fully executed complete nuclei reveal the exact J spill only after the
+    # tissue loop. Reserve separate bounded attempts so earlier interface/tool
+    # retries cannot consume the only opportunity to correct that observation.
+    maximum_joint_area_feedback_attempts: int = 2
 
 
 class JointPathologyEditWorkflow:
@@ -107,6 +112,10 @@ class JointPathologyEditWorkflow:
     ) -> JointWorkflowResult:
         audit = JointAuditWriter(output_root, case_id=case.case_id)
         plan = None
+        source_tissue = None
+        source_nuclei = None
+        scene = None
+        nuclei_preflight = None
         critic_result = None
         joint_reports = ()
         reasons: list[str] = []
@@ -125,6 +134,19 @@ class JointPathologyEditWorkflow:
             _validate_dimensions(
                 case.source_image_uri, source_tissue.shape, source_nuclei.shape
             )
+            audit.write_json("input_case_context.json", case.to_metadata())
+            case, produced_auxiliaries = materialize_profile_auxiliaries(
+                case,
+                source_tissue=source_tissue,
+                output_dir=audit.case_dir / "auxiliary_structures",
+            )
+            if produced_auxiliaries:
+                audit.write_json(
+                    "auxiliary_producer_report.json",
+                    [item.to_metadata() for item in produced_auxiliaries],
+                )
+            case.validate_local_inputs()
+            _validate_digests(case)
             schema = self.mask_skills.annotation_schema(case.annotation_profile_id)
             scene = build_joint_scene_analysis(
                 source_tissue,
@@ -133,6 +155,9 @@ class JointPathologyEditWorkflow:
                 pixel_size_um=case.pixel_size_um,
                 nuclei_instances_path=case.source_nuclei_instances_uri,
                 auxiliary_structure_paths=case.auxiliary_structure_uris,
+                auxiliary_structure_provenance=case.provenance.get(
+                    "auxiliary_structure_provenance", {}
+                ),
             )
             audit.write_json("case_context.json", case.to_metadata())
             audit.write_json("joint_scene_graph.json", scene.to_metadata())
@@ -240,6 +265,10 @@ class JointPathologyEditWorkflow:
             tissue_scene = augment_tissue_scene_with_nuclei_preflight(
                 scene.tissue,
                 nuclei_preflight,
+                auxiliary_structure_masks=scene.auxiliary_structure_masks,
+                required_auxiliary_structure_ids=(
+                    bundle.mechanism.representability.required_auxiliary_structures
+                ),
             )
             audit.write_inputs(
                 case=case,
@@ -255,9 +284,85 @@ class JointPathologyEditWorkflow:
             joint_pass_usage = []
             execution_feedback: dict = {}
             budget_rebalance_count = 0
+            joint_area_feedback_count = 0
+            maximum_planning_attempts = (
+                self.config.maximum_tissue_planning_attempts
+                + self.config.maximum_joint_area_feedback_attempts
+            )
             passing_joint = []
             contract_by_joint_candidate = {}
             review_board = None
+            tissue_reports = ()
+            area_fallback_state = None
+
+            def activate_rebalance_exhausted_area_fallback() -> bool:
+                """Restore a proven safe pair after exact-area replan fails."""
+
+                nonlocal allocation
+                nonlocal candidates
+                nonlocal contract_by_joint_candidate
+                nonlocal joint_reports
+                nonlocal nuclei_preflight
+                nonlocal passing_joint
+                nonlocal plan
+                nonlocal review_board
+                nonlocal tissue_reports
+                if (
+                    area_fallback_state is None
+                    or joint_area_feedback_count <= 0
+                ):
+                    return False
+                candidates = area_fallback_state["candidates"]
+                contract_by_joint_candidate = area_fallback_state["contracts"]
+                plan = area_fallback_state["plan"]
+                review_board = area_fallback_state["review_board"]
+                tissue_reports = area_fallback_state["tissue_reports"]
+                allocation = area_fallback_state["allocation"]
+                nuclei_preflight = area_fallback_state["nuclei_preflight"]
+                reports_by_id = area_fallback_state["reports_by_id"]
+                certified_min = int(area_fallback_state["certified_min"])
+                for candidate in candidates:
+                    candidate.tool_trace["batch_min_safe_joint_pixels"] = (
+                        certified_min
+                    )
+                    candidate.tool_trace[
+                        "batch_min_safe_joint_certified"
+                    ] = True
+                    candidate.tool_trace[
+                        "joint_area_rebalance_exhausted"
+                    ] = True
+                joint_reports = tuple(
+                    self.joint_gates.run(
+                        JointGateContext(
+                            case=case,
+                            source_tissue=source_tissue,
+                            source_nuclei=source_nuclei,
+                            schema=schema,
+                            scene=scene,
+                            bundle=bundle,
+                            plan=plan,
+                            candidate=candidate,
+                            tissue_gate_report=reports_by_id[
+                                candidate.tissue_candidate_id
+                            ],
+                            executable_contract=contract_by_joint_candidate[
+                                candidate.candidate_id
+                            ],
+                        )
+                    )
+                    for candidate in candidates
+                )
+                passing_joint = [
+                    candidate
+                    for candidate in candidates
+                    if next(
+                        item.passed
+                        for item in joint_reports
+                        if item.candidate_id == candidate.candidate_id
+                    )
+                ]
+                return bool(passing_joint)
+
             # A provisional tissue boundary may intersect a complete semantic or
             # native nucleus whose footprint extends beyond T.  Since v1 forbids
             # partial nucleus edits, that extension necessarily belongs to C and
@@ -266,9 +371,7 @@ class JointPathologyEditWorkflow:
             # joint target. Four bounded attempts leave room for both the
             # provisional T-union-E solve and one feedback pass from fully
             # executed target-nucleus footprints before final execution.
-            for planning_pass in range(
-                self.config.maximum_tissue_planning_attempts
-            ):
+            for planning_pass in range(maximum_planning_attempts):
                 tissue_case = _as_tissue_case(
                     case,
                     allocation=allocation,
@@ -347,8 +450,7 @@ class JointPathologyEditWorkflow:
                         }
                     )
                     if (
-                        planning_pass + 1
-                        >= self.config.maximum_tissue_planning_attempts
+                        planning_pass + 1 >= maximum_planning_attempts
                     ):
                         raise JointContractError(
                             "tissue planning/compilation exhausted feedback retries: "
@@ -430,9 +532,10 @@ class JointPathologyEditWorkflow:
                         f"execution_feedback_pass_{planning_pass + 1}.json",
                         execution_feedback,
                     )
+                    if activate_rebalance_exhausted_area_fallback():
+                        break
                     if (
-                        planning_pass + 1
-                        >= self.config.maximum_tissue_planning_attempts
+                        planning_pass + 1 >= maximum_planning_attempts
                     ):
                         raise JointContractError(
                             "no tissue candidate passed after feedback-directed "
@@ -446,6 +549,9 @@ class JointPathologyEditWorkflow:
                 desired_min, desired_max = (
                     case.joint_area_budget.desired_interval_pixels(source_tissue.shape)
                 )
+                _, hard_max = case.joint_area_budget.hard_interval_pixels(
+                    source_tissue.shape
+                )
                 predicted = [
                     int(
                         np.count_nonzero(
@@ -457,14 +563,24 @@ class JointPathologyEditWorkflow:
                     )
                     for item in passing_tissue
                 ]
-                predicted_above = bool(predicted and min(predicted) > desired_max)
-                predicted_below = bool(predicted and max(predicted) < desired_min)
+                predicted_above = _provisional_union_requires_rebalance(
+                    predicted,
+                    hard_max_pixels=hard_max,
+                )
+                # ``predicted`` contains T plus source-instance erasure E, but
+                # it intentionally cannot contain the target footprints that
+                # the mature cell executor has not generated yet.  Therefore
+                # it is a sound pre-execution lower bound only when it already
+                # exceeds the declared hard maximum.  Treating a provisional
+                # underfill as final used to reduce T before ADD was realized,
+                # which could turn a 19/21 exact packing witness into 17/21 on
+                # the next pass.  Underfill feedback belongs exclusively to
+                # the executed T ∪ C ledger below.
                 if (
-                    planning_pass + 1
-                    < self.config.maximum_tissue_planning_attempts
+                    planning_pass + 1 < maximum_planning_attempts
                     and budget_rebalance_count
-                    < self.config.maximum_tissue_planning_attempts - 1
-                    and (predicted_above or predicted_below)
+                    < maximum_planning_attempts - 1
+                    and predicted_above
                 ):
                     closure_values = [
                         int(
@@ -477,27 +593,22 @@ class JointPathologyEditWorkflow:
                         )
                         for item in passing_tissue
                     ]
-                    # If every provisional pair is too large, reserve the
-                    # worst complete-instance spill. If every pair is too
-                    # small after a previous conservative revision, use the
-                    # smallest observed spill so at least one candidate can
-                    # return to the target interval. This is a bounded fixed-
-                    # point solve over T union E, not a post-hoc cell crop.
-                    closure = int(
-                        max(closure_values)
-                        if predicted_above
-                        else min(closure_values)
+                    # Candidate selection needs one executable pair, not a
+                    # budget that makes every provisional sibling safe. Bind
+                    # the next fixed point to the smallest observed complete-
+                    # instance spill: that candidate returns to the joint
+                    # target while preserving the largest tissue/P domain for
+                    # nuclei packing. Siblings with larger spill remain free
+                    # to fail the later joint-area gate.
+                    closure = _candidate_preserving_closure_pixels(
+                        closure_values
                     )
                     revised = self.budget_solver.reserve_complete_instances(
                         allocation,
                         reserve_pixels=closure,
                     )
                     if revised.tissue_target_pixels != allocation.tissue_target_pixels:
-                        direction = (
-                            "whole_instance_union_closure"
-                            if predicted_above
-                            else "whole_instance_union_underfill"
-                        )
+                        direction = "whole_instance_union_closure"
                         budget_revisions.append(
                             {
                                 "reason": direction,
@@ -529,6 +640,12 @@ class JointPathologyEditWorkflow:
                         tissue_scene = augment_tissue_scene_with_nuclei_preflight(
                             scene.tissue,
                             nuclei_preflight,
+                            auxiliary_structure_masks=(
+                                scene.auxiliary_structure_masks
+                            ),
+                            required_auxiliary_structure_ids=(
+                                bundle.mechanism.representability.required_auxiliary_structures
+                            ),
                         )
                         audit.write_json(
                             f"joint_nuclei_preflight_pass_{planning_pass + 2}.json",
@@ -577,21 +694,47 @@ class JointPathologyEditWorkflow:
                 if passing_joint:
                     break
 
-                hard_failures = []
-                for report in joint_reports:
-                    hard_failures.append(
-                        {
-                            check.check_id
-                            for check in report.checks
-                            if check.severity == "hard" and not check.passed
-                        }
+                _, hard_max = (
+                    case.joint_area_budget.hard_interval_pixels(
+                        source_tissue.shape
                     )
-                joint_area_only = bool(
-                    hard_failures
-                    and all(item == {"joint_area"} for item in hard_failures)
                 )
+                provisional_min = _minimum_safe_above_target_joint_pixels(
+                    candidates,
+                    joint_reports,
+                    desired_max_pixels=desired_max,
+                    hard_max_pixels=hard_max,
+                    tissue_floor_pixels=(
+                        case.joint_area_budget.tissue_floor_pixels(
+                            source_tissue.shape
+                        )
+                    ),
+                    require_tissue_floor=False,
+                )
+                if provisional_min is not None:
+                    area_fallback_state = {
+                        "allocation": allocation,
+                        "candidates": candidates,
+                        "certified_min": provisional_min,
+                        "contracts": dict(contract_by_joint_candidate),
+                        "nuclei_preflight": nuclei_preflight,
+                        "plan": plan,
+                        "reports_by_id": dict(reports_by_id),
+                        "review_board": review_board,
+                        "tissue_reports": tuple(tissue_reports),
+                    }
+
+                area_feedback_ids = _joint_area_feedback_candidate_ids(
+                    joint_reports
+                )
+                area_feedback_candidates = [
+                    item
+                    for item in candidates
+                    if item.candidate_id in area_feedback_ids
+                ]
                 actual_joint_pixels = [
-                    item.ledger.joint_pixels for item in candidates
+                    item.ledger.joint_pixels
+                    for item in area_feedback_candidates
                 ]
                 actual_above = bool(
                     actual_joint_pixels
@@ -602,18 +745,17 @@ class JointPathologyEditWorkflow:
                     and max(actual_joint_pixels) < desired_min
                 )
                 can_retry_joint = bool(
-                    planning_pass + 1
-                    < self.config.maximum_tissue_planning_attempts
-                    and budget_rebalance_count
-                    < self.config.maximum_tissue_planning_attempts - 1
+                    planning_pass + 1 < maximum_planning_attempts
+                    and joint_area_feedback_count
+                    < self.config.maximum_joint_area_feedback_attempts
                 )
                 if (
-                    joint_area_only
+                    area_feedback_candidates
                     and can_retry_joint
                     and (actual_above or actual_below)
                 ):
                     observed_spill = []
-                    for candidate in candidates:
+                    for candidate in area_feedback_candidates:
                         tissue_change = np.asarray(
                             candidate.tissue_change, dtype=bool
                         )
@@ -682,6 +824,7 @@ class JointPathologyEditWorkflow:
                         )
                         allocation = revised
                         budget_rebalance_count += 1
+                        joint_area_feedback_count += 1
                         nuclei_preflight = build_joint_nuclei_preflight(
                             case=case,
                             source_tissue=source_tissue,
@@ -704,6 +847,12 @@ class JointPathologyEditWorkflow:
                         tissue_scene = augment_tissue_scene_with_nuclei_preflight(
                             scene.tissue,
                             nuclei_preflight,
+                            auxiliary_structure_masks=(
+                                scene.auxiliary_structure_masks
+                            ),
+                            required_auxiliary_structure_ids=(
+                                bundle.mechanism.representability.required_auxiliary_structures
+                            ),
                         )
                         audit.write_json(
                             f"joint_nuclei_preflight_pass_{planning_pass + 2}.json",
@@ -720,6 +869,8 @@ class JointPathologyEditWorkflow:
                             execution_feedback,
                         )
                         continue
+                if activate_rebalance_exhausted_area_fallback():
+                    break
                 raise JointContractError(
                     "no paired tissue--cell candidate passed all joint gates"
                 )
@@ -836,6 +987,20 @@ class JointPathologyEditWorkflow:
             reasons.append(f"{type(exc).__name__}: {exc}")
             if candidates:
                 audit.write_candidates(candidates)
+            if (
+                source_tissue is not None
+                and source_nuclei is not None
+                and scene is not None
+            ):
+                audit.write_abstain_review(
+                    source_image_path=case.source_image_uri,
+                    source_tissue=source_tissue,
+                    source_nuclei=source_nuclei,
+                    scene=scene,
+                    reason=reasons[-1],
+                    plan=plan,
+                    nuclei_preflight=nuclei_preflight,
+                )
             return self._finish(
                 audit=audit,
                 case=case,
@@ -1016,6 +1181,8 @@ class JointPathologyEditWorkflow:
             )
             candidate.tool_trace["batch_max_safe_joint_pixels"] = -1
             candidate.tool_trace["batch_max_safe_joint_certified"] = False
+            candidate.tool_trace["batch_min_safe_joint_pixels"] = -1
+            candidate.tool_trace["batch_min_safe_joint_certified"] = False
         joint_reports = tuple(
             self.joint_gates.run(
                 JointGateContext(
@@ -1038,10 +1205,10 @@ class JointPathologyEditWorkflow:
             for candidate in candidates
         )
         if not any(report.passed for report in joint_reports):
-            hard_min, _ = case.joint_area_budget.hard_interval_pixels(
+            hard_min, hard_max = case.joint_area_budget.hard_interval_pixels(
                 source_tissue.shape
             )
-            desired_min, _ = case.joint_area_budget.desired_interval_pixels(
+            desired_min, desired_max = case.joint_area_budget.desired_interval_pixels(
                 source_tissue.shape
             )
             certified_max = _maximum_safe_below_target_joint_pixels(
@@ -1079,6 +1246,45 @@ class JointPathologyEditWorkflow:
                     )
                     for candidate in candidates
                 )
+            else:
+                certified_min = _minimum_safe_above_target_joint_pixels(
+                    candidates,
+                    joint_reports,
+                    desired_max_pixels=desired_max,
+                    hard_max_pixels=hard_max,
+                    tissue_floor_pixels=case.joint_area_budget.tissue_floor_pixels(
+                        source_tissue.shape
+                    ),
+                )
+                if certified_min is not None:
+                    for candidate in candidates:
+                        candidate.tool_trace["batch_min_safe_joint_pixels"] = (
+                            certified_min
+                        )
+                        candidate.tool_trace[
+                            "batch_min_safe_joint_certified"
+                        ] = True
+                    joint_reports = tuple(
+                        self.joint_gates.run(
+                            JointGateContext(
+                                case=case,
+                                source_tissue=source_tissue,
+                                source_nuclei=source_nuclei,
+                                schema=schema,
+                                scene=scene,
+                                bundle=bundle,
+                                plan=plan,
+                                candidate=candidate,
+                                tissue_gate_report=reports_by_id[
+                                    candidate.tissue_candidate_id
+                                ],
+                                executable_contract=contract_by_joint_candidate[
+                                    candidate.candidate_id
+                                ],
+                            )
+                        )
+                        for candidate in candidates
+                    )
         audit.write_candidates(candidates)
         audit.write_json(
             "joint_gate_reports.json",
@@ -1461,6 +1667,95 @@ def _maximum_safe_below_target_joint_pixels(
     return max(safe_pixels) if safe_pixels else None
 
 
+def _joint_area_feedback_candidate_ids(reports) -> set[str]:
+    """Return candidates that need only a deterministic joint-area re-broker.
+
+    A bad shape variant from the same tissue candidate must not suppress
+    feedback for a sibling variant that already passed every non-area gate.
+    Only otherwise-safe candidates contribute spill observations.
+    """
+
+    eligible = set()
+    for report in reports:
+        hard_failures = {
+            check.check_id
+            for check in report.checks
+            if check.severity == "hard" and not check.passed
+        }
+        if hard_failures == {"joint_area"}:
+            eligible.add(report.candidate_id)
+    return eligible
+
+
+def _candidate_preserving_closure_pixels(values) -> int:
+    """Choose the fixed point that preserves one feasible tissue sibling."""
+
+    normalized = [max(0, int(value)) for value in values]
+    return min(normalized) if normalized else 0
+
+
+def _provisional_union_requires_rebalance(
+    predicted_pixels,
+    *,
+    hard_max_pixels: int,
+) -> bool:
+    """Allow pre-cell feedback only for an already-certain hard overfill.
+
+    The provisional ledger is ``T ∪ E`` and omits ADD footprints that do
+    not exist until cell execution.  It may therefore prove that the declared
+    hard maximum is unreachable, but it cannot prove underfill and must not
+    optimize the narrower desired tolerance before the paired condition
+    exists.
+    """
+
+    values = [max(0, int(value)) for value in predicted_pixels]
+    return bool(values and min(values) > int(hard_max_pixels))
+
+
+def _minimum_safe_above_target_joint_pixels(
+    candidates,
+    reports,
+    *,
+    desired_max_pixels: int,
+    hard_max_pixels: int,
+    tissue_floor_pixels: int,
+    require_tissue_floor: bool = True,
+) -> int | None:
+    """Certify the closest safe over-target union forced by whole instances.
+
+    This fallback is deliberately narrower than the below-target capacity
+    fallback.  It is available only after tissue change has reached its hard
+    floor, every other hard gate has passed, and complete-nucleus closure
+    leaves the paired condition slightly above the desired interval but still
+    inside the declared hard range.  We then select the smallest safe union in
+    the executed batch; arbitrary overshoot is never accepted.
+    """
+
+    candidates_by_id = {item.candidate_id: item for item in candidates}
+    safe_pixels = []
+    for report in reports:
+        candidate = candidates_by_id.get(report.candidate_id)
+        if candidate is None:
+            continue
+        hard_failures = {
+            check.check_id
+            for check in report.checks
+            if check.severity == "hard" and not check.passed
+        }
+        actual = int(candidate.ledger.joint_pixels)
+        tissue = int(candidate.ledger.tissue_pixels)
+        if (
+            hard_failures == {"joint_area"}
+            and (
+                not require_tissue_floor
+                or tissue == int(tissue_floor_pixels)
+            )
+            and int(desired_max_pixels) < actual <= int(hard_max_pixels)
+        ):
+            safe_pixels.append(actual)
+    return min(safe_pixels) if safe_pixels else None
+
+
 def _complete_instance_extension_pixels(
     tissue_change: np.ndarray,
     *,
@@ -1534,10 +1829,25 @@ def _summarize_tissue_execution_failure(
 def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext:
     total = int(np.prod(shape))
     target = allocation.tissue_target_pixels / max(1, total)
-    floor = allocation.tissue_execution_floor_pixels / max(1, total)
+    # Keep the public burden floor in the tissue tool's own contract.  If an
+    # older/adaptive manifest exposes a lower compiler floor, generating many
+    # tiny candidates only to reject them in the joint preflight is both slow
+    # and semantically wrong: the tissue tool must emit only candidates it is
+    # itself authorized to call meaningful.
+    floor_pixels = max(
+        int(allocation.tissue_execution_floor_pixels),
+        int(case.joint_area_budget.tissue_floor_pixels(shape)),
+    )
+    if int(allocation.tissue_target_pixels) < floor_pixels:
+        raise JointContractError(
+            "joint budget allocation placed the tissue target below the "
+            f"binding meaningful floor: target={allocation.tissue_target_pixels}, "
+            f"floor={floor_pixels}"
+        )
+    floor = floor_pixels / max(1, total)
     budget = AreaBudget(
         target_fraction=target,
-        min_fraction=(min(target, floor)),
+        min_fraction=floor,
         max_fraction=target,
         basis="whole_mask",
         relative_tolerance=0.0,

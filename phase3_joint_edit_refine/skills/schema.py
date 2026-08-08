@@ -25,6 +25,7 @@ TISSUE_GEOMETRY_MODES = frozenset(
 SEAM_MODES = frozenset(
     {"adaptive_population_continuity", "turnover_transition", "not_applicable"}
 )
+TARGET_COMPONENT_MERGE_POLICIES = frozenset({"forbid", "selected_only"})
 
 
 @dataclass(frozen=True)
@@ -46,11 +47,35 @@ class RepresentabilityContract:
 @dataclass(frozen=True)
 class TissueProgramContract:
     mode: str
+    target_component_merge_policy: str
     primitive_label_contracts: dict[str, dict[str, tuple[str, ...]]]
     allowed_tools: tuple[str, ...]
     required_checker_ids: tuple[str, ...]
     prohibited_structures: tuple[str, ...]
     front: TissueFrontContract
+    topology_fallback_by_primitive: dict[str, TissueTopologyFallbackContract]
+
+    def topology_fallback_for(
+        self, primitive_id: str
+    ) -> TissueTopologyFallbackContract | None:
+        return self.topology_fallback_by_primitive.get(primitive_id)
+
+
+@dataclass(frozen=True)
+class TissueTopologyFallbackContract:
+    """Mechanism-owned fallback after a front plan proves infeasible.
+
+    This is deliberately separate from primitive semantics: resolving a
+    complete gland, nest or compartment can be valid for one pathology
+    mechanism while the same burden primitive remains a shallow interface edit
+    elsewhere.
+    """
+
+    geometry_mode: str
+    allow_source_component_resolution: bool
+    allow_target_hole_resolution: bool
+    maximum_source_component_changed_fraction: float
+    minimum_source_component_remaining_px: int
 
 
 @dataclass(frozen=True)
@@ -64,6 +89,7 @@ class TissueFrontContract:
     noise_depth_ratio: float
     maximum_band_px: int
     maximum_depth_span_ratio: float
+    maximum_boundary_compactness: float
 
 
 @dataclass(frozen=True)
@@ -76,9 +102,13 @@ class CellProgramContract:
     halo_distance_px: tuple[int, int]
     cluster_size_range: tuple[int, int]
     seam: SeamContract
+    seam_by_primitive: dict[str, SeamContract]
     cellularity_depletion: CellularityDepletionContract | None
     render_owned_clearance_primitives: tuple[str, ...]
     required_checker_ids: tuple[str, ...]
+
+    def seam_for(self, primitive_id: str) -> SeamContract:
+        return self.seam_by_primitive.get(primitive_id, self.seam)
 
 
 @dataclass(frozen=True)
@@ -184,11 +214,24 @@ class JointMechanismSkill:
         recognition = _mapping(payload, "recognition_contract")
         representability = _mapping(payload, "representability_contract")
         tissue = _mapping(payload, "tissue_program")
+        target_component_merge_policy = str(
+            tissue.get("target_component_merge_policy", "selected_only")
+        )
+        if target_component_merge_policy not in TARGET_COMPONENT_MERGE_POLICIES:
+            raise JointContractError(
+                f"{mechanism_id}.tissue_program contains an invalid "
+                "target_component_merge_policy"
+            )
         front = tissue.get("front_contract", {})
         if not isinstance(front, Mapping):
             raise JointContractError(
                 f"{mechanism_id}.tissue_program.front_contract must be a mapping"
             )
+        supported_primitives = set(_strings(payload, "supported_primitives"))
+        topology_fallbacks = _tissue_topology_fallback_mapping(
+            tissue.get("topology_fallback_by_primitive", {}),
+            supported_primitives=supported_primitives,
+        )
         cell = _mapping(payload, "cell_program")
         coupling = _mapping(payload, "coupling_contract")
         render = _mapping(payload, "render_contract")
@@ -229,6 +272,10 @@ class JointMechanismSkill:
                 "cell-only and footprint-spill reserves cannot exceed the patch"
             )
         seam = _seam_contract(cell.get("seam_contract"))
+        seam_by_primitive = _seam_contract_mapping(
+            cell.get("seam_contract_by_primitive", {}),
+            supported_primitives=set(_strings(payload, "supported_primitives")),
+        )
         depletion = _cellularity_depletion_contract(
             cell.get("cellularity_depletion_contract"),
             required="cellularity-decrease-v1"
@@ -262,6 +309,7 @@ class JointMechanismSkill:
             ),
             tissue_program=TissueProgramContract(
                 mode=_string(tissue, "mode"),
+                target_component_merge_policy=target_component_merge_policy,
                 primitive_label_contracts=_primitive_label_contracts(
                     tissue, "primitive_label_contracts"
                 ),
@@ -271,6 +319,7 @@ class JointMechanismSkill:
                     tissue, "prohibited_structures", allow_empty=True
                 ),
                 front=_tissue_front_contract(front, mechanism_id=mechanism_id),
+                topology_fallback_by_primitive=topology_fallbacks,
             ),
             cell_program=CellProgramContract(
                 actions=actions,
@@ -281,6 +330,7 @@ class JointMechanismSkill:
                 halo_distance_px=halo,
                 cluster_size_range=cluster,
                 seam=seam,
+                seam_by_primitive=seam_by_primitive,
                 cellularity_depletion=depletion,
                 render_owned_clearance_primitives=_strings(
                     cell,
@@ -604,6 +654,27 @@ def _seam_contract(value: Any) -> SeamContract:
     )
 
 
+def _seam_contract_mapping(
+    value: Any,
+    *,
+    supported_primitives: set[str],
+) -> dict[str, SeamContract]:
+    if not isinstance(value, Mapping):
+        raise JointContractError(
+            "seam_contract_by_primitive must be an object"
+        )
+    unknown = set(value) - supported_primitives
+    if unknown:
+        raise JointContractError(
+            "primitive-specific seam contract names unsupported primitives: "
+            + ", ".join(sorted(unknown))
+        )
+    return {
+        str(primitive_id): _seam_contract(contract)
+        for primitive_id, contract in value.items()
+    }
+
+
 def _cellularity_depletion_contract(
     value: Any, *, required: bool, mechanism_id: str
 ) -> CellularityDepletionContract | None:
@@ -733,6 +804,56 @@ def _cellularity_depletion_contract(
     )
 
 
+def _tissue_topology_fallback_mapping(
+    value: Any,
+    *,
+    supported_primitives: set[str],
+) -> dict[str, TissueTopologyFallbackContract]:
+    if not isinstance(value, Mapping):
+        raise JointContractError(
+            "topology_fallback_by_primitive must be an object"
+        )
+    unknown = set(value) - supported_primitives
+    if unknown:
+        raise JointContractError(
+            "topology fallback names unsupported primitives: "
+            + ", ".join(sorted(unknown))
+        )
+    result = {}
+    for primitive_id, raw in value.items():
+        if not isinstance(raw, Mapping):
+            raise JointContractError(
+                f"topology fallback for {primitive_id} must be an object"
+            )
+        geometry_mode = str(raw.get("geometry_mode", "interface_front"))
+        if geometry_mode not in TISSUE_GEOMETRY_MODES:
+            raise JointContractError(
+                f"unknown fallback tissue geometry mode: {geometry_mode}"
+            )
+        maximum_changed = float(
+            raw.get("maximum_source_component_changed_fraction", 0.55)
+        )
+        minimum_remaining = int(
+            raw.get("minimum_source_component_remaining_px", 64)
+        )
+        if not 0.0 < maximum_changed <= 1.0 or minimum_remaining < 0:
+            raise JointContractError(
+                f"invalid topology fallback bounds for {primitive_id}"
+            )
+        result[str(primitive_id)] = TissueTopologyFallbackContract(
+            geometry_mode=geometry_mode,
+            allow_source_component_resolution=bool(
+                raw.get("allow_source_component_resolution", False)
+            ),
+            allow_target_hole_resolution=bool(
+                raw.get("allow_target_hole_resolution", False)
+            ),
+            maximum_source_component_changed_fraction=maximum_changed,
+            minimum_source_component_remaining_px=minimum_remaining,
+        )
+    return result
+
+
 def _tissue_front_contract(
     payload: Mapping[str, Any], *, mechanism_id: str
 ) -> TissueFrontContract:
@@ -749,6 +870,9 @@ def _tissue_front_contract(
     noise = float(payload.get("noise_depth_ratio", 0.30))
     maximum_band = int(payload.get("maximum_band_px", 128))
     depth_span = float(payload.get("maximum_depth_span_ratio", 1.25))
+    boundary_compactness = float(
+        payload.get("maximum_boundary_compactness", 40.0)
+    )
     if not 0.0 <= edge <= 1.0:
         raise JointContractError("tissue front edge_depth_ratio must lie in [0,1]")
     if not 0.0 <= taper <= 0.5:
@@ -763,6 +887,10 @@ def _tissue_front_contract(
         raise JointContractError(
             "tissue front maximum_depth_span_ratio must lie in [0.25,2.0]"
         )
+    if not 4.0 <= boundary_compactness <= 100.0:
+        raise JointContractError(
+            "tissue front maximum_boundary_compactness must lie in [4,100]"
+        )
     if mode == "uniform_front":
         edge = 1.0
         taper = 0.0
@@ -775,6 +903,7 @@ def _tissue_front_contract(
         noise_depth_ratio=noise,
         maximum_band_px=maximum_band,
         maximum_depth_span_ratio=depth_span,
+        maximum_boundary_compactness=boundary_compactness,
     )
 
 

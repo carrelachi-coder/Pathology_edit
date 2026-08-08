@@ -32,12 +32,13 @@ from .feasibility import (
     CandidateCellFeasibility,
     JointNucleiPreflight,
     assess_candidate_cell_feasibility,
+    certify_compiled_cell_program_feasibility,
 )
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-TISSUE_EXECUTION_VERSION = "joint-gate-aware-tissue-executor-v1"
+TISSUE_EXECUTION_VERSION = "joint-gate-aware-tissue-executor-v2"
 
 
 @dataclass(frozen=True)
@@ -121,11 +122,13 @@ def execute_gate_aware_tissue_candidates(
     cell_reports = tuple(
         assess_candidate_cell_feasibility(
             candidate,
+            case=case,
             source_tissue=source_tissue,
             scene=joint_scene,
             preflight=nuclei_preflight,
             joint_bundle=joint_bundle,
             joint_plan=joint_plan,
+            allocation=allocation,
         )
         for candidate in all_candidates
         if by_id[candidate.candidate_id].passed
@@ -156,6 +159,19 @@ def execute_gate_aware_tissue_candidates(
         except JointContractError as exc:
             contract_errors[candidate.candidate_id] = str(exc)
             continue
+        cell_report = certify_compiled_cell_program_feasibility(
+            cell_report,
+            candidate=candidate,
+            contract=contract,
+            scene=joint_scene,
+            preflight=nuclei_preflight,
+        )
+        cell_by_id[candidate.candidate_id] = cell_report
+        if not cell_report.passed:
+            continue
+        contract = contract.bind_packing_certificate(
+            cell_report.exact_packing_certificate
+        )
         candidate.tool_trace["tissue_execution_contract_version"] = (
             TISSUE_EXECUTION_VERSION
         )
@@ -181,7 +197,10 @@ def execute_gate_aware_tissue_candidates(
         certified_candidates=tuple(certified),
         all_candidates=tuple(all_candidates),
         tissue_gate_reports=reports,
-        cell_feasibility_reports=cell_reports,
+        cell_feasibility_reports=tuple(
+            cell_by_id[item.candidate_id]
+            for item in cell_reports
+        ),
         executable_contracts=tuple(contracts),
         executable_contract_errors=contract_errors,
     )

@@ -26,16 +26,19 @@ from .cell_layouts import (
     build_reference_shape_library,
 )
 from .models import JointCaseContext, JointContractError, JointEditPlan
+from .packing import certify_complete_footprint_packing
 from .scene import JointSceneAnalysis
 from .seam import (
     anchor_coverage_fraction,
     class_center_mask,
     compile_adaptive_seam,
+    compile_continuity_center_quota,
+    compile_executable_continuity_count,
     target_cell_class_for_tissue,
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v3"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v8"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -63,6 +66,7 @@ class InterfaceNucleiCapacity:
     cell_feasible_anchor_segment_ids: tuple[str, ...]
     anchor_continuity_reports: tuple[dict[str, Any], ...]
     capacity_margin_count: int
+    exact_packing_certificate: dict[str, Any]
     feasible: bool
     reasons: tuple[str, ...]
 
@@ -74,8 +78,10 @@ class InterfaceNucleiCapacity:
 class JointNucleiPreflight:
     version: str
     target_cell_class: int
+    target_cell_classes: tuple[int, ...]
     target_tissue_label: str
     target_density_per_pixel: float
+    target_density_by_class: dict[int, float]
     reference_area_p95: float
     reference_area_capacity_quantile: float
     eligible_reference_ids: tuple[str, ...]
@@ -110,8 +116,13 @@ class JointNucleiPreflight:
         return {
             "version": self.version,
             "target_cell_class": self.target_cell_class,
+            "target_cell_classes": list(self.target_cell_classes),
             "target_tissue_label": self.target_tissue_label,
             "target_density_per_pixel": self.target_density_per_pixel,
+            "target_density_by_class": {
+                str(key): value
+                for key, value in sorted(self.target_density_by_class.items())
+            },
             "reference_area_p95": self.reference_area_p95,
             "reference_area_capacity_quantile": (
                 self.reference_area_capacity_quantile
@@ -169,6 +180,9 @@ class CandidateCellFeasibility:
     continuity_region_pixels: int
     potential_anchor_coverage_fraction: float
     minimum_anchor_coverage_fraction: float
+    meaningful_tissue_floor_pixels: int
+    tissue_change_pixels: int
+    exact_packing_certificate: dict[str, Any]
     reasons: tuple[str, ...]
 
     def to_metadata(self) -> dict[str, Any]:
@@ -193,23 +207,49 @@ def build_joint_nuclei_preflight(
         raise JointContractError(
             f"target cell class {target_class} is unavailable to the mechanism"
         )
-    references, rejected = build_reference_shape_library(
-        scene,
-        class_id=target_class,
-    )
-    required_clearance_classes = set(
-        joint_bundle.primitive.required_source_clearance_classes
-    )
     target_compatible_classes = set(
         joint_bundle.cell_observation_profile.tissue_compatible_classes.get(
             target_label, ()
         )
+    ).intersection(joint_bundle.mechanism.cell_program.allowed_cell_classes)
+    target_compatible_classes.add(target_class)
+    references_by_class: dict[int, tuple[ReferenceNucleusShape, ...]] = {}
+    rejected: dict[str, str] = {}
+    eligible_ids: set[str] = set()
+    for class_id in sorted(target_compatible_classes):
+        current, current_rejected = build_reference_shape_library(
+            scene,
+            class_id=class_id,
+        )
+        references_by_class[class_id] = tuple(current)
+        eligible_ids.update(item.instance_id for item in current)
+        rejected.update(current_rejected)
+    for instance_id in eligible_ids:
+        rejected.pop(instance_id, None)
+    references = tuple(
+        item
+        for class_id in sorted(references_by_class)
+        for item in references_by_class[class_id]
+    )
+    required_clearance_classes = set(
+        joint_bundle.primitive.required_source_clearance_classes
     )
     maximum_halo = int(joint_bundle.mechanism.cell_program.halo_distance_px[1])
+    required_auxiliary = set(
+        joint_bundle.mechanism.representability.required_auxiliary_structures
+    )
+    missing_auxiliary = tuple(
+        sorted(required_auxiliary - set(scene.auxiliary_structure_masks))
+    )
+    protected_structure = np.zeros_like(source_tissue, dtype=bool)
+    for structure_id in sorted(required_auxiliary - set(missing_auxiliary)):
+        protected_structure |= np.asarray(
+            scene.auxiliary_structure_masks[structure_id], dtype=bool
+        )
     source_generation_prohibited = np.isin(
         source_tissue,
         joint_bundle.annotation_profile.prohibit_generation_support_fine_ids,
-    )
+    ) | protected_structure
     removable: list[str] = []
     protected: list[str] = []
     tissue_exclusions: list[str] = []
@@ -255,18 +295,20 @@ def build_joint_nuclei_preflight(
             for item in references
             if item.instance_id not in protected_set
         )
+        references_by_class = {
+            class_id: tuple(
+                item
+                for item in items
+                if item.instance_id not in protected_set
+            )
+            for class_id, items in references_by_class.items()
+        }
         for instance_id in protected:
             rejected.setdefault(
                 instance_id,
                 protected_reasons[instance_id],
             )
 
-    required_auxiliary = set(
-        joint_bundle.mechanism.representability.required_auxiliary_structures
-    )
-    missing_auxiliary = tuple(
-        sorted(required_auxiliary - set(scene.auxiliary_structure_masks))
-    )
     missing_provenance = tuple(
         field
         for field in joint_bundle.annotation_profile.required_provenance_fields
@@ -275,7 +317,7 @@ def build_joint_nuclei_preflight(
     prohibited_tissue = np.isin(
         source_tissue,
         joint_bundle.annotation_profile.prohibit_cell_placement_fine_ids,
-    )
+    ) | protected_structure
     source_contract = joint_bundle.mechanism.tissue_program.primitive_label_contracts.get(
         case.primitive_id
     )
@@ -288,11 +330,13 @@ def build_joint_nuclei_preflight(
         case.primitive_id
         in joint_bundle.mechanism.cell_program.render_owned_clearance_primitives
     )
+    seam_contract = joint_bundle.mechanism.cell_program.seam_for(
+        case.primitive_id
+    )
     requires_add = not render_owned_clearance
     required_removal_classes = tuple(sorted(required_clearance_classes))
     removable_set = set(removable)
-    capacity_quantile = joint_bundle.mechanism.cell_program.seam.reference_area_quantiles[1]
-    reference = _reference_at_quantile(references, capacity_quantile)
+    capacity_quantile = seam_contract.reference_area_quantiles[1]
     reference_area_p95 = _reference_area_p95(references)
     reference_area_capacity = _reference_area_at_quantile(
         references,
@@ -302,16 +346,17 @@ def build_joint_nuclei_preflight(
         scene,
         removable,
     )
-    target_density = (
-        _target_interface_density(
+    target_density, target_density_by_class = (
+        _target_interface_population_density(
             scene,
-            target_class=target_class,
+            source_tissue=source_tissue,
+            target_classes=tuple(sorted(target_compatible_classes)),
             target_label=target_label,
             schema=schema,
             reference_area_p95=reference_area_p95,
         )
         if requires_add
-        else 0.0
+        else (0.0, {})
     )
     instance_class = {
         item.instance_id: item.class_id for item in scene.cells.instances
@@ -405,7 +450,7 @@ def build_joint_nuclei_preflight(
                 interface_ids=(interface.interface_id,),
                 anchor_ids=(anchor_id,),
                 target_class=target_class,
-                contract=joint_bundle.mechanism.cell_program.seam,
+                contract=seam_contract,
             )
             seam_fit = anchor_fit_centers & adaptive_seam.continuity_region
             potential_centers = seam_fit | (
@@ -449,7 +494,7 @@ def build_joint_nuclei_preflight(
                 feasible_anchor_envelope |= anchor_envelope
         envelope = (
             feasible_anchor_envelope
-            if joint_bundle.mechanism.cell_program.seam.requires_new_target_cells
+            if seam_contract.requires_new_target_cells
             else raw_envelope
         )
         overlapping_removable = tuple(
@@ -481,21 +526,6 @@ def build_joint_nuclei_preflight(
             free,
             _representative_fit_references(references),
         )
-        add_capacity = (
-            min(
-                int(np.count_nonzero(fit_centers)),
-                int(
-                    np.count_nonzero(free)
-                    / max(
-                        1.0,
-                        reference_area_capacity
-                        * SHAPE_CAPACITY_CLEARANCE_FACTOR,
-                    )
-                ),
-            )
-            if reference is not None
-            else 0
-        )
         halo = np.zeros_like(envelope)
         if joint_bundle.mechanism.coupling.cell_only_target_fraction > 0:
             halo = (
@@ -521,6 +551,21 @@ def build_joint_nuclei_preflight(
         )
         if joint_bundle.mechanism.coupling.cell_only_target_fraction > 0:
             required_count += reserved_halo_count
+        erased = np.zeros_like(envelope, dtype=bool)
+        for instance_id in overlapping_removable:
+            erased |= np.asarray(scene.instance_masks[instance_id], dtype=bool)
+        target_ids = tuple(schema.resolve_fine_ids(target_label))
+        hypothetical_valid = np.isin(source_tissue, target_ids) | envelope
+        packing = certify_complete_footprint_packing(
+            source_nuclei=scene.source_nuclei,
+            erased_footprint=erased,
+            center_region=envelope,
+            valid_footprint_region=hypothetical_valid,
+            references_by_class=references_by_class,
+            requested_count=required_count,
+            class_request_weights=target_density_by_class,
+        )
+        add_capacity = packing.placed_count
         # Planner has not selected an anchor and no concrete tissue candidate
         # exists yet.  Any exact seam quota here would be invented geometry.
         # Continuity is therefore deferred to candidate-local compilation.
@@ -536,11 +581,11 @@ def build_joint_nuclei_preflight(
         if not np.any(envelope):
             reasons.append("no_cell_safe_tissue_capacity")
         if (
-            joint_bundle.mechanism.cell_program.seam.requires_new_target_cells
+            seam_contract.requires_new_target_cells
             and not feasible_anchor_ids
         ):
             reasons.append("no_cell_feasible_anchor_segment")
-        if requires_add and add_capacity < required_count:
+        if requires_add and not packing.passed:
             reasons.append("insufficient_complete_shape_placement_capacity")
         if (
             joint_bundle.primitive.minimum_source_clearance_instances > 0
@@ -569,7 +614,7 @@ def build_joint_nuclei_preflight(
                 reference_fit_center_pixels=int(np.count_nonzero(fit_centers)),
                 reference_area_p95=float(reference_area_p95),
                 target_density_per_pixel=float(target_density),
-                required_add_count=int(required_count),
+                required_add_count=int(packing.requested_count),
                 required_seam_count=int(required_seam),
                 estimated_add_capacity=max(0, int(add_capacity)),
                 estimated_seam_capacity=max(0, int(seam_capacity)),
@@ -578,7 +623,10 @@ def build_joint_nuclei_preflight(
                 ),
                 cell_feasible_anchor_segment_ids=tuple(feasible_anchor_ids),
                 anchor_continuity_reports=tuple(anchor_continuity_reports),
-                capacity_margin_count=int(add_capacity - required_count),
+                capacity_margin_count=int(
+                    add_capacity - packing.requested_count
+                ),
+                exact_packing_certificate=packing.to_metadata(),
                 feasible=not reasons,
                 reasons=tuple(reasons),
             )
@@ -589,12 +637,24 @@ def build_joint_nuclei_preflight(
     for envelope in feasible_envelopes:
         aggregate_capacity_mask |= envelope
     aggregate_capacity = int(np.count_nonzero(aggregate_capacity_mask))
-    meaningful_floor = int(allocation.tissue_execution_floor_pixels)
+    # Burden primitives may fall back from the 19% target to the proven
+    # maximum safe edit, but they may never redefine a visually negligible
+    # edit as success.  The agreed tissue floor therefore remains binding
+    # even when an older manifest advertises a lower adaptive compiler floor.
+    meaningful_floor = max(
+        int(allocation.tissue_execution_floor_pixels),
+        int(case.joint_area_budget.tissue_floor_pixels(source_tissue.shape)),
+    )
     return JointNucleiPreflight(
         version=PREFLIGHT_VERSION,
         target_cell_class=target_class,
+        target_cell_classes=tuple(sorted(target_compatible_classes)),
         target_tissue_label=target_label,
         target_density_per_pixel=float(target_density),
+        target_density_by_class={
+            int(key): float(value)
+            for key, value in target_density_by_class.items()
+        },
         reference_area_p95=float(reference_area_p95),
         reference_area_capacity_quantile=float(capacity_quantile),
         eligible_reference_ids=tuple(item.instance_id for item in references),
@@ -624,14 +684,32 @@ def build_joint_nuclei_preflight(
 def augment_tissue_scene_with_nuclei_preflight(
     scene: SceneAnalysis,
     preflight: JointNucleiPreflight,
+    *,
+    auxiliary_structure_masks: dict[str, np.ndarray] | None = None,
+    required_auxiliary_structure_ids: tuple[str, ...] = (),
 ) -> SceneAnalysis:
-    """Make non-local/protected nucleus footprints unavailable to tissue tools."""
+    """Make cell and native-structure exclusions unavailable to tissue tools.
+
+    Auxiliary protection is compiled before candidate drawing.  A required
+    gland/lumen/airspace map therefore constrains the same legal raster used
+    by the topology solver instead of merely vetoing an otherwise finished
+    joint candidate.
+    """
 
     prohibited = dict(scene.prohibited_region_masks)
     prohibited["joint:nuclei:protected_instances"] = np.asarray(
         preflight.protected_tissue_change_mask,
         dtype=bool,
     )
+    available = auxiliary_structure_masks or {}
+    for structure_id in sorted(required_auxiliary_structure_ids):
+        if structure_id not in available:
+            raise JointContractError(
+                f"required auxiliary structure {structure_id!r} is unavailable"
+            )
+        prohibited[f"joint:auxiliary:{structure_id}"] = np.asarray(
+            available[structure_id], dtype=bool
+        )
     return replace(scene, prohibited_region_masks=prohibited)
 
 
@@ -657,13 +735,15 @@ def bind_joint_plan_to_nuclei_preflight(
 def assess_candidate_cell_feasibility(
     candidate: CandidateMask,
     *,
+    case: JointCaseContext,
     source_tissue: np.ndarray,
     scene: JointSceneAnalysis,
     preflight: JointNucleiPreflight,
     joint_bundle: JointSkillBundle,
     joint_plan: JointEditPlan,
+    allocation: JointBudgetAllocation,
 ) -> CandidateCellFeasibility:
-    """Exact candidate-local closure/containment check before cell drawing."""
+    """Certify candidate area, closure, seam and real-shape packing pre-ProbNet."""
 
     core = np.asarray(candidate.change_region, dtype=bool)
     protected_set = set(preflight.protected_instance_ids)
@@ -684,41 +764,55 @@ def assess_candidate_cell_feasibility(
         )
     )
     removals = tuple(
-        instance_id for instance_id in intersecting if instance_id in removable_set
+        item for item in intersecting if item in removable_set
     )
     metadata = {item.instance_id: item for item in scene.cells.instances}
     removal_targets = tuple(
-        instance_id
-        for instance_id in removals
-        if metadata[instance_id].class_id
-        in set(preflight.required_removal_cell_classes)
+        item
+        for item in removals
+        if metadata[item].class_id in set(preflight.required_removal_cell_classes)
     )
     allowed_closure = ndimage.binary_dilation(
         core,
         iterations=max(1, preflight.whole_instance_closure_px),
     )
-    closure_removals = removals
     nonlocal_extensions = tuple(
         sorted(
-            instance_id
-            for instance_id in closure_removals
-            if np.any(scene.instance_masks[instance_id] & ~allowed_closure)
+            item
+            for item in removals
+            if np.any(scene.instance_masks[item] & ~allowed_closure)
         )
     )
     prohibited_ids = joint_bundle.annotation_profile.prohibit_cell_placement_fine_ids
     legal_core = core & ~np.isin(candidate.target_mask, prohibited_ids)
-    references = tuple(
-        _reference_from_scene(scene, instance_id, preflight.target_cell_class)
-        for instance_id in preflight.eligible_reference_ids
+    target_fine_ids = tuple(
+        int(value)
+        for value in np.unique(candidate.target_mask[legal_core])
     )
-    references = tuple(item for item in references if item is not None)
+    target_fine_set = set(target_fine_ids)
+    local_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
+    fallback_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
+    for instance_id in preflight.eligible_reference_ids:
+        nucleus = metadata.get(instance_id)
+        if nucleus is None:
+            continue
+        item = _reference_from_scene(scene, instance_id, nucleus.class_id)
+        if item is not None:
+            fallback_references_by_class.setdefault(
+                nucleus.class_id, []
+            ).append(item)
+            if nucleus.tissue_fine_id in target_fine_set:
+                local_references_by_class.setdefault(
+                    nucleus.class_id, []
+                ).append(item)
+    reference_groups = {
+        class_id: tuple(
+            local_references_by_class.get(class_id) or fallback_items
+        )
+        for class_id, fallback_items in fallback_references_by_class.items()
+    }
+    references = tuple(item for items in reference_groups.values() for item in items)
     fit_references = _representative_fit_references(references)
-    capacity_quantile = preflight.reference_area_capacity_quantile
-    reference = _reference_at_quantile(references, capacity_quantile)
-    reference_area_capacity = _reference_area_at_quantile(
-        references,
-        capacity_quantile,
-    )
     free = _free_after_removing_instances(
         legal_core,
         source_nuclei=scene.source_nuclei,
@@ -726,21 +820,6 @@ def assess_candidate_cell_feasibility(
         removable_ids=removals,
     )
     fit_centers = _reference_fit_centers_union(free, fit_references)
-    add_capacity = (
-        min(
-            int(np.count_nonzero(fit_centers)),
-            int(
-                np.count_nonzero(free)
-                / max(
-                    1.0,
-                    reference_area_capacity
-                    * SHAPE_CAPACITY_CLEARANCE_FACTOR,
-                )
-            ),
-        )
-        if reference is not None
-        else 0
-    )
     required_count = int(
         np.ceil(np.count_nonzero(legal_core) * preflight.target_density_per_pixel)
     )
@@ -750,13 +829,20 @@ def assess_candidate_cell_feasibility(
         interface_ids=joint_plan.cell_plan.interface_ids,
         anchor_ids=joint_plan.cell_plan.anchor_ids,
         target_class=preflight.target_cell_class,
-        contract=joint_bundle.mechanism.cell_program.seam,
+        contract=joint_bundle.mechanism.cell_program.seam_for(
+            case.primitive_id
+        ),
     )
+    erased = np.zeros_like(core, dtype=bool)
+    for instance_id in removals:
+        erased |= np.asarray(scene.instance_masks[instance_id], dtype=bool)
+    retained_nuclei = np.asarray(scene.source_nuclei).copy()
+    retained_nuclei[erased] = 0
     seam_fit = fit_centers & adaptive_seam.continuity_region
     retained_target_centers = class_center_mask(
-        scene.source_nuclei,
+        retained_nuclei,
         class_id=preflight.target_cell_class,
-    ) & ~core
+    )
     potential_continuity_centers = seam_fit | retained_target_centers
     potential_coverage = anchor_coverage_fraction(
         adaptive_seam.anchor_mask,
@@ -765,7 +851,51 @@ def assess_candidate_cell_feasibility(
     )
     seam_capacity = int(np.count_nonzero(seam_fit))
     required_seam = 0
+    if adaptive_seam.requires_new_target_cells and target_fine_ids:
+        quota = compile_continuity_center_quota(
+            nuclei_mask=retained_nuclei,
+            target_tissue_mask=candidate.target_mask,
+            tissue_change=core,
+            continuity_region=adaptive_seam.continuity_region,
+            continuity_anchor_mask=adaptive_seam.anchor_mask,
+            continuity_width_px=adaptive_seam.width_px,
+            density_ratio_range=adaptive_seam.density_ratio_range,
+            requires_new_target_cells=True,
+            target_class=preflight.target_cell_class,
+            target_fine_ids=target_fine_ids,
+        )
+        required_seam = compile_executable_continuity_count(
+            quota,
+            anchor_pixels=int(np.count_nonzero(adaptive_seam.anchor_mask)),
+            maximum_empty_run_px=adaptive_seam.maximum_empty_run_px,
+            minimum_anchor_coverage_fraction=(
+                adaptive_seam.minimum_anchor_coverage_fraction
+            ),
+        )
+    effective_required_count = max(required_count, required_seam)
+    packing = certify_complete_footprint_packing(
+        source_nuclei=scene.source_nuclei,
+        erased_footprint=erased,
+        center_region=legal_core,
+        valid_footprint_region=(
+            np.isin(candidate.target_mask, target_fine_ids)
+            if target_fine_ids
+            else np.zeros_like(core, dtype=bool)
+        ),
+        references_by_class=reference_groups,
+        requested_count=effective_required_count,
+        class_request_weights=preflight.target_density_by_class,
+        continuity_region=adaptive_seam.continuity_region,
+        required_seam_count=required_seam,
+        required_seam_class=preflight.target_cell_class,
+    )
+    meaningful_floor = max(
+        int(allocation.tissue_execution_floor_pixels),
+        int(case.joint_area_budget.tissue_floor_pixels(core.shape)),
+    )
     reasons: list[str] = []
+    if np.count_nonzero(core) < meaningful_floor:
+        reasons.append("candidate_below_meaningful_tissue_floor")
     if protected_overlap:
         reasons.append("tissue_change_intersects_protected_instance")
     if set(intersecting) - removable_set - protected_set:
@@ -780,11 +910,8 @@ def assess_candidate_cell_feasibility(
         reasons.append("candidate_has_no_complete_viable_instance_to_clear")
     if not np.any(legal_core):
         reasons.append("candidate_has_no_legal_cell_core")
-    if (
-        "add" in joint_bundle.mechanism.cell_program.actions
-        and add_capacity < required_count
-    ):
-        reasons.append("candidate_cannot_fit_required_complete_reference_shapes")
+    if "add" in joint_bundle.mechanism.cell_program.actions and not packing.passed:
+        reasons.extend(packing.failure_reasons)
     if adaptive_seam.requires_new_target_cells:
         if not np.any(adaptive_seam.anchor_mask):
             reasons.append("candidate_has_no_active_planner_anchor")
@@ -798,32 +925,199 @@ def assess_candidate_cell_feasibility(
         candidate_id=candidate.candidate_id,
         passed=not reasons,
         removable_instance_ids=removals,
-        required_removal_cell_classes=(
-            preflight.required_removal_cell_classes
-        ),
+        required_removal_cell_classes=preflight.required_removal_cell_classes,
         estimated_removal_count=len(removal_targets),
         protected_overlap_ids=protected_overlap,
         nonlocal_extension_ids=nonlocal_extensions,
         legal_core_pixels=int(np.count_nonzero(legal_core)),
         reference_fit_center_pixels=int(np.count_nonzero(fit_centers)),
-        required_add_count=int(required_count),
+        required_add_count=int(packing.requested_count),
         required_seam_count=int(required_seam),
-        estimated_add_capacity=max(0, int(add_capacity)),
-        estimated_seam_capacity=max(0, int(seam_capacity)),
+        estimated_add_capacity=max(0, int(packing.placed_count)),
+        estimated_seam_capacity=max(0, int(packing.placed_seam_count)),
         continuity_mode=adaptive_seam.mode,
         continuity_width_px=adaptive_seam.width_px,
         continuity_maximum_empty_run_px=adaptive_seam.maximum_empty_run_px,
-        continuity_anchor_pixels=int(
-            np.count_nonzero(adaptive_seam.anchor_mask)
-        ),
-        continuity_region_pixels=int(
-            np.count_nonzero(adaptive_seam.continuity_region)
-        ),
+        continuity_anchor_pixels=int(np.count_nonzero(adaptive_seam.anchor_mask)),
+        continuity_region_pixels=int(np.count_nonzero(adaptive_seam.continuity_region)),
         potential_anchor_coverage_fraction=float(potential_coverage),
         minimum_anchor_coverage_fraction=float(
             adaptive_seam.minimum_anchor_coverage_fraction
         ),
-        reasons=tuple(reasons),
+        meaningful_tissue_floor_pixels=meaningful_floor,
+        tissue_change_pixels=int(np.count_nonzero(core)),
+        exact_packing_certificate=packing.to_metadata(),
+        reasons=tuple(dict.fromkeys(reasons)),
+    )
+
+
+def certify_compiled_cell_program_feasibility(
+    report: CandidateCellFeasibility,
+    *,
+    candidate: CandidateMask,
+    contract,
+    scene: JointSceneAnalysis,
+    preflight: JointNucleiPreflight,
+) -> CandidateCellFeasibility:
+    """Re-certify packing on the compiler's exact P/V/E/C masks.
+
+    The first candidate check runs before the immutable executable contract is
+    available.  This second check is still pre-ProbNet, but now uses exactly
+    the center, footprint, erasure and continuity rasters consumed by the
+    mature executor.  A tissue candidate is never exposed as certified if the
+    two stages disagree.
+    """
+
+    metadata = {item.instance_id: item for item in scene.cells.instances}
+    target_fine_ids = set(contract.target_host_fine_ids)
+    local_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
+    fallback_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
+    for instance_id in preflight.eligible_reference_ids:
+        item = metadata.get(instance_id)
+        if (
+            item is None
+            or item.class_id not in set(contract.allowed_new_cell_classes)
+        ):
+            continue
+        reference = _reference_from_scene(scene, instance_id, item.class_id)
+        if reference is not None:
+            fallback_references_by_class.setdefault(
+                item.class_id, []
+            ).append(reference)
+            if item.tissue_fine_id in target_fine_ids:
+                local_references_by_class.setdefault(
+                    item.class_id, []
+                ).append(reference)
+    references_by_class = {
+        class_id: tuple(
+            local_references_by_class.get(class_id) or fallback_items
+        )
+        for class_id, fallback_items in fallback_references_by_class.items()
+    }
+    program = contract.cell_program
+    required_seam_count = 0
+    target_class = preflight.target_cell_class
+    if (
+        program.continuity_requires_new_target_cells
+        and np.any(program.continuity_region)
+    ):
+        retained_for_quota = np.asarray(scene.source_nuclei).copy()
+        retained_for_quota[
+            np.asarray(program.erasure_region, dtype=bool)
+        ] = 0
+        quota = compile_continuity_center_quota(
+            nuclei_mask=retained_for_quota,
+            target_tissue_mask=np.asarray(candidate.target_mask),
+            tissue_change=np.asarray(candidate.change_region, dtype=bool),
+            continuity_region=program.continuity_region,
+            continuity_anchor_mask=program.continuity_anchor_mask,
+            continuity_width_px=program.continuity_width_px,
+            density_ratio_range=program.continuity_density_ratio_range,
+            requires_new_target_cells=True,
+            target_class=target_class,
+            target_fine_ids=contract.target_host_fine_ids,
+        )
+        required_seam_count = compile_executable_continuity_count(
+            quota,
+            anchor_pixels=int(
+                np.count_nonzero(program.continuity_anchor_mask)
+            ),
+            maximum_empty_run_px=program.continuity_maximum_empty_run_px,
+            minimum_anchor_coverage_fraction=(
+                program.continuity_minimum_anchor_coverage_fraction
+            ),
+        )
+    prior_certificate = report.exact_packing_certificate or {}
+    prior_fallback_used = bool(
+        prior_certificate.get("finite_count_fallback_used", False)
+    )
+    certificate = certify_complete_footprint_packing(
+        source_nuclei=scene.source_nuclei,
+        erased_footprint=program.erasure_region,
+        center_region=program.placement_center_region,
+        valid_footprint_region=program.valid_footprint_region,
+        references_by_class=references_by_class,
+        requested_count=report.required_add_count,
+        class_request_weights=preflight.target_density_by_class,
+        continuity_region=program.continuity_region,
+        required_seam_count=required_seam_count,
+        required_seam_class=target_class,
+        # Exactly one bounded fallback is allowed across the two feasibility
+        # stages. A broad candidate core may fit the nominal count while the
+        # final E/P/V/C compiler exposes the true lower capacity; in that case
+        # the final stage owns the fallback. If candidate assessment already
+        # used it, the exact recheck cannot reduce the count again.
+        allow_finite_count_fallback=not prior_fallback_used,
+    )
+    if prior_fallback_used:
+        certificate = replace(
+            certificate,
+            nominal_requested_count=int(
+                prior_certificate.get(
+                    "nominal_requested_count", certificate.requested_count
+                )
+            ),
+            minimum_safe_count=int(
+                prior_certificate.get(
+                    "minimum_safe_count", certificate.requested_count
+                )
+            ),
+            finite_count_fallback_used=True,
+        )
+    reasons = [
+        item
+        for item in report.reasons
+        if item
+        not in {
+            "exact_complete_footprint_packing_capacity_shortfall",
+            "exact_seam_packing_capacity_shortfall",
+            "no_complete_reference_shape_for_packing",
+        }
+    ]
+    if not certificate.passed:
+        reasons.extend(certificate.failure_reasons)
+    retained_centers = class_center_mask(
+        np.where(
+            np.asarray(program.erasure_region, dtype=bool),
+            0,
+            np.asarray(scene.source_nuclei),
+        ),
+        class_id=target_class,
+    )
+    witness_centers = retained_centers.copy()
+    for placement in certificate.placements:
+        if placement.class_id == target_class:
+            witness_centers[placement.row, placement.col] = True
+    exact_coverage = anchor_coverage_fraction(
+        program.continuity_anchor_mask,
+        witness_centers,
+        maximum_empty_run_px=program.continuity_maximum_empty_run_px,
+    )
+    if (
+        program.continuity_requires_new_target_cells
+        and exact_coverage
+        < program.continuity_minimum_anchor_coverage_fraction
+    ):
+        reasons.append("exact_continuity_coverage_below_contract")
+    return replace(
+        report,
+        passed=not reasons,
+        required_add_count=int(certificate.requested_count),
+        required_seam_count=int(required_seam_count),
+        estimated_add_capacity=certificate.placed_count,
+        estimated_seam_capacity=certificate.placed_seam_count,
+        reference_fit_center_pixels=int(
+            certificate.center_region_pixels
+        ),
+        exact_packing_certificate={
+            **certificate.to_metadata(),
+            "assessment_stage": "compiled_E_P_V_C_pre_probnet",
+            "exact_anchor_coverage_fraction": float(exact_coverage),
+            "minimum_anchor_coverage_fraction": float(
+                program.continuity_minimum_anchor_coverage_fraction
+            ),
+        },
+        reasons=tuple(dict.fromkeys(reasons)),
     )
 
 
@@ -868,37 +1162,72 @@ def _reference_area_p95(
     return float(np.quantile([item.area_px for item in references], 0.95))
 
 
-def _target_interface_density(
+def _target_interface_population_density(
     scene: JointSceneAnalysis,
     *,
-    target_class: int,
+    source_tissue: np.ndarray,
+    target_classes: tuple[int, ...],
     target_label: str,
     schema: MaskProfileSchema,
     reference_area_p95: float,
-) -> float:
+) -> tuple[float, dict[int, float]]:
+    """Mirror the mature sampler's semantic source-density observation.
+
+    The structural graph watershed-splits touching nuclei for shape integrity
+    and whole-instance authorization.  The mature abundance prior intentionally
+    counts one 8-connected semantic component per class.  Keep these rulers
+    separate: semantic components determine population abundance; complete
+    scene instances determine footprint and erasure legality.
+    """
+
     target_ids = set(schema.resolve_fine_ids(target_label))
-    eligible = [
-        item
-        for item in scene.cells.instances
-        if item.class_id == target_class
-        and not item.touches_border
-        and "merged_suspect" not in item.quality_flags
-        and item.tissue_fine_id in target_ids
-    ]
-    area = int(
-        sum(
-            component.area_px
-            for component in scene.tissue.graph.components
-            if component.label == target_label
+    tissue = np.asarray(source_tissue)
+    if tissue.shape != scene.source_nuclei.shape:
+        raise JointContractError(
+            "source tissue and nuclei must align for abundance estimation"
         )
-    )
-    if area > 0 and eligible:
-        return float(len(eligible) / area)
+    nuclei = np.asarray(scene.source_nuclei)
+    class_counts: dict[int, int] = {}
+    # Mature abundance uses every observed CellViT class.  Its later
+    # shape-support router redistributes classes disallowed for new placement
+    # without changing the total count.
+    for class_id in range(1, 6):
+        labeled, count = ndimage.label(
+            nuclei == int(class_id),
+            structure=np.ones((3, 3), dtype=np.uint8),
+        )
+        if count <= 0:
+            continue
+        centers = ndimage.center_of_mass(
+            nuclei == int(class_id),
+            labeled,
+            range(1, count + 1),
+        )
+        current = 0
+        for row, col in centers:
+            y = int(np.clip(round(float(row)), 0, tissue.shape[0] - 1))
+            x = int(np.clip(round(float(col)), 0, tissue.shape[1] - 1))
+            if int(tissue[y, x]) in target_ids:
+                current += 1
+        if current:
+            class_counts[int(class_id)] = current
+    area = int(np.count_nonzero(np.isin(tissue, tuple(target_ids))))
+    eligible_count = int(sum(class_counts.values()))
+    if area > 0 and eligible_count:
+        by_class = {
+            class_id: float(count / area)
+            for class_id, count in class_counts.items()
+            if class_id in set(target_classes)
+        }
+        if not by_class:
+            by_class = {int(target_classes[0]): float(eligible_count / area)}
+        return float(eligible_count / area), by_class
     # No observable local target population means no empirical density prior.
     # In particular, p95=0 must never become one nucleus per pixel.
-    if not eligible or reference_area_p95 <= 0:
-        return 0.0
-    return float(1.0 / max(1.0, reference_area_p95 * 3.0))
+    if not eligible_count or reference_area_p95 <= 0:
+        return 0.0, {}
+    fallback = float(1.0 / max(1.0, reference_area_p95 * 3.0))
+    return fallback, {target_classes[0]: fallback}
 
 
 def _whole_instance_closure_px(
@@ -914,7 +1243,12 @@ def _whole_instance_closure_px(
         diagonals.append(hypot(max(0, x1 - x0), max(0, y1 - y0)))
     if not diagonals:
         return max(1, round(scene.population.nominal_nucleus_diameter_px or 8.0))
-    return max(1, ceil(float(np.quantile(diagonals, 0.95))))
+    # Every instance left in ``removable`` has already passed the border,
+    # connectivity, merged-suspect and fragment checks.  Atomic removal must
+    # cover the largest such complete instance, not the 95th percentile;
+    # otherwise the largest legitimate nucleus is declared removable during
+    # preflight and then paradoxically rejected as "non-local" downstream.
+    return max(1, ceil(float(max(diagonals))))
 
 
 def _free_after_removing_instances(

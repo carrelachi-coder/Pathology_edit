@@ -24,7 +24,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v1"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v3"
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,9 @@ class ExecutableJointContract:
     target_label: str | None
     selected_interface_ids: tuple[str, ...]
     selected_anchor_ids: tuple[str, ...]
+    selected_structural_unit_ids: tuple[str, ...]
+    affected_structural_unit_ids: tuple[str, ...]
+    structural_hierarchy_digest: str
     erase_instance_ids: tuple[str, ...]
     protected_instance_ids: tuple[str, ...]
     allowed_new_cell_classes: tuple[int, ...]
@@ -64,6 +67,7 @@ class ExecutableJointContract:
     tissue_change_digest: str
     tissue_gate_report_digest: str
     cell_program: CompiledCellToolProgram
+    packing_certificate: dict[str, Any] | None
 
     def __post_init__(self) -> None:
         if self.schema_version != EXECUTABLE_CONTRACT_VERSION:
@@ -90,6 +94,26 @@ class ExecutableJointContract:
             raise JointContractError(
                 "cell program classes differ from executable contract classes"
             )
+        if set(self.affected_structural_unit_ids) - set(
+            self.selected_structural_unit_ids
+        ):
+            raise JointContractError(
+                "affected structural units are not authorized by the Planner"
+            )
+        if not self.structural_hierarchy_digest:
+            raise JointContractError("structural hierarchy digest is required")
+        if self.packing_certificate is not None:
+            certificate = self.packing_certificate
+            if certificate.get("passed") is not True:
+                raise JointContractError(
+                    "executable packing certificate is not passing"
+                )
+            requested = int(certificate.get("requested_count", 0))
+            placements = certificate.get("placements") or []
+            if requested <= 0 or len(placements) != requested:
+                raise JointContractError(
+                    "executable packing certificate has an incomplete witness ledger"
+                )
 
     def to_metadata(self) -> dict[str, Any]:
         return {
@@ -105,6 +129,11 @@ class ExecutableJointContract:
             },
             "selected_interface_ids": list(self.selected_interface_ids),
             "selected_anchor_ids": list(self.selected_anchor_ids),
+            "structural_hierarchy": {
+                "selected_unit_ids": list(self.selected_structural_unit_ids),
+                "affected_unit_ids": list(self.affected_structural_unit_ids),
+                "digest": self.structural_hierarchy_digest,
+            },
             "cell_instance_contract": {
                 "erase_instance_ids": list(self.erase_instance_ids),
                 "protected_instance_ids": list(self.protected_instance_ids),
@@ -129,7 +158,29 @@ class ExecutableJointContract:
                 "tissue_gate_report": self.tissue_gate_report_digest,
             },
             "cell_program": self.cell_program.to_metadata(),
+            "packing_certificate": self.packing_certificate,
         }
+
+    def bind_packing_certificate(
+        self, certificate: dict[str, Any]
+    ) -> ExecutableJointContract:
+        """Return a new immutable contract that owns the exact packing witness."""
+
+        payload = dict(certificate)
+        # A preliminary contract ID may appear in diagnostic metadata.  It
+        # cannot be part of the final certificate without creating a circular
+        # hash dependency.
+        payload.pop("contract_id", None)
+        draft = replace(
+            self,
+            contract_id="pending",
+            packing_certificate=payload,
+        )
+        metadata = draft.to_metadata()
+        metadata["contract_id"] = ""
+        bound = replace(draft, contract_id=_canonical_digest(metadata))
+        bound.validate_identity()
+        return bound
 
     def validate_identity(self) -> None:
         payload = self.to_metadata()
@@ -201,6 +252,23 @@ class ExecutableJointContract:
             errors.append("target_tissue_digest_mismatch")
         if _array_digest(np.asarray(tissue_change, dtype=bool)) != self.tissue_change_digest:
             errors.append("tissue_change_digest_mismatch")
+        if _canonical_digest(scene.structural_hierarchy) != self.structural_hierarchy_digest:
+            errors.append("structural_hierarchy_digest_mismatch")
+        known_units = set(scene.structural_unit_masks)
+        if set(self.selected_structural_unit_ids) - known_units:
+            errors.append("selected_structural_unit_missing_from_scene")
+        change_neighborhood = ndimage.binary_dilation(
+            np.asarray(tissue_change, dtype=bool), iterations=1
+        )
+        observed_affected_units = tuple(
+            sorted(
+                unit_id
+                for unit_id, mask in scene.structural_unit_masks.items()
+                if np.any(np.asarray(mask, dtype=bool) & change_neighborhood)
+            )
+        )
+        if observed_affected_units != self.affected_structural_unit_ids:
+            errors.append("affected_structural_unit_binding_mismatch")
         program = self.cell_program
         changed = np.asarray(cell_change, dtype=bool)
         population = np.asarray(program.population_target_region, dtype=bool)
@@ -351,6 +419,30 @@ class ExecutableJointContractCompiler:
             raise JointContractError(
                 "tissue candidate change mask is not source/target exact"
             )
+        known_units = set(scene.structural_unit_masks)
+        selected_units = tuple(plan.structural_unit_ids)
+        unknown_units = set(selected_units) - known_units
+        if unknown_units:
+            raise JointContractError(
+                "Planner selected unknown structural units: "
+                + ", ".join(sorted(unknown_units))
+            )
+        change_neighborhood = ndimage.binary_dilation(
+            tissue_change, iterations=1
+        )
+        affected_units = tuple(
+            sorted(
+                unit_id
+                for unit_id, mask in scene.structural_unit_masks.items()
+                if np.any(np.asarray(mask, dtype=bool) & change_neighborhood)
+            )
+        )
+        unauthorized_units = set(affected_units) - set(selected_units)
+        if unauthorized_units:
+            raise JointContractError(
+                "candidate touches structural units omitted by the Planner: "
+                + ", ".join(sorted(unauthorized_units))
+            )
         base_program = self.cell_program_compiler.compile(
             case=case,
             schema=schema,
@@ -430,10 +522,21 @@ class ExecutableJointContractCompiler:
             primitive_host_labels=bundle.primitive.host_tissue_labels,
             schema=schema,
         )
+        protected_structure = np.zeros_like(target_tissue, dtype=bool)
+        for structure_id in sorted(
+            bundle.mechanism.representability.required_auxiliary_structures
+        ):
+            if structure_id not in scene.auxiliary_structure_masks:
+                raise JointContractError(
+                    f"required auxiliary structure {structure_id!r} is unavailable"
+                )
+            protected_structure |= np.asarray(
+                scene.auxiliary_structure_masks[structure_id], dtype=bool
+            )
         profile_valid = ~np.isin(
             target_tissue,
             bundle.annotation_profile.prohibit_cell_placement_fine_ids,
-        )
+        ) & ~protected_structure
         valid = profile_valid & np.isin(target_tissue, host_ids)
         nominal_radius = max(
             1, int(np.ceil(base_program.nominal_nucleus_diameter_px / 2.0))
@@ -460,7 +563,7 @@ class ExecutableJointContractCompiler:
         generation_allowed = ~np.isin(
             target_tissue,
             bundle.annotation_profile.prohibit_generation_support_fine_ids,
-        )
+        ) & ~protected_structure
         # P contains legal *centers*, whereas S must contain the complete
         # footprint ultimately pasted at those centers.  The mature library
         # permits calibrated, mildly elongated shapes; 1.25 diameters left a
@@ -546,6 +649,11 @@ class ExecutableJointContractCompiler:
             target_label=target_label,
             selected_interface_ids=interfaces,
             selected_anchor_ids=anchors,
+            selected_structural_unit_ids=selected_units,
+            affected_structural_unit_ids=affected_units,
+            structural_hierarchy_digest=_canonical_digest(
+                scene.structural_hierarchy
+            ),
             erase_instance_ids=erase_ids,
             protected_instance_ids=tuple(sorted(protected)),
             allowed_new_cell_classes=allowed_classes,
@@ -578,6 +686,7 @@ class ExecutableJointContractCompiler:
                 tissue_gate_report.to_metadata()
             ),
             cell_program=program,
+            packing_certificate=None,
         )
         payload = draft.to_metadata()
         payload["contract_id"] = ""

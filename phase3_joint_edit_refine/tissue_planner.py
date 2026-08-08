@@ -57,6 +57,66 @@ def _normalize_integer_allocations(
     return tuple(int(item) / total for item in allocations)
 
 
+def _effective_tissue_topology(
+    joint_bundle: JointSkillBundle,
+    *,
+    primitive_id: str,
+    retry_index: int,
+    feedback_stage: str | None,
+) -> dict[str, Any]:
+    """Resolve primitive defaults plus a reviewed mechanism fallback.
+
+    A mechanism fallback is activated only after the ordinary interface-front
+    plan has failed compilation. This prevents a high-area task from silently
+    changing every organ into component deletion while still allowing a
+    complete, pathology-recognized structural unit to resolve when shallow
+    fronts cannot reach the hard area floor.
+    """
+
+    primitive = joint_bundle.primitive
+    result = {
+        "geometry_mode": primitive.tissue_geometry_mode,
+        "allow_source_component_resolution": (
+            primitive.allow_source_component_resolution
+        ),
+        "allow_target_hole_resolution": primitive.allow_target_hole_resolution,
+        "maximum_source_component_changed_fraction": (
+            primitive.maximum_source_component_changed_fraction
+        ),
+        "minimum_source_component_remaining_px": (
+            primitive.minimum_source_component_remaining_px
+        ),
+        "fallback_activated": False,
+    }
+    fallback = joint_bundle.mechanism.tissue_program.topology_fallback_for(
+        primitive_id
+    )
+    if (
+        fallback is not None
+        and retry_index > 0
+        and feedback_stage == "planning_or_compilation"
+    ):
+        result.update(
+            {
+                "geometry_mode": fallback.geometry_mode,
+                "allow_source_component_resolution": (
+                    fallback.allow_source_component_resolution
+                ),
+                "allow_target_hole_resolution": (
+                    fallback.allow_target_hole_resolution
+                ),
+                "maximum_source_component_changed_fraction": (
+                    fallback.maximum_source_component_changed_fraction
+                ),
+                "minimum_source_component_remaining_px": (
+                    fallback.minimum_source_component_remaining_px
+                ),
+                "fallback_activated": True,
+            }
+        )
+    return result
+
+
 @dataclass(frozen=True)
 class OpenAIJointAwareTissuePlanner:
     """Multimodal tissue Planner that sees the mechanism and cell capacity."""
@@ -243,9 +303,14 @@ class MultiInterfaceResearchTissuePlanner:
         feedback = dict(execution_feedback or {})
         retry_index = max(0, int(feedback.get("retry_index", 0)))
         failed_interface_ids = set(feedback.get("failed_interface_ids", ()))
+        topology = _effective_tissue_topology(
+            joint_bundle,
+            primitive_id=case.primitive_id,
+            retry_index=retry_index,
+            feedback_stage=feedback.get("stage"),
+        )
         component_turnover = (
-            joint_bundle.primitive.tissue_geometry_mode
-            == "component_boundary_turnover"
+            topology["geometry_mode"] == "component_boundary_turnover"
         )
 
         # One connected source component can border several independent target
@@ -374,7 +439,7 @@ class MultiInterfaceResearchTissuePlanner:
         if not selected:
             raise RefineContractError("preflight left no executable tissue capacity")
         total_capacity = max(1, sum(capacities))
-        if joint_bundle.primitive.allow_source_component_resolution:
+        if topology["allow_source_component_resolution"]:
             # Prefer completing whole biological compartments instead of
             # shaving the same proportion from every component. Proportional
             # erosion leaves multiple equal-depth residual ribbons; greedy
@@ -504,7 +569,7 @@ class MultiInterfaceResearchTissuePlanner:
             peak = float(np.clip(np.ceil(estimated_depth * 2.0), 2, depth_cap))
             requested_mode = (
                 "uniform_front"
-                if joint_bundle.primitive.allow_source_component_resolution
+                if topology["allow_source_component_resolution"]
                 else front_contract.profile_mode
             )
             if peak < 5 and requested_mode == "multi_lobe":
@@ -579,21 +644,29 @@ class MultiInterfaceResearchTissuePlanner:
                         front_contract.maximum_depth_span_ratio
                     ),
                     "max_bbox_fill_fraction": 0.985,
-                    "max_boundary_compactness": 40.0,
+                    "max_boundary_compactness": (
+                        front_contract.maximum_boundary_compactness
+                    ),
                     "max_source_component_changed_fraction": (
-                        joint_bundle.primitive.maximum_source_component_changed_fraction
+                        topology["maximum_source_component_changed_fraction"]
                     ),
                     "min_source_component_remaining_px": (
-                        joint_bundle.primitive.minimum_source_component_remaining_px
+                        topology["minimum_source_component_remaining_px"]
                     ),
                     "allow_source_component_resolution": (
-                        joint_bundle.primitive.allow_source_component_resolution
+                        topology["allow_source_component_resolution"]
                     ),
                     "allow_target_hole_resolution": (
-                        joint_bundle.primitive.allow_target_hole_resolution
+                        topology["allow_target_hole_resolution"]
+                    ),
+                    "target_component_merge_policy": (
+                        joint_bundle.mechanism.tissue_program.target_component_merge_policy
                     ),
                     "tissue_geometry_mode": (
-                        joint_bundle.primitive.tissue_geometry_mode
+                        topology["geometry_mode"]
+                    ),
+                    "mechanism_topology_fallback_activated": bool(
+                        topology["fallback_activated"]
                     ),
                     "min_parallel_front_depth_cv": (
                         0.10 if component_turnover else 0.25

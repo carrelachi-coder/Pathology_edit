@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -40,6 +41,8 @@ class JointSceneAnalysis:
     auxiliary_structure_masks: dict[str, np.ndarray]
     population: PopulationGraph
     population_zone_masks: dict[str, np.ndarray]
+    structural_hierarchy: dict[str, object]
+    structural_unit_masks: dict[str, np.ndarray]
 
     def to_metadata(self) -> dict:
         return {
@@ -50,6 +53,7 @@ class JointSceneAnalysis:
                 key: {"pixels": int(np.count_nonzero(value))}
                 for key, value in sorted(self.auxiliary_structure_masks.items())
             },
+            "structural_hierarchy": self.structural_hierarchy,
         }
 
 
@@ -61,6 +65,7 @@ def build_joint_scene_analysis(
     pixel_size_um: float | None,
     nuclei_instances_path: str | None = None,
     auxiliary_structure_paths: dict[str, str] | None = None,
+    auxiliary_structure_provenance: dict[str, dict] | None = None,
 ) -> JointSceneAnalysis:
     tissue = np.asarray(tissue_mask)
     nuclei = normalize_nuclei_mask(nuclei_mask)
@@ -79,10 +84,8 @@ def build_joint_scene_analysis(
                 f"auxiliary structure {structure_id!r} is not aligned to the case"
             )
         region = np.asarray(current) != 0
-        if not np.any(region):
-            raise JointContractError(
-                f"auxiliary structure {structure_id!r} is empty"
-            )
+        # An empty, provenance-bound protection map is a valid negative
+        # observation: the producer ran but found no enclosed native space.
         auxiliary_masks[structure_id] = region
     instances: list[NucleusInstance] = []
     masks: dict[str, np.ndarray] = {}
@@ -187,6 +190,13 @@ def build_joint_scene_analysis(
         observation_quality=cell_graph.observation_quality,
         shape=tissue.shape,
     )
+    hierarchy, structural_unit_masks = _bind_structural_hierarchy(
+        tissue_scene,
+        tissue,
+        auxiliary_structure_provenance or {},
+        population=population,
+        instances=tuple(instances),
+    )
     return JointSceneAnalysis(
         tissue_scene,
         cell_graph,
@@ -195,7 +205,187 @@ def build_joint_scene_analysis(
         auxiliary_masks,
         population,
         population_masks,
+        hierarchy,
+        structural_unit_masks,
     )
+
+
+def _bind_structural_hierarchy(
+    tissue_scene: SceneAnalysis,
+    tissue_mask: np.ndarray,
+    provenance_by_structure: dict[str, dict],
+    *,
+    population: PopulationGraph,
+    instances: tuple[NucleusInstance, ...],
+) -> tuple[dict[str, object], dict[str, np.ndarray]]:
+    """Bind producer units to tissue components without inventing histology."""
+
+    units = []
+    relations = []
+    unit_masks: dict[str, np.ndarray] = {}
+    for structure_id, provenance in sorted(provenance_by_structure.items()):
+        if not isinstance(provenance, dict):
+            continue
+        for item in provenance.get("structure_units", ()):
+            if not isinstance(item, dict):
+                continue
+            parent_id = None
+            unit_id = str(item.get("unit_id") or "")
+            fine_id = item.get("fine_id")
+            unit_mask = _recover_structural_unit_mask(
+                tissue_mask,
+                unit_id=unit_id,
+                fine_id=fine_id,
+                expected_digest=item.get("component_sha256"),
+            )
+            if unit_id and unit_mask is not None:
+                unit_masks[unit_id] = unit_mask
+                overlaps = [
+                    (
+                        int(np.count_nonzero(unit_mask & mask)),
+                        component_id,
+                    )
+                    for component_id, mask in tissue_scene.component_masks.items()
+                ]
+                if overlaps:
+                    count, candidate_parent = max(overlaps)
+                    if count > 0:
+                        parent_id = candidate_parent
+            record = {**item, "auxiliary_structure_id": structure_id, "parent_tissue_component_id": parent_id}
+            units.append(record)
+            if parent_id is not None:
+                relations.append(
+                    {
+                        "source_id": item.get("unit_id"),
+                        "relation": "member_of",
+                        "target_id": parent_id,
+                    }
+                )
+        relations.extend(provenance.get("hierarchy_relations", ()))
+    compartments = [
+        {
+            "component_id": item.component_id,
+            "label": item.label,
+            "fine_ids": list(item.fine_ids),
+            "area_px": item.area_px,
+        }
+        for item in tissue_scene.graph.components
+    ]
+    interfaces = [
+        {
+            "interface_id": item.interface_id,
+            "source_component_id": item.source_component_id,
+            "target_component_id": item.target_component_id,
+            "source_label": item.source_label,
+            "target_label": item.target_label,
+            "contact_pixels": item.contact_pixels,
+        }
+        for item in tissue_scene.graph.interfaces
+    ]
+    population_zones = [
+        {
+            "zone_id": item.zone_id,
+            "zone_kind": item.zone_kind,
+            "tissue_component_id": item.tissue_component_id,
+            "interface_id": item.interface_id,
+            "side": item.side,
+            "area_px": item.area_px,
+            "nucleus_count": item.nucleus_count,
+            "class_counts": item.class_counts,
+        }
+        for item in population.zones
+    ]
+    nucleus_instances = [
+        {
+            "instance_id": item.instance_id,
+            "class_id": item.class_id,
+            "tissue_component_id": item.tissue_component_id,
+            "nearest_interface_id": item.nearest_interface_id,
+            "completeness_status": item.completeness_status,
+        }
+        for item in instances
+    ]
+    relations.extend(
+        {
+            "source_id": item.interface_id,
+            "relation": "connects",
+            "target_id": component_id,
+        }
+        for item in tissue_scene.graph.interfaces
+        for component_id in (
+            item.source_component_id,
+            item.target_component_id,
+        )
+    )
+    relations.extend(
+        {
+            "source_id": item.zone_id,
+            "relation": (
+                "samples_interface"
+                if item.interface_id is not None
+                else "population_of"
+            ),
+            "target_id": item.interface_id or item.tissue_component_id,
+        }
+        for item in population.zones
+        if item.interface_id is not None or item.tissue_component_id is not None
+    )
+    relations.extend(
+        {
+            "source_id": item.instance_id,
+            "relation": "member_of_tissue_component",
+            "target_id": item.tissue_component_id,
+        }
+        for item in instances
+        if item.tissue_component_id is not None
+    )
+    return {
+        "schema_version": "joint-structural-hierarchy-v1",
+        "levels": [
+            "tissue_component",
+            "structural_unit",
+            "interface",
+            "population_field",
+            "nucleus_instance",
+        ],
+        "tissue_components": compartments,
+        "structure_units": units,
+        "interfaces": interfaces,
+        "population_zones": population_zones,
+        "nucleus_instances": nucleus_instances,
+        "relations": relations,
+        "observation_policy": "semantic_producer_only_no_H&E_invention",
+    }, unit_masks
+
+
+def _recover_structural_unit_mask(
+    tissue: np.ndarray,
+    *,
+    unit_id: str,
+    fine_id,
+    expected_digest,
+) -> np.ndarray | None:
+    if not unit_id or not isinstance(fine_id, int):
+        return None
+    try:
+        component_index = int(unit_id.rsplit(":", 1)[1])
+    except (IndexError, ValueError):
+        return None
+    labeled, count = ndimage.label(
+        np.asarray(tissue) == int(fine_id),
+        structure=np.ones((3, 3), dtype=bool),
+    )
+    if not 1 <= component_index <= count:
+        return None
+    component = labeled == component_index
+    digest = hashlib.sha256(
+        np.packbits(component.astype(np.uint8), axis=None).tobytes()
+    ).hexdigest()
+    if expected_digest and digest != expected_digest:
+        raise JointContractError(
+            f"structural unit {unit_id!r} digest does not match producer provenance"
+        )
+    return component
 
 
 def _component_id_map(scene: SceneAnalysis) -> tuple[np.ndarray, tuple[str, ...]]:

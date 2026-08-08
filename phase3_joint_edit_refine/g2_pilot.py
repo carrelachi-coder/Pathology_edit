@@ -207,10 +207,21 @@ def build_local_joint_records(
             provenance["source_nuclei_instances_sha256"] = _sha256(
                 local_instances
             )
-        for structure_id, path in local_auxiliary.items():
-            provenance[f"auxiliary_structure_sha256.{structure_id}"] = _sha256(
-                path
-            )
+        if local_auxiliary:
+            provenance["auxiliary_structure_sha256"] = {
+                structure_id: _sha256(path)
+                for structure_id, path in sorted(local_auxiliary.items())
+            }
+            provenance["auxiliary_structure_provenance"] = {
+                structure_id: {
+                    "producer_id": "external-manifest-auxiliary",
+                    "producer_version": "external-manifest-auxiliary-v1",
+                    "observation_scope": "manifest_supplied",
+                    "source_tissue_mask_sha256": tissue_digest,
+                    "output_sha256": _sha256(path),
+                }
+                for structure_id, path in sorted(local_auxiliary.items())
+            }
         record = {
                 "case_id": row["case_id"],
                 "instruction": row["instruction"],

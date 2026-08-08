@@ -294,13 +294,28 @@ class JointCaseContext:
             for key, value in raw_auxiliary.items()
         }
         auxiliary_digests = provenance.get("auxiliary_structure_sha256", {})
+        auxiliary_provenance = provenance.get(
+            "auxiliary_structure_provenance", {}
+        )
         if auxiliary and (
             not isinstance(auxiliary_digests, Mapping)
             or set(auxiliary) != set(auxiliary_digests)
             or not all(isinstance(value, str) and value for value in auxiliary_digests.values())
+            or not isinstance(auxiliary_provenance, Mapping)
+            or set(auxiliary) != set(auxiliary_provenance)
+            or not all(
+                isinstance(value, Mapping)
+                and value.get("producer_id")
+                and value.get("producer_version")
+                and value.get("source_tissue_mask_sha256")
+                == provenance.get("source_tissue_mask_sha256")
+                and value.get("output_sha256")
+                == auxiliary_digests.get(key)
+                for key, value in auxiliary_provenance.items()
+            )
         ):
             raise JointContractError(
-                "each auxiliary structure requires a provenance SHA-256 digest"
+                "each auxiliary structure requires a bound digest and producer provenance"
             )
         pixel_size = payload.get("pixel_size_um")
         if pixel_size is not None and (
@@ -619,6 +634,7 @@ class JointEditPlan:
     coupling_plan: CouplingPlan
     uncertainties: tuple[str, ...]
     escalation_reason: str | None = None
+    structural_unit_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.tissue_plan is not None and self.tissue_plan.case_id != self.case_id:
@@ -629,6 +645,8 @@ class JointEditPlan:
             raise JointContractError("representability confidence must be in [0, 1]")
         if not self.supporting_observations or not self.supporting_rule_ids:
             raise JointContractError("joint plan must cite observations and rules")
+        if len(set(self.structural_unit_ids)) != len(self.structural_unit_ids):
+            raise JointContractError("joint plan structural unit IDs must be unique")
 
     def to_metadata(self) -> dict[str, Any]:
         return asdict(self)

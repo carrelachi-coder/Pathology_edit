@@ -20,10 +20,11 @@ from .nuclei import load_nuclei_mask, to_raw_nuclei_mask
 from .scene import JointSceneAnalysis
 from .seam import (
     compile_continuity_center_quota,
+    compile_executable_continuity_count,
     target_cell_class_for_tissue,
 )
 
-MATURE_EXECUTION_VERSION = "online-probnet-mature-v7"
+MATURE_EXECUTION_VERSION = "online-probnet-mature-v15"
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ class MatureProbNetCellExecutor:
         placement_region_path: Path,
         erasure_region_path: Path,
         required_placement_region_path: Path | None,
+        packing_witness_path: Path | None,
         minimum_required_placements: int,
         maximum_required_placements: int | None,
         required_nucleus_class: int | None,
@@ -102,6 +104,11 @@ class MatureProbNetCellExecutor:
         prohibited_tissue_ids: tuple[int, ...],
         allowed_new_cell_classes: tuple[int, ...],
     ) -> list[str]:
+        mature_device = (
+            "cuda"
+            if str(self.config.device).lower().startswith("cuda")
+            else self.config.device
+        )
         command = [
             self.config.python_executable,
             "-m",
@@ -115,7 +122,7 @@ class MatureProbNetCellExecutor:
             "--base-ch",
             str(self.config.base_channels),
             "--device",
-            self.config.device,
+            mature_device,
             "--seed",
             str(seed),
             "--input-tissue",
@@ -161,6 +168,10 @@ class MatureProbNetCellExecutor:
                     "--minimum-required-placements",
                     str(max(0, int(minimum_required_placements))),
                 ]
+            )
+        if packing_witness_path is not None:
+            command.extend(
+                ["--packing-witness", str(packing_witness_path)]
             )
         if maximum_required_placements is not None:
             command.extend(
@@ -209,6 +220,7 @@ class MatureProbNetCellExecutor:
         placement_path = directory / "placement_region.png"
         erasure_path = directory / "erasure_region.png"
         required_placement_path = directory / "required_placement_region.png"
+        packing_witness_path = directory / "packing_witness.json"
         _save_mask(target_tissue_path, target_tissue)
         _save_mask(source_tissue_path, source_tissue)
         _save_mask(source_nuclei_path, to_raw_nuclei_mask(source_nuclei))
@@ -229,6 +241,14 @@ class MatureProbNetCellExecutor:
         _save_binary(population_path, program.population_target_region)
         _save_binary(placement_path, program.placement_center_region)
         _save_binary(erasure_path, program.erasure_region)
+        packing_witness = _compile_packing_witness(
+            contract=contract,
+            scene=scene,
+        )
+        packing_witness_path.write_text(
+            json.dumps(packing_witness, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
         minimum_required_placements = int(
             bool(program.continuity_requires_new_target_cells)
             and np.any(program.continuity_region)
@@ -236,13 +256,18 @@ class MatureProbNetCellExecutor:
         maximum_required_placements = None
         required_nucleus_class = None
         continuity_quota = None
+        recomputed_continuity_count = 0
         if minimum_required_placements:
             required_nucleus_class = target_cell_class_for_tissue(
                 contract.target_label,
                 None,
             )
+            retained_for_quota = np.asarray(source_nuclei).copy()
+            retained_for_quota[
+                np.asarray(program.erasure_region, dtype=bool)
+            ] = 0
             continuity_quota = compile_continuity_center_quota(
-                nuclei_mask=source_nuclei,
+                nuclei_mask=retained_for_quota,
                 target_tissue_mask=target_tissue,
                 tissue_change=(
                     np.asarray(source_tissue) != np.asarray(target_tissue)
@@ -257,44 +282,63 @@ class MatureProbNetCellExecutor:
                 target_class=required_nucleus_class,
                 target_fine_ids=contract.target_host_fine_ids,
             )
-            # Balance the case-local expectation with the densest legal seam
-            # realization.  Reserving only the expectation can crowd the
-            # exterior band and select undersized shapes; taking the upper
-            # bound can over-concentrate ProbNet mass inside the seam.  Their
-            # midpoint is deterministic and remains inside the gate-compiled
-            # interval.
-            minimum_required_placements = (
-                int(
-                    np.ceil(
-                        (
-                            continuity_quota.target_count
-                            + continuity_quota.maximum_count
-                        )
-                        / 2.0
-                    )
-                )
-                if continuity_quota.maximum_count is not None
-                else continuity_quota.target_count
+            minimum_required_placements = compile_executable_continuity_count(
+                continuity_quota,
+                anchor_pixels=int(
+                    np.count_nonzero(program.continuity_anchor_mask)
+                ),
+                maximum_empty_run_px=(
+                    program.continuity_maximum_empty_run_px
+                ),
+                minimum_anchor_coverage_fraction=(
+                    program.continuity_minimum_anchor_coverage_fraction
+                ),
             )
-            if continuity_quota.maximum_count is not None:
-                maximum_required_placements = minimum_required_placements
+            # Feasibility has already compiled the continuous density/seam
+            # estimates into an exact complete-footprint witness. That
+            # immutable integer is the execution authority. Recomputing and
+            # using a different seam quota here can make the remainder quota
+            # impossible even though this candidate was certified.
+            recomputed_continuity_count = minimum_required_placements
+            minimum_required_placements = int(
+                packing_witness.get("required_seam_count", 0)
+            )
+            maximum_required_placements = minimum_required_placements
             _save_binary(required_placement_path, program.continuity_region)
 
         eligible: set[str] = set()
+        reference_supported_classes: set[int] = set()
         rejected: dict[str, str] = {}
         for class_id in program.target_classes:
             references, current_rejected = build_reference_shape_library(
                 scene, class_id=class_id
             )
             eligible.update(item.instance_id for item in references)
+            if references:
+                reference_supported_classes.add(int(class_id))
             rejected.update(current_rejected)
-        protected = set(contract.protected_instance_ids)
-        eligible.difference_update(protected)
-        for instance_id in protected:
-            rejected.setdefault(instance_id, "executable_contract_protected_instance")
+        # Protection is a pixel-mutation contract, not a ban on read-only
+        # shape reuse. Complete, non-border protected nuclei are often the
+        # best same-patch references for sparse target populations. Copying a
+        # footprint does not alter the source instance.
         if not eligible:
             raise JointContractError(
                 "mature ProbNet execution has no complete non-border reference shape"
+            )
+        executable_new_cell_classes = tuple(
+            item
+            for item in contract.allowed_new_cell_classes
+            if item in reference_supported_classes
+        )
+        if required_nucleus_class is not None and (
+            required_nucleus_class not in executable_new_cell_classes
+        ):
+            raise JointContractError(
+                "the compiled seam class has no complete same-patch reference shape"
+            )
+        if not executable_new_cell_classes:
+            raise JointContractError(
+                "no allowed new cell class has a complete same-patch reference shape"
             )
         reference_nuclei = np.asarray(source_nuclei).copy()
         for instance in scene.cells.instances:
@@ -331,12 +375,13 @@ class MatureProbNetCellExecutor:
                     if minimum_required_placements
                     else None
                 ),
+                packing_witness_path=packing_witness_path,
                 minimum_required_placements=minimum_required_placements,
                 maximum_required_placements=maximum_required_placements,
                 required_nucleus_class=required_nucleus_class,
                 output_path=output_path,
                 prohibited_tissue_ids=prohibited_tissue_ids,
-                allowed_new_cell_classes=contract.allowed_new_cell_classes,
+                allowed_new_cell_classes=executable_new_cell_classes,
             )
             completed = self._runner(
                 command,
@@ -400,6 +445,18 @@ class MatureProbNetCellExecutor:
                 if isinstance(item, dict)
             )
             placed = int(selected.get("placed", desired))
+            packing_witness_used = any(
+                bool(
+                    (
+                        (item.get("exact_count_backfill") or {}).get(
+                            "packing_witness_fallback"
+                        )
+                        or {}
+                    ).get("used", False)
+                )
+                for item in (selected.get("tissues") or {}).values()
+                if isinstance(item, dict)
+            )
             results.append(
                 CellLayoutResult(
                     cell_candidate_id=f"mature-cells-{variant + 1:02d}",
@@ -430,10 +487,24 @@ class MatureProbNetCellExecutor:
                         "batch_max_attainable_count": placed,
                         "capacity_max_count": placed,
                         "cell_capacity_certified": placed == desired,
-                        "cell_capacity_fallback_used": False,
+                        "cell_capacity_fallback_used": packing_witness_used,
+                        "packing_witness_fallback": {
+                            "used": packing_witness_used,
+                            "version": packing_witness.get("version"),
+                            "contract_id": packing_witness.get("contract_id"),
+                            "policy": (
+                                "probnet_ranked_contract_owned_complete_source_shapes"
+                            ),
+                        },
                         "placement_capacity_exhausted": placed < desired,
                         "reference_shape_ids": sorted(eligible),
                         "reference_shape_rejections": rejected,
+                        "contract_allowed_new_cell_classes": list(
+                            contract.allowed_new_cell_classes
+                        ),
+                        "reference_supported_new_cell_classes": list(
+                            executable_new_cell_classes
+                        ),
                         "reference_shape_integrity_certified": True,
                         "reference_first": True,
                         "shape_sampling": selected.get("shape_sampling", {}),
@@ -480,9 +551,17 @@ class MatureProbNetCellExecutor:
                                 "maximum_count": continuity_quota.maximum_count,
                                 "target_count": continuity_quota.target_count,
                                 "selected_count": minimum_required_placements,
+                                "recomputed_count_before_contract_binding": (
+                                    recomputed_continuity_count
+                                ),
+                                "packing_certificate_count": int(
+                                    packing_witness.get(
+                                        "required_seam_count", 0
+                                    )
+                                ),
                                 "selection_policy": (
-                                    "midpoint_expected_and_gate_upper_bound_"
-                                    "to_balance_seam_and_exterior_capacity_v1"
+                                    "packing_certificate_is_immutable_"
+                                    "execution_authority_v2"
                                 ),
                                 "expected_count": continuity_quota.expected_count,
                                 "outer_count": continuity_quota.outer_count,
@@ -493,7 +572,7 @@ class MatureProbNetCellExecutor:
                             else None
                         ),
                         "continuity_placement_policy": (
-                            "compiled_seam_quota_then_exterior_T_pop_remainder_v2"
+                            "typed_seam_quota_then_full_P_population_remainder_v3"
                             if minimum_required_placements
                             else "not_required"
                         ),
@@ -531,6 +610,93 @@ class MatureProbNetCellExecutor:
         for result in results:
             result.trace["rejected_variant_audit"] = list(rejected_variants)
         return tuple(results)
+
+
+def _compile_packing_witness(
+    *,
+    contract: ExecutableJointContract,
+    scene: JointSceneAnalysis,
+) -> dict:
+    """Materialize the contract-owned footprint witness for mature fallback.
+
+    Coordinates and instance IDs come from the exact pre-ProbNet packing
+    solver.  Shape pixels are copied only from complete, non-border source
+    instances already authorized by that immutable contract.
+    """
+
+    certificate = contract.packing_certificate
+    if not certificate:
+        raise JointContractError(
+            "mature execution requires a bound packing certificate"
+        )
+    metadata = {item.instance_id: item for item in scene.cells.instances}
+    placements = []
+    for item in certificate.get("placements") or []:
+        instance_id = str(item["reference_instance_id"])
+        nucleus = metadata.get(instance_id)
+        component = scene.instance_masks.get(instance_id)
+        if nucleus is None or component is None:
+            raise JointContractError(
+                f"packing witness references unknown instance {instance_id}"
+            )
+        class_id = int(item["class_id"])
+        if nucleus.class_id != class_id:
+            raise JointContractError(
+                "packing witness class differs from source reference class"
+            )
+        x0, y0, x1, y1 = nucleus.bbox_xyxy
+        shape = np.asarray(component, dtype=bool)[y0:y1, x0:x1]
+        if not np.any(shape) or int(np.count_nonzero(shape)) != int(
+            item["area_px"]
+        ):
+            raise JointContractError(
+                "packing witness source footprint is incomplete or mutated"
+            )
+        offsets = np.argwhere(shape) - np.asarray(
+            [shape.shape[0] // 2, shape.shape[1] // 2]
+        )
+        placements.append(
+            {
+                "row": int(item["row"]),
+                "col": int(item["col"]),
+                "nucleus_type": 100 + class_id,
+                "reference_instance_id": instance_id,
+                "required_seam": bool(item.get("required_seam", False)),
+                "offsets_yx": offsets.astype(int).tolist(),
+            }
+        )
+    if len(placements) != int(certificate["requested_count"]):
+        raise JointContractError(
+            "packing witness does not realize its certified count"
+        )
+    return {
+        "version": "compiled-packing-witness-v4",
+        "contract_id": contract.contract_id,
+        "certificate_version": certificate.get("version"),
+        "requested_count": int(certificate["requested_count"]),
+        "required_seam_count": int(
+            certificate.get("required_seam_count", 0)
+        ),
+        "class_reference_median_area_px": (
+            _mature_nucleus_area_medians(certificate)
+        ),
+        "local_median_area_ratio_interval": list(
+            certificate.get("local_median_area_ratio_interval")
+            or [0.60, 1.67]
+        ),
+        "placements": placements,
+    }
+
+
+def _mature_nucleus_area_medians(certificate: dict) -> dict[str, float]:
+    """Map CellViT class IDs onto the mature sampler's 100-series schema."""
+
+    return {
+        str(100 + int(class_id)): float(value)
+        for class_id, value in (
+            certificate.get("class_reference_median_area_px") or {}
+        ).items()
+    }
 
 
 def _save_mask(path: Path, mask: np.ndarray) -> None:

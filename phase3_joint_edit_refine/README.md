@@ -11,28 +11,76 @@ candidates, runs inherited tissue gates and new joint gates, and returns
 `review_required` after deterministic ranking. Production mode rejects every
 draft or unreviewed skill.
 
-The tissue budget is solved as a bounded fixed point. A provisional candidate
-first reserves complete-instance erasure `E` outside `T`. If fully executed
-cell candidates still all miss the desired `J` interval, the workflow records
-the exact removed-instance spill and newly placed footprint spill separately,
-re-brokers `T`, and re-runs both the tissue tool and mature cell pipeline. It
-never crops a nucleus or relaxes the joint-area gate after generation.
+The tissue budget is solved as a bounded fixed point. A provisional `T ∪ E`
+can force an early re-broker only when every sibling already exceeds the hard
+24% ceiling; it is not allowed to optimize the narrower desired interval
+before ADD footprints exist. If fully executed cell candidates miss the
+desired `J` interval, the workflow records the exact removed-instance spill
+and newly placed footprint spill separately, re-brokers `T`, and re-runs both
+the tissue tool and mature cell pipeline. If that exact-area replan loses the
+previously certified packing capacity, the smallest otherwise-valid paired
+candidate inside the hard range may be restored with an explicit
+`joint_area_rebalance_exhausted` audit flag. It never crops a nucleus or
+silently relaxes the joint-area gate after generation.
 Auxiliary gland/lumen, alveolar, epidermal or pattern maps are accepted only as
 aligned files with SHA-256 provenance; a metadata string alone never activates
 a protection rule.
 
+The executable scene is a typed hierarchy rather than a flat label graph:
+`tissue_component -> structural_unit -> interface -> population_field ->
+nucleus_instance`. GLaS gland/lumen and PANDA native-pattern/lumen units are
+recovered only from versioned semantic-mask topology, bound to the source-mask
+digest and exposed to Planner, tissue tools and gates through the same IDs. A
+whole structural-unit turnover is available only as a reviewed
+mechanism/primitive fallback after an ordinary interface-front plan has proved
+the public area floor unreachable.
+
 G2 research manifests use `capacity_floor_policy=lower_to_proven_max_safe`:
-19% remains the desired target and 14% the standard tissue floor, but a case
-whose topology solver proves lower capacity may return only its exact maximum
-safe tissue edit. The gate records this as a below-standard fallback; ordinary
-under-editing or cell-area substitution still fails.
+19% remains the desired target and 14% is a binding meaningful tissue floor.
+A case below target may fall back only to its exact maximum safe tissue edit
+inside the 14--19% interval. A paired condition above target may use only the
+minimum safe union inside the 24% hard ceiling, and only after an executed
+spill-driven exact-area replan proves non-executable. A lower proven capacity
+is an auditable abstention. Ordinary under-editing and cell-area substitution
+both fail.
 
 Reference nucleus shapes are instance-bound. Native instances are preferred;
 semantic components are the explicit lower-confidence fallback. Any instance
 touching the top, bottom, left, or right patch edge is crop-censored and is
 excluded from the reusable library. Each placement records its source instance
 ID, and `reference_shape_integrity` independently vetoes missing or rejected
-template provenance.
+template provenance. Packing templates are also restricted to the same
+per-class median-area interval enforced by the final gate. If stochastic
+placement can meet the count only by preferentially accepting shrunken shapes,
+execution switches to the certified complete-reference witness instead of
+relaxing the local size contract.
+
+Before ProbNet runs, the final compiled `E/P/V/C` rasters must admit an exact
+packing certificate made from complete same-patch reference footprints. The
+certificate freezes the total quota, exact class ledger, typed seam quota,
+source instance IDs and witness centers. The seam quota is recomputed on the
+final compiled continuity raster and intersected with both the local density
+envelope and anchor-coverage requirement. It constrains only its declared cell
+class; other compatible populations may still occupy that anatomical band, so
+the seam is not misused as a cell-free exclusion zone. Contradictory candidates
+are replanned, not left for post-sampling rejection. Protected nuclei remain
+pixel-immutable but may serve as read-only shape references when they are
+complete and non-border.
+
+Packing and mature execution use the same 8-connected instance definition and
+a Chebyshev one-pixel separation margin; diagonal contact can therefore never
+turn two accepted centers into one raster component. CellViT class IDs are
+converted explicitly to the mature sampler's 100-series type IDs in both
+placement records and per-class reference-area statistics. ProbNet-selected
+centers are retained whenever their local shape distribution passes; the fixed
+witness is used only for a genuine count or size-contract shortfall.
+
+A patch-local density prior is a finite-sample estimate, not an exact integer
+biological law. A failed nominal cell count may therefore compile to the
+maximum safe packing only when it remains within both 90% of the nominal count
+and one square-root count deviation. The nominal count, lower bound and
+effective count remain in the certificate; larger shortfalls still replan or
+abstain.
 
 ```bash
 python scripts/run_joint_edit_refine.py \

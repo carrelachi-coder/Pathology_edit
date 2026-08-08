@@ -350,6 +350,7 @@ class JointAuditWriter:
         planner_panel = np.array(base, copy=True)
         selected_interfaces = np.zeros_like(source_tissue, dtype=bool)
         selected_anchors = np.zeros_like(source_tissue, dtype=bool)
+        selected_structural_units = np.zeros_like(source_tissue, dtype=bool)
         if plan is not None and scene is not None:
             tissue_scene = getattr(scene, "tissue", scene)
             interface_ids = set(getattr(plan.cell_plan, "interface_ids", ()))
@@ -368,6 +369,15 @@ class JointAuditWriter:
                 current = tissue_scene.anchor_masks.get(anchor_id)
                 if current is not None:
                     selected_anchors |= np.asarray(current, dtype=bool)
+            for unit_id in getattr(plan, "structural_unit_ids", ()):
+                current = getattr(scene, "structural_unit_masks", {}).get(
+                    unit_id
+                )
+                if current is not None:
+                    current = np.asarray(current, dtype=bool)
+                    selected_structural_units |= (
+                        current ^ ndimage_binary_erosion(current)
+                    )
             if not interface_ids and getattr(plan.cell_plan, "core_zone", None):
                 component_id = str(plan.cell_plan.core_zone)
                 component_id = component_id.removeprefix("pop:component:")
@@ -377,6 +387,7 @@ class JointAuditWriter:
                     selected_interfaces |= (
                         component ^ ndimage_binary_erosion(component)
                     )
+        planner_panel[selected_structural_units] = [40, 245, 90]
         planner_panel[selected_interfaces] = [0, 235, 255]
         planner_panel[selected_anchors] = [255, 225, 0]
 
@@ -545,7 +556,7 @@ class JointAuditWriter:
 
         labels = [
             "1 SOURCE H&E + tissue/nuclei",
-            "2 PLANNER cyan=interface yellow=anchor",
+            "2 PLANNER green=structure cyan=interface yellow=anchor",
             "3 TISSUE TOOL magenta=T",
             (
                 "4 CELL FIELD pink=core orange->pale=falloff cyan=outer green=E"
@@ -622,6 +633,104 @@ class JointAuditWriter:
         path = self.case_dir / "source_joint_overlay.png"
         Image.fromarray(panel).save(path)
         self.paths["source_joint_overlay"] = str(path)
+        return str(path)
+
+    def write_abstain_review(
+        self,
+        *,
+        source_image_path: str,
+        source_tissue: np.ndarray,
+        source_nuclei: np.ndarray,
+        scene,
+        reason: str,
+        plan=None,
+        nuclei_preflight=None,
+    ) -> str:
+        """Render an auditable stop board when no joint candidate exists."""
+
+        image = Image.open(source_image_path).convert("RGB").resize(
+            (source_tissue.shape[1], source_tissue.shape[0])
+        )
+        base = np.asarray(image, dtype=np.uint8)
+        empty = np.zeros_like(source_tissue, dtype=bool)
+        source_panel = _overlay(base, source_tissue, source_nuclei, empty)
+        graph_panel = np.array(base, copy=True)
+        tissue_scene = getattr(scene, "tissue", scene)
+        for component in tissue_scene.component_masks.values():
+            boundary = np.asarray(component, dtype=bool) ^ ndimage_binary_erosion(
+                component
+            )
+            graph_panel[boundary] = [40, 235, 90]
+        for interface in tissue_scene.interface_masks.values():
+            graph_panel[np.asarray(interface, dtype=bool)] = [0, 225, 255]
+
+        decision_panel = np.array(base, copy=True)
+        selected_interfaces = set()
+        selected_anchors = set()
+        if plan is not None and getattr(plan, "tissue_plan", None) is not None:
+            for item in plan.tissue_plan.candidate_interfaces:
+                selected_interfaces.add(item.interface_id)
+                selected_anchors.update(
+                    item.execution_contract.anchor_segment_ids
+                )
+        elif plan is not None:
+            selected_interfaces.update(getattr(plan.cell_plan, "interface_ids", ()))
+            selected_anchors.update(getattr(plan.cell_plan, "anchor_ids", ()))
+        for interface_id in selected_interfaces:
+            current = tissue_scene.interface_masks.get(interface_id)
+            if current is not None:
+                decision_panel[np.asarray(current, dtype=bool)] = [0, 225, 255]
+        for anchor_id in selected_anchors:
+            current = tissue_scene.anchor_masks.get(anchor_id)
+            if current is not None:
+                decision_panel[np.asarray(current, dtype=bool)] = [255, 225, 0]
+
+        feasibility_panel = np.array(base, copy=True)
+        feasible_ids = set()
+        if nuclei_preflight is not None:
+            feasible_ids = {
+                item.interface_id
+                for item in nuclei_preflight.interfaces
+                if item.feasible
+            }
+            protected = np.asarray(
+                nuclei_preflight.protected_tissue_change_mask, dtype=bool
+            )
+            feasibility_panel[protected] = [255, 55, 55]
+        for interface_id, current in tissue_scene.interface_masks.items():
+            color = [255, 225, 0] if interface_id in feasible_ids else [0, 180, 220]
+            feasibility_panel[np.asarray(current, dtype=bool)] = color
+        for current in getattr(scene, "auxiliary_structure_masks", {}).values():
+            feasibility_panel[np.asarray(current, dtype=bool)] = [60, 130, 255]
+
+        panels = [source_panel, graph_panel, decision_panel, feasibility_panel]
+        labels = [
+            "1 SOURCE H&E + tissue/nuclei",
+            "2 SCENE green=components cyan=interfaces",
+            "3 PLANNER cyan=selected yellow=anchor",
+            "4 PREFLIGHT yellow=feasible red=protected blue=aux",
+        ]
+        tile_h, tile_w = source_tissue.shape
+        header, footer = 28, 62
+        canvas = Image.new("RGB", (tile_w * 4, tile_h + header + footer), "black")
+        draw = ImageDraw.Draw(canvas)
+        for index, (panel, label) in enumerate(zip(panels, labels)):
+            x = index * tile_w
+            canvas.paste(Image.fromarray(panel), (x, header))
+            draw.text((x + 5, 7), label, fill="white")
+        draw.text(
+            (6, tile_h + header + 7),
+            "STOP BEFORE MUTATION: ABSTAIN",
+            fill=(255, 220, 70),
+        )
+        draw.text(
+            (6, tile_h + header + 29),
+            str(reason).replace("\n", " ")[:300],
+            fill="white",
+        )
+        path = self.case_dir / "abstain_review.png"
+        canvas.save(path)
+        self.paths["abstain_review"] = str(path)
         return str(path)
 
     def write_reference_shape_review(

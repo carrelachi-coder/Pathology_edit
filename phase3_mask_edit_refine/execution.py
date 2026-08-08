@@ -23,7 +23,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v3"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v4"
 
 
 @dataclass(frozen=True)
@@ -686,41 +686,21 @@ def _resolve_topology_safe_area(
         raise RefineContractError(
             "no topology-safe area remains inside the hard allowed interval"
         )
-    span = upper - hard_min_pixels
-    step = max(1, int(np.ceil(span / 16.0)))
-    previous_invalid = upper + 1
-    safe_total: int | None = None
-    safe_result = None
-    trial = upper
-    while trial >= hard_min_pixels:
-        result = attempt(trial)
-        if result[-1]:
-            safe_total = trial
-            safe_result = result
-            break
-        previous_invalid = trial
-        trial -= step
-    if (
-        safe_result is None
-        and trial < hard_min_pixels
-        and (not attempts or attempts[-1]["requested_pixels"] != hard_min_pixels)
-    ):
-        result = attempt(hard_min_pixels)
-        if result[-1]:
-            safe_total = hard_min_pixels
-            safe_result = result
-    if safe_result is None or safe_total is None:
+    # The solver already treats reachable growth as a monotone prefix. Probe
+    # the immutable task floor first: if the floor itself is unsafe, testing
+    # 16 larger areas cannot make the task executable and previously made one
+    # failed replan take minutes on multi-interface patches. Once the floor is
+    # known safe, binary search the largest safe prefix below the failed upper
+    # bound.
+    floor_result = attempt(hard_min_pixels)
+    if not floor_result[-1]:
         raise RefineContractError(
             "no whole-mask topology-safe edit reaches the task hard minimum: "
             f"minimum={hard_min_pixels}"
         )
-
-    # Refine the first safe descending bracket to the largest pixel count. The
-    # audit retains every tested point, so the monotone-prefix assumption is
-    # explicit and reviewable rather than hidden.
-    low = safe_total
-    high = min(upper + 1, previous_invalid)
-    best = safe_result
+    low = hard_min_pixels
+    high = upper + 1
+    best = floor_result
     while high - low > 1:
         middle = (low + high) // 2
         result = attempt(middle)
@@ -735,6 +715,7 @@ def _resolve_topology_safe_area(
             "attempts": attempts,
             "selection": "largest_verified_safe_below_desired",
             "monotone_prefix_assumption": True,
+            "floor_first_search": True,
             "selected_pixels": int(low),
             "first_known_invalid_above": int(high),
         },

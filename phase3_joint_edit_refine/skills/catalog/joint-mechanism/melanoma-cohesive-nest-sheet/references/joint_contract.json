@@ -90,6 +90,26 @@
       3,
       28
     ],
+    "seam_contract_by_primitive": {
+      "tumor-burden-decrease-v1": {
+        "mode": "adaptive_population_continuity",
+        "width_cell_diameters": [1.0, 1.5],
+        "reference_area_quantiles": [0.25, 0.75],
+        "maximum_empty_run_cell_diameters": 2.0,
+        "density_ratio_range": [0.25, 4.0],
+        "minimum_anchor_coverage_fraction": 0.0,
+        "requires_new_target_cells": true
+      },
+      "stroma-increase-v1": {
+        "mode": "adaptive_population_continuity",
+        "width_cell_diameters": [1.0, 1.5],
+        "reference_area_quantiles": [0.25, 0.75],
+        "maximum_empty_run_cell_diameters": 2.0,
+        "density_ratio_range": [0.25, 4.0],
+        "minimum_anchor_coverage_fraction": 0.0,
+        "requires_new_target_cells": true
+      }
+    },
     "required_checker_ids": [
       "whole_instance_changes",
       "protected_nuclei_preserved",

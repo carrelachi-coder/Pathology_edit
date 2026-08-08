@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import asdict, dataclass
+from itertools import pairwise
 
 import numpy as np
 from scipy import ndimage
@@ -16,7 +17,7 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v6"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v7"
 
 
 @dataclass(frozen=True)
@@ -473,7 +474,9 @@ class CellToolProgramCompiler:
             interface_ids=cell.interface_ids,
             anchor_ids=cell.anchor_ids,
             target_class=continuity_target_class,
-            contract=bundle.mechanism.cell_program.seam,
+            contract=bundle.mechanism.cell_program.seam_for(
+                case.primitive_id
+            ),
         )
         continuity_mode = seam.mode
         continuity_requires_new_target_cells = seam.requires_new_target_cells
@@ -597,19 +600,18 @@ class CellToolProgramCompiler:
                     f"depletion neighbor {neighbor!r} is not skill-authorized"
                 )
         distance = ndimage.distance_transform_edt(~anchor)
-        core_end = min(
-            float(maximum_extent_px),
-            max(1.0, core_width_cell_diameters * diameter_px),
-        )
-        transition_end = min(
-            float(maximum_extent_px),
-            core_end + transition_width_cell_diameters * diameter_px,
-        )
-        outer_end = min(
-            float(maximum_extent_px),
-            transition_end + outer_width_cell_diameters * diameter_px,
-        )
         component = np.asarray(component, dtype=bool)
+        maximum_observed_distance = float(
+            np.max(distance[component], initial=0.0)
+        )
+        core_end, transition_end, outer_end = _depletion_band_edges(
+            diameter_px=diameter_px,
+            core_width_cell_diameters=core_width_cell_diameters,
+            transition_width_cell_diameters=transition_width_cell_diameters,
+            outer_width_cell_diameters=outer_width_cell_diameters,
+            maximum_extent_px=maximum_extent_px,
+            maximum_observed_distance_px=maximum_observed_distance,
+        )
         core = component & (distance <= core_end)
         transition = component & (distance > core_end) & (
             distance <= transition_end
@@ -714,6 +716,15 @@ class CellToolProgramCompiler:
         )
         anchor_distance = ndimage.distance_transform_edt(~anchor_mask)
         if contract.resolution_mode == "density_field":
+            effective_core_end = float(
+                np.max(anchor_distance[np.asarray(core_region, dtype=bool)], initial=0.0)
+            )
+            effective_transition_end = float(
+                np.max(
+                    anchor_distance[np.asarray(transition_region, dtype=bool)],
+                    initial=effective_core_end,
+                )
+            )
             return CellToolProgramCompiler._select_density_field_instances(
                 scene=scene,
                 population=population,
@@ -723,6 +734,10 @@ class CellToolProgramCompiler:
                 minimum_count=minimum_count,
                 maximum_count=maximum_count,
                 contract=contract,
+                effective_core_end_px=effective_core_end,
+                effective_transition_width_px=(
+                    effective_transition_end - effective_core_end
+                ),
             )
         band_availability = {
             band: {
@@ -837,13 +852,14 @@ class CellToolProgramCompiler:
         minimum_count: int,
         maximum_count: int,
         contract,
+        effective_core_end_px: float,
+        effective_transition_width_px: float,
     ) -> tuple[str, ...]:
         """Resolve deletion count from a radial density field, not a count target."""
 
         del population, cell_classes
-        diameter = float(scene.population.nominal_nucleus_diameter_px or 8.0)
-        core_end = contract.core_width_cell_diameters * diameter
-        transition_width = contract.transition_width_cell_diameters * diameter
+        core_end = max(1.0, float(effective_core_end_px))
+        transition_width = max(1.0, float(effective_transition_width_px))
         subband_count = contract.transition_subband_count
         radial_bands: list[tuple[str, list, float]] = [
             (
@@ -903,11 +919,17 @@ class CellToolProgramCompiler:
                     break
         resolved = sum(quotas)
         if resolved > maximum_count:
-            scaled = _largest_remainder_quotas(
-                {index: value for index, value in enumerate(quotas) if value > 0},
-                maximum_count,
+            quotas = _cap_density_field_quotas(
+                quotas=quotas,
+                source_counts=[len(items) for _, items, _ in radial_bands],
+                target_fractions=[
+                    target_fraction
+                    for _, _, target_fraction in radial_bands
+                ],
+                maximum_count=maximum_count,
+                minimum_core=contract.minimum_core_removals,
+                minimum_transition=contract.minimum_transition_removals,
             )
-            quotas = [scaled.get(index, 0) for index in range(len(quotas))]
             resolved = sum(quotas)
         if not minimum_count <= resolved <= maximum_count:
             raise JointContractError(
@@ -1115,6 +1137,7 @@ class CellToolProgramCompiler:
             remaining.remove(next_item)
         return tuple(selected)
 
+
     @staticmethod
     def _interface_zone(
         *,
@@ -1198,6 +1221,141 @@ class CellToolProgramCompiler:
         return np.logical_or.reduce(
             [scene.tissue.anchor_masks[anchor_id] for anchor_id in anchor_ids]
         )
+
+
+def _depletion_band_edges(
+    *,
+    diameter_px: float,
+    core_width_cell_diameters: float,
+    transition_width_cell_diameters: float,
+    outer_width_cell_diameters: float,
+    maximum_extent_px: int,
+    maximum_observed_distance_px: float,
+) -> tuple[float, float, float]:
+    """Fit all three density bands inside the executable radial extent.
+
+    Skill widths are desired proportions in local cell diameters.  A large
+    patch-calibrated nucleus diameter can make their nominal sum exceed the
+    instruction's maximum extent.  Clipping cumulative edges independently
+    would collapse the outer-reference band to zero.  Instead, preserve the
+    skill-owned proportions and scale the complete three-band program as one
+    unit.  This changes neither the edit count nor the allowed host region.
+    """
+
+    nominal = np.asarray(
+        [
+            core_width_cell_diameters,
+            transition_width_cell_diameters,
+            outer_width_cell_diameters,
+        ],
+        dtype=np.float64,
+    ) * max(1.0, float(diameter_px))
+    if np.any(nominal <= 0):
+        raise JointContractError("depletion band widths must all be positive")
+    available = min(
+        float(maximum_extent_px),
+        float(maximum_observed_distance_px),
+    )
+    if available < 3.0:
+        raise JointContractError(
+            "depletion anchor has insufficient radial extent for three bands"
+        )
+    nominal_total = float(np.sum(nominal))
+    if nominal_total <= available:
+        widths = nominal
+    else:
+        # The core+transition field carries the requested biological change;
+        # the outer band is an unchanged density reference. Under an extent
+        # conflict, reserve one local cell diameter for that reference and
+        # distribute the remaining radius across core/transition in their
+        # skill-owned ratio. The outer-instance gate still vetoes a reserve
+        # that contains too few real nuclei.
+        outer_width = min(float(nominal[2]), max(1.0, float(diameter_px)))
+        editable_width = available - outer_width
+        if editable_width <= 2.0:
+            raise JointContractError(
+                "depletion extent cannot reserve editable and outer-reference bands"
+            )
+        editable_nominal = float(nominal[0] + nominal[1])
+        widths = np.asarray(
+            [
+                editable_width * float(nominal[0]) / editable_nominal,
+                editable_width * float(nominal[1]) / editable_nominal,
+                outer_width,
+            ],
+            dtype=np.float64,
+        )
+    core_end = float(widths[0])
+    transition_end = float(widths[0] + widths[1])
+    outer_end = float(np.sum(widths))
+    if not 0.0 < core_end < transition_end < outer_end <= available + 1e-6:
+        raise JointContractError(
+            "depletion band compiler could not preserve three ordered bands"
+        )
+    return core_end, transition_end, outer_end
+
+
+def _cap_density_field_quotas(
+    *,
+    quotas: list[int],
+    source_counts: list[int],
+    target_fractions: list[float],
+    maximum_count: int,
+    minimum_core: int,
+    minimum_transition: int,
+) -> list[int]:
+    """Reduce a radial quota without flattening its biological gradient."""
+
+    result = [max(0, int(value)) for value in quotas]
+    maximum = max(0, int(maximum_count))
+    while sum(result) > maximum:
+        candidates = []
+        for index, value in enumerate(result):
+            if value <= 0:
+                continue
+            if index == 0 and value - 1 < int(minimum_core):
+                continue
+            if index > 0 and sum(result[1:]) - 1 < int(minimum_transition):
+                continue
+            trial = list(result)
+            trial[index] -= 1
+            fractions = [
+                trial_value / source_count if source_count else 0.0
+                for trial_value, source_count in zip(trial, source_counts)
+            ]
+            observed = [
+                current
+                for current, source_count in zip(fractions, source_counts)
+                if source_count
+            ]
+            monotonic_violations = sum(
+                outer > inner + 0.08
+                for inner, outer in pairwise(observed)
+            )
+            errors = [
+                abs(current - target)
+                for current, target, source_count in zip(
+                    fractions,
+                    target_fractions,
+                    source_counts,
+                )
+                if source_count
+            ]
+            candidates.append(
+                (
+                    monotonic_violations,
+                    max(errors, default=0.0),
+                    sum(errors),
+                    -index,
+                    trial,
+                )
+            )
+        if not candidates:
+            raise JointContractError(
+                "density field count cap cannot preserve core/transition minima"
+            )
+        result = min(candidates)[-1]
+    return result
 
 
 def _largest_remainder_quotas(counts: dict[int, int], total: int) -> dict[int, int]:

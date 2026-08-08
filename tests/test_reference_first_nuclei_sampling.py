@@ -9,7 +9,11 @@ except ImportError:
 
     pytest.skip("OpenCV is required for nuclei instance extraction", allow_module_level=True)
 
-from inpaint_cells.generate import sample_instance_for_center
+from inpaint_cells.generate import (
+    packing_witness_shape_distribution_audit,
+    realize_compiled_packing_witness,
+    sample_instance_for_center,
+)
 from inpaint_cells.nuclei_library.library import (
     ReferenceFirstNucleiSampler,
     ReferenceNucleiInstancePool,
@@ -31,6 +35,78 @@ class FakeLibrary:
             "area": 9,
             "source": "library",
         }
+
+
+def test_compiled_witness_respects_stage_specific_allowed_cell_types():
+    canvas = np.zeros((20, 20), dtype=np.uint8)
+    region = np.ones_like(canvas, dtype=bool)
+    witness = {
+        "placements": [
+            {
+                "row": 5,
+                "col": 5,
+                "nucleus_type": 102,
+                "reference_instance_id": "c2",
+                "offsets_yx": [[0, 0]],
+            },
+            {
+                "row": 14,
+                "col": 14,
+                "nucleus_type": 103,
+                "reference_instance_id": "c3",
+                "offsets_yx": [[0, 0]],
+            },
+        ]
+    }
+
+    realized = realize_compiled_packing_witness(
+        base_output=canvas,
+        packing_witness=witness,
+        center_region=region,
+        valid_tissue_mask=region,
+        tissue_id=2,
+        target_count=1,
+        nucleus_probability=np.ones_like(canvas, dtype=np.float32),
+        minimum_separation_px=1,
+        allowed_nucleus_types=(102, 103),
+        center_region_exclusions_by_type={
+            102: np.pad(
+                np.ones((1, 1), dtype=bool),
+                ((5, 14), (5, 14)),
+            )
+        },
+    )
+
+    assert realized is not None
+    output, accepted = realized
+    assert accepted[0]["nucleus_type"] == 103
+    assert output[14, 14] == 3
+    assert output[5, 5] == 0
+
+
+def test_packing_witness_detects_probnet_shape_acceptance_bias():
+    witness = {
+        "class_reference_median_area_px": {"103": 260.0},
+        "local_median_area_ratio_interval": [0.60, 1.67],
+    }
+
+    rejected = packing_witness_shape_distribution_audit(
+        [
+            {"nucleus_type": 103, "area_px": 119},
+            {"nucleus_type": 103, "area_px": 126},
+        ],
+        witness,
+    )
+    accepted = packing_witness_shape_distribution_audit(
+        [
+            {"nucleus_type": 103, "area_px": 216},
+            {"nucleus_type": 103, "area_px": 260},
+        ],
+        witness,
+    )
+
+    assert not rejected["passed"]
+    assert accepted["passed"]
 
 
 def test_reference_pool_extracts_tight_same_class_components_and_filters_border():
@@ -226,6 +302,49 @@ def test_library_fallback_is_resized_to_same_class_reference_area():
     assert diagnostics["uncalibrated_no_reference_by_type"] == {}
 
 
+def test_library_fallback_resamples_scale_clamped_shape_before_accepting():
+    class SequenceLibrary:
+        def __init__(self):
+            self.masks = [
+                np.ones((20, 20), dtype=bool),
+                np.ones((4, 4), dtype=bool),
+            ]
+            self.calls = 0
+
+        def sample_instance(self, tissue_id, nuc_type=None, allow_cross_tissue=True):
+            mask = self.masks[min(self.calls, len(self.masks) - 1)]
+            self.calls += 1
+            return {
+                "mask": mask,
+                "type": nuc_type,
+                "area": int(mask.sum()),
+                "source": "library",
+            }
+
+    nuclei = np.zeros((24, 24), dtype=np.uint8)
+    nuclei[5:9, 5:9] = 101
+    pool = ReferenceNucleiInstancePool.from_mask(nuclei, min_area=2)
+    sampler = ReferenceFirstNucleiSampler(
+        SequenceLibrary(),
+        reference_pool=None,
+        size_reference_pool=pool,
+        library_size_min_scale=0.5,
+        library_size_max_scale=2.0,
+        library_size_log_area_jitter=0.0,
+    )
+
+    instance, source = sampler.sample_instance(1, 101)
+
+    assert source == "library"
+    assert instance["size_calibration"]["scale_clamped"] is False
+    assert instance["size_calibration"]["target_area"] == 16
+    assert int(instance["mask"].sum()) == 16
+    assert sampler.library.calls == 2
+    assert sampler.diagnostics()["library_size_calibration"][
+        "resampled_for_scale_by_type"
+    ] == {"101": 1}
+
+
 def test_library_fallback_without_same_class_reference_is_recorded_unscaled():
     nuclei = np.zeros((24, 24), dtype=np.uint8)
     nuclei[5:9, 5:9] = 101
@@ -350,6 +469,29 @@ def test_strict_layered_placement_requires_complete_tissue_containment():
         instance,
         augment=False,
         valid_tissue_mask=tissue,
+        require_full_tissue_containment=True,
+    )
+
+    assert placed is False
+    np.testing.assert_array_equal(nuclei, original)
+
+
+def test_strict_layered_placement_rejects_patch_edge_censored_output():
+    nuclei = np.zeros((12, 12), dtype=np.int64)
+    original = nuclei.copy()
+    instance = {
+        "mask": np.ones((3, 3), dtype=bool),
+        "type": 101,
+        "source": "reference",
+    }
+
+    placed = place_nucleus_layered(
+        nuclei,
+        1,
+        5,
+        instance,
+        augment=False,
+        valid_tissue_mask=np.ones_like(nuclei, dtype=bool),
         require_full_tissue_containment=True,
     )
 

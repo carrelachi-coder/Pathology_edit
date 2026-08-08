@@ -75,27 +75,46 @@ def _semantic_instance_labels(region: np.ndarray) -> tuple[np.ndarray, int]:
     binary = np.asarray(region, dtype=bool)
     if not np.any(binary):
         return np.zeros(binary.shape, dtype=np.int32), 0
-    distance = ndimage.distance_transform_edt(binary)
-    # h=1 suppresses pixel-scale shoulders while retaining distinct centers of
-    # touching nuclei. Requiring radius >=1.5 avoids markers on thin bridges.
-    maxima = h_maxima(distance, 1.0) & (distance >= 1.5)
-    markers, marker_count = ndimage.label(
-        maxima,
+    connected, connected_count = ndimage.label(
+        binary,
         structure=np.ones((3, 3), dtype=np.uint8),
     )
-    if marker_count == 0:
-        return ndimage.label(
-            binary,
+    labels = np.zeros(binary.shape, dtype=np.int32)
+    next_label = 0
+    for component_id in range(1, connected_count + 1):
+        component = connected == component_id
+        rows, cols = np.nonzero(component)
+        if not rows.size:
+            continue
+        y0, y1 = int(rows.min()), int(rows.max()) + 1
+        x0, x1 = int(cols.min()), int(cols.max()) + 1
+        local = component[y0:y1, x0:x1]
+        distance = ndimage.distance_transform_edt(local)
+        # h=1 suppresses pixel-scale shoulders while retaining distinct centers
+        # of touching nuclei.  Per-component execution also guarantees that a
+        # small disconnected complete nucleus is never lost merely because it
+        # has no radius>=1.5 marker while another component does.
+        maxima = h_maxima(distance, 1.0) & (distance >= 1.5)
+        markers, marker_count = ndimage.label(
+            maxima,
             structure=np.ones((3, 3), dtype=np.uint8),
         )
-    labels = watershed(
-        -distance,
-        markers=markers,
-        mask=binary,
-        connectivity=np.ones((3, 3), dtype=np.uint8),
-        watershed_line=False,
-    ).astype(np.int32, copy=False)
-    return labels, int(labels.max(initial=0))
+        view = labels[y0:y1, x0:x1]
+        if marker_count <= 1:
+            next_label += 1
+            view[local] = next_label
+            continue
+        local_labels = watershed(
+            -distance,
+            markers=markers,
+            mask=local,
+            connectivity=np.ones((3, 3), dtype=np.uint8),
+            watershed_line=False,
+        ).astype(np.int32, copy=False)
+        positive = local_labels > 0
+        view[positive] = local_labels[positive] + next_label
+        next_label += int(local_labels.max(initial=0))
+    return labels, next_label
 
 
 def instance_centroid(component: np.ndarray) -> tuple[float, float]:

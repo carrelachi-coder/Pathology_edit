@@ -274,6 +274,9 @@ class HeuristicJointPlanner:
                 "offline heuristic did not inspect H&E; visual pathology review is required",
             ),
             escalation_reason="requires_multimodal_joint_planner_and_critic",
+            structural_unit_ids=_structural_units_for_interfaces(
+                scene, interface_ids
+            ),
         )
         return plan, {
             "provider": self.name,
@@ -493,6 +496,9 @@ class HeuristicJointPlanner:
                 "offline heuristic did not inspect H&E; visual pathology review is required",
             ),
             escalation_reason="requires_multimodal_joint_planner_and_critic",
+            structural_unit_ids=_structural_units_for_components(
+                scene, (zone.tissue_component_id,)
+            ),
         )
         return plan, {
             "provider": self.name,
@@ -505,3 +511,37 @@ class HeuristicJointPlanner:
             "input_tokens": 0,
             "output_tokens": 0,
         }
+
+
+def _structural_units_for_interfaces(
+    scene: JointSceneAnalysis,
+    interface_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    interfaces = {
+        item.interface_id: item for item in scene.tissue.graph.interfaces
+    }
+    component_ids: set[str] = set()
+    for interface_id in interface_ids:
+        interface = interfaces.get(interface_id)
+        if interface is None:
+            continue
+        component_ids.update(
+            (interface.source_component_id, interface.target_component_id)
+        )
+    return _structural_units_for_components(scene, tuple(component_ids))
+
+
+def _structural_units_for_components(
+    scene: JointSceneAnalysis,
+    component_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    selected = set(component_ids)
+    return tuple(
+        sorted(
+            str(item["unit_id"])
+            for item in scene.structural_hierarchy.get("structure_units", ())
+            if isinstance(item, Mapping)
+            and item.get("unit_id")
+            and item.get("parent_tissue_component_id") in selected
+        )
+    )

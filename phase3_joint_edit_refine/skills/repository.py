@@ -74,6 +74,26 @@ class JointSkillBundle:
                 self.primitive.minimum_source_clearance_instances
             ),
             "mechanism_id": self.mechanism.mechanism_id,
+            "mechanism_topology_fallback_by_primitive": {
+                primitive_id: {
+                    "geometry_mode": contract.geometry_mode,
+                    "allow_source_component_resolution": (
+                        contract.allow_source_component_resolution
+                    ),
+                    "allow_target_hole_resolution": (
+                        contract.allow_target_hole_resolution
+                    ),
+                    "maximum_source_component_changed_fraction": (
+                        contract.maximum_source_component_changed_fraction
+                    ),
+                    "minimum_source_component_remaining_px": (
+                        contract.minimum_source_component_remaining_px
+                    ),
+                }
+                for primitive_id, contract in sorted(
+                    self.mechanism.tissue_program.topology_fallback_by_primitive.items()
+                )
+            },
             "annotation_profile_id": self.annotation_profile.annotation_profile_id,
             "cell_observation_profile_id": self.cell_observation_profile.profile_id,
             "cell_population_profile_id": self.cell_population_profile.profile_id,

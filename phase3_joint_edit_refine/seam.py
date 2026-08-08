@@ -67,6 +67,42 @@ class ContinuityCenterQuota:
     outer_density: float
 
 
+def compile_executable_continuity_count(
+    quota: ContinuityCenterQuota,
+    *,
+    anchor_pixels: int,
+    maximum_empty_run_px: int,
+    minimum_anchor_coverage_fraction: float,
+) -> int:
+    """Resolve density and finite-anchor continuity into one integer quota.
+
+    A density-only target can be too small to cover a long edited interface,
+    while blindly taking the skill's density upper bound can overpopulate a
+    short seam.  One center can cover at most roughly one diameter of a
+    one-pixel interface under the empty-run gate.  The resulting geometric
+    lower bound is intersected with the observed density interval.  This is a
+    conservative finite-raster compiler, not an organ or case heuristic.
+    """
+
+    density_target = (
+        int(np.ceil((quota.target_count + quota.maximum_count) / 2.0))
+        if quota.maximum_count is not None
+        else int(quota.target_count)
+    )
+    pixels_per_center = max(1, 2 * int(maximum_empty_run_px) + 1)
+    geometric_target = int(
+        np.ceil(
+            max(0, int(anchor_pixels))
+            * float(np.clip(minimum_anchor_coverage_fraction, 0.0, 1.0))
+            / float(pixels_per_center)
+        )
+    )
+    target = max(int(quota.minimum_count), density_target, geometric_target)
+    if quota.maximum_count is not None:
+        target = min(target, int(quota.maximum_count))
+    return max(0, int(target))
+
+
 def compile_continuity_center_quota(
     *,
     nuclei_mask: np.ndarray,
@@ -79,6 +115,7 @@ def compile_continuity_center_quota(
     requires_new_target_cells: bool,
     target_class: int,
     target_fine_ids: tuple[int, ...],
+    target_center_mask: np.ndarray | None = None,
 ) -> ContinuityCenterQuota:
     """Compile the gate's density interval into an executable center quota.
 
@@ -99,7 +136,15 @@ def compile_continuity_center_quota(
         )
         & np.isin(np.asarray(target_tissue_mask), target_fine_ids)
     )
-    centers = class_center_mask(nuclei_mask, class_id=target_class)
+    centers = (
+        class_center_mask(nuclei_mask, class_id=target_class)
+        if target_center_mask is None
+        else np.asarray(target_center_mask, dtype=bool)
+    )
+    if centers.shape != inner.shape:
+        raise JointContractError(
+            "continuity center ledger and seam geometry must align"
+        )
     outer_count = int(np.count_nonzero(centers & outer))
     inner_pixels = int(np.count_nonzero(inner))
     outer_pixels = int(np.count_nonzero(outer))

@@ -490,6 +490,50 @@ class OpenAIMultimodalJointPlanner:
             allow_neoplastic_in_non_tumor_tissue=mechanism.coupling.allow_neoplastic_in_non_tumor_tissue,
             maximum_halo_px=mechanism.cell_program.halo_distance_px[1],
         )
+        structural_unit_ids = _strings(
+            raw.get("structural_unit_ids", []),
+            "structural_unit_ids",
+            allow_empty=True,
+        )
+        known_structural_units = set(scene.structural_unit_masks)
+        unknown_structural_units = set(structural_unit_ids) - known_structural_units
+        if unknown_structural_units:
+            raise JointContractError(
+                "joint Planner selected unknown structural units: "
+                + ", ".join(sorted(unknown_structural_units))
+            )
+        if tissue_plan is not None and known_structural_units:
+            bound_components = set()
+            interfaces_by_id = {
+                item.interface_id: item for item in scene.tissue.graph.interfaces
+            }
+            for interface_id in cell_plan.interface_ids:
+                interface = interfaces_by_id.get(interface_id)
+                if interface is not None:
+                    bound_components.update(
+                        (
+                            interface.source_component_id,
+                            interface.target_component_id,
+                        )
+                    )
+            unit_parent = {
+                str(item.get("unit_id")): item.get("parent_tissue_component_id")
+                for item in scene.structural_hierarchy.get("structure_units", ())
+                if isinstance(item, Mapping)
+            }
+            eligible_units = {
+                unit_id
+                for unit_id, parent_id in unit_parent.items()
+                if parent_id in bound_components
+            }
+            if eligible_units and not structural_unit_ids:
+                raise JointContractError(
+                    "joint Planner omitted structural units on a structure-aware interface"
+                )
+            if set(structural_unit_ids) - eligible_units:
+                raise JointContractError(
+                    "joint Planner structural units are not bound to selected interfaces"
+                )
         plan = JointEditPlan(
             schema_version=JOINT_PLAN_SCHEMA_VERSION,
             case_id=case.case_id,
@@ -507,6 +551,7 @@ class OpenAIMultimodalJointPlanner:
                 raw.get("uncertainties", []), "uncertainties", allow_empty=True
             ),
             escalation_reason=_optional_string(raw.get("escalation_reason")),
+            structural_unit_ids=structural_unit_ids,
         )
         if plan.representability_confidence < mechanism.recognition.minimum_confidence:
             raise JointContractError(
@@ -635,6 +680,7 @@ JOINT_PLAN_JSON_SCHEMA = {
         "representability_confidence",
         "tissue_plan_accepted",
         "bound_interface_ids",
+        "structural_unit_ids",
         "cell_plan",
         "coupling_plan",
         "uncertainties",
@@ -650,6 +696,7 @@ JOINT_PLAN_JSON_SCHEMA = {
         "representability_confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "tissue_plan_accepted": {"type": "boolean"},
         "bound_interface_ids": {"type": "array", "items": {"type": "string"}},
+        "structural_unit_ids": {"type": "array", "items": {"type": "string"}},
         "cell_plan": {
             "type": ["object", "null"],
             "additionalProperties": False,

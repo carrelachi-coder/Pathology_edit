@@ -1132,6 +1132,13 @@ def _place_layout(
             if window is None:
                 continue
             y0, y1, x0, x1 = window
+            if (
+                y0 <= 0
+                or x0 <= 0
+                or y1 >= target.shape[0]
+                or x1 >= target.shape[1]
+            ):
+                continue
             # P constrains the center. V, not P, constrains the full footprint;
             # requiring the footprint to stay inside P caused the documented
             # artificial cell-depleted strip at the new tissue seam.

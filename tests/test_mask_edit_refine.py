@@ -27,7 +27,11 @@ from phase3_mask_edit_refine.execution import (
     _prepare_compiler_work,
     compile_edit_plan,
 )
-from phase3_mask_edit_refine.gates import GateContext, GateRegistry
+from phase3_mask_edit_refine.gates import (
+    GateContext,
+    GateRegistry,
+    _check_boundary_naturalness,
+)
 from phase3_mask_edit_refine.models import (
     AreaBudget,
     CandidateMask,
@@ -203,6 +207,71 @@ class FailClosedGateTests(unittest.TestCase):
             primitive_id=primitive,
             production=False,
             available_checker_ids=self.gates.available_checker_ids,
+        )
+
+    def test_boundary_naturalness_honors_typed_mechanism_bound(self):
+        bundle = self._bundle("tumor-burden-increase-v1")
+        interface = max(
+            self.scene.interfaces_for(
+                source_labels=("Stroma",), target_label="Tumor"
+            ),
+            key=lambda item: item.contact_pixels,
+        )
+        change = np.zeros_like(self.mask, dtype=bool)
+        change[20:108, 20:40] = True
+        for row in np.linspace(22, 104, 8, dtype=int):
+            change[row : row + 2, 40:105] = True
+        area = int(np.count_nonzero(change)) / change.size
+        case = _case(primitive="tumor-burden-increase-v1", area=area)
+        base_plan = _manual_plan(
+            case=case,
+            interface=interface,
+            source_label="Stroma",
+            target_label="Tumor",
+            area=area,
+            supporting_rules=_bundle_ids(bundle),
+            band_max=128.0,
+        )
+        target = np.array(self.mask, copy=True)
+        candidate = CandidateMask(
+            "mechanism-shape-bound",
+            interface.interface_id,
+            "fixture",
+            target,
+            change,
+            {},
+        )
+
+        def run_with(maximum: float):
+            ranges = dict(base_plan.tool_program.parameter_ranges)
+            ranges["max_boundary_compactness"] = maximum
+            plan = replace(
+                base_plan,
+                tool_program=replace(
+                    base_plan.tool_program, parameter_ranges=ranges
+                ),
+            )
+            return _check_boundary_naturalness(
+                GateContext(
+                    case=case,
+                    source_mask=self.mask,
+                    schema=self.schema,
+                    scene=self.scene,
+                    bundle=bundle,
+                    plan=plan,
+                    candidate=candidate,
+                )
+            )
+
+        strict = run_with(40.0)
+        mechanism_specific = run_with(55.0)
+        self.assertFalse(strict.passed)
+        self.assertTrue(mechanism_specific.passed)
+        self.assertEqual(
+            mechanism_specific.metrics[
+                "maximum_allowed_component_compactness"
+            ],
+            55.0,
         )
 
     def test_case152_style_short_deep_notch_is_rejected(self):

@@ -378,6 +378,62 @@ def adaptive_quota_coverage_count(
     }
 
 
+def compile_quota_coverage_contract(
+    candidates,
+    nuc_prob,
+    quota,
+    *,
+    region_area,
+    candidate_min_distance,
+    args,
+):
+    """Compile one generic, auditable coverage contract for a quota stratum."""
+
+    adaptive = bool(getattr(args, "adaptive_quota_coverage", True))
+    minimum_fraction = float(
+        getattr(args, "quota_coverage_min_fraction", 0.2)
+    )
+    if adaptive:
+        coverage_count, audit = adaptive_quota_coverage_count(
+            candidates,
+            nuc_prob,
+            quota,
+            minimum_fraction=minimum_fraction,
+        )
+    else:
+        coverage_count = min(max(int(quota), 0), len(candidates))
+        audit = {
+            "policy": "fixed_full_quota_coverage",
+            "quota": int(max(quota, 0)),
+            "coverage_count": int(coverage_count),
+            "coverage_fraction": (
+                float(coverage_count) / float(max(int(quota), 1))
+            ),
+            "minimum_coverage_fraction": minimum_fraction,
+            "tail_sharpness": None,
+            "probability_quantiles": {},
+        }
+    radius = quota_coverage_radius(
+        region_area=region_area,
+        quota=quota,
+        candidate_min_distance=candidate_min_distance,
+        spacing_scale=float(
+            getattr(args, "quota_coverage_spacing_scale", 0.75)
+        ),
+        maximum=float(getattr(args, "quota_coverage_max_radius", 48.0)),
+    )
+    audit.update(
+        {
+            "adaptive": adaptive,
+            "region_area": int(region_area),
+            "candidate_count": len(candidates),
+            "coverage_radius": float(radius),
+            "candidate_min_distance": float(candidate_min_distance),
+        }
+    )
+    return int(coverage_count), float(radius), audit
+
+
 def choose_weighted_centers(
     candidates,
     nuc_prob,
@@ -387,12 +443,16 @@ def choose_weighted_centers(
     coverage_count=None,
     coverage_radius=0.0,
 ):
-    """Sample a deterministic-seeded retry queue from ProbNet probability mass.
+    """Sample a ProbNet-weighted retry queue with a coverage prefix.
 
-    The legacy queue took the highest-scoring centers, which converted a mild
-    spatial preference into a hard ring whenever an edit boundary was slightly
-    brighter. Gumbel ranking gives a weighted sample without replacement:
-    candidates remain proportional to ProbNet mass instead of becoming Top-N.
+    Gumbel ranking gives a weighted sample without replacement, so candidates
+    remain proportional to ProbNet mass instead of becoming deterministic
+    Top-N.  When a quota coverage contract is supplied, only its prefix is
+    diversified: the first available ProbNet-weighted point at the requested
+    separation is selected, falling back to the farthest point when the region
+    cannot support that separation.  The untouched weighted order remains the
+    retry tail.  This prevents a small quota from collapsing into one local
+    peak without turning a weak ProbNet preference into a geometric ring.
 
     The generic calibration mass is ``odds(probability) ** gamma``. It preserves
     flat fields while expressing sharp ProbNet structure without a dataset,
@@ -401,7 +461,6 @@ def choose_weighted_centers(
 
     if target_count <= 0 or not candidates:
         return []
-    del coverage_count, coverage_radius
     n = min(target_count, len(candidates))
     ys = np.array([p[0] for p in candidates], dtype=np.int64)
     xs = np.array([p[1] for p in candidates], dtype=np.int64)
@@ -410,11 +469,74 @@ def choose_weighted_centers(
         gamma,
     )
     gumbel = np.random.gumbel(size=log_mass.shape[0])
-    order = np.argsort(
+    weighted_order = np.argsort(
         -(log_mass + gumbel),
         kind="stable",
     )
-    return [candidates[int(index)] for index in order[:n]]
+    prefix_target = min(
+        n,
+        int(coverage_count) if coverage_count is not None else 0,
+    )
+    radius = max(float(coverage_radius), 0.0)
+    if prefix_target <= 1 or radius <= 0:
+        return [candidates[int(index)] for index in weighted_order[:n]]
+
+    coordinates = np.column_stack((ys, xs)).astype(np.float64)
+    relative_mass = np.exp(log_mass - float(np.max(log_mass)))
+    selected = np.zeros(len(candidates), dtype=bool)
+    prefix_indices = [int(weighted_order[0])]
+    selected[prefix_indices[0]] = True
+    minimum_distance_sq = np.sum(
+        (coordinates - coordinates[prefix_indices[0]]) ** 2,
+        axis=1,
+    )
+    # Seed weighted spatial partitions.  Reusing the already sampled Gumbel
+    # perturbation keeps this reproducible under the caller's deterministic
+    # seed while probability mass and uncovered distance jointly decide which
+    # part of a long/curved region receives the next partition.
+    while len(prefix_indices) < prefix_target:
+        eligible = (~selected) & (minimum_distance_sq >= radius * radius)
+        utility = (
+            np.log(np.clip(relative_mass, 1e-300, None))
+            + np.log(np.maximum(minimum_distance_sq, 1e-12))
+            + gumbel
+        )
+        utility[~eligible] = -np.inf
+        if np.any(eligible):
+            candidate_index = int(np.argmax(utility))
+        else:
+            # The finite candidate raster cannot satisfy another radius-
+            # separated center.  Continue with the farthest remaining point;
+            # the downstream continuity gate still decides whether the
+            # achieved configuration is sufficient.
+            fallback = np.where(
+                selected,
+                -np.inf,
+                minimum_distance_sq,
+            )
+            candidate_index = int(np.argmax(fallback))
+            if not np.isfinite(fallback[candidate_index]):
+                break
+        prefix_indices.append(candidate_index)
+        selected[candidate_index] = True
+        minimum_distance_sq = np.minimum(
+            minimum_distance_sq,
+            np.sum(
+                (coordinates - coordinates[candidate_index]) ** 2,
+                axis=1,
+            ),
+        )
+
+    selected[:] = False
+    selected[np.asarray(prefix_indices, dtype=np.int64)] = True
+
+    retry_tail = [
+        int(index)
+        for index in weighted_order
+        if not selected[int(index)]
+    ]
+    queue = prefix_indices + retry_tail
+    return [candidates[index] for index in queue[:n]]
 
 
 def probability_sampling_log_mass(probability, gamma):
@@ -1614,6 +1736,41 @@ def balanced_type_at_center(
 ):
     """Choose a local type and return the posterior mass to commit on success."""
 
+    ordered, type_probs = balanced_type_order_at_center(
+        type_prob,
+        cy,
+        cx,
+        args,
+        placed_by_type=placed_by_type,
+        expected_type_mass=expected_type_mass,
+        supported_types=supported_types,
+        tissue_type_prior=tissue_type_prior,
+        prior_weight=prior_weight,
+    )
+    return (ordered[0] if ordered else None), type_probs
+
+
+def balanced_type_order_at_center(
+    type_prob,
+    cy,
+    cx,
+    args,
+    *,
+    placed_by_type,
+    expected_type_mass,
+    supported_types=None,
+    tissue_type_prior=None,
+    prior_weight=None,
+):
+    """Rank legal types by the same cumulative-posterior balancing policy.
+
+    The first item is identical to :func:`balanced_type_at_center`.  Remaining
+    items are used only by the exact-count backfill when every complete shape
+    of the preferred type is geometrically unplaceable at a center.  This
+    preserves ProbNet's total cellularity target without shrinking shapes,
+    allowing overlap, or inventing an organ-specific type quota.
+    """
+
     probabilities = np.asarray(type_prob, dtype=np.float64)
     if probabilities.shape[0] == len(NUCLEI_CLASSES) + 1:
         probabilities = probabilities[1:]
@@ -1639,13 +1796,30 @@ def balanced_type_at_center(
         ),
     )
     if type_probs is None:
-        return None, None
-    nucleus_type = select_low_variance_type(
-        type_probs,
-        placed_by_type=placed_by_type,
-        expected_type_mass=expected_type_mass,
+        return (), None
+    assigned = np.asarray(
+        [
+            int(placed_by_type.get(int(nucleus_type), 0))
+            for nucleus_type in NUCLEI_CLASSES
+        ],
+        dtype=np.float64,
     )
-    return nucleus_type, type_probs
+    expected = np.asarray(expected_type_mass, dtype=np.float64)
+    score = expected + type_probs - assigned + type_probs * 1e-9
+    supported = (
+        {int(value) for value in supported_types}
+        if supported_types is not None
+        else {int(value) for value in NUCLEI_CLASSES}
+    )
+    order = tuple(
+        int(NUCLEI_CLASSES[index])
+        for index in sorted(
+            range(len(NUCLEI_CLASSES)),
+            key=lambda index: (-float(score[index]), -float(type_probs[index]), index),
+        )
+        if int(NUCLEI_CLASSES[index]) in supported and type_probs[index] > 0
+    )
+    return order, type_probs
 
 
 def supported_joint_nucleus_probability(type_prob, supported_types):
@@ -1819,6 +1993,234 @@ def place_candidate_with_retries(
     return False, None, attempts, None
 
 
+def center_region_for_nucleus_type(
+    center_region,
+    nucleus_type,
+    center_region_exclusions_by_type=None,
+):
+    """Return the executable center domain for one typed population."""
+
+    region = np.asarray(center_region, dtype=bool)
+    exclusions = center_region_exclusions_by_type or {}
+    excluded = exclusions.get(int(nucleus_type))
+    if excluded is None:
+        excluded = exclusions.get(str(int(nucleus_type)))
+    if excluded is None:
+        return region
+    excluded = np.asarray(excluded, dtype=bool)
+    if excluded.shape != region.shape:
+        raise ValueError("typed center exclusion and center region must share one shape")
+    return region & ~excluded
+
+
+def place_candidate_with_type_fallback(
+    *,
+    nucleus_types,
+    placement_audit,
+    center_region_exclusions_by_type=None,
+    **placement_kwargs,
+):
+    """Try posterior-ordered legal types without relaxing shape geometry."""
+
+    total_trials = 0
+    for rank, nucleus_type in enumerate(nucleus_types):
+        current_audit = {}
+        typed_kwargs = dict(placement_kwargs)
+        if "center_region" in placement_kwargs:
+            typed_kwargs["center_region"] = center_region_for_nucleus_type(
+                placement_kwargs["center_region"],
+                nucleus_type,
+                center_region_exclusions_by_type,
+            )
+        placed, shape_source, trials, accepted_center = (
+            place_candidate_with_retries(
+                nucleus_type=int(nucleus_type),
+                placement_audit=current_audit,
+                **typed_kwargs,
+            )
+        )
+        total_trials += int(trials)
+        if not placed:
+            continue
+        placement_audit.update(current_audit)
+        placement_audit["type_fallback_rank"] = int(rank)
+        placement_audit["preferred_nucleus_type"] = int(nucleus_types[0])
+        placement_audit["accepted_nucleus_type"] = int(nucleus_type)
+        return (
+            True,
+            int(nucleus_type),
+            shape_source,
+            total_trials,
+            accepted_center,
+        )
+    return False, None, None, total_trials, None
+
+
+def realize_compiled_packing_witness(
+    *,
+    base_output,
+    packing_witness,
+    center_region,
+    valid_tissue_mask,
+    tissue_id,
+    target_count,
+    nucleus_probability,
+    minimum_separation_px,
+    allowed_nucleus_types=None,
+    center_region_exclusions_by_type=None,
+):
+    """Execute a certified source-shape packing when ranked search exhausts.
+
+    The feasibility compiler has already proven that the complete witness set
+    fits E/P/V with the configured separation.  The mature executor normally
+    searches independently in ProbNet order; this fallback consumes the same
+    immutable witness, ordering eligible placements by ProbNet probability,
+    so a certified candidate cannot later fail merely because the stochastic
+    search chose a blocking prefix.
+    """
+
+    requested = max(0, int(target_count))
+    if not packing_witness or requested <= 0:
+        return None
+    output = np.asarray(base_output).copy()
+    centers = np.asarray(center_region, dtype=bool)
+    valid = np.asarray(valid_tissue_mask, dtype=bool)
+    probability = np.asarray(nucleus_probability, dtype=np.float64)
+    allowed_types = {
+        int(value)
+        for value in (allowed_nucleus_types or NUCLEI_CLASSES)
+    }
+    height, width = output.shape
+    eligible = []
+    for item in packing_witness.get("placements") or []:
+        row, col = int(item["row"]), int(item["col"])
+        if int(item["nucleus_type"]) not in allowed_types:
+            continue
+        typed_region = center_region_for_nucleus_type(
+            centers,
+            int(item["nucleus_type"]),
+            center_region_exclusions_by_type,
+        )
+        if (
+            row < 0
+            or row >= height
+            or col < 0
+            or col >= width
+            or not typed_region[row, col]
+        ):
+            continue
+        eligible.append(item)
+    eligible.sort(
+        key=lambda item: (
+            -float(probability[int(item["row"]), int(item["col"])]),
+            int(item["row"]),
+            int(item["col"]),
+            str(item.get("reference_instance_id", "")),
+        )
+    )
+    accepted = []
+    separation = max(0, int(minimum_separation_px))
+    for item in eligible:
+        if len(accepted) >= requested:
+            break
+        row, col = int(item["row"]), int(item["col"])
+        nucleus_type = int(item["nucleus_type"])
+        class_index = nucleus_type - 100
+        if class_index not in range(1, len(NUCLEI_CLASSES) + 1):
+            continue
+        offsets = np.asarray(item.get("offsets_yx") or [], dtype=np.int64)
+        if offsets.ndim != 2 or offsets.shape[1:] != (2,) or not len(offsets):
+            continue
+        rows = row + offsets[:, 0]
+        cols = col + offsets[:, 1]
+        if (
+            np.any(rows < 0)
+            or np.any(rows >= height)
+            or np.any(cols < 0)
+            or np.any(cols >= width)
+            or not np.all(valid[rows, cols])
+        ):
+            continue
+        footprint = np.zeros_like(centers, dtype=bool)
+        footprint[rows, cols] = True
+        guard = (
+            ndimage.binary_dilation(
+                footprint,
+                structure=np.ones((3, 3), dtype=bool),
+                iterations=separation,
+            )
+            if separation > 0
+            else footprint
+        )
+        if np.any(guard & (output > 0)):
+            continue
+        output[rows, cols] = class_index
+        accepted.append(
+            {
+                "row": row,
+                "col": col,
+                "nucleus_type": nucleus_type,
+                "tissue_id": int(tissue_id),
+                "area_px": len(rows),
+                "shape_source": "compiled_reference_witness",
+                "reference_instance_id": str(
+                    item.get("reference_instance_id", "")
+                ),
+            }
+        )
+    if len(accepted) != requested:
+        return None
+    return output, accepted
+
+
+def packing_witness_shape_distribution_audit(
+    accepted_centers,
+    packing_witness,
+):
+    """Check realized class medians against the contract's patch references."""
+
+    medians = {
+        int(key): float(value)
+        for key, value in (
+            (packing_witness or {}).get(
+                "class_reference_median_area_px", {}
+            )
+            or {}
+        ).items()
+        if float(value) > 0
+    }
+    interval = (packing_witness or {}).get(
+        "local_median_area_ratio_interval", [0.60, 1.67]
+    )
+    if len(interval) != 2:
+        interval = [0.60, 1.67]
+    minimum, maximum = float(interval[0]), float(interval[1])
+    areas_by_type = {}
+    for item in accepted_centers or ():
+        nucleus_type = int(item.get("nucleus_type", 0))
+        area = float(item.get("area_px", 0))
+        if nucleus_type in medians and area > 0:
+            areas_by_type.setdefault(nucleus_type, []).append(area)
+    metrics = {}
+    passed = True
+    for nucleus_type, areas in sorted(areas_by_type.items()):
+        ratio = float(np.median(areas)) / medians[nucleus_type]
+        current = minimum <= ratio <= maximum
+        passed = passed and current
+        metrics[str(nucleus_type)] = {
+            "accepted_count": len(areas),
+            "accepted_median_area_px": float(np.median(areas)),
+            "reference_median_area_px": medians[nucleus_type],
+            "median_area_ratio": ratio,
+            "passed": current,
+        }
+    return {
+        "passed": bool(passed and (not accepted_centers or bool(metrics))),
+        "ratio_interval": [minimum, maximum],
+        "class_metrics": metrics,
+    }
+
+
 def generate_for_gamma(
     prob,
     tissue,
@@ -1843,6 +2245,8 @@ def generate_for_gamma(
     size_reference_pools_by_tissue=None,
     fallback_size_reference_pool=None,
     allowed_nucleus_types_override=None,
+    packing_witness=None,
+    center_region_exclusions_by_type=None,
 ):
     nuc_prob = (
         np.asarray(placement_nuc_prob, dtype=np.float32)
@@ -1920,6 +2324,12 @@ def generate_for_gamma(
     )
     if population_mask.shape != tissue.shape:
         raise ValueError("population and placement regions must share one shape")
+    typed_center_exclusions = {
+        int(key): np.asarray(value, dtype=bool)
+        for key, value in (center_region_exclusions_by_type or {}).items()
+    }
+    if any(value.shape != tissue.shape for value in typed_center_exclusions.values()):
+        raise ValueError("typed center exclusions and tissue must share one shape")
 
     for tissue_id in np.unique(tissue[population_mask]):
         tissue_id = int(tissue_id)
@@ -1928,6 +2338,7 @@ def generate_for_gamma(
 
         population_region = population_mask & (tissue == tissue_id)
         tissue_region = edit_mask & (tissue == tissue_id)
+        output_before_tissue = output.copy()
         same_tissue_footprint_mask = valid_tissue_mask & (tissue == tissue_id)
         if (
             population_region.sum() < args.min_region_area
@@ -2166,6 +2577,7 @@ def generate_for_gamma(
         component_dense_retry = {0: False}
         component_sampling = None
         global_sampling = None
+        quota_coverage_audit = None
         component_shape_samplers = {}
         if density is None:
             if component_mode:
@@ -2263,11 +2675,25 @@ def generate_for_gamma(
                             retry_pool_size,
                         )
                         requested = len(component_candidates)
+                    (
+                        coverage_count,
+                        coverage_radius,
+                        coverage_audit,
+                    ) = compile_quota_coverage_contract(
+                        component_candidates,
+                        tissue_nuc_prob,
+                        quota,
+                        region_area=area,
+                        candidate_min_distance=min_distance,
+                        args=args,
+                    )
                     selected = choose_weighted_centers(
                         component_candidates,
                         tissue_nuc_prob,
                         requested,
                         gamma,
+                        coverage_count=coverage_count,
+                        coverage_radius=coverage_radius,
                     )
                     candidates.extend(component_candidates)
                     centers.extend(selected)
@@ -2278,6 +2704,7 @@ def generate_for_gamma(
                         "retry_pool_target": retry_pool_size,
                         "num_candidates": len(component_candidates),
                         "selected_centers": len(selected),
+                        "quota_coverage": coverage_audit,
                     })
             else:
                 requested_centers = target_count
@@ -2299,11 +2726,25 @@ def generate_for_gamma(
                         retry_pool_size,
                     )
                     requested_centers = len(candidates)
+                (
+                    coverage_count,
+                    coverage_radius,
+                    quota_coverage_audit,
+                ) = compile_quota_coverage_contract(
+                    candidates,
+                    tissue_nuc_prob,
+                    target_count,
+                    region_area=int(np.count_nonzero(tissue_region)),
+                    candidate_min_distance=min_distance,
+                    args=args,
+                )
                 centers = choose_weighted_centers(
                     candidates,
                     tissue_nuc_prob,
                     requested_centers,
                     gamma,
+                    coverage_count=coverage_count,
+                    coverage_radius=coverage_radius,
                 )
                 center_component_ids = [0] * len(centers)
                 global_sampling = {
@@ -2315,6 +2756,7 @@ def generate_for_gamma(
                     "component_count_policy": (
                         "single_component_total_count"
                     ),
+                    "quota_coverage": quota_coverage_audit,
                 }
         else:
             available = list(candidates)
@@ -2421,7 +2863,11 @@ def generate_for_gamma(
                     component_id,
                     shape_sampler,
                 ),
-                center_region=tissue_region,
+                center_region=center_region_for_nucleus_type(
+                    tissue_region,
+                    nuc_type,
+                    typed_center_exclusions,
+                ),
                 valid_tissue_mask=same_tissue_footprint_mask,
                 dense_retry=dense_retry,
                 force_tissue_library=tissue_id in library_only_tissue_ids,
@@ -2477,6 +2923,8 @@ def generate_for_gamma(
             "reassignment_placement_trials": 0,
             "reassigned_placed": 0,
             "reassigned_placed_by_component": {},
+            "type_fallback_placed": 0,
+            "type_fallback_placed_by_type": {},
         }
         if (
             placed < target_count
@@ -2539,7 +2987,7 @@ def generate_for_gamma(
                         component_sampling[str(component_id)][
                             "attempted_centers"
                         ] += 1
-                    nuc_type, proposed_type_mass = balanced_type_at_center(
+                    type_order, proposed_type_mass = balanced_type_order_at_center(
                         stabilized_type_prob,
                         cy,
                         cx,
@@ -2550,19 +2998,20 @@ def generate_for_gamma(
                         tissue_type_prior=tissue_type_prior,
                         prior_weight=local_type_prior_weight,
                     )
-                    if nuc_type is None:
+                    if not type_order:
                         continue
                     placement_audit = {}
                     (
                         placed_ok,
+                        nuc_type,
                         shape_source,
                         local_trials,
                         accepted_center,
-                    ) = place_candidate_with_retries(
+                    ) = place_candidate_with_type_fallback(
+                        nucleus_types=type_order,
                         output=output,
                         candidate_y=cy,
                         candidate_x=cx,
-                        nucleus_type=nuc_type,
                         tissue_id=tissue_id,
                         shape_sampler=component_shape_samplers.get(
                             component_id,
@@ -2576,6 +3025,9 @@ def generate_for_gamma(
                         ),
                         args=args,
                         placement_audit=placement_audit,
+                        center_region_exclusions_by_type=(
+                            typed_center_exclusions
+                        ),
                     )
                     placement_trials += int(local_trials)
                     exact_backfill["placement_trials"] += int(local_trials)
@@ -2584,6 +3036,14 @@ def generate_for_gamma(
                     placed += 1
                     component_backfill_placed += 1
                     exact_backfill["placed"] += 1
+                    if int(placement_audit["type_fallback_rank"]) > 0:
+                        exact_backfill["type_fallback_placed"] += 1
+                        fallback_by_type = exact_backfill[
+                            "type_fallback_placed_by_type"
+                        ]
+                        fallback_by_type[str(nuc_type)] = int(
+                            fallback_by_type.get(str(nuc_type), 0)
+                        ) + 1
                     accepted_y, accepted_x = accepted_center
                     accepted_center_probabilities.append(
                         float(tissue_nuc_prob[accepted_y, accepted_x])
@@ -2672,7 +3132,7 @@ def generate_for_gamma(
                         component_sampling[str(component_id)][
                             "attempted_centers"
                         ] += 1
-                    nuc_type, proposed_type_mass = balanced_type_at_center(
+                    type_order, proposed_type_mass = balanced_type_order_at_center(
                         stabilized_type_prob,
                         cy,
                         cx,
@@ -2683,19 +3143,20 @@ def generate_for_gamma(
                         tissue_type_prior=tissue_type_prior,
                         prior_weight=local_type_prior_weight,
                     )
-                    if nuc_type is None:
+                    if not type_order:
                         continue
                     placement_audit = {}
                     (
                         placed_ok,
+                        nuc_type,
                         shape_source,
                         local_trials,
                         accepted_center,
-                    ) = place_candidate_with_retries(
+                    ) = place_candidate_with_type_fallback(
+                        nucleus_types=type_order,
                         output=output,
                         candidate_y=cy,
                         candidate_x=cx,
-                        nucleus_type=nuc_type,
                         tissue_id=tissue_id,
                         shape_sampler=component_shape_samplers.get(
                             component_id,
@@ -2709,6 +3170,9 @@ def generate_for_gamma(
                         ),
                         args=args,
                         placement_audit=placement_audit,
+                        center_region_exclusions_by_type=(
+                            typed_center_exclusions
+                        ),
                     )
                     placement_trials += int(local_trials)
                     exact_backfill["placement_trials"] += int(local_trials)
@@ -2720,6 +3184,14 @@ def generate_for_gamma(
                     placed += 1
                     exact_backfill["placed"] += 1
                     exact_backfill["reassigned_placed"] += 1
+                    if int(placement_audit["type_fallback_rank"]) > 0:
+                        exact_backfill["type_fallback_placed"] += 1
+                        fallback_by_type = exact_backfill[
+                            "type_fallback_placed_by_type"
+                        ]
+                        fallback_by_type[str(nuc_type)] = int(
+                            fallback_by_type.get(str(nuc_type), 0)
+                        ) + 1
                     reassigned_by_component = exact_backfill[
                         "reassigned_placed_by_component"
                     ]
@@ -2752,6 +3224,96 @@ def generate_for_gamma(
                     )
                     placed_by_shape_source[str(shape_source)] += 1
 
+        witness_fallback = None
+        witness_shape_audit = packing_witness_shape_distribution_audit(
+            accepted_centers,
+            packing_witness,
+        )
+        witness_fallback_reason = (
+            "exact_count_shortfall"
+            if placed < target_count
+            else (
+                "local_shape_distribution_mismatch"
+                if packing_witness and not witness_shape_audit["passed"]
+                else None
+            )
+        )
+        if witness_fallback_reason and packing_witness:
+            witness_fallback = realize_compiled_packing_witness(
+                base_output=output_before_tissue,
+                packing_witness=packing_witness,
+                center_region=tissue_region,
+                valid_tissue_mask=same_tissue_footprint_mask,
+                tissue_id=tissue_id,
+                target_count=target_count,
+                nucleus_probability=tissue_nuc_prob,
+                minimum_separation_px=getattr(
+                    args, "nucleus_spacing_margin_px", 1
+                ),
+                allowed_nucleus_types=supported_types,
+                center_region_exclusions_by_type=typed_center_exclusions,
+            )
+            if witness_fallback is not None:
+                output, accepted_centers = witness_fallback
+                placed = len(accepted_centers)
+                placed_by_shape_source = {
+                    "reference": placed,
+                    "library": 0,
+                }
+                accepted_center_probabilities = [
+                    float(tissue_nuc_prob[item["row"], item["col"]])
+                    for item in accepted_centers
+                ]
+                placed_by_type = {
+                    int(nucleus_type): sum(
+                        int(item["nucleus_type"]) == int(nucleus_type)
+                        for item in accepted_centers
+                    )
+                    for nucleus_type in NUCLEI_CLASSES
+                }
+                expected_type_mass = np.zeros(
+                    len(NUCLEI_CLASSES), dtype=np.float64
+                )
+                for item in accepted_centers:
+                    _, proposed = balanced_type_order_at_center(
+                        stabilized_type_prob,
+                        int(item["row"]),
+                        int(item["col"]),
+                        args,
+                        placed_by_type={},
+                        expected_type_mass=np.zeros(
+                            len(NUCLEI_CLASSES), dtype=np.float64
+                        ),
+                        supported_types=supported_types,
+                        tissue_type_prior=tissue_type_prior,
+                        prior_weight=local_type_prior_weight,
+                    )
+                    if proposed is not None:
+                        expected_type_mass += proposed
+                placed_by_component = {
+                    component_id: sum(
+                        (
+                            int(component_labels[item["row"], item["col"]])
+                            if component_labels is not None
+                            else 0
+                        )
+                        == component_id
+                        for item in accepted_centers
+                    )
+                    for component_id in component_limits
+                }
+                exact_backfill["packing_witness_fallback"] = {
+                    "used": True,
+                    "version": packing_witness.get("version"),
+                    "contract_id": packing_witness.get("contract_id"),
+                    "placed": placed,
+                    "reason": witness_fallback_reason,
+                    "pre_fallback_shape_distribution": witness_shape_audit,
+                    "selection_policy": (
+                        "certified_complete_source_shapes_probnet_ranked"
+                    ),
+                }
+
         diagnostics["placed"] += placed
         for source, count in placed_by_shape_source.items():
             diagnostics["placed_by_shape_source"][source] += count
@@ -2768,18 +3330,28 @@ def generate_for_gamma(
             "placed": placed,
             "placed_by_shape_source": placed_by_shape_source,
             "candidate_queue_policy": (
-                "probnet_odds_mass_without_replacement"
+                "adaptive_coverage_prefix_then_probnet_odds_mass_retry_tail"
             ),
             "candidate_quality_score": (
                 "gamma_times_logit_probnet_probability_plus_seeded_gumbel"
             ),
             "candidate_probability_mass_exponent": float(gamma),
-            "candidate_diversity_score": "none_poisson_candidates_only",
-            "candidate_diversity_weight": 0.0,
-            "quota_coverage_spacing_scale": 0.0,
-            "quota_coverage_max_radius": 0.0,
-            "quota_coverage_min_fraction": 0.0,
-            "adaptive_quota_coverage": False,
+            "candidate_diversity_score": (
+                "quota_prefix_minimum_distance_then_seeded_probnet_mass_rank"
+            ),
+            "candidate_diversity_weight": None,
+            "quota_coverage_spacing_scale": float(
+                getattr(args, "quota_coverage_spacing_scale", 0.75)
+            ),
+            "quota_coverage_max_radius": float(
+                getattr(args, "quota_coverage_max_radius", 48.0)
+            ),
+            "quota_coverage_min_fraction": float(
+                getattr(args, "quota_coverage_min_fraction", 0.2)
+            ),
+            "adaptive_quota_coverage": bool(
+                getattr(args, "adaptive_quota_coverage", True)
+            ),
             "retry_tail_policy": (
                 "same_probnet_mass_permutation_then_component_pixel_backfill_"
                 "then_same_tissue_quota_reassignment"
@@ -2960,6 +3532,7 @@ def generate_two_stage_for_gamma(
     required_nucleus_type=None,
     size_reference_pools_by_tissue=None,
     fallback_size_reference_pool=None,
+    packing_witness=None,
 ):
     """Fill the legal destructive core, then the remaining placement domain.
 
@@ -2976,6 +3549,11 @@ def generate_two_stage_for_gamma(
     # calibrate two partial quotas independently. Legacy callers that omit the
     # mask retain the established two-stage behavior below.
     if population_mask is not None:
+        compiled_total_new_count = (
+            int(packing_witness.get("requested_count", 0))
+            if packing_witness
+            else None
+        )
         required_center_mask = (
             np.zeros_like(generation_mask, dtype=bool)
             if required_center_mask is None
@@ -2985,6 +3563,18 @@ def generate_two_stage_for_gamma(
             )
         )
         minimum_required_centers = max(0, int(minimum_required_centers))
+        if packing_witness is not None:
+            certified_required = max(
+                0,
+                int(packing_witness.get("required_seam_count", 0)),
+            )
+            if minimum_required_centers != certified_required:
+                raise PlacementQuotaError(
+                    "runtime seam quota differs from the immutable packing "
+                    "certificate: "
+                    f"runtime={minimum_required_centers}, "
+                    f"certificate={certified_required}"
+                )
         maximum_required_centers = (
             None
             if maximum_required_centers is None
@@ -3043,15 +3633,35 @@ def generate_two_stage_for_gamma(
                     if required_nucleus_type is not None
                     else None
                 ),
+                packing_witness=packing_witness,
             )
+            required_info = (required_diagnostics.get("tissues") or {}).get(
+                str(required_tissue_id),
+                {},
+            )
+            required_placed = int(required_info.get("placed", 0))
+            if compiled_total_new_count is not None:
+                if compiled_total_new_count < required_placed:
+                    raise PlacementQuotaError(
+                        "compiled packing total is below the realized seam quota"
+                    )
+                remainder_target_overrides = {
+                    required_tissue_id: (
+                        compiled_total_new_count - required_placed
+                    )
+                }
+            else:
+                remainder_target_overrides = None
+            # The exact seam quota applies only to the required target class.
+            # Other compatible populations may legitimately occupy the same
+            # anatomical band (for example inflammatory cells interspersed at
+            # a melanoma--stroma boundary).  Keep the full compiled P for the
+            # remainder; the typed packing witness and the final continuity
+            # gate still cap target-class centers in the seam.
             remainder_generation_mask = np.asarray(
                 generation_mask,
                 dtype=bool,
             )
-            if maximum_required_centers == minimum_required_centers:
-                remainder_generation_mask = (
-                    remainder_generation_mask & ~required_center_mask
-                )
             output, diagnostics = generate_for_gamma(
                 prob,
                 tissue,
@@ -3070,10 +3680,19 @@ def generate_two_stage_for_gamma(
                 placement_nuc_prob=placement_nuc_prob,
                 placement_type_prob=placement_type_prob,
                 population_mask=population_mask,
+                new_target_count_overrides=remainder_target_overrides,
                 size_reference_pools_by_tissue=(
                     size_reference_pools_by_tissue
                 ),
                 fallback_size_reference_pool=fallback_size_reference_pool,
+                packing_witness=packing_witness,
+                center_region_exclusions_by_type=(
+                    {
+                        int(required_nucleus_type): required_center_mask
+                    }
+                    if required_nucleus_type is not None
+                    else None
+                ),
             )
             _merge_required_center_stage_diagnostics(
                 diagnostics,
@@ -3105,11 +3724,18 @@ def generate_two_stage_for_gamma(
             placement_nuc_prob=placement_nuc_prob,
             placement_type_prob=placement_type_prob,
             population_mask=population_mask,
+            new_target_count_overrides=_single_tissue_compiled_count_override(
+                tissue=tissue,
+                population_mask=population_mask,
+                compiled_total_new_count=compiled_total_new_count,
+                skipped_tissue_ids=set(args.skip_tissue_ids),
+            ),
             size_reference_pools_by_tissue=size_reference_pools_by_tissue,
             fallback_size_reference_pool=fallback_size_reference_pool,
+            packing_witness=packing_witness,
         )
         diagnostics["regeneration_stages"] = {
-            "policy": "single_quota_from_T_pop_with_centers_constrained_to_P_v1",
+            "policy": "single_contract_quota_from_T_pop_with_centers_constrained_to_P_v2",
             "population_target_pixels": int(
                 np.count_nonzero(population_mask)
             ),
@@ -3143,6 +3769,7 @@ def generate_two_stage_for_gamma(
         placement_type_prob=placement_type_prob,
         size_reference_pools_by_tissue=size_reference_pools_by_tissue,
         fallback_size_reference_pool=fallback_size_reference_pool,
+        packing_witness=packing_witness,
     )
     if np.array_equal(
         core_placement_mask,
@@ -3181,6 +3808,7 @@ def generate_two_stage_for_gamma(
         retained_by_type_overrides=buffer_retained_by_type,
         size_reference_pools_by_tissue=size_reference_pools_by_tissue,
         fallback_size_reference_pool=fallback_size_reference_pool,
+        packing_witness=packing_witness,
     )
     buffer_tissues = buffer_diagnostics["tissues"]
     core_tissues = core_diagnostics["tissues"]
@@ -3264,6 +3892,31 @@ def generate_two_stage_for_gamma(
     return output, buffer_diagnostics
 
 
+def _single_tissue_compiled_count_override(
+    *,
+    tissue,
+    population_mask,
+    compiled_total_new_count,
+    skipped_tissue_ids,
+):
+    """Bind a packing-certificate count to its single target tissue."""
+
+    if compiled_total_new_count is None:
+        return None
+    tissue_ids = [
+        int(value)
+        for value in np.unique(
+            np.asarray(tissue)[np.asarray(population_mask, dtype=bool)]
+        )
+        if int(value) not in skipped_tissue_ids
+    ]
+    if len(tissue_ids) != 1:
+        raise PlacementQuotaError(
+            "compiled packing count requires exactly one target tissue"
+        )
+    return {tissue_ids[0]: max(0, int(compiled_total_new_count))}
+
+
 def _merge_required_center_stage_diagnostics(
     diagnostics,
     required_diagnostics,
@@ -3291,9 +3944,25 @@ def _merge_required_center_stage_diagnostics(
         str(required_tissue_id),
     )
     if final_info is None:
-        raise PlacementQuotaError(
-            "required-center target tissue is absent from final population ledger"
-        )
+        # The required seam stage can legitimately realize the complete T_pop
+        # quota.  The remainder sampler then has zero new cells and omits the
+        # tissue entry entirely.  Materialize an explicit zero-remainder
+        # ledger so the atomic seam+remainder accounting stays total.
+        final_info = {
+            "target_count": 0,
+            "placed": 0,
+            "placed_by_type": {},
+            "target_by_type": {},
+            "posterior_expected_by_type": {},
+            "accepted_centers": [],
+            "type_shape_support": required_info.get(
+                "type_shape_support", {}
+            ),
+            "zero_remainder_materialized": True,
+        }
+        diagnostics.setdefault("tissues", {})[
+            str(required_tissue_id)
+        ] = final_info
     required_placed = int(required_info.get("placed", 0))
     if required_placed < int(minimum_required_centers):
         raise PlacementQuotaError(
@@ -3336,7 +4005,7 @@ def _merge_required_center_stage_diagnostics(
     shape_sampling["selected_by_source"] = dict(final_sources)
     diagnostics["shape_sampling"] = shape_sampling
     diagnostics["regeneration_stages"] = {
-        "policy": "compiled_seam_quota_then_exterior_T_pop_remainder_v2",
+        "policy": "typed_seam_quota_then_full_P_population_remainder_v3",
         "required_tissue_id": int(required_tissue_id),
         "required_center_region_pixels": int(required_center_pixels),
         "minimum_required_centers": int(minimum_required_centers),
@@ -3731,6 +4400,7 @@ def probnet_sampling_alignment_audit(
     concentration_z_threshold=DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
     exact_required_region=None,
     exact_required_count=0,
+    exact_required_nucleus_type=None,
 ):
     """Audit count, type, and spatial fidelity against this patch's ProbNet.
 
@@ -3933,34 +4603,71 @@ def probnet_sampling_alignment_audit(
                     & np.asarray(exact_required_region, dtype=bool)
                 )
             ):
-                required_count = min(
-                    int(exact_required_count),
-                    target_count,
-                )
-                remainder_count = target_count - required_count
                 required_region = (
                     region
                     & np.asarray(exact_required_region, dtype=bool)
                 )
                 remainder_region = region & ~required_region
+                # A compiled seam may be an exact quota or a minimum quota.
+                # In both cases the spatial audit must condition on the
+                # *realized* number of accepted centers in that stratum.  Using
+                # the declared minimum as if it were exact incorrectly audits
+                # seam-constrained centers against the whole placement field.
+                # Quota satisfaction itself is enforced by the placement
+                # contract; this block audits the geometry of what was placed.
+                accepted_types = np.asarray(
+                    [record["nucleus_type"] for record in tissue_records],
+                    dtype=np.int64,
+                )
+                required_selector = required_region[
+                    accepted_rows, accepted_cols
+                ]
+                if exact_required_nucleus_type is not None:
+                    required_selector &= (
+                        accepted_types == int(exact_required_nucleus_type)
+                    )
+                required_count = int(np.count_nonzero(required_selector))
+                remainder_selector = ~required_selector
+                remainder_count = int(np.count_nonzero(remainder_selector))
+                required_probability = joint_probability
+                if exact_required_nucleus_type is not None:
+                    required_type = int(exact_required_nucleus_type)
+                    if required_type not in set(NUCLEI_CLASSES):
+                        raise ValueError(
+                            "exact required nucleus type is outside the "
+                            "configured observation schema"
+                        )
+                    required_probability = np.asarray(
+                        placement_type_prob,
+                        dtype=np.float32,
+                    )[NUCLEI_CLASSES.index(required_type)]
                 spatial_strata = [
                     _spatial_geometry_metrics(
                         region=required_region,
-                        joint_probability=joint_probability,
+                        joint_probability=required_probability,
                         evaluation_gamma=fixed_evaluation_gamma,
-                        accepted_rows=accepted_rows,
-                        accepted_cols=accepted_cols,
+                        accepted_rows=accepted_rows[required_selector],
+                        accepted_cols=accepted_cols[required_selector],
                         target_count=required_count,
                     )
                 ]
                 if remainder_count > 0:
+                    # A typed seam is a quota stratum, not an exclusion zone.
+                    # Compatible non-target populations inside that band are
+                    # audited with the full placement population rather than
+                    # being dropped from both strata.
+                    remainder_region = (
+                        region
+                        if exact_required_nucleus_type is not None
+                        else remainder_region
+                    )
                     spatial_strata.append(
                         _spatial_geometry_metrics(
                             region=remainder_region,
                             joint_probability=joint_probability,
                             evaluation_gamma=fixed_evaluation_gamma,
-                            accepted_rows=accepted_rows,
-                            accepted_cols=accepted_cols,
+                            accepted_rows=accepted_rows[remainder_selector],
+                            accepted_cols=accepted_cols[remainder_selector],
                             target_count=remainder_count,
                         )
                     )
@@ -3988,7 +4695,9 @@ def probnet_sampling_alignment_audit(
                         / max(stratum_weight, 1.0)
                     )
                     spatial_conditioning_policy = (
-                        "compiled_seam_and_exterior_strata_v1"
+                        "compiled_typed_seam_and_exterior_observed_strata_v3"
+                        if exact_required_nucleus_type is not None
+                        else "compiled_seam_and_exterior_observed_strata_v2"
                     )
             score_terms = [
                 float(np.exp(-boundary_quantile_error)),
@@ -4394,6 +5103,18 @@ def run_single(args, model, library, config, density_scales, device):
         raise ValueError(
             "minimum required placements need a non-empty required placement region"
         )
+    packing_witness = None
+    if args.packing_witness:
+        packing_witness = json.loads(
+            Path(args.packing_witness).read_text(encoding="utf-8")
+        )
+        if (
+            packing_witness.get("version") != "compiled-packing-witness-v4"
+            or int(packing_witness.get("requested_count", 0)) <= 0
+            or len(packing_witness.get("placements") or [])
+            != int(packing_witness.get("requested_count", 0))
+        ):
+            raise ValueError("packing witness is malformed or incomplete")
     semantic_edit_pixels = int(np.count_nonzero(deletion_mask))
     if args.widen_edit_region:
         edit_mask = widen_locally_thin_mask(
@@ -4608,6 +5329,7 @@ def run_single(args, model, library, config, density_scales, device):
                         size_reference_pools_by_tissue
                     ),
                     fallback_size_reference_pool=complete_size_reference_pool,
+                    packing_witness=packing_witness,
                 )
             except PlacementQuotaError as exc:
                 attempt_records.append(
@@ -4641,17 +5363,17 @@ def run_single(args, model, library, config, density_scales, device):
                 ),
                 exact_required_region=(
                     required_placement_mask
-                    if int(args.maximum_required_placements) >= 0
-                    and int(args.maximum_required_placements)
-                    == int(args.minimum_required_placements)
+                    if int(args.minimum_required_placements) > 0
                     else None
                 ),
                 exact_required_count=(
-                    int(args.minimum_required_placements)
-                    if int(args.maximum_required_placements) >= 0
-                    and int(args.maximum_required_placements)
-                    == int(args.minimum_required_placements)
-                    else 0
+                    max(0, int(args.minimum_required_placements))
+                ),
+                exact_required_nucleus_type=(
+                    int(args.required_nucleus_type)
+                    if args.required_nucleus_type is not None
+                    and int(args.minimum_required_placements) > 0
+                    else None
                 ),
             )
             audit["attempt_index"] = attempt_index
@@ -5053,6 +5775,14 @@ def build_parser():
         default=None,
         help=(
             "Raw CellViT class required for the compiled seam quota."
+        ),
+    )
+    parser.add_argument(
+        "--packing-witness",
+        default=None,
+        help=(
+            "Optional executable-contract packing witness used only when the "
+            "normal ProbNet-ranked exact placement search exhausts."
         ),
     )
     parser.add_argument(

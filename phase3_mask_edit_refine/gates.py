@@ -763,10 +763,21 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
         merged_before_component_groups.append(before_ids)
         if not set(before_ids).issubset(selected_target_before_ids):
             unallowed_merge_groups.append(before_ids)
-    # Selecting multiple pre-edit target components is an auditable implicit
-    # request to let those named components coalesce. Any unselected component
-    # entering the merger remains a hard failure.
-    unallowed_target_merge = bool(unallowed_merge_groups)
+    # Most cohesive mechanisms allow only explicitly selected pre-edit target
+    # components to coalesce. A skill can tighten this to ``forbid`` for an
+    # architecture such as separated pattern-3 glands.
+    target_component_merge_policy = str(
+        context.plan.tool_program.parameter_ranges.get(
+            "target_component_merge_policy", "selected_only"
+        )
+    )
+    unallowed_target_merge = bool(
+        target_merge
+        and (
+            target_component_merge_policy == "forbid"
+            or bool(unallowed_merge_groups)
+        )
+    )
     source_hole_changed = source_holes_after != source_holes_before
     target_hole_changed = target_holes_after != target_holes_before
     allow_source_resolution = bool(
@@ -813,8 +824,8 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
         "source/target component and hole topology is preserved"
         if passed
         else (
-            "candidate causes a source split, target island/split, unselected target "
-            "component merge, or changes protected source/target holes"
+            "candidate causes a source split, target island/split, mechanism-"
+            "forbidden target merge, or changes protected source/target holes"
         ),
         metrics={
             "source_components_before": source_components_before,
@@ -833,6 +844,7 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
                 selected_target_before_ids
             ),
             "merged_before_component_groups": merged_before_component_groups,
+            "target_component_merge_policy": target_component_merge_policy,
             "unallowed_target_merge_groups": unallowed_merge_groups,
             "unallowed_target_merge": unallowed_target_merge,
             "source_hole_changed": source_hole_changed,
@@ -1030,13 +1042,18 @@ def _check_boundary_naturalness(context: GateContext) -> GateCheck:
             )
         ),
     )
-    max_compactness = min(
-        40.0,
-        float(
-            context.plan.tool_program.parameter_ranges.get(
-                "max_boundary_compactness", 40.0
-            )
-        ),
+    configured_max_compactness = float(
+        context.plan.tool_program.parameter_ranges.get(
+            "max_boundary_compactness", 40.0
+        )
+    )
+    # The joint compiler obtains this bound from the active mechanism skill.
+    # Do not silently cap it at the legacy global default: that would make a
+    # validated pattern-specific contract (for example a fused/cribriform
+    # prostate front) impossible to execute.  Keep a defensive runtime bound
+    # for plans constructed outside the typed joint-skill repository.
+    max_compactness = float(
+        np.clip(configured_max_compactness, 4.0, 100.0)
     )
     # Global compactness is not meaningful for a planned multi-front diff:
     # squaring the sum of several independent perimeters makes two perfectly
@@ -1101,6 +1118,7 @@ def _check_boundary_naturalness(context: GateContext) -> GateCheck:
             "area_weighted_component_compactness": (
                 area_weighted_component_compactness
             ),
+            "maximum_allowed_component_compactness": max_compactness,
             "component_metrics": component_metrics,
             "rectangle_like": rectangle_like,
         },

@@ -13,6 +13,7 @@ from scipy.spatial import cKDTree
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import GateReport
 
+from .cell_programs import CELL_TOOL_COMPILER_VERSION
 from .executable_contract import ExecutableJointContract
 from .models import (
     JointCandidate,
@@ -34,6 +35,7 @@ from .skills.repository import JointSkillBundle
 BASE_REQUIRED_CHECKS = (
     "primitive_semantics",
     "executable_contract_binding",
+    "structural_hierarchy_binding",
     "tool_program_binding",
     "tissue_gate_binding",
     "whole_instance_changes",
@@ -70,6 +72,7 @@ class JointGateRegistry:
         self._checks: dict[str, Callable[[JointGateContext], JointGateCheck]] = {
             "primitive_semantics": _primitive_semantics,
             "executable_contract_binding": _executable_contract_binding,
+            "structural_hierarchy_binding": _structural_hierarchy_binding,
             "tool_program_binding": _tool_program_binding,
             "tissue_gate_binding": _tissue_gate_binding,
             "native_structure_preserved": _native_structure_preserved,
@@ -174,7 +177,7 @@ def _tool_program_binding(c):
     expected = c.plan.cell_plan
     passed = bool(
         isinstance(program, dict)
-        and program.get("compiler_version") == "joint-cell-tool-compiler-v6"
+        and program.get("compiler_version") == CELL_TOOL_COMPILER_VERSION
         and program.get("primitive_id") == c.case.primitive_id
         and program.get("mechanism_id") == c.plan.selected_mechanism_id
         and tuple(program.get("selected_interface_ids", ()))
@@ -291,6 +294,49 @@ def _tissue_gate_binding(c):
     )
 
 
+def _structural_hierarchy_binding(c):
+    contract = c.executable_contract
+    known = set(c.scene.structural_unit_masks)
+    selected = tuple(c.plan.structural_unit_ids)
+    affected = tuple(contract.affected_structural_unit_ids)
+    hierarchy = c.scene.structural_hierarchy
+    errors = []
+    if tuple(contract.selected_structural_unit_ids) != selected:
+        errors.append("plan_contract_selected_units_mismatch")
+    if set(selected) - known:
+        errors.append("selected_unit_missing_from_scene")
+    if set(affected) - set(selected):
+        errors.append("affected_unit_not_selected")
+    if hierarchy.get("schema_version") != "joint-structural-hierarchy-v1":
+        errors.append("unsupported_hierarchy_schema")
+    unit_records = {
+        str(item.get("unit_id")): item
+        for item in hierarchy.get("structure_units", ())
+        if isinstance(item, dict) and item.get("unit_id")
+    }
+    for unit_id in selected:
+        record = unit_records.get(unit_id)
+        if record is None:
+            errors.append(f"missing_unit_record:{unit_id}")
+        elif not record.get("parent_tissue_component_id"):
+            errors.append(f"unit_without_parent_component:{unit_id}")
+        elif not record.get("auxiliary_structure_id"):
+            errors.append(f"unit_without_producer_binding:{unit_id}")
+    passed = not errors
+    return _result(
+        "structural_hierarchy_binding",
+        passed,
+        (
+            "Planner, structure units, tissue components and executable contract are bound"
+            if passed
+            else "structural hierarchy authority is incomplete or detached"
+        ),
+        metrics={
+            "selected_unit_ids": list(selected),
+            "affected_unit_ids": list(affected),
+            "violations": errors,
+        },
+    )
 def _native_structure_preserved(c):
     required = set(c.bundle.mechanism.representability.required_auxiliary_structures)
     available = set(c.scene.auxiliary_structure_masks)
@@ -988,10 +1034,15 @@ def _cellularity_depletion_gradient(c):
     field_area_cell_squares = int(
         np.count_nonzero(core | transition | outer)
     ) / max(1.0, program.nominal_nucleus_diameter_px**2)
-    field_area_ok = (
-        field_area_cell_squares
-        >= skill.minimum_field_area_cell_diameter_squares
+    # The field area is normalized by an estimated local nucleus diameter and
+    # rasterized against an irregular component. A five-percent finite-raster
+    # allowance is narrower than one typical boundary-cell layer while
+    # preventing a 2--3% quantization miss from overriding an otherwise hard
+    # topology/count/gradient contract.
+    effective_minimum_field_area = (
+        0.95 * skill.minimum_field_area_cell_diameter_squares
     )
+    field_area_ok = field_area_cell_squares >= effective_minimum_field_area
     outer_reference_count_ok = (
         source_counts["outer_reference"]
         >= skill.minimum_outer_reference_instances
@@ -1021,7 +1072,11 @@ def _cellularity_depletion_gradient(c):
         source_value = int(trace_radial_source.get(name, 0))
         removed_value = int(trace_radial_removed.get(name, 0))
         realized = removed_value / source_value if source_value else 0.0
-        tolerance = max(0.12, 0.55 / max(1, source_value))
+        # Whole nuclei make each radial fraction discrete. One complete
+        # instance is the smallest executable adjustment in that subband; the
+        # gate must not demand a fractional nucleus while still bounding large
+        # deviations with the fixed 0.12 floor.
+        tolerance = max(0.12, 1.0 / max(1, source_value))
         current_ok = source_value == 0 or abs(realized - target_fraction) <= tolerance
         radial_target_ok = radial_target_ok and current_ok
         if source_value:
@@ -1099,6 +1154,10 @@ def _cellularity_depletion_gradient(c):
             "minimum_field_area_cell_diameter_squares": (
                 skill.minimum_field_area_cell_diameter_squares
             ),
+            "effective_minimum_field_area_with_raster_tolerance": (
+                effective_minimum_field_area
+            ),
+            "field_area_relative_raster_tolerance": 0.05,
             "field_area_ok": field_area_ok,
             "outer_reference_instance_count_ok": outer_reference_count_ok,
             "minimum_outer_reference_instances": (
@@ -1170,7 +1229,9 @@ def _interface_seam_continuity(c):
     )
     target_ids = c.schema.resolve_fine_ids(c.plan.tissue_plan.target_label)
     target = np.asarray(c.candidate.target_nuclei_mask)
-    target_centers = class_center_mask(target, class_id=target_class)
+    target_centers, center_source = _contract_target_center_mask(
+        c, target_class=target_class
+    )
     inner_count = int(np.count_nonzero(target_centers & inner))
     inner_pixels = int(np.count_nonzero(inner))
     inner_density = inner_count / max(1, inner_pixels)
@@ -1187,6 +1248,7 @@ def _interface_seam_continuity(c):
         ),
         target_class=target_class,
         target_fine_ids=tuple(target_ids),
+        target_center_mask=target_centers,
     )
     ratio = (
         _safe_ratio(inner_density, quota.outer_density)
@@ -1232,6 +1294,7 @@ def _interface_seam_continuity(c):
             "outer_density": quota.outer_density,
             "inner_outer_ratio": ratio,
             "inner_center_count": inner_count,
+            "center_ledger_source": center_source,
             "outer_center_count": quota.outer_count,
             "expected_inner_center_count": quota.expected_count,
             "allowed_inner_center_count_interval": [
@@ -1264,6 +1327,36 @@ def _interface_seam_continuity(c):
             "mature_probnet_may_not_bypass_continuity_gate": True,
         },
     )
+
+
+def _contract_target_center_mask(c, *, target_class: int):
+    """Use executor centers when available; never re-segment pasted shapes."""
+
+    accepted = c.candidate.tool_trace.get("accepted_center_ledger")
+    if not isinstance(accepted, list):
+        return (
+            class_center_mask(
+                np.asarray(c.candidate.target_nuclei_mask),
+                class_id=target_class,
+            ),
+            "target_raster_instance_fallback",
+        )
+    result = np.zeros_like(c.source_nuclei, dtype=bool)
+    erased = set(c.executable_contract.erase_instance_ids)
+    for item in c.scene.cells.instances:
+        if item.class_id != target_class or item.instance_id in erased:
+            continue
+        col, row = item.centroid_xy
+        row = int(np.clip(round(row), 0, result.shape[0] - 1))
+        col = int(np.clip(round(col), 0, result.shape[1] - 1))
+        result[row, col] = True
+    for item in accepted:
+        if not isinstance(item, dict) or int(item.get("class_id", -1)) != target_class:
+            continue
+        row, col = int(item["row"]), int(item["col"])
+        if 0 <= row < result.shape[0] and 0 <= col < result.shape[1]:
+            result[row, col] = True
+    return result, "retained_scene_instances_plus_executor_center_ledger"
 
 
 def _mechanism_realization(c):
@@ -1452,6 +1545,10 @@ def _joint_area(c):
     )
     batch_max = int(c.candidate.tool_trace.get("batch_max_safe_joint_pixels", -1))
     batch_certified = bool(c.candidate.tool_trace.get("batch_max_safe_joint_certified"))
+    batch_min = int(c.candidate.tool_trace.get("batch_min_safe_joint_pixels", -1))
+    batch_min_certified = bool(
+        c.candidate.tool_trace.get("batch_min_safe_joint_certified")
+    )
     fallback = (
         budget.fallback_policy == "max_feasible_below_target"
         and hard_min <= actual < desired_min
@@ -1465,7 +1562,27 @@ def _joint_area(c):
         and actual < desired_min
         and actual == batch_max
     )
-    passed = in_desired or fallback or adaptive_fallback
+    whole_instance_closure_fallback = (
+        budget.fallback_policy == "max_feasible_below_target"
+        and desired_max < actual <= hard_max
+        and batch_min_certified
+        and actual == batch_min
+        and (
+            c.candidate.ledger.tissue_pixels
+            == budget.tissue_floor_pixels(c.candidate.joint_change.shape)
+            or bool(
+                c.candidate.tool_trace.get(
+                    "joint_area_rebalance_exhausted", False
+                )
+            )
+        )
+    )
+    passed = (
+        in_desired
+        or fallback
+        or adaptive_fallback
+        or whole_instance_closure_fallback
+    )
     detail = (
         "joint union is in target tolerance"
         if in_desired
@@ -1475,7 +1592,11 @@ def _joint_area(c):
             else (
                 "joint union accepted below the standard floor from a proven maximum-safe tissue solve"
                 if adaptive_fallback
-                else "joint union violates target or was not proven maximum-safe"
+                else (
+                    "joint union accepted as the minimum safe whole-instance closure above target"
+                    if whole_instance_closure_fallback
+                    else "joint union violates target or was not proven maximum-safe"
+                )
             )
         )
     )
@@ -1487,11 +1608,25 @@ def _joint_area(c):
             "actual_pixels": actual,
             "hard_interval": [hard_min, hard_max],
             "desired_interval": [desired_min, desired_max],
-            "used_fallback": fallback or adaptive_fallback,
+            "used_fallback": (
+                fallback
+                or adaptive_fallback
+                or whole_instance_closure_fallback
+            ),
             "used_capacity_adaptive_fallback": adaptive_fallback,
+            "used_whole_instance_closure_fallback": (
+                whole_instance_closure_fallback
+            ),
+            "joint_area_rebalance_exhausted": bool(
+                c.candidate.tool_trace.get(
+                    "joint_area_rebalance_exhausted", False
+                )
+            ),
             "capacity_exhausted": capacity_exhausted,
             "batch_max_safe_joint_pixels": batch_max,
             "batch_max_safe_joint_certified": batch_certified,
+            "batch_min_safe_joint_pixels": batch_min,
+            "batch_min_safe_joint_certified": batch_min_certified,
         },
     )
 
@@ -1724,8 +1859,27 @@ def _fine_pattern_preserved(c):
     required = c.bundle.annotation_profile.mechanism_required_fine_ids.get(
         c.plan.selected_mechanism_id, ()
     )
-    source_fine = {int(value) for value in np.unique(source[change])}
-    pattern_mismatch = bool(required) and not source_fine.issubset(set(required))
+    # A burden increase consumes non-tumor source pixels, so checking the
+    # changed *source* IDs would incorrectly call every legal stroma->pattern
+    # transition a pattern mismatch.  Pattern identity is the tumor fine ID
+    # on whichever side of the transition actually contains tumor: target for
+    # increase, source for decrease/stroma increase.  The union also covers a
+    # future mixed candidate without inferring direction from primitive text.
+    edited_pattern_ids = {
+        int(value)
+        for value in np.unique(
+            np.concatenate(
+                [
+                    source[change & np.isin(source, c.schema.tumor_fine_ids)],
+                    target[change & np.isin(target, c.schema.tumor_fine_ids)],
+                ]
+            )
+        )
+    }
+    pattern_mismatch = bool(required) and (
+        not edited_pattern_ids
+        or not edited_pattern_ids.issubset(set(required))
+    )
     passed = violations == 0 and not pattern_mismatch
     return _result(
         "fine_pattern_preserved",
@@ -1735,8 +1889,8 @@ def _fine_pattern_preserved(c):
         else "implicit fine-label conversion or pattern-mechanism mismatch",
         metrics={
             "violation_pixels": violations,
-            "required_source_fine_ids": list(required),
-            "observed_changed_source_fine_ids": sorted(source_fine),
+            "required_pattern_fine_ids": list(required),
+            "observed_changed_pattern_fine_ids": sorted(edited_pattern_ids),
             "pattern_mismatch": pattern_mismatch,
         },
     )

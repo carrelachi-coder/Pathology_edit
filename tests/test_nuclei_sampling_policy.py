@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import numpy as np
+import pytest
 
 import inpaint_cells.generate as generate_module
 from inpaint_cells.generate import (
@@ -16,6 +17,7 @@ from inpaint_cells.generate import (
     allocate_type_counts,
     allocate_weight_proportional_counts,
     balanced_type_at_center,
+    balanced_type_order_at_center,
     blend_context_stabilized_probability,
     build_buffer_retained_by_type_overrides,
     calibrated_local_type_distribution,
@@ -26,14 +28,17 @@ from inpaint_cells.generate import (
     count_retained_centers_by_type,
     exact_backfill_candidate_budget,
     fuse_density_head_with_tissue_prior,
+    generate_two_stage_for_gamma,
     initialize_component_sampling_diagnostics,
     make_accepted_centers_overlay,
     next_sampling_feedback_parameters,
     place_candidate_with_retries,
+    place_candidate_with_type_fallback,
     predict_context_stabilized_spatial_probability,
     probability_concentration_diagnostics,
     probability_mass_region_centers,
     probnet_sampling_alignment_audit,
+    realize_compiled_packing_witness,
     same_tissue_quota_reassignment_centers,
     sample_type_at_center,
     select_low_variance_type,
@@ -47,6 +52,86 @@ from inpaint_cells.sampling_policy import (
     retry_pool_target,
     valid_biological_tissue_mask,
 )
+
+
+def test_compiled_packing_witness_is_probnet_ranked_and_complete():
+    shape = (24, 24)
+    base = np.zeros(shape, dtype=np.uint8)
+    centers = np.ones(shape, dtype=bool)
+    valid = np.ones(shape, dtype=bool)
+    probability = np.zeros(shape, dtype=np.float32)
+    probability[5, 5] = 0.3
+    probability[12, 12] = 0.9
+    probability[18, 18] = 0.6
+    witness = {
+        "version": "compiled-packing-witness-v4",
+        "contract_id": "fixture",
+        "requested_count": 3,
+        "placements": [
+            {
+                "row": row,
+                "col": col,
+                "nucleus_type": 101,
+                "reference_instance_id": f"ref-{index}",
+                "offsets_yx": [[0, 0]],
+            }
+            for index, (row, col) in enumerate(
+                ((5, 5), (12, 12), (18, 18))
+            )
+        ],
+    }
+
+    realized = realize_compiled_packing_witness(
+        base_output=base,
+        packing_witness=witness,
+        center_region=centers,
+        valid_tissue_mask=valid,
+        tissue_id=2,
+        target_count=2,
+        nucleus_probability=probability,
+        minimum_separation_px=1,
+    )
+
+    assert realized is not None
+    output, ledger = realized
+    assert int(np.count_nonzero(output)) == 2
+    assert [(item["row"], item["col"]) for item in ledger] == [
+        (12, 12),
+        (18, 18),
+    ]
+    assert all(item["shape_source"] == "compiled_reference_witness" for item in ledger)
+
+
+def test_compiled_packing_witness_rejects_diagonal_instance_contact():
+    shape = (12, 12)
+    witness = {
+        "version": "compiled-packing-witness-v4",
+        "contract_id": "diagonal-fixture",
+        "requested_count": 2,
+        "placements": [
+            {
+                "row": row,
+                "col": col,
+                "nucleus_type": 101,
+                "reference_instance_id": f"ref-{index}",
+                "offsets_yx": [[0, 0]],
+            }
+            for index, (row, col) in enumerate(((5, 5), (6, 6)))
+        ],
+    }
+
+    realized = realize_compiled_packing_witness(
+        base_output=np.zeros(shape, dtype=np.uint8),
+        packing_witness=witness,
+        center_region=np.ones(shape, dtype=bool),
+        valid_tissue_mask=np.ones(shape, dtype=bool),
+        tissue_id=2,
+        target_count=2,
+        nucleus_probability=np.ones(shape, dtype=np.float32),
+        minimum_separation_px=1,
+    )
+
+    assert realized is None
 
 
 def test_reference_pool_can_be_scoped_by_original_instance_center():
@@ -197,6 +282,133 @@ def test_probnet_sampling_audit_rejects_boundary_collapse_for_flat_prior():
     assert audit["tissues"]["1"]["probability_mass_coverage_ratio"] > 1.10
     assert "PROBNET_COVERAGE_GAP" in audit["failure_reasons"]
     assert audit["primary_failure_reason"] == "PROBNET_COVERAGE_GAP"
+
+
+def test_sampling_audit_conditions_exact_seam_on_required_cell_class():
+    shape = (40, 40)
+    tissue = np.ones(shape, dtype=np.uint8)
+    region = np.ones(shape, dtype=bool)
+    required = np.zeros(shape, dtype=bool)
+    required[:, :20] = True
+    required_centers = [(10, 5), (10, 15), (30, 5), (30, 15)]
+    remainder_centers = [(10, 25), (10, 35), (30, 25), (30, 35)]
+    input_nuclei = np.zeros(shape, dtype=np.uint8)
+    output_nuclei = np.zeros(shape, dtype=np.uint8)
+    for row, col in required_centers + remainder_centers:
+        output_nuclei[row, col] = 1
+    type_prob = np.zeros((5, *shape), dtype=np.float32)
+    type_prob[0] = 0.20
+    type_prob[1] = 0.01
+    type_prob[1, :10, :10] = 0.95
+    accepted = [
+        {
+            "row": row,
+            "col": col,
+            "nucleus_type": 101,
+            "tissue_id": 1,
+        }
+        for row, col in required_centers
+    ] + [
+        {
+            "row": row,
+            "col": col,
+            "nucleus_type": 102,
+            "tissue_id": 1,
+        }
+        for row, col in remainder_centers
+    ]
+    diagnostics = {
+        "tissues": {
+            "1": {
+                "target_count": 8,
+                "placed": 8,
+                "placed_by_type": {"101": 4, "102": 4},
+                "posterior_expected_by_type": {"101": 4.0, "102": 4.0},
+                "type_shape_support": {"supported_types": [101, 102]},
+                "accepted_centers": accepted,
+            }
+        }
+    }
+
+    audit = probnet_sampling_alignment_audit(
+        input_nuclei=input_nuclei,
+        output_nuclei=output_nuclei,
+        tissue=tissue,
+        generation_region=region,
+        placement_type_prob=type_prob,
+        gamma=3.0,
+        generation_diagnostics=diagnostics,
+        exact_required_region=required,
+        exact_required_count=4,
+        exact_required_nucleus_type=101,
+    )
+
+    assert audit["passed"] is True
+    assert (
+        audit["tissues"]["1"]["spatial_conditioning_policy"]
+        == "compiled_typed_seam_and_exterior_observed_strata_v3"
+    )
+
+
+def test_sampling_audit_conditions_minimum_seam_on_realized_count():
+    shape = (40, 40)
+    tissue = np.ones(shape, dtype=np.uint8)
+    region = np.ones(shape, dtype=bool)
+    required = np.zeros(shape, dtype=bool)
+    required[:, :20] = True
+    required_centers = [(7, 5), (7, 15), (20, 10), (33, 5), (33, 15)]
+    remainder_centers = [(8, 30), (20, 30), (32, 30)]
+    input_nuclei = np.zeros(shape, dtype=np.uint8)
+    output_nuclei = np.zeros(shape, dtype=np.uint8)
+    for row, col in required_centers + remainder_centers:
+        output_nuclei[row, col] = 1
+    type_prob = np.zeros((5, *shape), dtype=np.float32)
+    type_prob[0] = 0.60
+    diagnostics = {
+        "tissues": {
+            "1": {
+                "target_count": 8,
+                "placed": 8,
+                "placed_by_type": {"101": 8},
+                "posterior_expected_by_type": {"101": 8.0},
+                "type_shape_support": {"supported_types": [101]},
+                "accepted_centers": [
+                    {
+                        "row": row,
+                        "col": col,
+                        "nucleus_type": 101,
+                        "tissue_id": 1,
+                    }
+                    for row, col in required_centers + remainder_centers
+                ],
+            }
+        }
+    }
+
+    audit = probnet_sampling_alignment_audit(
+        input_nuclei=input_nuclei,
+        output_nuclei=output_nuclei,
+        tissue=tissue,
+        generation_region=region,
+        placement_type_prob=type_prob,
+        gamma=3.0,
+        generation_diagnostics=diagnostics,
+        exact_required_region=required,
+        # The executable contract only requires at least four, while five
+        # centers were realized in the seam.
+        exact_required_count=4,
+        exact_required_nucleus_type=101,
+    )
+
+    assert audit["passed"] is True
+    assert (
+        audit["tissues"]["1"]["spatial_conditioning_policy"]
+        == "compiled_typed_seam_and_exterior_observed_strata_v3"
+    )
+    assert [
+        item["target_count"]
+        for item in audit["tissues"]["1"]["spatial_strata"]
+    ] == [5, 3]
 
 
 def test_sampling_audit_uses_accepted_center_ledger_for_tissue_attribution():
@@ -729,6 +941,75 @@ def test_balanced_center_type_only_commits_supported_posterior():
     np.testing.assert_allclose(posterior.sum(), 1.0)
 
 
+def test_balanced_type_order_preserves_primary_choice_and_legal_fallbacks():
+    probability = np.zeros((5, 1, 1), dtype=np.float64)
+    probability[:, 0, 0] = [0.8, 0.15, 0.05, 0.0, 0.0]
+    args = SimpleNamespace(
+        local_type_prior_weight=0.0,
+        local_type_prior_floor=1e-4,
+    )
+    placed = {nucleus_type: 0 for nucleus_type in generate_module.NUCLEI_CLASSES}
+    expected = np.zeros(len(generate_module.NUCLEI_CLASSES), dtype=np.float64)
+
+    primary, posterior = balanced_type_at_center(
+        probability,
+        0,
+        0,
+        args,
+        placed_by_type=placed,
+        expected_type_mass=expected,
+        supported_types={101, 102, 103},
+    )
+    order, ordered_posterior = balanced_type_order_at_center(
+        probability,
+        0,
+        0,
+        args,
+        placed_by_type=placed,
+        expected_type_mass=expected,
+        supported_types={101, 102, 103},
+    )
+
+    assert order[0] == primary
+    assert set(order) == {101, 102, 103}
+    np.testing.assert_allclose(ordered_posterior, posterior)
+
+
+def test_exact_backfill_type_fallback_keeps_geometry_strict(monkeypatch):
+    calls = []
+
+    def fake_place_candidate_with_retries(*, nucleus_type, **kwargs):
+        del kwargs
+        calls.append(nucleus_type)
+        if nucleus_type == 102:
+            return False, None, 7, None
+        return True, "reference", 3, (4, 5)
+
+    monkeypatch.setattr(
+        generate_module,
+        "place_candidate_with_retries",
+        fake_place_candidate_with_retries,
+    )
+    audit = {}
+    placed, accepted_type, source, trials, center = (
+        place_candidate_with_type_fallback(
+            nucleus_types=(102, 103),
+            placement_audit=audit,
+            output=np.zeros((8, 8), dtype=np.uint8),
+        )
+    )
+
+    assert placed is True
+    assert accepted_type == 103
+    assert source == "reference"
+    assert trials == 10
+    assert center == (4, 5)
+    assert calls == [102, 103]
+    assert audit["type_fallback_rank"] == 1
+    assert audit["preferred_nucleus_type"] == 102
+    assert audit["accepted_nucleus_type"] == 103
+
+
 def test_position_mass_only_sums_realizable_probnet_type_channels():
     probability = np.zeros((5, 1, 2), dtype=np.float64)
     probability[0, 0] = [0.8, 0.1]
@@ -777,9 +1058,12 @@ def test_valid_biological_tissue_excludes_background_and_skipped_labels():
     )
 
 
-def test_probnet_mass_queue_is_seeded_and_not_stable_top_n():
-    candidates = [(0, 0), (0, 1), (0, 2), (0, 3)]
-    probability = np.array([[0.2, 0.9, 0.4, 0.7]], dtype=np.float32)
+def test_probnet_mass_queue_is_seeded_and_coverage_contract_is_executable():
+    candidates = [(0, value) for value in range(7)]
+    probability = np.array(
+        [[0.2, 0.9, 0.4, 0.7, 0.3, 0.8, 0.5]],
+        dtype=np.float32,
+    )
 
     np.random.seed(31)
     first = choose_weighted_centers(
@@ -794,13 +1078,31 @@ def test_probnet_mass_queue_is_seeded_and_not_stable_top_n():
         probability,
         target_count=len(candidates),
         gamma=1.5,
-        coverage_count=4,
-        coverage_radius=100.0,
+        coverage_count=3,
+        coverage_radius=2.0,
+    )
+    np.random.seed(31)
+    repeated = choose_weighted_centers(
+        candidates,
+        probability,
+        target_count=len(candidates),
+        gamma=1.5,
+        coverage_count=3,
+        coverage_radius=2.0,
     )
 
-    assert first == second
+    assert second == repeated
     assert set(first) == set(candidates)
-    assert first != [(0, 1), (0, 3), (0, 2), (0, 0)]
+    assert set(second) == set(candidates)
+    assert first != sorted(
+        candidates,
+        key=lambda point: -float(probability[point]),
+    )
+    assert all(
+        abs(second[index][1] - second[other][1]) >= 2
+        for index in range(3)
+        for other in range(index)
+    )
 
 
 def test_exact_backfill_queue_covers_every_supported_pixel_reproducibly():
@@ -1190,5 +1492,135 @@ def test_required_seam_stage_merges_into_one_exact_population_ledger():
     }
     assert (
         remainder["regeneration_stages"]["policy"]
-        == "required_seam_first_then_T_pop_exact_remainder_v1"
+        == "typed_seam_quota_then_full_P_population_remainder_v3"
     )
+
+
+def test_required_seam_stage_materializes_zero_remainder_ledger():
+    required = {
+        "placed": 3,
+        "placed_by_shape_source": {"reference": 3, "library": 0},
+        "tissues": {
+            "2": {
+                "target_count": 3,
+                "placed": 3,
+                "placed_by_type": {"103": 3},
+                "target_by_type": {},
+                "posterior_expected_by_type": {"103": 3.0},
+                "accepted_centers": [
+                    {"row": 5 + index * 4, "col": 7, "nucleus_type": 103}
+                    for index in range(3)
+                ],
+                "type_shape_support": {"supported_types": [103]},
+            }
+        },
+    }
+    remainder = {
+        "placed": 0,
+        "placed_by_shape_source": {"reference": 0, "library": 0},
+        "shape_sampling": {},
+        "tissues": {},
+    }
+
+    _merge_required_center_stage_diagnostics(
+        remainder,
+        required,
+        required_tissue_id=2,
+        required_center_pixels=100,
+        minimum_required_centers=3,
+    )
+
+    info = remainder["tissues"]["2"]
+    assert info["zero_remainder_materialized"] is True
+    assert info["target_count"] == 3
+    assert info["placed"] == 3
+    assert len(info["accepted_centers"]) == 3
+
+
+def test_two_stage_execution_uses_compiled_total_for_remainder(monkeypatch):
+    calls = []
+
+    def fake_generate_for_gamma(*args, **kwargs):
+        override = kwargs.get("new_target_count_overrides") or {}
+        count = int(override.get(2, 0))
+        calls.append(count)
+        return np.asarray(args[2]).copy(), {
+            "placed": count,
+            "placed_by_shape_source": {"reference": count, "library": 0},
+            "tissues": {
+                "2": {
+                    "target_count": count,
+                    "placed": count,
+                    "placed_by_type": {"103": count},
+                    "target_by_type": {"103": count},
+                    "posterior_expected_by_type": {"103": float(count)},
+                    "accepted_centers": [
+                        {"row": 2, "col": 2, "nucleus_type": 103}
+                    ]
+                    * count,
+                }
+            },
+        }
+
+    monkeypatch.setattr(
+        generate_module,
+        "generate_for_gamma",
+        fake_generate_for_gamma,
+    )
+    tissue = np.full((8, 8), 2, dtype=np.int64)
+    mask = np.ones_like(tissue, dtype=bool)
+    required = np.zeros_like(mask)
+    required[2:4, 2:4] = True
+    _, diagnostics = generate_two_stage_for_gamma(
+        np.zeros((6, 8, 8), dtype=np.float32),
+        tissue,
+        np.zeros_like(tissue),
+        mask,
+        mask,
+        object(),
+        object(),
+        1.0,
+        SimpleNamespace(skip_tissue_ids=[]),
+        {},
+        population_mask=mask,
+        required_center_mask=required,
+        minimum_required_centers=15,
+        maximum_required_centers=20,
+        required_nucleus_type=3,
+        packing_witness={
+            "requested_count": 25,
+            "required_seam_count": 15,
+        },
+    )
+    assert calls == [15, 10]
+    assert diagnostics["tissues"]["2"]["target_count"] == 25
+    assert diagnostics["tissues"]["2"]["placed"] == 25
+
+
+def test_two_stage_rejects_runtime_seam_quota_that_differs_from_contract():
+    tissue = np.full((8, 8), 2, dtype=np.int64)
+    mask = np.ones_like(tissue, dtype=bool)
+    required = np.zeros_like(mask)
+    required[2:4, 2:4] = True
+
+    with pytest.raises(PlacementQuotaError, match="immutable packing certificate"):
+        generate_two_stage_for_gamma(
+            np.zeros((6, 8, 8), dtype=np.float32),
+            tissue,
+            np.zeros_like(tissue),
+            mask,
+            mask,
+            object(),
+            object(),
+            1.0,
+            SimpleNamespace(skip_tissue_ids=[]),
+            {},
+            population_mask=mask,
+            required_center_mask=required,
+            minimum_required_centers=8,
+            maximum_required_centers=8,
+            packing_witness={
+                "requested_count": 25,
+                "required_seam_count": 15,
+            },
+        )

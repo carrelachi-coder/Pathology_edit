@@ -14,9 +14,9 @@ Phase 4.2 changes:
   - 兼容旧格式 statistics.json (Phase 4.1 及更早)
 """
 
-import os
-import json
 import glob
+import json
+import os
 import random
 from collections import defaultdict
 
@@ -27,10 +27,10 @@ from skimage.morphology import h_maxima
 from skimage.segmentation import watershed
 
 from ..utils.mask_utils import (
-    TISSUE_NAMES, NUCLEI_CLASSES, NUM_TISSUE,
-    NUCLEI_RAW_TO_INDEX, NUCLEI_INDEX_TO_RAW,
+    NUCLEI_CLASSES,
+    NUCLEI_INDEX_TO_RAW,
+    NUCLEI_RAW_TO_INDEX,
 )
-
 
 # ============================================================
 #  核实例库
@@ -147,25 +147,45 @@ def _semantic_instance_labels(region):
     binary = np.asarray(region, dtype=bool)
     if not np.any(binary):
         return np.zeros(binary.shape, dtype=np.int32), 0
-    distance = ndimage.distance_transform_edt(binary)
-    maxima = h_maxima(distance, 1.0) & (distance >= 1.5)
-    markers, marker_count = ndimage.label(
-        maxima,
+    connected, connected_count = ndimage.label(
+        binary,
         structure=np.ones((3, 3), dtype=np.uint8),
     )
-    if marker_count == 0:
-        return ndimage.label(
-            binary,
+    labels = np.zeros(binary.shape, dtype=np.int32)
+    next_label = 0
+    # Watershed each disconnected component independently.  With one global
+    # marker raster, peaks from a large component can leave smaller complete
+    # components unseeded and therefore silently absent from the result.
+    for component_id in range(1, connected_count + 1):
+        component = connected == component_id
+        rows, cols = np.nonzero(component)
+        if not rows.size:
+            continue
+        y0, y1 = int(rows.min()), int(rows.max()) + 1
+        x0, x1 = int(cols.min()), int(cols.max()) + 1
+        local = component[y0:y1, x0:x1]
+        distance = ndimage.distance_transform_edt(local)
+        maxima = h_maxima(distance, 1.0) & (distance >= 1.5)
+        markers, marker_count = ndimage.label(
+            maxima,
             structure=np.ones((3, 3), dtype=np.uint8),
         )
-    labels = watershed(
-        -distance,
-        markers=markers,
-        mask=binary,
-        connectivity=np.ones((3, 3), dtype=np.uint8),
-        watershed_line=False,
-    ).astype(np.int32, copy=False)
-    return labels, int(labels.max(initial=0))
+        view = labels[y0:y1, x0:x1]
+        if marker_count <= 1:
+            next_label += 1
+            view[local] = next_label
+            continue
+        local_labels = watershed(
+            -distance,
+            markers=markers,
+            mask=local,
+            connectivity=np.ones((3, 3), dtype=np.uint8),
+            watershed_line=False,
+        ).astype(np.int32, copy=False)
+        positive = local_labels > 0
+        view[positive] = local_labels[positive] + next_label
+        next_label += int(local_labels.max(initial=0))
+    return labels, next_label
 
 
 class ReferenceNucleiInstancePool:
@@ -203,7 +223,7 @@ class ReferenceNucleiInstancePool:
             raise ValueError(f"reference nuclei mask must be 2D, got {mask.shape}")
 
         # Accept either raw mask IDs (101-105) or model indices (1-5).
-        positive_values = set(int(v) for v in np.unique(mask) if int(v) > 0)
+        positive_values = {int(v) for v in np.unique(mask) if int(v) > 0}
         internal_values = set(NUCLEI_INDEX_TO_RAW)
         if positive_values and positive_values.issubset(internal_values):
             raw_mask = np.zeros(mask.shape, dtype=np.int64)
@@ -475,9 +495,27 @@ class ReferenceFirstNucleiSampler:
         self.library_size_calibrated_by_type = defaultdict(int)
         self.library_size_uncalibrated_no_reference_by_type = defaultdict(int)
         self.library_size_scale_clamped_by_type = defaultdict(int)
+        self.library_size_resampled_for_scale_by_type = defaultdict(int)
         self.library_size_records_by_type = defaultdict(list)
 
-    def _calibrate_library_instance(self, instance):
+    def _reference_target_area(self, nuc_type):
+        reference_areas = self.reference_areas_by_type.get(int(nuc_type), [])
+        if not reference_areas:
+            return None
+        values = np.asarray(reference_areas, dtype=np.float64)
+        if values.size >= 4:
+            lower, upper = np.quantile(values, (0.20, 0.80))
+            central = values[(values >= lower) & (values <= upper)]
+            if central.size:
+                values = central
+        empirical_area = float(random.choice(values.tolist()))
+        if self.library_size_log_area_jitter > 0:
+            empirical_area *= float(
+                np.exp(random.gauss(0.0, self.library_size_log_area_jitter))
+            )
+        return max(1, round(empirical_area))
+
+    def _calibrate_library_instance(self, instance, *, target_area=None):
         if instance is None or not self.calibrate_library_size:
             return instance
 
@@ -492,12 +530,11 @@ class ReferenceFirstNucleiSampler:
         if source_area <= 0:
             return instance
 
-        empirical_area = float(random.choice(reference_areas))
-        if self.library_size_log_area_jitter > 0:
-            empirical_area *= float(
-                np.exp(random.gauss(0.0, self.library_size_log_area_jitter))
-            )
-        target_area = max(1, int(round(empirical_area)))
+        target_area = (
+            self._reference_target_area(nuc_type)
+            if target_area is None
+            else max(1, int(target_area))
+        )
         requested_scale = float(np.sqrt(target_area / source_area))
         applied_scale = float(
             np.clip(
@@ -508,8 +545,8 @@ class ReferenceFirstNucleiSampler:
         )
         scale_clamped = not np.isclose(requested_scale, applied_scale)
 
-        new_height = max(1, int(round(source_mask.shape[0] * applied_scale)))
-        new_width = max(1, int(round(source_mask.shape[1] * applied_scale)))
+        new_height = max(1, round(source_mask.shape[0] * applied_scale))
+        new_width = max(1, round(source_mask.shape[1] * applied_scale))
         resized = cv2.resize(
             source_mask.astype(np.uint8),
             (new_width, new_height),
@@ -546,6 +583,43 @@ class ReferenceFirstNucleiSampler:
         )
         return calibrated
 
+    def _sample_calibrated_library_instance(
+        self,
+        tissue_id,
+        nuc_type,
+        *,
+        allow_cross_tissue,
+        attempts=32,
+    ):
+        target_area = self._reference_target_area(nuc_type)
+        best = None
+        best_error = float("inf")
+        for attempt in range(max(1, int(attempts))):
+            instance = self.library.sample_instance(
+                tissue_id,
+                nuc_type,
+                allow_cross_tissue=allow_cross_tissue,
+            )
+            if instance is None:
+                break
+            calibrated = self._calibrate_library_instance(
+                instance,
+                target_area=target_area,
+            )
+            if calibrated is None:
+                continue
+            record = calibrated.get("size_calibration") or {}
+            actual = max(1, int(calibrated.get("area", 1)))
+            desired = max(1, int(record.get("target_area", actual)))
+            error = abs(float(np.log(actual / desired)))
+            if error < best_error:
+                best = calibrated
+                best_error = error
+            if not bool(record.get("scale_clamped", False)):
+                return calibrated
+            self.library_size_resampled_for_scale_by_type[int(nuc_type)] += 1
+        return best
+
     def sample_instance(self, tissue_id, nuc_type, allow_cross_tissue=True):
         """Return ``(instance, source)`` for an exact requested nucleus type."""
         nuc_type = int(nuc_type)
@@ -556,13 +630,12 @@ class ReferenceFirstNucleiSampler:
             self.selected_by_source["reference"] += 1
             return available.pop(selected_index), "reference"
 
-        instance = self.library.sample_instance(
+        instance = self._sample_calibrated_library_instance(
             tissue_id,
             nuc_type,
             allow_cross_tissue=allow_cross_tissue,
         )
         if instance is not None:
-            instance = self._calibrate_library_instance(instance)
             self.selected_by_source["library"] += 1
             self.library_fallback_by_type[nuc_type] += 1
             return instance, "library"
@@ -592,15 +665,20 @@ class ReferenceFirstNucleiSampler:
         calibrate_size=True,
     ):
         """Use the legacy library fallback while keeping provenance counts."""
-        instance = self.library.sample_instance(
-            tissue_id,
-            nuc_type,
-            allow_cross_tissue=allow_cross_tissue,
-        )
+        if calibrate_size:
+            instance = self._sample_calibrated_library_instance(
+                tissue_id,
+                nuc_type,
+                allow_cross_tissue=allow_cross_tissue,
+            )
+        else:
+            instance = self.library.sample_instance(
+                tissue_id,
+                nuc_type,
+                allow_cross_tissue=allow_cross_tissue,
+            )
         if instance is None:
             return None, None
-        if calibrate_size:
-            instance = self._calibrate_library_instance(instance)
         self.selected_by_source["library"] += 1
         key = requested_type if requested_type is not None else instance.get("type", nuc_type)
         if key is not None:
@@ -655,6 +733,10 @@ class ReferenceFirstNucleiSampler:
                 "scale_clamped_by_type": {
                     str(key): int(value)
                     for key, value in self.library_size_scale_clamped_by_type.items()
+                },
+                "resampled_for_scale_by_type": {
+                    str(key): int(value)
+                    for key, value in self.library_size_resampled_for_scale_by_type.items()
                 },
                 "summary_by_type": size_records,
                 "reference_basis_by_type": {
@@ -725,12 +807,15 @@ def poisson_disk_sampling(region_mask, min_distance, max_attempts=30):
             for dy in range(-2, 3):
                 for dx in range(-2, 3):
                     cgy, cgx = ngy + dy, ngx + dx
-                    if 0 <= cgy < grid_h and 0 <= cgx < grid_w:
-                        if grid[cgy, cgx] >= 0:
-                            ey, ex = points[grid[cgy, cgx]]
-                            if (ny - ey)**2 + (nx - ex)**2 < min_distance**2:
-                                too_close = True
-                                break
+                    if (
+                        0 <= cgy < grid_h
+                        and 0 <= cgx < grid_w
+                        and grid[cgy, cgx] >= 0
+                    ):
+                        ey, ex = points[grid[cgy, cgx]]
+                        if (ny - ey) ** 2 + (nx - ex) ** 2 < min_distance**2:
+                            too_close = True
+                            break
                 if too_close:
                     break
 
@@ -1004,7 +1089,8 @@ def place_nucleus_layered(
     x2 = x1 + w
 
     boundary_truncated = y1 < 0 or x1 < 0 or y2 > H or x2 > W
-    if require_full_tissue_containment and boundary_truncated:
+    boundary_censored = y1 <= 0 or x1 <= 0 or y2 >= H or x2 >= W
+    if require_full_tissue_containment and boundary_censored:
         return False
 
     src_y1 = max(0, -y1)

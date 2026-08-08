@@ -6,7 +6,7 @@
     "tumor-burden-decrease-v1",
     "stroma-increase-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.2.0-draft",
   "review_status": "draft",
   "summary": "Edit only a verified pattern-4 unit while preserving fused, poorly formed, cribriform or glomeruloid topology and all internal spaces.",
   "recognition_contract": {
@@ -31,11 +31,14 @@
     "required_auxiliary_structures": [
       "native_pattern_and_lumen_map"
     ],
-    "allow_semantic_instance_fallback": false,
+    "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"
   },
   "tissue_program": {
     "mode": "pattern4_unit_preserving_displacement",
+    "front_contract": {
+      "maximum_boundary_compactness": 55.0
+    },
     "primitive_label_contracts": {
       "tumor-burden-increase-v1": {
         "source_labels": ["Stroma", "Other tissue"],
@@ -93,6 +96,35 @@
       4,
       30
     ],
+    "seam_contract": {
+      "mode": "adaptive_population_continuity",
+      "width_cell_diameters": [1.0, 1.5],
+      "reference_area_quantiles": [0.25, 0.75],
+      "maximum_empty_run_cell_diameters": 2.0,
+      "density_ratio_range": [0.25, 4.0],
+      "minimum_anchor_coverage_fraction": 0.5,
+      "requires_new_target_cells": true
+    },
+    "seam_contract_by_primitive": {
+      "tumor-burden-decrease-v1": {
+        "mode": "adaptive_population_continuity",
+        "width_cell_diameters": [1.0, 1.5],
+        "reference_area_quantiles": [0.25, 0.75],
+        "maximum_empty_run_cell_diameters": 2.0,
+        "density_ratio_range": [0.25, 4.0],
+        "minimum_anchor_coverage_fraction": 0.0,
+        "requires_new_target_cells": true
+      },
+      "stroma-increase-v1": {
+        "mode": "adaptive_population_continuity",
+        "width_cell_diameters": [1.0, 1.5],
+        "reference_area_quantiles": [0.25, 0.75],
+        "maximum_empty_run_cell_diameters": 2.0,
+        "density_ratio_range": [0.25, 4.0],
+        "minimum_anchor_coverage_fraction": 0.0,
+        "requires_new_target_cells": true
+      }
+    },
     "required_checker_ids": [
       "whole_instance_changes",
       "protected_nuclei_preserved",

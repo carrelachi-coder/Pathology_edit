@@ -1,11 +1,11 @@
 {
   "annotation_profile_id": "panda-gleason-v1",
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "prohibited_fine_ids": [0],
   "prohibit_cell_placement_fine_ids": [0],
   "prohibit_generation_support_fine_ids": [0],
-  "required_provenance_fields": ["provider", "preprocessing_revision", "original_label_map_digest"],
+  "required_provenance_fields": ["provider", "preprocessing_revision", "original_label_map_digest", "auxiliary_structure_provenance"],
   "unavailable_mechanisms": [
     "breast-intratumoral-necrosis-turnover",
     "lung-intratumoral-necrosis-turnover",
