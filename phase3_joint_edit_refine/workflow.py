@@ -663,6 +663,7 @@ class JointPathologyEditWorkflow:
                     joint_reports,
                     contract_by_joint_candidate,
                     review_board,
+                    cell_execution_failures,
                 ) = self._build_and_gate_joint_candidates(
                     audit=audit,
                     case=case,
@@ -693,6 +694,35 @@ class JointPathologyEditWorkflow:
                 ]
                 if passing_joint:
                     break
+                if cell_execution_failures and not candidates:
+                    execution_feedback = {
+                        "retry_index": planning_pass + 1,
+                        "stage": "cell_execution",
+                        "errors": [
+                            item["error"] for item in cell_execution_failures
+                        ],
+                        "failed_interface_ids": list(
+                            plan.cell_plan.interface_ids
+                        ),
+                        "failed_tissue_candidate_ids": [
+                            item["tissue_candidate_id"]
+                            for item in cell_execution_failures
+                        ],
+                        "required_action": (
+                            "replan a different or broader cell-feasible tissue "
+                            "domain after all candidate-local executor retries failed"
+                        ),
+                    }
+                    audit.write_json(
+                        f"execution_feedback_pass_{planning_pass + 1}.json",
+                        execution_feedback,
+                    )
+                    if planning_pass + 1 < maximum_planning_attempts:
+                        continue
+                    raise JointContractError(
+                        "all candidate-local cell executions failed after "
+                        "bounded replanning"
+                    )
 
                 _, hard_max = (
                     case.joint_area_budget.hard_interval_pixels(
@@ -1075,6 +1105,7 @@ class JointPathologyEditWorkflow:
         )
         generation_allowed = ~np.isin(source_tissue, tuple(prohibited))
         contract_by_joint_candidate: dict[str, ExecutableJointContract] = {}
+        cell_execution_failures: list[dict[str, str]] = []
         for tissue_candidate in passing_tissue:
             executable_contract = contracts_by_tissue_id[
                 tissue_candidate.candidate_id
@@ -1096,25 +1127,36 @@ class JointPathologyEditWorkflow:
                     "pipeline; a checkpoint ranker plus research layout is insufficient"
                 )
             if mature_supported:
-                layouts = self.cell_executor.execute(
-                    contract=executable_contract,
-                    source_tissue=source_tissue,
-                    target_tissue=tissue_candidate.target_mask,
-                    source_nuclei=source_nuclei,
-                    scene=scene,
-                    output_dir=(
-                        audit.case_dir
-                        / "mature_probnet"
-                        / tissue_candidate.candidate_id
-                    ),
-                    prohibited_tissue_ids=tuple(
-                        sorted(
-                            bundle.annotation_profile.prohibit_cell_placement_fine_ids
-                        )
-                    ),
-                    seed=case.seed,
-                    variants=self.config.cell_layouts_per_tissue,
-                )
+                try:
+                    layouts = self.cell_executor.execute(
+                        contract=executable_contract,
+                        source_tissue=source_tissue,
+                        target_tissue=tissue_candidate.target_mask,
+                        source_nuclei=source_nuclei,
+                        scene=scene,
+                        output_dir=(
+                            audit.case_dir
+                            / "mature_probnet"
+                            / tissue_candidate.candidate_id
+                        ),
+                        prohibited_tissue_ids=tuple(
+                            sorted(
+                                bundle.annotation_profile.prohibit_cell_placement_fine_ids
+                            )
+                        ),
+                        seed=case.seed,
+                        variants=self.config.cell_layouts_per_tissue,
+                    )
+                except JointContractError as exc:
+                    cell_execution_failures.append(
+                        {
+                            "tissue_candidate_id": tissue_candidate.candidate_id,
+                            "executable_contract_id": executable_contract.contract_id,
+                            "executor": type(self.cell_executor).__name__,
+                            "error": str(exc),
+                        }
+                    )
+                    continue
             else:
                 if (
                     self.config.production
@@ -1148,6 +1190,20 @@ class JointPathologyEditWorkflow:
                     ranker=self.ranker,
                     variants=self.config.cell_layouts_per_tissue,
                 )
+            if not layouts:
+                cell_execution_failures.append(
+                    {
+                        "tissue_candidate_id": tissue_candidate.candidate_id,
+                        "executable_contract_id": executable_contract.contract_id,
+                        "executor": (
+                            type(self.cell_executor).__name__
+                            if mature_supported
+                            else "deterministic_cell_layouts"
+                        ),
+                        "error": "executor returned no candidate layouts",
+                    }
+                )
+                continue
             if layouts and "reference_shape_review" not in audit.paths:
                 audit.write_reference_shape_review(
                     source_image_path=case.source_image_uri,
@@ -1198,6 +1254,9 @@ class JointPathologyEditWorkflow:
                         tool_trace=trace,
                     )
                 )
+        audit.write_json(
+            "cell_execution_failures.json", cell_execution_failures
+        )
         candidates = tuple(joint_candidates[:12])
         batch_max_joint = max(
             (item.ledger.joint_pixels for item in candidates), default=0
@@ -1338,6 +1397,7 @@ class JointPathologyEditWorkflow:
             joint_reports,
             contract_by_joint_candidate,
             review_board,
+            tuple(cell_execution_failures),
         )
 
     def _run_cell_only(

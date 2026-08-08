@@ -77,6 +77,7 @@ from phase3_joint_edit_refine.tissue_planner import (
 )
 from phase3_joint_edit_refine.workflow import (
     JointPathologyEditWorkflow,
+    JointWorkflowConfig,
     _as_tissue_case,
     _candidate_preserving_closure_pixels,
     _joint_area_feedback_candidate_ids,
@@ -1303,6 +1304,21 @@ class _RetryThenPassingTissueGate(GateRegistry):
         )
 
 
+class _AlwaysFailingCandidateCellExecutor:
+    def __init__(self):
+        self.calls = 0
+
+    @staticmethod
+    def supports(contract):
+        del contract
+        return True
+
+    def execute(self, **kwargs):
+        del kwargs
+        self.calls += 1
+        raise JointContractError("fixture candidate-local executor failure")
+
+
 class JointWorkflowTests(unittest.TestCase):
     def test_integer_interface_allocations_are_normalized_after_rounding(self):
         # Independent integer rounding used to produce 1.00002008 for breast
@@ -1333,6 +1349,44 @@ class JointWorkflowTests(unittest.TestCase):
             self.assertEqual(feedback["stage"], "tissue_gate")
             self.assertTrue(
                 (case_dir / "tissue_execution_contract_pass_2.json").is_file()
+            )
+
+    def test_candidate_local_cell_failure_is_audited_and_replanned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = _write_synthetic_case(root)
+            executor = _AlwaysFailingCandidateCellExecutor()
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+                tissue_gates=_PassingTissueGateFixture(),
+                cell_executor=executor,
+                config=JointWorkflowConfig(
+                    maximum_tissue_candidates=1,
+                    maximum_tissue_planning_attempts=6,
+                ),
+            ).run(case, output_root=root / "cell-execution-retry")
+
+            self.assertEqual(result.status, "abstained")
+            self.assertGreaterEqual(executor.calls, 2)
+            case_dir = root / "cell-execution-retry" / case.case_id
+            failures = json.loads(
+                (case_dir / "cell_execution_failures.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(failures)
+            self.assertIn(
+                "fixture candidate-local executor failure",
+                failures[0]["error"],
+            )
+            feedback = [
+                json.loads(path.read_text(encoding="utf-8"))
+                for path in case_dir.glob("execution_feedback_pass_*.json")
+            ]
+            self.assertTrue(
+                any(item.get("stage") == "cell_execution" for item in feedback)
             )
 
     def test_explicit_mature_regeneration_requirement_rejects_ranker_only_layout(self):
