@@ -24,7 +24,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v3"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v4"
 
 
 @dataclass(frozen=True)
@@ -538,11 +538,12 @@ class ExecutableJointContractCompiler:
             bundle.annotation_profile.prohibit_cell_placement_fine_ids,
         ) & ~protected_structure
         valid = profile_valid & np.isin(target_tissue, host_ids)
-        nominal_radius = max(
-            1, int(np.ceil(base_program.nominal_nucleus_diameter_px / 2.0))
-        )
-        fit = ndimage.distance_transform_edt(valid) >= nominal_radius
-        center_constraint = fit if "add" in plan.cell_plan.actions else valid
+        # P is a center-domain contract, not a pre-eroded approximation of V.
+        # The exact packing certificate below tests every concrete reference
+        # footprint against V. Eroding P here by a nominal radius and then
+        # testing the real footprint again double-counted containment and made
+        # valid narrow interface bands fail only after tissue generation.
+        center_constraint = valid
         placement = (
             np.asarray(base_program.placement_center_region, dtype=bool)
             & center_constraint
@@ -613,11 +614,7 @@ class ExecutableJointContractCompiler:
                     "target-population-abundance-denominator-distinct-from-P"
                 ),
                 "E": "exact-union-of-complete-source-instance-footprints",
-                "P": (
-                    "contract-centers-with-nominal-full-footprint-fit"
-                    if "add" in plan.cell_plan.actions
-                    else "contract-existing-instance-centers"
-                ),
+                "P": "contract-legal-centers-exact-footprint-certified-against-V",
                 "V": "profile-and-target-host-fine-id-containment",
                 "S": "bounded-context-containing-T-E-P-and-mechanism-zone",
                 "S_footprint_margin": (

@@ -17,7 +17,7 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v7"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v8"
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,9 @@ previously certified packing capacity, the smallest otherwise-valid paired
 candidate inside the hard range may be restored with an explicit
 `joint_area_rebalance_exhausted` audit flag. It never crops a nucleus or
 silently relaxes the joint-area gate after generation.
+The canonical candidate manifest, gate report and review panels are rewritten
+from that final in-memory batch before critic routing, so a restored closure
+cannot leave pre-restoration failures in the authoritative audit files.
 Auxiliary gland/lumen, alveolar, epidermal or pattern maps are accepted only as
 aligned files with SHA-256 provenance; a metadata string alone never activates
 a protection rule.
@@ -63,9 +66,12 @@ final compiled continuity raster and intersected with both the local density
 envelope and anchor-coverage requirement. It constrains only its declared cell
 class; other compatible populations may still occupy that anatomical band, so
 the seam is not misused as a cell-free exclusion zone. Contradictory candidates
-are replanned, not left for post-sampling rejection. Protected nuclei remain
-pixel-immutable but may serve as read-only shape references when they are
-complete and non-border.
+are replanned, not left for post-sampling rejection. A preferred seam count
+that exact footprints cannot pack may fall back only to the achieved count
+when that count remains above the independently compiled density and geometric
+minimums; the nominal target, hard minimum and fallback are all recorded.
+Protected nuclei remain pixel-immutable but may serve as read-only shape
+references when they are complete and non-border.
 
 Packing and mature execution use the same 8-connected instance definition and
 a Chebyshev one-pixel separation margin; diagonal contact can therefore never
@@ -74,10 +80,15 @@ converted explicitly to the mature sampler's 100-series type IDs in both
 placement records and per-class reference-area statistics. ProbNet-selected
 centers are retained whenever their local shape distribution passes; the fixed
 witness is used only for a genuine count or size-contract shortfall.
+If a mixed Q25/Q50/Q75 witness is capacity-limited, the certifier may retry
+with the smallest complete same-patch shape that still lies inside the final
+per-class median-area gate. The chosen source instance and the
+`capacity_optimized_shape_fallback_used` flag remain explicit; border fragments
+and out-of-distribution small shapes are never admitted.
 
 A patch-local density prior is a finite-sample estimate, not an exact integer
 biological law. A failed nominal cell count may therefore compile to the
-maximum safe packing only when it remains within both 90% of the nominal count
+maximum safe packing only when it remains within both 80% of the nominal count
 and one square-root count deviation. The nominal count, lower bound and
 effective count remain in the certificate; larger shortfalls still replan or
 abstain.
@@ -116,7 +127,9 @@ footprints, and `S` supplies cleared model/render context. `T_pop` is never
 replaced by the smaller legal-center domain `P`. A footprint may cross the edge
 of `P` while remaining inside `V`; this prevents both under-counting and the
 artificial nucleus-free seam caused by treating the center region as a
-footprint region.
+footprint region. `P` is not pre-eroded by a nominal nucleus radius: the exact
+packing certificate applies each complete reference shape to `V` once, so the
+final compiler cannot silently impose a second containment erosion.
 
 Cell-only primitives use a separate count/extent budget and a preserve-tissue
 tool. Tumor budding, discohesive breast invasion, junctional melanoma spread

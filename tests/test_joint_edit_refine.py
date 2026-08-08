@@ -187,6 +187,45 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(certificate.class_placed_counts, {2: 8, 3: 2})
         self.assertEqual(certificate.placed_seam_count, 2)
 
+    def test_packing_can_fall_back_within_the_certified_seam_interval(self):
+        shape = (12, 12)
+        centers = np.zeros(shape, dtype=bool)
+        centers[3, 3] = True
+        centers[3, 7] = True
+        centers[8, 8] = True
+        seam = np.zeros(shape, dtype=bool)
+        seam[3, 3] = True
+        seam[3, 7] = True
+        valid = np.ones(shape, dtype=bool)
+        reference = ReferenceNucleusShape(
+            instance_id="complete-ref-1",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="semantic_complete_instance",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=valid,
+            references_by_class={1: (reference,)},
+            requested_count=3,
+            continuity_region=seam,
+            required_seam_count=3,
+            minimum_seam_count=2,
+            required_seam_class=1,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertEqual(certificate.placed_count, 3)
+        self.assertEqual(certificate.required_seam_count, 2)
+        self.assertEqual(certificate.placed_seam_count, 2)
+        self.assertEqual(certificate.nominal_required_seam_count, 3)
+        self.assertEqual(certificate.minimum_safe_seam_count, 2)
+        self.assertTrue(certificate.seam_count_fallback_used)
+
     def test_packing_witness_excludes_locally_unsupported_shape_sizes(self):
         shape = (48, 48)
         region = np.zeros(shape, dtype=bool)
@@ -270,7 +309,7 @@ class JointSkillTests(unittest.TestCase):
         self.assertTrue(certificate.passed, certificate.failure_reasons)
         self.assertTrue(certificate.finite_count_fallback_used)
         self.assertEqual(certificate.nominal_requested_count, 10)
-        self.assertEqual(certificate.minimum_safe_count, 9)
+        self.assertEqual(certificate.minimum_safe_count, 8)
         self.assertEqual(certificate.requested_count, 9)
         self.assertEqual(certificate.placed_count, 9)
 
@@ -287,6 +326,75 @@ class JointSkillTests(unittest.TestCase):
         self.assertFalse(strict_recheck.finite_count_fallback_used)
         self.assertEqual(strict_recheck.requested_count, 10)
         self.assertEqual(strict_recheck.placed_count, 9)
+
+    def test_finite_count_bound_uses_sampling_scale_not_fixed_ten_percent(self):
+        shape = (36, 36)
+        centers = np.zeros(shape, dtype=bool)
+        for index in range(17):
+            row = 3 + 5 * (index // 6)
+            col = 3 + 5 * (index % 6)
+            centers[row, col] = True
+        reference = ReferenceNucleusShape(
+            instance_id="unit-shape",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="semantic_complete_instance",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=20,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertTrue(certificate.finite_count_fallback_used)
+        self.assertEqual(certificate.minimum_safe_count, 16)
+        self.assertEqual(certificate.requested_count, 17)
+        self.assertEqual(certificate.placed_count, 17)
+
+    def test_packing_can_use_small_complete_local_shapes_for_capacity(self):
+        shape = (20, 40)
+        region = np.zeros(shape, dtype=bool)
+        region[3:6, 3:12] = True
+        references = (
+            ReferenceNucleusShape(
+                instance_id="small-complete",
+                class_id=1,
+                mask=np.ones((2, 2), dtype=bool),
+                source="semantic_complete_instance",
+                area_px=4,
+            ),
+            ReferenceNucleusShape(
+                instance_id="large-complete",
+                class_id=1,
+                mask=np.ones((3, 3), dtype=bool),
+                source="semantic_complete_instance",
+                area_px=9,
+            ),
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=region,
+            valid_footprint_region=region,
+            references_by_class={1: references},
+            requested_count=3,
+            allow_finite_count_fallback=False,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertTrue(certificate.capacity_optimized_shape_fallback_used)
+        self.assertEqual(certificate.class_reference_median_area_px, {1: 6.5})
+        self.assertEqual(
+            {item.reference_instance_id for item in certificate.placements},
+            {"small-complete"},
+        )
 
     def test_added_shape_measurement_excludes_retained_same_class_neighbour(self):
         source = np.zeros((20, 20), dtype=np.uint8)
@@ -1289,6 +1397,23 @@ class JointWorkflowTests(unittest.TestCase):
             result = workflow.run(case, output_root=root / "approved")
             self.assertEqual(result.status, "selected_research", result.abstain_reasons)
             self.assertIsNotNone(result.condition)
+            canonical_reports = json.loads(
+                Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            selected_report = next(
+                report
+                for report in canonical_reports
+                if report["candidate_id"] == result.selected_candidate_id
+            )
+            self.assertTrue(selected_report["passed"])
+            self.assertFalse(
+                any(
+                    not check["passed"] and check["severity"] == "hard"
+                    for check in selected_report["checks"]
+                )
+            )
             manifest = Path(result.artifact_paths["handoff_manifest"])
             self.assertTrue(manifest.is_file())
             payload = json.loads(manifest.read_text(encoding="utf-8"))
@@ -1318,6 +1443,13 @@ class JointWorkflowTests(unittest.TestCase):
                 len(packing["placements"]), packing["requested_count"]
             )
             program = contract["cell_program"]
+            self.assertEqual(
+                program["compiler_version"], "joint-cell-tool-compiler-v8"
+            )
+            self.assertEqual(
+                program["policies"]["P"],
+                "contract-legal-centers-exact-footprint-certified-against-V",
+            )
             self.assertEqual(
                 program["population_target_region_pixels"],
                 result.condition.ledger.tissue_pixels,

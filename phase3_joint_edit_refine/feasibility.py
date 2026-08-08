@@ -34,6 +34,7 @@ from .seam import (
     compile_adaptive_seam,
     compile_continuity_center_quota,
     compile_executable_continuity_count,
+    compile_minimum_continuity_count,
     target_cell_class_for_tissue,
 )
 from .skills.repository import JointSkillBundle
@@ -851,6 +852,7 @@ def assess_candidate_cell_feasibility(
     )
     seam_capacity = int(np.count_nonzero(seam_fit))
     required_seam = 0
+    minimum_seam = 0
     if adaptive_seam.requires_new_target_cells and target_fine_ids:
         quota = compile_continuity_center_quota(
             nuclei_mask=retained_nuclei,
@@ -865,6 +867,14 @@ def assess_candidate_cell_feasibility(
             target_fine_ids=target_fine_ids,
         )
         required_seam = compile_executable_continuity_count(
+            quota,
+            anchor_pixels=int(np.count_nonzero(adaptive_seam.anchor_mask)),
+            maximum_empty_run_px=adaptive_seam.maximum_empty_run_px,
+            minimum_anchor_coverage_fraction=(
+                adaptive_seam.minimum_anchor_coverage_fraction
+            ),
+        )
+        minimum_seam = compile_minimum_continuity_count(
             quota,
             anchor_pixels=int(np.count_nonzero(adaptive_seam.anchor_mask)),
             maximum_empty_run_px=adaptive_seam.maximum_empty_run_px,
@@ -887,6 +897,7 @@ def assess_candidate_cell_feasibility(
         class_request_weights=preflight.target_density_by_class,
         continuity_region=adaptive_seam.continuity_region,
         required_seam_count=required_seam,
+        minimum_seam_count=minimum_seam,
         required_seam_class=preflight.target_cell_class,
     )
     meaningful_floor = max(
@@ -932,7 +943,7 @@ def assess_candidate_cell_feasibility(
         legal_core_pixels=int(np.count_nonzero(legal_core)),
         reference_fit_center_pixels=int(np.count_nonzero(fit_centers)),
         required_add_count=int(packing.requested_count),
-        required_seam_count=int(required_seam),
+        required_seam_count=int(packing.required_seam_count),
         estimated_add_capacity=max(0, int(packing.placed_count)),
         estimated_seam_capacity=max(0, int(packing.placed_seam_count)),
         continuity_mode=adaptive_seam.mode,
@@ -996,6 +1007,7 @@ def certify_compiled_cell_program_feasibility(
     }
     program = contract.cell_program
     required_seam_count = 0
+    minimum_seam_count = 0
     target_class = preflight.target_cell_class
     if (
         program.continuity_requires_new_target_cells
@@ -1027,6 +1039,16 @@ def certify_compiled_cell_program_feasibility(
                 program.continuity_minimum_anchor_coverage_fraction
             ),
         )
+        minimum_seam_count = compile_minimum_continuity_count(
+            quota,
+            anchor_pixels=int(
+                np.count_nonzero(program.continuity_anchor_mask)
+            ),
+            maximum_empty_run_px=program.continuity_maximum_empty_run_px,
+            minimum_anchor_coverage_fraction=(
+                program.continuity_minimum_anchor_coverage_fraction
+            ),
+        )
     prior_certificate = report.exact_packing_certificate or {}
     prior_fallback_used = bool(
         prior_certificate.get("finite_count_fallback_used", False)
@@ -1041,6 +1063,7 @@ def certify_compiled_cell_program_feasibility(
         class_request_weights=preflight.target_density_by_class,
         continuity_region=program.continuity_region,
         required_seam_count=required_seam_count,
+        minimum_seam_count=minimum_seam_count,
         required_seam_class=target_class,
         # Exactly one bounded fallback is allowed across the two feasibility
         # stages. A broad candidate core may fit the nominal count while the
@@ -1103,7 +1126,7 @@ def certify_compiled_cell_program_feasibility(
         report,
         passed=not reasons,
         required_add_count=int(certificate.requested_count),
-        required_seam_count=int(required_seam_count),
+        required_seam_count=int(certificate.required_seam_count),
         estimated_add_capacity=certificate.placed_count,
         estimated_seam_capacity=certificate.placed_seam_count,
         reference_fit_center_pixels=int(

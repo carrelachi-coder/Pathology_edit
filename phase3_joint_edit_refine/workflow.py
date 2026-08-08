@@ -879,6 +879,33 @@ class JointPathologyEditWorkflow:
                     "joint planning attempts ended before an executable paired "
                     "candidate passed every hard gate"
                 )
+
+            # A later exact-area feedback pass may restore an earlier, proven-safe
+            # batch after marking its minimum whole-instance closure as certified.
+            # Persist the final in-memory state atomically here so the canonical
+            # audit files and review panels can never describe the pre-fallback
+            # reports while the critic receives the post-fallback reports.
+            audit.write_candidates(candidates)
+            audit.write_json(
+                "joint_gate_reports.json",
+                [item.to_metadata() for item in joint_reports],
+            )
+            audit.write_joint_execution_review(
+                source_image_path=case.source_image_uri,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                candidates=candidates,
+                gate_reports=joint_reports,
+                plan=plan,
+                scene=scene,
+                executable_contracts=contract_by_joint_candidate,
+            )
+            review_board = audit.write_review_board(
+                source_image_path=case.source_image_uri,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                candidates=candidates,
+            )
             usage["tissue_planner"] = {
                 "passes": tissue_pass_usage,
                 "budget_revisions": budget_revisions,

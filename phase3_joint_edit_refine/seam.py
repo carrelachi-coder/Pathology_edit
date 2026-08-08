@@ -89,18 +89,47 @@ def compile_executable_continuity_count(
         if quota.maximum_count is not None
         else int(quota.target_count)
     )
+    minimum = compile_minimum_continuity_count(
+        quota,
+        anchor_pixels=anchor_pixels,
+        maximum_empty_run_px=maximum_empty_run_px,
+        minimum_anchor_coverage_fraction=minimum_anchor_coverage_fraction,
+    )
+    target = max(minimum, density_target)
+    if quota.maximum_count is not None:
+        target = min(target, int(quota.maximum_count))
+    return max(0, int(target))
+
+
+def compile_minimum_continuity_count(
+    quota: ContinuityCenterQuota,
+    *,
+    anchor_pixels: int,
+    maximum_empty_run_px: int,
+    minimum_anchor_coverage_fraction: float,
+) -> int:
+    """Return the hard lower edge of a finite-raster seam contract.
+
+    The executable target above is a preferred point inside the observed
+    density interval.  Exact footprint packing may prove that preferred point
+    unreachable even though a smaller count still satisfies both the density
+    lower bound and the anchor-coverage geometry.  Keeping this hard minimum
+    explicit lets the packing certifier make that distinction without
+    weakening either constraint.
+    """
+
     pixels_per_center = max(1, 2 * int(maximum_empty_run_px) + 1)
-    geometric_target = int(
+    geometric_minimum = int(
         np.ceil(
             max(0, int(anchor_pixels))
             * float(np.clip(minimum_anchor_coverage_fraction, 0.0, 1.0))
             / float(pixels_per_center)
         )
     )
-    target = max(int(quota.minimum_count), density_target, geometric_target)
+    minimum = max(int(quota.minimum_count), geometric_minimum)
     if quota.maximum_count is not None:
-        target = min(target, int(quota.maximum_count))
-    return max(0, int(target))
+        minimum = min(minimum, int(quota.maximum_count))
+    return max(0, int(minimum))
 
 
 def compile_continuity_center_quota(
