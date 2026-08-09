@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -46,15 +48,16 @@ from .handoff import write_generation_handoff
 from .ledger import build_joint_candidate
 from .mature_probnet_adapter import MatureProbNetCellExecutor
 from .models import (
+    CellCountExtentBudget,
     JointCaseContext,
     JointCondition,
     JointContractError,
     JointWorkflowResult,
 )
 from .nuclei import load_nuclei_mask, to_raw_nuclei_mask
-from .planner import JointPlanner
+from .planner import JointInterpretationOption, JointPlanner
 from .scene import build_joint_scene_analysis
-from .skills.repository import JointSkillRepository
+from .skills.repository import JointSkillBundle, JointSkillRepository
 from .tissue_execution import execute_gate_aware_tissue_candidates
 
 
@@ -74,6 +77,16 @@ class JointWorkflowConfig:
     # tissue loop. Reserve separate bounded attempts so earlier interface/tool
     # retries cannot consume the only opportunity to correct that observation.
     maximum_joint_area_feedback_attempts: int = 2
+
+
+@dataclass(frozen=True)
+class _PreparedInterpretation:
+    option: JointInterpretationOption
+    case: JointCaseContext
+    bundle: JointSkillBundle
+    allocation: Any | None
+    tissue_bundle: Any | None
+    nuclei_preflight: Any | None
 
 
 class JointPathologyEditWorkflow:
@@ -185,34 +198,108 @@ class JointPathologyEditWorkflow:
                 source_nuclei=source_nuclei,
             )
             planner_images = (*tissue_panels, joint_overlay)
-            mechanisms, mechanism_rejections = (
-                self.joint_skills.eligible_mechanisms_for_case(
-                    case=case,
-                    available_checker_ids=set(self.joint_gates.available_checker_ids),
-                    production=self.config.production,
-                )
+            prepared, interpretation_rejections = self._prepare_interpretations(
+                case=case,
+                source_tissue=source_tissue,
+                schema=schema,
+                scene=scene,
             )
-            if not mechanisms:
+            resolution_base = {
+                "instruction": case.instruction,
+                "semantic_request": case.semantic_intent,
+                "candidate_interpretations": [
+                    item.option.to_metadata() for item in prepared.values()
+                ],
+                "rejected_interpretations": interpretation_rejections,
+            }
+            if not prepared:
+                audit.write_json(
+                    "semantic_resolution.json",
+                    {
+                        **resolution_base,
+                        "status": "no_executable_interpretation",
+                        "selected_option_id": None,
+                        "selection": None,
+                    },
+                )
                 raise JointContractError(
-                    "no joint mechanism survives the four-axis capability intersection: "
+                    "no natural-language interpretation survives skill and "
+                    "deterministic feasibility checks: "
                     + "; ".join(
                         f"{key}={value}"
-                        for key, value in sorted(mechanism_rejections.items())
+                        for key, value in sorted(
+                            interpretation_rejections.items()
+                        )
                     )
                 )
-            mechanism_id, selection_usage = self.joint_planner.select_mechanism(
-                case=case,
-                scene=scene,
-                mechanisms=mechanisms,
-                image_paths=planner_images,
+            try:
+                primitive_id, mechanism_id, selection_usage = (
+                    self.joint_planner.select_interpretation(
+                        case=case,
+                        scene=scene,
+                        options=tuple(
+                            item.option for item in prepared.values()
+                        ),
+                        image_paths=planner_images,
+                    )
+                )
+            except JointContractError as exc:
+                audit.write_json(
+                    "semantic_resolution.json",
+                    {
+                        **resolution_base,
+                        "status": "visual_resolution_abstained",
+                        "selected_option_id": None,
+                        "selection": None,
+                        "abstain_reason": str(exc),
+                    },
+                )
+                raise
+            option_id = f"{primitive_id}::{mechanism_id}"
+            selected = prepared.get(option_id)
+            if selected is None:
+                raise JointContractError(
+                    "joint Planner returned an interpretation that was not prepared"
+                )
+            selection_record = dict(selection_usage.get("selection") or {})
+            if selected.case.semantic_intent:
+                semantic_intent = dict(selected.case.semantic_intent)
+                semantic_intent.update(
+                    {
+                        "selected_primitive_id": primitive_id,
+                        "selected_mechanism_id": mechanism_id,
+                        "selection_explanation": selection_record.get(
+                            "interpretation_explanation"
+                        ),
+                        "selection_semantic_fit": selected.option.semantic_fit,
+                    }
+                )
+                case = replace(
+                    selected.case, semantic_intent=semantic_intent
+                )
+            else:
+                # Backward-compatible offline fixtures are allowed to carry an
+                # explicit primitive/mechanism without claiming that a
+                # Semantic Parser ran.
+                case = selected.case
+            case.validate_local_inputs()
+            audit.write_json("case_context.json", case.to_metadata())
+            audit.write_json(
+                "semantic_resolution.json",
+                {
+                    **resolution_base,
+                    "status": "selected",
+                    "selected_option_id": option_id,
+                    "selection": selection_record,
+                    "selected_cell_budget": (
+                        case.cell_count_extent_budget.__dict__
+                        if case.cell_count_extent_budget is not None
+                        else None
+                    ),
+                },
             )
             usage["mechanism_selection"] = selection_usage
-            bundle = self.joint_skills.compose(
-                case=case,
-                mechanism_id=mechanism_id,
-                available_checker_ids=set(self.joint_gates.available_checker_ids),
-                production=self.config.production,
-            )
+            bundle = selected.bundle
             if bundle.primitive.scope == "cell_only":
                 return self._run_cell_only(
                     audit=audit,
@@ -226,54 +313,21 @@ class JointPathologyEditWorkflow:
                     planner_images=planner_images,
                     usage=usage,
                 )
-            allocation = self.budget_solver.allocate(
-                shape=source_tissue.shape,
-                budget=case.joint_area_budget,
-                bundle=bundle,
-            )
-            tissue_bundle = self.mask_skills.compose(
-                pathology_domain_id=case.pathology_domain_id,
-                annotation_profile_id=case.annotation_profile_id,
-                primitive_id=case.primitive_id,
-                production=self.config.production,
-                available_checker_ids=self.tissue_gates.available_checker_ids,
-            )
-            nuclei_preflight = build_joint_nuclei_preflight(
-                case=case,
-                source_tissue=source_tissue,
-                schema=schema,
-                scene=scene,
-                tissue_bundle=tissue_bundle,
-                joint_bundle=bundle,
-                allocation=allocation,
-            )
+            allocation = selected.allocation
+            tissue_bundle = selected.tissue_bundle
+            nuclei_preflight = selected.nuclei_preflight
+            if (
+                allocation is None
+                or tissue_bundle is None
+                or nuclei_preflight is None
+            ):
+                raise JointContractError(
+                    "selected tissue interpretation lacks its prepared preflight"
+                )
             audit.write_json(
                 "joint_nuclei_preflight.json",
                 nuclei_preflight.to_metadata(),
             )
-            if nuclei_preflight.required_auxiliary_missing:
-                raise JointContractError(
-                    "joint preflight lacks required auxiliary maps: "
-                    + ", ".join(nuclei_preflight.required_auxiliary_missing)
-                )
-            if nuclei_preflight.required_provenance_missing:
-                raise JointContractError(
-                    "joint preflight lacks required annotation provenance: "
-                    + ", ".join(nuclei_preflight.required_provenance_missing)
-                )
-            if not nuclei_preflight.meaningful_tissue_capacity_passed:
-                raise JointContractError(
-                    "joint preflight interface capacity cannot reach the immutable "
-                    "meaningful tissue floor: "
-                    f"required={nuclei_preflight.meaningful_tissue_floor_pixels}, "
-                    "aggregate_cell_safe_capacity="
-                    f"{nuclei_preflight.aggregate_feasible_tissue_capacity_pixels}"
-                )
-            if not nuclei_preflight.feasible_interface_ids:
-                raise JointContractError(
-                    "joint preflight found no interface with tissue, complete-instance, "
-                    "reference-shape and halo capacity"
-                )
             tissue_scene = augment_tissue_scene_with_nuclei_preflight(
                 scene.tissue,
                 nuclei_preflight,
@@ -1082,6 +1136,261 @@ class JointPathologyEditWorkflow:
                 condition=None,
                 usage=usage,
             )
+
+    def _prepare_interpretations(
+        self,
+        *,
+        case: JointCaseContext,
+        source_tissue: np.ndarray,
+        schema,
+        scene,
+    ) -> tuple[dict[str, _PreparedInterpretation], dict[str, str]]:
+        """Compile every semantic hypothesis before visual disambiguation.
+
+        The visual Planner only sees primitive--mechanism pairs that already
+        satisfy the four knowledge axes and deterministic tissue/nucleus
+        preflight. This allows a contextual interpretation to remain available
+        when the direct interpretation is physically impossible, without
+        letting the LLM invent a primitive or numeric budget.
+        """
+
+        raw_hypotheses = case.semantic_intent.get(
+            "primitive_hypotheses", ()
+        )
+        if not raw_hypotheses:
+            raw_hypotheses = (
+                {
+                    "primitive_id": case.primitive_id,
+                    "semantic_fit": "explicit",
+                    "priority": 0,
+                    "rationale": "legacy research case supplies one explicit primitive",
+                },
+            )
+        prepared: dict[str, _PreparedInterpretation] = {}
+        rejected: dict[str, str] = {}
+        for raw in sorted(
+            raw_hypotheses,
+            key=lambda item: (
+                int(item.get("priority", 0)) if isinstance(item, Mapping) else 0,
+                str(item.get("primitive_id", "")) if isinstance(item, Mapping) else "",
+            ),
+        ):
+            if not isinstance(raw, Mapping):
+                rejected["malformed-hypothesis"] = (
+                    "semantic primitive hypothesis is not an object"
+                )
+                continue
+            primitive_id = str(raw.get("primitive_id") or "")
+            semantic_fit = str(raw.get("semantic_fit") or "")
+            rationale = str(raw.get("rationale") or "")
+            priority = int(raw.get("priority", 0))
+            candidate_case = replace(case, primitive_id=primitive_id)
+            if (
+                primitive_id
+                == "neoplastic-cell-infiltration-increase-v1"
+                and candidate_case.cell_count_extent_budget is None
+            ):
+                budget, budget_metadata = _derive_infiltration_budget(scene)
+                semantic_metadata = dict(candidate_case.semantic_intent)
+                semantic_metadata.setdefault(
+                    "derived_budget_policies", {}
+                )[primitive_id] = budget_metadata
+                candidate_case = replace(
+                    candidate_case,
+                    cell_count_extent_budget=budget,
+                    semantic_intent=semantic_metadata,
+                )
+            try:
+                candidate_case.validate_local_inputs()
+                mechanisms, mechanism_rejections = (
+                    self.joint_skills.eligible_mechanisms_for_case(
+                        case=candidate_case,
+                        available_checker_ids=set(
+                            self.joint_gates.available_checker_ids
+                        ),
+                        production=self.config.production,
+                    )
+                )
+            except (JointContractError, RefineContractError, ValueError) as exc:
+                rejected[primitive_id or "missing-primitive"] = str(exc)
+                continue
+            if not mechanisms:
+                rejected[primitive_id] = "; ".join(
+                    f"{key}={value}"
+                    for key, value in sorted(mechanism_rejections.items())
+                ) or "no joint mechanism supports this primitive"
+                continue
+            for mechanism in mechanisms:
+                option_id = f"{primitive_id}::{mechanism.mechanism_id}"
+                try:
+                    bundle = self.joint_skills.compose(
+                        case=candidate_case,
+                        mechanism_id=mechanism.mechanism_id,
+                        available_checker_ids=set(
+                            self.joint_gates.available_checker_ids
+                        ),
+                        production=self.config.production,
+                    )
+                    allocation = None
+                    tissue_bundle = None
+                    nuclei_preflight = None
+                    feasibility: dict[str, Any] = {
+                        "four_axis_skill_intersection": "passed",
+                        "deterministic_preflight": "passed",
+                    }
+                    if bundle.primitive.scope == "tissue_and_cell":
+                        if candidate_case.joint_area_budget is None:
+                            raise JointContractError(
+                                "tissue interpretation has no system-owned joint area budget"
+                            )
+                        allocation = self.budget_solver.allocate(
+                            shape=source_tissue.shape,
+                            budget=candidate_case.joint_area_budget,
+                            bundle=bundle,
+                        )
+                        tissue_bundle = self.mask_skills.compose(
+                            pathology_domain_id=(
+                                candidate_case.pathology_domain_id
+                            ),
+                            annotation_profile_id=(
+                                candidate_case.annotation_profile_id
+                            ),
+                            primitive_id=primitive_id,
+                            production=self.config.production,
+                            available_checker_ids=(
+                                self.tissue_gates.available_checker_ids
+                            ),
+                        )
+                        nuclei_preflight = build_joint_nuclei_preflight(
+                            case=candidate_case,
+                            source_tissue=source_tissue,
+                            schema=schema,
+                            scene=scene,
+                            tissue_bundle=tissue_bundle,
+                            joint_bundle=bundle,
+                            allocation=allocation,
+                        )
+                        failures = []
+                        if nuclei_preflight.required_auxiliary_missing:
+                            failures.append(
+                                "missing auxiliary="
+                                + ",".join(
+                                    nuclei_preflight.required_auxiliary_missing
+                                )
+                            )
+                        if nuclei_preflight.required_provenance_missing:
+                            failures.append(
+                                "missing provenance="
+                                + ",".join(
+                                    nuclei_preflight.required_provenance_missing
+                                )
+                            )
+                        if not nuclei_preflight.meaningful_tissue_capacity_passed:
+                            failures.append(
+                                "meaningful tissue capacity "
+                                f"{nuclei_preflight.aggregate_feasible_tissue_capacity_pixels}"
+                                f"<{nuclei_preflight.meaningful_tissue_floor_pixels}"
+                            )
+                        if not nuclei_preflight.feasible_interface_ids:
+                            failures.append("no nuclei-safe executable interface")
+                        if failures:
+                            raise JointContractError("; ".join(failures))
+                        feasibility.update(
+                            {
+                                "feasible_interface_count": len(
+                                    nuclei_preflight.feasible_interface_ids
+                                ),
+                                "aggregate_tissue_capacity_pixels": (
+                                    nuclei_preflight.aggregate_feasible_tissue_capacity_pixels
+                                ),
+                                "meaningful_tissue_floor_pixels": (
+                                    nuclei_preflight.meaningful_tissue_floor_pixels
+                                ),
+                            }
+                        )
+                    elif "add" in bundle.mechanism.cell_program.actions:
+                        allowed = set(
+                            bundle.mechanism.cell_program.allowed_cell_classes
+                        )
+                        complete_references = sum(
+                            item.completeness_status == "complete"
+                            and item.class_id in allowed
+                            for item in scene.cells.instances
+                        )
+                        if complete_references <= 0:
+                            raise JointContractError(
+                                "cell interpretation has no complete same-patch reference nucleus"
+                            )
+                        if (
+                            primitive_id
+                            == "neoplastic-cell-infiltration-increase-v1"
+                        ):
+                            label_contract = (
+                                bundle.mechanism.tissue_program.primitive_label_contracts[
+                                    primitive_id
+                                ]
+                            )
+                            receiving_labels = set(
+                                label_contract["source_labels"]
+                            )
+                            interface_pairs = {
+                                tuple(
+                                    sorted(
+                                        (
+                                            interface.source_component_id,
+                                            interface.target_component_id,
+                                        )
+                                    )
+                                )
+                                for interface in scene.tissue.graph.interfaces
+                                if "Tumor"
+                                in {
+                                    interface.source_label,
+                                    interface.target_label,
+                                }
+                                and (
+                                    {
+                                        interface.source_label,
+                                        interface.target_label,
+                                    }
+                                    - {"Tumor"}
+                                ).intersection(receiving_labels)
+                            }
+                            if not interface_pairs:
+                                raise JointContractError(
+                                    "contextual infiltration has no tumor-to-receiving-tissue interface"
+                                )
+                            feasibility[
+                                "candidate_infiltration_interface_count"
+                            ] = len(interface_pairs)
+                        feasibility["complete_reference_instances"] = int(
+                            complete_references
+                        )
+                        feasibility["cell_budget"] = (
+                            candidate_case.cell_count_extent_budget.__dict__
+                            if candidate_case.cell_count_extent_budget
+                            is not None
+                            else None
+                        )
+                    option = JointInterpretationOption(
+                        primitive_id=primitive_id,
+                        semantic_fit=semantic_fit,
+                        semantic_priority=priority,
+                        semantic_rationale=rationale,
+                        mechanism=mechanism,
+                        feasibility=feasibility,
+                    )
+                    prepared[option_id] = _PreparedInterpretation(
+                        option=option,
+                        case=candidate_case,
+                        bundle=bundle,
+                        allocation=allocation,
+                        tissue_bundle=tissue_bundle,
+                        nuclei_preflight=nuclei_preflight,
+                    )
+                except (JointContractError, RefineContractError, ValueError) as exc:
+                    rejected[option_id] = str(exc)
+        return prepared, rejected
 
     def _build_and_gate_joint_candidates(
         self,
@@ -1979,6 +2288,72 @@ def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext
         provenance=provenance,
         pixel_size_um=case.pixel_size_um,
     )
+
+
+def _derive_infiltration_budget(
+    scene,
+) -> tuple[CellCountExtentBudget, dict[str, Any]]:
+    """Derive a scale-aware cell budget for a contextual tumor interpretation.
+
+    This policy is deterministic and auditable. It uses source complete-nucleus
+    scale plus the amount of visible tumor/non-tumor interface; neither the
+    Semantic Parser nor the visual Planner is allowed to invent a cell count.
+    """
+
+    complete_areas = [
+        item.area_px
+        for item in scene.cells.instances
+        if item.completeness_status == "complete" and item.class_id == 1
+    ]
+    if not complete_areas:
+        complete_areas = [
+            item.area_px
+            for item in scene.cells.instances
+            if item.completeness_status == "complete"
+        ]
+    median_area = float(np.median(complete_areas)) if complete_areas else 64.0
+    diameter_px = max(3.0, 2.0 * np.sqrt(median_area / np.pi))
+    pair_contacts: dict[tuple[str, str], int] = {}
+    for interface in scene.tissue.graph.interfaces:
+        labels = {interface.source_label, interface.target_label}
+        if "Tumor" not in labels or len(labels) < 2:
+            continue
+        pair = tuple(
+            sorted(
+                (
+                    interface.source_component_id,
+                    interface.target_component_id,
+                )
+            )
+        )
+        pair_contacts[pair] = max(
+            pair_contacts.get(pair, 0), int(interface.contact_pixels)
+        )
+    interface_pixels = sum(pair_contacts.values())
+    estimated_slots = int(
+        np.ceil(interface_pixels / max(1.0, 6.0 * diameter_px))
+    )
+    target = int(np.clip(estimated_slots, 4, 24))
+    minimum = max(1, int(np.floor(target * 0.5)))
+    maximum = max(target, min(32, int(np.ceil(target * 1.5))))
+    maximum_extent = int(np.clip(round(5.0 * diameter_px), 24, 64))
+    budget = CellCountExtentBudget(
+        target_delta_count=target,
+        min_delta_count=minimum,
+        max_delta_count=maximum,
+        maximum_extent_px=maximum_extent,
+        interface_min_px=2,
+        interface_max_px=maximum_extent,
+    )
+    return budget, {
+        "policy_id": "contextual-infiltration-budget-v1",
+        "authority": "deterministic_source_scene",
+        "complete_reference_count": len(complete_areas),
+        "median_complete_nucleus_area_px": median_area,
+        "estimated_nucleus_diameter_px": diameter_px,
+        "unique_tumor_interface_pixels": interface_pixels,
+        "budget": budget.__dict__,
+    }
 
 
 def _validate_digests(case: JointCaseContext) -> None:

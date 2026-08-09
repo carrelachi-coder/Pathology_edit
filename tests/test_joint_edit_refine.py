@@ -132,13 +132,63 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(case.compiled_normalized_intent(), "increase; tumor-burden")
         self.assertEqual(case.semantic_intent["parser"], intent.parser)
 
+    def test_generic_tumor_increase_exposes_burden_and_budding_hypotheses(self):
+        intent = RuleBasedSemanticParser().parse("increase tumor")
+
+        self.assertEqual(intent.subject, "tumor")
+        self.assertEqual(
+            [item.primitive_id for item in intent.primitive_hypotheses],
+            [
+                "tumor-burden-increase-v1",
+                "neoplastic-cell-infiltration-increase-v1",
+            ],
+        )
+        self.assertEqual(
+            [item.semantic_fit for item in intent.primitive_hypotheses],
+            ["direct", "contextual"],
+        )
+
+    def test_explicit_tumor_scope_does_not_expand_to_another_primitive(self):
+        parser = RuleBasedSemanticParser()
+        burden = parser.parse("increase tumor burden")
+        budding = parser.parse("increase tumor budding")
+
+        self.assertEqual(len(burden.primitive_hypotheses), 1)
+        self.assertEqual(len(budding.primitive_hypotheses), 1)
+        self.assertEqual(
+            budding.primitive_hypotheses[0].primitive_id,
+            "neoplastic-cell-infiltration-increase-v1",
+        )
+
+    def test_manifest_may_hint_a_contextual_generic_tumor_interpretation(self):
+        raw = {
+            **_case_stub().to_metadata(),
+            "instruction": "increase tumor",
+            "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+        }
+        case, _intent = bind_semantic_intent(
+            raw, RuleBasedSemanticParser()
+        )
+
+        self.assertEqual(
+            case.primitive_id,
+            "neoplastic-cell-infiltration-increase-v1",
+        )
+        self.assertIn(
+            case.primitive_id,
+            {
+                item["primitive_id"]
+                for item in case.semantic_intent["primitive_hypotheses"]
+            },
+        )
+
     def test_semantic_parser_rejects_manifest_primitive_conflict(self):
         raw = {
             **_case_stub().to_metadata(),
             "instruction": "reduce tumor burden",
             "primitive_id": "tumor-burden-increase-v1",
         }
-        with self.assertRaisesRegex(JointContractError, "conflicts"):
+        with self.assertRaisesRegex(JointContractError, "contradicts"):
             bind_semantic_intent(raw, RuleBasedSemanticParser())
 
     def test_preflight_density_matches_shared_scene_instance_authority(self):
@@ -1708,6 +1758,65 @@ class JointWorkflowTests(unittest.TestCase):
             np.testing.assert_array_equal(
                 result.condition.target_tissue_mask,
                 np.load(source.source_tissue_mask_uri),
+            )
+
+    def test_generic_tumor_increase_can_resolve_to_visible_budding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _write_synthetic_case(root)
+            raw = source.to_metadata()
+            raw["instruction"] = "increase tumor"
+            raw["primitive_id"] = "tumor-burden-increase-v1"
+            # Make tissue-level burden infeasible while leaving a real
+            # tumor/stroma interface for the contextual budding hypothesis.
+            raw["joint_area_budget"] = {
+                "target_fraction": 0.95,
+                "min_fraction": 0.90,
+                "max_fraction": 0.99,
+                "tissue_min_fraction": 0.90,
+                "relative_tolerance": 0.02,
+                "fallback_policy": "max_feasible_below_target",
+            }
+            raw["provenance"] = {
+                **raw["provenance"],
+                "joint_mechanism_id": "colorectal-tumor-budding-front",
+                "joint_primitive_id": (
+                    "neoplastic-cell-infiltration-increase-v1"
+                ),
+            }
+            case, _intent = bind_semantic_intent(
+                raw, RuleBasedSemanticParser()
+            )
+            output_root = root / "generic-tumor-budding"
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=output_root)
+
+            self.assertEqual(
+                result.status, "selected_research", result.abstain_reasons
+            )
+            resolution = json.loads(
+                (
+                    output_root
+                    / case.case_id
+                    / "semantic_resolution.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                resolution["selected_option_id"],
+                "neoplastic-cell-infiltration-increase-v1::colorectal-tumor-budding-front",
+            )
+            self.assertEqual(
+                resolution["selection"]["semantic_fit"], "contextual"
+            )
+            self.assertIsNotNone(resolution["selected_cell_budget"])
+            self.assertTrue(
+                any(
+                    key.startswith("tumor-burden-increase-v1::")
+                    for key in resolution["rejected_interpretations"]
+                )
             )
 
     def test_local_population_primitives_use_component_contract(self):

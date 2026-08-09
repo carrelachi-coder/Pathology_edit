@@ -200,11 +200,21 @@ def main(argv: list[str] | None = None) -> int:
             config=JointWorkflowConfig(production=args.production),
         )
         result = workflow.run(case, output_root=args.output_root)
+        resolution_path = result.artifact_paths.get(
+            "semantic_resolution.json"
+        )
+        semantic_resolution = (
+            json.loads(Path(resolution_path).read_text(encoding="utf-8"))
+            if resolution_path and Path(resolution_path).is_file()
+            else None
+        )
         summaries.append(
             {
                 "case_id": case.case_id,
                 "status": result.status,
                 "semantic_intent": semantic_intent.to_metadata(),
+                "semantic_request": semantic_intent.to_metadata(),
+                "semantic_resolution": semantic_resolution,
                 "selected_candidate_id": result.selected_candidate_id,
                 "abstain_reasons": list(result.abstain_reasons),
                 "artifact_paths": result.artifact_paths,

@@ -32,18 +32,51 @@ LOCAL_POPULATION_PRIMITIVES = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class JointInterpretationOption:
+    primitive_id: str
+    semantic_fit: str
+    semantic_priority: int
+    semantic_rationale: str
+    mechanism: JointMechanismSkill
+    feasibility: Mapping[str, Any]
+
+    @property
+    def option_id(self) -> str:
+        return f"{self.primitive_id}::{self.mechanism.mechanism_id}"
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "option_id": self.option_id,
+            "primitive_id": self.primitive_id,
+            "semantic_fit": self.semantic_fit,
+            "semantic_priority": self.semantic_priority,
+            "semantic_rationale": self.semantic_rationale,
+            "mechanism_id": self.mechanism.mechanism_id,
+            "mechanism_summary": self.mechanism.summary,
+            "required_observations": list(
+                self.mechanism.recognition.required_observations
+            ),
+            "contraindications": list(
+                self.mechanism.recognition.contraindications
+            ),
+            "minimum_confidence": self.mechanism.recognition.minimum_confidence,
+            "feasibility": dict(self.feasibility),
+        }
+
+
 class JointPlanner(Protocol):
     name: str
     supports_pathology_vision: bool
 
-    def select_mechanism(
+    def select_interpretation(
         self,
         *,
         case: JointCaseContext,
         scene: JointSceneAnalysis,
-        mechanisms: Sequence[JointMechanismSkill],
+        options: Sequence[JointInterpretationOption],
         image_paths: Sequence[str | Path],
-    ) -> tuple[str, dict[str, Any]]: ...
+    ) -> tuple[str, str, dict[str, Any]]: ...
 
     def create_plan(
         self,
@@ -63,7 +96,7 @@ class HeuristicJointPlanner:
     name: str = "heuristic_joint_planner"
     supports_pathology_vision: bool = False
 
-    def select_mechanism(self, *, case, scene, mechanisms, image_paths):
+    def select_interpretation(self, *, case, scene, options, image_paths):
         del scene, image_paths
         requested = case.provenance.get("joint_mechanism_id")
         if requested == "__abstain__":
@@ -72,16 +105,36 @@ class HeuristicJointPlanner:
                 "current-session visual review found no safely representable mechanism",
             )
             raise JointContractError(f"offline visual Planner abstained: {reason}")
-        available = {item.mechanism_id for item in mechanisms}
-        if not isinstance(requested, str) or requested not in available:
-            raise JointContractError(
-                "offline joint planner requires provenance.joint_mechanism_id; "
-                "it will not guess a pathology mechanism without H&E vision"
+        requested_primitive = case.provenance.get("joint_primitive_id")
+        matching = [
+            item
+            for item in options
+            if item.mechanism.mechanism_id == requested
+            and (
+                requested_primitive is None
+                or item.primitive_id == requested_primitive
             )
-        return requested, {
+        ]
+        if not isinstance(requested, str) or len(matching) != 1:
+            raise JointContractError(
+                "offline joint planner requires an unambiguous provenance "
+                "joint_mechanism_id/joint_primitive_id decision; it will not "
+                "resolve natural-language ambiguity without H&E vision"
+            )
+        selected = matching[0]
+        return selected.primitive_id, requested, {
             "provider": self.name,
             "selection_mode": "explicit_research_metadata",
             "supports_pathology_vision": False,
+            "selection": {
+                "option_id": selected.option_id,
+                "primitive_id": selected.primitive_id,
+                "mechanism_id": requested,
+                "semantic_fit": selected.semantic_fit,
+                "interpretation_explanation": (
+                    "explicit offline research metadata selected this auditable interpretation"
+                ),
+            },
         }
 
     def create_plan(

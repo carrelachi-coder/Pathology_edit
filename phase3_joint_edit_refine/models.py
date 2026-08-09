@@ -373,15 +373,31 @@ class JointCaseContext:
         )
 
     def validate_local_inputs(self) -> None:
-        if self.semantic_intent and (
-            self.semantic_intent.get("schema_version")
-            != "joint-semantic-intent-v1"
-            or self.semantic_intent.get("primitive_id") != self.primitive_id
-            or self.semantic_intent.get("instruction") != self.instruction
-        ):
-            raise JointContractError(
-                "semantic intent is not bound to this instruction and primitive"
+        if self.semantic_intent:
+            raw_hypotheses = self.semantic_intent.get(
+                "primitive_hypotheses", ()
             )
+            if not isinstance(raw_hypotheses, (list, tuple)):
+                raise JointContractError(
+                    "semantic primitive hypotheses must be a sequence"
+                )
+            candidate_ids = {
+                str(item.get("primitive_id"))
+                for item in raw_hypotheses
+                if isinstance(item, Mapping) and item.get("primitive_id")
+            }
+            selected = self.semantic_intent.get("selected_primitive_id")
+            if (
+                self.semantic_intent.get("schema_version")
+                != "joint-semantic-intent-v2"
+                or self.semantic_intent.get("instruction") != self.instruction
+                or not candidate_ids
+                or self.primitive_id not in candidate_ids
+                or (selected is not None and selected != self.primitive_id)
+            ):
+                raise JointContractError(
+                    "semantic intent is not bound to this instruction and its primitive hypotheses"
+                )
         paths = {
             "source_image_uri": self.source_image_uri,
             "source_tissue_mask_uri": self.source_tissue_mask_uri,

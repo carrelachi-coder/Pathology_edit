@@ -20,10 +20,13 @@ from .models import (
     JointCriticResult,
     JointEditPlan,
 )
-from .planner import JOINT_PLAN_SCHEMA_VERSION, LOCAL_POPULATION_PRIMITIVES
+from .planner import (
+    JOINT_PLAN_SCHEMA_VERSION,
+    LOCAL_POPULATION_PRIMITIVES,
+    JointInterpretationOption,
+)
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
-from .skills.schema import JointMechanismSkill
 
 
 @dataclass(frozen=True)
@@ -34,47 +37,48 @@ class OpenAIMultimodalJointPlanner:
     name: str = "openai_multimodal_joint_planner"
     supports_pathology_vision: bool = True
 
-    def select_mechanism(
+    def select_interpretation(
         self,
         *,
         case: JointCaseContext,
         scene: JointSceneAnalysis,
-        mechanisms: Sequence[JointMechanismSkill],
+        options: Sequence[JointInterpretationOption],
         image_paths: Sequence[str | Path],
-    ) -> tuple[str, dict[str, Any]]:
+    ) -> tuple[str, str, dict[str, Any]]:
         payload = {
             "case": case.to_metadata(),
             "scene": scene.to_metadata(),
-            "available_mechanisms": [
-                {
-                    "mechanism_id": item.mechanism_id,
-                    "summary": item.summary,
-                    "required_observations": list(
-                        item.recognition.required_observations
-                    ),
-                    "contraindications": list(item.recognition.contraindications),
-                    "minimum_confidence": item.recognition.minimum_confidence,
-                    "representability": item.representability.__dict__,
-                }
-                for item in mechanisms
+            "available_interpretations": [
+                item.to_metadata() for item in options
             ],
             "requirements": {
-                "choose_only_listed_mechanism": True,
+                "choose_only_listed_primitive_mechanism_pair": True,
                 "use_H&E_and_both_overlays": True,
-                "abstain_if_required_observations_are_not_visible": True,
+                "prefer_best_semantic_fit_that_is_visually_supported": True,
+                "semantic_fit_is_a_prior_not_a_veto": True,
+                "contextual_option_may_win_when_visual_support_is_substantially_stronger": True,
+                "contextual_fit_requires_explicit_explanation": True,
+                "do_not_abstain_when_a_listed_option_is_supported": True,
+                "abstain_only_if_no_listed_option_has_required_visual_evidence": True,
                 "do_not_infer_annotation_or_population_profile": True,
             },
         }
-        available = {item.mechanism_id: item for item in mechanisms}
+        available = {item.option_id: item for item in options}
         errors = []
         for attempt, client in enumerate(self._contract_clients(), start=1):
             raw, usage = client.call(
                 system_prompt=(
-                    "You are the mechanism-selection stage of a joint pathology editor. "
-                    "Interpret H&E, tissue architecture and nuclei layout together. Select only "
-                    "a listed mechanism when its observations are visible and representable. "
-                    "Use the explicit abstain field instead of guessing. Do not output pixels, "
-                    "coordinates, counts or density multipliers."
+                    "You are the visual semantic-resolution and mechanism-selection stage of a "
+                    "joint pathology editor. The user's natural language may intentionally leave "
+                    "tumor increase underspecified. Select the most semantically faithful listed "
+                    "primitive-mechanism pair that is supported by H&E, tissue architecture, nuclei "
+                    "layout and deterministic feasibility. Semantic fit is a prior, not an absolute "
+                    "ordering: a contextual interpretation may outrank a direct one when the patch "
+                    "supports it substantially better. A contextual interpretation such as tumor "
+                    "budding is allowed only when its required morphology is visibly supported and "
+                    "must be disclosed in interpretation_explanation. Abstain only when none of the "
+                    "listed options is supportable. Do not output pixels, coordinates, counts or "
+                    "density multipliers."
                 ),
                 user_prompt=json.dumps(
                     {**payload, "previous_contract_errors": errors},
@@ -82,7 +86,7 @@ class OpenAIMultimodalJointPlanner:
                     sort_keys=True,
                 ),
                 image_paths=image_paths,
-                schema_name="joint_pathology_mechanism_selection",
+                schema_name="joint_pathology_interpretation_selection",
                 json_schema=MECHANISM_SELECTION_SCHEMA,
             )
             if raw.get("abstain") is True:
@@ -91,12 +95,18 @@ class OpenAIMultimodalJointPlanner:
                     + str(raw.get("abstain_reason") or "insufficient visual evidence")
                 )
             try:
+                primitive_id = _required_string(raw, "primitive_id")
                 mechanism_id = _required_string(raw, "mechanism_id")
-                if mechanism_id not in available:
+                option_id = f"{primitive_id}::{mechanism_id}"
+                if option_id not in available:
                     raise JointContractError(
-                        "joint Planner selected an unavailable mechanism"
+                        "joint Planner selected an unavailable primitive-mechanism pair"
                     )
+                selected = available[option_id]
                 confidence = _unit(raw, "confidence")
+                explanation = _required_string(
+                    raw, "interpretation_explanation"
+                )
                 observations = _strings(
                     raw.get("supporting_observations"), "supporting_observations"
                 )
@@ -108,21 +118,33 @@ class OpenAIMultimodalJointPlanner:
                 if (
                     contraindications
                     or confidence
-                    < available[mechanism_id].recognition.minimum_confidence
+                    < selected.mechanism.recognition.minimum_confidence
                 ):
                     raise JointContractError(
                         "joint mechanism evidence is contraindicated or below its confidence threshold"
                     )
+                if (
+                    selected.semantic_fit == "contextual"
+                    and len(explanation.split()) < 4
+                ):
+                    raise JointContractError(
+                        "contextual semantic selection lacks an adequate explanation"
+                    )
             except JointContractError as exc:
                 errors.append(f"attempt {attempt}: {exc}")
                 continue
-            return mechanism_id, {
+            return primitive_id, mechanism_id, {
                 "provider": self.name,
-                "stage": "mechanism_selection",
+                "stage": "semantic_and_mechanism_selection",
                 "contract_attempt": attempt,
                 "escalated": client is self.escalation_client,
                 "selection": {
+                    "option_id": option_id,
+                    "primitive_id": primitive_id,
                     "mechanism_id": mechanism_id,
+                    "semantic_fit": selected.semantic_fit,
+                    "semantic_priority": selected.semantic_priority,
+                    "interpretation_explanation": explanation,
                     "supporting_observations": list(observations),
                     "confidence": confidence,
                 },
@@ -660,7 +682,9 @@ MECHANISM_SELECTION_SCHEMA = {
     "required": [
         "abstain",
         "abstain_reason",
+        "primitive_id",
         "mechanism_id",
+        "interpretation_explanation",
         "supporting_observations",
         "observed_contraindications",
         "confidence",
@@ -668,7 +692,9 @@ MECHANISM_SELECTION_SCHEMA = {
     "properties": {
         "abstain": {"type": "boolean"},
         "abstain_reason": {"type": ["string", "null"]},
+        "primitive_id": {"type": ["string", "null"]},
         "mechanism_id": {"type": ["string", "null"]},
+        "interpretation_explanation": {"type": ["string", "null"]},
         "supporting_observations": {"type": "array", "items": {"type": "string"}},
         "observed_contraindications": {"type": "array", "items": {"type": "string"}},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
