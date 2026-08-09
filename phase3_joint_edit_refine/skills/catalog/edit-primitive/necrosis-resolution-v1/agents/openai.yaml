@@ -1,0 +1,4 @@
+interface:
+  display_name: "Joint necrosis resolution"
+  short_description: "Compile necrosis-to-viable-tumor turnover"
+  default_prompt: "Use $necrosis-resolution-v1-joint to compile and audit coupled necrosis resolution."

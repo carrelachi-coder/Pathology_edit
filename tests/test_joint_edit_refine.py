@@ -70,6 +70,10 @@ from phase3_joint_edit_refine.seam import (
     compile_continuity_center_quota,
     compile_executable_continuity_count,
 )
+from phase3_joint_edit_refine.semantic_parser import (
+    RuleBasedSemanticParser,
+    bind_semantic_intent,
+)
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
 from phase3_joint_edit_refine.tissue_planner import (
     _effective_tissue_topology,
@@ -97,7 +101,47 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
-    def test_preflight_density_matches_mature_semantic_component_ruler(self):
+    def test_simple_doctor_instructions_parse_without_mechanism_invention(self):
+        parser = RuleBasedSemanticParser()
+        examples = {
+            "increase tumor burden": "tumor-burden-increase-v1",
+            "reduce tumor burden": "tumor-burden-decrease-v1",
+            "increase necrosis": "necrosis-appearance-v1",
+            "减少坏死": "necrosis-resolution-v1",
+            "increase tumor budding": (
+                "neoplastic-cell-infiltration-increase-v1"
+            ),
+            "increase immune cells": "cell-type-abundance-increase-v1",
+            "降低细胞密度": "cellularity-decrease-v1",
+        }
+        for instruction, expected in examples.items():
+            with self.subTest(instruction=instruction):
+                intent = parser.parse(instruction)
+                self.assertEqual(intent.primitive_id, expected)
+                self.assertNotIn("mechanism", intent.to_metadata())
+
+    def test_semantic_intent_is_compiler_owned_after_binding(self):
+        raw = {
+            **_case_stub().to_metadata(),
+            "instruction": "increase tumor burden",
+            "primitive_id": "tumor-burden-increase-v1",
+        }
+        case, intent = bind_semantic_intent(raw, RuleBasedSemanticParser())
+
+        self.assertEqual(intent.subject, "tumor-burden")
+        self.assertEqual(case.compiled_normalized_intent(), "increase; tumor-burden")
+        self.assertEqual(case.semantic_intent["parser"], intent.parser)
+
+    def test_semantic_parser_rejects_manifest_primitive_conflict(self):
+        raw = {
+            **_case_stub().to_metadata(),
+            "instruction": "reduce tumor burden",
+            "primitive_id": "tumor-burden-increase-v1",
+        }
+        with self.assertRaisesRegex(JointContractError, "conflicts"):
+            bind_semantic_intent(raw, RuleBasedSemanticParser())
+
+    def test_preflight_density_matches_shared_scene_instance_authority(self):
         tissue = np.full((32, 32), 11, dtype=np.uint8)
         nuclei = np.zeros_like(tissue)
         nuclei[4:7, 4:7] = 1
@@ -119,8 +163,12 @@ class JointSkillTests(unittest.TestCase):
             reference_area_p95=9.0,
         )
 
-        self.assertAlmostEqual(density, 2 / tissue.size)
-        self.assertAlmostEqual(by_class[1], 1 / tissue.size)
+        expected_class_1 = sum(
+            item.class_id == 1 for item in scene.cells.instances
+        )
+        expected_total = len(scene.cells.instances)
+        self.assertAlmostEqual(density, expected_total / tissue.size)
+        self.assertAlmostEqual(by_class[1], expected_class_1 / tissue.size)
 
     def test_packing_total_is_at_least_required_seam_quota(self):
         shape = (24, 24)
@@ -969,6 +1017,7 @@ class JointSkillTests(unittest.TestCase):
             source_tissue_path=Path("source.png"),
             source_nuclei_path=Path("nuclei.png"),
             reference_nuclei_shapes_path=Path("reference-shapes.png"),
+            source_instance_authority_path=Path("instance-authority.json"),
             generation_region_path=Path("G.png"),
             population_region_path=Path("T-pop.png"),
             placement_region_path=Path("P.png"),
@@ -987,6 +1036,7 @@ class JointSkillTests(unittest.TestCase):
         self.assertIn("--require-sampling-audit", command)
         self.assertIn("--require-exact-target-count", command)
         self.assertIn("--reference-nuclei-shapes", command)
+        self.assertIn("--source-instance-authority", command)
         self.assertIn("--placement-region", command)
         self.assertIn("--population-region", command)
         self.assertIn("--required-placement-region", command)
@@ -1131,8 +1181,11 @@ class JointSkillTests(unittest.TestCase):
                 oral["provenance"]["require_mature_probnet_regeneration"]
             )
             self.assertEqual(
-                oral["provenance"]["joint_mechanism_id"],
-                "oral-scc-cohesive-nest-cord",
+                oral["provenance"]["joint_mechanism_id"], "__abstain__"
+            )
+            self.assertIn(
+                "visual mechanism selection",
+                oral["provenance"]["joint_mechanism_assignment_reason"],
             )
             colorectal = build_local_joint_records(
                 [{**base, "organ": "colorectal"}], asset_root=root
@@ -1622,17 +1675,11 @@ class JointWorkflowTests(unittest.TestCase):
                 critic=_ApprovingJointCritic(),
                 tissue_gates=_PassingTissueGateFixture(),
             ).run(case, output_root=root / "stroma")
-            self.assertEqual(result.status, "selected_research", result.abstain_reasons)
-            payload = json.loads(
-                Path(result.artifact_paths["handoff_manifest"]).read_text(
-                    encoding="utf-8"
-                )
+            self.assertEqual(result.status, "abstained")
+            self.assertIn(
+                "no joint mechanism",
+                result.abstain_reasons[0],
             )
-            cell_contract = payload["execution_contract"]["executable_contract"][
-                "cell_instance_contract"
-            ]
-            self.assertEqual(cell_contract["allowed_new_cell_classes"], [2, 3])
-            self.assertIn(1, cell_contract["forbidden_new_cell_classes"])
 
     def test_cell_only_budding_preserves_tissue_and_uses_count_budget(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -2091,6 +2138,30 @@ def _write_synthetic_case(root: Path) -> JointCaseContext:
                 "observation_scope": "synthetic_fixture",
                 "source_tissue_mask_sha256": _sha(tissue_path),
                 "output_sha256": _sha(auxiliary_path),
+                "structure_units": [
+                    {
+                        "unit_id": "fine:12:unit:0001",
+                        "unit_type": "synthetic_malignant_gland_unit",
+                        "fine_id": 12,
+                        "area_px": int(np.count_nonzero(tumor)),
+                        "bbox_xyxy": [34, 34, 95, 95],
+                        "component_sha256": hashlib.sha256(
+                            np.packbits(
+                                tumor.astype(np.uint8), axis=None
+                            ).tobytes()
+                        ).hexdigest(),
+                        "enclosed_space_ids": [
+                            "fine:12:unit:0001:space:001"
+                        ],
+                    }
+                ],
+                "hierarchy_relations": [
+                    {
+                        "source_id": "fine:12:unit:0001:space:001",
+                        "relation": "enclosed_space_of",
+                        "target_id": "fine:12:unit:0001",
+                    }
+                ],
             }
         },
         "preprocessing_revision": "synthetic-glas-v1",
@@ -2289,10 +2360,10 @@ class StructuralHierarchyTests(unittest.TestCase):
 
         self.assertFalse(initial["allow_source_component_resolution"])
         self.assertFalse(initial["fallback_activated"])
-        self.assertTrue(fallback["allow_source_component_resolution"])
-        self.assertTrue(fallback["allow_target_hole_resolution"])
-        self.assertEqual(fallback["geometry_mode"], "component_boundary_turnover")
-        self.assertTrue(fallback["fallback_activated"])
+        self.assertFalse(fallback["allow_source_component_resolution"])
+        self.assertFalse(fallback["allow_target_hole_resolution"])
+        self.assertEqual(fallback["geometry_mode"], "interface_front")
+        self.assertFalse(fallback["fallback_activated"])
 
     def test_prostate_mechanism_topology_and_shape_bounds_are_skill_owned(self):
         repository = JointSkillRepository()

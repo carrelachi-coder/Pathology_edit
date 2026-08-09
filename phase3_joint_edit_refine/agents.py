@@ -162,8 +162,14 @@ class OpenAIMultimodalJointPlanner:
                 "cell_plan_is_required_even_when_policy_is_retain": True,
                 "cite_only_active_rule_ids": True,
                 "select_only_skill_allowed_layout": True,
+                "compiled_layout_program_is_immutable": (
+                    bundle.mechanism.cell_program.layout_for(case.primitive_id)
+                ),
                 "do_not_output_polygons_pixels_coordinates_counts_or_density_multipliers": True,
                 "area_budget_is_immutable_and_compiler_owned": True,
+                "semantic_intent_is_immutable_and_parser_owned": (
+                    case.compiled_normalized_intent()
+                ),
                 "cell_only_primitive_must_preserve_tissue": (
                     bundle.primitive.scope == "cell_only"
                 ),
@@ -182,8 +188,9 @@ class OpenAIMultimodalJointPlanner:
                     "You are a multimodal joint pathology edit Planner. Review the already compiled "
                     "deterministic tissue interface plan (or an explicit preserve-tissue contract) "
                     "together with H&E and nuclei. Output a tissue binding, cell intent and coupling "
-                    "intent. Deterministic tools own every pixel, coordinate, count and numeric "
-                    "spatial parameter. Use the explicit abstain field instead of guessing."
+                    "intent. The Semantic Parser already owns the immutable user intent; do not "
+                    "reinterpret it. Deterministic tools own every pixel, coordinate, count and "
+                    "numeric spatial parameter. Use the explicit abstain field instead of guessing."
                 ),
                 user_prompt=json.dumps(
                     {**payload, "previous_contract_errors": errors},
@@ -435,9 +442,10 @@ class OpenAIMultimodalJointPlanner:
             raise JointContractError(
                 "joint Planner cell classes exceed the mechanism contract"
             )
-        if cell_plan.layout_program_id not in mechanism.cell_program.layout_programs:
+        expected_layout = mechanism.cell_program.layout_for(case.primitive_id)
+        if cell_plan.layout_program_id != expected_layout:
             raise JointContractError(
-                "joint Planner selected a layout outside the mechanism contract"
+                "joint Planner changed the skill-compiled primitive layout"
             )
         if cell_plan.baseline_mode not in bundle.primitive.allowed_baseline_modes:
             raise JointContractError("joint Planner selected an illegal baseline mode")
@@ -461,9 +469,9 @@ class OpenAIMultimodalJointPlanner:
             raise JointContractError(
                 "joint Planner selected an illegal mechanism quota role"
             )
-        if cell_plan.mechanism_program_id not in mechanism.cell_program.layout_programs:
+        if cell_plan.mechanism_program_id != expected_layout:
             raise JointContractError(
-                "joint Planner selected an illegal mechanism program"
+                "joint Planner changed the skill-compiled mechanism program"
             )
         if bundle.primitive.target_cell_classes and set(
             cell_plan.allowed_cell_classes
@@ -537,7 +545,7 @@ class OpenAIMultimodalJointPlanner:
         plan = JointEditPlan(
             schema_version=JOINT_PLAN_SCHEMA_VERSION,
             case_id=case.case_id,
-            normalized_intent=_required_string(raw, "normalized_intent"),
+            normalized_intent=case.compiled_normalized_intent(),
             selected_mechanism_id=mechanism.mechanism_id,
             supporting_observations=_strings(
                 raw.get("supporting_observations"), "supporting_observations"
@@ -673,7 +681,6 @@ JOINT_PLAN_JSON_SCHEMA = {
     "required": [
         "abstain",
         "abstain_reason",
-        "normalized_intent",
         "selected_mechanism_id",
         "supporting_observations",
         "supporting_rule_ids",
@@ -689,7 +696,6 @@ JOINT_PLAN_JSON_SCHEMA = {
     "properties": {
         "abstain": {"type": "boolean"},
         "abstain_reason": {"type": ["string", "null"]},
-        "normalized_intent": {"type": ["string", "null"]},
         "selected_mechanism_id": {"type": ["string", "null"]},
         "supporting_observations": {"type": "array", "items": {"type": "string"}},
         "supporting_rule_ids": {"type": "array", "items": {"type": "string"}},

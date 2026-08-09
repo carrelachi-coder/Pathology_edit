@@ -1,96 +1,209 @@
 {
   "mechanism_id": "colorectal-gland-forming-front",
   "pathology_domain_id": "colorectal-adenocarcinoma-v1",
-  "supported_primitives": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"],
+  "supported_primitives": [
+    "tumor-burden-increase-v1",
+    "tumor-burden-decrease-v1"
+  ],
   "version": "1.0.0-draft",
   "review_status": "draft",
-  "summary": "Displace a verified gland-forming colorectal tumor/stroma front while preserving gland/lumen continuity and rebuilding boundary-compatible nuclei.",
+  "summary": "Extend or regress a verified malignant colorectal gland unit at a true non-gland interface, preserving its lumen/topology and regenerating the direction-appropriate cell population.",
   "recognition_contract": {
-    "required_observations": ["continuous malignant gland epithelium", "traceable lumen or native gland structure", "true compatible stroma along a broad interface"],
-    "contraindications": ["mucin pool", "dirty necrosis", "normal crypt", "smooth muscle", "discohesive budding-only front"],
+    "required_observations": [
+      "continuous malignant gland epithelium",
+      "traceable lumen or native gland structure",
+      "true compatible stroma along a broad interface"
+    ],
+    "contraindications": [
+      "mucin pool",
+      "dirty necrosis",
+      "normal crypt",
+      "smooth muscle",
+      "discohesive budding-only front"
+    ],
     "minimum_confidence": 0.8
   },
   "representability_contract": {
     "status": "conditionally_supported",
-    "required_cell_classes": [1, 3],
-    "required_auxiliary_structures": ["gland_or_lumen_support"],
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [
+      "gland_or_lumen_support"
+    ],
     "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"
   },
   "tissue_program": {
-    "mode": "shallow_broad_gland_interface_displacement",
+    "mode": "malignant_gland_unit_interface_displacement",
     "primitive_label_contracts": {
       "tumor-burden-increase-v1": {
-        "source_labels": ["Stroma", "Other tissue"],
-        "target_labels": ["Tumor"]
+        "source_labels": [
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
       },
       "tumor-burden-decrease-v1": {
-        "source_labels": ["Tumor"],
-        "target_labels": ["Stroma", "Other tissue"]
-      },
-      "stroma-increase-v1": {
-        "source_labels": ["Tumor"],
-        "target_labels": ["Stroma"]
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma",
+          "Other tissue"
+        ]
       }
     },
-    "allowed_tools": ["interface_band_sdf", "topology_safe_morphology", "organic_v2"],
-    "required_checker_ids": ["tissue_gate_binding", "native_structure_preserved"],
-    "prohibited_structures": ["normal_crypt", "gland_lumen", "mucin", "dirty_necrosis", "smooth_muscle", "vessel", "nerve"],
-    "topology_fallback_by_primitive": {
-      "tumor-burden-decrease-v1": {
-        "geometry_mode": "component_boundary_turnover",
-        "allow_source_component_resolution": true,
-        "allow_target_hole_resolution": true,
-        "maximum_source_component_changed_fraction": 1.0,
-        "minimum_source_component_remaining_px": 0
-      }
-    }
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved",
+      "colorectal_gland_unit_coupling"
+    ],
+    "prohibited_structures": [
+      "normal_crypt",
+      "gland_lumen",
+      "mucin",
+      "dirty_necrosis",
+      "smooth_muscle",
+      "vessel",
+      "nerve"
+    ],
+    "topology_fallback_by_primitive": {}
   },
   "cell_program": {
-    "actions": ["retain", "remove_whole", "add"],
-    "allowed_cell_classes": [1, 2, 3, 5],
-    "layout_programs": ["population_replacement", "boundary_aligned"],
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "population_replacement",
+      "boundary_aligned"
+    ],
     "core_policy": "replace_complete_instances_in_tissue_change",
     "halo_policy": "preserve_cells_outside_changed_gland_band",
-    "halo_distance_px": [0, 20],
-    "cluster_size_range": [3, 24],
+    "halo_distance_px": [
+      0,
+      20
+    ],
+    "cluster_size_range": [
+      3,
+      24
+    ],
     "seam_contract_by_primitive": {
       "tumor-burden-decrease-v1": {
         "mode": "adaptive_population_continuity",
-        "width_cell_diameters": [1.0, 1.5],
-        "reference_area_quantiles": [0.25, 0.75],
-        "maximum_empty_run_cell_diameters": 2.0,
-        "density_ratio_range": [0.25, 4.0],
-        "minimum_anchor_coverage_fraction": 0.0,
+        "width_cell_diameters": [
+          1,
+          1.5
+        ],
+        "reference_area_quantiles": [
+          0.25,
+          0.75
+        ],
+        "maximum_empty_run_cell_diameters": 1.5,
+        "density_ratio_range": [
+          0.7,
+          1.45
+        ],
+        "minimum_anchor_coverage_fraction": 0.6,
         "requires_new_target_cells": true
       },
-      "stroma-increase-v1": {
+      "tumor-burden-increase-v1": {
         "mode": "adaptive_population_continuity",
-        "width_cell_diameters": [1.0, 1.5],
-        "reference_area_quantiles": [0.25, 0.75],
-        "maximum_empty_run_cell_diameters": 2.0,
-        "density_ratio_range": [0.25, 4.0],
-        "minimum_anchor_coverage_fraction": 0.0,
+        "width_cell_diameters": [
+          1,
+          2
+        ],
+        "reference_area_quantiles": [
+          0.25,
+          0.75
+        ],
+        "maximum_empty_run_cell_diameters": 1.5,
+        "density_ratio_range": [
+          0.75,
+          1.35
+        ],
+        "minimum_anchor_coverage_fraction": 0.65,
         "requires_new_target_cells": true
       }
     },
-    "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution"]
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "interface_seam_continuity",
+      "mechanism_realization"
+    ],
+    "layout_program_by_primitive": {
+      "tumor-burden-increase-v1": "boundary_aligned",
+      "tumor-burden-decrease-v1": "population_replacement"
+    }
   },
   "coupling_contract": {
-    "compatibility_rule_ids": ["colorectal.joint.gland_boundary_population", "colorectal.joint.lumen_and_crypt_protection"],
+    "compatibility_rule_ids": [
+      "colorectal.joint.malignant_gland_unit_extension_or_regression",
+      "colorectal.joint.gland_boundary_population",
+      "colorectal.joint.lumen_and_crypt_protection"
+    ],
     "allow_neoplastic_in_non_tumor_tissue": false,
     "joint_area_mode": "joint_footprint",
     "tissue_floor_applies": true,
-    "cell_only_target_fraction": 0.0,
+    "cell_only_target_fraction": 0,
     "render_support_policy_id": "whole_affected_gland_plus_bounded_cell_context_v1"
   },
-  "joint_gate_ids": ["joint_area", "tissue_floor", "cell_tissue_compatibility", "cell_zone_localization", "joint_provenance"],
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "colorectal_gland_unit_coupling"
+  ],
   "render_contract": {
-    "required_findings": ["continuous gland epithelium and lumen", "neoplastic nuclei compatible with the gland boundary"],
-    "veto_findings": ["deep notch", "lumen fill", "partial crypt", "mucin or debris rendered as stroma"],
-    "mask_guarantees": ["gland/lumen raster protection when auxiliary support is present"],
-    "render_only_claims": ["differentiation grade", "dirty necrosis", "mucin phenotype"]
+    "required_findings": [
+      "continuous gland epithelium and lumen",
+      "neoplastic nuclei compatible with the gland boundary"
+    ],
+    "veto_findings": [
+      "deep notch",
+      "lumen fill",
+      "partial crypt",
+      "mucin or debris rendered as stroma"
+    ],
+    "mask_guarantees": [
+      "gland/lumen raster protection when auxiliary support is present"
+    ],
+    "render_only_claims": [
+      "differentiation grade",
+      "dirty necrosis",
+      "mucin phenotype"
+    ]
   },
-  "evidence_citations": ["https://tumourclassification.iarc.who.int/chapters/31", "https://doi.org/10.1016/j.media.2016.08.008"],
-  "counterexamples": ["short deep gland notch", "closing a malignant lumen", "calling dirty necrosis stroma"]
+  "evidence_citations": [
+    "https://tumourclassification.iarc.who.int/chapters/31",
+    "https://doi.org/10.1016/j.media.2016.08.008"
+  ],
+  "counterexamples": [
+    "short deep gland notch",
+    "closing a malignant lumen",
+    "calling dirty necrosis stroma"
+  ]
 }

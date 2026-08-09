@@ -97,6 +97,7 @@ class CellProgramContract:
     actions: tuple[str, ...]
     allowed_cell_classes: tuple[int, ...]
     layout_programs: tuple[str, ...]
+    layout_program_by_primitive: dict[str, str]
     core_policy: str
     halo_policy: str
     halo_distance_px: tuple[int, int]
@@ -109,6 +110,14 @@ class CellProgramContract:
 
     def seam_for(self, primitive_id: str) -> SeamContract:
         return self.seam_by_primitive.get(primitive_id, self.seam)
+
+    def layout_for(self, primitive_id: str) -> str:
+        try:
+            return self.layout_program_by_primitive[primitive_id]
+        except KeyError as exc:
+            raise JointContractError(
+                f"cell program has no executable layout for {primitive_id}"
+            ) from exc
 
 
 @dataclass(frozen=True)
@@ -244,6 +253,21 @@ class JointMechanismSkill:
         layouts = _strings(cell, "layout_programs")
         if not layouts or set(layouts) - LAYOUT_PROGRAMS:
             raise JointContractError(f"{mechanism_id} contains invalid layout programs")
+        layout_by_primitive = _string_mapping(
+            cell.get("layout_program_by_primitive", {}),
+            key=f"{mechanism_id}.cell_program.layout_program_by_primitive",
+        )
+        if set(layout_by_primitive) != supported_primitives:
+            raise JointContractError(
+                f"{mechanism_id} must bind exactly one layout program for every "
+                "supported primitive"
+            )
+        invalid_bound_layouts = set(layout_by_primitive.values()) - set(layouts)
+        if invalid_bound_layouts:
+            raise JointContractError(
+                f"{mechanism_id} binds layouts outside layout_programs: "
+                + ", ".join(sorted(invalid_bound_layouts))
+            )
         required_classes = _ints(representability, "required_cell_classes")
         allowed_classes = _ints(cell, "allowed_cell_classes")
         if set(required_classes) - set(allowed_classes):
@@ -325,6 +349,7 @@ class JointMechanismSkill:
                 actions=actions,
                 allowed_cell_classes=allowed_classes,
                 layout_programs=layouts,
+                layout_program_by_primitive=layout_by_primitive,
                 core_policy=_string(cell, "core_policy"),
                 halo_policy=_string(cell, "halo_policy"),
                 halo_distance_px=halo,
@@ -503,6 +528,7 @@ class JointProfileContract:
     conditional_mechanisms: tuple[str, ...]
     required_checker_ids: tuple[str, ...]
     mechanism_required_fine_ids: dict[str, tuple[int, ...]]
+    supports_explicit_stroma: bool
     source_path: str
 
     @classmethod
@@ -533,6 +559,9 @@ class JointProfileContract:
                 str(key): tuple(int(value) for value in values)
                 for key, values in payload.get("mechanism_required_fine_ids", {}).items()
             },
+            supports_explicit_stroma=bool(
+                payload.get("supports_explicit_stroma", False)
+            ),
             source_path=source_path,
         )
 
@@ -574,6 +603,22 @@ def _string_sequence_mapping(value: Any, *, key: str) -> dict[str, tuple[str, ..
         if not normalized or len(normalized) != len(items):
             raise JointContractError(f"{key}.{current_key} contains empty values")
         result[current_key.strip()] = normalized
+    return result
+
+
+def _string_mapping(value: Any, *, key: str) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise JointContractError(f"{key} must be a mapping")
+    result = {}
+    for current_key, current_value in value.items():
+        if (
+            not isinstance(current_key, str)
+            or not current_key.strip()
+            or not isinstance(current_value, str)
+            or not current_value.strip()
+        ):
+            raise JointContractError(f"{key} contains an empty key or value")
+        result[current_key.strip()] = current_value.strip()
     return result
 
 

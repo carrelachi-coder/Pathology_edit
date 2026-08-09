@@ -22,6 +22,7 @@ from .models import (
     JointGateReport,
     JointWorkflowResult,
 )
+from .semantic_parser import SemanticEditIntent
 
 __all__ = [
     "CellEditPlan",
@@ -37,4 +38,5 @@ __all__ = [
     "JointEditPlan",
     "JointGateReport",
     "JointWorkflowResult",
+    "SemanticEditIntent",
 ]

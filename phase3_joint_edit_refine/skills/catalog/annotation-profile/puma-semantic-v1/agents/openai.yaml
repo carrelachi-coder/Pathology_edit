@@ -1,0 +1,4 @@
+interface:
+  display_name: "PUMA joint profile"
+  short_description: "Compose melanoma joint edits under PUMA semantics"
+  default_prompt: "Use $puma-semantic-v1-joint to preserve PUMA tissue context and separate cell semantics."

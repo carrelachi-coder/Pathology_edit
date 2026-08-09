@@ -1,0 +1,4 @@
+interface:
+  display_name: "Joint necrosis appearance"
+  short_description: "Compile viable-tumor to necrosis turnover"
+  default_prompt: "Use $necrosis-appearance-v1-joint to compile and audit a coupled tissue-cell necrosis increase."

@@ -1,24 +1,237 @@
 {
-  "mechanism_id": "lung-local-population-modulation", "pathology_domain_id": "lung-carcinoma-v1",
-  "supported_primitives": ["cell-type-abundance-increase-v1", "cell-type-abundance-decrease-v1", "cellularity-increase-v1", "cellularity-decrease-v1"],
-  "version": "1.0.0-draft", "review_status": "draft",
+  "mechanism_id": "lung-local-population-modulation",
+  "pathology_domain_id": "lung-carcinoma-v1",
+  "supported_primitives": [
+    "cell-type-abundance-increase-v1",
+    "cell-type-abundance-decrease-v1",
+    "cellularity-increase-v1",
+    "cellularity-decrease-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
   "summary": "Change a bounded lung cell population without filling alveolar airspace, airway lumen, papillary core, cartilage, muscle or fluid.",
-  "recognition_contract": {"required_observations": ["one explicit bronchial, alveolar, tumor or stromal population zone", "observable compatible class", "complete local instances"], "contraindications": ["airspace or fluid treated as host", "lepidic septum and solid tumor unresolved", "papillary core or airway boundary included", "target class unsupported"], "minimum_confidence": 0.82},
-  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [], "required_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "recognition_contract": {
+    "required_observations": [
+      "one explicit bronchial, alveolar, tumor or stromal population zone",
+      "observable compatible class",
+      "complete local instances"
+    ],
+    "contraindications": [
+      "airspace or fluid treated as host",
+      "lepidic septum and solid tumor unresolved",
+      "papillary core or airway boundary included",
+      "target class unsupported"
+    ],
+    "minimum_confidence": 0.82
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
   "tissue_program": {
     "mode": "preserve_lung_architecture_select_bounded_population_zone",
     "primitive_label_contracts": {
-      "cell-type-abundance-increase-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]},
-      "cell-type-abundance-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]},
-      "cellularity-increase-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]},
-      "cellularity-decrease-v1": {"source_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"], "target_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"]}
+      "cell-type-abundance-increase-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ]
+      },
+      "cell-type-abundance-decrease-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ]
+      },
+      "cellularity-increase-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ]
+      },
+      "cellularity-decrease-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue",
+          "Normal epithelium",
+          "Immune infiltrate"
+        ]
+      }
     },
-    "allowed_tools": ["preserve_tissue"], "required_checker_ids": ["tissue_gate_binding"],
-    "prohibited_structures": ["alveolar_airspace", "airway_lumen", "papillary_core", "cartilage", "smooth_muscle", "fluid", "vessel"]
+    "allowed_tools": [
+      "preserve_tissue"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding"
+    ],
+    "prohibited_structures": [
+      "alveolar_airspace",
+      "airway_lumen",
+      "papillary_core",
+      "cartilage",
+      "smooth_muscle",
+      "fluid",
+      "vessel"
+    ]
   },
-  "cell_program": {"actions": ["retain", "remove_whole", "add"], "allowed_cell_classes": [1, 2, 3, 4, 5], "layout_programs": ["single", "pair", "small_cluster", "boundary_aligned", "localized_density_gradient"], "core_policy": "bounded_lung_component_zone_with_local_composition", "halo_policy": "no_change_outside_compiled_population_extent", "halo_distance_px": [0, 48], "cluster_size_range": [1, 4], "cellularity_depletion_contract": {"program_id": "localized-density-gradient-v1", "resolution_mode": "density_field", "allowed_anchor_types": ["interface"], "allowed_neighbor_labels": ["Stroma", "Necrosis", "Immune infiltrate"], "core_width_cell_diameters": 1.25, "transition_width_cell_diameters": 6.0, "outer_reference_width_cell_diameters": 2.0, "core_removal_weight": 1.0, "transition_removal_weight": 0.45, "core_target_removal_fraction": 0.55, "transition_start_removal_fraction": 0.42, "transition_end_removal_fraction": 0.06, "transition_subband_count": 6, "minimum_core_residual_fraction": 0.4, "minimum_transition_residual_fraction": 0.5, "minimum_core_removals": 1, "minimum_transition_removals": 1, "maximum_new_gap_cell_diameters": 3.0, "minimum_outer_reference_instances": 3, "minimum_field_area_cell_diameter_squares": 130.0}, "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density"]},
-  "coupling_contract": {"compatibility_rule_ids": ["lung.joint.local_population_host_compatibility", "lung.joint.airspace_airway_core_preservation"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "cell_count_extent", "tissue_floor_applies": false, "cell_only_target_fraction": 1.0, "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"},
-  "joint_gate_ids": ["cell_tissue_compatibility", "cell_zone_localization", "joint_provenance"],
-  "render_contract": {"required_findings": ["edited population follows the selected lung compartment", "alveolar or airway architecture remains open and continuous"], "veto_findings": ["nuclei in airspace or fluid", "septal alignment destroyed", "papillary core filled", "artificial uniform crowding"], "mask_guarantees": ["tissue labels unchanged", "complete nuclei only inside the compiled zone"], "render_only_claims": ["lepidic identity", "micropapillary identity", "immune activation state"]},
-  "evidence_citations": ["https://tumourclassification.iarc.who.int/"], "counterexamples": ["raising cellularity by populating alveolar airspace", "removing a continuous lepidic septal row", "using cartilage as generic stroma"]
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "layout_programs": [
+      "single",
+      "pair",
+      "small_cluster",
+      "boundary_aligned",
+      "localized_density_gradient"
+    ],
+    "core_policy": "bounded_lung_component_zone_with_local_composition",
+    "halo_policy": "no_change_outside_compiled_population_extent",
+    "halo_distance_px": [
+      0,
+      48
+    ],
+    "cluster_size_range": [
+      1,
+      4
+    ],
+    "cellularity_depletion_contract": {
+      "program_id": "localized-density-gradient-v1",
+      "resolution_mode": "density_field",
+      "allowed_anchor_types": [
+        "interface"
+      ],
+      "allowed_neighbor_labels": [
+        "Stroma",
+        "Necrosis",
+        "Immune infiltrate"
+      ],
+      "core_width_cell_diameters": 1.25,
+      "transition_width_cell_diameters": 6,
+      "outer_reference_width_cell_diameters": 2,
+      "core_removal_weight": 1,
+      "transition_removal_weight": 0.45,
+      "core_target_removal_fraction": 0.55,
+      "transition_start_removal_fraction": 0.42,
+      "transition_end_removal_fraction": 0.06,
+      "transition_subband_count": 6,
+      "minimum_core_residual_fraction": 0.4,
+      "minimum_transition_residual_fraction": 0.5,
+      "minimum_core_removals": 1,
+      "minimum_transition_removals": 1,
+      "maximum_new_gap_cell_diameters": 3,
+      "minimum_outer_reference_instances": 3,
+      "minimum_field_area_cell_diameter_squares": 130
+    },
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_population_density"
+    ],
+    "layout_program_by_primitive": {
+      "cell-type-abundance-increase-v1": "small_cluster",
+      "cell-type-abundance-decrease-v1": "localized_density_gradient",
+      "cellularity-increase-v1": "single",
+      "cellularity-decrease-v1": "localized_density_gradient"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "lung.joint.local_population_host_compatibility",
+      "lung.joint.airspace_airway_core_preservation"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "cell_count_extent",
+    "tissue_floor_applies": false,
+    "cell_only_target_fraction": 1,
+    "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"
+  },
+  "joint_gate_ids": [
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "edited population follows the selected lung compartment",
+      "alveolar or airway architecture remains open and continuous"
+    ],
+    "veto_findings": [
+      "nuclei in airspace or fluid",
+      "septal alignment destroyed",
+      "papillary core filled",
+      "artificial uniform crowding"
+    ],
+    "mask_guarantees": [
+      "tissue labels unchanged",
+      "complete nuclei only inside the compiled zone"
+    ],
+    "render_only_claims": [
+      "lepidic identity",
+      "micropapillary identity",
+      "immune activation state"
+    ]
+  },
+  "evidence_citations": [
+    "https://tumourclassification.iarc.who.int/"
+  ],
+  "counterexamples": [
+    "raising cellularity by populating alveolar airspace",
+    "removing a continuous lepidic septal row",
+    "using cartilage as generic stroma"
+  ]
 }

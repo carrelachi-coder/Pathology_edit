@@ -22,41 +22,6 @@ ORGAN_CONTRACTS = {
     "skin": ("melanoma-v1", "puma-semantic-v1", "melanoma-cellvit-source-first-v1"),
 }
 
-DEFAULT_RESEARCH_MECHANISMS = {
-    "breast": {
-        "tumor_increase": "breast-cohesive-nst-front",
-        "tumor_decrease": "breast-cohesive-nst-front",
-        "stroma_increase": "breast-cohesive-nst-front",
-    },
-    "colorectal": {
-        "tumor_increase": "colorectal-gland-forming-front",
-        "tumor_decrease": "colorectal-gland-forming-front",
-        "stroma_increase": "colorectal-gland-forming-front",
-    },
-    "prostate": {
-        "tumor_increase": "prostate-pattern-5-growth",
-        "tumor_decrease": "prostate-pattern-5-growth",
-        "stroma_increase": "prostate-pattern-5-growth",
-    },
-    "lung": {
-        "tumor_increase": "lung-solid-squamous-growth",
-        "tumor_decrease": "lung-solid-squamous-growth",
-        "stroma_increase": "lung-solid-squamous-growth",
-    },
-    # The dispersed-front mechanism is cell-only and must never be silently
-    # assigned to a tissue-burden primitive.
-    "oral": {
-        "tumor_increase": "oral-scc-cohesive-nest-cord",
-        "tumor_decrease": "oral-scc-cohesive-nest-cord",
-        "stroma_increase": "oral-scc-cohesive-nest-cord",
-    },
-    "skin": {
-        "tumor_increase": "melanoma-cohesive-nest-sheet",
-        "tumor_decrease": "melanoma-cohesive-nest-sheet",
-        "stroma_increase": "melanoma-cohesive-nest-sheet",
-    },
-}
-
 OPTIONAL_ASSET_KEYS = (
     "source_nuclei_instances",
     "source_nuclei_instances_uri",
@@ -274,20 +239,27 @@ def _resolve_mechanism(
         return explicit, "explicit_visual_planner_decision"
     organ = str(row["organ"])
     primitive = str(row["g2_primitive"])
-    mechanism = DEFAULT_RESEARCH_MECHANISMS[organ][primitive]
-    if mechanism == "colorectal-gland-forming-front":
-        missing = []
-        if "gland_or_lumen_support" not in local_auxiliary:
-            missing.append("gland_or_lumen_support")
-        if local_instances is None:
-            missing.append("source_nuclei_instances")
-        if missing:
-            return (
-                "__abstain__",
-                "default colorectal gland mechanism lacks required assets: "
-                + ",".join(missing),
-            )
-    return mechanism, "primitive_compatible_research_default"
+    if organ == "colorectal" and primitive == "stroma_increase":
+        return (
+            "__abstain__",
+            "GLaS non-gland complement is not explicit stroma authority",
+        )
+    missing = []
+    if organ == "colorectal" and "gland_or_lumen_support" not in local_auxiliary:
+        missing.append("gland_or_lumen_support")
+    if missing:
+        return (
+            "__abstain__",
+            "visual mechanism selection lacks required assets: "
+            + ",".join(missing),
+        )
+    # A burden primitive is not a pathology mechanism. Breast, prostate, lung,
+    # melanoma and oral SCC each expose multiple visually distinct growth
+    # programs; assigning one from organ metadata would fabricate evidence.
+    return (
+        "__abstain__",
+        "multimodal visual mechanism selection is required; no organ default",
+    )
 
 
 def _sha256(path: Path) -> str:

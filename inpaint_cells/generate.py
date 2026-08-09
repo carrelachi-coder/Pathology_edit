@@ -1341,6 +1341,7 @@ def compute_patch_adaptive_priors(
     local_density_direct_min_area=20000,
     local_density_direct_min_count=10,
     dataset_name=None,
+    source_instance_authority=None,
 ):
     """Estimate count and fallback type priors from the unedited source patch.
 
@@ -1369,25 +1370,46 @@ def compute_patch_adaptive_priors(
 
     patch_area = int(reference_tissue.size)
     source_centers = []
-    for class_value in np.unique(reference_nuclei_raw):
-        raw_type = int(class_value)
-        if raw_type == 0:
-            continue
-        labeled, count = ndimage.label(
-            reference_nuclei_raw == class_value,
-            structure=np.ones((3, 3), dtype=np.uint8),
-        )
-        if count == 0:
-            continue
-        centers = ndimage.center_of_mass(
-            reference_nuclei_raw == class_value,
-            labeled,
-            range(1, count + 1),
-        )
-        for center_y, center_x in centers:
-            row = int(np.clip(round(center_y), 0, shape[0] - 1))
-            col = int(np.clip(round(center_x), 0, shape[1] - 1))
+    authority_audit = {
+        "policy": "legacy_semantic_connected_components",
+        "observation_quality": "semantic_connected_component",
+        "authority_sha256": None,
+    }
+    if source_instance_authority is not None:
+        for item in source_instance_authority.get("instances") or []:
+            raw_type = int(item["raw_class_id"])
+            row = int(np.clip(round(float(item["row"])), 0, shape[0] - 1))
+            col = int(np.clip(round(float(item["col"])), 0, shape[1] - 1))
             source_centers.append((raw_type, row, col))
+        authority_audit = {
+            "policy": "joint_scene_instance_authority",
+            "observation_quality": source_instance_authority.get(
+                "observation_quality"
+            ),
+            "authority_sha256": source_instance_authority.get(
+                "authority_sha256"
+            ),
+        }
+    else:
+        for class_value in np.unique(reference_nuclei_raw):
+            raw_type = int(class_value)
+            if raw_type == 0:
+                continue
+            labeled, count = ndimage.label(
+                reference_nuclei_raw == class_value,
+                structure=np.ones((3, 3), dtype=np.uint8),
+            )
+            if count == 0:
+                continue
+            centers = ndimage.center_of_mass(
+                reference_nuclei_raw == class_value,
+                labeled,
+                range(1, count + 1),
+            )
+            for center_y, center_x in centers:
+                row = int(np.clip(round(center_y), 0, shape[0] - 1))
+                col = int(np.clip(round(center_x), 0, shape[1] - 1))
+                source_centers.append((raw_type, row, col))
 
     density_scales = {}
     type_proportions = {}
@@ -1550,11 +1572,12 @@ def compute_patch_adaptive_priors(
         }
 
     audit = {
+        "instance_authority": authority_audit,
         "checkpoint_role": "spatial_placement_probability_only",
         "count_policy": COUNT_POLICY_NAME,
         "type_policy": "reliable patch-local quota else dataset tissue prior",
         "nucleus_count_rule": (
-            "class_component_centroid_in_pre_edit_source_tissue_family"
+            "instance_authority_centroid_in_pre_edit_source_tissue_family"
         ),
         "density_exclusion_region_role": (
             "cell_erasure_only_not_source_density_estimation"
@@ -5177,6 +5200,15 @@ def run_single(args, model, library, config, density_scales, device):
     edit_mask |= erasure_mask
     input_nuclei[erasure_mask] = 0
 
+    source_instance_authority = None
+    if args.source_instance_authority:
+        from inpaint_cells.instance_authority import load_instance_authority
+
+        source_instance_authority = load_instance_authority(
+            args.source_instance_authority,
+            expected_shape=tissue.shape,
+            source_nuclei_raw=population_reference_nuclei_raw,
+        )
     calibrated_scales, type_proportions, prior_audit = compute_patch_adaptive_priors(
         reference_nuclei_raw=population_reference_nuclei_raw,
         reference_tissue=reference_tissue,
@@ -5188,6 +5220,7 @@ def run_single(args, model, library, config, density_scales, device):
         local_density_direct_min_area=args.local_density_direct_min_area,
         local_density_direct_min_count=args.local_density_direct_min_count,
         dataset_name=args.dataset,
+        source_instance_authority=source_instance_authority,
     )
     type_prior_weights = confidence_adaptive_type_prior_weights(
         prior_audit,
@@ -5722,6 +5755,15 @@ def build_parser():
             "Defaults to --input-nuclei when omitted."
         ),
     )
+    parser.add_argument(
+        "--source-instance-authority",
+        default=None,
+        help=(
+            "Optional digest-bound source nucleus instance ledger. Joint execution "
+            "uses this as the only abundance authority instead of recounting touching "
+            "semantic components."
+        ),
+    )
     parser.add_argument("--edit-region", default=None, help="Single edit region mask PNG")
     parser.add_argument(
         "--population-region",
@@ -6150,6 +6192,11 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
+    if args.test_dir and args.source_instance_authority:
+        raise ValueError(
+            "--source-instance-authority is single-case provenance and cannot be "
+            "reused across --test-dir; provide one authority ledger per sample"
+        )
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)

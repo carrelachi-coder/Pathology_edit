@@ -178,7 +178,7 @@ class HeuristicJointPlanner:
             )
             baseline_mode = "structured_add"
             quota_role = "explicit_increment"
-            layout = mechanism.cell_program.layout_programs[0]
+            layout = mechanism.cell_program.layout_for(case.primitive_id)
             actions = ("retain", "add")
             classes = bundle.primitive.target_cell_classes
             core_zone = "selected_interface_receiving_side"
@@ -207,12 +207,7 @@ class HeuristicJointPlanner:
                 actions = ("retain", "remove_whole")
                 classes = bundle.primitive.target_cell_classes
             else:
-                layout = (
-                    "population_replacement"
-                    if "population_replacement"
-                    in mechanism.cell_program.layout_programs
-                    else mechanism.cell_program.layout_programs[0]
-                )
+                layout = mechanism.cell_program.layout_for(case.primitive_id)
                 actions = mechanism.cell_program.actions
                 # The primitive owns the direction-specific target population
                 # (for example necrosis appearance 2/4 versus resolution 1).
@@ -231,7 +226,7 @@ class HeuristicJointPlanner:
         plan = JointEditPlan(
             schema_version=JOINT_PLAN_SCHEMA_VERSION,
             case_id=case.case_id,
-            normalized_intent=case.instruction,
+            normalized_intent=case.compiled_normalized_intent(),
             selected_mechanism_id=mechanism.mechanism_id,
             supporting_observations=(
                 "skill contract selected from explicit four-axis case metadata",
@@ -443,15 +438,11 @@ class HeuristicJointPlanner:
                 )
             layout = "localized_density_gradient"
         else:
-            layout = (
-                "single"
-                if "single" in bundle.mechanism.cell_program.layout_programs
-                else bundle.mechanism.cell_program.layout_programs[0]
-            )
+            layout = bundle.mechanism.cell_program.layout_for(case.primitive_id)
         plan = JointEditPlan(
             schema_version=JOINT_PLAN_SCHEMA_VERSION,
             case_id=case.case_id,
-            normalized_intent=case.instruction,
+            normalized_intent=case.compiled_normalized_intent(),
             selected_mechanism_id=bundle.mechanism.mechanism_id,
             supporting_observations=(
                 "explicit component population zone selected",

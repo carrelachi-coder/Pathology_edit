@@ -1,0 +1,4 @@
+interface:
+  display_name: "BCSS joint profile"
+  short_description: "Compose fine-label-aware BCSS joint edits"
+  default_prompt: "Use $bcss-semantic-v1-joint to preserve BCSS fine-label identity in a tissue-cell edit."

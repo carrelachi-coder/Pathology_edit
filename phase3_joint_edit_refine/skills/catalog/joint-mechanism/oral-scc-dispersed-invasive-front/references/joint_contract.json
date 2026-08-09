@@ -1,7 +1,9 @@
 {
   "mechanism_id": "oral-scc-dispersed-invasive-front",
   "pathology_domain_id": "oral-squamous-cell-carcinoma-v1",
-  "supported_primitives": ["neoplastic-cell-infiltration-increase-v1"],
+  "supported_primitives": [
+    "neoplastic-cell-infiltration-increase-v1"
+  ],
   "version": "1.0.0-draft",
   "review_status": "draft",
   "summary": "Represent a verified dispersed oral-SCC front using complete single cells, small clusters or short cords without connecting satellites into bulk tumor.",
@@ -20,7 +22,9 @@
   },
   "representability_contract": {
     "status": "conditionally_supported",
-    "required_cell_classes": [1],
+    "required_cell_classes": [
+      1
+    ],
     "required_auxiliary_structures": [],
     "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"
@@ -29,11 +33,19 @@
     "mode": "preserve_or_minimally_displace_tissue_for_dispersed_front",
     "primitive_label_contracts": {
       "neoplastic-cell-infiltration-increase-v1": {
-        "source_labels": ["Stroma", "Other tissue"],
-        "target_labels": ["Stroma", "Other tissue"]
+        "source_labels": [
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Stroma",
+          "Other tissue"
+        ]
       }
     },
-    "allowed_tools": ["preserve_tissue"],
+    "allowed_tools": [
+      "preserve_tissue"
+    ],
     "required_checker_ids": [
       "tissue_gate_binding",
       "native_structure_preserved"
@@ -77,7 +89,10 @@
       "nuclei_tissue_containment",
       "cell_quota",
       "cell_spatial_distribution"
-    ]
+    ],
+    "layout_program_by_primitive": {
+      "neoplastic-cell-infiltration-increase-v1": "short_cord"
+    }
   },
   "coupling_contract": {
     "compatibility_rule_ids": [
@@ -87,7 +102,7 @@
     "allow_neoplastic_in_non_tumor_tissue": true,
     "joint_area_mode": "joint_footprint",
     "tissue_floor_applies": false,
-    "cell_only_target_fraction": 0.0,
+    "cell_only_target_fraction": 0,
     "render_support_policy_id": "joint_change_plus_bounded_context_v1"
   },
   "joint_gate_ids": [

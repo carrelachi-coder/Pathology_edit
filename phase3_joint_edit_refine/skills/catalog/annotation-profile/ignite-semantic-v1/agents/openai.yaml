@@ -1,0 +1,4 @@
+interface:
+  display_name: "IGNITE joint profile"
+  short_description: "Protect native lung structures during joint edits"
+  default_prompt: "Use $ignite-semantic-v1-joint to resolve IGNITE fine structures before a tissue-cell edit."

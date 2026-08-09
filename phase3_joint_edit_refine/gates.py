@@ -10,6 +10,10 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
+from inpaint_cells.instance_authority import (
+    binary_mask_sha256,
+    build_instance_authority,
+)
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import GateReport
 
@@ -22,7 +26,7 @@ from .models import (
     JointGateCheck,
     JointGateReport,
 )
-from .nuclei import iter_instances
+from .nuclei import iter_instances, to_raw_nuclei_mask
 from .scene import JointSceneAnalysis
 from .seam import (
     anchor_coverage_fraction,
@@ -34,6 +38,7 @@ from .skills.repository import JointSkillBundle
 
 BASE_REQUIRED_CHECKS = (
     "primitive_semantics",
+    "instance_authority_binding",
     "executable_contract_binding",
     "structural_hierarchy_binding",
     "tool_program_binding",
@@ -71,6 +76,7 @@ class JointGateRegistry:
     def __init__(self) -> None:
         self._checks: dict[str, Callable[[JointGateContext], JointGateCheck]] = {
             "primitive_semantics": _primitive_semantics,
+            "instance_authority_binding": _instance_authority_binding,
             "executable_contract_binding": _executable_contract_binding,
             "structural_hierarchy_binding": _structural_hierarchy_binding,
             "tool_program_binding": _tool_program_binding,
@@ -99,6 +105,9 @@ class JointGateRegistry:
             "interface_seam_continuity": _interface_seam_continuity,
             "mechanism_realization": _mechanism_realization,
             "necrosis_cell_turnover": _necrosis_cell_turnover,
+            "colorectal_gland_unit_coupling": (
+                _colorectal_gland_unit_coupling
+            ),
         }
         missing = sorted(set(BASE_REQUIRED_CHECKS) - set(self._checks))
         if missing:
@@ -167,6 +176,56 @@ def _primitive_semantics(c):
             "baseline_ok": baseline_ok,
             "quota_ok": quota_ok,
             "budget_ok": budget_ok,
+        },
+    )
+
+
+def _instance_authority_binding(c):
+    expected = build_instance_authority(
+        shape=c.source_nuclei.shape,
+        source_nuclei_raw=to_raw_nuclei_mask(c.source_nuclei),
+        observation_quality=c.scene.cells.observation_quality,
+        instances=(
+            {
+                "instance_id": item.instance_id,
+                "raw_class_id": 100 + int(item.class_id),
+                "row": float(item.centroid_xy[1]),
+                "col": float(item.centroid_xy[0]),
+                "tissue_fine_id": int(item.tissue_fine_id),
+                "completeness_status": item.completeness_status,
+                "source": item.source,
+                "area_px": item.area_px,
+                "bbox_xyxy": item.bbox_xyxy,
+                "footprint_sha256": binary_mask_sha256(
+                    c.scene.instance_masks[item.instance_id]
+                ),
+            }
+            for item in c.scene.cells.instances
+        ),
+    )
+    traced = c.candidate.tool_trace.get("source_instance_authority")
+    passed = bool(
+        isinstance(traced, dict)
+        and traced.get("authority_sha256") == expected["authority_sha256"]
+        and int(traced.get("instance_count", -1))
+        == len(expected["instances"])
+    )
+    return _result(
+        "instance_authority_binding",
+        passed,
+        (
+            "scene, density, packing and gates share one source instance authority"
+            if passed
+            else "cell execution used a different source instance authority"
+        ),
+        metrics={
+            "observation_quality": c.scene.cells.observation_quality,
+            "expected_authority_sha256": expected["authority_sha256"],
+            "expected_instance_count": len(expected["instances"]),
+            "mature_executor": (
+                c.candidate.tool_trace.get("mature_probnet_contract") is True
+            ),
+            "traced_authority": traced,
         },
     )
 
@@ -364,6 +423,114 @@ def _native_structure_preserved(c):
             "required": sorted(required),
             "missing": missing,
             "generation_support_overlap_pixels": violations,
+        },
+    )
+
+
+def _colorectal_gland_unit_coupling(c):
+    """Bind a CRC burden edit to one preserved malignant gland unit.
+
+    The semantic GLaS complement is not treated as histologically pure stroma.
+    This checker proves only what the available masks can prove: the edit grew
+    from or regressed into a selected malignant gland component, no enclosed
+    native lumen entered generation support, and the direction-specific cell
+    program was actually compiled.  Gland differentiation itself remains a
+    post-generation visual claim.
+    """
+
+    if c.plan.selected_mechanism_id != "colorectal-gland-forming-front":
+        return _result(
+            "colorectal_gland_unit_coupling",
+            True,
+            "colorectal gland-unit coupling is not applicable",
+            metrics={"applicable": False},
+        )
+    selected = tuple(c.executable_contract.selected_structural_unit_ids)
+    affected = tuple(c.executable_contract.affected_structural_unit_ids)
+    change = np.asarray(c.candidate.tissue_change, dtype=bool)
+    support = np.asarray(c.candidate.generation_support, dtype=bool)
+    lumen = c.scene.auxiliary_structure_masks.get("gland_or_lumen_support")
+    expected_layout = c.bundle.mechanism.cell_program.layout_for(
+        c.case.primitive_id
+    )
+    layout_ok = bool(
+        c.plan.cell_plan.layout_program_id == expected_layout
+        and c.plan.cell_plan.mechanism_program_id == expected_layout
+    )
+    unit_contact = {}
+    changed_fractions = {}
+    for unit_id in selected:
+        unit = np.asarray(c.scene.structural_unit_masks[unit_id], dtype=bool)
+        unit_contact[unit_id] = int(
+            np.count_nonzero(change & ndimage.binary_dilation(unit, iterations=1))
+        )
+        changed_fractions[unit_id] = float(
+            np.count_nonzero(change & unit) / max(1, np.count_nonzero(unit))
+        )
+    has_bound_unit = bool(
+        selected
+        and affected
+        and set(affected).issubset(selected)
+        and any(value > 0 for value in unit_contact.values())
+    )
+    # v1 represents boundary extension/regression of an existing unit.  It
+    # cannot claim de-novo gland formation or complete gland disappearance.
+    partial_regression_ok = bool(
+        c.case.primitive_id != "tumor-burden-decrease-v1"
+        or all(value <= 0.55 for value in changed_fractions.values())
+    )
+    lumen_overlap = (
+        int(np.count_nonzero(support & np.asarray(lumen, dtype=bool)))
+        if lumen is not None
+        else -1
+    )
+    lumen_ok = lumen is not None and lumen_overlap == 0
+    if c.case.primitive_id == "tumor-burden-increase-v1":
+        mature = c.candidate.tool_trace.get("mature_probnet_contract") is True
+        modifier_ok = bool(
+            (
+                mature
+                and c.candidate.tool_trace.get("mechanism_modifier_certified")
+                is True
+            )
+            or (
+                not mature
+                and c.candidate.tool_trace.get("placements")
+                and c.candidate.tool_trace.get("layout_program_id")
+                == "boundary_aligned"
+            )
+        )
+    else:
+        modifier_ok = bool(
+            c.candidate.tool_trace.get("mature_probnet_contract") is True
+            and expected_layout == "population_replacement"
+        ) or bool(c.candidate.tool_trace.get("placements"))
+    passed = bool(
+        has_bound_unit
+        and partial_regression_ok
+        and lumen_ok
+        and layout_ok
+        and modifier_ok
+    )
+    return _result(
+        "colorectal_gland_unit_coupling",
+        passed,
+        (
+            "CRC tissue and nuclei changes realize one lumen-preserving malignant gland-unit edit"
+            if passed
+            else "CRC edit is detached from a gland unit, erases too much of it, touches lumen, or lacks its typed cell realization"
+        ),
+        metrics={
+            "applicable": True,
+            "selected_structural_unit_ids": list(selected),
+            "affected_structural_unit_ids": list(affected),
+            "change_contact_pixels_by_unit": unit_contact,
+            "changed_fraction_by_unit": changed_fractions,
+            "maximum_partial_regression_fraction": 0.55,
+            "generation_support_lumen_overlap_pixels": lumen_overlap,
+            "expected_layout_program": expected_layout,
+            "layout_bound": layout_ok,
+            "mechanism_modifier_realized": modifier_ok,
         },
     )
 
@@ -1369,7 +1536,18 @@ def _mechanism_realization(c):
     allowed = c.bundle.mechanism.cell_program.layout_programs
     cluster_min, cluster_max = c.bundle.mechanism.cell_program.cluster_size_range
     declared_sizes = [int(item.get("cluster_size", 1)) for item in placements]
-    sizes_ok = all(cluster_min <= value <= cluster_max for value in declared_sizes)
+    if layout == "pair":
+        sizes_ok = all(value == 2 for value in declared_sizes)
+    elif layout in {"small_cluster", "short_cord"}:
+        sizes_ok = all(
+            cluster_min <= value <= cluster_max for value in declared_sizes
+        )
+    else:
+        # Boundary-aligned and dense population programs are continuous fields,
+        # not independently interpreted clusters. Their cardinality is owned by
+        # the seam/density gates; batching leftovers must not become fake
+        # one-cell biological groups.
+        sizes_ok = True
     mature_baseline_only = (
         c.candidate.tool_trace.get("mature_probnet_contract") is True
         and layout == "population_replacement"

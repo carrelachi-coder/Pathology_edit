@@ -1,0 +1,7 @@
+{
+  "counterexamples": [
+    "using ORCA background fragments as tumor cell seeds",
+    "placing cells in a keratin center",
+    "relabeling Other tissue as stroma by assumption"
+  ]
+}

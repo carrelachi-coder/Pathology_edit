@@ -1,0 +1,4 @@
+interface:
+  display_name: "GLaS joint profile"
+  short_description: "Apply GLaS tissue and cell execution constraints"
+  default_prompt: "Use $glas-gland-v1-joint to compose a GLaS joint edit without treating non-gland complement as pure stroma."

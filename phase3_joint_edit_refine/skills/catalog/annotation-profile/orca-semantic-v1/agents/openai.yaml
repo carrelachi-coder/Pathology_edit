@@ -1,0 +1,4 @@
+interface:
+  display_name: "ORCA joint profile"
+  short_description: "Protect ORCA fragments and coarse label semantics"
+  default_prompt: "Use $orca-semantic-v1-joint to compose a joint edit while preserving non-tissue fragments and unresolved Other tissue semantics."

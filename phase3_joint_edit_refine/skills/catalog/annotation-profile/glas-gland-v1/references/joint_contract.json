@@ -2,15 +2,34 @@
   "annotation_profile_id": "glas-gland-v1",
   "version": "1.1.0-draft",
   "review_status": "draft",
-  "prohibited_fine_ids": [0],
-  "prohibit_cell_placement_fine_ids": [0],
-  "prohibit_generation_support_fine_ids": [0],
-  "required_provenance_fields": ["preprocessing_revision", "original_label_map_digest", "gland_fine_label_signature", "auxiliary_structure_provenance"],
+  "prohibited_fine_ids": [
+    0
+  ],
+  "prohibit_cell_placement_fine_ids": [
+    0
+  ],
+  "prohibit_generation_support_fine_ids": [
+    0
+  ],
+  "required_provenance_fields": [
+    "preprocessing_revision",
+    "original_label_map_digest",
+    "gland_fine_label_signature",
+    "auxiliary_structure_provenance"
+  ],
   "unavailable_mechanisms": [
     "breast-intratumoral-necrosis-turnover",
     "lung-intratumoral-necrosis-turnover",
     "melanoma-intratumoral-necrosis-turnover"
   ],
-  "conditional_mechanisms": ["colorectal-tumor-budding-front"],
-  "required_checker_ids": ["profile_provenance", "prohibited_cell_region", "prohibited_generation_support", "native_structure_preserved"]
+  "conditional_mechanisms": [
+    "colorectal-tumor-budding-front"
+  ],
+  "required_checker_ids": [
+    "profile_provenance",
+    "prohibited_cell_region",
+    "prohibited_generation_support",
+    "native_structure_preserved"
+  ],
+  "supports_explicit_stroma": false
 }

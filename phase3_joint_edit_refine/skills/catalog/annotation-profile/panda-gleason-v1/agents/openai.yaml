@@ -1,0 +1,4 @@
+interface:
+  display_name: "PANDA joint profile"
+  short_description: "Bind joint edits to native Gleason patterns"
+  default_prompt: "Use $panda-gleason-v1-joint to preserve exact Gleason and lumen identity in a joint edit."

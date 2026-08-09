@@ -7,6 +7,8 @@ description: Plan and audit joint tissue and nuclei edits at a gland-forming col
 
 1. Read `references/joint_contract.json` before planning.
 2. Trace the complete gland boundary and protected lumen/crypt units.
-3. Couple shallow broad tissue displacement with boundary-aligned neoplastic nuclei.
-4. Exclude mucin, dirty necrosis, lumen, muscle, nerve, vessel, and background.
-5. Reject any joint candidate that changes tissue or cells without preserving gland continuity.
+3. For tumor increase, extend an existing malignant gland unit through a broad legal interface and require a boundary-aligned neoplastic seam.
+4. For tumor decrease, regress only a bounded part of an existing gland unit and regenerate the exposed non-tumor population; do not erase the whole gland.
+5. Exclude mucin, dirty necrosis, lumen, normal crypt, muscle, nerve, vessel, and background.
+6. Do not use this mechanism for GLaS `stroma increase`: its non-gland complement is not explicit stromal authority.
+7. Reject de-novo remote glands and any joint candidate that breaks gland/lumen continuity.

@@ -16,9 +16,13 @@ from .mature_probnet_adapter import (
     MatureProbNetCellExecutor,
     MatureProbNetConfig,
 )
-from .models import JointCaseContext
 from .planner import HeuristicJointPlanner
 from .probnet_adapter import FrozenProbNetSpatialRanker
+from .semantic_parser import (
+    OpenAISemanticParser,
+    RuleBasedSemanticParser,
+    bind_semantic_intent,
+)
 from .skills.repository import JointSkillRepository
 from .tissue_planner import (
     MultiInterfaceResearchTissuePlanner,
@@ -39,9 +43,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--production", action="store_true", help="Require internally reviewed skills; draft catalog will fail closed")
     parser.add_argument("--agent-mode", choices=("offline", "api"), default="offline")
+    parser.add_argument(
+        "--semantic-parser",
+        choices=("auto", "rule-based", "api"),
+        default="auto",
+        help=(
+            "Parse the simple user instruction before visual mechanism planning; "
+            "auto uses the API parser in api mode and the deterministic parser offline"
+        ),
+    )
     parser.add_argument("--model", default="gpt-5.6-terra")
+    parser.add_argument("--semantic-model", default="gpt-5.6-luna")
     parser.add_argument("--escalation-model", default="gpt-5.6-sol")
     parser.add_argument("--reasoning-effort", default="medium")
+    parser.add_argument("--semantic-reasoning-effort", default="low")
     parser.add_argument("--api-base-url", default="https://api.openai.com/v1")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument(
@@ -97,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(f"case IDs not present in manifest: {sorted(missing)}")
     client = None
     escalation_client = None
+    semantic_client = None
     if args.agent_mode == "api":
         client = OpenAIResponsesJSONClient(
             model=args.model,
@@ -110,10 +126,24 @@ def main(argv: list[str] | None = None) -> int:
             api_base_url=args.api_base_url,
             api_key_env=args.api_key_env,
         )
+        semantic_client = OpenAIResponsesJSONClient(
+            model=args.semantic_model,
+            reasoning_effort=args.semantic_reasoning_effort,
+            api_base_url=args.api_base_url,
+            api_key_env=args.api_key_env,
+        )
     repository = JointSkillRepository()
+    if args.semantic_parser == "api" and client is None:
+        raise ValueError("--semantic-parser api requires --agent-mode api")
+    semantic_parser = (
+        OpenAISemanticParser(semantic_client)
+        if args.semantic_parser == "api"
+        or (args.semantic_parser == "auto" and client is not None)
+        else RuleBasedSemanticParser()
+    )
     summaries = []
     for raw in records:
-        case = JointCaseContext.from_mapping(raw)
+        case, semantic_intent = bind_semantic_intent(raw, semantic_parser)
         population = repository.cell_population_profiles[
             case.cell_population_profile_id
         ]
@@ -174,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "case_id": case.case_id,
                 "status": result.status,
+                "semantic_intent": semantic_intent.to_metadata(),
                 "selected_candidate_id": result.selected_candidate_id,
                 "abstain_reasons": list(result.abstain_reasons),
                 "artifact_paths": result.artifact_paths,

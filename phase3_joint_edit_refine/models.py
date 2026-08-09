@@ -233,6 +233,33 @@ class JointCaseContext:
     auxiliary_structure_uris: dict[str, str] = field(default_factory=dict)
     pixel_size_um: float | None = None
     cell_count_extent_budget: CellCountExtentBudget | None = None
+    semantic_intent: dict[str, Any] = field(default_factory=dict)
+
+    def compiled_normalized_intent(self) -> str:
+        """Return the parser-owned intent used by all downstream planners.
+
+        The visual Planner is allowed to select a pathology mechanism, but it
+        must never reinterpret the user's requested primitive.  Older research
+        fixtures without a semantic-intent ledger retain their literal
+        instruction for backward-compatible, non-production use.
+        """
+
+        if not self.semantic_intent:
+            return self.instruction
+        direction = self.semantic_intent.get("direction")
+        subject = self.semantic_intent.get("subject")
+        if not isinstance(direction, str) or not direction.strip():
+            raise JointContractError("semantic intent direction is missing")
+        if not isinstance(subject, str) or not subject.strip():
+            raise JointContractError("semantic intent subject is missing")
+        parts = [direction.strip(), subject.strip()]
+        cell_class = self.semantic_intent.get("explicit_cell_class")
+        location = self.semantic_intent.get("explicit_location")
+        if isinstance(cell_class, str) and cell_class.strip():
+            parts.append(f"cell_class={cell_class.strip()}")
+        if isinstance(location, str) and location.strip():
+            parts.append(f"location={location.strip()}")
+        return "; ".join(parts)
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> JointCaseContext:
@@ -338,9 +365,23 @@ class JointCaseContext:
             auxiliary_structure_uris=auxiliary,
             pixel_size_um=float(pixel_size) if pixel_size is not None else None,
             cell_count_extent_budget=cell_budget,
+            semantic_intent=(
+                dict(payload.get("semantic_intent", {}))
+                if isinstance(payload.get("semantic_intent", {}), Mapping)
+                else {}
+            ),
         )
 
     def validate_local_inputs(self) -> None:
+        if self.semantic_intent and (
+            self.semantic_intent.get("schema_version")
+            != "joint-semantic-intent-v1"
+            or self.semantic_intent.get("primitive_id") != self.primitive_id
+            or self.semantic_intent.get("instruction") != self.instruction
+        ):
+            raise JointContractError(
+                "semantic intent is not bound to this instruction and primitive"
+            )
         paths = {
             "source_image_uri": self.source_image_uri,
             "source_tissue_mask_uri": self.source_tissue_mask_uri,

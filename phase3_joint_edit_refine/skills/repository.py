@@ -74,6 +74,9 @@ class JointSkillBundle:
                 self.primitive.minimum_source_clearance_instances
             ),
             "mechanism_id": self.mechanism.mechanism_id,
+            "compiled_layout_program": self.mechanism.cell_program.layout_for(
+                self.primitive.primitive_id
+            ),
             "mechanism_topology_fallback_by_primitive": {
                 primitive_id: {
                     "geometry_mode": contract.geometry_mode,
@@ -95,6 +98,9 @@ class JointSkillBundle:
                 )
             },
             "annotation_profile_id": self.annotation_profile.annotation_profile_id,
+            "annotation_supports_explicit_stroma": (
+                self.annotation_profile.supports_explicit_stroma
+            ),
             "cell_observation_profile_id": self.cell_observation_profile.profile_id,
             "cell_population_profile_id": self.cell_population_profile.profile_id,
             "support_status": self.support_status,
@@ -119,7 +125,54 @@ class JointSkillRepository:
         self.cell_observation_profiles = self._load_cell_observation_profiles()
         self.cell_population_profiles = self._load_cell_population_profiles()
         self.execution_scope = self._load_execution_scope()
+        self.mechanism_resource_status = self._validate_skill_packages()
         self._validate_execution_scope()
+
+    def _validate_skill_packages(self) -> dict[str, dict]:
+        """Validate progressive-disclosure packages and calibration state.
+
+        Runtime JSON is executable authority, while SKILL.md routes Planner
+        retrieval and the evidence/statistics files disclose why a mechanism
+        is or is not production eligible.  Missing resources fail startup;
+        draft or uncalibrated resources remain usable only in research mode.
+        """
+
+        status: dict[str, dict] = {}
+        specifications = (
+            ("joint-mechanism", ("joint_contract.json", "evidence.json", "counterexamples.json", "statistics.json")),
+            ("edit-primitive", ("primitive_contract.json",)),
+            ("annotation-profile", ("joint_contract.json",)),
+        )
+        for kind, references in specifications:
+            for directory in sorted((self.root / kind).glob("*")):
+                if not directory.is_dir():
+                    continue
+                required_paths = [
+                    directory / "SKILL.md",
+                    directory / "agents" / "openai.yaml",
+                    *[directory / "references" / name for name in references],
+                ]
+                missing = [str(path) for path in required_paths if not path.is_file()]
+                if missing:
+                    raise JointContractError(
+                        f"incomplete {kind} skill package {directory.name}: "
+                        + ", ".join(missing)
+                    )
+                if kind == "joint-mechanism":
+                    statistics = _read_json(directory / "references" / "statistics.json")
+                    evidence = _read_json(directory / "references" / "evidence.json")
+                    status[directory.name] = {
+                        "statistics_status": str(statistics.get("status", "unknown")),
+                        "production_allowed": bool(
+                            statistics.get("production_allowed", False)
+                        ),
+                        "dataset_statistics_status": str(
+                            (evidence.get("dataset_statistics") or {}).get(
+                                "status", "unknown"
+                            )
+                        ),
+                    }
+        return status
 
     def _load_execution_scope(self) -> dict:
         payload = _read_json(self.root / "execution-scope-v1.json")
@@ -334,6 +387,14 @@ class JointSkillRepository:
             raise JointContractError("joint mechanism does not belong to pathology domain")
         if case.primitive_id not in mechanism.supported_primitives:
             raise JointContractError("joint mechanism does not support requested primitive")
+        if (
+            case.primitive_id == "stroma-increase-v1"
+            and not annotation.supports_explicit_stroma
+        ):
+            raise JointContractError(
+                "annotation profile has no explicit stromal authority; a non-gland "
+                "complement or Other tissue label cannot authorize stroma increase"
+            )
         if primitive_contract.scope == "tissue_and_cell" and case.joint_area_budget is None:
             raise JointContractError("tissue primitive requires joint_area_budget")
         if primitive_contract.scope == "cell_only" and case.cell_count_extent_budget is None:
@@ -389,6 +450,15 @@ class JointSkillRepository:
             or annotation.review_status != "internally_reviewed"
         ):
             raise JointContractError("production joint execution requires internally reviewed skills")
+        resource_status = self.mechanism_resource_status.get(mechanism_id, {})
+        if production and (
+            resource_status.get("statistics_status") != "calibrated"
+            or resource_status.get("production_allowed") is not True
+        ):
+            raise JointContractError(
+                "production joint execution requires calibrated, explicitly "
+                "production-authorized mechanism statistics"
+            )
         required = set(mechanism.joint_gate_ids)
         required.update(primitive_contract.required_checker_ids)
         required.update(mechanism.tissue_program.required_checker_ids)
@@ -447,6 +517,13 @@ class JointSkillRepository:
                     try:
                         schema = self.annotation_schema(annotation.annotation_profile_id)
                         primitive_contract = self.primitives[primitive_id]
+                        if (
+                            primitive_id == "stroma-increase-v1"
+                            and not annotation.supports_explicit_stroma
+                        ):
+                            raise JointContractError(
+                                "profile has no explicit stromal authority"
+                            )
                         if primitive_contract.tissue_action == "required":
                             primitive = self.mask_skills.get(
                                 primitive_id, expected_kind="edit_primitive"
@@ -496,6 +573,9 @@ class JointSkillRepository:
                         "semantic_failures": semantic_failures,
                         "required_auxiliary_structures": list(mechanism.representability.required_auxiliary_structures),
                         "review_status": mechanism.review_status,
+                        "resource_status": self.mechanism_resource_status.get(
+                            mechanism.mechanism_id, {}
+                        ),
                     }
                 )
         return tuple(rows)

@@ -1,0 +1,9 @@
+{
+  "status": "uncalibrated",
+  "required": [
+    "source-local class counts",
+    "complete-instance size distribution",
+    "NND and density by tissue/interface zone"
+  ],
+  "production_allowed": false
+}

@@ -111,12 +111,15 @@ class CellToolProgramCompiler:
             raise JointContractError("Planner baseline mode is illegal for primitive")
         if cell.mechanism_quota_role not in primitive.allowed_quota_roles:
             raise JointContractError("Planner quota role is illegal for primitive")
+        expected_layout = bundle.mechanism.cell_program.layout_for(
+            case.primitive_id
+        )
         if (
-            cell.mechanism_program_id
-            not in bundle.mechanism.cell_program.layout_programs
+            cell.mechanism_program_id != expected_layout
+            or cell.layout_program_id != expected_layout
         ):
             raise JointContractError(
-                "Planner mechanism program is not exposed by skill"
+                "Planner cell program differs from the skill-compiled primitive layout"
             )
         if set(cell.allowed_cell_classes) - set(
             bundle.mechanism.cell_program.allowed_cell_classes

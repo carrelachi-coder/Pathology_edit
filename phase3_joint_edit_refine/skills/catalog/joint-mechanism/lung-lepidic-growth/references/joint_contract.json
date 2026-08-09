@@ -38,16 +38,30 @@
     "mode": "alveolar_septum_preserving_displacement",
     "primitive_label_contracts": {
       "tumor-burden-increase-v1": {
-        "source_labels": ["Stroma", "Other tissue"],
-        "target_labels": ["Tumor"]
+        "source_labels": [
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
       },
       "tumor-burden-decrease-v1": {
-        "source_labels": ["Tumor"],
-        "target_labels": ["Stroma", "Other tissue"]
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma",
+          "Other tissue"
+        ]
       },
       "stroma-increase-v1": {
-        "source_labels": ["Tumor"],
-        "target_labels": ["Stroma"]
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
       }
     },
     "allowed_tools": [
@@ -98,7 +112,12 @@
       "nuclei_tissue_containment",
       "cell_quota",
       "cell_spatial_distribution"
-    ]
+    ],
+    "layout_program_by_primitive": {
+      "tumor-burden-increase-v1": "boundary_aligned",
+      "tumor-burden-decrease-v1": "boundary_aligned",
+      "stroma-increase-v1": "boundary_aligned"
+    }
   },
   "coupling_contract": {
     "compatibility_rule_ids": [

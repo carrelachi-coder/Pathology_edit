@@ -39,7 +39,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v8"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v9"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -1194,13 +1194,12 @@ def _target_interface_population_density(
     schema: MaskProfileSchema,
     reference_area_p95: float,
 ) -> tuple[float, dict[int, float]]:
-    """Mirror the mature sampler's semantic source-density observation.
+    """Measure abundance from the same instance authority used by every joint tool.
 
-    The structural graph watershed-splits touching nuclei for shape integrity
-    and whole-instance authorization.  The mature abundance prior intentionally
-    counts one 8-connected semantic component per class.  Keep these rulers
-    separate: semantic components determine population abundance; complete
-    scene instances determine footprint and erasure legality.
+    Native instance JSON is authoritative when mounted; otherwise the scene's
+    deterministic watershed fallback is authoritative. Density, erasure,
+    packing and gates must never silently re-segment the semantic raster with a
+    different ruler.
     """
 
     target_ids = set(schema.resolve_fine_ids(target_label))
@@ -1209,31 +1208,13 @@ def _target_interface_population_density(
         raise JointContractError(
             "source tissue and nuclei must align for abundance estimation"
         )
-    nuclei = np.asarray(scene.source_nuclei)
     class_counts: dict[int, int] = {}
-    # Mature abundance uses every observed CellViT class.  Its later
-    # shape-support router redistributes classes disallowed for new placement
-    # without changing the total count.
-    for class_id in range(1, 6):
-        labeled, count = ndimage.label(
-            nuclei == int(class_id),
-            structure=np.ones((3, 3), dtype=np.uint8),
-        )
-        if count <= 0:
+    for item in scene.cells.instances:
+        row = int(np.clip(round(item.centroid_xy[1]), 0, tissue.shape[0] - 1))
+        col = int(np.clip(round(item.centroid_xy[0]), 0, tissue.shape[1] - 1))
+        if int(tissue[row, col]) not in target_ids:
             continue
-        centers = ndimage.center_of_mass(
-            nuclei == int(class_id),
-            labeled,
-            range(1, count + 1),
-        )
-        current = 0
-        for row, col in centers:
-            y = int(np.clip(round(float(row)), 0, tissue.shape[0] - 1))
-            x = int(np.clip(round(float(col)), 0, tissue.shape[1] - 1))
-            if int(tissue[y, x]) in target_ids:
-                current += 1
-        if current:
-            class_counts[int(class_id)] = current
+        class_counts[item.class_id] = class_counts.get(item.class_id, 0) + 1
     area = int(np.count_nonzero(np.isin(tissue, tuple(target_ids))))
     eligible_count = int(sum(class_counts.values()))
     if area > 0 and eligible_count:

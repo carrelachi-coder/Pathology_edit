@@ -195,6 +195,10 @@ class OpenAIJointAwareTissuePlanner:
                 if not isinstance(raw_plan, dict):
                     raise RefineContractError("joint tissue plan is missing")
                 plan = EditPlan.from_mapping(raw_plan)
+                if plan.normalized_intent != case.instruction:
+                    raise RefineContractError(
+                        "joint tissue Planner modified the parser-owned intent"
+                    )
                 validate_edit_plan(
                     plan,
                     case=case,

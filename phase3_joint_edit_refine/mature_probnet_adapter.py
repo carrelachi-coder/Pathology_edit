@@ -13,6 +13,12 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from inpaint_cells.instance_authority import (
+    binary_mask_sha256,
+    build_instance_authority,
+    write_instance_authority,
+)
+
 from .cell_layouts import CellLayoutResult, build_reference_shape_library
 from .executable_contract import ExecutableJointContract
 from .models import JointContractError
@@ -24,7 +30,7 @@ from .seam import (
     target_cell_class_for_tissue,
 )
 
-MATURE_EXECUTION_VERSION = "online-probnet-mature-v15"
+MATURE_EXECUTION_VERSION = "online-probnet-mature-v16"
 
 
 @dataclass(frozen=True)
@@ -103,6 +109,7 @@ class MatureProbNetCellExecutor:
         output_path: Path,
         prohibited_tissue_ids: tuple[int, ...],
         allowed_new_cell_classes: tuple[int, ...],
+        source_instance_authority_path: Path | None = None,
     ) -> list[str]:
         mature_device = (
             "cuda"
@@ -156,6 +163,10 @@ class MatureProbNetCellExecutor:
                 for value in allowed_new_cell_classes
             ],
         ]
+        if source_instance_authority_path is not None:
+            command.extend(
+                ["--source-instance-authority", str(source_instance_authority_path)]
+            )
         if prohibited_tissue_ids:
             command.extend(
                 ["--skip-tissue-ids", *[str(value) for value in prohibited_tissue_ids]]
@@ -215,6 +226,7 @@ class MatureProbNetCellExecutor:
         source_tissue_path = directory / "source_tissue.png"
         source_nuclei_path = directory / "source_nuclei.png"
         reference_nuclei_shapes_path = directory / "reference_nuclei_shapes.png"
+        source_instance_authority_path = directory / "source_instance_authority.json"
         generation_path = directory / "generation_region.png"
         population_path = directory / "population_target_region.png"
         placement_path = directory / "placement_region.png"
@@ -223,7 +235,31 @@ class MatureProbNetCellExecutor:
         packing_witness_path = directory / "packing_witness.json"
         _save_mask(target_tissue_path, target_tissue)
         _save_mask(source_tissue_path, source_tissue)
-        _save_mask(source_nuclei_path, to_raw_nuclei_mask(source_nuclei))
+        raw_source_nuclei = to_raw_nuclei_mask(source_nuclei)
+        _save_mask(source_nuclei_path, raw_source_nuclei)
+        authority = build_instance_authority(
+            shape=source_nuclei.shape,
+            source_nuclei_raw=raw_source_nuclei,
+            observation_quality=scene.cells.observation_quality,
+            instances=(
+                {
+                    "instance_id": item.instance_id,
+                    "raw_class_id": 100 + int(item.class_id),
+                    "row": float(item.centroid_xy[1]),
+                    "col": float(item.centroid_xy[0]),
+                    "tissue_fine_id": int(item.tissue_fine_id),
+                    "completeness_status": item.completeness_status,
+                    "source": item.source,
+                    "area_px": item.area_px,
+                    "bbox_xyxy": item.bbox_xyxy,
+                    "footprint_sha256": binary_mask_sha256(
+                        scene.instance_masks[item.instance_id]
+                    ),
+                }
+                for item in scene.cells.instances
+            ),
+        )
+        write_instance_authority(source_instance_authority_path, authority)
         # ``--edit-region`` is the mature CLI model-support domain and must
         # contain T_pop, every legal center in P, and every complete-instance
         # deletion pixel in E. T_pop is an abundance denominator, not a center
@@ -366,6 +402,7 @@ class MatureProbNetCellExecutor:
                 source_tissue_path=source_tissue_path,
                 source_nuclei_path=source_nuclei_path,
                 reference_nuclei_shapes_path=reference_nuclei_shapes_path,
+                source_instance_authority_path=source_instance_authority_path,
                 generation_region_path=generation_path,
                 population_region_path=population_path,
                 placement_region_path=placement_path,
@@ -445,6 +482,15 @@ class MatureProbNetCellExecutor:
                 if isinstance(item, dict)
             )
             placed = int(selected.get("placed", desired))
+            modifier_certificate = _mechanism_modifier_certificate(
+                mechanism_program_id=program.mechanism_program_id,
+                accepted_center_ledger=accepted_center_ledger,
+                mechanism_region=program.mechanism_region,
+                continuity_region=program.continuity_region,
+                required_nucleus_class=required_nucleus_class,
+                minimum_required_placements=minimum_required_placements,
+                sampling_audit_passed=audit.get("passed") is True,
+            )
             packing_witness_used = any(
                 bool(
                     (
@@ -511,8 +557,20 @@ class MatureProbNetCellExecutor:
                         "patch_adaptive_priors": selected.get(
                             "patch_adaptive_priors", {}
                         ),
+                        "source_instance_authority": {
+                            "schema_version": authority["schema_version"],
+                            "authority_sha256": authority["authority_sha256"],
+                            "observation_quality": authority[
+                                "observation_quality"
+                            ],
+                            "instance_count": len(authority["instances"]),
+                        },
                         "spatial_prior": selected.get("spatial_prior", {}),
                         "sampling_audit": audit,
+                        "mechanism_modifier_certified": bool(
+                            modifier_certificate["passed"]
+                        ),
+                        "mechanism_modifier_certificate": modifier_certificate,
                         "sampling_feedback": selected.get("sampling_feedback", {}),
                         "accepted_center_ledger": [
                             {"row": row, "col": col, "class_id": class_id}
@@ -696,6 +754,78 @@ def _mature_nucleus_area_medians(certificate: dict) -> dict[str, float]:
         for class_id, value in (
             certificate.get("class_reference_median_area_px") or {}
         ).items()
+    }
+
+
+def _mechanism_modifier_certificate(
+    *,
+    mechanism_program_id: str,
+    accepted_center_ledger: tuple[tuple[int, int, int], ...],
+    mechanism_region: np.ndarray,
+    continuity_region: np.ndarray,
+    required_nucleus_class: int | None,
+    minimum_required_placements: int,
+    sampling_audit_passed: bool,
+) -> dict:
+    """Prove what the mature sampler actually realized for typed programs.
+
+    ProbNet remains the ranker and mature density sampler.  This certificate
+    prevents a mechanism label from being accepted merely because it appeared
+    in a Planner response: every accepted center must satisfy the compiled
+    mechanism region and boundary programs must satisfy their typed seam quota.
+    """
+
+    mechanism = np.asarray(mechanism_region, dtype=bool)
+    continuity = np.asarray(continuity_region, dtype=bool)
+    inside_mechanism = 0
+    typed_continuity = 0
+    outside = []
+    for row, col, class_id in accepted_center_ledger:
+        if 0 <= row < mechanism.shape[0] and 0 <= col < mechanism.shape[1]:
+            if mechanism[row, col]:
+                inside_mechanism += 1
+            else:
+                outside.append([int(row), int(col), int(class_id)])
+            if (
+                continuity[row, col]
+                and (
+                    required_nucleus_class is None
+                    or int(class_id) == int(required_nucleus_class)
+                )
+            ):
+                typed_continuity += 1
+        else:
+            outside.append([int(row), int(col), int(class_id)])
+    if mechanism_program_id == "boundary_aligned":
+        passed = bool(
+            sampling_audit_passed
+            and not outside
+            and typed_continuity >= minimum_required_placements
+            and minimum_required_placements > 0
+        )
+        policy = "typed_centers_in_compiled_continuity_band"
+    elif mechanism_program_id == "dense_sheet":
+        passed = bool(
+            sampling_audit_passed
+            and accepted_center_ledger
+            and not outside
+        )
+        policy = "all_new_centers_in_compiled_dense_population_region"
+    else:
+        passed = False
+        policy = "baseline_or_non_mature_modifier"
+    return {
+        "schema_version": "mature-mechanism-modifier-certificate-v1",
+        "program_id": mechanism_program_id,
+        "policy": policy,
+        "passed": passed,
+        "accepted_center_count": len(accepted_center_ledger),
+        "inside_mechanism_count": inside_mechanism,
+        "outside_mechanism_centers": outside,
+        "typed_continuity_count": typed_continuity,
+        "minimum_typed_continuity_count": minimum_required_placements,
+        "required_nucleus_class": required_nucleus_class,
+        "sampling_audit_passed": bool(sampling_audit_passed),
     }
 
 
