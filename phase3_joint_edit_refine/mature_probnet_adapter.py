@@ -27,7 +27,7 @@ from .seam import (
     target_cell_class_for_tissue,
 )
 
-MATURE_EXECUTION_VERSION = "online-probnet-mature-v16"
+MATURE_EXECUTION_VERSION = "online-probnet-mature-v17"
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,11 @@ from phase3_mask_edit_refine.visualization import save_planner_panels
 from .audit import JointAuditWriter
 from .auxiliary import materialize_profile_auxiliaries
 from .budget import JointFeasibilitySolver
-from .cell_layouts import SpatialRanker, generate_cell_layouts
+from .cell_layouts import (
+    SpatialRanker,
+    build_reference_shape_library,
+    generate_cell_layouts,
+)
 from .cell_programs import CellToolProgramCompiler
 from .critic import JointCritic
 from .executable_contract import (
@@ -52,6 +56,7 @@ from .models import (
     JointWorkflowResult,
 )
 from .nuclei import load_nuclei_mask
+from .packing import certify_complete_footprint_packing
 from .planner import JointInterpretationOption, JointPlanner
 from .scene import build_joint_scene_analysis
 from .skills.repository import JointSkillBundle, JointSkillRepository
@@ -65,11 +70,10 @@ class JointWorkflowConfig:
     cell_layouts_per_tissue: int = 3
     critic_confidence_threshold: float = 0.70
     require_mature_probnet_in_production: bool = True
-    # One initial solve, one interface-expansion retry, and up to four bounded
-    # tissue--cell footprint feedback revisions. The mature executor can only
-    # reveal exact complete-instance spill after placement, so stopping at four
-    # total attempts can terminate one iteration before the fixed point.
-    maximum_tissue_planning_attempts: int = 6
+    # One initial solve plus two feedback-directed alternatives.  Each pass
+    # executes a fixed 12-candidate contract; a case that still lacks a safe
+    # tissue--cell pair abstains instead of creating an unbounded search tail.
+    maximum_tissue_planning_attempts: int = 3
     # Fully executed complete nuclei reveal the exact J spill only after the
     # tissue loop. Reserve separate bounded attempts so earlier interface/tool
     # retries cannot consume the only opportunity to correct that observation.
@@ -1195,15 +1199,25 @@ class JointPathologyEditWorkflow:
                         scene,
                         primitive_id=primitive_id,
                         semantic_intent=candidate_case.semantic_intent,
+                        host_tissue_labels=primitive_contract.host_tissue_labels,
                     )
                 semantic_metadata = dict(candidate_case.semantic_intent)
                 semantic_metadata.setdefault(
                     "derived_budget_policies", {}
                 )[primitive_id] = budget_metadata
+                candidate_provenance = dict(candidate_case.provenance)
+                selected_zone_id = budget_metadata.get(
+                    "selected_population_zone_id"
+                )
+                if selected_zone_id:
+                    candidate_provenance["joint_population_zone_id"] = (
+                        selected_zone_id
+                    )
                 candidate_case = replace(
                     candidate_case,
                     cell_count_extent_budget=budget,
                     semantic_intent=semantic_metadata,
+                    provenance=candidate_provenance,
                 )
             try:
                 candidate_case.validate_local_inputs()
@@ -2366,6 +2380,7 @@ def _derive_local_population_budget(
     *,
     primitive_id: str,
     semantic_intent: Mapping[str, Any],
+    host_tissue_labels: tuple[str, ...] = (),
 ) -> tuple[CellCountExtentBudget, dict[str, Any]]:
     """Compile a source-calibrated cell-only budget before candidates exist.
 
@@ -2387,11 +2402,25 @@ def _derive_local_population_budget(
             "cell abundance budget requires exactly one observable class"
         )
 
+    component_labels = {
+        item.component_id: item.label
+        for item in scene.tissue.graph.components
+    }
+    host_labels = set(host_tissue_labels)
     component_zones = [
         zone
         for zone in scene.population.zones
-        if zone.zone_kind == "component" and zone.area_px > 0
+        if zone.zone_kind == "component"
+        and zone.area_px > 0
+        and (
+            not host_labels
+            or component_labels.get(zone.tissue_component_id) in host_labels
+        )
     ]
+    if not component_zones:
+        raise JointContractError(
+            "cell-only budget has no legal host population zone"
+        )
     if class_ids:
         zone_counts = [
             sum(int(zone.class_counts.get(class_id, 0)) for class_id in class_ids)
@@ -2399,7 +2428,6 @@ def _derive_local_population_budget(
         ]
     else:
         zone_counts = [int(zone.nucleus_count) for zone in component_zones]
-    local_authority_count = max(zone_counts, default=0)
     complete_areas = [
         int(item.area_px)
         for item in scene.cells.instances
@@ -2414,8 +2442,141 @@ def _derive_local_population_budget(
     median_area = float(np.median(complete_areas))
     diameter_px = max(3.0, 2.0 * np.sqrt(median_area / np.pi))
     increase = primitive_id.endswith("increase-v1")
+    complete_by_zone = {
+        zone.zone_id: sum(
+            1
+            for item in scene.cells.instances
+            if item.tissue_component_id == zone.tissue_component_id
+            and item.completeness_status == "complete"
+            and not item.quality_flags
+            and (not class_ids or item.class_id in class_ids)
+        )
+        for zone in component_zones
+    }
+    coarse_capacity_by_zone = {}
+    for zone in component_zones:
+        zone_mask = scene.population_zone_masks[zone.zone_id]
+        free_pixels = int(
+            np.count_nonzero(
+                np.asarray(zone_mask, dtype=bool)
+                & (np.asarray(scene.source_nuclei) == 0)
+            )
+        )
+        coarse_capacity_by_zone[zone.zone_id] = int(
+            np.floor(free_pixels / max(1.0, median_area * 1.25))
+        )
     if increase:
-        target = int(np.clip(round(local_authority_count * 0.20), 6, 32))
+        # Exact complete-footprint packing, not free-pixel area, is the
+        # execution authority.  Screen only the eight most promising host
+        # components to keep preflight bounded, then certify real source-shape
+        # placements against their retained nuclei and full containment.
+        screened = sorted(
+            component_zones,
+            key=lambda zone: (
+                -coarse_capacity_by_zone[zone.zone_id],
+                -zone_counts[component_zones.index(zone)],
+                -zone.area_px,
+                zone.zone_id,
+            ),
+        )[:8]
+        instance_metadata = {
+            item.instance_id: item for item in scene.cells.instances
+        }
+        shape_library_by_class = {}
+        shape_class_ids = class_ids or tuple(
+            sorted(
+                {
+                    item.class_id
+                    for item in scene.cells.instances
+                    if item.completeness_status == "complete"
+                    and not item.quality_flags
+                }
+            )
+        )
+        for class_id in shape_class_ids:
+            shapes, _rejected = build_reference_shape_library(
+                scene, class_id=class_id
+            )
+            shape_library_by_class[class_id] = tuple(shapes)
+        packing_by_zone = {}
+        for zone in screened:
+            zone_label = component_labels.get(zone.tissue_component_id)
+            references_by_class = {
+                class_id: tuple(
+                    shape
+                    for shape in shapes
+                    if component_labels.get(
+                        instance_metadata[shape.instance_id].tissue_component_id
+                    )
+                    == zone_label
+                )
+                for class_id, shapes in shape_library_by_class.items()
+            }
+            references_by_class = {
+                class_id: shapes
+                for class_id, shapes in references_by_class.items()
+                if shapes
+            }
+            request = min(
+                40,
+                max(2, coarse_capacity_by_zone[zone.zone_id]),
+            )
+            class_weights = {
+                int(class_id): float(zone.class_counts.get(class_id, 0))
+                for class_id in references_by_class
+            }
+            if not any(class_weights.values()):
+                class_weights = {
+                    int(class_id): 1.0 for class_id in references_by_class
+                }
+            zone_mask = np.asarray(
+                scene.population_zone_masks[zone.zone_id], dtype=bool
+            )
+            packing_by_zone[zone.zone_id] = certify_complete_footprint_packing(
+                source_nuclei=scene.source_nuclei,
+                erased_footprint=np.zeros_like(zone_mask, dtype=bool),
+                center_region=zone_mask,
+                valid_footprint_region=zone_mask,
+                references_by_class=references_by_class,
+                requested_count=request,
+                class_request_weights=class_weights,
+                allow_finite_count_fallback=False,
+            )
+        selected_zone = max(
+            screened,
+            key=lambda zone: (
+                packing_by_zone[zone.zone_id].placed_count,
+                zone_counts[component_zones.index(zone)],
+                zone.area_px,
+                zone.zone_id,
+            ),
+        )
+        local_authority_count = zone_counts[component_zones.index(selected_zone)]
+        executable_capacity = packing_by_zone[selected_zone.zone_id].placed_count
+        packing_certificates = {
+            zone_id: certificate.to_metadata()
+            for zone_id, certificate in sorted(packing_by_zone.items())
+        }
+    else:
+        selected_zone = max(
+            component_zones,
+            key=lambda zone: (
+                complete_by_zone[zone.zone_id],
+                zone_counts[component_zones.index(zone)],
+                zone.area_px,
+                zone.zone_id,
+            ),
+        )
+        local_authority_count = complete_by_zone[selected_zone.zone_id]
+        executable_capacity = local_authority_count
+        packing_certificates = {}
+    if increase:
+        if executable_capacity < 2:
+            raise JointContractError(
+                "cell increase has fewer than two conservative complete-shape slots"
+            )
+        source_scaled = max(2, round(max(local_authority_count, 10) * 0.20))
+        target = int(min(32, executable_capacity, source_scaled))
     else:
         if local_authority_count < 6:
             raise JointContractError(
@@ -2444,7 +2605,18 @@ def _derive_local_population_budget(
         "authority": "shared_scene_instance_authority",
         "primitive_id": primitive_id,
         "resolved_cell_class_ids": list(class_ids),
-        "maximum_component_source_count": local_authority_count,
+        "selected_population_zone_id": selected_zone.zone_id,
+        "selected_tissue_component_id": selected_zone.tissue_component_id,
+        "selected_tissue_label": component_labels.get(
+            selected_zone.tissue_component_id
+        ),
+        "selected_zone_source_count": local_authority_count,
+        "selected_zone_executable_capacity": executable_capacity,
+        "zone_complete_source_counts": dict(sorted(complete_by_zone.items())),
+        "zone_coarse_add_capacities": dict(
+            sorted(coarse_capacity_by_zone.items())
+        ),
+        "zone_exact_packing_certificates": packing_certificates,
         "complete_reference_count": len(complete_areas),
         "median_complete_nucleus_area_px": median_area,
         "estimated_nucleus_diameter_px": diameter_px,

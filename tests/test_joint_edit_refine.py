@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 from PIL import Image
 
+from inpaint_cells.instance_authority import array_sha256
 from phase3_joint_edit_refine.agents import JOINT_PLAN_JSON_SCHEMA
 from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
 from phase3_joint_edit_refine.budget import JointFeasibilitySolver
@@ -122,6 +123,9 @@ class JointSkillTests(unittest.TestCase):
             "increase tumor burden": "tumor-burden-increase-v1",
             "reduce tumor burden": "tumor-burden-decrease-v1",
             "increase necrosis": "necrosis-appearance-v1",
+            "increase intratumoral necrosis": "necrosis-appearance-v1",
+            "reduce intratumoral necrosis": "necrosis-resolution-v1",
+            "increase tumor-associated stroma": "stroma-increase-v1",
             "减少坏死": "necrosis-resolution-v1",
             "increase tumor budding": (
                 "neoplastic-cell-infiltration-increase-v1"
@@ -254,6 +258,11 @@ class JointSkillTests(unittest.TestCase):
         self.assertTrue(authority["authority_sha256"])
         self.assertAlmostEqual(density, expected_total / tissue.size)
         self.assertAlmostEqual(by_class[1], expected_class_1 / tissue.size)
+
+    def test_instance_authority_digest_is_loader_dtype_invariant(self):
+        raw = np.asarray([[0, 101], [102, 0]], dtype=np.uint8)
+
+        self.assertEqual(array_sha256(raw), array_sha256(raw.astype(np.int64)))
 
     def test_packing_total_is_at_least_required_seam_quota(self):
         shape = (24, 24)

@@ -121,7 +121,7 @@ class RuleBasedSemanticParser:
     same scenario compiler without pretending to be a clinical language model.
     """
 
-    name = "rule_based_semantic_parser_v1"
+    name = "rule_based_semantic_parser_v2"
 
     _RULES = (
         (
@@ -152,13 +152,19 @@ class RuleBasedSemanticParser:
             "tumor-burden-decrease-v1",
             "tumor-burden",
             "decrease",
-            (r"\b(decrease|reduce|shrink|lower)\b.*\btumou?r\b(?!\s+(?:buds?|budding|cells?))(?:\s+(?:burden|area))?", r"(减少|降低|缩小).*(肿瘤负荷|肿瘤面积|肿瘤)(?!细胞|出芽)"),
+            (
+                r"\b(decrease|reduce|shrink|lower)\b.*\btumou?r(?:\s+(?:burden|area))?\s*(?:[.!?]|$)",
+                r"(减少|降低|缩小).*(肿瘤负荷|肿瘤面积|肿瘤)\s*$",
+            ),
         ),
         (
             "tumor-burden-increase-v1",
             "tumor-burden",
             "increase",
-            (r"\b(increase|expand|enlarge|raise)\b.*\btumou?r\b(?!\s+(?:buds?|budding|cells?))(?:\s+(?:burden|area))?", r"(增加|提高|扩大).*(肿瘤负荷|肿瘤面积|肿瘤)(?!细胞|出芽)"),
+            (
+                r"\b(increase|expand|enlarge|raise)\b.*\btumou?r(?:\s+(?:burden|area))?\s*(?:[.!?]|$)",
+                r"(增加|提高|扩大).*(肿瘤负荷|肿瘤面积|肿瘤)\s*$",
+            ),
         ),
         (
             "cellularity-decrease-v1",

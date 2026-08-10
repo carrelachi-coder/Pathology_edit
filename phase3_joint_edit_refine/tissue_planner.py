@@ -273,7 +273,7 @@ class OpenAIJointAwareTissuePlanner:
 class MultiInterfaceResearchTissuePlanner:
     """Use all needed legal source components; no H&E authority is claimed."""
 
-    name: str = "multi_interface_research_tissue_planner"
+    name: str = "multi_interface_research_tissue_planner_v2"
 
     def create_joint_tissue_plan(
         self,
@@ -402,11 +402,7 @@ class MultiInterfaceResearchTissuePlanner:
         extra_after_capacity = (
             len(ranked)
             if component_turnover
-            or (
-                retry_index > 0
-                and feedback.get("stage") == "planning_or_compilation"
-            )
-            else retry_index * 2
+            else min(8, retry_index * 4)
         )
         capacity_reached_at: int | None = None
         for item in ranked[:32]:
@@ -508,15 +504,6 @@ class MultiInterfaceResearchTissuePlanner:
                 # raster graph splits its boundary into several directed
                 # segments. Use the complete selected boundary; candidate-local
                 # cell feasibility remains authoritative.
-                anchor_ids = tuple(interface.anchor_segment_ids)
-            elif (
-                retry_index > 0
-                and feedback.get("stage") == "planning_or_compilation"
-            ):
-                # A cell-safe anchor subset can still be too small for a
-                # topology-safe tissue edit. Expand one compilation retry to
-                # the complete selected interface; the candidate-local seam
-                # gate remains authoritative and can trigger a later pass.
                 anchor_ids = tuple(interface.anchor_segment_ids)
             elif retry_index > 0:
                 anchor_ids = tuple(
@@ -679,7 +666,7 @@ class MultiInterfaceResearchTissuePlanner:
                     "parallel_front_min_depth_px": 5.0,
                     "parallel_front_min_pixels": 64,
                 },
-                candidate_count=min(48, 12 + retry_index * 8),
+                candidate_count=12,
             ),
             hard_invariants=tuple(sorted(set(bundle.edit_contract.required_check_ids))),
             uncertainties=("current Codex session supplied mechanism; this tissue adapter did not inspect H&E",),

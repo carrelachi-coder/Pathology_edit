@@ -10,11 +10,16 @@ from typing import Any
 
 import numpy as np
 
-INSTANCE_AUTHORITY_VERSION = "source-nucleus-instance-authority-v1"
+INSTANCE_AUTHORITY_VERSION = "source-nucleus-instance-authority-v2"
 
 
 def array_sha256(value: np.ndarray) -> str:
-    array = np.ascontiguousarray(np.asarray(value))
+    # Raw CellViT masks have an on-disk uint8 contract.  OpenCV loads them as
+    # int64 in the mature pipeline, while the joint scene keeps the same IDs
+    # as uint8.  Hashing dtype-dependent bytes made two value-identical masks
+    # disagree at the subprocess boundary.  Canonicalize the storage dtype so
+    # the digest binds values and shape, not an incidental loader dtype.
+    array = np.ascontiguousarray(np.asarray(value, dtype=np.uint8))
     return hashlib.sha256(array.tobytes()).hexdigest()
 
 
