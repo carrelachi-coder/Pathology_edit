@@ -90,6 +90,9 @@ class TissueFrontContract:
     maximum_band_px: int
     maximum_depth_span_ratio: float
     maximum_boundary_compactness: float
+    directional_sector_required: bool
+    maximum_selected_anchor_fraction: float
+    minimum_unselected_anchor_count: int
 
 
 @dataclass(frozen=True)
@@ -918,6 +921,15 @@ def _tissue_front_contract(
     boundary_compactness = float(
         payload.get("maximum_boundary_compactness", 40.0)
     )
+    directional_sector_required = bool(
+        payload.get("directional_sector_required", False)
+    )
+    maximum_selected_anchor_fraction = float(
+        payload.get("maximum_selected_anchor_fraction", 1.0)
+    )
+    minimum_unselected_anchor_count = int(
+        payload.get("minimum_unselected_anchor_count", 0)
+    )
     if not 0.0 <= edge <= 1.0:
         raise JointContractError("tissue front edge_depth_ratio must lie in [0,1]")
     if not 0.0 <= taper <= 0.5:
@@ -936,6 +948,21 @@ def _tissue_front_contract(
         raise JointContractError(
             "tissue front maximum_boundary_compactness must lie in [4,100]"
         )
+    if not 0.0 < maximum_selected_anchor_fraction <= 1.0:
+        raise JointContractError(
+            "tissue front maximum_selected_anchor_fraction must lie in (0,1]"
+        )
+    if minimum_unselected_anchor_count < 0:
+        raise JointContractError(
+            "tissue front minimum_unselected_anchor_count must be non-negative"
+        )
+    if directional_sector_required and (
+        maximum_selected_anchor_fraction >= 1.0
+        or minimum_unselected_anchor_count < 1
+    ):
+        raise JointContractError(
+            "a directional tissue front must leave a bounded unedited boundary sector"
+        )
     if mode == "uniform_front":
         edge = 1.0
         taper = 0.0
@@ -949,6 +976,9 @@ def _tissue_front_contract(
         maximum_band_px=maximum_band,
         maximum_depth_span_ratio=depth_span,
         maximum_boundary_compactness=boundary_compactness,
+        directional_sector_required=directional_sector_required,
+        maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
+        minimum_unselected_anchor_count=minimum_unselected_anchor_count,
     )
 
 

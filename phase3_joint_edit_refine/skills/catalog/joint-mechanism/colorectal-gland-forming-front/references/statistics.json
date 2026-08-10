@@ -1,1 +1,1 @@
-{"status":"uncalibrated","required":["gland boundary distance","nuclear density","NND","lumen continuity"],"production_allowed":false}
+{"status":"uncalibrated","required":["gland boundary distance","directional interface coverage","circumferential edit coverage","nuclear density","NND","lumen continuity"],"research_bounds":{"maximum_selected_anchor_fraction":0.8,"minimum_unselected_anchor_count":1},"production_allowed":false}

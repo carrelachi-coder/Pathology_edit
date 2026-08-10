@@ -505,7 +505,10 @@ class MultiInterfaceResearchTissuePlanner:
                 # segments. Use the complete selected boundary; candidate-local
                 # cell feasibility remains authoritative.
                 anchor_ids = tuple(interface.anchor_segment_ids)
-            elif retry_index > 0:
+            elif (
+                retry_index > 0
+                and not front_contract.directional_sector_required
+            ):
                 anchor_ids = tuple(
                     preflight_item.cell_feasible_anchor_segment_ids
                     if preflight_item is not None
@@ -523,6 +526,18 @@ class MultiInterfaceResearchTissuePlanner:
                         if preflight_item is not None
                         else ()
                     ),
+                    maximum_selected_anchor_fraction=(
+                        front_contract.maximum_selected_anchor_fraction
+                    ),
+                    minimum_unselected_anchor_count=(
+                        front_contract.minimum_unselected_anchor_count
+                    ),
+                )
+            if not anchor_ids:
+                raise RefineContractError(
+                    "mechanism requires a directional boundary sector but the "
+                    "interface has no executable sector after leaving its protected "
+                    "unedited boundary"
                 )
             anchor_contact = max(
                 1,
@@ -577,7 +592,11 @@ class MultiInterfaceResearchTissuePlanner:
                     interface_id=interface.interface_id,
                     source_component_id=interface.source_component_id,
                     target_component_id=interface.target_component_id,
-                    anchor_segment="full_directed_interface",
+                    anchor_segment=(
+                        "directional_contiguous_sector"
+                        if front_contract.directional_sector_required
+                        else "full_directed_interface"
+                    ),
                     allowed_edit_band_px=(0.0, depth_cap),
                     execution_contract=InterfaceExecutionContract(
                         anchor_segment_ids=anchor_ids,
@@ -665,6 +684,15 @@ class MultiInterfaceResearchTissuePlanner:
                     "parallel_front_linearity_ratio": 20.0,
                     "parallel_front_min_depth_px": 5.0,
                     "parallel_front_min_pixels": 64,
+                    "directional_sector_required": (
+                        front_contract.directional_sector_required
+                    ),
+                    "maximum_selected_anchor_fraction": (
+                        front_contract.maximum_selected_anchor_fraction
+                    ),
+                    "minimum_unselected_anchor_count": (
+                        front_contract.minimum_unselected_anchor_count
+                    ),
                 },
                 # Four independently parameterized tissue fronts are enough
                 # because the joint stage realizes three cell layouts per
@@ -706,6 +734,8 @@ def _select_executable_anchor_ids(
     required_pixels: int,
     maximum_depth_px: float,
     allowed_anchor_ids: tuple[str, ...] = (),
+    maximum_selected_anchor_fraction: float = 1.0,
+    minimum_unselected_anchor_count: int = 0,
 ) -> tuple[str, ...]:
     """Choose the shortest broad anchor group with enough legal capacity.
 
@@ -748,13 +778,21 @@ def _select_executable_anchor_ids(
         )
         records.append((anchor_id, capacity, contact, centroid))
     if not records:
-        return tuple(interface.anchor_segment_ids)
+        return ()
+    total_anchor_count = len(interface.anchor_segment_ids)
+    selection_limit = min(
+        len(records),
+        int(np.floor(total_anchor_count * maximum_selected_anchor_fraction)),
+        total_anchor_count - minimum_unselected_anchor_count,
+    )
+    if selection_limit < 1:
+        return ()
     records.sort(key=lambda item: (-item[1], item[0]))
     selected = [records.pop(0)]
     preferred_minimum_span = int(
         np.ceil(np.sqrt(max(1.0, 2.0 * required_pixels / 0.45)))
     )
-    while records:
+    while records and len(selected) < selection_limit:
         union = np.logical_or.reduce(
             [scene.anchor_masks[item[0]] for item in selected]
         )

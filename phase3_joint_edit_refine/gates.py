@@ -576,6 +576,74 @@ def _colorectal_gland_unit_coupling(c):
         c.case.primitive_id != "tumor-burden-decrease-v1"
         or all(value <= 0.55 for value in changed_fractions.values())
     )
+    front_contract = c.bundle.mechanism.tissue_program.front
+    directional_metrics = {}
+    directional_ok = True
+    if front_contract.directional_sector_required:
+        change_dilated = ndimage.binary_dilation(
+            change, structure=np.ones((3, 3), dtype=bool)
+        )
+        for planned in c.plan.tissue_plan.candidate_interfaces:
+            interface = np.asarray(
+                c.scene.tissue.interface_masks[planned.interface_id],
+                dtype=bool,
+            )
+            selected_anchor_masks = [
+                np.asarray(c.scene.tissue.anchor_masks[anchor_id], dtype=bool)
+                for anchor_id in planned.execution_contract.anchor_segment_ids
+                if anchor_id in c.scene.tissue.anchor_masks
+            ]
+            selected_anchor = (
+                np.logical_or.reduce(selected_anchor_masks)
+                if selected_anchor_masks
+                else np.zeros_like(interface)
+            )
+            interface_metadata = next(
+                (
+                    item
+                    for item in c.scene.tissue.graph.interfaces
+                    if item.interface_id == planned.interface_id
+                ),
+                None,
+            )
+            total_anchor_count = (
+                len(interface_metadata.anchor_segment_ids)
+                if interface_metadata is not None
+                else 0
+            )
+            selected_count = len(planned.execution_contract.anchor_segment_ids)
+            unselected_count = max(0, total_anchor_count - selected_count)
+            selected_fraction = float(
+                np.count_nonzero(selected_anchor) / max(1, np.count_nonzero(interface))
+            )
+            touched_fraction = float(
+                np.count_nonzero(interface & change_dilated)
+                / max(1, np.count_nonzero(interface))
+            )
+            item_ok = bool(
+                selected_count > 0
+                and unselected_count
+                >= front_contract.minimum_unselected_anchor_count
+                and selected_fraction
+                <= front_contract.maximum_selected_anchor_fraction + 1e-9
+                and touched_fraction
+                <= front_contract.maximum_selected_anchor_fraction + 0.03
+            )
+            directional_ok = directional_ok and item_ok
+            directional_metrics[planned.interface_id] = {
+                "selected_anchor_count": selected_count,
+                "total_anchor_count": total_anchor_count,
+                "unselected_anchor_count": unselected_count,
+                "selected_anchor_fraction": selected_fraction,
+                "actual_touched_interface_fraction": touched_fraction,
+                "maximum_selected_anchor_fraction": (
+                    front_contract.maximum_selected_anchor_fraction
+                ),
+                "minimum_unselected_anchor_count": (
+                    front_contract.minimum_unselected_anchor_count
+                ),
+                "passed": item_ok,
+            }
     lumen_overlap = (
         int(np.count_nonzero(support & np.asarray(lumen, dtype=bool)))
         if lumen is not None
@@ -608,6 +676,7 @@ def _colorectal_gland_unit_coupling(c):
         and lumen_ok
         and layout_ok
         and modifier_ok
+        and directional_ok
     )
     return _result(
         "colorectal_gland_unit_coupling",
@@ -615,7 +684,7 @@ def _colorectal_gland_unit_coupling(c):
         (
             "CRC tissue and nuclei changes realize one lumen-preserving malignant gland-unit edit"
             if passed
-            else "CRC edit is detached from a gland unit, erases too much of it, touches lumen, or lacks its typed cell realization"
+            else "CRC edit is detached from a gland unit, circumferential rather than directional, erases too much of it, touches lumen, or lacks its typed cell realization"
         ),
         metrics={
             "applicable": True,
@@ -628,6 +697,10 @@ def _colorectal_gland_unit_coupling(c):
             "expected_layout_program": expected_layout,
             "layout_bound": layout_ok,
             "mechanism_modifier_realized": modifier_ok,
+            "directional_sector_required": (
+                front_contract.directional_sector_required
+            ),
+            "directional_interface_metrics": directional_metrics,
         },
     )
 

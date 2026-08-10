@@ -82,8 +82,10 @@ from phase3_joint_edit_refine.semantic_parser import (
 )
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
 from phase3_joint_edit_refine.tissue_planner import (
+    MultiInterfaceResearchTissuePlanner,
     _effective_tissue_topology,
     _normalize_integer_allocations,
+    _select_executable_anchor_ids,
 )
 from phase3_joint_edit_refine.workflow import (
     JointPathologyEditWorkflow,
@@ -1467,6 +1469,25 @@ class _PassingTissueGateFixture(GateRegistry):
         return GateReport(report.candidate_id, True, report.checks)
 
 
+class _PassingJointGateFixture(JointGateRegistry):
+    """Isolate workflow orchestration tests from mechanism gate semantics."""
+
+    def run(self, context):
+        report = super().run(context)
+        return JointGateReport(
+            report.candidate_id,
+            True,
+            tuple(
+                replace(
+                    check,
+                    passed=True,
+                    detail="fixture isolates workflow orchestration",
+                )
+                for check in report.checks
+            ),
+        )
+
+
 class _RetryThenPassingTissueGate(GateRegistry):
     def __init__(self):
         super().__init__()
@@ -1516,6 +1537,7 @@ class JointWorkflowTests(unittest.TestCase):
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
                 tissue_gates=gates,
+                joint_gates=_PassingJointGateFixture(),
             ).run(case, output_root=root / "retry")
             self.assertEqual(
                 result.status, "selected_research", result.abstain_reasons
@@ -1600,7 +1622,7 @@ class JointWorkflowTests(unittest.TestCase):
             root = Path(directory)
             case = _write_synthetic_case(root)
             workflow = JointPathologyEditWorkflow(
-                tissue_planner=HeuristicInterfacePlanner(),
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
                 joint_planner=HeuristicJointPlanner(),
                 critic=DeterministicJointResearchCritic(),
             )
@@ -1627,6 +1649,7 @@ class JointWorkflowTests(unittest.TestCase):
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
                 tissue_gates=_PassingTissueGateFixture(),
+                joint_gates=_PassingJointGateFixture(),
             )
             result = workflow.run(case, output_root=root / "approved")
             self.assertEqual(result.status, "selected_research", result.abstain_reasons)
@@ -2579,6 +2602,44 @@ class StructuralHierarchyTests(unittest.TestCase):
                 ).minimum_anchor_coverage_fraction,
                 0.0,
             )
+
+    def test_colorectal_gland_front_requires_a_directional_boundary_sector(self):
+        mechanism = JointSkillRepository().mechanisms[
+            "colorectal-gland-forming-front"
+        ]
+        front = mechanism.tissue_program.front
+        self.assertTrue(front.directional_sector_required)
+        self.assertEqual(front.maximum_selected_anchor_fraction, 0.8)
+        self.assertEqual(front.minimum_unselected_anchor_count, 1)
+
+        schema = MaskProfileSchema.from_reference_profile("GLaS")
+        rows, cols = np.ogrid[:96, :96]
+        source = np.full((96, 96), 2, dtype=np.uint8)
+        source[(rows - 48) ** 2 + (cols - 48) ** 2 <= 25**2] = 11
+        scene = build_scene_analysis(source, schema=schema)
+        interface = next(
+            item
+            for item in scene.graph.interfaces
+            if item.source_label == "Stroma" and item.target_label == "Tumor"
+        )
+        selected = _select_executable_anchor_ids(
+            scene,
+            interface=interface,
+            required_pixels=2_000,
+            maximum_depth_px=48,
+            maximum_selected_anchor_fraction=(
+                front.maximum_selected_anchor_fraction
+            ),
+            minimum_unselected_anchor_count=(
+                front.minimum_unselected_anchor_count
+            ),
+        )
+        self.assertGreater(len(selected), 0)
+        self.assertLess(len(selected), len(interface.anchor_segment_ids))
+        self.assertLessEqual(
+            len(selected) / len(interface.anchor_segment_ids),
+            front.maximum_selected_anchor_fraction,
+        )
 
     def test_pattern3_skill_forbids_selected_gland_component_merge(self):
         schema = MaskProfileSchema.from_reference_profile("PANDA")

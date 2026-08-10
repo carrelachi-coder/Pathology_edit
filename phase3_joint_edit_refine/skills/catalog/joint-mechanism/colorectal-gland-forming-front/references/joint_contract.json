@@ -5,7 +5,7 @@
     "tumor-burden-increase-v1",
     "tumor-burden-decrease-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "summary": "Extend or regress a verified malignant colorectal gland unit at a true non-gland interface, preserving its lumen/topology and regenerating the direction-appropriate cell population.",
   "recognition_contract": {
@@ -76,7 +76,20 @@
       "vessel",
       "nerve"
     ],
-    "topology_fallback_by_primitive": {}
+    "topology_fallback_by_primitive": {},
+    "front_contract": {
+      "profile_mode": "multi_lobe",
+      "edge_depth_ratio": 0.12,
+      "taper_fraction": 0.42,
+      "lobe_count": 2,
+      "noise_depth_ratio": 0.22,
+      "maximum_band_px": 128,
+      "maximum_depth_span_ratio": 1.25,
+      "maximum_boundary_compactness": 40,
+      "directional_sector_required": true,
+      "maximum_selected_anchor_fraction": 0.8,
+      "minimum_unselected_anchor_count": 1
+    }
   },
   "cell_program": {
     "actions": [
@@ -185,6 +198,7 @@
     ],
     "veto_findings": [
       "deep notch",
+      "uniform circumferential gland-wall thickening",
       "lumen fill",
       "partial crypt",
       "mucin or debris rendered as stroma"
@@ -204,6 +218,7 @@
   ],
   "counterexamples": [
     "short deep gland notch",
+    "uniform circumferential thickening of an existing gland",
     "closing a malignant lumen",
     "calling dirty necrosis stroma"
   ]
