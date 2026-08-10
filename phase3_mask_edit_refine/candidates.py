@@ -215,12 +215,28 @@ def generate_candidates(
             np.packbits(replay_change, axis=None).tobytes()
             + replay_target[replay_change].tobytes()
         )
+    # Organic-v2 remains an available deterministic family, but its legacy
+    # projection recomputes full-patch nearest-label fields.  Repeating it for
+    # every parameter round produced minute-scale tails without adding a new
+    # interface hypothesis.  Exercise each allowed family once, then spend the
+    # remaining diversity budget on the fast SDF/morphology families.  If a
+    # contract allows only organic-v2 it is necessarily repeated.
+    fast_tools = tuple(tool for tool in allowed_tools if tool != "organic_v2")
+    initial_tool_round = allowed_tools
+    repeat_tool_round = fast_tools or allowed_tools
     max_attempts = max(count * 8, 48)
     for variation in range(max_attempts):
         if len(candidates) >= count:
             break
-        tool_name = allowed_tools[variation % len(allowed_tools)]
-        shape_variant = variation // len(allowed_tools)
+        if variation < len(initial_tool_round):
+            tool_name = initial_tool_round[variation]
+            shape_variant = 0
+        else:
+            repeat_index = variation - len(initial_tool_round)
+            tool_name = repeat_tool_round[
+                repeat_index % len(repeat_tool_round)
+            ]
+            shape_variant = 1 + repeat_index // len(repeat_tool_round)
         active = work_items
         allocations = _allocate_pixels(active, target_pixels=target_pixels)
         if sum(allocations) < target_pixels:

@@ -18,7 +18,7 @@ from scipy import ndimage
 
 from .cell_layouts import ReferenceNucleusShape
 
-PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v15"
+PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v16"
 MAX_PACKING_REFERENCE_SHAPES_PER_CLASS = 3
 MINIMUM_LOCAL_MEDIAN_AREA_RATIO = 0.60
 MAXIMUM_LOCAL_MEDIAN_AREA_RATIO = 1.67
@@ -678,15 +678,44 @@ def _initial_fit_center_maps(
             if not np.any(structure):
                 fit_maps.append(np.zeros_like(free, dtype=bool))
             else:
-                fit_maps.append(
-                    ndimage.binary_erosion(
-                        free,
-                        structure=structure,
-                        border_value=0,
-                    )
-                )
+                fit_maps.append(_binary_erosion_for_footprint(free, structure))
         result[int(class_id)] = tuple(fit_maps)
     return result
+
+
+def _binary_erosion_for_footprint(
+    free: np.ndarray,
+    structure: np.ndarray,
+) -> np.ndarray:
+    """Return SciPy-identical footprint centers with an optional fast backend.
+
+    Exact packing repeatedly erodes a 512x512 legal canvas by real nucleus
+    footprints.  OpenCV implements the same centered binary erosion much more
+    efficiently on the server; the local research environment does not always
+    ship OpenCV, so SciPy remains a value-identical fallback.  The explicit
+    anchor is essential for even-sized nucleus bounding boxes.
+    """
+
+    canvas = np.asarray(free, dtype=bool)
+    kernel = np.asarray(structure, dtype=bool)
+    try:
+        import cv2
+    except ImportError:
+        return ndimage.binary_erosion(
+            canvas,
+            structure=kernel,
+            border_value=0,
+        )
+    return (
+        cv2.erode(
+            canvas.astype(np.uint8),
+            kernel.astype(np.uint8),
+            anchor=(kernel.shape[1] // 2, kernel.shape[0] // 2),
+            borderType=cv2.BORDER_CONSTANT,
+            borderValue=0,
+        )
+        > 0
+    )
 
 
 def _distributed_center_order(zone: np.ndarray) -> np.ndarray:
