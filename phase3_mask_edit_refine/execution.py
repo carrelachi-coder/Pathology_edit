@@ -23,7 +23,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v4"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v5"
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,27 @@ def compile_edit_plan(
     schema: MaskProfileSchema,
     scene: SceneAnalysis,
 ) -> tuple[EditPlan, dict[str, Any]]:
+    compiled, audit, _parts, _replay = compile_edit_plan_with_witness(
+        plan,
+        source_mask=source_mask,
+        schema=schema,
+        scene=scene,
+    )
+    return compiled, audit
+
+
+def compile_edit_plan_with_witness(
+    plan: EditPlan,
+    *,
+    source_mask: np.ndarray,
+    schema: MaskProfileSchema,
+    scene: SceneAnalysis,
+) -> tuple[
+    EditPlan,
+    dict[str, Any],
+    tuple[CompiledReplayPart, ...],
+    dict[str, Any],
+]:
     """Resolve area, allocations, and depth with topology constraints up front.
 
     The desired area remains immutable.  For a ranged task whose fallback
@@ -227,6 +248,39 @@ def compile_edit_plan(
         candidate_interfaces=tuple(compiled_interfaces),
         resolved_area=resolved_area,
     )
+    compiled_by_id = {
+        item.interface_id: item for item in compiled_interfaces
+    }
+    witness_parts = tuple(
+        CompiledReplayPart(
+            planned=compiled_by_id[work.planned.interface_id],
+            anchor_masks=work.anchor_masks,
+            anchor_mask=work.anchor_mask,
+            change_region=np.asarray(selected, dtype=bool),
+            legal_capacity_px=work.item_capacity_px,
+            source_deletion_limit_px=work.source_deletion_limit_px,
+            protected_source_necks=work.protected_source_necks,
+            topology_audit=dict(grow_audit),
+        )
+        for work, selected, grow_audit in zip(
+            works, selected_by_work, grow_audits
+        )
+        if work.planned.interface_id in compiled_by_id and np.any(selected)
+    )
+    witness_realized = sum(
+        int(np.count_nonzero(item.change_region)) for item in witness_parts
+    )
+    if witness_realized != resolved_pixels or not topology_audit["passed"]:
+        raise RefineContractError(
+            "execution solver produced an invalid reusable topology witness"
+        )
+    replay_audit = {
+        "replay_version": EXECUTION_SOLVER_VERSION,
+        "resolved_pixels": int(resolved_pixels),
+        "realized_pixels": int(witness_realized),
+        "whole_mask_topology": topology_audit,
+        "reused_from_compiler": True,
+    }
     return compiled_plan, {
         "compiler_version": EXECUTION_SOLVER_VERSION,
         "desired_pixels": int(desired_pixels),
@@ -240,7 +294,8 @@ def compile_edit_plan(
         # Backward-compatible audit key used by existing evaluation scripts.
         "target_pixels": int(resolved_pixels),
         "interfaces": audit_interfaces,
-    }
+        "reusable_topology_witness": True,
+    }, witness_parts, replay_audit
 
 
 def replay_compiled_edit_plan(

@@ -12,7 +12,7 @@ from PIL import Image
 
 from phase3_mask_edit_refine.agents import Planner, validate_edit_plan
 from phase3_mask_edit_refine.evidence import load_id_mask, sha256_file
-from phase3_mask_edit_refine.execution import compile_edit_plan
+from phase3_mask_edit_refine.execution import compile_edit_plan_with_witness
 from phase3_mask_edit_refine.gates import GateRegistry
 from phase3_mask_edit_refine.models import (
     AreaBudget,
@@ -473,7 +473,12 @@ class JointPathologyEditWorkflow:
                         scene=tissue_scene,
                         bundle=tissue_bundle,
                     )
-                    tissue_plan, compiler_usage = compile_edit_plan(
+                    (
+                        tissue_plan,
+                        compiler_usage,
+                        compiled_replay_parts,
+                        compiled_replay_audit,
+                    ) = compile_edit_plan_with_witness(
                         raw_tissue_plan,
                         source_mask=source_tissue,
                         schema=schema,
@@ -559,6 +564,8 @@ class JointPathologyEditWorkflow:
                     ),
                     gates=self.tissue_gates,
                     seed=case.seed + planning_pass * 1_000_003,
+                    compiled_replay_parts=compiled_replay_parts,
+                    compiled_replay_audit=compiled_replay_audit,
                 )
                 tissue_reports = execution_batch.tissue_gate_reports
                 audit.write_json(

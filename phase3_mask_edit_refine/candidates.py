@@ -56,6 +56,9 @@ def generate_candidates(
     plan: EditPlan,
     bundle: ActiveKnowledgeBundle,
     seed: int,
+    candidate_limit: int | None = None,
+    compiled_replay_parts: tuple[Any, ...] | None = None,
+    compiled_replay_audit: dict[str, Any] | None = None,
 ) -> tuple[CandidateMask, ...]:
     """Generate diverse candidates without accepting LLM-provided pixels.
 
@@ -101,6 +104,8 @@ def generate_candidates(
         raise RefineContractError("EditPlan contains no interface with legal pixels")
 
     count = plan.tool_program.candidate_count
+    if candidate_limit is not None:
+        count = min(count, max(1, int(candidate_limit)))
     candidates: list[CandidateMask] = []
     seen_hashes: set[bytes] = set()
     if plan.resolved_area is not None:
@@ -108,12 +113,16 @@ def generate_candidates(
         # depth-profile compiler from this module during initialization.
         from phase3_mask_edit_refine.execution import replay_compiled_edit_plan
 
-        replay_parts, replay_audit = replay_compiled_edit_plan(
-            plan,
-            source_mask=mask,
-            schema=schema,
-            scene=scene,
-        )
+        if compiled_replay_parts is None or compiled_replay_audit is None:
+            replay_parts, replay_audit = replay_compiled_edit_plan(
+                plan,
+                source_mask=mask,
+                schema=schema,
+                scene=scene,
+            )
+        else:
+            replay_parts = compiled_replay_parts
+            replay_audit = compiled_replay_audit
         replay_change = np.zeros_like(mask, dtype=bool)
         replay_target = np.array(mask, copy=True)
         replay_traces = []

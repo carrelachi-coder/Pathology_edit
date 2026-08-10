@@ -8,6 +8,7 @@ certificate.  Rejected exploratory draws remain available only in the audit.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -39,7 +40,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-TISSUE_EXECUTION_VERSION = "joint-gate-aware-tissue-executor-v2"
+TISSUE_EXECUTION_VERSION = "joint-gate-aware-tissue-executor-v3"
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,8 @@ def execute_gate_aware_tissue_candidates(
     joint_required_checker_ids: tuple[str, ...],
     gates: GateRegistry,
     seed: int,
+    compiled_replay_parts: tuple[Any, ...] | None = None,
+    compiled_replay_audit: dict[str, Any] | None = None,
 ) -> TissueExecutionBatch:
     source_authority = build_scene_instance_authority(
         joint_scene, source_nuclei
@@ -109,6 +112,41 @@ def execute_gate_aware_tissue_candidates(
         raise JointContractError(
             "nuclei preflight density authority differs from the execution scene"
         )
+    baseline_candidates = generate_candidates(
+        source_tissue,
+        schema=schema,
+        scene=tissue_scene,
+        plan=tissue_plan,
+        bundle=tissue_bundle,
+        seed=seed,
+        candidate_limit=1,
+        compiled_replay_parts=compiled_replay_parts,
+        compiled_replay_audit=compiled_replay_audit,
+    )
+    baseline = _certify_tissue_candidate_set(
+        baseline_candidates,
+        source_tissue=source_tissue,
+        source_nuclei=source_nuclei,
+        case=case,
+        schema=schema,
+        tissue_scene=tissue_scene,
+        joint_scene=joint_scene,
+        tissue_case=tissue_case,
+        tissue_plan=tissue_plan,
+        joint_plan=joint_plan,
+        tissue_bundle=tissue_bundle,
+        joint_bundle=joint_bundle,
+        nuclei_preflight=nuclei_preflight,
+        allocation=allocation,
+        executable_contract_compiler=executable_contract_compiler,
+        joint_required_checker_ids=joint_required_checker_ids,
+        gates=gates,
+    )
+    if baseline.certified_candidates:
+        baseline.certified_candidates[0].tool_trace[
+            "candidate_portfolio_policy"
+        ] = "compiler_witness_early_accept"
+        return baseline
     all_candidates = generate_candidates(
         source_tissue,
         schema=schema,
@@ -116,7 +154,50 @@ def execute_gate_aware_tissue_candidates(
         plan=tissue_plan,
         bundle=tissue_bundle,
         seed=seed,
+        compiled_replay_parts=compiled_replay_parts,
+        compiled_replay_audit=compiled_replay_audit,
     )
+    return _certify_tissue_candidate_set(
+        all_candidates,
+        source_tissue=source_tissue,
+        source_nuclei=source_nuclei,
+        case=case,
+        schema=schema,
+        tissue_scene=tissue_scene,
+        joint_scene=joint_scene,
+        tissue_case=tissue_case,
+        tissue_plan=tissue_plan,
+        joint_plan=joint_plan,
+        tissue_bundle=tissue_bundle,
+        joint_bundle=joint_bundle,
+        nuclei_preflight=nuclei_preflight,
+        allocation=allocation,
+        executable_contract_compiler=executable_contract_compiler,
+        joint_required_checker_ids=joint_required_checker_ids,
+        gates=gates,
+    )
+
+
+def _certify_tissue_candidate_set(
+    all_candidates,
+    *,
+    source_tissue,
+    source_nuclei,
+    case,
+    schema,
+    tissue_scene,
+    joint_scene,
+    tissue_case,
+    tissue_plan,
+    joint_plan,
+    tissue_bundle,
+    joint_bundle,
+    nuclei_preflight,
+    allocation,
+    executable_contract_compiler,
+    joint_required_checker_ids,
+    gates,
+) -> TissueExecutionBatch:
     reports = tuple(
         gates.run(
             GateContext(
