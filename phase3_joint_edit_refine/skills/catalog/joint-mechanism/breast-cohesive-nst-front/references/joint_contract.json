@@ -165,7 +165,8 @@
     "tissue_floor",
     "cell_tissue_compatibility",
     "cell_zone_localization",
-    "joint_provenance"
+    "joint_provenance",
+    "mechanism_postcondition:breast-cohesive-nst-front"
   ],
   "render_contract": {
     "required_findings": [

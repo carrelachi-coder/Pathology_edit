@@ -10,15 +10,12 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
-from inpaint_cells.instance_authority import (
-    binary_mask_sha256,
-    build_instance_authority,
-)
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import GateReport
 
 from .cell_programs import CELL_TOOL_COMPILER_VERSION
 from .executable_contract import ExecutableJointContract
+from .instance_authority import build_scene_instance_authority
 from .models import (
     JointCandidate,
     JointCaseContext,
@@ -26,7 +23,7 @@ from .models import (
     JointGateCheck,
     JointGateReport,
 )
-from .nuclei import iter_instances, to_raw_nuclei_mask
+from .nuclei import iter_instances
 from .scene import JointSceneAnalysis
 from .seam import (
     anchor_coverage_fraction,
@@ -42,6 +39,7 @@ BASE_REQUIRED_CHECKS = (
     "executable_contract_binding",
     "structural_hierarchy_binding",
     "tool_program_binding",
+    "mechanism_executor_binding",
     "tissue_gate_binding",
     "whole_instance_changes",
     "protected_nuclei_preserved",
@@ -56,6 +54,36 @@ BASE_REQUIRED_CHECKS = (
     "cell_zone_localization",
     "joint_provenance",
 )
+
+MECHANISM_POSTCONDITION_IDS = (
+    "breast-cohesive-nst-front",
+    "breast-discohesive-single-file",
+    "breast-intratumoral-necrosis-turnover",
+    "breast-local-population-modulation",
+    "colorectal-gland-forming-front",
+    "colorectal-local-population-modulation",
+    "colorectal-tumor-budding-front",
+    "lung-acinar-papillary-growth",
+    "lung-intratumoral-necrosis-turnover",
+    "lung-lepidic-growth",
+    "lung-local-population-modulation",
+    "lung-solid-squamous-growth",
+    "melanoma-cohesive-nest-sheet",
+    "melanoma-discohesive-junctional",
+    "melanoma-intratumoral-necrosis-turnover",
+    "melanoma-local-population-modulation",
+    "oral-scc-cohesive-nest-cord",
+    "oral-scc-dispersed-invasive-front",
+    "oral-scc-local-population-modulation",
+    "prostate-local-population-modulation",
+    "prostate-pattern-3-growth",
+    "prostate-pattern-4-growth",
+    "prostate-pattern-5-growth",
+)
+
+
+def mechanism_postcondition_checker_id(mechanism_id: str) -> str:
+    return f"mechanism_postcondition:{mechanism_id}"
 
 
 @dataclass(frozen=True)
@@ -80,6 +108,7 @@ class JointGateRegistry:
             "executable_contract_binding": _executable_contract_binding,
             "structural_hierarchy_binding": _structural_hierarchy_binding,
             "tool_program_binding": _tool_program_binding,
+            "mechanism_executor_binding": _mechanism_executor_binding,
             "tissue_gate_binding": _tissue_gate_binding,
             "native_structure_preserved": _native_structure_preserved,
             "whole_instance_changes": _whole_instance_changes,
@@ -109,6 +138,18 @@ class JointGateRegistry:
                 _colorectal_gland_unit_coupling
             ),
         }
+        self._checks.update(
+            {
+                mechanism_postcondition_checker_id(mechanism_id): (
+                    lambda context, expected=mechanism_id: (
+                        _mechanism_specific_postcondition(
+                            context, expected_mechanism_id=expected
+                        )
+                    )
+                )
+                for mechanism_id in MECHANISM_POSTCONDITION_IDS
+            }
+        )
         missing = sorted(set(BASE_REQUIRED_CHECKS) - set(self._checks))
         if missing:
             raise RuntimeError(
@@ -124,6 +165,11 @@ class JointGateRegistry:
         for check_id in bundle.required_checker_ids:
             if check_id not in requested:
                 requested.append(check_id)
+        mechanism_check = mechanism_postcondition_checker_id(
+            bundle.mechanism.mechanism_id
+        )
+        if mechanism_check not in requested:
+            requested.append(mechanism_check)
         return tuple(requested)
 
     def run(self, context: JointGateContext) -> JointGateReport:
@@ -181,32 +227,13 @@ def _primitive_semantics(c):
 
 
 def _instance_authority_binding(c):
-    expected = build_instance_authority(
-        shape=c.source_nuclei.shape,
-        source_nuclei_raw=to_raw_nuclei_mask(c.source_nuclei),
-        observation_quality=c.scene.cells.observation_quality,
-        instances=(
-            {
-                "instance_id": item.instance_id,
-                "raw_class_id": 100 + int(item.class_id),
-                "row": float(item.centroid_xy[1]),
-                "col": float(item.centroid_xy[0]),
-                "tissue_fine_id": int(item.tissue_fine_id),
-                "completeness_status": item.completeness_status,
-                "source": item.source,
-                "area_px": item.area_px,
-                "bbox_xyxy": item.bbox_xyxy,
-                "footprint_sha256": binary_mask_sha256(
-                    c.scene.instance_masks[item.instance_id]
-                ),
-            }
-            for item in c.scene.cells.instances
-        ),
-    )
+    expected = build_scene_instance_authority(c.scene, c.source_nuclei)
     traced = c.candidate.tool_trace.get("source_instance_authority")
     passed = bool(
         isinstance(traced, dict)
         and traced.get("authority_sha256") == expected["authority_sha256"]
+        and c.executable_contract.source_instance_authority_sha256
+        == expected["authority_sha256"]
         and int(traced.get("instance_count", -1))
         == len(expected["instances"])
     )
@@ -275,6 +302,76 @@ def _tool_program_binding(c):
         metrics={
             "compiled_program": program or {},
             "trace_matches_contract": traced_program == program,
+        },
+    )
+
+
+def _mechanism_executor_binding(c):
+    program_id = c.executable_contract.execution_program_id
+    traced_program = c.candidate.tool_trace.get("execution_program_id")
+    engine = str(c.candidate.tool_trace.get("execution_engine") or "")
+    mature = c.candidate.tool_trace.get("mature_probnet_contract") is True
+    ranker = str(c.candidate.tool_trace.get("ranker") or "")
+    if program_id.startswith("target-population-regeneration-v1:"):
+        engine_ok = (
+            (mature and engine.startswith("online-probnet-mature-"))
+            or (
+                not mature
+                and engine == "deterministic_research_layout_v1"
+                and bool(ranker)
+            )
+        )
+    elif program_id.startswith("deterministic-layout-ranked-v1:"):
+        engine_ok = (
+            not mature
+            and engine.startswith("deterministic_")
+            and bool(ranker)
+        )
+    elif program_id.startswith("deterministic-complete-instance-depletion-v1:"):
+        engine_ok = (
+            not mature
+            and engine
+            in {
+                "deterministic_anchored_density_gradient_removal_v1",
+                "deterministic_complete_instance_removal_v1",
+            }
+        )
+    elif program_id.startswith("deterministic-clearance-render-owned-v1:"):
+        engine_ok = (
+            not mature
+            and engine
+            == "deterministic_complete_viable_instance_clearance_v1"
+            and c.candidate.tool_trace.get("render_owned_debris_transition")
+            is True
+        )
+    elif program_id.startswith("deterministic-preserve-v1:"):
+        engine_ok = not np.any(c.candidate.cell_change)
+    else:
+        engine_ok = False
+    passed = bool(
+        traced_program == program_id
+        and c.plan.selected_mechanism_id
+        == c.executable_contract.mechanism_id
+        and c.plan.cell_plan.mechanism_program_id
+        == c.bundle.mechanism.cell_program.layout_for(c.case.primitive_id)
+        and engine_ok
+    )
+    return _result(
+        "mechanism_executor_binding",
+        passed,
+        (
+            "mechanism, layout program and executor family are atomically bound"
+            if passed
+            else "the candidate was realized by an executor outside its mechanism contract"
+        ),
+        metrics={
+            "mechanism_id": c.plan.selected_mechanism_id,
+            "execution_program_id": program_id,
+            "traced_execution_program_id": traced_program,
+            "execution_engine": engine,
+            "ranker": ranker,
+            "mature_probnet_contract": mature,
+            "engine_binding_passed": engine_ok,
         },
     )
 
@@ -1574,6 +1671,110 @@ def _mechanism_realization(c):
             "declared_cluster_sizes": declared_sizes,
             "mature_baseline_only": mature_baseline_only,
             "mechanism_modifier_certified": modifier_certified,
+        },
+    )
+
+
+def _mechanism_specific_postcondition(
+    c,
+    *,
+    expected_mechanism_id: str,
+):
+    """Veto unless the selected mechanism's own observable outcome exists.
+
+    The unique checker ID is part of the immutable contract.  This composite
+    deliberately reuses deterministic atomic measurements; it does not let a
+    visual critic substitute for missing tissue, cell, topology or authority
+    evidence.
+    """
+
+    check_id = mechanism_postcondition_checker_id(expected_mechanism_id)
+    binding_ok = bool(
+        c.plan.selected_mechanism_id == expected_mechanism_id
+        and c.candidate.mechanism_id == expected_mechanism_id
+        and c.executable_contract.mechanism_id == expected_mechanism_id
+        and c.bundle.mechanism.mechanism_id == expected_mechanism_id
+        and c.case.primitive_id in c.bundle.mechanism.supported_primitives
+    )
+    scope_is_cell_only = c.bundle.primitive.scope == "cell_only"
+    scope_ok = bool(
+        (
+            scope_is_cell_only
+            and c.candidate.ledger.tissue_pixels == 0
+            and c.candidate.ledger.cell_pixels > 0
+        )
+        or (
+            not scope_is_cell_only
+            and c.candidate.ledger.tissue_pixels > 0
+            and c.plan.tissue_plan is not None
+        )
+    )
+    expected_layout = c.bundle.mechanism.cell_program.layout_for(
+        c.case.primitive_id
+    )
+    layout_ok = bool(
+        c.plan.cell_plan.layout_program_id == expected_layout
+        and c.plan.cell_plan.mechanism_program_id == expected_layout
+    )
+    subchecks: dict[str, bool] = {}
+
+    if expected_mechanism_id.endswith("local-population-modulation"):
+        subchecks["local_population_density"] = _local_population_density(c).passed
+
+    if expected_mechanism_id.endswith("intratumoral-necrosis-turnover"):
+        subchecks["necrosis_cell_turnover"] = _necrosis_cell_turnover(c).passed
+
+    if expected_mechanism_id == "colorectal-gland-forming-front":
+        subchecks["colorectal_gland_unit_coupling"] = (
+            _colorectal_gland_unit_coupling(c).passed
+        )
+
+    if expected_mechanism_id.startswith("prostate-pattern-"):
+        subchecks["fine_pattern_preserved"] = _fine_pattern_preserved(c).passed
+
+    if c.bundle.mechanism.representability.required_auxiliary_structures:
+        subchecks["native_structure_preserved"] = (
+            _native_structure_preserved(c).passed
+        )
+
+    if c.plan.cell_plan.baseline_mode in {
+        "regenerate_target_population",
+        "structured_add",
+    }:
+        subchecks["mechanism_realization"] = _mechanism_realization(c).passed
+
+    seam = c.bundle.mechanism.cell_program.seam_for(c.case.primitive_id)
+    if seam.mode != "not_applicable":
+        subchecks["interface_seam_continuity"] = (
+            _interface_seam_continuity(c).passed
+        )
+
+    if scope_is_cell_only:
+        subchecks["cell_zone_localization"] = _cell_zone_localization(c).passed
+
+    passed = bool(
+        binding_ok
+        and scope_ok
+        and layout_ok
+        and all(subchecks.values())
+    )
+    return _result(
+        check_id,
+        passed,
+        (
+            f"{expected_mechanism_id} satisfies its bound observable postconditions"
+            if passed
+            else f"{expected_mechanism_id} lacks one or more required observable outcomes"
+        ),
+        metrics={
+            "expected_mechanism_id": expected_mechanism_id,
+            "binding_passed": binding_ok,
+            "scope_passed": scope_ok,
+            "layout_program": expected_layout,
+            "layout_binding_passed": layout_ok,
+            "primitive_id": c.case.primitive_id,
+            "primitive_scope": c.bundle.primitive.scope,
+            "subcheck_results": subchecks,
         },
     )
 

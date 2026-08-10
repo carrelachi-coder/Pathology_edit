@@ -156,6 +156,9 @@ def generate_cell_layouts(
                     "execution_engine": (
                         "deterministic_complete_viable_instance_clearance_v1"
                     ),
+                    "execution_program_id": (
+                        executable_contract.execution_program_id
+                    ),
                     "render_owned_debris_transition": True,
                     "synthetic_dead_nucleus_count": 0,
                     "render_material_policy": (
@@ -275,8 +278,8 @@ def generate_cell_layouts(
             class_id=target_class,
         )
         if source_density is None:
-            source_density = _class_density(
-                source_nuclei,
+            source_density = _class_density_from_scene(
+                scene,
                 source_tissue,
                 class_id=target_class,
                 tissue_ids=_target_tissue_ids(plan.tissue_plan.target_label, schema),
@@ -390,6 +393,9 @@ def generate_cell_layouts(
                 trace={
                     "layout_tool_version": LAYOUT_TOOL_VERSION,
                     "execution_engine": "deterministic_research_layout_v1",
+                    "execution_program_id": (
+                        executable_contract.execution_program_id
+                    ),
                     "production_density_calibrated": False,
                     "layout_program_id": plan.cell_plan.layout_program_id,
                     "compiled_cell_tool_program": (compiled_program.to_metadata()),
@@ -596,6 +602,7 @@ def _build_selective_removal_results(
             if compiled_program.depletion_profile_id is not None
             else "deterministic_complete_instance_removal_v1"
         ),
+        "execution_program_id": executable_contract.execution_program_id,
         "ranker": "not_applicable_removal_uses_compiled_gradient",
         "ranker_provenance": {
             "role": "no_new_placement",
@@ -773,6 +780,9 @@ def _build_multiclass_addition_results(
                 trace={
                     "layout_tool_version": LAYOUT_TOOL_VERSION,
                     "execution_engine": "deterministic_local_composition_add_v1",
+                    "execution_program_id": (
+                        executable_contract.execution_program_id
+                    ),
                     "layout_program_id": plan.cell_plan.layout_program_id,
                     "compiled_cell_tool_program": compiled_program.to_metadata(),
                     "executable_contract_id": executable_contract.contract_id,
@@ -968,17 +978,25 @@ def build_reference_shape_library(
     return tuple(accepted), rejected
 
 
-def _class_density(
-    mask, tissue, *, class_id: int, tissue_ids: tuple[int, ...]
+def _class_density_from_scene(
+    scene: JointSceneAnalysis,
+    tissue,
+    *,
+    class_id: int,
+    tissue_ids: tuple[int, ...],
 ) -> float:
+    """Measure fallback density without re-segmenting the semantic raster."""
+
     tissue_region = np.isin(tissue, tissue_ids)
     denominator = int(np.count_nonzero(tissue_region))
     centers = 0
-    for _, current, component in iter_instances(mask):
-        if current != class_id:
+    total_instances = 0
+    for item in scene.cells.instances:
+        if item.class_id != class_id:
             continue
-        cy, cx = ndimage.center_of_mass(component)
-        row, col = round(cy), round(cx)
+        total_instances += 1
+        col, row = item.centroid_xy
+        row, col = round(row), round(col)
         if (
             0 <= row < tissue.shape[0]
             and 0 <= col < tissue.shape[1]
@@ -987,10 +1005,7 @@ def _class_density(
             centers += 1
     if denominator and centers:
         return centers / denominator
-    total_instances = sum(
-        1 for _, current, _ in iter_instances(mask) if current == class_id
-    )
-    return total_instances / max(1, int(np.prod(mask.shape)))
+    return total_instances / max(1, int(np.prod(tissue.shape)))
 
 
 def _interface_class_density(

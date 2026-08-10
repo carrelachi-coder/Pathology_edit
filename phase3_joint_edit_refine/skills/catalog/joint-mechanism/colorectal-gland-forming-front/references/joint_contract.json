@@ -175,7 +175,8 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "joint_provenance",
-    "colorectal_gland_unit_coupling"
+    "colorectal_gland_unit_coupling",
+    "mechanism_postcondition:colorectal-gland-forming-front"
   ],
   "render_contract": {
     "required_findings": [

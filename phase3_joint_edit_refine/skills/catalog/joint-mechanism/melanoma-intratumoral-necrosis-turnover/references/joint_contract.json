@@ -130,7 +130,8 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "necrosis_cell_turnover",
-    "joint_provenance"
+    "joint_provenance",
+    "mechanism_postcondition:melanoma-intratumoral-necrosis-turnover"
   ],
   "render_contract": {
     "required_findings": [

@@ -177,7 +177,8 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "orca_fragment_protection",
-    "joint_provenance"
+    "joint_provenance",
+    "mechanism_postcondition:oral-scc-local-population-modulation"
   ],
   "render_contract": {
     "required_findings": [

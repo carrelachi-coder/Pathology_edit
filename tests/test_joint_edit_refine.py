@@ -31,10 +31,15 @@ from phase3_joint_edit_refine.feasibility import (
 )
 from phase3_joint_edit_refine.g2_pilot import build_local_joint_records
 from phase3_joint_edit_refine.gates import (
+    MECHANISM_POSTCONDITION_IDS,
     JointGateRegistry,
     _added_instance_areas_by_class,
     _fine_pattern_preserved,
     _recorded_instance_areas_by_class,
+    mechanism_postcondition_checker_id,
+)
+from phase3_joint_edit_refine.instance_authority import (
+    build_scene_instance_authority,
 )
 from phase3_joint_edit_refine.generator_adapter import (
     build_frozen_generator_inputs,
@@ -101,6 +106,16 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_every_mechanism_has_a_unique_registered_postcondition_gate(self):
+        repository = JointSkillRepository()
+        registry = JointGateRegistry()
+        expected = {
+            mechanism_postcondition_checker_id(mechanism_id)
+            for mechanism_id in repository.mechanisms
+        }
+        self.assertEqual(set(MECHANISM_POSTCONDITION_IDS), set(repository.mechanisms))
+        self.assertTrue(expected.issubset(set(registry.available_checker_ids)))
+
     def test_simple_doctor_instructions_parse_without_mechanism_invention(self):
         parser = RuleBasedSemanticParser()
         examples = {
@@ -217,6 +232,9 @@ class JointSkillTests(unittest.TestCase):
             item.class_id == 1 for item in scene.cells.instances
         )
         expected_total = len(scene.cells.instances)
+        authority = build_scene_instance_authority(scene, nuclei)
+        self.assertEqual(len(authority["instances"]), expected_total)
+        self.assertTrue(authority["authority_sha256"])
         self.assertAlmostEqual(density, expected_total / tissue.size)
         self.assertAlmostEqual(by_class[1], expected_class_1 / tissue.size)
 

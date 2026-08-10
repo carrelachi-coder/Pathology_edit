@@ -34,6 +34,7 @@ from .feasibility import (
     assess_candidate_cell_feasibility,
     certify_compiled_cell_program_feasibility,
 )
+from .instance_authority import build_scene_instance_authority
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
@@ -96,6 +97,18 @@ def execute_gate_aware_tissue_candidates(
     gates: GateRegistry,
     seed: int,
 ) -> TissueExecutionBatch:
+    source_authority = build_scene_instance_authority(
+        joint_scene, source_nuclei
+    )
+    if (
+        source_authority["authority_sha256"]
+        != nuclei_preflight.source_instance_authority_sha256
+        or len(source_authority["instances"])
+        != nuclei_preflight.source_instance_authority_count
+    ):
+        raise JointContractError(
+            "nuclei preflight density authority differs from the execution scene"
+        )
     all_candidates = generate_candidates(
         source_tissue,
         schema=schema,

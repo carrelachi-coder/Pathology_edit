@@ -186,7 +186,8 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "fine_pattern_preserved",
-    "joint_provenance"
+    "joint_provenance",
+    "mechanism_postcondition:prostate-local-population-modulation"
   ],
   "render_contract": {
     "required_findings": [

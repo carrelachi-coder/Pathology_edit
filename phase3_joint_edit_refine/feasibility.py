@@ -25,6 +25,7 @@ from .cell_layouts import (
     ReferenceNucleusShape,
     build_reference_shape_library,
 )
+from .instance_authority import build_scene_instance_authority
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .packing import certify_complete_footprint_packing
 from .scene import JointSceneAnalysis
@@ -39,7 +40,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v9"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v10"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -78,6 +79,9 @@ class InterfaceNucleiCapacity:
 @dataclass(frozen=True)
 class JointNucleiPreflight:
     version: str
+    source_instance_authority_sha256: str
+    source_instance_authority_count: int
+    source_instance_observation_quality: str
     target_cell_class: int
     target_cell_classes: tuple[int, ...]
     target_tissue_label: str
@@ -116,6 +120,15 @@ class JointNucleiPreflight:
     def to_metadata(self) -> dict[str, Any]:
         return {
             "version": self.version,
+            "source_instance_authority_sha256": (
+                self.source_instance_authority_sha256
+            ),
+            "source_instance_authority_count": (
+                self.source_instance_authority_count
+            ),
+            "source_instance_observation_quality": (
+                self.source_instance_observation_quality
+            ),
             "target_cell_class": self.target_cell_class,
             "target_cell_classes": list(self.target_cell_classes),
             "target_tissue_label": self.target_tissue_label,
@@ -346,6 +359,9 @@ def build_joint_nuclei_preflight(
     whole_instance_closure = _whole_instance_closure_px(
         scene,
         removable,
+    )
+    source_authority = build_scene_instance_authority(
+        scene, scene.source_nuclei
     )
     target_density, target_density_by_class = (
         _target_interface_population_density(
@@ -648,6 +664,13 @@ def build_joint_nuclei_preflight(
     )
     return JointNucleiPreflight(
         version=PREFLIGHT_VERSION,
+        source_instance_authority_sha256=str(
+            source_authority["authority_sha256"]
+        ),
+        source_instance_authority_count=len(source_authority["instances"]),
+        source_instance_observation_quality=str(
+            source_authority["observation_quality"]
+        ),
         target_cell_class=target_class,
         target_cell_classes=tuple(sorted(target_compatible_classes)),
         target_tissue_label=target_label,

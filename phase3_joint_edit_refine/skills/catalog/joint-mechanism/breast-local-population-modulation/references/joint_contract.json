@@ -201,7 +201,8 @@
   "joint_gate_ids": [
     "cell_tissue_compatibility",
     "cell_zone_localization",
-    "joint_provenance"
+    "joint_provenance",
+    "mechanism_postcondition:breast-local-population-modulation"
   ],
   "render_contract": {
     "required_findings": [

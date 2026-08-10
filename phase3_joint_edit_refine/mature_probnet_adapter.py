@@ -13,14 +13,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from inpaint_cells.instance_authority import (
-    binary_mask_sha256,
-    build_instance_authority,
-    write_instance_authority,
-)
+from inpaint_cells.instance_authority import write_instance_authority
 
 from .cell_layouts import CellLayoutResult, build_reference_shape_library
 from .executable_contract import ExecutableJointContract
+from .instance_authority import build_scene_instance_authority
 from .models import JointContractError
 from .nuclei import load_nuclei_mask, to_raw_nuclei_mask
 from .scene import JointSceneAnalysis
@@ -237,28 +234,7 @@ class MatureProbNetCellExecutor:
         _save_mask(source_tissue_path, source_tissue)
         raw_source_nuclei = to_raw_nuclei_mask(source_nuclei)
         _save_mask(source_nuclei_path, raw_source_nuclei)
-        authority = build_instance_authority(
-            shape=source_nuclei.shape,
-            source_nuclei_raw=raw_source_nuclei,
-            observation_quality=scene.cells.observation_quality,
-            instances=(
-                {
-                    "instance_id": item.instance_id,
-                    "raw_class_id": 100 + int(item.class_id),
-                    "row": float(item.centroid_xy[1]),
-                    "col": float(item.centroid_xy[0]),
-                    "tissue_fine_id": int(item.tissue_fine_id),
-                    "completeness_status": item.completeness_status,
-                    "source": item.source,
-                    "area_px": item.area_px,
-                    "bbox_xyxy": item.bbox_xyxy,
-                    "footprint_sha256": binary_mask_sha256(
-                        scene.instance_masks[item.instance_id]
-                    ),
-                }
-                for item in scene.cells.instances
-            ),
-        )
+        authority = build_scene_instance_authority(scene, source_nuclei)
         write_instance_authority(source_instance_authority_path, authority)
         # ``--edit-region`` is the mature CLI model-support domain and must
         # contain T_pop, every legal center in P, and every complete-instance
@@ -510,6 +486,7 @@ class MatureProbNetCellExecutor:
                     trace={
                         "layout_tool_version": MATURE_EXECUTION_VERSION,
                         "execution_engine": MATURE_EXECUTION_VERSION,
+                        "execution_program_id": contract.execution_program_id,
                         "production_density_calibrated": True,
                         "mature_probnet_contract": True,
                         "ranker": "frozen_probnet_context_stabilized_spatial_sampler",

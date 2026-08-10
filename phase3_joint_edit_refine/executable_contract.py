@@ -20,11 +20,12 @@ from phase3_mask_edit_refine.models import CandidateMask, GateReport
 
 from .budget import JointBudgetAllocation
 from .cell_programs import CellToolProgramCompiler, CompiledCellToolProgram
+from .instance_authority import build_scene_instance_authority
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v4"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v5"
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class ExecutableJointContract:
     case_id: str
     primitive_id: str
     mechanism_id: str
+    execution_program_id: str
     tissue_candidate_id: str
     source_labels: tuple[str, ...]
     target_label: str | None
@@ -49,6 +51,7 @@ class ExecutableJointContract:
     selected_structural_unit_ids: tuple[str, ...]
     affected_structural_unit_ids: tuple[str, ...]
     structural_hierarchy_digest: str
+    source_instance_authority_sha256: str
     erase_instance_ids: tuple[str, ...]
     protected_instance_ids: tuple[str, ...]
     allowed_new_cell_classes: tuple[int, ...]
@@ -74,6 +77,8 @@ class ExecutableJointContract:
             raise JointContractError("unsupported executable contract version")
         if not self.contract_id:
             raise JointContractError("executable contract ID is required")
+        if not self.execution_program_id:
+            raise JointContractError("mechanism execution program is required")
         if not self.required_checker_ids or not self.active_rule_ids:
             raise JointContractError(
                 "executable contract must bind checkers and active skill rules"
@@ -122,6 +127,7 @@ class ExecutableJointContract:
             "case_id": self.case_id,
             "primitive_id": self.primitive_id,
             "mechanism_id": self.mechanism_id,
+            "execution_program_id": self.execution_program_id,
             "tissue_candidate_id": self.tissue_candidate_id,
             "tissue_label_contract": {
                 "source_labels": list(self.source_labels),
@@ -134,6 +140,9 @@ class ExecutableJointContract:
                 "affected_unit_ids": list(self.affected_structural_unit_ids),
                 "digest": self.structural_hierarchy_digest,
             },
+            "source_instance_authority_sha256": (
+                self.source_instance_authority_sha256
+            ),
             "cell_instance_contract": {
                 "erase_instance_ids": list(self.erase_instance_ids),
                 "protected_instance_ids": list(self.protected_instance_ids),
@@ -254,6 +263,12 @@ class ExecutableJointContract:
             errors.append("tissue_change_digest_mismatch")
         if _canonical_digest(scene.structural_hierarchy) != self.structural_hierarchy_digest:
             errors.append("structural_hierarchy_digest_mismatch")
+        source_authority = build_scene_instance_authority(scene, source_nuclei)
+        if (
+            source_authority["authority_sha256"]
+            != self.source_instance_authority_sha256
+        ):
+            errors.append("source_instance_authority_digest_mismatch")
         known_units = set(scene.structural_unit_masks)
         if set(self.selected_structural_unit_ids) - known_units:
             errors.append("selected_structural_unit_missing_from_scene")
@@ -635,12 +650,16 @@ class ExecutableJointContractCompiler:
         )
         source_assets = _provenance_digests(case.provenance)
         source_assets["provenance_sha256"] = _canonical_digest(case.provenance)
+        source_authority = build_scene_instance_authority(
+            scene, source_nuclei
+        )
         draft = ExecutableJointContract(
             schema_version=EXECUTABLE_CONTRACT_VERSION,
             contract_id="pending",
             case_id=case.case_id,
             primitive_id=case.primitive_id,
             mechanism_id=plan.selected_mechanism_id,
+            execution_program_id=compile_execution_program_id(plan),
             tissue_candidate_id=tissue_candidate.candidate_id,
             source_labels=source_labels,
             target_label=target_label,
@@ -650,6 +669,9 @@ class ExecutableJointContractCompiler:
             affected_structural_unit_ids=affected_units,
             structural_hierarchy_digest=_canonical_digest(
                 scene.structural_hierarchy
+            ),
+            source_instance_authority_sha256=str(
+                source_authority["authority_sha256"]
             ),
             erase_instance_ids=erase_ids,
             protected_instance_ids=tuple(sorted(protected)),
@@ -713,6 +735,25 @@ def _resolve_allowed_new_classes(
             "Planner, primitive and target-tissue cell classes have empty intersection"
         )
     return tuple(sorted(allowed))
+
+
+def compile_execution_program_id(plan: JointEditPlan) -> str:
+    """Compile the only executor family allowed to realize this mechanism plan."""
+
+    baseline = plan.cell_plan.baseline_mode
+    layout = plan.cell_plan.mechanism_program_id
+    prefix = {
+        "regenerate_target_population": "target-population-regeneration-v1",
+        "structured_add": "deterministic-layout-ranked-v1",
+        "selective_remove": "deterministic-complete-instance-depletion-v1",
+        "render_owned_clearance": "deterministic-clearance-render-owned-v1",
+        "preserve": "deterministic-preserve-v1",
+    }.get(baseline)
+    if prefix is None:
+        raise JointContractError(
+            f"cell baseline {baseline!r} has no bound executor program"
+        )
+    return f"{prefix}:{layout}"
 
 
 def _resolve_target_host_fine_ids(
@@ -817,4 +858,5 @@ __all__ = [
     "EXECUTABLE_CONTRACT_VERSION",
     "ExecutableJointContract",
     "ExecutableJointContractCompiler",
+    "compile_execution_program_id",
 ]

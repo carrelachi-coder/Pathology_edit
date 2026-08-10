@@ -10,10 +10,6 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from inpaint_cells.instance_authority import (
-    binary_mask_sha256,
-    build_instance_authority,
-)
 from phase3_mask_edit_refine.agents import Planner, validate_edit_plan
 from phase3_mask_edit_refine.evidence import load_id_mask, sha256_file
 from phase3_mask_edit_refine.execution import compile_edit_plan
@@ -45,6 +41,7 @@ from .feasibility import (
 )
 from .gates import JointGateContext, JointGateRegistry
 from .handoff import write_generation_handoff
+from .instance_authority import authority_trace, build_scene_instance_authority
 from .ledger import build_joint_candidate
 from .mature_probnet_adapter import MatureProbNetCellExecutor
 from .models import (
@@ -54,7 +51,7 @@ from .models import (
     JointContractError,
     JointWorkflowResult,
 )
-from .nuclei import load_nuclei_mask, to_raw_nuclei_mask
+from .nuclei import load_nuclei_mask
 from .planner import JointInterpretationOption, JointPlanner
 from .scene import build_joint_scene_analysis
 from .skills.repository import JointSkillBundle, JointSkillRepository
@@ -184,7 +181,7 @@ class JointPathologyEditWorkflow:
             audit.write_json("joint_scene_graph.json", scene.to_metadata())
             audit.write_json(
                 "source_instance_authority.json",
-                _source_instance_authority(scene, source_nuclei),
+                build_scene_instance_authority(scene, source_nuclei),
             )
             tissue_panels = save_planner_panels(
                 image_path=case.source_image_uri,
@@ -1427,7 +1424,7 @@ class JointPathologyEditWorkflow:
         generation_allowed = ~np.isin(source_tissue, tuple(prohibited))
         contract_by_joint_candidate: dict[str, ExecutableJointContract] = {}
         cell_execution_failures: list[dict[str, str]] = []
-        source_authority = _source_instance_authority(scene, source_nuclei)
+        source_authority = build_scene_instance_authority(scene, source_nuclei)
         for tissue_candidate in passing_tissue:
             executable_contract = contracts_by_tissue_id[
                 tissue_candidate.candidate_id
@@ -1549,7 +1546,7 @@ class JointPathologyEditWorkflow:
                     "skill_version": bundle.mechanism.version,
                     "tissue_tool_trace": tissue_candidate.tool_trace,
                     "budget_allocation": allocation.to_metadata(),
-                    "source_instance_authority": _authority_trace(
+                    "source_instance_authority": authority_trace(
                         source_authority
                     ),
                 }
@@ -1840,7 +1837,7 @@ class JointPathologyEditWorkflow:
         prohibited = set(bundle.annotation_profile.prohibit_generation_support_fine_ids)
         generation_allowed = ~np.isin(source_tissue, tuple(prohibited))
         candidates = []
-        source_authority = _source_instance_authority(scene, source_nuclei)
+        source_authority = build_scene_instance_authority(scene, source_nuclei)
         for layout in layouts:
             trace = {
                 **layout.trace,
@@ -1848,7 +1845,7 @@ class JointPathologyEditWorkflow:
                 "skill_version": bundle.mechanism.version,
                 "tissue_tool_trace": preserved_tissue.tool_trace,
                 "budget_mode": "count_extent",
-                "source_instance_authority": _authority_trace(
+                "source_instance_authority": authority_trace(
                     source_authority
                 ),
             }
@@ -2389,37 +2386,3 @@ def _validate_dimensions(image_path: str, tissue_shape, nuclei_shape) -> None:
     with Image.open(image_path) as image:
         if image.size != (tissue_shape[1], tissue_shape[0]):
             raise JointContractError("source H&E and masks are not aligned")
-
-
-def _source_instance_authority(scene, source_nuclei) -> dict:
-    return build_instance_authority(
-        shape=np.asarray(source_nuclei).shape,
-        source_nuclei_raw=to_raw_nuclei_mask(source_nuclei),
-        observation_quality=scene.cells.observation_quality,
-        instances=(
-            {
-                "instance_id": item.instance_id,
-                "raw_class_id": 100 + int(item.class_id),
-                "row": float(item.centroid_xy[1]),
-                "col": float(item.centroid_xy[0]),
-                "tissue_fine_id": int(item.tissue_fine_id),
-                "completeness_status": item.completeness_status,
-                "source": item.source,
-                "area_px": item.area_px,
-                "bbox_xyxy": item.bbox_xyxy,
-                "footprint_sha256": binary_mask_sha256(
-                    scene.instance_masks[item.instance_id]
-                ),
-            }
-            for item in scene.cells.instances
-        ),
-    )
-
-
-def _authority_trace(authority: dict) -> dict:
-    return {
-        "schema_version": authority["schema_version"],
-        "authority_sha256": authority["authority_sha256"],
-        "observation_quality": authority["observation_quality"],
-        "instance_count": len(authority["instances"]),
-    }

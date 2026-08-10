@@ -310,6 +310,9 @@ class JointSkillRepository:
             required.update(mechanism.tissue_program.required_checker_ids)
             required.update(mechanism.cell_program.required_checker_ids)
             required.update(mechanism.joint_gate_ids)
+            required.add(
+                f"mechanism_postcondition:{mechanism.mechanism_id}"
+            )
         for primitive in self.primitives.values():
             required.update(primitive.required_checker_ids)
         for profile in self.annotation_profiles.values():
