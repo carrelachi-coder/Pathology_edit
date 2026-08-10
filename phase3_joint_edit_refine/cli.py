@@ -19,7 +19,7 @@ from .mature_probnet_adapter import (
 from .planner import HeuristicJointPlanner
 from .probnet_adapter import FrozenProbNetSpatialRanker
 from .semantic_parser import (
-    OpenAISemanticParser,
+    OpenAIClinicalScenarioParser,
     RuleBasedSemanticParser,
     bind_semantic_intent,
 )
@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.semantic_parser == "api" and client is None:
         raise ValueError("--semantic-parser api requires --agent-mode api")
     semantic_parser = (
-        OpenAISemanticParser(semantic_client)
+        OpenAIClinicalScenarioParser(semantic_client)
         if args.semantic_parser == "api"
         or (args.semantic_parser == "auto" and client is not None)
         else RuleBasedSemanticParser()

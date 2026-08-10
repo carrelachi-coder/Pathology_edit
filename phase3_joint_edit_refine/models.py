@@ -389,7 +389,10 @@ class JointCaseContext:
             selected = self.semantic_intent.get("selected_primitive_id")
             if (
                 self.semantic_intent.get("schema_version")
-                != "joint-semantic-intent-v2"
+                not in {
+                    "joint-semantic-intent-v2",
+                    "joint-semantic-intent-v3",
+                }
                 or self.semantic_intent.get("instruction") != self.instruction
                 or not candidate_ids
                 or self.primitive_id not in candidate_ids

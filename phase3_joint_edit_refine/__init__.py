@@ -22,7 +22,11 @@ from .models import (
     JointGateReport,
     JointWorkflowResult,
 )
-from .semantic_parser import PrimitiveHypothesis, SemanticEditIntent
+from .semantic_parser import (
+    OpenAIClinicalScenarioParser,
+    PrimitiveHypothesis,
+    SemanticEditIntent,
+)
 
 __all__ = [
     "CellEditPlan",
@@ -38,6 +42,7 @@ __all__ = [
     "JointEditPlan",
     "JointGateReport",
     "JointWorkflowResult",
+    "OpenAIClinicalScenarioParser",
     "PrimitiveHypothesis",
     "SemanticEditIntent",
 ]
