@@ -81,6 +81,58 @@ class G2V2ShadowTests(unittest.TestCase):
 
 
 def _case(index, *, organ, dataset, domain, annotation, population, mechanism, primitive, assets, execution_allowed):
+    instruction = (
+        "increase tumor burden"
+        if primitive == "tumor-burden-increase-v1"
+        else "decrease tumor burden"
+    )
+    semantic = (
+        {
+            "schema_version": "joint-semantic-intent-v3",
+            "instruction": instruction,
+            "instruction_mode": "direct_edit",
+            "scenario": "direct_edit",
+            "clinical_direction": "unspecified",
+            "treatment_context": "none",
+            "scenario_target": "tumor",
+            "explicit_edit_scope": "tissue_burden",
+            "primitive_id": primitive,
+            "subject": "tumor-burden",
+            "direction": (
+                "increase"
+                if primitive == "tumor-burden-increase-v1"
+                else "decrease"
+            ),
+            "explicit_cell_class": None,
+            "explicit_location": None,
+            "user_constraints": [],
+            "uncertainties": [],
+            "parser": "current_codex_session_semantic_parser_v1",
+            "primitive_hypotheses": [
+                {
+                    "primitive_id": primitive,
+                    "semantic_fit": "explicit",
+                    "priority": 0,
+                    "rationale": "fixture",
+                }
+            ],
+            "parser_metadata": {"reviewer": "fixture"},
+        }
+        if execution_allowed
+        else None
+    )
+    semantic_digest = (
+        hashlib.sha256(
+            json.dumps(
+                semantic,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if semantic is not None
+        else None
+    )
     return {
         "source_index": index,
         "case_id": f"case-{index}",
@@ -103,9 +155,11 @@ def _case(index, *, organ, dataset, domain, annotation, population, mechanism, p
         },
         "decision_status": "supported_mechanism" if execution_allowed else "abstain",
         "execution_allowed": execution_allowed,
-        "instruction": "increase tumor burden" if primitive == "tumor-burden-increase-v1" else "reduce tumor burden",
+        "instruction": instruction,
         "primitive_id": primitive,
         "mechanism_id": mechanism,
+        "prebound_semantic_intent": semantic,
+        "prebound_semantic_intent_sha256": semantic_digest,
         "decision_reason_code": "fixture",
         "visual_observations": ["fixture review"],
         "review_basis": {"reviewer": "fixture"},

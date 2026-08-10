@@ -8,6 +8,7 @@ import unittest
 from phase3_joint_edit_refine.models import JointContractError
 from phase3_joint_edit_refine.semantic_parser import (
     OpenAIClinicalScenarioParser,
+    PreboundSemanticParser,
     RuleBasedSemanticParser,
 )
 
@@ -152,6 +153,24 @@ class ClinicalScenarioParserTests(unittest.TestCase):
         )
         self.assertEqual(intent.explicit_edit_scope, "cell_population")
         self.assertEqual(len(intent.primitive_hypotheses), 1)
+
+    def test_prebound_codex_intent_cannot_be_reparsed_or_detached(self):
+        payload = RuleBasedSemanticParser().parse(
+            "increase tumor infiltration"
+        ).to_metadata()
+        payload["parser"] = "current_codex_session_semantic_parser_v1"
+        payload["parser_metadata"] = {
+            "reviewer": "current_codex_session",
+            "llm_api_used": False,
+        }
+        parser = PreboundSemanticParser(payload)
+
+        self.assertEqual(
+            parser.parse("increase tumor infiltration").parser,
+            "current_codex_session_semantic_parser_v1",
+        )
+        with self.assertRaisesRegex(JointContractError, "detached"):
+            parser.parse("increase tumor burden")
 
 
 if __name__ == "__main__":

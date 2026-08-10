@@ -20,6 +20,7 @@ from .planner import HeuristicJointPlanner
 from .probnet_adapter import FrozenProbNetSpatialRanker
 from .semantic_parser import (
     OpenAIClinicalScenarioParser,
+    PreboundSemanticParser,
     RuleBasedSemanticParser,
     bind_semantic_intent,
 )
@@ -45,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-mode", choices=("offline", "api"), default="offline")
     parser.add_argument(
         "--semantic-parser",
-        choices=("auto", "rule-based", "api"),
+        choices=("auto", "rule-based", "prebound", "api"),
         default="auto",
         help=(
             "Parse the simple user instruction before visual mechanism planning; "
@@ -135,14 +136,23 @@ def main(argv: list[str] | None = None) -> int:
     repository = JointSkillRepository()
     if args.semantic_parser == "api" and client is None:
         raise ValueError("--semantic-parser api requires --agent-mode api")
-    semantic_parser = (
-        OpenAIClinicalScenarioParser(semantic_client)
-        if args.semantic_parser == "api"
-        or (args.semantic_parser == "auto" and client is not None)
-        else RuleBasedSemanticParser()
-    )
     summaries = []
     for raw in records:
+        if args.semantic_parser == "prebound":
+            prebound = raw.get("prebound_semantic_intent")
+            if not isinstance(prebound, dict):
+                raise ValueError(
+                    "--semantic-parser prebound requires a frozen "
+                    "prebound_semantic_intent on every case"
+                )
+            semantic_parser = PreboundSemanticParser(prebound)
+        else:
+            semantic_parser = (
+                OpenAIClinicalScenarioParser(semantic_client)
+                if args.semantic_parser == "api"
+                or (args.semantic_parser == "auto" and client is not None)
+                else RuleBasedSemanticParser()
+            )
         case, semantic_intent = bind_semantic_intent(raw, semantic_parser)
         population = repository.cell_population_profiles[
             case.cell_population_profile_id

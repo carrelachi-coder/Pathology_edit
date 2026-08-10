@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from phase3_joint_edit_refine.g2_he_review import HE_REVIEW_SCHEMA_VERSION
+from phase3_joint_edit_refine.g2_he_review import (
+    HE_REVIEW_SCHEMA_VERSION,
+    _codex_semantic_intent,
+)
 from phase3_joint_edit_refine.g2_qualification import QUALIFICATION_SCHEMA_VERSION
 from phase3_joint_edit_refine.g2_v2_manifest import freeze_g2_v2_manifest
 
@@ -61,6 +64,20 @@ class G2V2ManifestTests(unittest.TestCase):
             }
             qualification.write_text(json.dumps(q) + "\n", encoding="utf-8")
             decision = root / "decision.jsonl"
+            semantic = _codex_semantic_intent(
+                case_id="case-1",
+                instruction="increase tumor burden",
+                primitive_id="tumor-burden-increase-v1",
+                qualification_digest=_sha(qualification),
+            )
+            semantic_digest = hashlib.sha256(
+                json.dumps(
+                    semantic,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
             d = {
                 "schema_version": HE_REVIEW_SCHEMA_VERSION,
                 "case_id": "case-1",
@@ -73,6 +90,8 @@ class G2V2ManifestTests(unittest.TestCase):
                 "selected_joint_primitive": "tumor-burden-increase-v1",
                 "selected_mechanism_id": "breast-cohesive-nst-front",
                 "recommended_instruction": "increase tumor burden",
+                "prebound_semantic_intent": semantic,
+                "prebound_semantic_intent_sha256": semantic_digest,
                 "reason_code": "supported",
                 "visual_observations": ["cohesive front"],
                 "execution_allowed": True,
@@ -99,6 +118,10 @@ class G2V2ManifestTests(unittest.TestCase):
             self.assertEqual(payload["execution_case_count"], 1)
             self.assertEqual(payload["cases"][0]["mechanism_id"], "breast-cohesive-nst-front")
             self.assertEqual(payload["cases"][0]["budget_contract"]["mode"], "joint_area")
+            self.assertEqual(
+                payload["cases"][0]["prebound_semantic_intent"]["parser"],
+                "current_codex_session_semantic_parser_v1",
+            )
             self.assertEqual(result["manifest_sha256"], _sha(manifest))
             self.assertFalse(result["target_mask_created"])
 

@@ -195,6 +195,7 @@ def _materialize_joint_context(
         "cell_observation_profile_id": row["cell_observation_profile_id"],
         "cell_population_profile_id": row["cell_population_profile_id"],
         "primitive_id": row["primitive_id"],
+        "prebound_semantic_intent": row["prebound_semantic_intent"],
         "joint_area_budget": row.get("joint_area_budget"),
         # Scene-calibrated cell-only budgets are intentionally absent here;
         # the workflow compiles them after source instance authority exists.
@@ -203,6 +204,19 @@ def _materialize_joint_context(
         "pixel_size_um": row.get("pixel_size_um"),
         "provenance": provenance,
     }
+    semantic = context["prebound_semantic_intent"]
+    semantic_digest = hashlib.sha256(
+        json.dumps(
+            semantic,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    if semantic_digest != row.get("prebound_semantic_intent_sha256"):
+        raise ValueError(
+            f"frozen semantic intent is missing or drifted: {row['case_id']}"
+        )
     instances_uri = row.get("source_nuclei_instances_uri")
     if instances_uri:
         context["source_nuclei_instances_uri"] = instances_uri

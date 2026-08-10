@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Protocol
 
@@ -110,6 +110,29 @@ class SemanticParser(Protocol):
 
     def parse(self, instruction: str) -> SemanticEditIntent:
         """Extract only user-stated semantic intent."""
+
+
+class PreboundSemanticParser:
+    """Consume one digest-bound semantic decision made outside the runner.
+
+    This is the correct bridge for a Codex-reviewed offline shadow: the
+    server process cannot call back into the interactive Codex session, so it
+    validates and consumes the session's frozen per-case decision instead of
+    substituting a regex parser and mislabelling that result as LLM output.
+    """
+
+    name = "prebound_semantic_parser_v1"
+
+    def __init__(self, payload: Mapping[str, Any]) -> None:
+        self.intent = semantic_intent_from_metadata(payload)
+
+    def parse(self, instruction: str) -> SemanticEditIntent:
+        text = _instruction(instruction)
+        if text != self.intent.instruction:
+            raise JointContractError(
+                "prebound semantic intent is detached from the case instruction"
+            )
+        return self.intent
 
 
 class RuleBasedSemanticParser:
@@ -430,6 +453,89 @@ class OpenAIClinicalScenarioParser:
 
 # Backward-compatible import name.  Production behavior is the clinical parser.
 OpenAISemanticParser = OpenAIClinicalScenarioParser
+
+
+def semantic_intent_from_metadata(
+    payload: Mapping[str, Any],
+) -> SemanticEditIntent:
+    """Strictly reconstruct a frozen SemanticEditIntent without re-parsing."""
+
+    if not isinstance(payload, Mapping):
+        raise JointContractError("prebound semantic intent must be a mapping")
+    if payload.get("schema_version") != SEMANTIC_INTENT_SCHEMA_VERSION:
+        raise JointContractError("unsupported prebound semantic-intent schema")
+    instruction_mode = _enum_text(
+        payload, "instruction_mode", INSTRUCTION_MODES
+    )
+    scenario = _enum_text(payload, "scenario", CLINICAL_SCENARIOS)
+    clinical_direction = _enum_text(
+        payload, "clinical_direction", CLINICAL_DIRECTIONS
+    )
+    treatment_context = _enum_text(
+        payload, "treatment_context", TREATMENT_CONTEXTS
+    )
+    scenario_target = _enum_text(
+        payload, "scenario_target", SCENARIO_TARGETS
+    )
+    explicit_edit_scope = _enum_text(
+        payload, "explicit_edit_scope", EXPLICIT_EDIT_SCOPES
+    )
+    raw_hypotheses = payload.get("primitive_hypotheses")
+    if (
+        not isinstance(raw_hypotheses, Sequence)
+        or isinstance(raw_hypotheses, (str, bytes))
+        or not raw_hypotheses
+    ):
+        raise JointContractError(
+            "prebound semantic intent has no primitive hypotheses"
+        )
+    hypotheses = tuple(
+        PrimitiveHypothesis(
+            primitive_id=_required_text(item, "primitive_id"),
+            semantic_fit=_required_text(item, "semantic_fit"),
+            priority=int(item.get("priority", -1)),
+            rationale=_required_text(item, "rationale"),
+        )
+        for item in raw_hypotheses
+        if isinstance(item, Mapping)
+    )
+    if len(hypotheses) != len(raw_hypotheses):
+        raise JointContractError("prebound primitive hypothesis is malformed")
+    priorities = [item.priority for item in hypotheses]
+    if priorities != sorted(priorities) or len(set(priorities)) != len(priorities):
+        raise JointContractError(
+            "prebound primitive hypotheses require unique sorted priorities"
+        )
+    primitive_id = _required_text(payload, "primitive_id")
+    if primitive_id != hypotheses[0].primitive_id:
+        raise JointContractError(
+            "prebound primary primitive differs from its first hypothesis"
+        )
+    parser = _required_text(payload, "parser")
+    parser_metadata = payload.get("parser_metadata")
+    if not isinstance(parser_metadata, Mapping):
+        raise JointContractError(
+            "prebound semantic intent requires parser provenance"
+        )
+    return SemanticEditIntent(
+        instruction=_required_text(payload, "instruction"),
+        instruction_mode=instruction_mode,
+        scenario=scenario,
+        clinical_direction=clinical_direction,
+        treatment_context=treatment_context,
+        scenario_target=scenario_target,
+        explicit_edit_scope=explicit_edit_scope,
+        primitive_id=primitive_id,
+        subject=_required_text(payload, "subject"),
+        direction=_required_text(payload, "direction"),
+        explicit_cell_class=_optional_text(payload, "explicit_cell_class"),
+        explicit_location=_optional_text(payload, "explicit_location"),
+        user_constraints=tuple(_text_list(payload, "user_constraints")),
+        uncertainties=tuple(_text_list(payload, "uncertainties")),
+        parser=parser,
+        primitive_hypotheses=hypotheses,
+        parser_metadata=dict(parser_metadata),
+    )
 
 
 def bind_semantic_intent(
@@ -1085,8 +1191,12 @@ def _enum_text(
 
 def _text_list(payload: Mapping[str, Any], key: str) -> list[str]:
     value = payload.get(key)
-    if not isinstance(value, list) or not all(
+    if (
+        not isinstance(value, Sequence)
+        or isinstance(value, (str, bytes))
+        or not all(
         isinstance(item, str) and item.strip() for item in value
+        )
     ):
         raise JointContractError(f"semantic intent {key} must be a string array")
     return [item.strip() for item in value]

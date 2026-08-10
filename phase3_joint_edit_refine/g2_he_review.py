@@ -17,9 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from .g2_pilot import ORGAN_CONTRACTS
+from .semantic_parser import SEMANTIC_INTENT_SCHEMA_VERSION
 
-HE_REVIEW_SCHEMA_VERSION = "g2-he-mechanism-review-v1"
-REVIEW_POLICY_VERSION = "current-codex-source-he-review-2026-08-10-v1"
+HE_REVIEW_SCHEMA_VERSION = "g2-he-mechanism-review-v2"
+REVIEW_POLICY_VERSION = "current-codex-source-he-review-2026-08-10-v2"
 
 DECISION_STATUSES = frozenset(
     {
@@ -152,6 +153,28 @@ def _review_record(record: dict[str, Any], *, qualification_digest: str) -> dict
     board = record.get("review_board")
     if not isinstance(board, dict):
         raise ValueError(f"case {record['case_id']} is missing its source review board binding")
+    semantic_intent = (
+        _codex_semantic_intent(
+            case_id=str(record["case_id"]),
+            instruction=str(instruction),
+            primitive_id=str(primitive),
+            qualification_digest=qualification_digest,
+        )
+        if status != "abstain"
+        else None
+    )
+    semantic_digest = (
+        hashlib.sha256(
+            json.dumps(
+                semantic_intent,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if semantic_intent is not None
+        else None
+    )
     return {
         "schema_version": HE_REVIEW_SCHEMA_VERSION,
         "review_policy_version": REVIEW_POLICY_VERSION,
@@ -167,6 +190,8 @@ def _review_record(record: dict[str, Any], *, qualification_digest: str) -> dict
         "selected_joint_primitive": primitive,
         "selected_mechanism_id": mechanism,
         "recommended_instruction": instruction,
+        "prebound_semantic_intent": semantic_intent,
+        "prebound_semantic_intent_sha256": semantic_digest,
         "reason_code": reason_code,
         "visual_observations": list(observations),
         "review_confidence": "high" if status != "abstain" else "high_for_rejection",
@@ -384,6 +409,88 @@ def _abstain(reason_code: str, *observations: str):
     return ("abstain", None, None, None, reason_code, tuple(observations))
 
 
+_CODEX_DIRECT_PRIMITIVE_SEMANTICS = {
+    "tumor-burden-increase-v1": (
+        "tumor-burden", "increase", "tumor", "tissue_burden", None
+    ),
+    "tumor-burden-decrease-v1": (
+        "tumor-burden", "decrease", "tumor", "tissue_burden", None
+    ),
+    "stroma-increase-v1": (
+        "stroma", "increase", "stroma", "tissue_compartment", None
+    ),
+    "necrosis-appearance-v1": (
+        "necrosis", "increase", "necrosis", "tissue_compartment", None
+    ),
+    "necrosis-resolution-v1": (
+        "necrosis", "decrease", "necrosis", "tissue_compartment", None
+    ),
+    "cell-type-abundance-increase-v1": (
+        "cell-type-abundance", "increase", "cell_population", "cell_population", "immune"
+    ),
+    "cell-type-abundance-decrease-v1": (
+        "cell-type-abundance", "decrease", "cell_population", "cell_population", "immune"
+    ),
+    "neoplastic-cell-infiltration-increase-v1": (
+        "neoplastic-cell-infiltration", "increase", "tumor", "cell_population", "neoplastic"
+    ),
+}
+
+
+def _codex_semantic_intent(
+    *,
+    case_id: str,
+    instruction: str,
+    primitive_id: str,
+    qualification_digest: str,
+) -> dict[str, Any]:
+    """Freeze this Codex session's language-only interpretation per case."""
+
+    contract = _CODEX_DIRECT_PRIMITIVE_SEMANTICS.get(primitive_id)
+    if contract is None:
+        raise ValueError(
+            f"current Codex semantic review has no direct contract for {primitive_id}"
+        )
+    subject, direction, target, scope, cell_class = contract
+    return {
+        "schema_version": SEMANTIC_INTENT_SCHEMA_VERSION,
+        "instruction": instruction,
+        "instruction_mode": "direct_edit",
+        "scenario": "direct_edit",
+        "clinical_direction": "unspecified",
+        "treatment_context": "none",
+        "scenario_target": target,
+        "explicit_edit_scope": scope,
+        "primitive_id": primitive_id,
+        "subject": subject,
+        "direction": direction,
+        "explicit_cell_class": cell_class,
+        "explicit_location": None,
+        "user_constraints": [],
+        "uncertainties": [],
+        "parser": "current_codex_session_semantic_parser_v1",
+        "primitive_hypotheses": [
+            {
+                "primitive_id": primitive_id,
+                "semantic_fit": "explicit",
+                "priority": 0,
+                "rationale": (
+                    "the current Codex session bound the final reviewed instruction "
+                    "to this explicit edit scope before server execution"
+                ),
+            }
+        ],
+        "parser_metadata": {
+            "reviewer": "current_codex_session",
+            "review_date": "2026-08-10",
+            "case_id": case_id,
+            "qualification_sha256": qualification_digest,
+            "llm_api_used": False,
+            "execution_runner_may_not_reparse": True,
+        },
+    }
+
+
 def _validate_complete_review(source: list[dict[str, Any]], decisions: list[dict[str, Any]]) -> None:
     source_ids = [item["case_id"] for item in source]
     decision_ids = [item["case_id"] for item in decisions]
@@ -394,6 +501,35 @@ def _validate_complete_review(source: list[dict[str, Any]], decisions: list[dict
         fields_present = bool(item["selected_joint_primitive"] and item["selected_mechanism_id"])
         if executable != fields_present or executable != bool(item["recommended_instruction"]):
             raise ValueError(f"incomplete execution decision for {item['case_id']}")
+        semantic = item.get("prebound_semantic_intent")
+        semantic_digest = item.get("prebound_semantic_intent_sha256")
+        if executable != isinstance(semantic, dict) or executable != bool(
+            semantic_digest
+        ):
+            raise ValueError(
+                f"incomplete Codex semantic binding for {item['case_id']}"
+            )
+        if executable:
+            actual = hashlib.sha256(
+                json.dumps(
+                    semantic,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            if actual != semantic_digest:
+                raise ValueError(
+                    f"Codex semantic digest drift for {item['case_id']}"
+                )
+            if semantic["instruction"] != item["recommended_instruction"]:
+                raise ValueError(
+                    f"Codex semantic instruction drift for {item['case_id']}"
+                )
+            if semantic["primitive_id"] != item["selected_joint_primitive"]:
+                raise ValueError(
+                    f"Codex semantic primitive drift for {item['case_id']}"
+                )
         expected_domain, expected_annotation, _ = ORGAN_CONTRACTS[item["organ"]]
         if item["pathology_domain_id"] != expected_domain or item["annotation_profile_id"] != expected_annotation:
             raise ValueError(f"four-axis metadata drift for {item['case_id']}")

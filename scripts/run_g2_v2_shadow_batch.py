@@ -94,7 +94,7 @@ def main() -> int:
             "--agent-mode",
             "offline",
             "--semantic-parser",
-            "rule-based",
+            "prebound",
             "--cell-executor",
             "mature",
             "--probnet-checkpoint",

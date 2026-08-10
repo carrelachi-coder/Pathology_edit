@@ -11,7 +11,7 @@ from typing import Any
 from .g2_he_review import HE_REVIEW_SCHEMA_VERSION
 from .g2_qualification import QUALIFICATION_SCHEMA_VERSION
 
-G2_V2_MANIFEST_SCHEMA = "g2-v2-image-instruction-mechanism-manifest-v1"
+G2_V2_MANIFEST_SCHEMA = "g2-v2-image-instruction-mechanism-manifest-v2"
 
 CELL_EXTENT_PRIMITIVES = frozenset(
     {
@@ -94,6 +94,37 @@ def freeze_g2_v2_manifest(
         if execution_allowed != (decision["decision_status"] != "abstain"):
             raise ValueError(f"decision execution flag is inconsistent for {case_id}")
         selected_primitive = decision["selected_joint_primitive"]
+        semantic_intent = decision.get("prebound_semantic_intent")
+        semantic_digest = decision.get("prebound_semantic_intent_sha256")
+        if execution_allowed:
+            if not isinstance(semantic_intent, dict) or not semantic_digest:
+                raise ValueError(
+                    f"executable case lacks Codex semantic binding: {case_id}"
+                )
+            actual_semantic_digest = hashlib.sha256(
+                json.dumps(
+                    semantic_intent,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            if actual_semantic_digest != semantic_digest:
+                raise ValueError(
+                    f"Codex semantic binding digest drift for {case_id}"
+                )
+            if (
+                semantic_intent.get("instruction")
+                != decision["recommended_instruction"]
+                or semantic_intent.get("primitive_id") != selected_primitive
+            ):
+                raise ValueError(
+                    f"Codex semantic binding conflicts with H&E decision for {case_id}"
+                )
+        elif semantic_intent is not None or semantic_digest is not None:
+            raise ValueError(
+                f"abstained case must not carry executable semantics: {case_id}"
+            )
         budget_contract = _budget_contract(selected_primitive, execution_allowed)
         nuclei_instances_uri = legacy.get("source_nuclei_instances") or legacy.get(
             "source_nuclei_instances_uri"
@@ -136,6 +167,8 @@ def freeze_g2_v2_manifest(
                 "instruction": decision["recommended_instruction"],
                 "primitive_id": selected_primitive,
                 "mechanism_id": decision["selected_mechanism_id"],
+                "prebound_semantic_intent": semantic_intent,
+                "prebound_semantic_intent_sha256": semantic_digest,
                 "decision_reason_code": decision["reason_code"],
                 "visual_observations": decision["visual_observations"],
                 "review_basis": basis,
