@@ -40,7 +40,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v10"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v11"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -51,6 +51,7 @@ class InterfaceNucleiCapacity:
     target_component_id: str
     contact_pixels: int
     gate_bounded_depth_px: int
+    source_component_capacity_pixels: int
     editable_tissue_capacity_pixels: int
     removable_instance_ids: tuple[str, ...]
     required_removal_cell_classes: tuple[int, ...]
@@ -382,7 +383,37 @@ def build_joint_nuclei_preflight(
         item.instance_id: item.class_id for item in scene.cells.instances
     }
     interface_reports: list[InterfaceNucleiCapacity] = []
-    feasible_envelopes: list[np.ndarray] = []
+    feasible_envelopes: list[tuple[str, np.ndarray, int]] = []
+    topology_fallback = joint_bundle.mechanism.tissue_program.topology_fallback_for(
+        case.primitive_id
+    )
+    maximum_source_fraction = float(
+        max(
+            joint_bundle.primitive.maximum_source_component_changed_fraction,
+            (
+                topology_fallback.maximum_source_component_changed_fraction
+                if topology_fallback is not None
+                else 0.0
+            ),
+        )
+    )
+    effective_allow_source_resolution = bool(
+        joint_bundle.primitive.allow_source_component_resolution
+        or (
+            topology_fallback is not None
+            and topology_fallback.allow_source_component_resolution
+        )
+    )
+    minimum_source_remaining = int(
+        min(
+            joint_bundle.primitive.minimum_source_component_remaining_px,
+            (
+                topology_fallback.minimum_source_component_remaining_px
+                if topology_fallback is not None
+                else joint_bundle.primitive.minimum_source_component_remaining_px
+            ),
+        )
+    )
     retained_target_centers = class_center_mask(
         scene.source_nuclei,
         class_id=target_class,
@@ -403,7 +434,7 @@ def build_joint_nuclei_preflight(
         # still compiled by the tool program, while the skill-owned ratio is
         # the audited hard depth/span maximum shared with the mask gate.
         front_contract = joint_bundle.mechanism.tissue_program.front
-        if joint_bundle.primitive.allow_source_component_resolution:
+        if effective_allow_source_resolution:
             # Resolution may consume any safe part of a source compartment,
             # including its final pixels. Its executable depth is therefore
             # the observed component depth, not a generic front-band cap.
@@ -436,8 +467,20 @@ def build_joint_nuclei_preflight(
             )
         distance = ndimage.distance_transform_edt(~interface_mask)
         raw_envelope = source_component & ~prohibited_tissue & ~protected_mask
-        if not joint_bundle.primitive.allow_source_component_resolution:
+        if not effective_allow_source_resolution:
             raw_envelope &= distance <= depth_cap
+        source_component_pixels = int(np.count_nonzero(source_component))
+        if effective_allow_source_resolution:
+            source_component_capacity = source_component_pixels
+        else:
+            source_component_capacity = min(
+                int(
+                    np.floor(
+                        source_component_pixels * maximum_source_fraction
+                    )
+                ),
+                max(0, source_component_pixels - minimum_source_remaining),
+            )
         anchor_continuity_reports: list[dict[str, Any]] = []
         feasible_anchor_ids: list[str] = []
         feasible_anchor_envelope = np.zeros_like(raw_envelope, dtype=bool)
@@ -554,9 +597,13 @@ def build_joint_nuclei_preflight(
                 & ~protected_mask
                 & ~envelope
             )
+        executable_envelope_pixels = min(
+            int(np.count_nonzero(envelope)),
+            int(source_component_capacity),
+        )
         interface_target_pixels = min(
             int(allocation.tissue_target_pixels),
-            int(np.count_nonzero(envelope)),
+            executable_envelope_pixels,
         )
         required_count = (
             max(1, int(np.ceil(interface_target_pixels * target_density)))
@@ -600,6 +647,8 @@ def build_joint_nuclei_preflight(
             reasons.append("required_profile_provenance_missing")
         if not np.any(envelope):
             reasons.append("no_cell_safe_tissue_capacity")
+        if executable_envelope_pixels <= 0:
+            reasons.append("no_topology_safe_source_component_capacity")
         if (
             seam_contract.requires_new_target_cells
             and not feasible_anchor_ids
@@ -625,7 +674,10 @@ def build_joint_nuclei_preflight(
                 target_component_id=interface.target_component_id,
                 contact_pixels=int(interface.contact_pixels),
                 gate_bounded_depth_px=depth_cap,
-                editable_tissue_capacity_pixels=int(np.count_nonzero(envelope)),
+                source_component_capacity_pixels=int(
+                    source_component_capacity
+                ),
+                editable_tissue_capacity_pixels=executable_envelope_pixels,
                 removable_instance_ids=overlapping_removable,
                 required_removal_cell_classes=required_removal_classes,
                 estimated_removal_capacity=len(removal_targets),
@@ -652,11 +704,28 @@ def build_joint_nuclei_preflight(
             )
         )
         if not reasons:
-            feasible_envelopes.append(np.asarray(envelope, dtype=bool))
-    aggregate_capacity_mask = np.zeros_like(source_tissue, dtype=bool)
-    for envelope in feasible_envelopes:
-        aggregate_capacity_mask |= envelope
-    aggregate_capacity = int(np.count_nonzero(aggregate_capacity_mask))
+            feasible_envelopes.append(
+                (
+                    interface.source_component_id,
+                    np.asarray(envelope, dtype=bool),
+                    int(source_component_capacity),
+                )
+            )
+    aggregate_by_component: dict[str, np.ndarray] = {}
+    capacity_by_component: dict[str, int] = {}
+    for component_id, envelope, component_capacity in feasible_envelopes:
+        aggregate_by_component.setdefault(
+            component_id, np.zeros_like(source_tissue, dtype=bool)
+        )
+        aggregate_by_component[component_id] |= envelope
+        capacity_by_component[component_id] = component_capacity
+    aggregate_capacity = sum(
+        min(
+            int(np.count_nonzero(envelope)),
+            capacity_by_component[component_id],
+        )
+        for component_id, envelope in aggregate_by_component.items()
+    )
     # Burden primitives may fall back from the 19% target to the proven
     # maximum safe edit, but they may never redefine a visually negligible
     # edit as success.  The agreed tissue floor therefore remains binding

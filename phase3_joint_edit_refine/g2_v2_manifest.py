@@ -12,6 +12,7 @@ from .g2_he_review import HE_REVIEW_SCHEMA_VERSION
 from .g2_qualification import QUALIFICATION_SCHEMA_VERSION
 
 G2_V2_MANIFEST_SCHEMA = "g2-v2-image-instruction-mechanism-manifest-v2"
+EXECUTION_QUALIFICATION_SCHEMA = "g2-v2-read-only-execution-qualification-v1"
 
 CELL_EXTENT_PRIMITIVES = frozenset(
     {
@@ -31,6 +32,7 @@ def freeze_g2_v2_manifest(
     *,
     output_dir: str | Path,
     expected_cases: int = 600,
+    execution_qualification_jsonl: str | Path | None = None,
 ) -> dict[str, Any]:
     legacy_path = Path(legacy_manifest_path)
     qualification_path = Path(qualification_jsonl)
@@ -49,9 +51,39 @@ def freeze_g2_v2_manifest(
         )
     qualification_digest = _sha256(qualification_path)
     decision_digest = _sha256(decision_path)
+    execution_qualification_path = (
+        Path(execution_qualification_jsonl)
+        if execution_qualification_jsonl is not None
+        else None
+    )
+    execution_qualification = (
+        _read_jsonl(execution_qualification_path)
+        if execution_qualification_path is not None
+        else None
+    )
+    if execution_qualification is not None and len(execution_qualification) != expected_cases:
+        raise ValueError(
+            "execution qualification must cover the same frozen case count"
+        )
+    execution_qualification_digest = (
+        _sha256(execution_qualification_path)
+        if execution_qualification_path is not None
+        else None
+    )
     frozen_cases = []
-    for index, (legacy, qualified, decision) in enumerate(
-        zip(legacy_rows, qualification, decisions, strict=True)
+    qualification_rows = (
+        execution_qualification
+        if execution_qualification is not None
+        else [None] * expected_cases
+    )
+    for index, (legacy, qualified, decision, execution_preflight) in enumerate(
+        zip(
+            legacy_rows,
+            qualification,
+            decisions,
+            qualification_rows,
+            strict=True,
+        )
     ):
         case_id = str(legacy.get("case_id") or "")
         if not case_id or case_id != qualified.get("case_id") or case_id != decision.get("case_id"):
@@ -90,13 +122,45 @@ def freeze_g2_v2_manifest(
             raise ValueError(f"source tissue drift for {case_id}")
         if str(legacy.get("source_nuclei_mask")) != source_assets["nuclei_mask"]:
             raise ValueError(f"source nuclei drift for {case_id}")
-        execution_allowed = bool(decision["execution_allowed"])
-        if execution_allowed != (decision["decision_status"] != "abstain"):
+        he_execution_allowed = bool(decision["execution_allowed"])
+        if he_execution_allowed != (decision["decision_status"] != "abstain"):
             raise ValueError(f"decision execution flag is inconsistent for {case_id}")
-        selected_primitive = decision["selected_joint_primitive"]
-        semantic_intent = decision.get("prebound_semantic_intent")
-        semantic_digest = decision.get("prebound_semantic_intent_sha256")
-        if execution_allowed:
+        preflight_passed = he_execution_allowed
+        preflight_status = None
+        preflight_failures: list[str] = []
+        if execution_preflight is not None:
+            if (
+                execution_preflight.get("schema_version")
+                != EXECUTION_QUALIFICATION_SCHEMA
+                or execution_preflight.get("case_id") != case_id
+                or int(execution_preflight.get("source_index", -1)) != index
+            ):
+                raise ValueError(
+                    f"execution qualification identity drift for {case_id}"
+                )
+            preflight_status = str(execution_preflight.get("status") or "")
+            preflight_failures = [
+                str(item)
+                for item in execution_preflight.get("failure_reasons", ())
+            ]
+            preflight_passed = (
+                preflight_status == "executable_preflight_passed"
+            )
+            if not he_execution_allowed and preflight_status != "upstream_abstain":
+                raise ValueError(
+                    f"upstream abstain has inconsistent execution qualification: {case_id}"
+                )
+        execution_allowed = he_execution_allowed and preflight_passed
+        reviewed_primitive = decision["selected_joint_primitive"]
+        reviewed_mechanism = decision["selected_mechanism_id"]
+        reviewed_instruction = decision["recommended_instruction"]
+        reviewed_semantic_intent = decision.get("prebound_semantic_intent")
+        reviewed_semantic_digest = decision.get(
+            "prebound_semantic_intent_sha256"
+        )
+        if he_execution_allowed:
+            semantic_intent = reviewed_semantic_intent
+            semantic_digest = reviewed_semantic_digest
             if not isinstance(semantic_intent, dict) or not semantic_digest:
                 raise ValueError(
                     f"executable case lacks Codex semantic binding: {case_id}"
@@ -115,16 +179,30 @@ def freeze_g2_v2_manifest(
                 )
             if (
                 semantic_intent.get("instruction")
-                != decision["recommended_instruction"]
-                or semantic_intent.get("primitive_id") != selected_primitive
+                != reviewed_instruction
+                or semantic_intent.get("primitive_id") != reviewed_primitive
             ):
                 raise ValueError(
                     f"Codex semantic binding conflicts with H&E decision for {case_id}"
                 )
-        elif semantic_intent is not None or semantic_digest is not None:
+        elif reviewed_semantic_intent is not None or reviewed_semantic_digest is not None:
             raise ValueError(
                 f"abstained case must not carry executable semantics: {case_id}"
             )
+        selected_primitive = reviewed_primitive if execution_allowed else None
+        selected_mechanism = reviewed_mechanism if execution_allowed else None
+        instruction = reviewed_instruction if execution_allowed else None
+        semantic_intent = reviewed_semantic_intent if execution_allowed else None
+        semantic_digest = reviewed_semantic_digest if execution_allowed else None
+        final_decision_status = (
+            decision["decision_status"] if execution_allowed else "abstain"
+        )
+        final_reason_code = (
+            decision["reason_code"]
+            if execution_allowed or not he_execution_allowed
+            else "execution_preflight_failed:"
+            + (preflight_failures[0] if preflight_failures else preflight_status or "unknown")
+        )
         budget_contract = _budget_contract(selected_primitive, execution_allowed)
         nuclei_instances_uri = legacy.get("source_nuclei_instances") or legacy.get(
             "source_nuclei_instances_uri"
@@ -162,14 +240,30 @@ def freeze_g2_v2_manifest(
                 },
                 "original_instruction": qualified["instruction"],
                 "legacy_primitive": qualified["legacy_primitive"],
-                "decision_status": decision["decision_status"],
+                "decision_status": final_decision_status,
+                "he_decision_status": decision["decision_status"],
                 "execution_allowed": execution_allowed,
-                "instruction": decision["recommended_instruction"],
+                "instruction": instruction,
                 "primitive_id": selected_primitive,
-                "mechanism_id": decision["selected_mechanism_id"],
+                "mechanism_id": selected_mechanism,
                 "prebound_semantic_intent": semantic_intent,
                 "prebound_semantic_intent_sha256": semantic_digest,
-                "decision_reason_code": decision["reason_code"],
+                "decision_reason_code": final_reason_code,
+                "reviewed_candidate_before_execution_preflight": {
+                    "instruction": reviewed_instruction,
+                    "primitive_id": reviewed_primitive,
+                    "mechanism_id": reviewed_mechanism,
+                    "semantic_intent_sha256": reviewed_semantic_digest,
+                },
+                "execution_qualification": (
+                    {
+                        "status": preflight_status,
+                        "failure_reasons": preflight_failures,
+                        "ledger_sha256": execution_qualification_digest,
+                    }
+                    if execution_preflight is not None
+                    else None
+                ),
                 "visual_observations": decision["visual_observations"],
                 "review_basis": basis,
                 "budget_contract": budget_contract,
@@ -205,6 +299,17 @@ def freeze_g2_v2_manifest(
             "qualification_sha256": qualification_digest,
             "he_decision_jsonl": str(decision_path),
             "he_decision_sha256": decision_digest,
+            "execution_qualification_jsonl": (
+                str(execution_qualification_path)
+                if execution_qualification_path is not None
+                else None
+            ),
+            "execution_qualification_sha256": execution_qualification_digest,
+            "execution_qualification_source_manifest_sha256": (
+                execution_qualification[0].get("source_manifest_sha256")
+                if execution_qualification
+                else None
+            ),
         },
         "decision_counts": dict(
             sorted(Counter(item["decision_status"] for item in frozen_cases).items())
