@@ -1182,12 +1182,20 @@ class JointPathologyEditWorkflow:
             rationale = str(raw.get("rationale") or "")
             priority = int(raw.get("priority", 0))
             candidate_case = replace(case, primitive_id=primitive_id)
+            primitive_contract = self.joint_skills.primitives.get(primitive_id)
             if (
-                primitive_id
-                == "neoplastic-cell-infiltration-increase-v1"
+                primitive_contract is not None
+                and primitive_contract.scope == "cell_only"
                 and candidate_case.cell_count_extent_budget is None
             ):
-                budget, budget_metadata = _derive_infiltration_budget(scene)
+                if primitive_id == "neoplastic-cell-infiltration-increase-v1":
+                    budget, budget_metadata = _derive_infiltration_budget(scene)
+                else:
+                    budget, budget_metadata = _derive_local_population_budget(
+                        scene,
+                        primitive_id=primitive_id,
+                        semantic_intent=candidate_case.semantic_intent,
+                    )
                 semantic_metadata = dict(candidate_case.semantic_intent)
                 semantic_metadata.setdefault(
                     "derived_budget_policies", {}
@@ -2349,6 +2357,99 @@ def _derive_infiltration_budget(
         "median_complete_nucleus_area_px": median_area,
         "estimated_nucleus_diameter_px": diameter_px,
         "unique_tumor_interface_pixels": interface_pixels,
+        "budget": budget.__dict__,
+    }
+
+
+def _derive_local_population_budget(
+    scene,
+    *,
+    primitive_id: str,
+    semantic_intent: Mapping[str, Any],
+) -> tuple[CellCountExtentBudget, dict[str, Any]]:
+    """Compile a source-calibrated cell-only budget before candidates exist.
+
+    This is deliberately based on the shared scene instance authority and its
+    component population zones.  It does not use a fixed global count, and it
+    never lets the Planner invent one.  The downstream feasibility compiler
+    may still reject a case when exact removal or packing capacity is lower.
+    """
+
+    resolved = semantic_intent.get("resolved_cell_class_ids", ())
+    if not isinstance(resolved, (list, tuple)):
+        raise JointContractError(
+            "cell-only budget requires observation-profile class resolution"
+        )
+    class_ids = tuple(sorted({int(value) for value in resolved}))
+    abundance = primitive_id.startswith("cell-type-abundance-")
+    if abundance and len(class_ids) != 1:
+        raise JointContractError(
+            "cell abundance budget requires exactly one observable class"
+        )
+
+    component_zones = [
+        zone
+        for zone in scene.population.zones
+        if zone.zone_kind == "component" and zone.area_px > 0
+    ]
+    if class_ids:
+        zone_counts = [
+            sum(int(zone.class_counts.get(class_id, 0)) for class_id in class_ids)
+            for zone in component_zones
+        ]
+    else:
+        zone_counts = [int(zone.nucleus_count) for zone in component_zones]
+    local_authority_count = max(zone_counts, default=0)
+    complete_areas = [
+        int(item.area_px)
+        for item in scene.cells.instances
+        if item.completeness_status == "complete"
+        and not item.quality_flags
+        and (not class_ids or item.class_id in class_ids)
+    ]
+    if not complete_areas:
+        raise JointContractError(
+            "cell-only budget has no complete source instance authority"
+        )
+    median_area = float(np.median(complete_areas))
+    diameter_px = max(3.0, 2.0 * np.sqrt(median_area / np.pi))
+    increase = primitive_id.endswith("increase-v1")
+    if increase:
+        target = int(np.clip(round(local_authority_count * 0.20), 6, 32))
+    else:
+        if local_authority_count < 6:
+            raise JointContractError(
+                "cell decrease has fewer than six observable local source instances"
+            )
+        target = int(
+            np.clip(
+                round(local_authority_count * 0.20),
+                2,
+                min(32, max(2, int(np.floor(local_authority_count * 0.35)))),
+            )
+        )
+    minimum = max(1, int(np.floor(target * 0.60)))
+    maximum = max(target, min(40, int(np.ceil(target * 1.35))))
+    maximum_extent = int(np.clip(round(6.0 * diameter_px), 32, 48))
+    budget = CellCountExtentBudget(
+        target_delta_count=target,
+        min_delta_count=minimum,
+        max_delta_count=maximum,
+        maximum_extent_px=maximum_extent,
+        interface_min_px=0,
+        interface_max_px=maximum_extent,
+    )
+    return budget, {
+        "policy_id": "scene-calibrated-local-population-budget-v1",
+        "authority": "shared_scene_instance_authority",
+        "primitive_id": primitive_id,
+        "resolved_cell_class_ids": list(class_ids),
+        "maximum_component_source_count": local_authority_count,
+        "complete_reference_count": len(complete_areas),
+        "median_complete_nucleus_area_px": median_area,
+        "estimated_nucleus_diameter_px": diameter_px,
+        "target_fraction_of_local_source": 0.20,
+        "maximum_decrease_fraction_of_local_source": 0.35,
         "budget": budget.__dict__,
     }
 

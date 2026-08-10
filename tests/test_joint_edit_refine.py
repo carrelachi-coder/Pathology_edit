@@ -147,6 +147,23 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(case.compiled_normalized_intent(), "increase; tumor-burden")
         self.assertEqual(case.semantic_intent["parser"], intent.parser)
 
+    def test_semantic_cell_class_is_resolved_by_observation_profile(self):
+        raw = {
+            **_case_stub().to_metadata(),
+            "instruction": "increase immune cells",
+            "primitive_id": "cell-type-abundance-increase-v1",
+            "joint_area_budget": None,
+        }
+        case, intent = bind_semantic_intent(raw, RuleBasedSemanticParser())
+
+        self.assertEqual(intent.explicit_cell_class, "immune")
+        self.assertEqual(case.provenance["target_cell_class_ids"], [2])
+        self.assertEqual(case.semantic_intent["resolved_cell_class_ids"], [2])
+        self.assertEqual(
+            case.provenance["target_cell_class_resolution"]["authority"],
+            "versioned_observation_profile",
+        )
+
     def test_generic_tumor_increase_exposes_burden_and_budding_hypotheses(self):
         intent = RuleBasedSemanticParser().parse("increase tumor")
 
@@ -2708,6 +2725,50 @@ class StructuralHierarchyTests(unittest.TestCase):
                 ),
                 0,
             )
+
+    def test_puma_auxiliary_uses_only_explicit_epidermis_label(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _write_synthetic_case(root)
+            tissue = np.full((128, 128), 2, dtype=np.uint8)
+            tissue[8:15, :] = 5
+            tissue[48:96, 40:88] = 1
+            provenance = dict(source.provenance)
+            provenance.pop("auxiliary_structure_sha256", None)
+            provenance.pop("auxiliary_structure_provenance", None)
+            case = replace(
+                source,
+                annotation_profile_id="puma-semantic-v1",
+                auxiliary_structure_uris={},
+                provenance=provenance,
+            )
+
+            effective, produced = materialize_profile_auxiliaries(
+                case,
+                source_tissue=tissue,
+                output_dir=root / "puma-auxiliary",
+            )
+
+            self.assertEqual(
+                [item.structure_id for item in produced],
+                ["epidermis_or_junction_map"],
+            )
+            mask = np.asarray(
+                Image.open(
+                    effective.auxiliary_structure_uris[
+                        "epidermis_or_junction_map"
+                    ]
+                )
+            ) != 0
+            np.testing.assert_array_equal(mask, tissue == 5)
+            producer = effective.provenance[
+                "auxiliary_structure_provenance"
+            ]["epidermis_or_junction_map"]
+            self.assertEqual(
+                producer["protection_semantics"],
+                "explicit_profile_structure",
+            )
+            self.assertFalse(producer["empty_map_is_valid_observation"])
 
 
 if __name__ == "__main__":

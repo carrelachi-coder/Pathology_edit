@@ -40,6 +40,13 @@ class ProducedAuxiliary:
         }
 
 
+@dataclass(frozen=True)
+class _AuxiliarySpecification:
+    structure_id: str
+    producer_kind: str
+    fine_ids: tuple[int, ...]
+
+
 def materialize_profile_auxiliaries(
     case: JointCaseContext,
     *,
@@ -53,7 +60,10 @@ def materialize_profile_auxiliaries(
     structure, not that the required producer was skipped.
     """
 
-    specifications = _profile_specifications(case.annotation_profile_id)
+    specifications = _profile_specifications(
+        case.annotation_profile_id,
+        source_tissue=source_tissue,
+    )
     if case.annotation_profile_id == "glas-gland-v1":
         present = sorted(
             int(value)
@@ -67,7 +77,11 @@ def materialize_profile_auxiliaries(
                 "gland_fine_label_signature": present,
             },
         )
-    missing = [item for item in specifications if item[0] not in case.auxiliary_structure_uris]
+    missing = [
+        item
+        for item in specifications
+        if item.structure_id not in case.auxiliary_structure_uris
+    ]
     if not missing:
         _validate_bound_auxiliary_provenance(case)
         return case, ()
@@ -81,11 +95,29 @@ def materialize_profile_auxiliaries(
     )
     produced = []
     source_digest = case.provenance["source_tissue_mask_sha256"]
-    for structure_id, pattern_ids in missing:
-        mask, details = _enclosed_pattern_spaces(
-            source_tissue,
-            pattern_fine_ids=pattern_ids,
-        )
+    for specification in missing:
+        structure_id = specification.structure_id
+        if specification.producer_kind == "enclosed_pattern_spaces":
+            mask, details = _enclosed_pattern_spaces(
+                source_tissue,
+                pattern_fine_ids=specification.fine_ids,
+            )
+            protection_semantics = "enclosed_internal_space"
+        elif specification.producer_kind == "explicit_profile_structure":
+            mask = np.isin(source_tissue, specification.fine_ids)
+            details = {
+                "observed_structure_pixels": int(np.count_nonzero(mask)),
+                "profile_fine_ids": list(specification.fine_ids),
+                "empty_map_is_valid_observation": False,
+                "structural_hierarchy_schema": "explicit-profile-structure-v1",
+                "structure_units": [],
+                "hierarchy_relations": [],
+            }
+            protection_semantics = "explicit_profile_structure"
+        else:
+            raise JointContractError(
+                f"unknown auxiliary producer kind: {specification.producer_kind}"
+            )
         path = root / f"{structure_id}.png"
         Image.fromarray(mask.astype(np.uint8) * 255).save(path)
         digest = sha256_file(path)
@@ -93,10 +125,10 @@ def materialize_profile_auxiliaries(
             "producer_id": AUXILIARY_PRODUCER_VERSION,
             "producer_version": AUXILIARY_PRODUCER_VERSION,
             "observation_scope": "semantic_fine_mask_topology_only",
-            "protection_semantics": "enclosed_internal_space",
+            "protection_semantics": protection_semantics,
             "source_tissue_mask_sha256": source_digest,
             "output_sha256": digest,
-            "pattern_fine_ids": list(pattern_ids),
+            "pattern_fine_ids": list(specification.fine_ids),
             **details,
         }
         uris[structure_id] = str(path)
@@ -127,11 +159,39 @@ def materialize_profile_auxiliaries(
 
 def _profile_specifications(
     annotation_profile_id: str,
-) -> tuple[tuple[str, tuple[int, ...]], ...]:
+    *,
+    source_tissue: np.ndarray,
+) -> tuple[_AuxiliarySpecification, ...]:
     if annotation_profile_id == "glas-gland-v1":
-        return (("gland_or_lumen_support", (5, 11, 12, 13)),)
+        return (
+            _AuxiliarySpecification(
+                "gland_or_lumen_support",
+                "enclosed_pattern_spaces",
+                (5, 11, 12, 13),
+            ),
+        )
     if annotation_profile_id == "panda-gleason-v1":
-        return (("native_pattern_and_lumen_map", (8, 9, 10)),)
+        return (
+            _AuxiliarySpecification(
+                "native_pattern_and_lumen_map",
+                "enclosed_pattern_spaces",
+                (8, 9, 10),
+            ),
+        )
+    if annotation_profile_id == "puma-semantic-v1" and np.any(
+        np.asarray(source_tissue) == 5
+    ):
+        # PUMA fine ID 5 is explicitly mapped to epidermis by the versioned
+        # annotation profile.  This is a protection/relationship map, not an
+        # H&E-derived guess at a junctional component.  If epidermis is absent,
+        # no map is produced and epidermis-dependent mechanisms fail closed.
+        return (
+            _AuxiliarySpecification(
+                "epidermis_or_junction_map",
+                "explicit_profile_structure",
+                (5,),
+            ),
+        )
     return ()
 
 

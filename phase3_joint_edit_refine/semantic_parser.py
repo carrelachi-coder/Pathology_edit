@@ -53,6 +53,18 @@ EXPLICIT_EDIT_SCOPES = frozenset(
     }
 )
 
+# The Semantic Parser owns clinical words, while the observation profile owns
+# what those words are actually distinguishable as.  CellViT-5 can resolve a
+# broad inflammatory class, but it cannot honestly separate plasma cells from
+# macrophages.  Unsupported fine classes therefore fail closed instead of
+# being silently relabelled as generic inflammation.
+OBSERVATION_CELL_CLASS_IDS = {
+    "cellvit-five-class-v1": {
+        "immune": (2,),
+        "neoplastic": (1,),
+    }
+}
+
 
 @dataclass(frozen=True)
 class PrimitiveHypothesis:
@@ -434,11 +446,45 @@ def bind_semantic_intent(
     )
     payload["primitive_id"] = initial_primitive
     payload["instruction"] = intent.instruction
-    case = JointCaseContext.from_mapping(payload)
     metadata = intent.to_metadata()
     metadata["manifest_primitive_hint"] = (
         str(manifest_primitive) if manifest_primitive is not None else None
     )
+    if intent.explicit_cell_class is not None:
+        profile_id = _required_text(payload, "cell_observation_profile_id")
+        resolved = OBSERVATION_CELL_CLASS_IDS.get(profile_id, {}).get(
+            intent.explicit_cell_class
+        )
+        if resolved is None:
+            raise JointContractError(
+                f"{profile_id} cannot distinguish requested cell class "
+                f"{intent.explicit_cell_class!r}"
+            )
+        provenance = dict(payload.get("provenance") or {})
+        existing = provenance.get("target_cell_class_ids")
+        if existing is not None:
+            existing_ids = (
+                (int(existing),)
+                if isinstance(existing, int)
+                else tuple(sorted(int(value) for value in existing))
+            )
+            if existing_ids != tuple(sorted(resolved)):
+                raise JointContractError(
+                    "manifest target_cell_class_ids contradict the parsed cell class"
+                )
+        provenance["target_cell_class_ids"] = list(resolved)
+        provenance["target_cell_class_resolution"] = {
+            "semantic_cell_class": intent.explicit_cell_class,
+            "observation_profile_id": profile_id,
+            "resolved_class_ids": list(resolved),
+            "authority": "versioned_observation_profile",
+        }
+        payload["provenance"] = provenance
+        metadata["resolved_cell_class_ids"] = list(resolved)
+        metadata["cell_class_resolution"] = dict(
+            provenance["target_cell_class_resolution"]
+        )
+    case = JointCaseContext.from_mapping(payload)
     return replace(case, semantic_intent=metadata), intent
 
 
