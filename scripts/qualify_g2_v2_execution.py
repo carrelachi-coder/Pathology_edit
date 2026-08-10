@@ -19,10 +19,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frozen-manifest", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
     result = qualify_g2_v2_execution(
         args.frozen_manifest,
         output_dir=args.output_dir,
+        workers=args.workers,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True))
     return 0

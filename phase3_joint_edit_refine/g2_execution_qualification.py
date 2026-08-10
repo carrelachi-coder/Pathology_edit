@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,7 @@ def qualify_g2_v2_execution(
     frozen_manifest_path: str | Path,
     *,
     output_dir: str | Path,
+    workers: int = 1,
 ) -> dict[str, Any]:
     source = Path(frozen_manifest_path)
     payload = json.loads(source.read_text(encoding="utf-8"))
@@ -58,21 +60,27 @@ def qualify_g2_v2_execution(
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
     manifest_digest = _sha256(source)
-    mask_skills = MaskSkillRepository()
-    joint_skills = JointSkillRepository()
-    budget_solver = JointFeasibilitySolver()
-    records = []
-    for row in rows:
-        records.append(
-            _qualify_case(
-                row,
-                manifest_digest=manifest_digest,
-                auxiliary_root=root / "source_auxiliary",
-                mask_skills=mask_skills,
-                joint_skills=joint_skills,
-                budget_solver=budget_solver,
-            )
+    if workers <= 0:
+        raise ValueError("execution qualification workers must be positive")
+    tasks = [
+        (
+            row,
+            manifest_digest,
+            str(root / "source_auxiliary"),
         )
+        for row in rows
+    ]
+    if workers == 1:
+        _initialize_worker()
+        records = [_qualify_case_worker(task) for task in tasks]
+    else:
+        # executor.map preserves source order.  Every worker owns immutable
+        # skill repositories and a budget solver; cases never share outputs.
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            initializer=_initialize_worker,
+        ) as executor:
+            records = list(executor.map(_qualify_case_worker, tasks, chunksize=1))
     ledger = root / "execution_qualification.jsonl"
     ledger.write_text(
         "".join(
@@ -104,6 +112,7 @@ def qualify_g2_v2_execution(
         "target_mask_created": False,
         "source_asset_mutated": False,
         "llm_api_used": False,
+        "workers": workers,
     }
     summary_path = root / "execution_qualification_summary.json"
     summary_path.write_text(
@@ -111,6 +120,40 @@ def qualify_g2_v2_execution(
         encoding="utf-8",
     )
     return {**summary, "summary": str(summary_path)}
+
+
+_WORKER_MASK_SKILLS: MaskSkillRepository | None = None
+_WORKER_JOINT_SKILLS: JointSkillRepository | None = None
+_WORKER_BUDGET_SOLVER: JointFeasibilitySolver | None = None
+
+
+def _initialize_worker() -> None:
+    global _WORKER_MASK_SKILLS
+    global _WORKER_JOINT_SKILLS
+    global _WORKER_BUDGET_SOLVER
+    _WORKER_MASK_SKILLS = MaskSkillRepository()
+    _WORKER_JOINT_SKILLS = JointSkillRepository()
+    _WORKER_BUDGET_SOLVER = JointFeasibilitySolver()
+
+
+def _qualify_case_worker(
+    task: tuple[dict[str, Any], str, str],
+) -> dict[str, Any]:
+    row, manifest_digest, auxiliary_root = task
+    if (
+        _WORKER_MASK_SKILLS is None
+        or _WORKER_JOINT_SKILLS is None
+        or _WORKER_BUDGET_SOLVER is None
+    ):
+        raise RuntimeError("execution qualification worker was not initialized")
+    return _qualify_case(
+        row,
+        manifest_digest=manifest_digest,
+        auxiliary_root=Path(auxiliary_root),
+        mask_skills=_WORKER_MASK_SKILLS,
+        joint_skills=_WORKER_JOINT_SKILLS,
+        budget_solver=_WORKER_BUDGET_SOLVER,
+    )
 
 
 def _qualify_case(
