@@ -32,6 +32,19 @@ from .nuclei import (
 )
 
 
+STRUCTURAL_COMPARTMENT_LABELS = frozenset(
+    {"Tumor", "Stroma", "Normal epithelium", "Necrosis", "Other tissue"}
+)
+POPULATION_OVERLAY_LABELS = frozenset({"Immune infiltrate"})
+CELL_POPULATION_ROLES = {
+    1: "neoplastic_population",
+    2: "inflammatory_population",
+    3: "connective_tissue_population",
+    4: "dead_or_dying_population",
+    5: "epithelial_population",
+}
+
+
 @dataclass(frozen=True)
 class JointSceneAnalysis:
     tissue: SceneAnalysis
@@ -268,6 +281,15 @@ def _bind_structural_hierarchy(
             "label": item.label,
             "fine_ids": list(item.fine_ids),
             "area_px": item.area_px,
+            "hierarchy_role": (
+                "structural_compartment"
+                if item.label in STRUCTURAL_COMPARTMENT_LABELS
+                else (
+                    "cellular_population_overlay"
+                    if item.label in POPULATION_OVERLAY_LABELS
+                    else "annotation_only_compartment"
+                )
+            ),
         }
         for item in tissue_scene.graph.components
     ]
@@ -299,11 +321,27 @@ def _bind_structural_hierarchy(
         {
             "instance_id": item.instance_id,
             "class_id": item.class_id,
+            "population_role": CELL_POPULATION_ROLES.get(
+                item.class_id, "unresolved_population"
+            ),
             "tissue_component_id": item.tissue_component_id,
             "nearest_interface_id": item.nearest_interface_id,
             "completeness_status": item.completeness_status,
         }
         for item in instances
+    ]
+    cellular_populations = [
+        {
+            "class_id": class_id,
+            "population_role": CELL_POPULATION_ROLES.get(
+                class_id, "unresolved_population"
+            ),
+            "instance_count": sum(
+                item.class_id == class_id for item in instances
+            ),
+            "observation_authority": "cell_observation_profile_class_id",
+        }
+        for class_id in sorted({item.class_id for item in instances})
     ]
     relations.extend(
         {
@@ -339,16 +377,43 @@ def _bind_structural_hierarchy(
         for item in instances
         if item.tissue_component_id is not None
     )
+    relations.extend(
+        {
+            "source_id": item.instance_id,
+            "relation": "member_of_cellular_population",
+            "target_id": CELL_POPULATION_ROLES.get(
+                item.class_id, "unresolved_population"
+            ),
+        }
+        for item in instances
+    )
     return {
-        "schema_version": "joint-structural-hierarchy-v1",
+        "schema_version": "joint-structural-hierarchy-v2",
         "levels": [
-            "tissue_component",
-            "structural_unit",
-            "interface",
-            "population_field",
-            "nucleus_instance",
+            "structural_compartment",
+            "cellular_population",
+            "morphology",
         ],
+        "execution_semantics": {
+            "structural_compartment": (
+                "owns tissue label transitions and component topology"
+            ),
+            "cellular_population": (
+                "owns complete-instance retain, resample, remove and add actions; "
+                "a population is not automatically a structural barrier"
+            ),
+            "morphology": (
+                "owns producer-bound gland, lumen, pattern and architecture units "
+                "that constrain both tissue and cell execution"
+            ),
+            "single_label_annotation_limit": (
+                "a dataset tissue label that encodes a population overlay remains "
+                "pixel-protected unless the primitive explicitly authorizes that "
+                "label transition"
+            ),
+        },
         "tissue_components": compartments,
+        "cellular_populations": cellular_populations,
         "structure_units": units,
         "interfaces": interfaces,
         "population_zones": population_zones,

@@ -462,6 +462,9 @@ def generate_cell_layouts(
                     "partial_source_instance_edits": 0,
                     "cell_only_halo_pixels": int(np.count_nonzero(halo)),
                     "placements": placements,
+                    "accepted_center_ledger": _accepted_center_ledger(
+                        placements
+                    ),
                     "seed": seed + variant * 104729,
                 },
             )
@@ -667,6 +670,7 @@ def _build_selective_removal_results(
         "overlap_pixels": 0,
         "partial_source_instance_edits": 0,
         "placements": [],
+        "accepted_center_ledger": [],
         "seed": seed,
     }
     return tuple(
@@ -825,6 +829,9 @@ def _build_multiclass_addition_results(
                     "overlap_pixels": 0,
                     "partial_source_instance_edits": 0,
                     "placements": placements,
+                    "accepted_center_ledger": _accepted_center_ledger(
+                        placements
+                    ),
                     "seed": seed + variant * 104729,
                 },
             )
@@ -861,6 +868,34 @@ def _largest_remainder_class_quotas(
     for key in order[:remainder]:
         quotas[key] += 1
     return quotas
+
+
+def _accepted_center_ledger(
+    placements: list[dict[str, Any]],
+) -> list[dict[str, int]]:
+    """Expose the executor's accepted centers as the sole placement authority.
+
+    Re-segmenting a raster after pasting can merge neighboring nuclei and move
+    connected-component centroids.  Gates must therefore validate the exact
+    coordinates accepted by the placement tool, just as the mature ProbNet
+    adapter already does.
+    """
+
+    result = []
+    for item in placements:
+        center = item.get("center_xy")
+        if not isinstance(center, (list, tuple)) or len(center) != 2:
+            raise JointContractError(
+                "deterministic placement is missing its accepted center"
+            )
+        result.append(
+            {
+                "row": int(center[1]),
+                "col": int(center[0]),
+                "class_id": int(item["cell_class"]),
+            }
+        )
+    return result
 
 
 def _compatible_host_fine_ids(

@@ -2813,12 +2813,13 @@ class StructuralHierarchyTests(unittest.TestCase):
             self.assertEqual(
                 scene.structural_hierarchy["levels"],
                 [
-                    "tissue_component",
-                    "structural_unit",
-                    "interface",
-                    "population_field",
-                    "nucleus_instance",
+                    "structural_compartment",
+                    "cellular_population",
+                    "morphology",
                 ],
+            )
+            self.assertTrue(
+                scene.structural_hierarchy["cellular_populations"]
             )
             self.assertGreater(
                 np.count_nonzero(

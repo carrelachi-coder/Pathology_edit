@@ -140,7 +140,10 @@ class RuleBasedSemanticParser:
             "neoplastic-cell-infiltration-increase-v1",
             "neoplastic-cell-infiltration",
             "increase",
-            (r"\b(increase|add)\b.*\b(tumou?r budding|tumou?r buds?|neoplastic cell infiltration)\b", r"(增加|添加).*(肿瘤出芽|癌细胞浸润|肿瘤细胞浸润)"),
+            (
+                r"\b(increase|add)\b.*\b(tumou?r (?:cell )?infiltration|cancer cell infiltration|tumou?r budding|tumou?r buds?|neoplastic cell infiltration)\b",
+                r"(增加|添加).*(肿瘤出芽|癌细胞浸润|肿瘤细胞浸润)",
+            ),
         ),
         (
             "stroma-increase-v1",
@@ -509,7 +512,10 @@ def _compile_primitive_hypotheses(
         or re.search(r"肿瘤(负荷|面积|体积)", instruction)
     )
     explicit_budding = bool(
-        re.search(r"\b(tumou?r buds?|tumou?r budding|neoplastic cell infiltration)\b", lowered)
+        re.search(
+            r"\b(tumou?r (?:cell )?infiltration|cancer cell infiltration|tumou?r buds?|tumou?r budding|neoplastic cell infiltration)\b",
+            lowered,
+        )
         or re.search(r"肿瘤出芽|癌细胞浸润|肿瘤细胞浸润", instruction)
     )
     generic_tumor_increase = bool(
@@ -905,6 +911,21 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
             "edit_direction": "increase",
         },
         "why": "Area is an explicit tissue-burden edit, not an invitation to choose budding.",
+    },
+    {
+        "instruction": "Increase tumor infiltration.",
+        "output": {
+            "instruction_mode": "direct_edit",
+            "scenario": "direct_edit",
+            "clinical_direction": "unspecified",
+            "treatment_context": "none",
+            "target": "cell_population",
+            "explicit_edit_scope": "cell_population",
+            "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+            "subject": "neoplastic-cell-infiltration",
+            "edit_direction": "increase",
+        },
+        "why": "Infiltration explicitly requests a cellular invasive-front edit; it is not generic bulk tumor expansion.",
     },
     {
         "instruction": "模拟这个肿瘤继续进展。",

@@ -850,6 +850,16 @@ def assess_candidate_cell_feasibility(
     required_count = int(
         np.ceil(np.count_nonzero(legal_core) * preflight.target_density_per_pixel)
     )
+    if (
+        "add" in joint_bundle.mechanism.cell_program.actions
+        and np.any(legal_core)
+    ):
+        # A nonempty target-population program cannot be certified by a
+        # vacuous zero-placement witness.  Sparse finite fields still require
+        # one complete, source-matched target nucleus; otherwise the tissue
+        # candidate is rejected before ProbNet rather than crashing while the
+        # immutable packing ledger is bound.
+        required_count = max(1, required_count)
     adaptive_seam = compile_adaptive_seam(
         scene=scene,
         tissue_change=core,

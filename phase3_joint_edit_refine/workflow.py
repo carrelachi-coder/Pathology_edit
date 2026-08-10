@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -350,6 +351,7 @@ class JointPathologyEditWorkflow:
             tissue_pass_usage = []
             joint_pass_usage = []
             execution_feedback: dict = {}
+            last_deterministic_feedback_signature: str | None = None
             budget_rebalance_count = 0
             joint_area_feedback_count = 0
             maximum_planning_attempts = (
@@ -361,6 +363,28 @@ class JointPathologyEditWorkflow:
             review_board = None
             tissue_reports = ()
             area_fallback_state = None
+
+            def reject_repeated_deterministic_feedback(feedback: Mapping[str, Any]) -> None:
+                """Stop when another pass would execute the same failed contract.
+
+                Budget fixed-point passes are allowed to repeat their stage name
+                because their numeric allocation changes. Planning, tissue-gate,
+                cell-feasibility and cell-execution failures are stalled when the
+                normalized evidence is identical on consecutive passes.
+                """
+
+                nonlocal last_deterministic_feedback_signature
+                signature = _deterministic_feedback_signature(feedback)
+                if signature is None:
+                    last_deterministic_feedback_signature = None
+                    return
+                if signature == last_deterministic_feedback_signature:
+                    raise JointContractError(
+                        "deterministic_replan_stalled: the same executable "
+                        "failure repeated without a new interface, anchor, tool "
+                        "program or capacity witness"
+                    )
+                last_deterministic_feedback_signature = signature
 
             def activate_rebalance_exhausted_area_fallback() -> bool:
                 """Restore a proven safe pair after exact-area replan fails."""
@@ -512,6 +536,7 @@ class JointPathologyEditWorkflow:
                         f"execution_feedback_pass_{planning_pass + 1}.json",
                         execution_feedback,
                     )
+                    reject_repeated_deterministic_feedback(execution_feedback)
                     tissue_pass_usage.append(
                         {
                             "pass": planning_pass + 1,
@@ -606,6 +631,7 @@ class JointPathologyEditWorkflow:
                         f"execution_feedback_pass_{planning_pass + 1}.json",
                         execution_feedback,
                     )
+                    reject_repeated_deterministic_feedback(execution_feedback)
                     if activate_rebalance_exhausted_area_fallback():
                         break
                     if (
@@ -793,6 +819,7 @@ class JointPathologyEditWorkflow:
                         f"execution_feedback_pass_{planning_pass + 1}.json",
                         execution_feedback,
                     )
+                    reject_repeated_deterministic_feedback(execution_feedback)
                     if planning_pass + 1 < maximum_planning_attempts:
                         continue
                     raise JointContractError(
@@ -2268,6 +2295,45 @@ def _summarize_tissue_execution_failure(
             "redistribute area across shallower fronts; use a new deterministic tool seed"
         ),
     }
+
+
+def _deterministic_feedback_signature(
+    feedback: Mapping[str, Any],
+) -> str | None:
+    """Canonicalize evidence that should change before another costly retry."""
+
+    stage = str(feedback.get("stage") or "")
+    if stage not in {
+        "planning_or_compilation",
+        "tissue_gate",
+        "cell_feasibility",
+        "cell_execution",
+    }:
+        return None
+    payload = {
+        "stage": stage,
+        "errors": sorted(str(item) for item in feedback.get("errors", ())),
+        "hard_tissue_failure_counts": dict(
+            sorted(
+                (str(key), int(value))
+                for key, value in dict(
+                    feedback.get("hard_tissue_failure_counts") or {}
+                ).items()
+            )
+        ),
+        "cell_feasibility_failure_counts": dict(
+            sorted(
+                (str(key), int(value))
+                for key, value in dict(
+                    feedback.get("cell_feasibility_failure_counts") or {}
+                ).items()
+            )
+        ),
+        "failed_interface_ids": sorted(
+            str(item) for item in feedback.get("failed_interface_ids", ())
+        ),
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
 def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext:

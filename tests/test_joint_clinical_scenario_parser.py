@@ -141,6 +141,18 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             ["tumor-burden-decrease-v1"],
         )
 
+    def test_offline_parser_understands_plain_tumor_infiltration(self):
+        intent = RuleBasedSemanticParser().parse(
+            "increase tumor infiltration"
+        )
+
+        self.assertEqual(
+            intent.primitive_id,
+            "neoplastic-cell-infiltration-increase-v1",
+        )
+        self.assertEqual(intent.explicit_edit_scope, "cell_population")
+        self.assertEqual(len(intent.primitive_hypotheses), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

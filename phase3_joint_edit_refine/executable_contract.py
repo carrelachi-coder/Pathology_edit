@@ -25,7 +25,17 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v5"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v6"
+
+POPULATION_DISPOSITIONS = frozenset(
+    {
+        "retain_pixel_exact",
+        "retain_complete_instance",
+        "resample_target_compatible_population",
+        "remove_incompatible_population",
+        "remove_requested_cell_population",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +64,7 @@ class ExecutableJointContract:
     source_instance_authority_sha256: str
     erase_instance_ids: tuple[str, ...]
     protected_instance_ids: tuple[str, ...]
+    population_transition_ledger: dict[str, str]
     allowed_new_cell_classes: tuple[int, ...]
     forbidden_new_cell_classes: tuple[int, ...]
     target_host_fine_ids: tuple[int, ...]
@@ -92,6 +103,31 @@ class ExecutableJointContract:
         ):
             raise JointContractError(
                 "allowed and forbidden new cell classes overlap"
+            )
+        if set(self.population_transition_ledger.values()) - set(
+            POPULATION_DISPOSITIONS
+        ):
+            raise JointContractError(
+                "population transition ledger contains an unknown disposition"
+            )
+        retained = {
+            instance_id
+            for instance_id, disposition in self.population_transition_ledger.items()
+            if disposition == "retain_pixel_exact"
+        }
+        erased = {
+            instance_id
+            for instance_id, disposition in self.population_transition_ledger.items()
+            if disposition
+            not in {"retain_pixel_exact", "retain_complete_instance"}
+        }
+        if not retained.issubset(self.protected_instance_ids):
+            raise JointContractError(
+                "pixel-retained population instances are not protected"
+            )
+        if erased != set(self.erase_instance_ids):
+            raise JointContractError(
+                "population transition ledger differs from exact erasure E"
             )
         if tuple(self.cell_program.target_classes) != tuple(
             self.allowed_new_cell_classes
@@ -146,6 +182,9 @@ class ExecutableJointContract:
             "cell_instance_contract": {
                 "erase_instance_ids": list(self.erase_instance_ids),
                 "protected_instance_ids": list(self.protected_instance_ids),
+                "population_transition_ledger": dict(
+                    sorted(self.population_transition_ledger.items())
+                ),
                 "allowed_new_cell_classes": list(self.allowed_new_cell_classes),
                 "forbidden_new_cell_classes": list(
                     self.forbidden_new_cell_classes
@@ -249,6 +288,8 @@ class ExecutableJointContract:
         """Return deterministic result violations against this exact contract."""
 
         errors: list[str] = []
+        source = np.asarray(source_nuclei)
+        target = np.asarray(target_nuclei)
         try:
             self.validate_identity()
         except JointContractError as exc:
@@ -284,6 +325,27 @@ class ExecutableJointContract:
         )
         if observed_affected_units != self.affected_structural_unit_ids:
             errors.append("affected_structural_unit_binding_mismatch")
+        scene_instance_ids = set(scene.instance_masks)
+        if set(self.population_transition_ledger) - scene_instance_ids:
+            errors.append("population_transition_instance_missing_from_scene")
+        if {
+            instance_id
+            for instance_id, disposition in self.population_transition_ledger.items()
+            if disposition
+            not in {"retain_pixel_exact", "retain_complete_instance"}
+        } != set(self.erase_instance_ids):
+            errors.append("population_transition_erasure_binding_mismatch")
+        for instance_id, disposition in self.population_transition_ledger.items():
+            if disposition not in {
+                "retain_pixel_exact",
+                "retain_complete_instance",
+            }:
+                continue
+            component = scene.instance_masks.get(instance_id)
+            if component is not None and np.any(target[component] != source[component]):
+                errors.append(
+                    f"carried_population_instance_changed:{instance_id}"
+                )
         program = self.cell_program
         changed = np.asarray(cell_change, dtype=bool)
         population = np.asarray(program.population_target_region, dtype=bool)
@@ -333,8 +395,6 @@ class ExecutableJointContract:
             and not np.any(program.continuity_region)
         ):
             errors.append("required_continuity_region_is_empty")
-        target = np.asarray(target_nuclei)
-        source = np.asarray(source_nuclei)
         for instance_id in self.protected_instance_ids:
             component = scene.instance_masks.get(instance_id)
             if component is None:
@@ -653,6 +713,36 @@ class ExecutableJointContractCompiler:
         source_authority = build_scene_instance_authority(
             scene, source_nuclei
         )
+        population_transition_ledger: dict[str, str] = {}
+        for item in scene.cells.instances:
+            component = np.asarray(
+                scene.instance_masks[item.instance_id], dtype=bool
+            )
+            intersects_tissue_change = bool(np.any(component & tissue_change))
+            if item.instance_id in erase_ids:
+                if bundle.primitive.scope == "cell_only":
+                    disposition = "remove_requested_cell_population"
+                elif item.class_id in set(allowed_classes):
+                    disposition = "resample_target_compatible_population"
+                else:
+                    disposition = "remove_incompatible_population"
+                population_transition_ledger[item.instance_id] = disposition
+            elif intersects_tissue_change and item.instance_id in protected:
+                if item.class_id not in set(allowed_classes):
+                    raise JointContractError(
+                        "incompatible protected population intersects tissue change"
+                    )
+                population_transition_ledger[item.instance_id] = (
+                    "retain_pixel_exact"
+                )
+            elif intersects_tissue_change:
+                if item.class_id not in set(allowed_classes):
+                    raise JointContractError(
+                        "tissue change contains an incompatible population that is neither erased nor protected"
+                    )
+                population_transition_ledger[item.instance_id] = (
+                    "retain_complete_instance"
+                )
         draft = ExecutableJointContract(
             schema_version=EXECUTABLE_CONTRACT_VERSION,
             contract_id="pending",
@@ -675,6 +765,7 @@ class ExecutableJointContractCompiler:
             ),
             erase_instance_ids=erase_ids,
             protected_instance_ids=tuple(sorted(protected)),
+            population_transition_ledger=population_transition_ledger,
             allowed_new_cell_classes=allowed_classes,
             forbidden_new_cell_classes=forbidden_classes,
             target_host_fine_ids=host_ids,

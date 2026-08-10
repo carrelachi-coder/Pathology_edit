@@ -463,8 +463,14 @@ def _structural_hierarchy_binding(c):
         errors.append("selected_unit_missing_from_scene")
     if set(affected) - set(selected):
         errors.append("affected_unit_not_selected")
-    if hierarchy.get("schema_version") != "joint-structural-hierarchy-v1":
+    if hierarchy.get("schema_version") != "joint-structural-hierarchy-v2":
         errors.append("unsupported_hierarchy_schema")
+    if hierarchy.get("levels") != [
+        "structural_compartment",
+        "cellular_population",
+        "morphology",
+    ]:
+        errors.append("hierarchy_levels_do_not_match_executable_contract")
     unit_records = {
         str(item.get("unit_id")): item
         for item in hierarchy.get("structure_units", ())
@@ -478,6 +484,18 @@ def _structural_hierarchy_binding(c):
             errors.append(f"unit_without_parent_component:{unit_id}")
         elif not record.get("auxiliary_structure_id"):
             errors.append(f"unit_without_producer_binding:{unit_id}")
+    population_ledger = contract.population_transition_ledger
+    erased = {
+        instance_id
+        for instance_id, disposition in population_ledger.items()
+        if disposition
+        not in {"retain_pixel_exact", "retain_complete_instance"}
+    }
+    if erased != set(contract.erase_instance_ids):
+        errors.append("cellular_population_ledger_not_bound_to_erasure_E")
+    known_instances = {item.instance_id for item in c.scene.cells.instances}
+    if set(population_ledger) - known_instances:
+        errors.append("cellular_population_ledger_has_unknown_instance")
     passed = not errors
     return _result(
         "structural_hierarchy_binding",
@@ -490,6 +508,10 @@ def _structural_hierarchy_binding(c):
         metrics={
             "selected_unit_ids": list(selected),
             "affected_unit_ids": list(affected),
+            "population_transition_counts": {
+                disposition: sum(value == disposition for value in population_ledger.values())
+                for disposition in sorted(set(population_ledger.values()))
+            },
             "violations": errors,
         },
     )
