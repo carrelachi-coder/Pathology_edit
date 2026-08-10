@@ -159,9 +159,8 @@ def compile_continuity_center_quota(
     anchor = np.asarray(continuity_anchor_mask, dtype=bool)
     outer = (
         ~change
-        & ndimage.binary_dilation(
-            anchor,
-            iterations=max(1, int(continuity_width_px)),
+        & _binary_dilation_taxicab(
+            anchor, max(1, int(continuity_width_px))
         )
         & np.isin(np.asarray(target_tissue_mask), target_fine_ids)
     )
@@ -290,12 +289,12 @@ def compile_adaptive_seam(
         active_anchor = np.zeros_like(change)
         region = np.zeros_like(change)
     else:
-        active_anchor = anchor & ndimage.binary_dilation(change, iterations=2)
+        active_anchor = anchor & _binary_dilation_taxicab(change, 2)
         if not np.any(active_anchor):
             active_anchor = anchor
         region = (
             change
-            & ndimage.binary_dilation(active_anchor, iterations=max(1, width))
+            & _binary_dilation_taxicab(active_anchor, max(1, width))
         )
     return AdaptiveSeam(
         mode=contract.mode,
@@ -312,6 +311,20 @@ def compile_adaptive_seam(
         reference_area_quantiles=contract.reference_area_quantiles,
         requires_new_target_cells=contract.requires_new_target_cells,
     )
+
+
+def _binary_dilation_taxicab(mask: np.ndarray, iterations: int) -> np.ndarray:
+    """Fast exact replacement for SciPy's repeated default dilation."""
+
+    region = np.asarray(mask, dtype=bool)
+    count = max(0, int(iterations))
+    if count == 0 or not np.any(region):
+        return region.copy()
+    distance = ndimage.distance_transform_cdt(
+        ~region,
+        metric="taxicab",
+    )
+    return distance <= count
 
 
 def anchor_coverage_fraction(

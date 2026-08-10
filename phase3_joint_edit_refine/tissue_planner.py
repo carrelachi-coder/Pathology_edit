@@ -666,7 +666,12 @@ class MultiInterfaceResearchTissuePlanner:
                     "parallel_front_min_depth_px": 5.0,
                     "parallel_front_min_pixels": 64,
                 },
-                candidate_count=12,
+                # Four independently parameterized tissue fronts are enough
+                # because the joint stage realizes three cell layouts per
+                # passing tissue candidate, preserving the 12-pair joint
+                # portfolio without paying for eight tissue masks that can
+                # never survive ``maximum_tissue_candidates=4``.
+                candidate_count=4,
             ),
             hard_invariants=tuple(sorted(set(bundle.edit_contract.required_check_ids))),
             uncertainties=("current Codex session supplied mechanism; this tissue adapter did not inspect H&E",),

@@ -453,7 +453,11 @@ def _pack_into_zone(
             if class_region is None
             else class_fit & class_region
         )
-    coords = _distributed_center_order(zone & active_static_fit)
+    zone_distance = ndimage.distance_transform_edt(zone)
+    coords = _distributed_center_order(
+        zone & active_static_fit,
+        distance_map=zone_distance,
+    )
     placed_here = 0
     consecutive_failures = 0
     for row, col in coords:
@@ -520,6 +524,7 @@ def _pack_dynamic_tail(
     """Finish or disprove a shortfall with current-occupancy fit maps."""
 
     placed = 0
+    zone_distance = ndimage.distance_transform_edt(zone)
     while placed < requested and any(remaining_by_class.values()):
         fit_maps = _initial_fit_center_maps(
             valid=valid,
@@ -541,7 +546,10 @@ def _pack_dynamic_tail(
                 if class_region is None
                 else fit_by_class[class_id] & class_region
             )
-        coords = _distributed_center_order(zone & active)
+        coords = _distributed_center_order(
+            zone & active,
+            distance_map=zone_distance,
+        )
         accepted = False
         for row, col in coords:
             if _place_at_center(
@@ -718,11 +726,21 @@ def _binary_erosion_for_footprint(
     )
 
 
-def _distributed_center_order(zone: np.ndarray) -> np.ndarray:
+def _distributed_center_order(
+    zone: np.ndarray,
+    *,
+    distance_map: np.ndarray | None = None,
+) -> np.ndarray:
     coords = np.argwhere(zone)
     if not len(coords):
         return coords
-    distance = ndimage.distance_transform_edt(zone)
+    distance = (
+        ndimage.distance_transform_edt(zone)
+        if distance_map is None
+        else np.asarray(distance_map, dtype=float)
+    )
+    if distance.shape != np.asarray(zone).shape:
+        raise ValueError("packing distance map must match the candidate zone")
     # Interleave four raster phases after sorting by distance to the zone edge.
     # This avoids consuming one corner first while remaining deterministic.
     phase = (coords[:, 0] % 2) * 2 + (coords[:, 1] % 2)
