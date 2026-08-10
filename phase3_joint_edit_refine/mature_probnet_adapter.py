@@ -27,7 +27,7 @@ from .seam import (
     target_cell_class_for_tissue,
 )
 
-MATURE_EXECUTION_VERSION = "online-probnet-mature-v17"
+MATURE_EXECUTION_VERSION = "online-probnet-mature-v18"
 
 
 @dataclass(frozen=True)
@@ -748,8 +748,10 @@ def _mechanism_modifier_certificate(
 
     ProbNet remains the ranker and mature density sampler.  This certificate
     prevents a mechanism label from being accepted merely because it appeared
-    in a Planner response: every accepted center must satisfy the compiled
-    mechanism region and boundary programs must satisfy their typed seam quota.
+    in a Planner response. Boundary programs bind the typed seam quota; the
+    remaining population-replacement centers may occupy the larger legal P/T
+    domain. Dense-sheet programs still require every center in their mechanism
+    region.
     """
 
     mechanism = np.asarray(mechanism_region, dtype=bool)
@@ -776,11 +778,12 @@ def _mechanism_modifier_certificate(
     if mechanism_program_id == "boundary_aligned":
         passed = bool(
             sampling_audit_passed
-            and not outside
             and typed_continuity >= minimum_required_placements
             and minimum_required_placements > 0
         )
-        policy = "typed_centers_in_compiled_continuity_band"
+        policy = (
+            "typed_seam_quota_in_continuity_band_with_population_remainder_in_P"
+        )
     elif mechanism_program_id == "dense_sheet":
         passed = bool(
             sampling_audit_passed
@@ -792,7 +795,7 @@ def _mechanism_modifier_certificate(
         passed = False
         policy = "baseline_or_non_mature_modifier"
     return {
-        "schema_version": "mature-mechanism-modifier-certificate-v1",
+        "schema_version": "mature-mechanism-modifier-certificate-v2",
         "program_id": mechanism_program_id,
         "policy": policy,
         "passed": passed,

@@ -52,6 +52,9 @@ from inpaint_cells.sampling_policy import (
     retry_pool_target,
     valid_biological_tissue_mask,
 )
+from phase3_joint_edit_refine.mature_probnet_adapter import (
+    _mechanism_modifier_certificate,
+)
 
 
 def test_compiled_packing_witness_is_probnet_ranked_and_complete():
@@ -1494,6 +1497,54 @@ def test_required_seam_stage_merges_into_one_exact_population_ledger():
         remainder["regeneration_stages"]["policy"]
         == "typed_seam_quota_then_full_P_population_remainder_v3"
     )
+
+
+def test_boundary_modifier_requires_typed_seam_quota_not_all_population_centers():
+    mechanism = np.zeros((32, 32), dtype=bool)
+    mechanism[8:12, 8:24] = True
+    continuity = mechanism.copy()
+    ledger = tuple(
+        [(9, 9 + index, 101) for index in range(3)]
+        + [(20, 4 + index, 101) for index in range(7)]
+    )
+
+    certificate = _mechanism_modifier_certificate(
+        mechanism_program_id="boundary_aligned",
+        accepted_center_ledger=ledger,
+        mechanism_region=mechanism,
+        continuity_region=continuity,
+        required_nucleus_class=101,
+        minimum_required_placements=3,
+        sampling_audit_passed=True,
+    )
+
+    assert certificate["passed"] is True
+    assert certificate["typed_continuity_count"] == 3
+    assert certificate["inside_mechanism_count"] == 3
+    assert len(certificate["outside_mechanism_centers"]) == 7
+    assert (
+        certificate["policy"]
+        == "typed_seam_quota_in_continuity_band_with_population_remainder_in_P"
+    )
+
+
+def test_dense_sheet_modifier_still_rejects_centers_outside_mechanism_region():
+    mechanism = np.zeros((20, 20), dtype=bool)
+    mechanism[3:17, 3:17] = True
+
+    certificate = _mechanism_modifier_certificate(
+        mechanism_program_id="dense_sheet",
+        accepted_center_ledger=((8, 8, 101), (18, 18, 101)),
+        mechanism_region=mechanism,
+        continuity_region=np.zeros_like(mechanism),
+        required_nucleus_class=101,
+        minimum_required_placements=0,
+        sampling_audit_passed=True,
+    )
+
+    assert certificate["passed"] is False
+    assert certificate["inside_mechanism_count"] == 1
+    assert len(certificate["outside_mechanism_centers"]) == 1
 
 
 def test_required_seam_stage_materializes_zero_remainder_ledger():

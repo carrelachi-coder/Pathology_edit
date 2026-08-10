@@ -948,17 +948,17 @@ class JointSkillTests(unittest.TestCase):
     def test_provisional_union_cannot_trigger_underfill_rebalance(self):
         self.assertFalse(
             _provisional_union_requires_rebalance(
-                [36_701, 41_000], hard_max_pixels=62_914
+                [36_701, 41_000], maximum_pixels=50_804
             )
         )
         self.assertTrue(
             _provisional_union_requires_rebalance(
-                [62_915, 64_000], hard_max_pixels=62_914
+                [60_114, 60_812], maximum_pixels=50_804
             )
         )
         self.assertFalse(
             _provisional_union_requires_rebalance(
-                [50_000, 63_000], hard_max_pixels=62_914
+                [50_000, 63_000], maximum_pixels=50_804
             )
         )
 
@@ -987,6 +987,37 @@ class JointSkillTests(unittest.TestCase):
             max(
                 revised.tissue_floor_pixels,
                 revised.joint_target_pixels - 4_457 - 3_220,
+            ),
+        )
+
+    def test_exact_spill_replaces_instead_of_double_counting_layout_reserve(self):
+        repository = JointSkillRepository()
+        case = replace(
+            _case_stub(),
+            primitive_id="cellularity-increase-v1",
+            cell_count_extent_budget=CellCountExtentBudget(3, 2, 4, 48, 0, 32),
+        )
+        bundle = repository.compose(
+            case=case,
+            mechanism_id="colorectal-local-population-modulation",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        solver = JointFeasibilitySolver()
+        initial = solver.allocate(
+            shape=(512, 512), budget=case.joint_area_budget, bundle=bundle
+        )
+        self.assertGreater(initial.reserved_layout_halo_pixels, 0)
+        revised = solver.reserve_observed_cell_spill(
+            initial,
+            complete_instance_pixels=2_000,
+            footprint_spill_pixels=3_000,
+        )
+        self.assertEqual(
+            revised.tissue_target_pixels,
+            max(
+                revised.tissue_floor_pixels,
+                revised.joint_target_pixels - 5_000,
             ),
         )
 
@@ -1446,7 +1477,9 @@ class _RetryThenPassingTissueGate(GateRegistry):
         report = super().run(context)
         return GateReport(
             report.candidate_id,
-            self.calls > 12,
+            # One compiler witness plus the 12-variant fallback portfolio
+            # constitute one planning pass.
+            self.calls > 13,
             report.checks,
         )
 

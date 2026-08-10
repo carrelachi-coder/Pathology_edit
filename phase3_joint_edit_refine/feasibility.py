@@ -197,6 +197,9 @@ class CandidateCellFeasibility:
     meaningful_tissue_floor_pixels: int
     tissue_change_pixels: int
     exact_packing_certificate: dict[str, Any]
+    complete_instance_spill_pixels: int
+    target_footprint_spill_pixels: int
+    predicted_joint_pixels: int
     reasons: tuple[str, ...]
 
     def to_metadata(self) -> dict[str, Any]:
@@ -981,6 +984,15 @@ def assess_candidate_cell_feasibility(
         meaningful_tissue_floor_pixels=meaningful_floor,
         tissue_change_pixels=int(np.count_nonzero(core)),
         exact_packing_certificate=packing.to_metadata(),
+        complete_instance_spill_pixels=int(
+            np.count_nonzero(erased & ~core)
+        ),
+        target_footprint_spill_pixels=int(
+            np.count_nonzero(packing.footprint_union & ~core & ~erased)
+        ),
+        predicted_joint_pixels=int(
+            np.count_nonzero(core | erased | packing.footprint_union)
+        ),
         reasons=tuple(dict.fromkeys(reasons)),
     )
 
@@ -1163,6 +1175,26 @@ def certify_compiled_cell_program_feasibility(
                 program.continuity_minimum_anchor_coverage_fraction
             ),
         },
+        complete_instance_spill_pixels=int(
+            np.count_nonzero(
+                np.asarray(program.erasure_region, dtype=bool)
+                & ~np.asarray(candidate.change_region, dtype=bool)
+            )
+        ),
+        target_footprint_spill_pixels=int(
+            np.count_nonzero(
+                certificate.footprint_union
+                & ~np.asarray(candidate.change_region, dtype=bool)
+                & ~np.asarray(program.erasure_region, dtype=bool)
+            )
+        ),
+        predicted_joint_pixels=int(
+            np.count_nonzero(
+                np.asarray(candidate.change_region, dtype=bool)
+                | np.asarray(program.erasure_region, dtype=bool)
+                | certificate.footprint_union
+            )
+        ),
         reasons=tuple(dict.fromkeys(reasons)),
     )
 

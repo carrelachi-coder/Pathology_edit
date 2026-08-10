@@ -616,55 +616,39 @@ class JointPathologyEditWorkflow:
                             "replan/retool attempts"
                         )
                     continue
-                contracts_by_tissue_id = {
-                    item.tissue_candidate_id: item
-                    for item in execution_batch.executable_contracts
-                }
                 desired_min, desired_max = (
                     case.joint_area_budget.desired_interval_pixels(source_tissue.shape)
                 )
-                _, hard_max = case.joint_area_budget.hard_interval_pixels(
-                    source_tissue.shape
-                )
+                cell_feasibility_by_tissue_id = {
+                    item.candidate_id: item
+                    for item in execution_batch.cell_feasibility_reports
+                }
                 predicted = [
                     int(
-                        np.count_nonzero(
-                            np.asarray(item.change_region, dtype=bool)
-                            | contracts_by_tissue_id[
-                                item.candidate_id
-                            ].cell_program.erasure_region
-                        )
+                        cell_feasibility_by_tissue_id[
+                            item.candidate_id
+                        ].predicted_joint_pixels
                     )
                     for item in passing_tissue
                 ]
                 predicted_above = _provisional_union_requires_rebalance(
                     predicted,
-                    hard_max_pixels=hard_max,
+                    maximum_pixels=desired_max,
                 )
-                # ``predicted`` contains T plus source-instance erasure E, but
-                # it intentionally cannot contain the target footprints that
-                # the mature cell executor has not generated yet.  Therefore
-                # it is a sound pre-execution lower bound only when it already
-                # exceeds the declared hard maximum.  Treating a provisional
-                # underfill as final used to reduce T before ADD was realized,
-                # which could turn a 19/21 exact packing witness into 17/21 on
-                # the next pass.  Underfill feedback belongs exclusively to
-                # the executed T ∪ C ledger below.
+                # Candidate-local exact packing supplies a complete source-
+                # instance erasure E and a concrete target-footprint witness
+                # F.  ``predicted`` is therefore the executable T ∪ E ∪ F,
+                # not an area heuristic.  It can safely rebalance an overfill
+                # before invoking ProbNet; executed masks remain authoritative
+                # for any later underfill correction.
                 if (
                     planning_pass + 1 < maximum_planning_attempts
                     and budget_rebalance_count
                     < maximum_planning_attempts - 1
                     and predicted_above
                 ):
-                    closure_values = [
-                        int(
-                            np.count_nonzero(
-                                contracts_by_tissue_id[
-                                    item.candidate_id
-                                ].cell_program.erasure_region
-                                & ~np.asarray(item.change_region, dtype=bool)
-                            )
-                        )
+                    feedback_reports = [
+                        cell_feasibility_by_tissue_id[item.candidate_id]
                         for item in passing_tissue
                     ]
                     # Candidate selection needs one executable pair, not a
@@ -674,20 +658,38 @@ class JointPathologyEditWorkflow:
                     # target while preserving the largest tissue/P domain for
                     # nuclei packing. Siblings with larger spill remain free
                     # to fail the later joint-area gate.
-                    closure = _candidate_preserving_closure_pixels(
-                        closure_values
+                    selected_feedback = min(
+                        feedback_reports,
+                        key=lambda item: (
+                            item.predicted_joint_pixels,
+                            item.candidate_id,
+                        ),
                     )
-                    revised = self.budget_solver.reserve_complete_instances(
+                    revised = self.budget_solver.reserve_observed_cell_spill(
                         allocation,
-                        reserve_pixels=closure,
+                        complete_instance_pixels=(
+                            selected_feedback.complete_instance_spill_pixels
+                        ),
+                        footprint_spill_pixels=(
+                            selected_feedback.target_footprint_spill_pixels
+                        ),
                     )
                     if revised.tissue_target_pixels != allocation.tissue_target_pixels:
-                        direction = "whole_instance_union_closure"
+                        direction = "exact_pre_probnet_joint_union_overfill"
                         budget_revisions.append(
                             {
                                 "reason": direction,
                                 "desired_joint_interval": [desired_min, desired_max],
                                 "provisional_joint_pixels": predicted,
+                                "selected_feedback_candidate_id": (
+                                    selected_feedback.candidate_id
+                                ),
+                                "exact_complete_instance_spill_pixels": (
+                                    selected_feedback.complete_instance_spill_pixels
+                                ),
+                                "exact_target_footprint_spill_pixels": (
+                                    selected_feedback.target_footprint_spill_pixels
+                                ),
                                 "before": allocation.to_metadata(),
                                 "after": revised.to_metadata(),
                             }
@@ -2139,19 +2141,19 @@ def _candidate_preserving_closure_pixels(values) -> int:
 def _provisional_union_requires_rebalance(
     predicted_pixels,
     *,
-    hard_max_pixels: int,
+    maximum_pixels: int,
 ) -> bool:
-    """Allow pre-cell feedback only for an already-certain hard overfill.
+    """Rebalance when every exact paired witness exceeds a target ceiling.
 
-    The provisional ledger is ``T ∪ E`` and omits ADD footprints that do
-    not exist until cell execution.  It may therefore prove that the declared
-    hard maximum is unreachable, but it cannot prove underfill and must not
-    optimize the narrower desired tolerance before the paired condition
-    exists.
+    Candidate feasibility has already compiled complete source erasure ``E``
+    and a concrete target-footprint packing witness ``F``.  The ledger is the
+    executable ``T ∪ E ∪ F``, so it may safely optimize the desired
+    ceiling before ProbNet ranking.  Replanning remains candidate-preserving:
+    one witness at or below the ceiling is enough to continue execution.
     """
 
     values = [max(0, int(value)) for value in predicted_pixels]
-    return bool(values and min(values) > int(hard_max_pixels))
+    return bool(values and min(values) > int(maximum_pixels))
 
 
 def _minimum_safe_above_target_joint_pixels(

@@ -11,7 +11,7 @@ from phase3_mask_edit_refine.models import AreaBudget, EditPlan
 from .models import JointAreaBudget, JointContractError
 from .skills.repository import JointSkillBundle
 
-SOLVER_VERSION = "joint-budget-broker-v2"
+SOLVER_VERSION = "joint-budget-broker-v3"
 
 
 @dataclass(frozen=True)
@@ -138,9 +138,11 @@ class JointFeasibilitySolver:
 
         complete = max(0, int(complete_instance_pixels))
         footprint = max(0, int(footprint_spill_pixels))
-        total_reserve = (
-            allocation.reserved_layout_halo_pixels + complete + footprint
-        )
+        # These are observed/compiled pixels, not heuristic reserves.  Any
+        # requested halo contribution that actually changes nuclei is already
+        # present in ``complete`` or ``footprint`` and must not be counted a
+        # second time.
+        total_reserve = complete + footprint
         minimum_tissue_pixels = (
             allocation.tissue_execution_floor_pixels
             if allow_capacity_floor_fallback
