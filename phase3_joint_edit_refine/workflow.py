@@ -2691,18 +2691,22 @@ def _derive_local_population_budget(
     )
     maximum = max(target, min(40, int(np.ceil(target * 1.35))))
     minimum_effect_span = int(
-        np.ceil(float(minimum_effect_span_cell_diameters) * diameter_px)
+        np.floor(float(minimum_effect_span_cell_diameters) * diameter_px)
     )
-    if minimum_effect_span > 128:
+    patch_support_limit = max(
+        48,
+        int(np.floor(0.40 * min(np.asarray(scene.source_nuclei).shape))),
+    )
+    if minimum_effect_span > patch_support_limit:
         raise JointContractError(
-            "source-calibrated meaningful cell effect span exceeds the v1 "
-            "bounded-support limit"
+            "source-calibrated meaningful cell effect span exceeds the "
+            "patch-relative bounded-support limit"
         )
     maximum_extent = max(
         minimum_effect_span,
         int(np.clip(round(6.0 * diameter_px), 48, 96)),
     )
-    maximum_extent = min(128, maximum_extent)
+    maximum_extent = min(patch_support_limit, maximum_extent)
     budget = CellCountExtentBudget(
         target_delta_count=target,
         min_delta_count=minimum,
@@ -2744,6 +2748,7 @@ def _derive_local_population_budget(
             minimum_effect_span_cell_diameters
         ),
         "skill_minimum_effect_foci": int(minimum_effect_foci),
+        "patch_relative_support_limit_px": patch_support_limit,
         "budget": budget.__dict__,
     }
 
