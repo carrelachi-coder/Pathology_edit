@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from phase3_mask_edit_refine.models import EditPlan
 
+from .clarification import PlannerClarificationRequired
 from .models import (
     CellEditPlan,
     CouplingPlan,
@@ -99,6 +100,29 @@ class HeuristicJointPlanner:
     def select_interpretation(self, *, case, scene, options, image_paths):
         del scene, image_paths
         requested = case.provenance.get("joint_mechanism_id")
+        if requested == "__clarify__":
+            primitive_ids = tuple(
+                dict.fromkeys(
+                    item.primitive_id
+                    for item in sorted(
+                        options,
+                        key=lambda value: (
+                            value.semantic_priority,
+                            value.primitive_id,
+                            value.mechanism.mechanism_id,
+                        ),
+                    )
+                )
+            )[:3]
+            raise PlannerClarificationRequired(
+                str(
+                    case.provenance.get(
+                        "joint_mechanism_clarification_reason",
+                        "current-session review found multiple executable pathological meanings that the instruction does not distinguish",
+                    )
+                ),
+                primitive_ids=primitive_ids,
+            )
         if requested == "__abstain__":
             reason = case.provenance.get(
                 "joint_mechanism_abstain_reason",

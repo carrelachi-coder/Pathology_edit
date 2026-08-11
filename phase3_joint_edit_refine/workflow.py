@@ -35,6 +35,11 @@ from .cell_layouts import (
     generate_cell_layouts,
 )
 from .cell_programs import CellToolProgramCompiler
+from .clarification import (
+    PlannerClarificationRequired,
+    build_primitive_clarification_request,
+    resolve_clarification_decision,
+)
 from .critic import JointCritic
 from .executable_contract import (
     ExecutableJointContract,
@@ -237,6 +242,24 @@ class JointPathologyEditWorkflow:
                         )
                     )
                 )
+            clarification_resolution = resolve_clarification_decision(
+                case=case,
+                prepared_options=tuple(
+                    item.option for item in prepared.values()
+                ),
+            )
+            clarification_usage = None
+            if clarification_resolution is not None:
+                selected_primitive, clarification_usage = clarification_resolution
+                prepared = {
+                    option_id: item
+                    for option_id, item in prepared.items()
+                    if item.option.primitive_id == selected_primitive
+                }
+                if not prepared:
+                    raise JointContractError(
+                        "clarification-selected primitive has no executable interpretation"
+                    )
             try:
                 primitive_id, mechanism_id, selection_usage = (
                     self.joint_planner.select_interpretation(
@@ -247,6 +270,46 @@ class JointPathologyEditWorkflow:
                         ),
                         image_paths=planner_images,
                     )
+                )
+            except PlannerClarificationRequired as exc:
+                request = build_primitive_clarification_request(
+                    case=case,
+                    prepared_options=tuple(
+                        item.option for item in prepared.values()
+                    ),
+                    why_required=exc.reason,
+                    primitive_ids=exc.primitive_ids,
+                )
+                request_metadata = request.to_metadata()
+                audit.write_json(
+                    "clarification_request.json", request_metadata
+                )
+                audit.write_json(
+                    "semantic_resolution.json",
+                    {
+                        **resolution_base,
+                        "status": "clarification_required",
+                        "selected_option_id": None,
+                        "selection": None,
+                        "clarification_request": request_metadata,
+                    },
+                )
+                usage["mechanism_selection"] = {
+                    "provider": self.joint_planner.name,
+                    "status": "clarification_required",
+                }
+                return self._finish(
+                    audit=audit,
+                    case=case,
+                    plan=None,
+                    reports=(),
+                    critic=None,
+                    status="clarification_required",
+                    reasons=(),
+                    selected=None,
+                    condition=None,
+                    usage=usage,
+                    clarification_request=request_metadata,
                 )
             except JointContractError as exc:
                 audit.write_json(
@@ -267,6 +330,12 @@ class JointPathologyEditWorkflow:
                     "joint Planner returned an interpretation that was not prepared"
                 )
             selection_record = dict(selection_usage.get("selection") or {})
+            if clarification_usage is not None:
+                selection_usage = {
+                    **selection_usage,
+                    "user_clarification": clarification_usage,
+                }
+                selection_record["user_clarification"] = clarification_usage
             if selected.case.semantic_intent:
                 semantic_intent = dict(selected.case.semantic_intent)
                 semantic_intent.update(
@@ -2146,12 +2215,14 @@ class JointPathologyEditWorkflow:
         selected,
         condition,
         usage,
+        clarification_request=None,
     ):
         summary = {
             "status": status,
             "selected_candidate_id": selected,
             "abstain_reasons": list(reasons),
             "usage": usage,
+            "clarification_request": clarification_request,
         }
         audit.write_json("result.json", summary)
         return JointWorkflowResult(
@@ -2164,6 +2235,7 @@ class JointPathologyEditWorkflow:
             condition=condition,
             abstain_reasons=tuple(reasons),
             artifact_paths=dict(audit.paths),
+            clarification_request=clarification_request,
             usage=usage,
         )
 

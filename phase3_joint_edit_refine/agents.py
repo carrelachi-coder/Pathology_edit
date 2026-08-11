@@ -11,6 +11,7 @@ from typing import Any
 from phase3_mask_edit_refine.agents import OpenAIResponsesJSONClient
 from phase3_mask_edit_refine.models import EditPlan
 
+from .clarification import PlannerClarificationRequired
 from .models import (
     CellEditPlan,
     CouplingPlan,
@@ -60,6 +61,8 @@ class OpenAIMultimodalJointPlanner:
                 "contextual_fit_requires_explicit_explanation": True,
                 "do_not_abstain_when_a_listed_option_is_supported": True,
                 "abstain_only_if_no_listed_option_has_required_visual_evidence": True,
+                "request_user_clarification_only_when_two_or_three_executable_primitives_remain_and_they_encode_materially_different_user_intent": True,
+                "do_not_request_clarification_for_tool_parameters_or_mechanisms_that_H&E_can_resolve": True,
                 "do_not_infer_annotation_or_population_profile": True,
             },
         }
@@ -76,9 +79,13 @@ class OpenAIMultimodalJointPlanner:
                     "ordering: a contextual interpretation may outrank a direct one when the patch "
                     "supports it substantially better. A contextual interpretation such as tumor "
                     "budding is allowed only when its required morphology is visibly supported and "
-                    "must be disclosed in interpretation_explanation. Abstain only when none of the "
-                    "listed options is supportable. Do not output pixels, coordinates, counts or "
-                    "density multipliers."
+                    "must be disclosed in interpretation_explanation. If two or three executable "
+                    "primitive meanings remain equally plausible but encode materially different "
+                    "user intent that H&E cannot recover, request user clarification and list only "
+                    "those primitive IDs. Do not ask about numeric parameters, interfaces or a "
+                    "mechanism that H&E can resolve. Abstain only when none of the listed options "
+                    "is supportable. Do not output pixels, coordinates, counts or density "
+                    "multipliers."
                 ),
                 user_prompt=json.dumps(
                     {**payload, "previous_contract_errors": errors},
@@ -89,6 +96,26 @@ class OpenAIMultimodalJointPlanner:
                 schema_name="joint_pathology_interpretation_selection",
                 json_schema=MECHANISM_SELECTION_SCHEMA,
             )
+            if raw.get("clarification_required") is True:
+                primitive_ids = _strings(
+                    raw.get("clarification_primitive_ids"),
+                    "clarification_primitive_ids",
+                )
+                available_primitives = {
+                    item.primitive_id for item in options
+                }
+                if (
+                    not 2 <= len(primitive_ids) <= 3
+                    or len(set(primitive_ids)) != len(primitive_ids)
+                    or set(primitive_ids) - available_primitives
+                ):
+                    raise JointContractError(
+                        "joint Planner returned an invalid clarification option set"
+                    )
+                raise PlannerClarificationRequired(
+                    _required_string(raw, "clarification_reason"),
+                    primitive_ids=primitive_ids,
+                )
             if raw.get("abstain") is True:
                 raise JointContractError(
                     "joint mechanism Planner abstained: "
@@ -682,6 +709,9 @@ MECHANISM_SELECTION_SCHEMA = {
     "required": [
         "abstain",
         "abstain_reason",
+        "clarification_required",
+        "clarification_reason",
+        "clarification_primitive_ids",
         "primitive_id",
         "mechanism_id",
         "interpretation_explanation",
@@ -692,6 +722,13 @@ MECHANISM_SELECTION_SCHEMA = {
     "properties": {
         "abstain": {"type": "boolean"},
         "abstain_reason": {"type": ["string", "null"]},
+        "clarification_required": {"type": "boolean"},
+        "clarification_reason": {"type": ["string", "null"]},
+        "clarification_primitive_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "maxItems": 3,
+        },
         "primitive_id": {"type": ["string", "null"]},
         "mechanism_id": {"type": ["string", "null"]},
         "interpretation_explanation": {"type": ["string", "null"]},

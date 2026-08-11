@@ -37,6 +37,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest", required=True, help="JSON object/list or JSONL of JointCaseContext records")
     parser.add_argument("--output-root", required=True)
     parser.add_argument(
+        "--clarification-decisions",
+        help=(
+            "Optional JSON object/list of digest-bound clarification decisions; "
+            "each record must include case_id and clarification_decision"
+        ),
+    )
+    parser.add_argument(
         "--case-id",
         action="append",
         default=[],
@@ -113,6 +120,28 @@ def main(argv: list[str] | None = None) -> int:
             "--nuclei-instance-library and explicit --probnet-dataset"
         )
     records = _load_records(Path(args.manifest))
+    decisions = (
+        _load_clarification_decisions(Path(args.clarification_decisions))
+        if args.clarification_decisions
+        else {}
+    )
+    unknown_decisions = sorted(set(decisions) - {str(item.get("case_id")) for item in records})
+    if unknown_decisions:
+        raise ValueError(
+            "clarification decisions name cases outside the manifest: "
+            + ", ".join(unknown_decisions)
+        )
+    records = [
+        {
+            **item,
+            **(
+                {"clarification_decision": decisions[str(item.get("case_id"))]}
+                if str(item.get("case_id")) in decisions
+                else {}
+            ),
+        }
+        for item in records
+    ]
     if args.case_id:
         selected = set(args.case_id)
         records = [item for item in records if item.get("case_id") in selected]
@@ -234,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
                 "semantic_request": semantic_intent.to_metadata(),
                 "semantic_resolution": semantic_resolution,
                 "selected_candidate_id": result.selected_candidate_id,
+                "clarification_request": result.clarification_request,
                 "abstain_reasons": list(result.abstain_reasons),
                 "artifact_paths": result.artifact_paths,
             }
@@ -242,7 +272,11 @@ def main(argv: list[str] | None = None) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summaries, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps({"cases": len(summaries), "summary": str(output)}, sort_keys=True))
-    return 0 if all(item["status"] != "abstained" for item in summaries) else 2
+    if any(item["status"] == "abstained" for item in summaries):
+        return 2
+    if any(item["status"] == "clarification_required" for item in summaries):
+        return 3
+    return 0
 
 
 def _load_records(path: Path) -> list[dict]:
@@ -255,6 +289,31 @@ def _load_records(path: Path) -> list[dict]:
     if not records or not all(isinstance(item, dict) for item in records):
         raise ValueError("joint manifest must contain one or more JSON objects")
     return records
+
+
+def _load_clarification_decisions(path: Path) -> dict[str, dict]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and "case_id" not in payload:
+        records = [
+            {"case_id": case_id, "clarification_decision": decision}
+            for case_id, decision in payload.items()
+        ]
+    else:
+        records = payload if isinstance(payload, list) else [payload]
+    decisions: dict[str, dict] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            raise TypeError("clarification decision record must be an object")
+        case_id = str(record.get("case_id") or "").strip()
+        decision = record.get("clarification_decision")
+        if not case_id or not isinstance(decision, dict):
+            raise ValueError(
+                "clarification decision record requires case_id and clarification_decision"
+            )
+        if case_id in decisions:
+            raise ValueError(f"duplicate clarification decision for {case_id}")
+        decisions[case_id] = decision
+    return decisions
 
 
 if __name__ == "__main__":

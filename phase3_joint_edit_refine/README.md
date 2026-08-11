@@ -103,6 +103,30 @@ Use repeated `--case-id` flags for a bounded retry or performance check. The
 offline multi-interface Planner is research-only: it can compile several legal
 source components, but it does not claim to have interpreted H&E.
 
+If visual semantic resolution cannot distinguish two or three materially
+different but executable primitives, the run returns exit code `3` and writes
+`clarification_request.json`. The request is compiled only after skill and
+deterministic feasibility filtering, so catalog-only or generator-unsupported
+mechanisms are never exposed as choices. Bind the clinician/Codex answer with:
+
+```bash
+python scripts/resolve_joint_clarification.py \
+  --request artifacts/joint_refine/CASE/clarification_request.json \
+  --selected-option-id primitive:invasive-front-expansion-v1 \
+  --responder clinician-id \
+  --output clarification_decision.json
+
+python scripts/run_joint_edit_refine.py \
+  --manifest joint_cases.jsonl \
+  --clarification-decisions clarification_decision.json \
+  --output-root artifacts/joint_refine_resumed
+```
+
+The decision is bound to the instruction and all source/auxiliary digests. It
+locks only the primitive; the visual Planner still selects the compatible
+mechanism and interfaces. Changed inputs or capability options invalidate the
+answer instead of silently replaying it.
+
 An approved candidate emits `generation_handoff/manifest.json` plus target
 tissue/nuclei, `T`, `C`, `J`, and generation-support `G` masks. `J` is the area
 ledger; `G` is the frozen H&E generator erase/regeneration support and is not

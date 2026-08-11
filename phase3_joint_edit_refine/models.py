@@ -248,6 +248,7 @@ class JointCaseContext:
     pixel_size_um: float | None = None
     cell_count_extent_budget: CellCountExtentBudget | None = None
     semantic_intent: dict[str, Any] = field(default_factory=dict)
+    clarification_decision: dict[str, Any] = field(default_factory=dict)
 
     def compiled_normalized_intent(self) -> str:
         """Return the parser-owned intent used by all downstream planners.
@@ -366,6 +367,9 @@ class JointCaseContext:
         cell_budget = CellCountExtentBudget.from_value(
             payload.get("cell_count_extent_budget")
         )
+        raw_clarification = payload.get("clarification_decision", {})
+        if not isinstance(raw_clarification, Mapping):
+            raise JointContractError("clarification_decision must be an object")
         return cls(
             **values,
             joint_area_budget=(
@@ -384,6 +388,7 @@ class JointCaseContext:
                 if isinstance(payload.get("semantic_intent", {}), Mapping)
                 else {}
             ),
+            clarification_decision=dict(raw_clarification),
         )
 
     def validate_local_inputs(self) -> None:
@@ -879,6 +884,7 @@ class JointWorkflowResult:
     condition: JointCondition | None
     abstain_reasons: tuple[str, ...]
     artifact_paths: dict[str, str]
+    clarification_request: dict[str, Any] | None = None
     usage: dict[str, Any] = field(default_factory=dict)
 
 
