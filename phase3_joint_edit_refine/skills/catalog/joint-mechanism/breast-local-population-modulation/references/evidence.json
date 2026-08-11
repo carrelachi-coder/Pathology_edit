@@ -1,8 +1,49 @@
 {
-  "citations": [
-    "https://tumourclassification.iarc.who.int/chapters/32"
+  "schema_version": "joint-skill-evidence-v2",
+  "skill_kind": "joint-mechanism",
+  "skill_id": "breast-local-population-modulation",
+  "review_status": "draft",
+  "authority_policy": "../../../evidence-governance-v2.json",
+  "records": [
+    {
+      "evidence_id": "breast-local-population-modulation.pathology",
+      "authority_category": "pathology_fact",
+      "claim_scope": [
+        "summary",
+        "recognition_contract",
+        "counterexamples"
+      ],
+      "source_ids": [
+        "pathology-mechanism-internal-review-pending"
+      ],
+      "production_eligible": false
+    },
+    {
+      "evidence_id": "breast-local-population-modulation.execution",
+      "authority_category": "engineering_proxy",
+      "claim_scope": [
+        "tissue_program",
+        "cell_program",
+        "coupling_contract",
+        "joint_gate_ids"
+      ],
+      "source_ids": [
+        "engineering-joint-contract-v2"
+      ],
+      "production_eligible": false
+    },
+    {
+      "evidence_id": "breast-local-population-modulation.representability",
+      "authority_category": "model_representability",
+      "claim_scope": [
+        "representability_contract",
+        "render_contract"
+      ],
+      "source_ids": [
+        "representability-frozen-generator-v1"
+      ],
+      "production_eligible": false
+    }
   ],
-  "dataset_statistics": {
-    "status": "pending_full_training_set_calibration"
-  }
+  "dataset_fact_policy": "Dataset facts are supplied only by the independently composed annotation-profile skill."
 }

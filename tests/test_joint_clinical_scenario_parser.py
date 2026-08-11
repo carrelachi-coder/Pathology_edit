@@ -61,7 +61,8 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             [item.primitive_id for item in intent.primitive_hypotheses],
             [
                 "tumor-burden-increase-v1",
-                "neoplastic-cell-infiltration-increase-v1",
+                "invasive-front-expansion-v1",
+                "neoplastic-microinfiltration-increase-v1",
                 "cellularity-increase-v1",
             ],
         )
@@ -149,10 +150,31 @@ class ClinicalScenarioParserTests(unittest.TestCase):
 
         self.assertEqual(
             intent.primitive_id,
-            "neoplastic-cell-infiltration-increase-v1",
+            "neoplastic-microinfiltration-increase-v1",
         )
-        self.assertEqual(intent.explicit_edit_scope, "cell_population")
-        self.assertEqual(len(intent.primitive_hypotheses), 1)
+        self.assertEqual(intent.explicit_edit_scope, "unspecified")
+        self.assertEqual(
+            [item.primitive_id for item in intent.primitive_hypotheses],
+            [
+                "neoplastic-microinfiltration-increase-v1",
+                "invasive-front-expansion-v1",
+            ],
+        )
+
+    def test_parser_keeps_front_void_and_architecture_scales_separate(self):
+        parser = RuleBasedSemanticParser()
+        self.assertEqual(
+            parser.parse("expand the invasive front").primitive_id,
+            "invasive-front-expansion-v1",
+        )
+        self.assertEqual(
+            parser.parse("increase STAS").primitive_id,
+            "structural-void-spread-v1",
+        )
+        self.assertEqual(
+            parser.parse("progress the Gleason architectural pattern").primitive_id,
+            "architecture-progression-v1",
+        )
 
     def test_prebound_codex_intent_cannot_be_reparsed_or_detached(self):
         payload = RuleBasedSemanticParser().parse(

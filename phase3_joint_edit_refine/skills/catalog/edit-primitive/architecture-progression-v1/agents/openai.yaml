@@ -1,0 +1,4 @@
+interface:
+  display_name: "Architecture progression"
+  short_description: "Compile a fine architectural identity transition with joint tissue/cell conditions."
+  default_prompt: "Use $architecture-progression-v1 only when the annotation profile exposes the required fine labels and the mechanism owns the transition."

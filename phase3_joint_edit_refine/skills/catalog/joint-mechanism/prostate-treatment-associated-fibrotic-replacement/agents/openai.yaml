@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prostate Treatment Associated Fibrotic Replacement"
+  short_description: "Replace a portion of viable prostate tumor with explicitly labelled treatment-associated stromal/fibrotic tissue only when prior therapy is documented and Gleason progression is not being simulated."
+  default_prompt: "Use $prostate-treatment-associated-fibrotic-replacement only when every recognition, profile and representability precondition passes."

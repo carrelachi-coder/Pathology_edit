@@ -1,0 +1,4 @@
+interface:
+  display_name: "Invasive-front expansion"
+  short_description: "Compile coupled tumor-front tissue displacement and nuclei regeneration."
+  default_prompt: "Use $invasive-front-expansion-v1 only on a verified invasive interface and bind it to a domain mechanism."

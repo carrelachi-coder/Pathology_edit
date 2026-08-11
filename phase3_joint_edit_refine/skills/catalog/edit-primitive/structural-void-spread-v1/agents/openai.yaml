@@ -1,0 +1,4 @@
+interface:
+  display_name: "Structural-void spread"
+  short_description: "Compile native-void spread such as STAS without relabelling it as stroma."
+  default_prompt: "Use $structural-void-spread-v1 only with a verified native structural-void map and a mechanism-specific containment contract."

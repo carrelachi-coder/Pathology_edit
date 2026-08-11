@@ -1,0 +1,148 @@
+{
+  "mechanism_id": "prostate-pattern-5-infiltrative-front",
+  "pathology_domain_id": "prostate-adenocarcinoma-v1",
+  "supported_primitives": [
+    "invasive-front-expansion-v1"
+  ],
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "summary": "Advance a verified pattern-5-compatible infiltrative front as non-gland-forming cords or single-cell growth, with explicit PANDA fine-pattern authority.",
+  "recognition_contract": {
+    "required_observations": [
+      "source region has verified Gleason pattern 5 authority",
+      "selected edge is an infiltrative tumor-stroma interface",
+      "non-gland-forming cord or single-cell morphology is visible"
+    ],
+    "contraindications": [
+      "cribriform or fused pattern 4 selected as pattern 5",
+      "intact benign gland or lumen in the edit band",
+      "fine pattern identity is unavailable"
+    ],
+    "minimum_confidence": 0.9
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1
+    ],
+    "required_auxiliary_structures": [
+      "native_pattern_map",
+      "gland_lumen_map"
+    ],
+    "allow_semantic_instance_fallback": false,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "pattern5_infiltrative_front_displacement",
+    "primitive_label_contracts": {
+      "invasive-front-expansion-v1": {
+        "source_labels": [
+          "Stroma"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "benign_gland",
+      "gland_lumen",
+      "cribriform_space",
+      "vessel",
+      "nerve"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "single",
+      "short_cord"
+    ],
+    "core_policy": "replace_complete_instances_in_tissue_change",
+    "halo_policy": "regenerate_short_cord_or_single_cell_population",
+    "halo_distance_px": [
+      0,
+      48
+    ],
+    "cluster_size_range": [
+      1,
+      20
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "mechanism_realization"
+    ],
+    "layout_program_by_primitive": {
+      "invasive-front-expansion-v1": "short_cord"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "prostate.pattern5.fine_label_authority",
+      "prostate.pattern5.no_lumen_fill"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "mechanism_postcondition:prostate-pattern-5-infiltrative-front"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "non-gland-forming invasive population continuous with the selected front"
+    ],
+    "veto_findings": [
+      "new gland lumen",
+      "filled cribriform space",
+      "pattern 4 relabelled without authority"
+    ],
+    "mask_guarantees": [
+      "fine-pattern provenance remains bound",
+      "native lumen raster is protected"
+    ],
+    "render_only_claims": [
+      "definitive Gleason grading",
+      "cytologic grade"
+    ]
+  },
+  "evidence_citations": [
+    "https://pubmed.ncbi.nlm.nih.gov/26492179/",
+    "https://pubmed.ncbi.nlm.nih.gov/25228336/"
+  ],
+  "counterexamples": [
+    "turning pattern 4 cribriform into a solid fill",
+    "bulk expansion without pattern-5 authority",
+    "remote single cells"
+  ]
+}

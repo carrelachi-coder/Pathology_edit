@@ -1,0 +1,11 @@
+---
+name: lung-treatment-associated-fibrotic-replacement
+description: Replace a portion of viable tumor with explicitly labelled fibrotic/inflammatory stroma only in a documented post-treatment tumor bed.
+---
+
+# lung-treatment-associated-fibrotic-replacement
+
+Read `references/joint_contract.json` before planning. Pathology claims, dataset
+semantics, engineering proxies and model representability remain separate under
+the catalog evidence-governance policy. This research skill is fail-closed in
+production until statistics, generator capability and internal review are frozen.

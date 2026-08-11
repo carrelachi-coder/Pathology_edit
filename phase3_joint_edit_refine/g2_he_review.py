@@ -292,7 +292,7 @@ def _decision(
     if organ == "skin" and case_number in SKIN_DIRECT_INFILTRATION:
         return (
             "replace_primitive",
-            "neoplastic-cell-infiltration-increase-v1",
+            "neoplastic-microinfiltration-increase-v1",
             "melanoma-discohesive-junctional",
             "increase tumor infiltration",
             "sparse_melanoma_front_is_cellular_not_bulk_burden",
@@ -306,7 +306,7 @@ def _decision(
         if organ == "skin" and case_number in SKIN_STROMA_TO_INFILTRATION:
             return (
                 "replace_primitive",
-                "neoplastic-cell-infiltration-increase-v1",
+                "neoplastic-microinfiltration-increase-v1",
                 "melanoma-discohesive-junctional",
                 "increase tumor infiltration",
                 "stroma_decrease_replaced_by_dispersed_melanoma_infiltration",

@@ -1,0 +1,26 @@
+{
+  "primitive_id": "structural-void-spread-v1",
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "scope": "cell_only",
+  "summary": "Increase neoplastic elements within a verified native structural void while preserving the tissue annotation raster.",
+  "tissue_action": "forbidden",
+  "budget_mode": "count_extent",
+  "allowed_baseline_modes": ["preserve", "structured_add"],
+  "allowed_quota_roles": ["explicit_increment"],
+  "host_tissue_labels": ["Other tissue", "Normal epithelium"],
+  "target_cell_classes": [1],
+  "cell_effect_contract": {
+    "minimum_delta_count": 3,
+    "minimum_span_cell_diameters": 4.0,
+    "minimum_foci": 1
+  },
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "whole_instance_changes",
+    "native_structure_preserved",
+    "cell_zone_localization",
+    "mechanism_realization"
+  ]
+}

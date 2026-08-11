@@ -50,7 +50,7 @@ class G2HEReviewTests(unittest.TestCase):
             record={},
         )
         self.assertEqual(result[0], "replace_primitive")
-        self.assertEqual(result[1], "neoplastic-cell-infiltration-increase-v1")
+        self.assertEqual(result[1], "neoplastic-microinfiltration-increase-v1")
 
     def test_mixed_panda_case_uses_dominant_native_pattern(self):
         record = {

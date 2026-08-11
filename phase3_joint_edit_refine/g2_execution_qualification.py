@@ -510,7 +510,7 @@ def _with_scene_calibrated_cell_budget(
         return case
     if case.cell_count_extent_budget is not None:
         return case
-    if case.primitive_id == "neoplastic-cell-infiltration-increase-v1":
+    if case.primitive_id == "neoplastic-microinfiltration-increase-v1":
         budget, budget_metadata = _derive_infiltration_budget(scene)
     else:
         budget, budget_metadata = _derive_local_population_budget(

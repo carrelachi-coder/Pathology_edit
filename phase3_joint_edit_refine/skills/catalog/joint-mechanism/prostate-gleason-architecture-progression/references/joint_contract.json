@@ -1,0 +1,147 @@
+{
+  "mechanism_id": "prostate-gleason-architecture-progression",
+  "pathology_domain_id": "prostate-adenocarcinoma-v1",
+  "supported_primitives": [
+    "architecture-progression-v1"
+  ],
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "summary": "Change a reviewed PANDA fine architectural identity only through an explicit source-to-target Gleason mechanism; generic tumor burden is not architecture progression.",
+  "recognition_contract": {
+    "required_observations": [
+      "source and target fine Gleason labels are explicitly available",
+      "native gland and lumen maps resolve the selected architectural unit",
+      "the requested progression is compatible with visible source architecture"
+    ],
+    "contraindications": [
+      "only a binary tumor label is available",
+      "cribriform spaces or lumina cannot be protected",
+      "instruction asks only for burden change"
+    ],
+    "minimum_confidence": 0.9
+  },
+  "representability_contract": {
+    "status": "render_only",
+    "required_cell_classes": [
+      1
+    ],
+    "required_auxiliary_structures": [
+      "native_pattern_map",
+      "gland_lumen_map"
+    ],
+    "allow_semantic_instance_fallback": false,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "fine_architecture_identity_transition",
+    "primitive_label_contracts": {
+      "architecture-progression-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "component_label_transition"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "benign_gland",
+      "gland_lumen",
+      "cribriform_space",
+      "vessel",
+      "nerve"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "boundary_aligned",
+      "dense_sheet",
+      "short_cord"
+    ],
+    "core_policy": "replace_complete_instances_in_selected_architectural_unit",
+    "halo_policy": "regenerate_pattern_compatible_population",
+    "halo_distance_px": [
+      0,
+      48
+    ],
+    "cluster_size_range": [
+      1,
+      20
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "mechanism_realization"
+    ],
+    "layout_program_by_primitive": {
+      "architecture-progression-v1": "dense_sheet"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "prostate.architecture.explicit_fine_transition",
+      "prostate.architecture.protect_internal_spaces"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "mechanism_postcondition:prostate-gleason-architecture-progression"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "target fine architectural identity is expressed throughout the selected unit"
+    ],
+    "veto_findings": [
+      "fine-label change without visible architecture change",
+      "filled cribriform spaces",
+      "mixed source/target identity at an artificial seam"
+    ],
+    "mask_guarantees": [
+      "source and target fine IDs are digest-bound",
+      "native lumen and cribriform-space rasters are protected"
+    ],
+    "render_only_claims": [
+      "definitive Gleason identity",
+      "comedonecrosis and cytologic grade"
+    ]
+  },
+  "evidence_citations": [
+    "https://pubmed.ncbi.nlm.nih.gov/26492179/",
+    "https://pubmed.ncbi.nlm.nih.gov/25228336/"
+  ],
+  "counterexamples": [
+    "changing only nuclei density",
+    "calling burden expansion Gleason progression",
+    "filling lumina to force a solid mask"
+  ]
+}

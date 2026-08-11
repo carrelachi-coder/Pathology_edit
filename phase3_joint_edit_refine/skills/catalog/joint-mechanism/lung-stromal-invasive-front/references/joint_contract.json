@@ -1,0 +1,145 @@
+{
+  "mechanism_id": "lung-stromal-invasive-front",
+  "pathology_domain_id": "lung-carcinoma-v1",
+  "supported_primitives": [
+    "invasive-front-expansion-v1"
+  ],
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "summary": "Advance a verified invasive lung carcinoma front into true adjacent stroma; this is not lepidic growth and not STAS.",
+  "recognition_contract": {
+    "required_observations": [
+      "non-lepidic invasive morphology at the selected edge",
+      "true stromal receiving compartment",
+      "continuous primary tumor front"
+    ],
+    "contraindications": [
+      "growth confined to intact alveolar septa",
+      "free clusters in airspace",
+      "post-treatment fibrotic tumor bed"
+    ],
+    "minimum_confidence": 0.9
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": false,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "stromal_invasive_front_displacement",
+    "primitive_label_contracts": {
+      "invasive-front-expansion-v1": {
+        "source_labels": [
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "alveolar_airspace",
+      "bronchus",
+      "cartilage",
+      "vessel",
+      "pleura"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "boundary_aligned"
+    ],
+    "core_policy": "replace_complete_instances_in_tissue_change",
+    "halo_policy": "regenerate_neoplastic_population_across_verified_front",
+    "halo_distance_px": [
+      0,
+      48
+    ],
+    "cluster_size_range": [
+      1,
+      20
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "mechanism_realization"
+    ],
+    "layout_program_by_primitive": {
+      "invasive-front-expansion-v1": "boundary_aligned"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "lung.invasion.true_stromal_interface",
+      "lung.invasion.no_airspace_spread"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "mechanism_postcondition:lung-stromal-invasive-front"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "continuous invasive tumor front with a coupled neoplastic population"
+    ],
+    "veto_findings": [
+      "lepidic septal coating called stromal invasion",
+      "free airspace cluster",
+      "rectangular tumor fill"
+    ],
+    "mask_guarantees": [
+      "source-to-target conversion begins at a selected stromal interface",
+      "complete-instance nuclei edits"
+    ],
+    "render_only_claims": [
+      "histologic subtype identity",
+      "desmoplastic reaction"
+    ]
+  },
+  "evidence_citations": [
+    "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+    "https://pubmed.ncbi.nlm.nih.gov/21252716/"
+  ],
+  "counterexamples": [
+    "calling STAS a stromal front",
+    "filling an alveolar airspace",
+    "remote tumor island"
+  ]
+}

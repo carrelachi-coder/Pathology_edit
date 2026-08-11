@@ -1,0 +1,145 @@
+{
+  "mechanism_id": "lung-stas-airspace-spread",
+  "pathology_domain_id": "lung-carcinoma-v1",
+  "supported_primitives": [
+    "structural-void-spread-v1"
+  ],
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "summary": "Represent candidate spread through air spaces as single cells, micropapillary clusters or solid nests beyond a primary lung tumor edge, without calling the airspace stroma.",
+  "recognition_contract": {
+    "required_observations": [
+      "traceable alveolar airspace beyond the primary tumor edge",
+      "separation from the main tumor boundary",
+      "single cells or free clusters within the verified airspace"
+    ],
+    "contraindications": [
+      "artifactually detached tissue fragment",
+      "direct stromal invasion",
+      "airspace or alveolar map unavailable"
+    ],
+    "minimum_confidence": 0.9
+  },
+  "representability_contract": {
+    "status": "render_only",
+    "required_cell_classes": [
+      1
+    ],
+    "required_auxiliary_structures": [
+      "alveolar_structure_map",
+      "airspace_void_map"
+    ],
+    "allow_semantic_instance_fallback": false,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "preserve_verified_airspace_tissue_labels",
+    "primitive_label_contracts": {
+      "structural-void-spread-v1": {
+        "source_labels": [
+          "Other tissue",
+          "Normal epithelium"
+        ],
+        "target_labels": [
+          "Other tissue",
+          "Normal epithelium"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "preserve_tissue"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "alveolar_septum",
+      "bronchus",
+      "cartilage",
+      "vessel",
+      "pleura"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1
+    ],
+    "layout_programs": [
+      "single",
+      "small_cluster"
+    ],
+    "core_policy": "retain_source_population",
+    "halo_policy": "add_separated_templates_inside_verified_airspace_void",
+    "halo_distance_px": [
+      0,
+      48
+    ],
+    "cluster_size_range": [
+      1,
+      20
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "mechanism_realization"
+    ],
+    "layout_program_by_primitive": {
+      "structural-void-spread-v1": "small_cluster"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "lung.stas.void_containment",
+      "lung.stas.separation_from_primary"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": true,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": false,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "mechanism_postcondition:lung-stas-airspace-spread"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "free neoplastic elements in a verified airspace beyond the primary edge"
+    ],
+    "veto_findings": [
+      "stromal placement",
+      "connected extension from the primary tumor",
+      "alveolar septum destruction"
+    ],
+    "mask_guarantees": [
+      "tissue annotation raster is unchanged",
+      "templates remain inside the structural void"
+    ],
+    "render_only_claims": [
+      "true STAS identity",
+      "micropapillary cytoplasmic morphology"
+    ]
+  },
+  "evidence_citations": [
+    "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+    "https://pubmed.ncbi.nlm.nih.gov/25629637/"
+  ],
+  "counterexamples": [
+    "direct invasion labelled STAS",
+    "cluster touching the primary tumor",
+    "placement in a vessel or bronchus"
+  ]
+}

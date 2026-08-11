@@ -1,9 +1,9 @@
 {
   "primitive_id": "neoplastic-cell-infiltration-increase-v1",
-  "version": "2.0.0-draft",
+  "version": "2.1.0-deprecated",
   "review_status": "draft",
   "scope": "cell_only",
-  "summary": "Add a cancer-mechanism-specific sparse neoplastic population without changing tissue labels.",
+  "summary": "Deprecated ambiguous contract retained only to reject legacy manifests; use one of the four scale- and compartment-specific v1 primitives.",
   "tissue_action": "forbidden",
   "budget_mode": "count_extent",
   "allowed_baseline_modes": ["preserve", "structured_add"],

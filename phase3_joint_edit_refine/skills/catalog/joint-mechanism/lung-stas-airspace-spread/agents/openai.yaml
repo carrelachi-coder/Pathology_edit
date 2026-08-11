@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lung Stas Airspace Spread"
+  short_description: "Represent candidate spread through air spaces as single cells, micropapillary clusters or solid nests beyond a primary lung tumor edge, without calling the airspace stroma."
+  default_prompt: "Use $lung-stas-airspace-spread only when every recognition, profile and representability precondition passes."

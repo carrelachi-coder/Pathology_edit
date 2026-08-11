@@ -3,8 +3,7 @@
   "pathology_domain_id": "prostate-adenocarcinoma-v1",
   "supported_primitives": [
     "tumor-burden-increase-v1",
-    "tumor-burden-decrease-v1",
-    "stroma-increase-v1"
+    "tumor-burden-decrease-v1"
   ],
   "version": "1.2.0-draft",
   "review_status": "draft",
@@ -55,14 +54,6 @@
         "target_labels": [
           "Stroma",
           "Other tissue"
-        ]
-      },
-      "stroma-increase-v1": {
-        "source_labels": [
-          "Tumor"
-        ],
-        "target_labels": [
-          "Stroma"
         ]
       }
     },
@@ -144,24 +135,6 @@
         ],
         "minimum_anchor_coverage_fraction": 0,
         "requires_new_target_cells": true
-      },
-      "stroma-increase-v1": {
-        "mode": "adaptive_population_continuity",
-        "width_cell_diameters": [
-          1,
-          1.5
-        ],
-        "reference_area_quantiles": [
-          0.25,
-          0.75
-        ],
-        "maximum_empty_run_cell_diameters": 2,
-        "density_ratio_range": [
-          0.25,
-          4
-        ],
-        "minimum_anchor_coverage_fraction": 0,
-        "requires_new_target_cells": true
       }
     },
     "required_checker_ids": [
@@ -174,8 +147,7 @@
     ],
     "layout_program_by_primitive": {
       "tumor-burden-increase-v1": "boundary_aligned",
-      "tumor-burden-decrease-v1": "population_replacement",
-      "stroma-increase-v1": "population_replacement"
+      "tumor-burden-decrease-v1": "population_replacement"
     }
   },
   "coupling_contract": {

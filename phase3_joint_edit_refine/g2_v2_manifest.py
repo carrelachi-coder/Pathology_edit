@@ -20,7 +20,7 @@ CELL_EXTENT_PRIMITIVES = frozenset(
         "cell-type-abundance-decrease-v1",
         "cellularity-increase-v1",
         "cellularity-decrease-v1",
-        "neoplastic-cell-infiltration-increase-v1",
+        "neoplastic-microinfiltration-increase-v1",
     }
 )
 

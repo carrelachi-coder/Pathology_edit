@@ -1,0 +1,30 @@
+{
+  "primitive_id": "invasive-front-expansion-v1",
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Advance a verified invasive tumor front and regenerate a mechanism-compatible target cell population as one joint edit.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [],
+  "tissue_topology_contract": {
+    "geometry_mode": "interface_front",
+    "allow_source_component_resolution": false,
+    "allow_target_hole_resolution": false,
+    "maximum_source_component_changed_fraction": 0.55,
+    "minimum_source_component_remaining_px": 64
+  },
+  "required_source_clearance_classes": [],
+  "minimum_source_clearance_instances": 0,
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "local_shape_distribution",
+    "local_population_density",
+    "interface_seam_continuity",
+    "mechanism_realization"
+  ]
+}

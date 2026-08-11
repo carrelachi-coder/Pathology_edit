@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prostate Pattern 5 Infiltrative Front"
+  short_description: "Advance a verified pattern-5-compatible infiltrative front as non-gland-forming cords or single-cell growth, with explicit PANDA fine-pattern authority."
+  default_prompt: "Use $prostate-pattern-5-infiltrative-front only when every recognition, profile and representability precondition passes."

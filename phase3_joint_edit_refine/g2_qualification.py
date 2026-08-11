@@ -62,7 +62,7 @@ LEGACY_SEMANTICS = {
 STROMA_DECREASE_REPLACEMENTS = (
     "tumor-burden-increase-v1",
     "cellularity-increase-v1",
-    "neoplastic-cell-infiltration-increase-v1",
+    "neoplastic-microinfiltration-increase-v1",
 )
 
 

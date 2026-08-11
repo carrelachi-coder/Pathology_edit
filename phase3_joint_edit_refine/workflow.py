@@ -61,6 +61,7 @@ from .nuclei import load_nuclei_mask
 from .packing import certify_complete_footprint_packing
 from .planner import JointInterpretationOption, JointPlanner
 from .scene import build_joint_scene_analysis
+from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
 from .tissue_execution import execute_gate_aware_tissue_candidates
 
@@ -1236,7 +1237,7 @@ class JointPathologyEditWorkflow:
                 and primitive_contract.scope == "cell_only"
                 and candidate_case.cell_count_extent_budget is None
             ):
-                if primitive_id == "neoplastic-cell-infiltration-increase-v1":
+                if primitive_id == "neoplastic-microinfiltration-increase-v1":
                     budget, budget_metadata = _derive_infiltration_budget(scene)
                 else:
                     budget, budget_metadata = _derive_local_population_budget(
@@ -1321,6 +1322,9 @@ class JointPathologyEditWorkflow:
                             budget=candidate_case.joint_area_budget,
                             bundle=bundle,
                         )
+                        tool_primitive_id = tissue_tool_primitive_id(
+                            primitive_id
+                        )
                         tissue_bundle = self.mask_skills.compose(
                             pathology_domain_id=(
                                 candidate_case.pathology_domain_id
@@ -1328,12 +1332,28 @@ class JointPathologyEditWorkflow:
                             annotation_profile_id=(
                                 candidate_case.annotation_profile_id
                             ),
-                            primitive_id=primitive_id,
+                            primitive_id=tool_primitive_id,
                             production=self.config.production,
                             available_checker_ids=(
                                 self.tissue_gates.available_checker_ids
                             ),
                         )
+                        if tool_primitive_id != primitive_id:
+                            tissue_bundle = replace(
+                                tissue_bundle,
+                                edit_contract=replace(
+                                    tissue_bundle.edit_contract,
+                                    primitive_id=primitive_id,
+                                ),
+                                warnings=(
+                                    *tissue_bundle.warnings,
+                                    (
+                                        "deterministic tissue implementation adapter: "
+                                        f"{primitive_id} -> {tool_primitive_id}; "
+                                        "joint mechanism remains semantic authority"
+                                    ),
+                                ),
+                            )
                         nuclei_preflight = build_joint_nuclei_preflight(
                             case=candidate_case,
                             source_tissue=source_tissue,
@@ -1419,7 +1439,7 @@ class JointPathologyEditWorkflow:
                             )
                         if (
                             primitive_id
-                            == "neoplastic-cell-infiltration-increase-v1"
+                            == "neoplastic-microinfiltration-increase-v1"
                         ):
                             label_contract = (
                                 bundle.mechanism.tissue_program.primitive_label_contracts[

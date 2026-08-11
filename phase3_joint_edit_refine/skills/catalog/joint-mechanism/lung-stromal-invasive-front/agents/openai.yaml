@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lung Stromal Invasive Front"
+  short_description: "Advance a verified invasive lung carcinoma front into true adjacent stroma; this is not lepidic growth and not STAS."
+  default_prompt: "Use $lung-stromal-invasive-front only when every recognition, profile and representability precondition passes."

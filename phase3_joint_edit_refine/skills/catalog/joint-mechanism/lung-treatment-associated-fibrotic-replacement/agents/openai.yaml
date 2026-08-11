@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lung Treatment Associated Fibrotic Replacement"
+  short_description: "Replace a portion of viable tumor with explicitly labelled fibrotic/inflammatory stroma only in a documented post-treatment tumor bed."
+  default_prompt: "Use $lung-treatment-associated-fibrotic-replacement only when every recognition, profile and representability precondition passes."

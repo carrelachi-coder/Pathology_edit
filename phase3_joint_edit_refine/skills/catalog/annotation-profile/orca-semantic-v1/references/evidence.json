@@ -1,0 +1,39 @@
+{
+  "schema_version": "joint-skill-evidence-v2",
+  "skill_kind": "annotation-profile",
+  "skill_id": "orca-semantic-v1",
+  "review_status": "draft",
+  "authority_policy": "../../../evidence-governance-v2.json",
+  "records": [
+    {
+      "evidence_id": "orca-semantic-v1.dataset",
+      "authority_category": "dataset_fact",
+      "claim_scope": [
+        "prohibited_fine_ids",
+        "prohibit_cell_placement_fine_ids",
+        "prohibit_generation_support_fine_ids",
+        "unavailable_mechanisms",
+        "conditional_mechanisms",
+        "supports_explicit_stroma"
+      ],
+      "source_ids": [
+        "dataset-orca-official-v1",
+        "dataset-orca-local-manifest-v1"
+      ],
+      "production_eligible": false
+    },
+    {
+      "evidence_id": "orca-semantic-v1.execution",
+      "authority_category": "engineering_proxy",
+      "claim_scope": [
+        "required_provenance_fields",
+        "required_checker_ids"
+      ],
+      "source_ids": [
+        "engineering-joint-contract-v2"
+      ],
+      "production_eligible": false
+    }
+  ],
+  "pathology_fact_policy": "This profile does not authorize a disease mechanism."
+}

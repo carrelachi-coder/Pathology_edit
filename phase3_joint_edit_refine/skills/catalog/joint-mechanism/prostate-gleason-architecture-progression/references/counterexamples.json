@@ -1,0 +1,8 @@
+{
+  "mechanism_id": "prostate-gleason-architecture-progression",
+  "counterexamples": [
+    "changing only nuclei density",
+    "calling burden expansion Gleason progression",
+    "filling lumina to force a solid mask"
+  ]
+}

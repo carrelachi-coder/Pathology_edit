@@ -24,7 +24,10 @@
   ],
   "conditional_mechanisms": [
     "prostate-pattern-4-growth",
-    "prostate-pattern-5-growth"
+    "prostate-pattern-5-growth",
+    "prostate-pattern-5-infiltrative-front",
+    "prostate-treatment-associated-fibrotic-replacement",
+    "prostate-gleason-architecture-progression"
   ],
   "mechanism_required_fine_ids": {
     "prostate-pattern-3-growth": [
@@ -34,6 +37,17 @@
       9
     ],
     "prostate-pattern-5-growth": [
+      10
+    ],
+    "prostate-pattern-5-infiltrative-front": [
+      10
+    ],
+    "prostate-treatment-associated-fibrotic-replacement": [
+      10
+    ],
+    "prostate-gleason-architecture-progression": [
+      8,
+      9,
       10
     ]
   },

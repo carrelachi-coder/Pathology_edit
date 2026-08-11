@@ -3,7 +3,7 @@
   "version": "2.0.0-draft",
   "review_status": "draft",
   "scope": "tissue_and_cell",
-  "summary": "Increase explicit stroma area and regenerate the target stromal population.",
+  "summary": "Replace an authorized source compartment with explicitly labelled stroma only through an independently selected treatment, repair or fibrosis mechanism; generic growth mechanisms may not claim this transition.",
   "tissue_action": "required",
   "budget_mode": "joint_area_with_tissue_floor",
   "allowed_baseline_modes": ["regenerate_target_population"],

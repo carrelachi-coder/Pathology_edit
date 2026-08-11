@@ -13,7 +13,18 @@ def build_joint_knowledge_review(repository: JointSkillRepository | None = None)
     lines = [
         "# Joint Pathology Knowledge Review",
         "",
-        "> All mechanism/profile packages are currently draft. Numeric statistics are uncalibrated and production is fail-closed.",
+        "> Evidence is governed by four non-interchangeable authorities. Draft review, uncalibrated statistics or pending generator representability keep production fail-closed.",
+        "",
+        "## Evidence authority boundary",
+        "",
+        "| Authority | Owns | Must not authorize |",
+        "|---|---|---|",
+        "| pathology_fact | Disease morphology, mechanism recognition, contraindications and pathology counterexamples | Dataset label semantics, numeric tool thresholds or generator capability |",
+        "| dataset_fact | Label ontology, unannotated/background meaning, fine IDs, revision and digest | Biological mechanism or cross-dataset behavior |",
+        "| engineering_proxy | Tool programs, capacity estimates, geometry thresholds and deterministic gates | A pathology identity or successful H&E rendering |",
+        "| model_representability | What the frozen nuclei/H&E condition stack has demonstrated in paired evaluation | Pathology truth or annotation semantics |",
+        "",
+        "The runtime rejects any unclassified top-level contract field and any source used under the wrong authority category.",
         "",
         "## Primitive inventory",
         "",
@@ -102,6 +113,9 @@ def build_joint_knowledge_review(repository: JointSkillRepository | None = None)
         repository.mechanisms.values(),
         key=lambda value: (value.pathology_domain_id, value.mechanism_id),
     ):
+        evidence_status = repository.skill_evidence_status[
+            f"joint-mechanism:{item.mechanism_id}"
+        ]
         transitions = []
         for primitive_id, contract in sorted(
             item.tissue_program.primitive_label_contracts.items()
@@ -156,7 +170,15 @@ def build_joint_knowledge_review(repository: JointSkillRepository | None = None)
                 "- Render-only claims: "
                 + ("; ".join(item.render.render_only_claims) or "none"),
                 "- Counterexamples: " + "; ".join(item.counterexamples),
-                "- Evidence: " + "; ".join(item.evidence_citations),
+                "- Governed evidence sources: "
+                + "; ".join(evidence_status.source_ids),
+                "- Evidence category status: "
+                + "; ".join(
+                    f"{key}={value}"
+                    for key, value in sorted(
+                        evidence_status.category_status.items()
+                    )
+                ),
                 "",
             ]
         )
@@ -193,8 +215,16 @@ def build_joint_knowledge_review(repository: JointSkillRepository | None = None)
     lines.extend([
         "## Evidence and review boundary",
         "",
-        "Each atomic skill keeps `joint_contract.json`, `evidence.json`, `counterexamples.json` and `statistics.json`. Render-only claims cannot be promoted to mask guarantees. A mechanism becomes production-eligible only after cohort statistics and internal pathology review change both mechanism and profile status to `internally_reviewed`.",
+        "The catalog-level `evidence-governance-v2.json` classifies every contract field and binds pathology domains and annotation profiles to separate sources. Each atomic mechanism also keeps `joint_contract.json`, `evidence.json`, `counterexamples.json` and `statistics.json`. Render-only claims cannot be promoted to mask guarantees. Production requires verified applicable sources, calibrated cohort statistics, frozen generator-response evidence and internal pathology/engineering review.",
+        "",
+        "## Evidence gaps by skill",
+        "",
     ])
+    for key, status in sorted(repository.skill_evidence_status.items()):
+        lines.append(
+            f"- `{key}`: production_allowed={status.production_allowed}; "
+            + ("; ".join(status.gaps) if status.gaps else "no evidence gap")
+        )
     return "\n".join(lines) + "\n"
 
 

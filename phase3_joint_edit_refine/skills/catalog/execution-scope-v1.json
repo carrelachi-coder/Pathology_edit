@@ -5,14 +5,19 @@
     "cell-type-abundance-increase-v1",
     "cellularity-decrease-v1",
     "cellularity-increase-v1",
-    "neoplastic-cell-infiltration-increase-v1",
+    "invasive-front-expansion-v1",
+    "neoplastic-microinfiltration-increase-v1",
     "necrosis-appearance-v1",
     "necrosis-resolution-v1",
     "stroma-increase-v1",
     "tumor-burden-decrease-v1",
     "tumor-burden-increase-v1"
   ],
-  "closed_primitives": {},
+  "closed_primitives": {
+    "architecture-progression-v1": "Fine-label transition compilation, native-pattern postconditions and frozen-generator architecture response are not yet validated.",
+    "neoplastic-cell-infiltration-increase-v1": "Deprecated ambiguous primitive. Use neoplastic-microinfiltration-increase-v1, invasive-front-expansion-v1, structural-void-spread-v1 or architecture-progression-v1.",
+    "structural-void-spread-v1": "Void-aware instance containment, separation-from-primary and frozen-generator STAS response are not yet validated."
+  },
   "legacy_primitives_not_yet_joint": {},
   "policy": "fail_closed",
   "review_status": "implementation_scoped"

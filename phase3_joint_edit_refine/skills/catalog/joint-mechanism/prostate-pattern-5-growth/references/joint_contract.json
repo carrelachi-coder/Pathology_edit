@@ -3,8 +3,7 @@
   "pathology_domain_id": "prostate-adenocarcinoma-v1",
   "supported_primitives": [
     "tumor-burden-increase-v1",
-    "tumor-burden-decrease-v1",
-    "stroma-increase-v1"
+    "tumor-burden-decrease-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
@@ -50,14 +49,6 @@
         "target_labels": [
           "Stroma",
           "Other tissue"
-        ]
-      },
-      "stroma-increase-v1": {
-        "source_labels": [
-          "Tumor"
-        ],
-        "target_labels": [
-          "Stroma"
         ]
       }
     },
@@ -115,8 +106,7 @@
     ],
     "layout_program_by_primitive": {
       "tumor-burden-increase-v1": "dense_sheet",
-      "tumor-burden-decrease-v1": "population_replacement",
-      "stroma-increase-v1": "population_replacement"
+      "tumor-burden-decrease-v1": "population_replacement"
     }
   },
   "coupling_contract": {

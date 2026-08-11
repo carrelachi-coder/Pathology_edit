@@ -160,7 +160,35 @@ class RuleBasedSemanticParser:
             (r"\b(increase|add|expand|create)\b.*\bnecrosis\b", r"(增加|扩大|形成|添加).*(坏死)"),
         ),
         (
-            "neoplastic-cell-infiltration-increase-v1",
+            "structural-void-spread-v1",
+            "neoplastic-cell-infiltration",
+            "increase",
+            (
+                r"\b(increase|add|simulate)\b.*\b(stas|spread through air spaces?|airspace spread)\b",
+                r"(增加|模拟|添加).*(气腔播散|气腔内播散|STAS)",
+            ),
+        ),
+        (
+            "architecture-progression-v1",
+            "tumor",
+            "increase",
+            (
+                r"\b(progress|change|convert|increase)\b.*\b(gleason|architectural pattern|pattern [345])\b",
+                r"(进展|转变|改变|提高).*(Gleason|格里森|结构模式)",
+            ),
+        ),
+        (
+            "invasive-front-expansion-v1",
+            "neoplastic-cell-infiltration",
+            "increase",
+            (
+                r"\b(expand|advance|increase)\b.*\b(invasive front|invasion front)\b",
+                r"\b(invade|invasion into)\b.*\b(stroma|adjacent tissue)\b",
+                r"(扩大|推进|增加).*(浸润前缘|侵袭前缘)",
+            ),
+        ),
+        (
+            "neoplastic-microinfiltration-increase-v1",
             "neoplastic-cell-infiltration",
             "increase",
             (
@@ -324,7 +352,10 @@ class OpenAIClinicalScenarioParser:
                 "primitive hypotheses later. Never infer organ morphology, dataset "
                 "labels, pathology mechanism, interface, coordinates, counts, area, "
                 "density multiplier or tool parameters. Preserve negation and explicit "
-                "scope. Do not treat post-treatment context as improvement: 'progresses "
+                "scale. Cell-only microinfiltration, tissue-displacing invasive-front "
+                "expansion, native-void spread and fine architecture progression are "
+                "different primitives and must not be collapsed. Do not treat "
+                "post-treatment context as improvement: 'progresses "
                 "after treatment' is worsening. Abstain when the requested future "
                 "direction is genuinely unresolved, such as 'simulate changes after "
                 "treatment', because an image cannot recover the user's desired future."
@@ -353,7 +384,16 @@ class OpenAIClinicalScenarioParser:
                     "deterministic_ambiguity_policy": {
                         "generic_tumor_increase": [
                             "tumor-burden-increase-v1",
-                            "neoplastic-cell-infiltration-increase-v1",
+                            "invasive-front-expansion-v1",
+                            "neoplastic-microinfiltration-increase-v1",
+                        ],
+                        "infiltration_without_scale": [
+                            "neoplastic-microinfiltration-increase-v1",
+                            "invasive-front-expansion-v1"
+                        ],
+                        "never_merge": [
+                            "structural-void-spread-v1 with stromal invasion",
+                            "architecture-progression-v1 with generic burden"
                         ],
                         "parser_returns_primary_only": True,
                     },
@@ -617,21 +657,29 @@ def _compile_primitive_hypotheses(
         re.search(r"\b(tumou?r|cancer)\s+(burden|area|volume)\b", lowered)
         or re.search(r"肿瘤(负荷|面积|体积)", instruction)
     )
-    explicit_budding = bool(
+    explicit_microinfiltration = bool(
         re.search(
-            r"\b(tumou?r (?:cell )?infiltration|cancer cell infiltration|tumou?r buds?|tumou?r budding|neoplastic cell infiltration)\b",
+            r"\b(tumou?r buds?|tumou?r budding|microinfiltration)\b",
             lowered,
         )
-        or re.search(r"肿瘤出芽|癌细胞浸润|肿瘤细胞浸润", instruction)
+        or re.search(r"肿瘤出芽|微浸润", instruction)
+    )
+    ambiguous_infiltration = bool(
+        re.search(
+            r"\b(tumou?r (?:cell )?infiltration|cancer cell infiltration|neoplastic cell infiltration)\b",
+            lowered,
+        )
+        or re.search(r"癌细胞浸润|肿瘤细胞浸润", instruction)
     )
     generic_tumor_increase = bool(
         primary_primitive_id
         in {
             "tumor-burden-increase-v1",
-            "neoplastic-cell-infiltration-increase-v1",
+            "neoplastic-microinfiltration-increase-v1",
         }
         and not explicit_burden
-        and not explicit_budding
+        and not explicit_microinfiltration
+        and not ambiguous_infiltration
         and (
             re.search(r"\b(increase|expand|enlarge|raise|add)\b.*\b(tumou?r|cancer)\b", lowered)
             or re.search(r"(增加|提高|扩大|增多).*(肿瘤|癌)", instruction)
@@ -648,12 +696,35 @@ def _compile_primitive_hypotheses(
                 ),
             ),
             PrimitiveHypothesis(
-                primitive_id="neoplastic-cell-infiltration-increase-v1",
+                primitive_id="invasive-front-expansion-v1",
                 semantic_fit="contextual",
                 priority=1,
                 rationale=(
-                    "a verified invasive front with budding can realize tumor increase at the cellular level"
+                    "a verified, tissue-displacing invasive front can realize tumor progression"
                 ),
+            ),
+            PrimitiveHypothesis(
+                primitive_id="neoplastic-microinfiltration-increase-v1",
+                semantic_fit="contextual",
+                priority=2,
+                rationale=(
+                    "a verified sparse neoplastic population can realize progression without changing tissue labels"
+                ),
+            ),
+        )
+    if ambiguous_infiltration:
+        return (
+            PrimitiveHypothesis(
+                primitive_id="neoplastic-microinfiltration-increase-v1",
+                semantic_fit="direct",
+                priority=0,
+                rationale="infiltration can denote sparse neoplastic cells in a preserved host compartment",
+            ),
+            PrimitiveHypothesis(
+                primitive_id="invasive-front-expansion-v1",
+                semantic_fit="contextual",
+                priority=1,
+                rationale="the same wording can denote a tissue-displacing invasive front when H&E and the mechanism support it",
             ),
         )
     return (
@@ -695,6 +766,7 @@ def _build_scenario_intent(
     specs = _scenario_primitive_specs(
         scenario=scenario,
         clinical_direction=clinical_direction,
+        treatment_context=treatment_context,
         scenario_target=scenario_target,
         explicit_edit_scope=explicit_edit_scope,
     )
@@ -786,10 +858,11 @@ def _scenario_primitive_specs(
     *,
     scenario: str,
     clinical_direction: str,
+    treatment_context: str,
     scenario_target: str,
     explicit_edit_scope: str,
 ) -> tuple[tuple[str, str, str], ...]:
-    del clinical_direction, scenario_target
+    del clinical_direction, scenario_target, treatment_context
     if scenario in {
         "disease_progression",
         "post_treatment_progression",
@@ -811,7 +884,7 @@ def _scenario_primitive_specs(
                     "the requested progression is explicitly limited to tumor cellularity",
                 ),
                 (
-                    "neoplastic-cell-infiltration-increase-v1",
+                    "neoplastic-microinfiltration-increase-v1",
                     "contextual",
                     "a visually supported invasive population can realize cellular progression",
                 ),
@@ -823,7 +896,12 @@ def _scenario_primitive_specs(
                 "greater tissue-level tumor burden is the primary generic progression reading",
             ),
             (
-                "neoplastic-cell-infiltration-increase-v1",
+                "invasive-front-expansion-v1",
+                "contextual",
+                "a verified tissue-displacing invasive interface can express progression",
+            ),
+            (
+                "neoplastic-microinfiltration-increase-v1",
                 "contextual",
                 "a verified invasive front can express progression through neoplastic infiltration",
             ),
@@ -836,14 +914,19 @@ def _scenario_primitive_specs(
     if scenario == "invasion_progression":
         return (
             (
-                "neoplastic-cell-infiltration-increase-v1",
+                "invasive-front-expansion-v1",
                 "direct",
-                "the user explicitly requested a more invasive tumor phenotype",
+                "a verified tissue-displacing invasive front is the primary invasion reading",
             ),
             (
-                "tumor-burden-increase-v1",
+                "neoplastic-microinfiltration-increase-v1",
                 "contextual",
-                "interface-bound tissue expansion may realize invasion when supported by the patch",
+                "sparse cell-only microinfiltration can realize invasion when the host tissue is preserved",
+            ),
+            (
+                "structural-void-spread-v1",
+                "contextual",
+                "a domain skill may identify a native-void spread mechanism such as STAS",
             ),
         )
     if scenario in {"disease_regression", "treatment_response"}:
@@ -878,6 +961,17 @@ def _scenario_primitive_specs(
                 "necrosis-appearance-v1",
                 "contextual",
                 "new necrosis can express response only when the domain and visible patch support it",
+            ),
+            *(
+                (
+                    (
+                        "stroma-increase-v1",
+                        "contextual",
+                        "documented treatment response may replace viable tumor with explicitly labelled fibrotic/inflammatory stroma",
+                    ),
+                )
+                if scenario == "treatment_response"
+                else ()
             ),
         )
     if scenario == "residual_disease":
@@ -990,14 +1084,20 @@ def _direct_scope_for_primitive(primitive_id: str) -> str:
     if primitive_id.startswith("tumor-burden-"):
         return "tissue_burden"
     if primitive_id in {
+        "invasive-front-expansion-v1",
+        "architecture-progression-v1",
+    }:
+        return "joint"
+    if primitive_id in {
         "stroma-increase-v1",
         "necrosis-appearance-v1",
         "necrosis-resolution-v1",
     }:
         return "tissue_compartment"
-    if primitive_id.startswith(("cellularity-", "cell-type-abundance-")) or (
-        primitive_id == "neoplastic-cell-infiltration-increase-v1"
-    ):
+    if primitive_id.startswith(("cellularity-", "cell-type-abundance-")) or primitive_id in {
+        "neoplastic-microinfiltration-increase-v1",
+        "structural-void-spread-v1",
+    }:
         return "cell_population"
     return "unspecified"
 
@@ -1027,11 +1127,11 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
             "treatment_context": "none",
             "target": "cell_population",
             "explicit_edit_scope": "cell_population",
-            "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+            "primitive_id": "neoplastic-microinfiltration-increase-v1",
             "subject": "neoplastic-cell-infiltration",
             "edit_direction": "increase",
         },
-        "why": "Infiltration explicitly requests a cellular invasive-front edit; it is not generic bulk tumor expansion.",
+        "why": "The parser preserves infiltration-scale ambiguity; deterministic hypotheses also expose invasive-front expansion for visual/mechanism selection.",
     },
     {
         "instruction": "模拟这个肿瘤继续进展。",

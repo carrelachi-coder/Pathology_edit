@@ -1,0 +1,4 @@
+interface:
+  display_name: "Neoplastic microinfiltration increase"
+  short_description: "Compile a mechanism-bound, cell-only neoplastic microinfiltration edit."
+  default_prompt: "Use $neoplastic-microinfiltration-increase-v1 and the selected cancer mechanism to compile a cell-only edit; never change tissue labels."

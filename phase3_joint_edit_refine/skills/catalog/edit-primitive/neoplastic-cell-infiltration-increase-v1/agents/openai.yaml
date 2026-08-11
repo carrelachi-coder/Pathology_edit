@@ -1,4 +1,4 @@
 interface:
   display_name: "Neoplastic Cell Infiltration"
   short_description: "Plan cell-only invasive-front expansion"
-  default_prompt: "Use $neoplastic-cell-infiltration-increase-v1 to compile a cell-only infiltration contract."
+  default_prompt: "Do not execute $neoplastic-cell-infiltration-increase-v1; migrate the request to one of the four scale-specific primitives and preserve the legacy ID in provenance."

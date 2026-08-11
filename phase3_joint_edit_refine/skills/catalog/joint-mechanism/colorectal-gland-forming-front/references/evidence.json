@@ -1,1 +1,49 @@
-{"citations":["https://tumourclassification.iarc.who.int/chapters/31","https://doi.org/10.1016/j.media.2016.08.008"],"dataset_statistics":{"status":"pending_full_training_set_calibration"},"executable_bound_notes":{"directional_sector_requirement":"A mask-level proxy for localized gland-front displacement; it prevents an all-boundary concentric ring but does not itself prove histologic progression.","maximum_selected_anchor_fraction":0.8,"calibration_status":"research bound pending full GLaS training-set and pathology review"}}
+{
+  "schema_version": "joint-skill-evidence-v2",
+  "skill_kind": "joint-mechanism",
+  "skill_id": "colorectal-gland-forming-front",
+  "review_status": "draft",
+  "authority_policy": "../../../evidence-governance-v2.json",
+  "records": [
+    {
+      "evidence_id": "colorectal-gland-forming-front.pathology",
+      "authority_category": "pathology_fact",
+      "claim_scope": [
+        "summary",
+        "recognition_contract",
+        "counterexamples"
+      ],
+      "source_ids": [
+        "pathology-colorectal-cap-v2024"
+      ],
+      "production_eligible": false
+    },
+    {
+      "evidence_id": "colorectal-gland-forming-front.execution",
+      "authority_category": "engineering_proxy",
+      "claim_scope": [
+        "tissue_program",
+        "cell_program",
+        "coupling_contract",
+        "joint_gate_ids"
+      ],
+      "source_ids": [
+        "engineering-joint-contract-v2"
+      ],
+      "production_eligible": false
+    },
+    {
+      "evidence_id": "colorectal-gland-forming-front.representability",
+      "authority_category": "model_representability",
+      "claim_scope": [
+        "representability_contract",
+        "render_contract"
+      ],
+      "source_ids": [
+        "representability-frozen-generator-v1"
+      ],
+      "production_eligible": false
+    }
+  ],
+  "dataset_fact_policy": "Dataset facts are supplied only by the independently composed annotation-profile skill."
+}

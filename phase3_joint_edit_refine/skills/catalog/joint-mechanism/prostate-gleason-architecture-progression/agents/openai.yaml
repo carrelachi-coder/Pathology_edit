@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prostate Gleason Architecture Progression"
+  short_description: "Change a reviewed PANDA fine architectural identity only through an explicit source-to-target Gleason mechanism; generic tumor burden is not architecture progression."
+  default_prompt: "Use $prostate-gleason-architecture-progression only when every recognition, profile and representability precondition passes."

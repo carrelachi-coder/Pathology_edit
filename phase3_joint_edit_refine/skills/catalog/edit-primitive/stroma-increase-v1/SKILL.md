@@ -5,6 +5,12 @@ description: Compile and audit a joint stroma-area increase with target-stroma c
 
 # Stroma increase
 
+This primitive has no standalone biological meaning. It may execute only after
+the Planner selects an independent mechanism such as documented
+treatment-associated fibrotic replacement and the annotation profile exposes
+an explicit `Stroma` label. It must never be attached to a tumor growth skill,
+nor may `Other tissue` be silently interpreted as stroma.
+
 1. Require an explicit Stroma target label and a legal tumor-to-stroma interface.
 2. Never use normal epithelium, non-tissue, lumen, or generic background as an implicit source.
 3. Regenerate the changed region from the target-stroma population contract.

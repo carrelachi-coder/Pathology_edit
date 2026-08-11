@@ -68,6 +68,9 @@ MECHANISM_POSTCONDITION_IDS = (
     "lung-lepidic-growth",
     "lung-local-population-modulation",
     "lung-solid-squamous-growth",
+    "lung-stas-airspace-spread",
+    "lung-stromal-invasive-front",
+    "lung-treatment-associated-fibrotic-replacement",
     "melanoma-cohesive-nest-sheet",
     "melanoma-discohesive-junctional",
     "melanoma-intratumoral-necrosis-turnover",
@@ -79,6 +82,9 @@ MECHANISM_POSTCONDITION_IDS = (
     "prostate-pattern-3-growth",
     "prostate-pattern-4-growth",
     "prostate-pattern-5-growth",
+    "prostate-gleason-architecture-progression",
+    "prostate-pattern-5-infiltrative-front",
+    "prostate-treatment-associated-fibrotic-replacement",
 )
 
 
@@ -1903,6 +1909,18 @@ def _mechanism_specific_postcondition(
 
     if expected_mechanism_id.startswith("prostate-pattern-"):
         subchecks["fine_pattern_preserved"] = _fine_pattern_preserved(c).passed
+
+    if "treatment-associated" in expected_mechanism_id:
+        subchecks["documented_treatment_context"] = bool(
+            c.case.semantic_intent.get("treatment_context") == "post_treatment"
+            and c.case.semantic_intent.get("scenario")
+            in {
+                "direct_edit",
+                "treatment_response",
+                "residual_disease",
+                "post_treatment_change",
+            }
+        )
 
     if c.bundle.mechanism.representability.required_auxiliary_structures:
         subchecks["native_structure_preserved"] = (

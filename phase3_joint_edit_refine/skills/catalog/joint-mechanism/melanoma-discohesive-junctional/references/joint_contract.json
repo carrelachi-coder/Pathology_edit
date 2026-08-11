@@ -2,7 +2,7 @@
   "mechanism_id": "melanoma-discohesive-junctional",
   "pathology_domain_id": "melanoma-v1",
   "supported_primitives": [
-    "neoplastic-cell-infiltration-increase-v1"
+    "neoplastic-microinfiltration-increase-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
@@ -34,7 +34,7 @@
   "tissue_program": {
     "mode": "preserve_tissue_for_cell_dominant_spread",
     "primitive_label_contracts": {
-      "neoplastic-cell-infiltration-increase-v1": {
+      "neoplastic-microinfiltration-increase-v1": {
         "source_labels": [
           "Stroma",
           "Other tissue"
@@ -91,7 +91,7 @@
       "cell_spatial_distribution"
     ],
     "layout_program_by_primitive": {
-      "neoplastic-cell-infiltration-increase-v1": "single"
+      "neoplastic-microinfiltration-increase-v1": "single"
     }
   },
   "coupling_contract": {

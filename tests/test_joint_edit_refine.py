@@ -266,7 +266,7 @@ class JointSkillTests(unittest.TestCase):
             "increase tumor-associated stroma": "stroma-increase-v1",
             "减少坏死": "necrosis-resolution-v1",
             "increase tumor budding": (
-                "neoplastic-cell-infiltration-increase-v1"
+                "neoplastic-microinfiltration-increase-v1"
             ),
             "increase immune cells": "cell-type-abundance-increase-v1",
             "降低细胞密度": "cellularity-decrease-v1",
@@ -314,12 +314,13 @@ class JointSkillTests(unittest.TestCase):
             [item.primitive_id for item in intent.primitive_hypotheses],
             [
                 "tumor-burden-increase-v1",
-                "neoplastic-cell-infiltration-increase-v1",
+                "invasive-front-expansion-v1",
+                "neoplastic-microinfiltration-increase-v1",
             ],
         )
         self.assertEqual(
             [item.semantic_fit for item in intent.primitive_hypotheses],
-            ["direct", "contextual"],
+            ["direct", "contextual", "contextual"],
         )
 
     def test_explicit_tumor_scope_does_not_expand_to_another_primitive(self):
@@ -331,14 +332,14 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(len(budding.primitive_hypotheses), 1)
         self.assertEqual(
             budding.primitive_hypotheses[0].primitive_id,
-            "neoplastic-cell-infiltration-increase-v1",
+            "neoplastic-microinfiltration-increase-v1",
         )
 
     def test_manifest_may_hint_a_contextual_generic_tumor_interpretation(self):
         raw = {
             **_case_stub().to_metadata(),
             "instruction": "increase tumor",
-            "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+            "primitive_id": "neoplastic-microinfiltration-increase-v1",
         }
         case, _intent = bind_semantic_intent(
             raw, RuleBasedSemanticParser()
@@ -346,7 +347,7 @@ class JointSkillTests(unittest.TestCase):
 
         self.assertEqual(
             case.primitive_id,
-            "neoplastic-cell-infiltration-increase-v1",
+            "neoplastic-microinfiltration-increase-v1",
         )
         self.assertIn(
             case.primitive_id,
@@ -877,8 +878,8 @@ class JointSkillTests(unittest.TestCase):
 
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
-        self.assertEqual(len(repository.mechanisms), 23)
-        self.assertEqual(len(repository.primitives), 10)
+        self.assertEqual(len(repository.mechanisms), 29)
+        self.assertEqual(len(repository.primitives), 14)
         self.assertEqual(len(repository.annotation_profiles), 6)
         self.assertEqual(len(repository.cell_observation_profiles), 1)
         self.assertEqual(len(repository.cell_population_profiles), 6)
@@ -892,6 +893,72 @@ class JointSkillTests(unittest.TestCase):
                 "melanoma-v1",
                 "oral-squamous-cell-carcinoma-v1",
             },
+        )
+
+    def test_growth_mechanisms_do_not_own_tumor_to_stroma_replacement(self):
+        repository = JointSkillRepository()
+        for mechanism_id in (
+            "lung-lepidic-growth",
+            "lung-acinar-papillary-growth",
+            "lung-solid-squamous-growth",
+            "prostate-pattern-3-growth",
+            "prostate-pattern-4-growth",
+            "prostate-pattern-5-growth",
+        ):
+            mechanism = repository.mechanisms[mechanism_id]
+            self.assertNotIn("stroma-increase-v1", mechanism.supported_primitives)
+            self.assertNotIn(
+                "stroma-increase-v1",
+                mechanism.tissue_program.primitive_label_contracts,
+            )
+        self.assertEqual(
+            [
+                item.mechanism_id
+                for item in repository.mechanisms_for(
+                    pathology_domain_id="lung-carcinoma-v1",
+                    primitive_id="stroma-increase-v1",
+                )
+            ],
+            ["lung-treatment-associated-fibrotic-replacement"],
+        )
+        self.assertEqual(
+            [
+                item.mechanism_id
+                for item in repository.mechanisms_for(
+                    pathology_domain_id="prostate-adenocarcinoma-v1",
+                    primitive_id="stroma-increase-v1",
+                )
+            ],
+            ["prostate-treatment-associated-fibrotic-replacement"],
+        )
+
+    def test_evidence_authorities_are_explicit_and_non_interchangeable(self):
+        repository = JointSkillRepository()
+        mechanism = repository.skill_evidence_status[
+            "joint-mechanism:lung-stas-airspace-spread"
+        ]
+        self.assertEqual(
+            mechanism.field_categories["recognition_contract"],
+            "pathology_fact",
+        )
+        self.assertEqual(
+            mechanism.field_categories["tissue_program"],
+            "engineering_proxy",
+        )
+        self.assertEqual(
+            mechanism.field_categories["render_contract"],
+            "model_representability",
+        )
+        profile = repository.skill_evidence_status[
+            "annotation-profile:ignite-semantic-v1"
+        ]
+        self.assertEqual(
+            profile.field_categories["prohibited_fine_ids"],
+            "dataset_fact",
+        )
+        self.assertFalse(profile.production_allowed)
+        self.assertTrue(
+            any("dataset_fact pending" in gap for gap in profile.gaps)
         )
 
     def test_breast_seam_contract_is_anchor_conditioned_and_skill_owned(self):
@@ -927,12 +994,21 @@ class JointSkillTests(unittest.TestCase):
                 "cell-type-abundance-increase-v1",
                 "cellularity-decrease-v1",
                 "cellularity-increase-v1",
+                "invasive-front-expansion-v1",
                 "necrosis-appearance-v1",
                 "necrosis-resolution-v1",
-                "neoplastic-cell-infiltration-increase-v1",
+                "neoplastic-microinfiltration-increase-v1",
                 "stroma-increase-v1",
                 "tumor-burden-decrease-v1",
                 "tumor-burden-increase-v1",
+            },
+        )
+        self.assertEqual(
+            set(repository.execution_scope["closed_primitives"]),
+            {
+                "architecture-progression-v1",
+                "neoplastic-cell-infiltration-increase-v1",
+                "structural-void-spread-v1",
             },
         )
         local = _case_stub(
@@ -972,6 +1048,28 @@ class JointSkillTests(unittest.TestCase):
             production=False,
         )
         self.assertEqual(eligible, ())
+
+    def test_invasive_front_uses_joint_semantics_with_audited_tissue_adapter(self):
+        repository = JointSkillRepository()
+        case = replace(
+            _case_stub(primitive="invasive-front-expansion-v1"),
+            pathology_domain_id="lung-carcinoma-v1",
+            annotation_profile_id="ignite-semantic-v1",
+            cell_population_profile_id="lung-cellvit-source-first-v1",
+        )
+        bundle = repository.compose(
+            case=case,
+            mechanism_id="lung-stromal-invasive-front",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        self.assertEqual(bundle.primitive.scope, "tissue_and_cell")
+        self.assertEqual(
+            bundle.mechanism.tissue_program.primitive_label_contracts[
+                "invasive-front-expansion-v1"
+            ],
+            {"source_labels": ("Stroma", "Other tissue"), "target_labels": ("Tumor",)},
+        )
 
     def test_cross_domain_cell_population_is_rejected(self):
         repository = JointSkillRepository()
@@ -1023,6 +1121,36 @@ class JointSkillTests(unittest.TestCase):
             if contract is not None:
                 self.assertEqual(contract["source_labels"], ("Tumor",))
                 self.assertEqual(contract["target_labels"], ("Stroma",))
+
+    def test_stromal_replacement_cannot_invent_treatment_history_from_he(self):
+        repository = JointSkillRepository()
+        case = replace(
+            _case_stub(primitive="stroma-increase-v1"),
+            pathology_domain_id="lung-carcinoma-v1",
+            annotation_profile_id="ignite-semantic-v1",
+            cell_population_profile_id="lung-cellvit-source-first-v1",
+            semantic_intent={"treatment_context": "none"},
+        )
+        with self.assertRaisesRegex(ValueError, "cannot invent treatment history"):
+            repository.compose(
+                case=case,
+                mechanism_id="lung-treatment-associated-fibrotic-replacement",
+                available_checker_ids=JointGateRegistry().available_checker_ids,
+                production=False,
+            )
+        bundle = repository.compose(
+            case=replace(
+                case,
+                semantic_intent={"treatment_context": "post_treatment"},
+            ),
+            mechanism_id="lung-treatment-associated-fibrotic-replacement",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        self.assertEqual(
+            bundle.mechanism.mechanism_id,
+            "lung-treatment-associated-fibrotic-replacement",
+        )
 
     def test_budget_broker_reserves_whole_instance_union_without_lowering_floor(self):
         repository = JointSkillRepository()
@@ -1262,8 +1390,8 @@ class JointSkillTests(unittest.TestCase):
     def test_tumor_budding_is_cell_only_and_does_not_borrow_tissue_floor(self):
         repository = JointSkillRepository()
         case = _case_stub(
-            primitive="neoplastic-cell-infiltration-increase-v1",
-            cell_budget=CellCountExtentBudget(3, 2, 4, 48, 4, 32),
+            primitive="neoplastic-microinfiltration-increase-v1",
+            cell_budget=CellCountExtentBudget(3, 3, 4, 48, 4, 32),
         )
         bundle = repository.compose(
             case=case,
@@ -1989,7 +2117,7 @@ class JointWorkflowTests(unittest.TestCase):
                 source,
                 case_id="synthetic-budding",
                 instruction="increase tumor budding at the invasive front",
-                primitive_id="neoplastic-cell-infiltration-increase-v1",
+                primitive_id="neoplastic-microinfiltration-increase-v1",
                 joint_area_budget=None,
                 cell_count_extent_budget=CellCountExtentBudget(3, 3, 3, 48, 4, 32),
                 provenance=provenance,
@@ -2029,7 +2157,7 @@ class JointWorkflowTests(unittest.TestCase):
                 **raw["provenance"],
                 "joint_mechanism_id": "colorectal-tumor-budding-front",
                 "joint_primitive_id": (
-                    "neoplastic-cell-infiltration-increase-v1"
+                    "neoplastic-microinfiltration-increase-v1"
                 ),
             }
             case, _intent = bind_semantic_intent(
@@ -2054,7 +2182,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(
                 resolution["selected_option_id"],
-                "neoplastic-cell-infiltration-increase-v1::colorectal-tumor-budding-front",
+                "neoplastic-microinfiltration-increase-v1::colorectal-tumor-budding-front",
             )
             self.assertEqual(
                 resolution["selection"]["semantic_fit"], "contextual"

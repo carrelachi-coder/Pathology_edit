@@ -1,0 +1,144 @@
+{
+  "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
+  "pathology_domain_id": "lung-carcinoma-v1",
+  "supported_primitives": [
+    "stroma-increase-v1"
+  ],
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "summary": "Replace a portion of viable tumor with explicitly labelled fibrotic/inflammatory stroma only in a documented post-treatment tumor bed.",
+  "recognition_contract": {
+    "required_observations": [
+      "documented post-treatment scenario",
+      "treatment-bed morphology at the selected tumor-stroma interface",
+      "explicit stromal label authority"
+    ],
+    "contraindications": [
+      "untreated tumor growth scenario",
+      "lepidic or invasive-front expansion",
+      "stroma inferred from Other tissue"
+    ],
+    "minimum_confidence": 0.9
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      3
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": false,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "treatment_bed_fibrotic_replacement",
+    "primitive_label_contracts": {
+      "stroma-increase-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved"
+    ],
+    "prohibited_structures": [
+      "bronchus",
+      "cartilage",
+      "vessel",
+      "pleura",
+      "alveolar_airspace"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "layout_programs": [
+      "population_replacement"
+    ],
+    "core_policy": "remove_complete_viable_tumor_instances_in_tissue_change",
+    "halo_policy": "regenerate_source_matched_non_neoplastic_tumor_bed_population",
+    "halo_distance_px": [
+      0,
+      48
+    ],
+    "cluster_size_range": [
+      1,
+      20
+    ],
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "mechanism_realization"
+    ],
+    "layout_program_by_primitive": {
+      "stroma-increase-v1": "population_replacement"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "lung.treatment.documented_context",
+      "lung.treatment.explicit_stroma"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "mechanism_postcondition:lung-treatment-associated-fibrotic-replacement"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "fibrotic and inflammatory tumor-bed replacement compatible with the treatment context"
+    ],
+    "veto_findings": [
+      "untreated desmoplasia called treatment response",
+      "new viable tumor in replaced region",
+      "stroma inferred from airspace"
+    ],
+    "mask_guarantees": [
+      "only complete nuclei are removed",
+      "Tumor to explicit Stroma is the only tissue transition"
+    ],
+    "render_only_claims": [
+      "specific therapy effect",
+      "degree of pathologic response"
+    ]
+  },
+  "evidence_citations": [
+    "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf"
+  ],
+  "counterexamples": [
+    "using this mechanism for tumor progression",
+    "converting alveolar airspace to stroma",
+    "isolated stromal hole inside viable tumor"
+  ]
+}

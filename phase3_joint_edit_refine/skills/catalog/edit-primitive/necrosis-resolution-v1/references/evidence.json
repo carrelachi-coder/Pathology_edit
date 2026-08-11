@@ -1,0 +1,33 @@
+{
+  "schema_version": "joint-skill-evidence-v2",
+  "skill_kind": "edit-primitive",
+  "skill_id": "necrosis-resolution-v1",
+  "review_status": "draft",
+  "authority_policy": "../../../evidence-governance-v2.json",
+  "records": [
+    {
+      "evidence_id": "necrosis-resolution-v1.execution-ontology",
+      "authority_category": "engineering_proxy",
+      "claim_scope": [
+        "scope",
+        "summary",
+        "tissue_action",
+        "budget_mode",
+        "allowed_baseline_modes",
+        "allowed_quota_roles",
+        "host_tissue_labels",
+        "target_cell_classes",
+        "tissue_topology_contract",
+        "required_source_clearance_classes",
+        "minimum_source_clearance_instances",
+        "required_checker_ids"
+      ],
+      "source_ids": [
+        "engineering-joint-contract-v2"
+      ],
+      "production_eligible": false
+    }
+  ],
+  "pathology_fact_policy": "Cancer-specific legitimacy is supplied only by the independently selected joint-mechanism skill.",
+  "dataset_fact_policy": "Label availability is supplied only by the independently composed annotation-profile skill."
+}

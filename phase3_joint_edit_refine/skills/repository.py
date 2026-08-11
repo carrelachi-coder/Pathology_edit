@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from phase3_joint_edit_refine.models import JointCaseContext, JointContractError
 from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
 
+from .evidence import EvidenceGovernance, SkillEvidenceStatus
+from .execution_aliases import tissue_tool_primitive_id
 from .schema import JointMechanismSkill, JointPrimitiveSkill, JointProfileContract
 
 
@@ -45,6 +47,7 @@ class JointSkillBundle:
     required_checker_ids: tuple[str, ...]
     active_rule_ids: tuple[str, ...]
     warnings: tuple[str, ...]
+    evidence_status: dict[str, dict] = field(default_factory=dict)
 
     def to_metadata(self) -> dict:
         return {
@@ -107,6 +110,7 @@ class JointSkillBundle:
             "required_checker_ids": list(self.required_checker_ids),
             "active_rule_ids": list(self.active_rule_ids),
             "warnings": list(self.warnings),
+            "evidence_status": dict(self.evidence_status),
             "source_paths": {
                 "mechanism": self.mechanism.source_path,
                 "primitive": self.primitive.source_path,
@@ -125,6 +129,14 @@ class JointSkillRepository:
         self.cell_observation_profiles = self._load_cell_observation_profiles()
         self.cell_population_profiles = self._load_cell_population_profiles()
         self.execution_scope = self._load_execution_scope()
+        self.evidence_governance = EvidenceGovernance(
+            self.root / "evidence-governance-v2.json"
+        )
+        self.evidence_governance.validate_catalog_coverage(
+            mechanism_ids=set(self.mechanisms),
+            annotation_profile_ids=set(self.annotation_profiles),
+        )
+        self.skill_evidence_status: dict[str, SkillEvidenceStatus] = {}
         self.mechanism_resource_status = self._validate_skill_packages()
         self._validate_execution_scope()
 
@@ -140,8 +152,8 @@ class JointSkillRepository:
         status: dict[str, dict] = {}
         specifications = (
             ("joint-mechanism", ("joint_contract.json", "evidence.json", "counterexamples.json", "statistics.json")),
-            ("edit-primitive", ("primitive_contract.json",)),
-            ("annotation-profile", ("joint_contract.json",)),
+            ("edit-primitive", ("primitive_contract.json", "evidence.json")),
+            ("annotation-profile", ("joint_contract.json", "evidence.json")),
         )
         for kind, references in specifications:
             for directory in sorted((self.root / kind).glob("*")):
@@ -161,17 +173,58 @@ class JointSkillRepository:
                 if kind == "joint-mechanism":
                     statistics = _read_json(directory / "references" / "statistics.json")
                     evidence = _read_json(directory / "references" / "evidence.json")
+                    contract = _read_json(
+                        directory / "references" / "joint_contract.json"
+                    )
+                    evidence_status = self.evidence_governance.audit_mechanism(
+                        contract
+                    )
+                    self.evidence_governance.validate_local_resource(
+                        evidence, expected=evidence_status
+                    )
+                    self.skill_evidence_status[
+                        f"joint-mechanism:{directory.name}"
+                    ] = evidence_status
                     status[directory.name] = {
                         "statistics_status": str(statistics.get("status", "unknown")),
                         "production_allowed": bool(
                             statistics.get("production_allowed", False)
-                        ),
+                        ) and evidence_status.production_allowed,
                         "dataset_statistics_status": str(
                             (evidence.get("dataset_statistics") or {}).get(
                                 "status", "unknown"
                             )
                         ),
+                        "evidence": evidence_status.to_metadata(),
                     }
+                elif kind == "edit-primitive":
+                    contract = _read_json(
+                        directory / "references" / "primitive_contract.json"
+                    )
+                    evidence_status = self.evidence_governance.audit_primitive(
+                        contract
+                    )
+                    self.evidence_governance.validate_local_resource(
+                        _read_json(directory / "references" / "evidence.json"),
+                        expected=evidence_status,
+                    )
+                    self.skill_evidence_status[
+                        f"edit-primitive:{directory.name}"
+                    ] = evidence_status
+                elif kind == "annotation-profile":
+                    contract = _read_json(
+                        directory / "references" / "joint_contract.json"
+                    )
+                    evidence_status = self.evidence_governance.audit_profile(
+                        contract
+                    )
+                    self.evidence_governance.validate_local_resource(
+                        _read_json(directory / "references" / "evidence.json"),
+                        expected=evidence_status,
+                    )
+                    self.skill_evidence_status[
+                        f"annotation-profile:{directory.name}"
+                    ] = evidence_status
         return status
 
     def _load_execution_scope(self) -> dict:
@@ -398,6 +451,17 @@ class JointSkillRepository:
                 "annotation profile has no explicit stromal authority; a non-gland "
                 "complement or Other tissue label cannot authorize stroma increase"
             )
+        if case.primitive_id == "stroma-increase-v1":
+            if "treatment-associated" not in mechanism_id:
+                raise JointContractError(
+                    "Tumor-to-Stroma replacement is not owned by a growth mechanism"
+                )
+            if case.semantic_intent.get("treatment_context") != "post_treatment":
+                raise JointContractError(
+                    "treatment-associated stromal replacement requires an explicit "
+                    "post-treatment context from the Semantic Parser; H&E cannot "
+                    "invent treatment history"
+                )
         if primitive_contract.scope == "tissue_and_cell" and case.joint_area_budget is None:
             raise JointContractError("tissue primitive requires joint_area_budget")
         if primitive_contract.scope == "cell_only" and case.cell_count_extent_budget is None:
@@ -416,8 +480,9 @@ class JointSkillRepository:
                 )
         schema = self.annotation_schema(case.annotation_profile_id)
         if primitive_contract.tissue_action == "required":
+            tool_primitive_id = tissue_tool_primitive_id(case.primitive_id)
             primitive = self.mask_skills.get(
-                case.primitive_id, expected_kind="edit_primitive"
+                tool_primitive_id, expected_kind="edit_primitive"
             )
             target = primitive.capabilities.get("target_label")
             target_options = primitive.capabilities.get("target_label_options", [])
@@ -465,6 +530,27 @@ class JointSkillRepository:
             or annotation.review_status != "internally_reviewed"
         ):
             raise JointContractError("production joint execution requires internally reviewed skills")
+        evidence_statuses = {
+            "primitive": self.skill_evidence_status[
+                f"edit-primitive:{case.primitive_id}"
+            ],
+            "mechanism": self.skill_evidence_status[
+                f"joint-mechanism:{mechanism_id}"
+            ],
+            "annotation_profile": self.skill_evidence_status[
+                f"annotation-profile:{case.annotation_profile_id}"
+            ],
+        }
+        if production and not all(
+            item.production_allowed for item in evidence_statuses.values()
+        ):
+            gaps = []
+            for axis, item in evidence_statuses.items():
+                gaps.extend(f"{axis}: {gap}" for gap in item.gaps)
+            raise JointContractError(
+                "production joint execution has unresolved evidence gaps: "
+                + "; ".join(gaps)
+            )
         resource_status = self.mechanism_resource_status.get(mechanism_id, {})
         if production and (
             resource_status.get("statistics_status") != "calibrated"
@@ -510,6 +596,10 @@ class JointSkillRepository:
                 )
             ),
             warnings=tuple(warnings),
+            evidence_status={
+                key: value.to_metadata()
+                for key, value in evidence_statuses.items()
+            },
         )
 
     def annotation_schema(self, annotation_profile_id: str):
@@ -540,8 +630,12 @@ class JointSkillRepository:
                                 "profile has no explicit stromal authority"
                             )
                         if primitive_contract.tissue_action == "required":
+                            tool_primitive_id = tissue_tool_primitive_id(
+                                primitive_id
+                            )
                             primitive = self.mask_skills.get(
-                                primitive_id, expected_kind="edit_primitive"
+                                tool_primitive_id,
+                                expected_kind="edit_primitive",
                             )
                             target = primitive.capabilities.get("target_label")
                             options = primitive.capabilities.get(

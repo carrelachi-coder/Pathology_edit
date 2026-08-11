@@ -1,0 +1,248 @@
+{
+  "schema_version": "joint-evidence-governance-v2",
+  "categories": [
+    "pathology_fact",
+    "dataset_fact",
+    "engineering_proxy",
+    "model_representability"
+  ],
+  "sources": {
+    "pathology-breast-cap-treatment-v2025": {
+      "category": "pathology_fact",
+      "title": "CAP Protocol for Invasive Breast Carcinoma",
+      "uri": "https://documents.cap.org/protocols/Breast.Invasive_4.10.0.0.REL.CAPCP.pdf",
+      "locator": "Treatment effect / residual cancer burden sections; fibrotic tumor bed and residual cellularity",
+      "verification_status": "verified"
+    },
+    "pathology-breast-ilc-single-file-2021": {
+      "category": "pathology_fact",
+      "title": "Invasive lobular carcinoma morphology review",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/34187216/",
+      "locator": "Single-file and discohesive invasive growth morphology",
+      "verification_status": "verified"
+    },
+    "pathology-colorectal-cap-v2024": {
+      "category": "pathology_fact",
+      "title": "CAP Protocol for Colon and Rectum Carcinoma",
+      "uri": "https://documents.cap.org/protocols/ColoRectal_4.4.0.1.REL_CAPCP.pdf",
+      "locator": "Histologic type, treatment effect and tumor budding sections",
+      "verification_status": "verified"
+    },
+    "pathology-colorectal-itbcc-2016": {
+      "category": "pathology_fact",
+      "title": "International Tumor Budding Consensus Conference 2016",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/28548122/",
+      "locator": "Definition of a bud as one tumor cell or a cluster of up to four at the invasive front",
+      "verification_status": "verified"
+    },
+    "pathology-prostate-isup-2014": {
+      "category": "pathology_fact",
+      "title": "2014 ISUP Consensus Conference on Gleason Grading",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/26492179/",
+      "locator": "Gleason pattern architecture definitions and grading rules",
+      "verification_status": "verified"
+    },
+    "pathology-prostate-pattern5-2015": {
+      "category": "pathology_fact",
+      "title": "Gleason pattern 5 morphologies and prognosis",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/25228336/",
+      "locator": "Single-cell, cord, solid and comedonecrosis-associated pattern 5 morphologies",
+      "verification_status": "verified"
+    },
+    "pathology-prostate-cap-treatment-v2023": {
+      "category": "pathology_fact",
+      "title": "CAP Protocol for Radical Prostatectomy Specimens",
+      "uri": "https://documents.cap.org/protocols/Prostate_4.2.0.1.REL_CAPCP_R.pdf",
+      "locator": "Treatment Effect section distinguishes radiation, hormonal and other presurgical therapy effects",
+      "verification_status": "verified"
+    },
+    "pathology-prostate-treatment-morphology-1994": {
+      "category": "pathology_fact",
+      "title": "Histopathological changes in androgen-deprived localized prostatic cancer",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/8287886/",
+      "locator": "Glandular atrophy, nuclear pyknosis, cytoplasmic vacuolation and increased relative stroma after androgen deprivation",
+      "verification_status": "verified"
+    },
+    "pathology-lung-cap-v2025": {
+      "category": "pathology_fact",
+      "title": "CAP Protocol for Lung Carcinoma",
+      "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+      "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+      "verification_status": "verified"
+    },
+    "pathology-lung-iaslc-2011": {
+      "category": "pathology_fact",
+      "title": "IASLC/ATS/ERS lung adenocarcinoma classification",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/21252716/",
+      "locator": "Lepidic, acinar, papillary, micropapillary and solid architectural patterns",
+      "verification_status": "verified"
+    },
+    "pathology-lung-stas-2015": {
+      "category": "pathology_fact",
+      "title": "Tumor spread through air spaces in lung adenocarcinoma",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/25629637/",
+      "locator": "Micropapillary clusters, solid nests or single cells beyond the tumor edge in air spaces",
+      "verification_status": "verified"
+    },
+    "pathology-melanoma-cap-v2025": {
+      "category": "pathology_fact",
+      "title": "CAP Protocol for Invasive Melanoma Biopsy",
+      "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+      "locator": "Invasive growth, microsatellite and regression definitions",
+      "verification_status": "verified"
+    },
+    "pathology-oral-cap-v2024": {
+      "category": "pathology_fact",
+      "title": "CAP Protocol for Oral Cavity Carcinoma",
+      "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+      "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+      "verification_status": "verified"
+    },
+    "pathology-mechanism-internal-review-pending": {
+      "category": "pathology_fact",
+      "title": "Mechanism-specific internal pathology evidence review",
+      "uri": "local://phase3_joint_edit_refine/skills/pathology_review_pending",
+      "locator": "No authoritative mechanism-specific source has yet been frozen; the affected skill remains research-only",
+      "verification_status": "pending_internal_validation"
+    },
+    "dataset-bcss-official-v1": {
+      "category": "dataset_fact",
+      "title": "BCSS annotation dataset specification",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/30923821/",
+      "locator": "Tissue classes and semantic annotation protocol",
+      "verification_status": "verified"
+    },
+    "dataset-glas-official-v1": {
+      "category": "dataset_fact",
+      "title": "GLaS gland segmentation challenge dataset",
+      "uri": "https://doi.org/10.1016/j.media.2016.08.008",
+      "locator": "Gland instance/segmentation task and dataset construction",
+      "verification_status": "verified"
+    },
+    "dataset-ignite-official-v1": {
+      "category": "dataset_fact",
+      "title": "IGNITE tissue annotation release",
+      "uri": "https://zenodo.org/",
+      "locator": "Pinned local evidence manifest must bind the exact IGNITE record, revision and digest",
+      "verification_status": "pending_internal_validation"
+    },
+    "dataset-orca-official-v1": {
+      "category": "dataset_fact",
+      "title": "ORCA oral cancer tissue annotation dataset",
+      "uri": "https://sites.google.com/unibas.it/orca/home",
+      "locator": "Carcinoma, Other tissue and Non-tissue label definitions",
+      "verification_status": "verified"
+    },
+    "dataset-panda-official-v1": {
+      "category": "dataset_fact",
+      "title": "PANDA prostate cancer grading challenge dataset",
+      "uri": "https://www.kaggle.com/c/prostate-cancer-grade-assessment/data",
+      "locator": "Provider-specific Gleason label masks and grade definitions; exact local revision/digest remains required",
+      "verification_status": "verified"
+    },
+    "dataset-puma-official-v1": {
+      "category": "dataset_fact",
+      "title": "PUMA melanoma tissue and nuclei dataset",
+      "uri": "https://puma.grand-challenge.org/Dataset/",
+      "locator": "Tissue/nuclei label ontology and primary/metastatic provenance",
+      "verification_status": "verified"
+    },
+    "dataset-bcss-local-manifest-v1": {
+      "category": "dataset_fact",
+      "title": "BCSS local evidence manifest",
+      "uri": "local://phase3_joint_edit_refine/evidence/bcss",
+      "locator": "Exact revision, split, preprocessing and mask digest pending freeze",
+      "verification_status": "pending_internal_validation"
+    },
+    "dataset-glas-local-manifest-v1": {
+      "category": "dataset_fact",
+      "title": "GLaS local evidence manifest",
+      "uri": "local://phase3_joint_edit_refine/evidence/glas",
+      "locator": "Exact revision, split, preprocessing and mask digest pending freeze",
+      "verification_status": "pending_internal_validation"
+    },
+    "dataset-ignite-local-manifest-v1": {
+      "category": "dataset_fact",
+      "title": "IGNITE local evidence manifest",
+      "uri": "local://phase3_joint_edit_refine/evidence/ignite",
+      "locator": "Exact Zenodo record, revision, split, preprocessing and mask digest pending freeze",
+      "verification_status": "pending_internal_validation"
+    },
+    "dataset-orca-local-manifest-v1": {
+      "category": "dataset_fact",
+      "title": "ORCA local evidence manifest",
+      "uri": "local://phase3_joint_edit_refine/evidence/orca",
+      "locator": "Exact revision, split, preprocessing and mask digest pending freeze",
+      "verification_status": "pending_internal_validation"
+    },
+    "dataset-panda-local-manifest-v1": {
+      "category": "dataset_fact",
+      "title": "PANDA local evidence manifest",
+      "uri": "local://phase3_joint_edit_refine/evidence/panda",
+      "locator": "Provider, exact revision, split, preprocessing and mask digest pending freeze",
+      "verification_status": "pending_internal_validation"
+    },
+    "dataset-puma-local-manifest-v1": {
+      "category": "dataset_fact",
+      "title": "PUMA local evidence manifest",
+      "uri": "local://phase3_joint_edit_refine/evidence/puma",
+      "locator": "Primary/metastatic source, exact revision, split, preprocessing and mask digest pending freeze",
+      "verification_status": "pending_internal_validation"
+    },
+    "engineering-joint-contract-v2": {
+      "category": "engineering_proxy",
+      "title": "Joint executable contract, deterministic gates and regression tests",
+      "uri": "local://phase3_joint_edit_refine",
+      "locator": "skills/schema.py, feasibility.py, tissue_planner.py, gates.py and tests/test_joint_edit_refine.py",
+      "verification_status": "verified"
+    },
+    "representability-frozen-generator-v1": {
+      "category": "model_representability",
+      "title": "Frozen ProbNet and H&E generator mechanism-response evaluation",
+      "uri": "local://phase3_joint_edit_refine/artifacts/generator_capability",
+      "locator": "Mechanism-stratified paired ablation, digest and pathology review are not yet frozen",
+      "verification_status": "pending_internal_validation"
+    }
+  },
+  "mechanism_pathology_sources": {
+    "breast-cohesive-nst-front": ["pathology-breast-cap-treatment-v2025"],
+    "breast-discohesive-single-file": ["pathology-breast-ilc-single-file-2021"],
+    "breast-intratumoral-necrosis-turnover": ["pathology-mechanism-internal-review-pending"],
+    "breast-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
+    "colorectal-gland-forming-front": ["pathology-colorectal-cap-v2024"],
+    "colorectal-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
+    "colorectal-tumor-budding-front": ["pathology-colorectal-itbcc-2016"],
+    "lung-acinar-papillary-growth": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
+    "lung-intratumoral-necrosis-turnover": ["pathology-lung-cap-v2025"],
+    "lung-lepidic-growth": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
+    "lung-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
+    "lung-solid-squamous-growth": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
+    "lung-stas-airspace-spread": ["pathology-lung-cap-v2025", "pathology-lung-stas-2015"],
+    "lung-stromal-invasive-front": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
+    "lung-treatment-associated-fibrotic-replacement": ["pathology-lung-cap-v2025"],
+    "melanoma-cohesive-nest-sheet": ["pathology-melanoma-cap-v2025"],
+    "melanoma-discohesive-junctional": ["pathology-melanoma-cap-v2025"],
+    "melanoma-intratumoral-necrosis-turnover": ["pathology-mechanism-internal-review-pending"],
+    "melanoma-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
+    "oral-scc-cohesive-nest-cord": ["pathology-oral-cap-v2024"],
+    "oral-scc-dispersed-invasive-front": ["pathology-oral-cap-v2024"],
+    "oral-scc-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
+    "prostate-gleason-architecture-progression": ["pathology-prostate-isup-2014", "pathology-prostate-pattern5-2015"],
+    "prostate-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
+    "prostate-pattern-3-growth": ["pathology-prostate-isup-2014"],
+    "prostate-pattern-4-growth": ["pathology-prostate-isup-2014"],
+    "prostate-pattern-5-growth": ["pathology-prostate-isup-2014", "pathology-prostate-pattern5-2015"],
+    "prostate-pattern-5-infiltrative-front": ["pathology-prostate-isup-2014", "pathology-prostate-pattern5-2015"],
+    "prostate-treatment-associated-fibrotic-replacement": ["pathology-prostate-cap-treatment-v2023", "pathology-prostate-treatment-morphology-1994"]
+  },
+  "profile_dataset_sources": {
+    "bcss-semantic-v1": ["dataset-bcss-official-v1", "dataset-bcss-local-manifest-v1"],
+    "glas-gland-v1": ["dataset-glas-official-v1", "dataset-glas-local-manifest-v1"],
+    "ignite-semantic-v1": ["dataset-ignite-official-v1", "dataset-ignite-local-manifest-v1"],
+    "orca-semantic-v1": ["dataset-orca-official-v1", "dataset-orca-local-manifest-v1"],
+    "panda-gleason-v1": ["dataset-panda-official-v1", "dataset-panda-local-manifest-v1"],
+    "puma-semantic-v1": ["dataset-puma-official-v1", "dataset-puma-local-manifest-v1"]
+  },
+  "engineering_source_ids": ["engineering-joint-contract-v2"],
+  "model_representability_source_ids": ["representability-frozen-generator-v1"]
+}
