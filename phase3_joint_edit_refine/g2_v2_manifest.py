@@ -13,6 +13,11 @@ from .g2_qualification import QUALIFICATION_SCHEMA_VERSION
 
 G2_V2_MANIFEST_SCHEMA = "g2-v2-image-instruction-mechanism-manifest-v2"
 EXECUTION_QUALIFICATION_SCHEMA = "g2-v2-read-only-execution-qualification-v1"
+PRIMITIVE_ONTOLOGY_VERSION = "joint-primitive-v2"
+
+DEPRECATED_PRIMITIVE_IDS = frozenset(
+    {"neoplastic-cell-infiltration-increase-v1"}
+)
 
 CELL_EXTENT_PRIMITIVES = frozenset(
     {
@@ -158,6 +163,11 @@ def freeze_g2_v2_manifest(
         reviewed_semantic_digest = decision.get(
             "prebound_semantic_intent_sha256"
         )
+        if he_execution_allowed and reviewed_primitive in DEPRECATED_PRIMITIVE_IDS:
+            raise ValueError(
+                f"H&E decision uses deprecated primitive-v1 ID for {case_id}: "
+                f"{reviewed_primitive}"
+            )
         if he_execution_allowed:
             semantic_intent = reviewed_semantic_intent
             semantic_digest = reviewed_semantic_digest
@@ -290,6 +300,8 @@ def freeze_g2_v2_manifest(
     payload = {
         "schema_version": G2_V2_MANIFEST_SCHEMA,
         "manifest_id": "G2-v2",
+        "primitive_ontology_version": PRIMITIVE_ONTOLOGY_VERSION,
+        "deprecated_primitive_ids_forbidden": sorted(DEPRECATED_PRIMITIVE_IDS),
         "freeze_policy": "source-assets-read-only_he-qualified_fail-closed",
         "case_count": len(frozen_cases),
         "source_chain": {

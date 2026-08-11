@@ -25,9 +25,9 @@ from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepositor
 
 from .auxiliary import materialize_profile_auxiliaries
 from .budget import JointFeasibilitySolver
+from .candidate_feasibility import CandidateFeasibilityCompiler
 from .cell_layouts import build_reference_shape_library
 from .cell_programs import CellToolProgramCompiler
-from .candidate_feasibility import CandidateFeasibilityCompiler
 from .feasibility import build_joint_nuclei_preflight
 from .g2_v2_shadow import _materialize_joint_context
 from .models import JointCaseContext, JointContractError
@@ -36,6 +36,7 @@ from .packing import certify_complete_footprint_packing
 from .planner import HeuristicJointPlanner
 from .scene import build_joint_scene_analysis
 from .semantic_parser import PreboundSemanticParser, bind_semantic_intent
+from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillRepository
 from .workflow import (
     _as_tissue_case,
@@ -291,13 +292,29 @@ def _qualify_tissue_case(
         budget=case.joint_area_budget,
         bundle=bundle,
     )
+    tool_primitive_id = tissue_tool_primitive_id(case.primitive_id)
     tissue_bundle = mask_skills.compose(
         pathology_domain_id=case.pathology_domain_id,
         annotation_profile_id=case.annotation_profile_id,
-        primitive_id=case.primitive_id,
+        primitive_id=tool_primitive_id,
         production=False,
         available_checker_ids=set(GateRegistry().available_checker_ids),
     )
+    if tool_primitive_id != case.primitive_id:
+        tissue_bundle = replace(
+            tissue_bundle,
+            edit_contract=replace(
+                tissue_bundle.edit_contract,
+                primitive_id=case.primitive_id,
+            ),
+            warnings=(
+                *tissue_bundle.warnings,
+                (
+                    "read-only execution adapter: "
+                    f"{case.primitive_id} -> {tool_primitive_id}"
+                ),
+            ),
+        )
     preflight = build_joint_nuclei_preflight(
         case=case,
         source_tissue=source_tissue,
@@ -354,6 +371,10 @@ def _qualify_tissue_case(
                 item.to_metadata() for item in preflight.interfaces
             ],
             "whole_mask_topology_witness": witness,
+            "tissue_executor_binding": {
+                "joint_primitive_id": case.primitive_id,
+                "tool_primitive_id": tool_primitive_id,
+            },
         },
         failures,
     )

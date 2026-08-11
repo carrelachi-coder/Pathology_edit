@@ -14,6 +14,19 @@ from phase3_joint_edit_refine.g2_v2_manifest import freeze_g2_v2_manifest
 
 
 class G2V2ManifestTests(unittest.TestCase):
+    def test_codex_infiltration_template_uses_primitive_v2(self):
+        semantic_review = (
+            Path(__file__).resolve().parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+            / "g2_v2_codex_semantic_review_20260811.json"
+        )
+        templates = _load_codex_semantic_review(semantic_review)
+        self.assertEqual(
+            templates["increase tumor infiltration"]["primitive_id"],
+            "neoplastic-microinfiltration-increase-v1",
+        )
+
     def test_freeze_binds_source_qualification_and_visual_decision(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -133,6 +146,107 @@ class G2V2ManifestTests(unittest.TestCase):
             )
             self.assertEqual(result["manifest_sha256"], _sha(manifest))
             self.assertFalse(result["target_mask_created"])
+
+    def test_freeze_rejects_deprecated_primitive_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_paths = []
+            for name in ("image.png", "tissue.png", "nuclei.png"):
+                path = root / name
+                path.write_bytes(name.encode("ascii"))
+                source_paths.append(path)
+            legacy = root / "legacy.json"
+            legacy.write_text(
+                json.dumps(
+                    {
+                        "cases": [
+                            {
+                                "case_id": "case-legacy-infiltration",
+                                "source_image": str(source_paths[0]),
+                                "source_tissue_mask": str(source_paths[1]),
+                                "source_nuclei_mask": str(source_paths[2]),
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            qualification = root / "qualification.jsonl"
+            q = {
+                "schema_version": QUALIFICATION_SCHEMA_VERSION,
+                "source_index": 0,
+                "case_id": "case-legacy-infiltration",
+                "sample_id": "sample-legacy",
+                "organ": "skin",
+                "dataset": "PUMA",
+                "pathology_domain_id": "melanoma-v1",
+                "annotation_profile_id": "puma-semantic-v1",
+                "cell_observation_profile_id": "cellvit-five-class-v1",
+                "cell_population_profile_id": "melanoma-cellvit-source-first-v1",
+                "instruction": "increase tumor infiltration",
+                "legacy_primitive": "stroma_decrease",
+                "source_assets": {
+                    "image": str(source_paths[0]),
+                    "tissue_mask": str(source_paths[1]),
+                    "nuclei_mask": str(source_paths[2]),
+                    "image_sha256": _sha(source_paths[0]),
+                    "tissue_mask_sha256": _sha(source_paths[1]),
+                    "nuclei_mask_sha256": _sha(source_paths[2]),
+                },
+            }
+            qualification.write_text(json.dumps(q) + "\n", encoding="utf-8")
+            semantic = {
+                "instruction": "increase tumor infiltration",
+                "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+            }
+            semantic_digest = hashlib.sha256(
+                json.dumps(
+                    semantic, sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest()
+            decision = root / "decision.jsonl"
+            decision.write_text(
+                json.dumps(
+                    {
+                        "schema_version": HE_REVIEW_SCHEMA_VERSION,
+                        "case_id": q["case_id"],
+                        "source_index": 0,
+                        "organ": q["organ"],
+                        "dataset": q["dataset"],
+                        "pathology_domain_id": q["pathology_domain_id"],
+                        "annotation_profile_id": q["annotation_profile_id"],
+                        "decision_status": "replace_primitive",
+                        "selected_joint_primitive": (
+                            "neoplastic-cell-infiltration-increase-v1"
+                        ),
+                        "selected_mechanism_id": (
+                            "melanoma-discohesive-junctional"
+                        ),
+                        "recommended_instruction": semantic["instruction"],
+                        "prebound_semantic_intent": semantic,
+                        "prebound_semantic_intent_sha256": semantic_digest,
+                        "reason_code": "legacy",
+                        "visual_observations": ["fixture"],
+                        "execution_allowed": True,
+                        "review_basis": {
+                            "qualification_sha256": _sha(qualification),
+                            "source_image_sha256": _sha(source_paths[0]),
+                            "source_tissue_mask_sha256": _sha(source_paths[1]),
+                            "source_nuclei_mask_sha256": _sha(source_paths[2]),
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "deprecated primitive-v1"):
+                freeze_g2_v2_manifest(
+                    legacy,
+                    qualification,
+                    decision,
+                    output_dir=root / "frozen",
+                    expected_cases=1,
+                )
 
 
 def _sha(path: Path) -> str:

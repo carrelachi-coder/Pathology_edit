@@ -238,7 +238,7 @@
       "treatment_context": "none",
       "scenario_target": "tumor",
       "explicit_edit_scope": "cell_population",
-      "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+      "primitive_id": "neoplastic-microinfiltration-increase-v1",
       "subject": "neoplastic-cell-infiltration",
       "direction": "increase",
       "explicit_cell_class": "neoplastic",
@@ -250,7 +250,7 @@
       "parser": "current_codex_session_semantic_parser_v2",
       "primitive_hypotheses": [
         {
-          "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+          "primitive_id": "neoplastic-microinfiltration-increase-v1",
           "semantic_fit": "explicit",
           "priority": 0,
           "rationale": "The user requests increased neoplastic infiltration without explicitly requesting a structural tumor-area increase."
