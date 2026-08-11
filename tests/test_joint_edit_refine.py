@@ -31,6 +31,7 @@ from phase3_joint_edit_refine.feasibility import (
     _target_interface_population_density,
     augment_tissue_scene_with_nuclei_preflight,
 )
+from phase3_joint_edit_refine.g2_plan_overrides import apply_plan_overrides
 from phase3_joint_edit_refine.g2_pilot import build_local_joint_records
 from phase3_joint_edit_refine.gates import (
     MECHANISM_POSTCONDITION_IDS,
@@ -110,6 +111,57 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_codex_visual_plan_overrides_are_digest_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "shadow.json"
+            overrides = root / "overrides.json"
+            output = root / "reviewed.json"
+            manifest.write_text(
+                json.dumps(
+                    [
+                        {
+                            "case_id": "case-1",
+                            "primitive_id": "cellularity-decrease-v1",
+                            "provenance": {},
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            overrides.write_text(
+                json.dumps(
+                    {
+                        "schema_version": (
+                            "g2-v2-codex-visual-plan-overrides-v1"
+                        ),
+                        "reviewer": "current_codex_session",
+                        "cases": {
+                            "case-1": {
+                                "cellularity_depletion_anchor": {
+                                    "type": "interface",
+                                    "interface_ids": ["if-1"],
+                                    "anchor_ids": ["anchor-1"],
+                                    "observation": "visible density transition",
+                                    "confidence": 0.9,
+                                }
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = apply_plan_overrides(
+                manifest, overrides, output_path=output
+            )
+            reviewed = json.loads(output.read_text(encoding="utf-8"))[0]
+            audit = reviewed["provenance"]["codex_visual_plan_override"]
+            self.assertEqual(audit["reviewer"], "current_codex_session")
+            self.assertEqual(
+                result["output_manifest_sha256"], _sha(output)
+            )
+            self.assertTrue(output.with_suffix(".json.sha256").is_file())
+
     def test_cell_decrease_skills_require_a_macroscopic_density_effect(self):
         repository = JointSkillRepository()
         for primitive_id in (
