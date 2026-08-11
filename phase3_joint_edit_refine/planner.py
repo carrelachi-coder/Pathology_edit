@@ -416,7 +416,8 @@ class HeuristicJointPlanner:
         anchor_ids: tuple[str, ...] = ()
         spatial_anchor_type = "not_applicable"
         spatial_anchor_observation = None
-        if case.primitive_id == "cellularity-decrease-v1":
+        layout = bundle.mechanism.cell_program.layout_for(case.primitive_id)
+        if layout == "localized_density_gradient":
             depletion = bundle.mechanism.cell_program.cellularity_depletion
             raw_anchor = case.provenance.get("cellularity_depletion_anchor")
             if depletion is None or not isinstance(raw_anchor, Mapping):
@@ -489,9 +490,6 @@ class HeuristicJointPlanner:
                 raise JointContractError(
                     "depletion anchor lacks a confident visible pathology observation"
                 )
-            layout = "localized_density_gradient"
-        else:
-            layout = bundle.mechanism.cell_program.layout_for(case.primitive_id)
         plan = JointEditPlan(
             schema_version=JOINT_PLAN_SCHEMA_VERSION,
             case_id=case.case_id,

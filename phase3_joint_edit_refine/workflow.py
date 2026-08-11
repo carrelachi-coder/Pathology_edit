@@ -28,6 +28,7 @@ from phase3_mask_edit_refine.visualization import save_planner_panels
 from .audit import JointAuditWriter
 from .auxiliary import materialize_profile_auxiliaries
 from .budget import JointFeasibilitySolver
+from .candidate_feasibility import CandidateFeasibilityCompiler
 from .cell_layouts import (
     SpatialRanker,
     build_reference_shape_library,
@@ -89,6 +90,7 @@ class _PreparedInterpretation:
     allocation: Any | None
     tissue_bundle: Any | None
     nuclei_preflight: Any | None
+    tissue_feasibility_witness: Any | None
 
 
 class JointPathologyEditWorkflow:
@@ -318,6 +320,7 @@ class JointPathologyEditWorkflow:
             allocation = selected.allocation
             tissue_bundle = selected.tissue_bundle
             nuclei_preflight = selected.nuclei_preflight
+            tissue_feasibility_witness = selected.tissue_feasibility_witness
             if (
                 allocation is None
                 or tissue_bundle is None
@@ -330,6 +333,11 @@ class JointPathologyEditWorkflow:
                 "joint_nuclei_preflight.json",
                 nuclei_preflight.to_metadata(),
             )
+            if tissue_feasibility_witness is not None:
+                audit.write_json(
+                    "candidate_feasibility_witness.json",
+                    tissue_feasibility_witness.to_metadata(),
+                )
             tissue_scene = augment_tissue_scene_with_nuclei_preflight(
                 scene.tissue,
                 nuclei_preflight,
@@ -1298,6 +1306,7 @@ class JointPathologyEditWorkflow:
                     allocation = None
                     tissue_bundle = None
                     nuclei_preflight = None
+                    tissue_feasibility_witness = None
                     feasibility: dict[str, Any] = {
                         "four_axis_skill_intersection": "passed",
                         "deterministic_preflight": "passed",
@@ -1359,6 +1368,26 @@ class JointPathologyEditWorkflow:
                             failures.append("no nuclei-safe executable interface")
                         if failures:
                             raise JointContractError("; ".join(failures))
+                        tissue_case = _as_tissue_case(
+                            candidate_case,
+                            allocation=allocation,
+                            shape=source_tissue.shape,
+                        )
+                        tissue_feasibility_witness = (
+                            CandidateFeasibilityCompiler(
+                                maximum_attempts=(
+                                    self.config.maximum_tissue_planning_attempts
+                                )
+                            ).compile_tissue_witness(
+                                tissue_case=tissue_case,
+                                source_tissue=source_tissue,
+                                schema=schema,
+                                scene=scene,
+                                tissue_bundle=tissue_bundle,
+                                joint_bundle=bundle,
+                                nuclei_preflight=nuclei_preflight,
+                            )
+                        )
                         feasibility.update(
                             {
                                 "feasible_interface_count": len(
@@ -1369,6 +1398,9 @@ class JointPathologyEditWorkflow:
                                 ),
                                 "meaningful_tissue_floor_pixels": (
                                     nuclei_preflight.meaningful_tissue_floor_pixels
+                                ),
+                                "whole_mask_topology_witness": (
+                                    tissue_feasibility_witness.to_metadata()
                                 ),
                             }
                         )
@@ -1451,6 +1483,9 @@ class JointPathologyEditWorkflow:
                         allocation=allocation,
                         tissue_bundle=tissue_bundle,
                         nuclei_preflight=nuclei_preflight,
+                        tissue_feasibility_witness=(
+                            tissue_feasibility_witness
+                        ),
                     )
                 except (JointContractError, RefineContractError, ValueError) as exc:
                     rejected[option_id] = str(exc)
@@ -2657,13 +2692,14 @@ def _derive_local_population_budget(
         local_authority_count = complete_by_zone[selected_zone.zone_id]
         executable_capacity = local_authority_count
         packing_certificates = {}
+    required_capacity = max(2, int(minimum_effect_delta_count))
+    if executable_capacity < required_capacity:
+        direction = "increase exact packing" if increase else "decrease complete-instance"
+        raise JointContractError(
+            f"cell {direction} capacity is below the skill-owned meaningful "
+            f"minimum: {executable_capacity} < {required_capacity}"
+        )
     if increase:
-        required_capacity = max(2, int(minimum_effect_delta_count))
-        if executable_capacity < required_capacity:
-            raise JointContractError(
-                "cell increase exact packing capacity is below the skill-owned "
-                f"meaningful minimum: {executable_capacity} < {required_capacity}"
-            )
         source_scaled = max(2, round(max(local_authority_count, 10) * 0.20))
         target = int(
             min(
@@ -2673,21 +2709,18 @@ def _derive_local_population_budget(
             )
         )
     else:
-        if local_authority_count < 6:
-            raise JointContractError(
-                "cell decrease has fewer than six observable local source instances"
-            )
+        source_scaled = max(2, round(local_authority_count * 0.20))
         target = int(
-            np.clip(
-                round(local_authority_count * 0.20),
-                2,
-                min(32, max(2, int(np.floor(local_authority_count * 0.35)))),
+            min(
+                32,
+                executable_capacity,
+                max(source_scaled, int(minimum_effect_delta_count)),
             )
         )
     minimum = max(
         1,
         int(np.floor(target * 0.60)),
-        int(minimum_effect_delta_count) if increase else 0,
+        int(minimum_effect_delta_count),
     )
     maximum = max(target, min(40, int(np.ceil(target * 1.35))))
     minimum_effect_span = int(
@@ -2715,9 +2748,7 @@ def _derive_local_population_budget(
         interface_min_px=0,
         interface_max_px=maximum_extent,
         minimum_effect_span_px=minimum_effect_span,
-        minimum_effect_foci=(
-            int(minimum_effect_foci) if increase else 0
-        ),
+        minimum_effect_foci=int(minimum_effect_foci),
     )
     return budget, {
         "policy_id": "scene-calibrated-local-population-budget-v1",

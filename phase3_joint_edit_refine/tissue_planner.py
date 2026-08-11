@@ -388,6 +388,9 @@ class MultiInterfaceResearchTissuePlanner:
         for item in ranked:
             source_region |= scene.component_masks[item.source_component_id]
         target_pixels = case.area_budget.target_pixels(source_region, source_region)
+        hard_min_pixels, _hard_max_pixels = case.area_budget.hard_pixel_interval(
+            source_region, source_region
+        )
         selected = []
         capacities = []
         cumulative = 0
@@ -456,10 +459,18 @@ class MultiInterfaceResearchTissuePlanner:
                 retained_capacities.append(capacity)
                 component_allocations.append(requested)
                 remaining -= requested
-            if remaining > 0:
+            realized_component_capacity = sum(component_allocations)
+            if realized_component_capacity < hard_min_pixels:
                 raise RefineContractError(
-                    "component resolution capacity cannot realize the tissue target"
+                    "component resolution capacity cannot reach the tissue hard "
+                    f"minimum: capacity={realized_component_capacity}, "
+                    f"minimum={hard_min_pixels}"
                 )
+            # A ranged task explicitly permits the authoritative topology
+            # compiler to resolve the largest safe component prefix below the
+            # desired target.  The planner therefore retains a complete
+            # component witness that clears the hard floor instead of rejecting
+            # it merely because it cannot hit the preferred 19% exactly.
             selected = retained_selected
             capacities = retained_capacities
         else:

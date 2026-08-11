@@ -1345,7 +1345,7 @@ def _local_population_density(c):
 
 
 def _cellularity_depletion_gradient(c):
-    if c.case.primitive_id != "cellularity-decrease-v1":
+    if c.plan.cell_plan.layout_program_id != "localized_density_gradient":
         return _result(
             "cellularity_depletion_gradient",
             True,
@@ -2141,7 +2141,7 @@ def _joint_area(c):
 
 
 def _cell_effect_geometry(c) -> tuple[float, int]:
-    """Return accepted-center diameter and independent template focus count."""
+    """Return changed-instance center diameter and independent focus count."""
 
     trace = c.candidate.tool_trace
     placements = trace.get("placements")
@@ -2165,6 +2165,20 @@ def _cell_effect_geometry(c) -> tuple[float, int]:
                 if isinstance(row, (int, float)) and isinstance(col, (int, float)):
                     centers.append((float(col), float(row)))
                     focus_ids.add(f"center-{index}")
+    if not centers:
+        removed = trace.get("removed_source_instance_ids")
+        if isinstance(removed, list):
+            instances = {
+                item.instance_id: item for item in c.scene.cells.instances
+            }
+            for index, instance_id in enumerate(removed):
+                item = instances.get(str(instance_id))
+                if item is None:
+                    continue
+                centers.append(
+                    (float(item.centroid_xy[0]), float(item.centroid_xy[1]))
+                )
+                focus_ids.add(f"removed-{index}")
     if len(centers) < 2:
         return 0.0, len(focus_ids)
     points = np.asarray(centers, dtype=float)

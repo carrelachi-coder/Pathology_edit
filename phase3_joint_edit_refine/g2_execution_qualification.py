@@ -27,6 +27,7 @@ from .auxiliary import materialize_profile_auxiliaries
 from .budget import JointFeasibilitySolver
 from .cell_layouts import build_reference_shape_library
 from .cell_programs import CellToolProgramCompiler
+from .candidate_feasibility import CandidateFeasibilityCompiler
 from .feasibility import build_joint_nuclei_preflight
 from .g2_v2_shadow import _materialize_joint_context
 from .models import JointCaseContext, JointContractError
@@ -36,7 +37,11 @@ from .planner import HeuristicJointPlanner
 from .scene import build_joint_scene_analysis
 from .semantic_parser import PreboundSemanticParser, bind_semantic_intent
 from .skills.repository import JointSkillRepository
-from .workflow import _derive_infiltration_budget, _derive_local_population_budget
+from .workflow import (
+    _as_tissue_case,
+    _derive_infiltration_budget,
+    _derive_local_population_budget,
+)
 
 EXECUTION_QUALIFICATION_SCHEMA = "g2-v2-read-only-execution-qualification-v1"
 SUPPORTED_G2_MANIFEST_SCHEMA = "g2-v2-image-instruction-mechanism-manifest-v2"
@@ -311,6 +316,30 @@ def _qualify_tissue_case(
         failures.append("no_nuclei_safe_executable_interface")
     if not preflight.meaningful_tissue_capacity_passed:
         failures.append("meaningful_tissue_area_not_executable")
+    witness = None
+    if not failures:
+        tissue_case = _as_tissue_case(
+            case,
+            allocation=allocation,
+            shape=source_tissue.shape,
+        )
+        try:
+            witness = CandidateFeasibilityCompiler().compile_tissue_witness(
+                tissue_case=tissue_case,
+                source_tissue=source_tissue,
+                schema=schema,
+                scene=scene,
+                tissue_bundle=tissue_bundle,
+                joint_bundle=bundle,
+                nuclei_preflight=preflight,
+            ).to_metadata()
+        except Exception as exc:  # qualification is fail closed
+            failures.append("whole_mask_topology_witness_not_executable")
+            witness = {
+                "schema_version": "joint-candidate-feasibility-compiler-v1",
+                "errors": [f"{type(exc).__name__}: {exc}"],
+                "persisted_target_mask": False,
+            }
     return (
         {
             "budget_allocation": allocation.to_metadata(),
@@ -324,6 +353,7 @@ def _qualify_tissue_case(
             "interface_capacity": [
                 item.to_metadata() for item in preflight.interfaces
             ],
+            "whole_mask_topology_witness": witness,
         },
         failures,
     )
@@ -377,7 +407,25 @@ def _qualify_cell_only_case(
     )
     failures: list[str] = []
     packing_metadata: dict[str, Any] | None = None
-    center_points = np.argwhere(program.placement_center_region)
+    removed_ids = []
+    if "remove_whole" in plan.cell_plan.actions:
+        for item in scene.cells.instances:
+            instance = np.asarray(scene.instance_masks[item.instance_id], dtype=bool)
+            if np.any(instance & program.erasure_region):
+                removed_ids.append(item.instance_id)
+        instance_by_id = {item.instance_id: item for item in scene.cells.instances}
+        center_points = np.asarray(
+            [
+                (
+                    instance_by_id[instance_id].centroid_xy[1],
+                    instance_by_id[instance_id].centroid_xy[0],
+                )
+                for instance_id in removed_ids
+            ],
+            dtype=float,
+        )
+    else:
+        center_points = np.argwhere(program.placement_center_region)
     executable_effect_span = _certified_center_span(center_points)
     if executable_effect_span < budget.minimum_effect_span_px:
         failures.append("meaningful_cell_extent_not_executable")
@@ -419,14 +467,18 @@ def _qualify_cell_only_case(
             failures.append("meaningful_cell_count_not_executable")
         if packing.placed_count < budget.minimum_effect_foci:
             failures.append("meaningful_cell_foci_not_executable")
-    elif int(program.target_delta_count or 0) < budget.min_delta_count:
-        failures.append("meaningful_cell_count_not_executable")
+    else:
+        if len(removed_ids) < budget.min_delta_count:
+            failures.append("meaningful_cell_count_not_executable")
+        if len(removed_ids) < budget.minimum_effect_foci:
+            failures.append("meaningful_cell_foci_not_executable")
     return (
         {
             "cell_budget": budget.__dict__,
             "cell_budget_derivation": budget_metadata,
             "cell_program": program.to_metadata(),
             "maximum_executable_effect_span_px": executable_effect_span,
+            "exact_removal_witness_instance_ids": removed_ids,
             "exact_packing_certificate": packing_metadata,
         },
         failures,

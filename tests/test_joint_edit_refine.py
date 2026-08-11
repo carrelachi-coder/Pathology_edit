@@ -110,6 +110,19 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_cell_decrease_skills_require_a_macroscopic_density_effect(self):
+        repository = JointSkillRepository()
+        for primitive_id in (
+            "cell-type-abundance-decrease-v1",
+            "cellularity-decrease-v1",
+        ):
+            with self.subTest(primitive_id=primitive_id):
+                primitive = repository.primitives[primitive_id]
+                self.assertGreaterEqual(primitive.minimum_effect_delta_count, 12)
+                self.assertGreaterEqual(
+                    primitive.minimum_effect_span_cell_diameters, 6.0
+                )
+
     def test_cluster_members_each_require_a_legal_center(self):
         shape = np.ones((3, 3), dtype=bool)
         legal = np.zeros((40, 40), dtype=bool)
@@ -1771,7 +1784,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v9"
+                program["compiler_version"], "joint-cell-tool-compiler-v10"
             )
             self.assertEqual(
                 program["policies"]["P"],
@@ -2006,7 +2019,10 @@ class JointWorkflowTests(unittest.TestCase):
                     source = _make_stroma_multiclass(source)
                 population_zone = "pop:component:cmp:stroma:0001"
                 depletion_anchor = None
-                if primitive == "cellularity-decrease-v1":
+                if primitive in {
+                    "cellularity-decrease-v1",
+                    "cell-type-abundance-decrease-v1",
+                }:
                     population_zone = "pop:component:cmp:tumor:0001"
                     interface_id = "if:tumor:0001->stroma:0001:seg:0001"
                     depletion_anchor = {
@@ -2027,7 +2043,11 @@ class JointWorkflowTests(unittest.TestCase):
                 if depletion_anchor is not None:
                     provenance["cellularity_depletion_anchor"] = depletion_anchor
                 if explicit_class:
-                    provenance["target_cell_class_ids"] = [3]
+                    provenance["target_cell_class_ids"] = [
+                        1
+                        if primitive == "cell-type-abundance-decrease-v1"
+                        else 3
+                    ]
                 case = replace(
                     source,
                     case_id="synthetic-" + primitive,
@@ -2059,7 +2079,10 @@ class JointWorkflowTests(unittest.TestCase):
                 target_count = len(
                     tuple(iter_instances(result.condition.target_nuclei_mask))
                 )
-                if primitive == "cellularity-decrease-v1":
+                if primitive in {
+                    "cellularity-decrease-v1",
+                    "cell-type-abundance-decrease-v1",
+                }:
                     self.assertGreaterEqual(source_count - target_count, 3)
                     self.assertLessEqual(source_count - target_count, 6)
                 else:
@@ -2082,7 +2105,10 @@ class JointWorkflowTests(unittest.TestCase):
                     }
                     self.assertEqual(set(requested), {2, 3})
                     self.assertEqual(sum(requested.values()), 3)
-                if primitive == "cellularity-decrease-v1":
+                if primitive in {
+                    "cellularity-decrease-v1",
+                    "cell-type-abundance-decrease-v1",
+                }:
                     self.assertEqual(
                         trace["execution_engine"],
                         "deterministic_anchored_density_gradient_removal_v1",

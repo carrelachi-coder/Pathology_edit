@@ -17,7 +17,7 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v9"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v10"
 
 
 @dataclass(frozen=True)
@@ -176,7 +176,7 @@ class CellToolProgramCompiler:
                 raise JointContractError(
                     "cell-only primitive requires count/extent budget"
                 )
-            if case.primitive_id == "cellularity-decrease-v1":
+            if cell.layout_program_id == "localized_density_gradient":
                 depletion = bundle.mechanism.cell_program.cellularity_depletion
                 if depletion is None:
                     raise JointContractError(
@@ -294,7 +294,7 @@ class CellToolProgramCompiler:
                         bundle.mechanism.cell_program.halo_distance_px[1],
                     ),
                 )
-            if case.primitive_id != "cellularity-decrease-v1":
+            if cell.layout_program_id != "localized_density_gradient":
                 mechanism_region = center_region.copy()
                 population_target_region = center_region.copy()
 
@@ -335,7 +335,7 @@ class CellToolProgramCompiler:
         mechanism_region &= valid
         if (
             primitive.scope == "cell_only"
-            and case.primitive_id != "cellularity-decrease-v1"
+            and cell.layout_program_id != "localized_density_gradient"
         ):
             population_target_region = center_region.copy()
         if not np.any(center_region):
@@ -390,7 +390,7 @@ class CellToolProgramCompiler:
                 )
             resolved_delta = len(selected)
         elif cell.baseline_mode == "selective_remove":
-            if case.primitive_id == "cellularity-decrease-v1":
+            if cell.layout_program_id == "localized_density_gradient":
                 depletion = bundle.mechanism.cell_program.cellularity_depletion
                 selected = self._select_gradient_removal_instances(
                     scene=scene,
