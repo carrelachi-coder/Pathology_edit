@@ -16,11 +16,17 @@ from phase3_joint_edit_refine.g2_he_review import write_g2_he_review
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--qualification-jsonl", required=True)
+    parser.add_argument(
+        "--semantic-review-json",
+        required=True,
+        help="Language-only SemanticEditIntent decisions authored by this Codex session",
+    )
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
     result = write_g2_he_review(
         args.qualification_jsonl,
         output_dir=args.output_dir,
+        semantic_review_json=args.semantic_review_json,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True))
     return 0

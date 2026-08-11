@@ -6,7 +6,8 @@ from pathlib import Path
 
 from phase3_joint_edit_refine.g2_he_review import (
     HE_REVIEW_SCHEMA_VERSION,
-    _codex_semantic_intent,
+    _bind_codex_semantic_intent,
+    _load_codex_semantic_review,
 )
 from phase3_joint_edit_refine.g2_qualification import QUALIFICATION_SCHEMA_VERSION
 from phase3_joint_edit_refine.g2_v2_manifest import freeze_g2_v2_manifest
@@ -64,11 +65,19 @@ class G2V2ManifestTests(unittest.TestCase):
             }
             qualification.write_text(json.dumps(q) + "\n", encoding="utf-8")
             decision = root / "decision.jsonl"
-            semantic = _codex_semantic_intent(
+            semantic_review = (
+                Path(__file__).resolve().parents[1]
+                / "phase3_joint_edit_refine"
+                / "resources"
+                / "g2_v2_codex_semantic_review_20260811.json"
+            )
+            semantic = _bind_codex_semantic_intent(
                 case_id="case-1",
                 instruction="increase tumor burden",
                 primitive_id="tumor-burden-increase-v1",
                 qualification_digest=_sha(qualification),
+                semantic_review_digest=_sha(semantic_review),
+                semantic_templates=_load_codex_semantic_review(semantic_review),
             )
             semantic_digest = hashlib.sha256(
                 json.dumps(
@@ -120,7 +129,7 @@ class G2V2ManifestTests(unittest.TestCase):
             self.assertEqual(payload["cases"][0]["budget_contract"]["mode"], "joint_area")
             self.assertEqual(
                 payload["cases"][0]["prebound_semantic_intent"]["parser"],
-                "current_codex_session_semantic_parser_v1",
+                "current_codex_session_semantic_parser_v2",
             )
             self.assertEqual(result["manifest_sha256"], _sha(manifest))
             self.assertFalse(result["target_mask_created"])

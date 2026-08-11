@@ -17,10 +17,13 @@ from pathlib import Path
 from typing import Any
 
 from .g2_pilot import ORGAN_CONTRACTS
-from .semantic_parser import SEMANTIC_INTENT_SCHEMA_VERSION
+from .semantic_parser import (
+    SEMANTIC_INTENT_SCHEMA_VERSION,
+    semantic_intent_from_metadata,
+)
 
-HE_REVIEW_SCHEMA_VERSION = "g2-he-mechanism-review-v2"
-REVIEW_POLICY_VERSION = "current-codex-source-he-review-2026-08-10-v2"
+HE_REVIEW_SCHEMA_VERSION = "g2-he-mechanism-review-v3"
+REVIEW_POLICY_VERSION = "current-codex-source-he-review-2026-08-11-v3"
 
 DECISION_STATUSES = frozenset(
     {
@@ -79,14 +82,24 @@ def write_g2_he_review(
     qualification_jsonl: str | Path,
     *,
     output_dir: str | Path,
+    semantic_review_json: str | Path,
 ) -> dict[str, Any]:
     source = Path(qualification_jsonl)
+    semantic_source = Path(semantic_review_json)
     records = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line]
     if len(records) != 600:
         raise ValueError(f"expected the frozen 600-case qualification, got {len(records)}")
     qualification_digest = _sha256(source)
+    semantic_review_digest = _sha256(semantic_source)
+    semantic_templates = _load_codex_semantic_review(semantic_source)
     decisions = [
-        _review_record(item, qualification_digest=qualification_digest)
+        _review_record(
+            item,
+            qualification_digest=qualification_digest,
+            semantic_review_path=semantic_source,
+            semantic_review_digest=semantic_review_digest,
+            semantic_templates=semantic_templates,
+        )
         for item in records
     ]
     _validate_complete_review(records, decisions)
@@ -106,6 +119,8 @@ def write_g2_he_review(
         "review_policy_version": REVIEW_POLICY_VERSION,
         "qualification_jsonl": str(source),
         "qualification_sha256": qualification_digest,
+        "semantic_review_json": str(semantic_source),
+        "semantic_review_sha256": semantic_review_digest,
         "decision_ledger": str(ledger),
         "decision_ledger_sha256": _sha256(ledger),
         "case_count": len(decisions),
@@ -138,7 +153,14 @@ def write_g2_he_review(
     return summary
 
 
-def _review_record(record: dict[str, Any], *, qualification_digest: str) -> dict[str, Any]:
+def _review_record(
+    record: dict[str, Any],
+    *,
+    qualification_digest: str,
+    semantic_review_path: Path,
+    semantic_review_digest: str,
+    semantic_templates: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     case_number = int(record["source_index"]) + 1
     organ = str(record["organ"])
     legacy = str(record["legacy_primitive"])
@@ -154,11 +176,13 @@ def _review_record(record: dict[str, Any], *, qualification_digest: str) -> dict
     if not isinstance(board, dict):
         raise ValueError(f"case {record['case_id']} is missing its source review board binding")
     semantic_intent = (
-        _codex_semantic_intent(
+        _bind_codex_semantic_intent(
             case_id=str(record["case_id"]),
             instruction=str(instruction),
             primitive_id=str(primitive),
             qualification_digest=qualification_digest,
+            semantic_review_digest=semantic_review_digest,
+            semantic_templates=semantic_templates,
         )
         if status != "abstain"
         else None
@@ -202,6 +226,8 @@ def _review_record(record: dict[str, Any], *, qualification_digest: str) -> dict
             "board_page": board["page"],
             "board_position": board["position"],
             "qualification_sha256": qualification_digest,
+            "semantic_review_json": str(semantic_review_path),
+            "semantic_review_sha256": semantic_review_digest,
             "source_image_sha256": record["source_assets"]["image_sha256"],
             "source_tissue_mask_sha256": record["source_assets"]["tissue_mask_sha256"],
             "source_nuclei_mask_sha256": record["source_assets"]["nuclei_mask_sha256"],
@@ -409,86 +435,73 @@ def _abstain(reason_code: str, *observations: str):
     return ("abstain", None, None, None, reason_code, tuple(observations))
 
 
-_CODEX_DIRECT_PRIMITIVE_SEMANTICS = {
-    "tumor-burden-increase-v1": (
-        "tumor-burden", "increase", "tumor", "tissue_burden", None
-    ),
-    "tumor-burden-decrease-v1": (
-        "tumor-burden", "decrease", "tumor", "tissue_burden", None
-    ),
-    "stroma-increase-v1": (
-        "stroma", "increase", "stroma", "tissue_compartment", None
-    ),
-    "necrosis-appearance-v1": (
-        "necrosis", "increase", "necrosis", "tissue_compartment", None
-    ),
-    "necrosis-resolution-v1": (
-        "necrosis", "decrease", "necrosis", "tissue_compartment", None
-    ),
-    "cell-type-abundance-increase-v1": (
-        "cell-type-abundance", "increase", "cell_population", "cell_population", "immune"
-    ),
-    "cell-type-abundance-decrease-v1": (
-        "cell-type-abundance", "decrease", "cell_population", "cell_population", "immune"
-    ),
-    "neoplastic-cell-infiltration-increase-v1": (
-        "neoplastic-cell-infiltration", "increase", "tumor", "cell_population", "neoplastic"
-    ),
-}
+def _load_codex_semantic_review(path: Path) -> dict[str, dict[str, Any]]:
+    """Load, but never infer, language decisions authored in this session."""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != "codex-session-semantic-review-v1":
+        raise ValueError("unsupported current-Codex semantic review schema")
+    if payload.get("reviewer") != "current_codex_session":
+        raise ValueError("semantic review was not authored by the current Codex session")
+    if payload.get("authoring_mode") != "interactive_codex_session_no_external_api":
+        raise ValueError("semantic review has an invalid authoring mode")
+    if payload.get("semantic_intent_schema_version") != SEMANTIC_INTENT_SCHEMA_VERSION:
+        raise ValueError("semantic review targets an unsupported intent schema")
+    if payload.get("scope") != "language_only_no_he_or_execution_authority":
+        raise ValueError("semantic review improperly claims visual or execution authority")
+    rows = payload.get("intents")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("semantic review contains no language intents")
+    by_instruction: dict[str, dict[str, Any]] = {}
+    for raw in rows:
+        if not isinstance(raw, dict):
+            raise ValueError("semantic review intent is not an object")
+        intent = dict(raw)
+        intent["schema_version"] = SEMANTIC_INTENT_SCHEMA_VERSION
+        validated = semantic_intent_from_metadata(intent).to_metadata()
+        instruction = validated["instruction"]
+        if instruction in by_instruction:
+            raise ValueError(f"duplicate current-Codex instruction: {instruction}")
+        by_instruction[instruction] = validated
+    return by_instruction
 
 
-def _codex_semantic_intent(
+def _bind_codex_semantic_intent(
     *,
     case_id: str,
     instruction: str,
     primitive_id: str,
     qualification_digest: str,
+    semantic_review_digest: str,
+    semantic_templates: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """Freeze this Codex session's language-only interpretation per case."""
+    """Bind one session-authored language decision to a qualified case."""
 
-    contract = _CODEX_DIRECT_PRIMITIVE_SEMANTICS.get(primitive_id)
-    if contract is None:
+    template = semantic_templates.get(instruction)
+    if template is None:
         raise ValueError(
-            f"current Codex semantic review has no direct contract for {primitive_id}"
+            "current Codex session has not parsed the reviewed instruction: "
+            f"{instruction!r}"
         )
-    subject, direction, target, scope, cell_class = contract
-    return {
-        "schema_version": SEMANTIC_INTENT_SCHEMA_VERSION,
-        "instruction": instruction,
-        "instruction_mode": "direct_edit",
-        "scenario": "direct_edit",
-        "clinical_direction": "unspecified",
-        "treatment_context": "none",
-        "scenario_target": target,
-        "explicit_edit_scope": scope,
-        "primitive_id": primitive_id,
-        "subject": subject,
-        "direction": direction,
-        "explicit_cell_class": cell_class,
-        "explicit_location": None,
-        "user_constraints": [],
-        "uncertainties": [],
-        "parser": "current_codex_session_semantic_parser_v1",
-        "primitive_hypotheses": [
-            {
-                "primitive_id": primitive_id,
-                "semantic_fit": "explicit",
-                "priority": 0,
-                "rationale": (
-                    "the current Codex session bound the final reviewed instruction "
-                    "to this explicit edit scope before server execution"
-                ),
-            }
-        ],
-        "parser_metadata": {
+    intent = json.loads(json.dumps(template, ensure_ascii=False))
+    if intent["primitive_id"] != primitive_id:
+        raise ValueError(
+            "current-Codex language decision conflicts with the H&E-reviewed "
+            f"primitive for {case_id}"
+        )
+    metadata = dict(intent["parser_metadata"])
+    metadata.update(
+        {
             "reviewer": "current_codex_session",
-            "review_date": "2026-08-10",
             "case_id": case_id,
             "qualification_sha256": qualification_digest,
+            "semantic_review_sha256": semantic_review_digest,
             "llm_api_used": False,
             "execution_runner_may_not_reparse": True,
-        },
-    }
+        }
+    )
+    intent["parser_metadata"] = metadata
+    return semantic_intent_from_metadata(intent).to_metadata()
 
 
 def _validate_complete_review(source: list[dict[str, Any]], decisions: list[dict[str, Any]]) -> None:

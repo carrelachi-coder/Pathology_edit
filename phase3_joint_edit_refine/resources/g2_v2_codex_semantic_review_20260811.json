@@ -1,0 +1,266 @@
+{
+  "schema_version": "codex-session-semantic-review-v1",
+  "reviewer": "current_codex_session",
+  "review_date": "2026-08-11",
+  "authoring_mode": "interactive_codex_session_no_external_api",
+  "semantic_intent_schema_version": "joint-semantic-intent-v3",
+  "scope": "language_only_no_he_or_execution_authority",
+  "intents": [
+    {
+      "instruction": "increase tumor burden",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "tumor",
+      "explicit_edit_scope": "tissue_burden",
+      "primitive_id": "tumor-burden-increase-v1",
+      "subject": "tumor-burden",
+      "direction": "increase",
+      "explicit_cell_class": null,
+      "explicit_location": null,
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not specify which pathology-compatible growth mechanism or interface should realize the increased burden."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "tumor-burden-increase-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "The user explicitly requests an increase in tumor burden."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    },
+    {
+      "instruction": "decrease tumor burden",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "tumor",
+      "explicit_edit_scope": "tissue_burden",
+      "primitive_id": "tumor-burden-decrease-v1",
+      "subject": "tumor-burden",
+      "direction": "decrease",
+      "explicit_cell_class": null,
+      "explicit_location": null,
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not specify the biologically valid replacement compartment or regression interface."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "tumor-burden-decrease-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "The user explicitly requests a decrease in tumor burden."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    },
+    {
+      "instruction": "increase tumor-associated stroma",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "stroma",
+      "explicit_edit_scope": "tissue_compartment",
+      "primitive_id": "stroma-increase-v1",
+      "subject": "stroma",
+      "direction": "increase",
+      "explicit_cell_class": null,
+      "explicit_location": "tumor-associated region",
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not distinguish desmoplastic expansion from another tumor-associated stromal response."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "stroma-increase-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "The user explicitly requests more tumor-associated stroma."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    },
+    {
+      "instruction": "increase immune cell infiltration",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "immune",
+      "explicit_edit_scope": "cell_population",
+      "primitive_id": "cell-type-abundance-increase-v1",
+      "subject": "cell-type-abundance",
+      "direction": "increase",
+      "explicit_cell_class": "immune",
+      "explicit_location": null,
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not specify a stromal, intratumoral, peritumoral, or interface-localized immune pattern."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "Immune infiltration is a cellular population request rather than authority to relabel a structural tissue compartment."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    },
+    {
+      "instruction": "decrease immune cell infiltration",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "immune",
+      "explicit_edit_scope": "cell_population",
+      "primitive_id": "cell-type-abundance-decrease-v1",
+      "subject": "cell-type-abundance",
+      "direction": "decrease",
+      "explicit_cell_class": "immune",
+      "explicit_location": null,
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not specify which spatial immune population may decrease or the required preservation pattern."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "Immune infiltration is a cellular population request rather than authority to relabel a structural tissue compartment."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    },
+    {
+      "instruction": "increase tumor necrosis",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "necrosis",
+      "explicit_edit_scope": "tissue_compartment",
+      "primitive_id": "necrosis-appearance-v1",
+      "subject": "necrosis",
+      "direction": "increase",
+      "explicit_cell_class": null,
+      "explicit_location": "tumor",
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not establish whether a valid pre-existing intratumoral necrosis anchor is visible."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "necrosis-appearance-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "The user explicitly requests increased tumor necrosis."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    },
+    {
+      "instruction": "decrease tumor necrosis",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "necrosis",
+      "explicit_edit_scope": "tissue_compartment",
+      "primitive_id": "necrosis-resolution-v1",
+      "subject": "necrosis",
+      "direction": "decrease",
+      "explicit_cell_class": null,
+      "explicit_location": "tumor",
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not specify whether viable tumor or stroma is the valid repair compartment."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "necrosis-resolution-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "The user explicitly requests decreased tumor necrosis."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    },
+    {
+      "instruction": "increase tumor infiltration",
+      "instruction_mode": "direct_edit",
+      "scenario": "direct_edit",
+      "clinical_direction": "unspecified",
+      "treatment_context": "none",
+      "scenario_target": "tumor",
+      "explicit_edit_scope": "cell_population",
+      "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+      "subject": "neoplastic-cell-infiltration",
+      "direction": "increase",
+      "explicit_cell_class": "neoplastic",
+      "explicit_location": null,
+      "user_constraints": [],
+      "uncertainties": [
+        "The instruction does not specify budding, single-cell, short-chain, or small-cluster morphology; H&E and domain skills must choose among supported layouts."
+      ],
+      "parser": "current_codex_session_semantic_parser_v2",
+      "primitive_hypotheses": [
+        {
+          "primitive_id": "neoplastic-cell-infiltration-increase-v1",
+          "semantic_fit": "explicit",
+          "priority": 0,
+          "rationale": "The user requests increased neoplastic infiltration without explicitly requesting a structural tumor-area increase."
+        }
+      ],
+      "parser_metadata": {
+        "language_authority": "current_codex_session",
+        "visual_authority": false,
+        "execution_authority": false
+      }
+    }
+  ]
+}

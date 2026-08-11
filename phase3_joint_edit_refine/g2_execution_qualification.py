@@ -217,6 +217,11 @@ def _qualify_case(
                 "auxiliary_structure_provenance", {}
             ),
         )
+        case = _with_scene_calibrated_cell_budget(
+            case=case,
+            scene=scene,
+            joint_skills=joint_skills,
+        )
         bundle = joint_skills.compose(
             case=case,
             mechanism_id=str(row["mechanism_id"]),
@@ -333,23 +338,15 @@ def _qualify_cell_only_case(
     scene,
     bundle,
 ) -> tuple[dict[str, Any], list[str]]:
-    if case.primitive_id == "neoplastic-cell-infiltration-increase-v1":
-        budget, budget_metadata = _derive_infiltration_budget(scene)
-    else:
-        budget, budget_metadata = _derive_local_population_budget(
-            scene,
-            primitive_id=case.primitive_id,
-            semantic_intent=case.semantic_intent,
-            host_tissue_labels=bundle.primitive.host_tissue_labels,
+    budget = case.cell_count_extent_budget
+    if budget is None:
+        raise JointContractError(
+            "source scene did not compile the required cell count/extent budget"
         )
-    provenance = dict(case.provenance)
-    selected_zone = budget_metadata.get("selected_population_zone_id")
-    if selected_zone:
-        provenance["joint_population_zone_id"] = selected_zone
-    case = replace(
-        case,
-        cell_count_extent_budget=budget,
-        provenance=provenance,
+    budget_metadata = dict(
+        case.semantic_intent.get("derived_budget_policies", {}).get(
+            case.primitive_id, {}
+        )
     )
     plan, _usage = HeuristicJointPlanner().create_plan(
         case=case,
@@ -426,6 +423,44 @@ def _qualify_cell_only_case(
             "exact_packing_certificate": packing_metadata,
         },
         failures,
+    )
+
+
+def _with_scene_calibrated_cell_budget(
+    *,
+    case: JointCaseContext,
+    scene,
+    joint_skills: JointSkillRepository,
+) -> JointCaseContext:
+    """Compile a cell-only budget before skill composition checks it."""
+
+    primitive = joint_skills.primitives.get(case.primitive_id)
+    if primitive is None or primitive.scope != "cell_only":
+        return case
+    if case.cell_count_extent_budget is not None:
+        return case
+    if case.primitive_id == "neoplastic-cell-infiltration-increase-v1":
+        budget, budget_metadata = _derive_infiltration_budget(scene)
+    else:
+        budget, budget_metadata = _derive_local_population_budget(
+            scene,
+            primitive_id=case.primitive_id,
+            semantic_intent=case.semantic_intent,
+            host_tissue_labels=primitive.host_tissue_labels,
+        )
+    semantic = dict(case.semantic_intent)
+    derived = dict(semantic.get("derived_budget_policies", {}))
+    derived[case.primitive_id] = budget_metadata
+    semantic["derived_budget_policies"] = derived
+    provenance = dict(case.provenance)
+    selected_zone = budget_metadata.get("selected_population_zone_id")
+    if selected_zone:
+        provenance["joint_population_zone_id"] = selected_zone
+    return replace(
+        case,
+        cell_count_extent_budget=budget,
+        semantic_intent=semantic,
+        provenance=provenance,
     )
 
 

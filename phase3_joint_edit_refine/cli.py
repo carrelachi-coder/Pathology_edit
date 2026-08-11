@@ -50,7 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help=(
             "Parse the simple user instruction before visual mechanism planning; "
-            "auto uses the API parser in api mode and the deterministic parser offline"
+            "auto uses the API parser in api mode and the test-only deterministic "
+            "parser offline. Codex-session shadows must use prebound."
         ),
     )
     parser.add_argument("--model", default="gpt-5.6-terra")
@@ -93,6 +94,13 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.production and args.cell_executor != "mature":
         raise ValueError("production joint execution requires --cell-executor mature")
+    if args.production and not (
+        args.agent_mode == "api" and args.semantic_parser in {"auto", "api"}
+    ):
+        raise ValueError(
+            "production natural-language execution requires the API semantic "
+            "parser; use offline+prebound only for a Codex-session shadow"
+        )
     if args.cell_executor == "mature" and not all(
         (
             args.probnet_checkpoint,
