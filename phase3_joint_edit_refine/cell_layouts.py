@@ -1300,10 +1300,24 @@ def _effect_first_anchors(
     if not len(points):
         return points
 
-    chosen_indices = [0]
-    available = np.ones(len(points), dtype=bool)
-    available[0] = False
     minimum_span_sq = float(max(0, minimum_effect_span_px) ** 2)
+    chosen_indices = [0]
+    if minimum_effect_span_px > 0 and required >= 2:
+        # The highest-ranked anchor need not have a sufficiently distant peer
+        # even when P contains a valid global span. Find a deterministic
+        # two-sweep endpoint pair first; retain rank order only to decide which
+        # endpoint is attempted first. The hard spatial contract therefore
+        # takes precedence over a small local ProbNet score difference.
+        from_ranked_first = np.sum((points - points[0]) ** 2, axis=1)
+        endpoint_a = int(np.argmax(from_ranked_first))
+        from_endpoint_a = np.sum(
+            (points - points[endpoint_a]) ** 2, axis=1
+        )
+        endpoint_b = int(np.argmax(from_endpoint_a))
+        if from_endpoint_a[endpoint_b] >= minimum_span_sq:
+            chosen_indices = sorted((endpoint_a, endpoint_b))
+    available = np.ones(len(points), dtype=bool)
+    available[np.asarray(chosen_indices, dtype=int)] = False
     while len(chosen_indices) < max(1, required) and np.any(available):
         chosen = points[np.asarray(chosen_indices, dtype=int)]
         candidates = np.flatnonzero(available)
