@@ -19,6 +19,7 @@ from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
 from phase3_joint_edit_refine.budget import JointFeasibilitySolver
 from phase3_joint_edit_refine.cell_layouts import (
     ReferenceNucleusShape,
+    _place_layout,
     build_reference_shape_library,
 )
 from phase3_joint_edit_refine.cell_programs import (
@@ -109,6 +110,37 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_cluster_members_each_require_a_legal_center(self):
+        shape = np.ones((3, 3), dtype=bool)
+        legal = np.zeros((40, 40), dtype=bool)
+        legal[20, 20] = True
+        valid = np.ones_like(legal)
+        target, placed, trace = _place_layout(
+            base=np.zeros_like(legal, dtype=np.uint8),
+            references=(
+                ReferenceNucleusShape("ref", 2, shape, "test", 9),
+            ),
+            class_id=2,
+            legal_zone=legal,
+            valid_footprint_region=valid,
+            halo=np.zeros_like(legal),
+            score=legal.astype(float),
+            requested_count=3,
+            layout_program="small_cluster",
+            cluster_size_range=(3, 3),
+            nominal_nucleus_diameter_px=8.0,
+            orientation_mask=np.zeros_like(legal),
+            continuity_region=np.zeros_like(legal),
+            continuity_anchor_mask=np.zeros_like(legal),
+            continuity_maximum_empty_run_px=0,
+            seed=1,
+        )
+        self.assertEqual(placed, 1)
+        self.assertEqual(len(trace), 1)
+        col, row = trace[0]["center_xy"]
+        self.assertTrue(legal[row, col])
+        self.assertEqual(int(np.count_nonzero(target)), 9)
+
     def test_every_mechanism_has_a_unique_registered_postcondition_gate(self):
         repository = JointSkillRepository()
         registry = JointGateRegistry()

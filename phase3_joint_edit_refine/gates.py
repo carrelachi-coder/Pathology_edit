@@ -1114,11 +1114,19 @@ def _local_shape_distribution(c):
         )
     )
     target_fine_ids = set(c.executable_contract.target_host_fine_ids)
+    explicit_reference_ids = set(
+        c.candidate.tool_trace.get("reference_shape_ids", ())
+    )
+    explicit_references_by_class: dict[int, list[float]] = {}
     references_by_class: dict[int, list[float]] = {}
     fallback_references_by_class: dict[int, list[float]] = {}
     for item in c.scene.cells.instances:
         if item.touches_border or "merged_suspect" in item.quality_flags:
             continue
+        if item.instance_id in explicit_reference_ids:
+            explicit_references_by_class.setdefault(item.class_id, []).append(
+                float(item.area_px)
+            )
         fallback_references_by_class.setdefault(item.class_id, []).append(
             float(item.area_px)
         )
@@ -1129,7 +1137,8 @@ def _local_shape_distribution(c):
     class_metrics = {}
     class_checks = []
     for class_id, added_areas in sorted(added_by_class.items()):
-        local_areas = references_by_class.get(class_id) or (
+        explicit_areas = explicit_references_by_class.get(class_id) or []
+        local_areas = explicit_areas or references_by_class.get(class_id) or (
             fallback_references_by_class.get(class_id) or []
         )
         ratio = _safe_ratio(
@@ -1142,9 +1151,13 @@ def _local_shape_distribution(c):
             "added_count": len(added_areas),
             "reference_count": len(local_areas),
             "reference_scope": (
-                "target_tissue_same_class"
-                if references_by_class.get(class_id)
-                else "patch_same_class_fallback"
+                "executor_eligible_complete_local_references"
+                if explicit_areas
+                else (
+                    "target_tissue_same_class"
+                    if references_by_class.get(class_id)
+                    else "patch_same_class_fallback"
+                )
             ),
             "added_median_area_px": float(np.median(added_areas)),
             "reference_median_area_px": (

@@ -1173,6 +1173,17 @@ def _place_layout(
             reference = references[(placed + seed) % len(references)]
             shape = np.asarray(reference.mask, dtype=bool)
             cy, cx = ay + dy, ax + dx
+            # Every member of a pair/cluster/cord owns its own accepted center.
+            # The anchor being legal is not sufficient: template offsets can
+            # otherwise leave P while their footprints still happen to fit V.
+            if (
+                cy < 0
+                or cx < 0
+                or cy >= legal_zone.shape[0]
+                or cx >= legal_zone.shape[1]
+                or not legal_zone[cy, cx]
+            ):
+                continue
             window = _placement_window(
                 shape,
                 center_y=cy,
