@@ -17,12 +17,12 @@ from .budget import JointBudgetAllocation
 from .cell_programs import CompiledCellToolProgram
 from .executable_contract import ExecutableJointContract
 from .models import JointContractError, JointEditPlan
-from .nuclei import iter_instances, normalize_nuclei_mask
+from .nuclei import normalize_nuclei_mask
 from .scene import JointSceneAnalysis
 from .seam import anchor_coverage_fraction, class_center_mask
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v2"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v3"
 
 
 class SpatialRanker(Protocol):
@@ -539,13 +539,6 @@ def _build_selective_removal_results(
     source_by_band = {"core": 0, "transition": 0, "outer_reference": 0}
     radial_source_counts: dict[str, int] = {}
     radial_removed_counts: dict[str, int] = {}
-    core = np.asarray(compiled_program.depletion_core_region, dtype=bool)
-    transition = np.asarray(
-        compiled_program.depletion_transition_region, dtype=bool
-    )
-    outer = np.asarray(
-        compiled_program.depletion_outer_reference_region, dtype=bool
-    )
     removed_set = set(removed_ids)
     if compiled_program.depletion_profile_id is not None:
         subbands = int(
@@ -559,46 +552,37 @@ def _build_selective_removal_results(
             "outer_reference": 0,
         }
         radial_removed_counts = dict.fromkeys(radial_source_counts, 0)
-        anchor_distance = ndimage.distance_transform_edt(
-            ~np.asarray(compiled_program.depletion_anchor_mask, dtype=bool)
-        )
-        core_end = float(
-            compiled_program.depletion_parameters.get(
-                "core_width_cell_diameters", 1.25
+        authoritative_radial = {
+            name: tuple(instance_ids)
+            for name, instance_ids in (
+                compiled_program.depletion_radial_instance_ids or {}
+            ).items()
+        }
+        authoritative_bands = {
+            name: tuple(instance_ids)
+            for name, instance_ids in (
+                compiled_program.depletion_band_instance_ids or {}
+            ).items()
+        }
+        for band in source_by_band:
+            ids = authoritative_bands.get(band, ())
+            source_by_band[band] = len(ids)
+            removed_by_band[band] = len(set(ids) & removed_set)
+        for radial_band in radial_source_counts:
+            ids = authoritative_radial.get(radial_band, ())
+            radial_source_counts[radial_band] = len(ids)
+            radial_removed_counts[radial_band] = len(
+                set(ids) & removed_set
             )
-        ) * compiled_program.nominal_nucleus_diameter_px
-        transition_width = float(
-            compiled_program.depletion_parameters.get(
-                "transition_width_cell_diameters", 1.75
-            )
-        ) * compiled_program.nominal_nucleus_diameter_px
-        for item in scene.cells.instances:
-            row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
-            if core[row, col]:
-                band = "core"
-            elif transition[row, col]:
-                band = "transition"
-            elif outer[row, col]:
-                band = "outer_reference"
-            else:
-                continue
-            source_by_band[band] += 1
-            if item.instance_id in removed_set:
-                removed_by_band[band] += 1
-            if band == "transition":
-                normalized = max(
-                    0.0,
-                    (float(anchor_distance[row, col]) - core_end)
-                    / max(1e-6, transition_width),
+        # The executor does not re-segment or re-bin the scene. The immutable
+        # compiler authority is the only denominator used in its audit trace.
+        for instance_id in removed_set:
+            if instance_id not in set(
+                compiled_program.depletion_population_instance_ids
+            ):
+                raise JointContractError(
+                    "depletion erasure contains an instance outside compiler authority"
                 )
-                radial_band = (
-                    f"transition_{min(subbands - 1, int(normalized * subbands)) + 1}"
-                )
-            else:
-                radial_band = band
-            radial_source_counts[radial_band] += 1
-            if item.instance_id in removed_set:
-                radial_removed_counts[radial_band] += 1
     for instance_id in removed_ids:
         class_id = metadata[instance_id].class_id
         removed_by_class[class_id] = removed_by_class.get(class_id, 0) + 1
@@ -653,6 +637,15 @@ def _build_selective_removal_results(
                 else 0.0
             )
             for key in radial_source_counts
+        },
+        "depletion_instance_authority": {
+            "source": "compiled_cell_tool_program",
+            "population_instance_count": len(
+                compiled_program.depletion_population_instance_ids
+            ),
+            "population_instance_ids": list(
+                compiled_program.depletion_population_instance_ids
+            ),
         },
         "batch_max_attainable_count": resolved,
         "capacity_max_count": resolved,
@@ -1136,9 +1129,25 @@ def _place_layout(
     target = np.asarray(base).copy()
     occupied = target > 0
     rng = np.random.default_rng(seed)
-    coords = np.argwhere(legal_zone)
+    # Rank only centers that can hold at least one complete local reference
+    # shape before any new placement. Ordering every legal pixel let the
+    # effect-span compiler choose distant endpoints that were already occupied;
+    # those attempts failed and the executor then collapsed back to a small
+    # high-score cluster.
+    free = np.asarray(valid_footprint_region, dtype=bool) & ~ndimage.binary_dilation(
+        occupied, iterations=1
+    )
+    initially_fit = np.zeros_like(free, dtype=bool)
+    for reference in references:
+        initially_fit |= ndimage.binary_erosion(
+            free,
+            structure=np.asarray(reference.mask, dtype=bool),
+            border_value=0,
+        )
+    executable_centers = np.asarray(legal_zone, dtype=bool) & initially_fit
+    coords = np.argwhere(executable_centers)
     jitter = rng.uniform(0.0, 1e-6, size=len(coords))
-    values = score[legal_zone] + jitter
+    values = score[executable_centers] + jitter
     order = np.argsort(-values)
     anchors = coords[order]
     if requested_count > 0 and len(coords):
@@ -1294,7 +1303,11 @@ def _effect_first_anchors(
     """
 
     points = np.asarray(anchors, dtype=int)
-    required = min(max(0, int(minimum_effect_foci)), len(points))
+    required = max(
+        max(0, int(minimum_effect_foci)),
+        2 if minimum_effect_span_px > 0 else 0,
+    )
+    required = min(required, len(points))
     if required <= 1 and minimum_effect_span_px <= 0:
         return points
     if not len(points):

@@ -17,7 +17,18 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v10"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v11"
+
+
+@dataclass(frozen=True)
+class DepletionInstanceAuthority:
+    """Exact complete-instance population used by compiler, executor and gate."""
+
+    population_instance_ids: tuple[str, ...]
+    band_instance_ids: dict[str, tuple[str, ...]]
+    radial_instance_ids: dict[str, tuple[str, ...]]
+    effective_core_end_px: float
+    effective_transition_width_px: float
 
 
 @dataclass(frozen=True)
@@ -54,6 +65,9 @@ class CompiledCellToolProgram:
     depletion_anchor_type: str
     depletion_profile_id: str | None
     depletion_parameters: dict[str, float | int | str]
+    depletion_population_instance_ids: tuple[str, ...]
+    depletion_band_instance_ids: dict[str, tuple[str, ...]]
+    depletion_radial_instance_ids: dict[str, tuple[str, ...]]
     continuity_mode: str
     continuity_width_px: int
     continuity_maximum_empty_run_px: int
@@ -137,12 +151,47 @@ class CellToolProgramCompiler:
             bundle.annotation_profile.prohibit_generation_support_fine_ids,
         )
         diameter = float(scene.population.nominal_nucleus_diameter_px or 8.0)
+        effect_classes = set(cell.allowed_cell_classes)
+        complete_areas = [
+            float(item.area_px)
+            for item in scene.cells.instances
+            if item.completeness_status == "complete"
+            and not item.touches_border
+            and not item.quality_flags
+            and item.area_px > 0
+            and (
+                not effect_classes or item.class_id in effect_classes
+            )
+        ]
+        effect_diameter = (
+            max(3.0, 2.0 * np.sqrt(float(np.median(complete_areas)) / np.pi))
+            if complete_areas
+            else diameter
+        )
+        skill_minimum_effect_span_px = int(
+            np.floor(
+                primitive.minimum_effect_span_cell_diameters
+                * effect_diameter
+            )
+        )
+        if (
+            primitive.scope == "cell_only"
+            and case.cell_count_extent_budget is not None
+            and case.cell_count_extent_budget.maximum_extent_px
+            < skill_minimum_effect_span_px
+        ):
+            raise JointContractError(
+                "cell-only extent cannot realize the skill-owned minimum effect span"
+            )
         empty = np.zeros_like(tissue_change, dtype=bool)
         depletion_core = empty.copy()
         depletion_transition = empty.copy()
         depletion_outer = empty.copy()
         depletion_anchor = empty.copy()
         depletion_parameters: dict[str, float | int | str] = {}
+        depletion_population_instance_ids: tuple[str, ...] = ()
+        depletion_band_instance_ids: dict[str, tuple[str, ...]] = {}
+        depletion_radial_instance_ids: dict[str, tuple[str, ...]] = {}
         depletion_profile_id = None
         anchor_zone = (
             np.asarray(scene.population_zone_masks[cell.core_zone], dtype=bool)
@@ -392,28 +441,52 @@ class CellToolProgramCompiler:
         elif cell.baseline_mode == "selective_remove":
             if cell.layout_program_id == "localized_density_gradient":
                 depletion = bundle.mechanism.cell_program.cellularity_depletion
-                selected = self._select_gradient_removal_instances(
-                    scene=scene,
-                    population_region=population_target_region,
-                    core_region=depletion_core,
-                    transition_region=depletion_transition,
-                    outer_reference_region=depletion_outer,
-                    anchor_mask=depletion_anchor,
-                    valid_erasure_footprint_region=valid_erasure_footprint,
-                    cell_classes=cell.allowed_cell_classes,
-                    protected_instance_ids=cell.protected_instance_ids,
-                    target_count=int(biological_delta or 0),
-                    minimum_count=(
-                        case.cell_count_extent_budget.min_delta_count
-                        if case.cell_count_extent_budget is not None
-                        else 0
-                    ),
-                    maximum_count=(
-                        case.cell_count_extent_budget.max_delta_count
-                        if case.cell_count_extent_budget is not None
-                        else int(biological_delta or 0)
-                    ),
-                    contract=depletion,
+                selected, depletion_authority = (
+                    self._select_gradient_removal_instances(
+                        scene=scene,
+                        population_region=population_target_region,
+                        core_region=depletion_core,
+                        transition_region=depletion_transition,
+                        outer_reference_region=depletion_outer,
+                        anchor_mask=depletion_anchor,
+                        valid_erasure_footprint_region=(
+                            valid_erasure_footprint
+                        ),
+                        cell_classes=cell.allowed_cell_classes,
+                        protected_instance_ids=cell.protected_instance_ids,
+                        target_count=int(biological_delta or 0),
+                        minimum_count=(
+                            case.cell_count_extent_budget.min_delta_count
+                            if case.cell_count_extent_budget is not None
+                            else 0
+                        ),
+                        maximum_count=(
+                            case.cell_count_extent_budget.max_delta_count
+                            if case.cell_count_extent_budget is not None
+                            else int(biological_delta or 0)
+                        ),
+                        contract=depletion,
+                    )
+                )
+                depletion_population_instance_ids = (
+                    depletion_authority.population_instance_ids
+                )
+                depletion_band_instance_ids = (
+                    depletion_authority.band_instance_ids
+                )
+                depletion_radial_instance_ids = (
+                    depletion_authority.radial_instance_ids
+                )
+                depletion_parameters.update(
+                    {
+                        "effective_core_end_px": (
+                            depletion_authority.effective_core_end_px
+                        ),
+                        "effective_transition_width_px": (
+                            depletion_authority.effective_transition_width_px
+                        ),
+                        "instance_authority": "complete_eligible_scene_instances",
+                    }
                 )
             else:
                 selected = self._select_removal_instances(
@@ -520,6 +593,11 @@ class CellToolProgramCompiler:
             depletion_anchor_type=cell.spatial_anchor_type,
             depletion_profile_id=depletion_profile_id,
             depletion_parameters=depletion_parameters,
+            depletion_population_instance_ids=(
+                depletion_population_instance_ids
+            ),
+            depletion_band_instance_ids=depletion_band_instance_ids,
+            depletion_radial_instance_ids=depletion_radial_instance_ids,
             continuity_mode=continuity_mode,
             continuity_width_px=seam.width_px,
             continuity_maximum_empty_run_px=seam.maximum_empty_run_px,
@@ -538,14 +616,20 @@ class CellToolProgramCompiler:
             target_delta_count=(resolved_delta),
             biological_target_delta_count=biological_delta,
             minimum_effect_span_px=(
-                case.cell_count_extent_budget.minimum_effect_span_px
+                max(
+                    case.cell_count_extent_budget.minimum_effect_span_px,
+                    skill_minimum_effect_span_px,
+                )
                 if case.cell_count_extent_budget is not None
-                else 0
+                else skill_minimum_effect_span_px
             ),
             minimum_effect_foci=(
-                case.cell_count_extent_budget.minimum_effect_foci
+                max(
+                    case.cell_count_extent_budget.minimum_effect_foci,
+                    primitive.minimum_effect_foci,
+                )
                 if case.cell_count_extent_budget is not None
-                else 0
+                else primitive.minimum_effect_foci
             ),
             policies={
                 "T_pop": (
@@ -656,13 +740,17 @@ class CellToolProgramCompiler:
         minimum_count: int,
         maximum_count: int,
         contract,
-    ) -> tuple[str, ...]:
+    ) -> tuple[tuple[str, ...], DepletionInstanceAuthority]:
         """Select complete nuclei with a stronger core than transition thinning."""
 
         protected = set(protected_instance_ids)
         allowed = set(cell_classes)
         population = []
-        by_band: dict[str, list] = {"core": [], "transition": []}
+        by_band: dict[str, list] = {
+            "core": [],
+            "transition": [],
+            "outer_reference": [],
+        }
         for item in scene.cells.instances:
             x, y = item.centroid_xy
             row, col = round(y), round(x)
@@ -686,7 +774,8 @@ class CellToolProgramCompiler:
             )
             if np.any(component & ~valid_erasure_footprint_region):
                 continue
-            if np.any(component & outer_reference_region):
+            overlaps_outer = np.any(component & outer_reference_region)
+            if overlaps_outer and not outer_reference_region[row, col]:
                 # The outer band is an unchanged local density reference, not
                 # merely a center-exclusion band.
                 continue
@@ -694,6 +783,8 @@ class CellToolProgramCompiler:
                 by_band["core"].append(item)
             elif transition_region[row, col]:
                 by_band["transition"].append(item)
+            elif outer_reference_region[row, col]:
+                by_band["outer_reference"].append(item)
         core_count = len(by_band["core"])
         transition_count = len(by_band["transition"])
         core_capacity = max(
@@ -730,17 +821,47 @@ class CellToolProgramCompiler:
             + contract.minimum_transition_removals,
         )
         anchor_distance = ndimage.distance_transform_edt(~anchor_mask)
-        if contract.resolution_mode == "density_field":
-            effective_core_end = float(
-                np.max(anchor_distance[np.asarray(core_region, dtype=bool)], initial=0.0)
+        effective_core_end = float(
+            np.max(anchor_distance[np.asarray(core_region, dtype=bool)], initial=0.0)
+        )
+        effective_transition_end = float(
+            np.max(
+                anchor_distance[np.asarray(transition_region, dtype=bool)],
+                initial=effective_core_end,
             )
-            effective_transition_end = float(
-                np.max(
-                    anchor_distance[np.asarray(transition_region, dtype=bool)],
-                    initial=effective_core_end,
+        )
+        effective_transition_width = max(
+            1.0, effective_transition_end - effective_core_end
+        )
+        radial_groups = CellToolProgramCompiler._density_field_radial_groups(
+            by_band=by_band,
+            anchor_distance=anchor_distance,
+            contract=contract,
+            effective_core_end_px=effective_core_end,
+            effective_transition_width_px=effective_transition_width,
+            include_outer_reference=True,
+        )
+        authority = DepletionInstanceAuthority(
+            population_instance_ids=tuple(
+                sorted(
+                    item.instance_id
+                    for band in ("core", "transition", "outer_reference")
+                    for item in by_band[band]
                 )
-            )
-            return CellToolProgramCompiler._select_density_field_instances(
+            ),
+            band_instance_ids={
+                band: tuple(sorted(item.instance_id for item in by_band[band]))
+                for band in ("core", "transition", "outer_reference")
+            },
+            radial_instance_ids={
+                name: tuple(sorted(item.instance_id for item in items))
+                for name, items, _target in radial_groups
+            },
+            effective_core_end_px=effective_core_end,
+            effective_transition_width_px=effective_transition_width,
+        )
+        if contract.resolution_mode == "density_field":
+            selected = CellToolProgramCompiler._select_density_field_instances(
                 scene=scene,
                 population=population,
                 by_band=by_band,
@@ -750,10 +871,9 @@ class CellToolProgramCompiler:
                 maximum_count=maximum_count,
                 contract=contract,
                 effective_core_end_px=effective_core_end,
-                effective_transition_width_px=(
-                    effective_transition_end - effective_core_end
-                ),
+                effective_transition_width_px=effective_transition_width,
             )
+            return selected, authority
         band_availability = {
             band: {
                 class_id: sum(
@@ -808,7 +928,7 @@ class CellToolProgramCompiler:
                     )
                     selected.extend(candidates[:quota])
             if len(selected) == resolved:
-                return tuple(item.instance_id for item in selected)
+                return tuple(item.instance_id for item in selected), authority
         raise JointContractError(
             "no exact class-preserving core/transition depletion allocation is feasible"
         )
@@ -875,34 +995,16 @@ class CellToolProgramCompiler:
         del population, cell_classes
         core_end = max(1.0, float(effective_core_end_px))
         transition_width = max(1.0, float(effective_transition_width_px))
-        subband_count = contract.transition_subband_count
-        radial_bands: list[tuple[str, list, float]] = [
-            (
-                "core",
-                list(by_band["core"]),
-                contract.core_target_removal_fraction,
-            )
-        ]
-        transition_groups = [[] for _ in range(subband_count)]
-        for item in by_band["transition"]:
-            row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
-            normalized = max(
-                0.0,
-                (float(anchor_distance[row, col]) - core_end)
-                / max(1e-6, transition_width),
-            )
-            index = min(subband_count - 1, int(normalized * subband_count))
-            transition_groups[index].append(item)
-        transition_targets = np.linspace(
-            contract.transition_start_removal_fraction,
-            contract.transition_end_removal_fraction,
-            subband_count,
-        )
-        radial_bands.extend(
-            (f"transition_{index + 1}", items, float(transition_targets[index]))
-            for index, items in enumerate(transition_groups)
+        radial_bands = CellToolProgramCompiler._density_field_radial_groups(
+            by_band=by_band,
+            anchor_distance=anchor_distance,
+            contract=contract,
+            effective_core_end_px=core_end,
+            effective_transition_width_px=transition_width,
+            include_outer_reference=False,
         )
         quotas = []
+        maximum_removals = []
         for name, items, target_fraction in radial_bands:
             residual_floor = (
                 contract.minimum_core_residual_fraction
@@ -912,6 +1014,7 @@ class CellToolProgramCompiler:
             maximum_removable = max(
                 0, len(items) - int(np.ceil(len(items) * residual_floor))
             )
+            maximum_removals.append(maximum_removable)
             quota = min(
                 maximum_removable,
                 int(np.floor(len(items) * target_fraction + 0.5)),
@@ -921,7 +1024,7 @@ class CellToolProgramCompiler:
         transition_total = sum(quotas[1:])
         if transition_total < contract.minimum_transition_removals:
             for index in range(1, len(radial_bands)):
-                capacity = len(radial_bands[index][1]) - quotas[index]
+                capacity = maximum_removals[index] - quotas[index]
                 if capacity <= 0:
                     continue
                 addition = min(
@@ -946,6 +1049,19 @@ class CellToolProgramCompiler:
                 minimum_transition=contract.minimum_transition_removals,
             )
             resolved = sum(quotas)
+        quotas = _enforce_density_field_gradient_quotas(
+            quotas=quotas,
+            source_counts=[len(items) for _, items, _ in radial_bands],
+            maximum_removals=maximum_removals,
+            target_fractions=[
+                target_fraction for _, _, target_fraction in radial_bands
+            ],
+            minimum_count=minimum_count,
+            maximum_count=maximum_count,
+            minimum_core=contract.minimum_core_removals,
+            minimum_transition=contract.minimum_transition_removals,
+        )
+        resolved = sum(quotas)
         if not minimum_count <= resolved <= maximum_count:
             raise JointContractError(
                 "density field-derived removal count is outside its safety bounds"
@@ -956,36 +1072,94 @@ class CellToolProgramCompiler:
             raise JointContractError(
                 "density field count cap violates minimum core/transition realization"
             )
-        selected = []
+        quota_by_band_and_class: list[dict[int, int]] = []
+        all_classes: set[int] = set()
         for (_, items, _), quota in zip(radial_bands, quotas):
-            if quota <= 0:
-                continue
             class_counts: dict[int, int] = {}
             for item in items:
                 class_counts[item.class_id] = class_counts.get(item.class_id, 0) + 1
-            class_quotas = _largest_remainder_quotas(class_counts, quota)
-            for class_id, class_quota in sorted(class_quotas.items()):
-                candidates = [
-                    item for item in items if item.class_id == class_id
-                ]
-                candidates.sort(
-                    key=lambda item: (
-                        _stable_instance_jitter(item.instance_id),
-                        float(
-                            anchor_distance[
-                                round(item.centroid_xy[1]),
-                                round(item.centroid_xy[0]),
-                            ]
-                        ),
-                        item.instance_id,
-                    )
+            all_classes.update(class_counts)
+            quota_by_band_and_class.append(
+                _largest_remainder_quotas(class_counts, quota)
+            )
+        selected = []
+        for class_id in sorted(all_classes):
+            class_bands = [
+                [item for item in items if item.class_id == class_id]
+                for _name, items, _target in radial_bands
+            ]
+            class_removal_quotas = [
+                class_quotas.get(class_id, 0)
+                for class_quotas in quota_by_band_and_class
+            ]
+            fixed_retained = [
+                item
+                for item in by_band.get("outer_reference", ())
+                if item.class_id == class_id
+            ]
+            selected.extend(
+                _select_density_field_removals_preserving_coverage(
+                    class_bands,
+                    removal_quotas=class_removal_quotas,
+                    fixed_retained=fixed_retained,
                 )
-                selected.extend(candidates[:class_quota])
+            )
         if len(selected) != resolved:
             raise JointContractError(
                 "density field could not realize its complete-instance quotas"
             )
         return tuple(item.instance_id for item in selected)
+
+    @staticmethod
+    def _density_field_radial_groups(
+        *,
+        by_band: dict[str, list],
+        anchor_distance: np.ndarray,
+        contract,
+        effective_core_end_px: float,
+        effective_transition_width_px: float,
+        include_outer_reference: bool,
+    ) -> list[tuple[str, list, float]]:
+        """Assign nuclei to the one radial ruler frozen in the contract."""
+
+        core_end = max(1.0, float(effective_core_end_px))
+        transition_width = max(1.0, float(effective_transition_width_px))
+        subband_count = int(contract.transition_subband_count)
+        radial_bands: list[tuple[str, list, float]] = [
+            (
+                "core",
+                list(by_band["core"]),
+                float(contract.core_target_removal_fraction),
+            )
+        ]
+        transition_groups = [[] for _ in range(subband_count)]
+        for item in by_band["transition"]:
+            row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
+            normalized = max(
+                0.0,
+                (float(anchor_distance[row, col]) - core_end)
+                / max(1e-6, transition_width),
+            )
+            index = min(subband_count - 1, int(normalized * subband_count))
+            transition_groups[index].append(item)
+        transition_targets = np.linspace(
+            contract.transition_start_removal_fraction,
+            contract.transition_end_removal_fraction,
+            subband_count,
+        )
+        radial_bands.extend(
+            (f"transition_{index + 1}", items, float(transition_targets[index]))
+            for index, items in enumerate(transition_groups)
+        )
+        if include_outer_reference:
+            radial_bands.append(
+                (
+                    "outer_reference",
+                    list(by_band.get("outer_reference", ())),
+                    0.0,
+                )
+            )
+        return radial_bands
 
     @staticmethod
     def _bounded_population_zone(
@@ -1371,6 +1545,277 @@ def _cap_density_field_quotas(
             )
         result = min(candidates)[-1]
     return result
+
+
+def _enforce_density_field_gradient_quotas(
+    *,
+    quotas: list[int],
+    source_counts: list[int],
+    maximum_removals: list[int],
+    target_fractions: list[float],
+    minimum_count: int,
+    maximum_count: int,
+    minimum_core: int,
+    minimum_transition: int,
+) -> list[int]:
+    """Make whole-instance quotas executable as a stronger-core gradient.
+
+    Rounding independent target fractions can make core and transition
+    depletion equal even when the continuous skill profile is ordered. This
+    bounded repair changes the fewest whole nuclei while respecting residual,
+    total-count and core/transition minima.
+    """
+
+    result = [max(0, int(value)) for value in quotas]
+    counts = [max(0, int(value)) for value in source_counts]
+    capacities = [max(0, int(value)) for value in maximum_removals]
+
+    def aggregate_ordered(values: list[int]) -> bool:
+        core_fraction = values[0] / max(1, counts[0])
+        transition_source = sum(counts[1:])
+        transition_fraction = sum(values[1:]) / max(1, transition_source)
+        return core_fraction > transition_fraction > 0
+
+    def radial_ordered(values: list[int]) -> bool:
+        observed = [
+            (value, count)
+            for value, count in zip(values, counts)
+            if count > 0
+        ]
+        for (inner_value, inner_count), (outer_value, outer_count) in pairwise(
+            observed
+        ):
+            inner = inner_value / inner_count
+            outer = outer_value / outer_count
+            if outer <= inner + 1e-9:
+                continue
+            if max(0, outer_value - 1) / outer_count > inner + 1e-9:
+                return False
+        return True
+
+    for _ in range(sum(capacities) + len(capacities) + 1):
+        if (
+            minimum_count <= sum(result) <= maximum_count
+            and result[0] >= minimum_core
+            and sum(result[1:]) >= minimum_transition
+            and aggregate_ordered(result)
+            and radial_ordered(result)
+        ):
+            return result
+        candidates = []
+        # Prefer removing an excessive outer quota. This reduces abrupt
+        # transition depletion and never weakens the biologically strongest
+        # core band.
+        if sum(result) > minimum_count and sum(result[1:]) > minimum_transition:
+            for index in range(1, len(result)):
+                if result[index] <= 0:
+                    continue
+                trial = list(result)
+                trial[index] -= 1
+                errors = [
+                    abs(value / max(1, count) - target)
+                    for value, count, target in zip(
+                        trial, counts, target_fractions
+                    )
+                    if count
+                ]
+                candidates.append(
+                    (
+                        0 if aggregate_ordered(trial) else 1,
+                        0 if radial_ordered(trial) else 1,
+                        max(errors, default=0.0),
+                        sum(errors),
+                        -index,
+                        trial,
+                    )
+                )
+        # If the minimum total prevents a transition reduction, strengthen the
+        # core by one complete instance when its residual floor permits it.
+        if (
+            result[0] < capacities[0]
+            and sum(result) < maximum_count
+        ):
+            trial = list(result)
+            trial[0] += 1
+            errors = [
+                abs(value / max(1, count) - target)
+                for value, count, target in zip(
+                    trial, counts, target_fractions
+                )
+                if count
+            ]
+            candidates.append(
+                (
+                    0 if aggregate_ordered(trial) else 1,
+                    0 if radial_ordered(trial) else 1,
+                    max(errors, default=0.0),
+                    sum(errors),
+                    0,
+                    trial,
+                )
+            )
+        if not candidates:
+            break
+        result = min(candidates)[-1]
+    raise JointContractError(
+        "density field cannot realize a whole-instance stronger-core gradient: "
+        f"initial_quotas={quotas}, final_quotas={result}, "
+        f"source_counts={counts}, maximum_removals={capacities}, "
+        f"count_range=[{minimum_count},{maximum_count}]"
+    )
+
+
+def _select_density_field_removals_preserving_coverage(
+    candidates_by_band: list[list],
+    *,
+    removal_quotas: list[int],
+    fixed_retained: list,
+) -> list:
+    """Remove radial quotas while leaving one global spatial coverage net.
+
+    Density decrease should thin a population, not erase one compact cluster.
+    Retention quotas remain band-specific, but retained nuclei are chosen
+    jointly across all bands and the unchanged outer reference.
+    """
+
+    if len(candidates_by_band) != len(removal_quotas):
+        raise JointContractError("density-field coverage quotas are misaligned")
+    bands = [
+        sorted(items, key=lambda item: item.instance_id)
+        for items in candidates_by_band
+    ]
+    retain_needed = []
+    for items, removal_quota in zip(bands, removal_quotas):
+        quota = max(0, int(removal_quota))
+        if quota > len(items):
+            raise JointContractError("density-field class quota exceeds band capacity")
+        retain_needed.append(len(items) - quota)
+    retained_ids = {item.instance_id for item in fixed_retained}
+
+    def point(item) -> np.ndarray:
+        return np.asarray(
+            (float(item.centroid_xy[1]), float(item.centroid_xy[0])),
+            dtype=float,
+        )
+
+    retained_points = [point(item) for item in fixed_retained]
+    all_items = [item for band in bands for item in band]
+    if not retained_points and any(retain_needed):
+        values = np.asarray([point(item) for item in all_items], dtype=float)
+        centroid = np.mean(values, axis=0)
+        eligible = [
+            (band_index, item)
+            for band_index, band in enumerate(bands)
+            if retain_needed[band_index] > 0
+            for item in band
+        ]
+        first_band, first_item = min(
+            eligible,
+            key=lambda pair: (
+                float(np.sum((point(pair[1]) - centroid) ** 2)),
+                _stable_instance_jitter(pair[1].instance_id),
+                pair[1].instance_id,
+            ),
+        )
+        retained_ids.add(first_item.instance_id)
+        retained_points.append(point(first_item))
+        retain_needed[first_band] -= 1
+
+    while any(retain_needed):
+        choices = [
+            (band_index, item)
+            for band_index, band in enumerate(bands)
+            if retain_needed[band_index] > 0
+            for item in band
+            if item.instance_id not in retained_ids
+        ]
+        if not choices or not retained_points:
+            raise JointContractError(
+                "density-field retention net cannot satisfy band quotas"
+            )
+        retained_array = np.asarray(retained_points, dtype=float)
+        next_band, next_item = max(
+            choices,
+            key=lambda pair: (
+                float(
+                    np.min(
+                        np.sum(
+                            (retained_array - point(pair[1])) ** 2,
+                            axis=1,
+                        )
+                    )
+                ),
+                -_stable_instance_jitter(pair[1].instance_id),
+                pair[1].instance_id,
+            ),
+        )
+        retained_ids.add(next_item.instance_id)
+        retained_points.append(point(next_item))
+        retain_needed[next_band] -= 1
+    fixed_ids = {item.instance_id for item in fixed_retained}
+
+    def maximum_coverage_gap(candidate_retained_ids: set[str]) -> float:
+        retained = [
+            point(item)
+            for item in [*fixed_retained, *all_items]
+            if item.instance_id in candidate_retained_ids
+        ]
+        if not retained:
+            return float("inf")
+        retained_array = np.asarray(retained, dtype=float)
+        return max(
+            (
+                float(
+                    np.sqrt(
+                        np.min(
+                            np.sum(
+                                (retained_array - point(item)) ** 2,
+                                axis=1,
+                            )
+                        )
+                    )
+                )
+                for item in all_items
+            ),
+            default=0.0,
+        )
+
+    # Greedy farthest-point retention is followed by deterministic same-band
+    # swaps. The swap cannot alter any radial quota, but it removes avoidable
+    # local holes that a one-pass k-center approximation may leave behind.
+    retained_ids |= fixed_ids
+    current_gap = maximum_coverage_gap(retained_ids)
+    while True:
+        improvements = []
+        for band in bands:
+            retained_band = [
+                item for item in band if item.instance_id in retained_ids
+            ]
+            removed_band = [
+                item for item in band if item.instance_id not in retained_ids
+            ]
+            for retained_item in retained_band:
+                for removed_item in removed_band:
+                    trial = set(retained_ids)
+                    trial.remove(retained_item.instance_id)
+                    trial.add(removed_item.instance_id)
+                    gap = maximum_coverage_gap(trial)
+                    if gap + 1e-9 < current_gap:
+                        improvements.append(
+                            (
+                                gap,
+                                retained_item.instance_id,
+                                removed_item.instance_id,
+                                trial,
+                            )
+                        )
+        if not improvements:
+            break
+        current_gap, _old_id, _new_id, retained_ids = min(
+            improvements,
+            key=lambda item: item[:3],
+        )
+    return [item for item in all_items if item.instance_id not in retained_ids]
 
 
 def _largest_remainder_quotas(counts: dict[int, int], total: int) -> dict[int, int]:

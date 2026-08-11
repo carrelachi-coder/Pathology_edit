@@ -25,7 +25,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v6"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v7"
 
 POPULATION_DISPOSITIONS = frozenset(
     {

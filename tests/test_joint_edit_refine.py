@@ -31,22 +31,23 @@ from phase3_joint_edit_refine.feasibility import (
     _target_interface_population_density,
     augment_tissue_scene_with_nuclei_preflight,
 )
-from phase3_joint_edit_refine.g2_plan_overrides import apply_plan_overrides
 from phase3_joint_edit_refine.g2_pilot import build_local_joint_records
+from phase3_joint_edit_refine.g2_plan_overrides import apply_plan_overrides
 from phase3_joint_edit_refine.gates import (
     MECHANISM_POSTCONDITION_IDS,
     JointGateRegistry,
     _added_instance_areas_by_class,
+    _discrete_radial_profile_is_monotonic,
     _fine_pattern_preserved,
     _recorded_instance_areas_by_class,
     mechanism_postcondition_checker_id,
 )
-from phase3_joint_edit_refine.instance_authority import (
-    build_scene_instance_authority,
-)
 from phase3_joint_edit_refine.generator_adapter import (
     build_frozen_generator_inputs,
     route_joint_handoff,
+)
+from phase3_joint_edit_refine.instance_authority import (
+    build_scene_instance_authority,
 )
 from phase3_joint_edit_refine.ledger import analyze_joint_change
 from phase3_joint_edit_refine.mature_probnet_adapter import (
@@ -772,6 +773,18 @@ class JointSkillTests(unittest.TestCase):
             minimum_transition=1,
         )
         self.assertEqual(quotas, [3, 5, 4, 2, 1, 0, 0])
+
+    def test_radial_gradient_allows_only_one_instance_quantization_step(self):
+        self.assertTrue(
+            _discrete_radial_profile_is_monotonic(
+                [(8, 16), (4, 15), (1, 9), (2, 9), (0, 3)]
+            )
+        )
+        self.assertFalse(
+            _discrete_radial_profile_is_monotonic(
+                [(8, 16), (1, 15), (3, 9)]
+            )
+        )
 
     def test_min_safe_over_target_requires_tissue_floor_and_other_gates(self):
         candidates = (
@@ -1836,7 +1849,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v10"
+                program["compiler_version"], "joint-cell-tool-compiler-v11"
             )
             self.assertEqual(
                 program["policies"]["P"],
@@ -2107,8 +2120,20 @@ class JointWorkflowTests(unittest.TestCase):
                     primitive_id=primitive,
                     joint_area_budget=None,
                     cell_count_extent_budget=(
-                        CellCountExtentBudget(4, 3, 6, 48, 0, 48)
-                        if primitive == "cellularity-decrease-v1"
+                        CellCountExtentBudget(
+                            12,
+                            12,
+                            15,
+                            96,
+                            0,
+                            96,
+                            minimum_effect_span_px=66,
+                        )
+                        if primitive in {
+                            "cellularity-decrease-v1",
+                            "cell-type-abundance-decrease-v1",
+                            "cell-type-abundance-increase-v1",
+                        }
                         else CellCountExtentBudget(3, 3, 3, 48, 0, 48)
                     ),
                     provenance=provenance,
@@ -2118,6 +2143,18 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "local-population")
+                if primitive in {
+                    "cellularity-decrease-v1",
+                    "cell-type-abundance-decrease-v1",
+                }:
+                    self.assertEqual(result.status, "abstained")
+                    self.assertTrue(
+                        any(
+                            "whole-instance stronger-core gradient" in reason
+                            for reason in result.abstain_reasons
+                        )
+                    )
+                    continue
                 self.assertEqual(
                     result.status, "selected_research", result.abstain_reasons
                 )
@@ -2131,12 +2168,9 @@ class JointWorkflowTests(unittest.TestCase):
                 target_count = len(
                     tuple(iter_instances(result.condition.target_nuclei_mask))
                 )
-                if primitive in {
-                    "cellularity-decrease-v1",
-                    "cell-type-abundance-decrease-v1",
-                }:
-                    self.assertGreaterEqual(source_count - target_count, 3)
-                    self.assertLessEqual(source_count - target_count, 6)
+                if primitive == "cell-type-abundance-increase-v1":
+                    self.assertGreaterEqual(target_count - source_count, 12)
+                    self.assertLessEqual(target_count - source_count, 15)
                 else:
                     self.assertEqual(target_count - source_count, expected_sign * 3)
                 self.assertEqual(result.condition.ledger.tissue_pixels, 0)
@@ -2208,7 +2242,13 @@ class JointWorkflowTests(unittest.TestCase):
                 primitive_id="cellularity-decrease-v1",
                 joint_area_budget=None,
                 cell_count_extent_budget=CellCountExtentBudget(
-                    3, 3, 3, 48, 0, 48
+                    12,
+                    12,
+                    15,
+                    96,
+                    0,
+                    96,
+                    minimum_effect_span_px=66,
                 ),
                 provenance={
                     **source.provenance,
@@ -2228,6 +2268,50 @@ class JointWorkflowTests(unittest.TestCase):
             self.assertEqual(result.status, "abstained")
             self.assertTrue(
                 any("explicit visual depletion anchor" in reason for reason in result.abstain_reasons)
+            )
+
+    def test_cell_only_budget_cannot_undercut_skill_minimum_effect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _write_synthetic_case(root)
+            interface_id = "if:tumor:0001->stroma:0001:seg:0001"
+            case = replace(
+                source,
+                case_id="synthetic-below-skill-minimum",
+                instruction="decrease tumor cellularity",
+                primitive_id="cellularity-decrease-v1",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    3, 3, 3, 48, 0, 48
+                ),
+                provenance={
+                    **source.provenance,
+                    "joint_mechanism_id": (
+                        "colorectal-local-population-modulation"
+                    ),
+                    "joint_population_zone_id": (
+                        "pop:component:cmp:tumor:0001"
+                    ),
+                    "cellularity_depletion_anchor": {
+                        "type": "interface",
+                        "interface_ids": [interface_id],
+                        "anchor_ids": [f"{interface_id}:anchor:0001"],
+                        "observation": "visible anchored cellularity transition",
+                        "confidence": 0.90,
+                    },
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "below-minimum")
+            self.assertEqual(result.status, "abstained")
+            self.assertTrue(
+                any(
+                    "skill-owned minimum effect count" in reason
+                    for reason in result.abstain_reasons
+                )
             )
 
     def test_necrosis_appearance_and_resolution_bind_dead_viable_turnover(self):

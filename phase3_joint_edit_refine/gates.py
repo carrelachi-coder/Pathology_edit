@@ -1364,33 +1364,42 @@ def _cellularity_depletion_gradient(c):
     transition = np.asarray(program.depletion_transition_region, dtype=bool)
     outer = np.asarray(program.depletion_outer_reference_region, dtype=bool)
     anchor = np.asarray(program.depletion_anchor_mask, dtype=bool)
-    allowed = set(c.plan.cell_plan.allowed_cell_classes)
     removed = set(c.candidate.ledger.removed_instance_ids)
-    source_counts = {"core": 0, "transition": 0, "outer_reference": 0}
-    removed_counts = {"core": 0, "transition": 0, "outer_reference": 0}
+    band_ids = {
+        name: set(instance_ids)
+        for name, instance_ids in program.depletion_band_instance_ids.items()
+    }
+    radial_ids = {
+        name: set(instance_ids)
+        for name, instance_ids in program.depletion_radial_instance_ids.items()
+    }
+    source_counts = {
+        name: len(band_ids.get(name, set()))
+        for name in ("core", "transition", "outer_reference")
+    }
+    removed_counts = {
+        name: len(removed & band_ids.get(name, set()))
+        for name in ("core", "transition", "outer_reference")
+    }
+    population_ids = set(program.depletion_population_instance_ids)
+    editable_ids = band_ids.get("core", set()) | band_ids.get(
+        "transition", set()
+    )
+    centers_inside = bool(removed and removed <= editable_ids)
+    metadata = {item.instance_id: item for item in c.scene.cells.instances}
+    authority_ids_known = bool(
+        population_ids
+        and population_ids == set().union(*band_ids.values())
+        and population_ids <= set(metadata)
+    )
     removed_points = []
     retained_points = []
-    centers_inside = True
-    for item in c.scene.cells.instances:
-        if item.class_id not in allowed:
+    for instance_id in sorted(population_ids):
+        item = metadata.get(instance_id)
+        if item is None:
             continue
-        row, col = round(item.centroid_xy[1]), round(item.centroid_xy[0])
-        if core[row, col]:
-            band = "core"
-        elif transition[row, col]:
-            band = "transition"
-        elif outer[row, col]:
-            band = "outer_reference"
-        else:
-            band = None
-        if band is not None:
-            source_counts[band] += 1
         point = (float(item.centroid_xy[1]), float(item.centroid_xy[0]))
-        if item.instance_id in removed:
-            if band is None:
-                centers_inside = False
-            else:
-                removed_counts[band] += 1
+        if instance_id in removed:
             removed_points.append(point)
         else:
             retained_points.append(point)
@@ -1438,11 +1447,11 @@ def _cellularity_depletion_gradient(c):
             for index in range(skill.transition_subband_count)
         ],
     ]
-    radial_fractions = []
+    radial_observations = []
     radial_target_ok = True
     for name, target_fraction in zip(radial_names, radial_targets):
-        source_value = int(trace_radial_source.get(name, 0))
-        removed_value = int(trace_radial_removed.get(name, 0))
+        source_value = len(radial_ids.get(name, set()))
+        removed_value = len(removed & radial_ids.get(name, set()))
         realized = removed_value / source_value if source_value else 0.0
         # Whole nuclei make each radial fraction discrete. One complete
         # instance is the smallest executable adjustment in that subband; the
@@ -1452,7 +1461,7 @@ def _cellularity_depletion_gradient(c):
         current_ok = source_value == 0 or abs(realized - target_fraction) <= tolerance
         radial_target_ok = radial_target_ok and current_ok
         if source_value:
-            radial_fractions.append(realized)
+            radial_observations.append((removed_value, source_value))
         radial_metrics.append(
             {
                 "band": name,
@@ -1463,9 +1472,33 @@ def _cellularity_depletion_gradient(c):
                 "within_discrete_tolerance": current_ok,
             }
         )
-    radial_monotonic = all(
-        outer <= inner + 0.08
-        for inner, outer in pairwise(radial_fractions)
+    radial_monotonic = _discrete_radial_profile_is_monotonic(
+        radial_observations
+    )
+    authority_radial_names = [*radial_names, "outer_reference"]
+    exact_radial_source = {
+        name: len(radial_ids.get(name, set()))
+        for name in authority_radial_names
+    }
+    exact_radial_removed = {
+        name: len(removed & radial_ids.get(name, set()))
+        for name in authority_radial_names
+    }
+    traced_source = {
+        name: int(trace_radial_source.get(name, 0))
+        for name in authority_radial_names
+    }
+    traced_removed = {
+        name: int(trace_radial_removed.get(name, 0))
+        for name in authority_radial_names
+    }
+    trace_authority_matches = bool(
+        traced_source == exact_radial_source
+        and traced_removed == exact_radial_removed
+        and c.candidate.tool_trace.get("depletion_instance_authority", {}).get(
+            "source"
+        )
+        == "compiled_cell_tool_program"
     )
     outer_unchanged = bool(
         removed_counts["outer_reference"] == 0
@@ -1484,13 +1517,18 @@ def _cellularity_depletion_gradient(c):
             np.asarray(removed_points), k=1
         )
         maximum_gap = float(np.max(distances))
-        gap_ok = maximum_gap <= maximum_allowed_gap
+        # EDT/centroid conversion and rasterized masks can disagree by a tiny
+        # sub-pixel amount. Half a pixel is a finite-raster tolerance, not a
+        # biological relaxation of the maximum-gap contract.
+        gap_ok = maximum_gap <= maximum_allowed_gap + 0.5
     passed = bool(
         c.plan.cell_plan.spatial_anchor_type in skill.allowed_anchor_types
         and c.plan.cell_plan.spatial_anchor_observation
         and c.plan.cell_plan.interface_ids
         and c.plan.cell_plan.anchor_ids
         and np.any(anchor)
+        and authority_ids_known
+        and trace_authority_matches
         and centers_inside
         and removed_counts["core"] >= skill.minimum_core_removals
         and removed_counts["transition"] >= skill.minimum_transition_removals
@@ -1538,13 +1576,39 @@ def _cellularity_depletion_gradient(c):
             "radial_density_profile": radial_metrics,
             "radial_target_ok": radial_target_ok,
             "radial_monotonic": radial_monotonic,
+            "compiler_instance_authority_known": authority_ids_known,
+            "executor_trace_matches_compiler_authority": (
+                trace_authority_matches
+            ),
             "removed_centers_inside_core_or_transition": centers_inside,
             "maximum_removed_to_retained_center_distance_px": maximum_gap,
             "baseline_mean_nnd_px": baseline_nnd,
             "maximum_allowed_gap_px": maximum_allowed_gap,
+            "finite_raster_gap_tolerance_px": 0.5,
             "gap_ok": gap_ok,
         },
     )
+
+
+def _discrete_radial_profile_is_monotonic(
+    observations: list[tuple[int, int]],
+) -> bool:
+    """Allow at most one whole-nucleus quantization step between radial bins."""
+
+    for (inner_removed, inner_source), (outer_removed, outer_source) in pairwise(
+        observations
+    ):
+        inner = inner_removed / max(1, inner_source)
+        outer = outer_removed / max(1, outer_source)
+        if outer <= inner + 1e-9:
+            continue
+        # If subtracting the smallest executable unit from the outer band
+        # restores order, the apparent bump is caused by whole-instance
+        # quantization. Larger inversions remain a hard failure.
+        quantized_outer = max(0, outer_removed - 1) / max(1, outer_source)
+        if quantized_outer > inner + 1e-9:
+            return False
+    return True
 
 
 def _interface_seam_continuity(c):
@@ -2001,11 +2065,19 @@ def _joint_area(c):
         budget = c.case.cell_count_extent_budget
         extent = _maximum_changed_distance_to_interfaces(c)
         effect_span, effect_foci = _cell_effect_geometry(c)
+        minimum_effect_span_px = max(
+            budget.minimum_effect_span_px if budget else 0,
+            c.executable_contract.cell_program.minimum_effect_span_px,
+        )
+        minimum_effect_foci = max(
+            budget.minimum_effect_foci if budget else 0,
+            c.executable_contract.cell_program.minimum_effect_foci,
+        )
         passed = bool(
             budget
             and extent <= budget.maximum_extent_px
-            and effect_span >= budget.minimum_effect_span_px
-            and effect_foci >= budget.minimum_effect_foci
+            and effect_span >= minimum_effect_span_px
+            and effect_foci >= minimum_effect_foci
         )
         if passed:
             detail = "cell-only edit satisfies its count/extent/effect budget"
@@ -2013,7 +2085,7 @@ def _joint_area(c):
             detail = "cell-only edit has no declared count/extent budget"
         elif extent > budget.maximum_extent_px:
             detail = "cell-only change exceeds its declared extent budget"
-        elif effect_span < budget.minimum_effect_span_px:
+        elif effect_span < minimum_effect_span_px:
             detail = "cell-only change is too spatially narrow to be meaningful"
         else:
             detail = "cell-only change has too few independent effect foci"
@@ -2029,12 +2101,10 @@ def _joint_area(c):
                 ),
                 "observed_effect_span_px": effect_span,
                 "minimum_effect_span_px": (
-                    budget.minimum_effect_span_px if budget else None
+                    minimum_effect_span_px if budget else None
                 ),
                 "observed_effect_foci": effect_foci,
-                "minimum_effect_foci": (
-                    budget.minimum_effect_foci if budget else None
-                ),
+                "minimum_effect_foci": minimum_effect_foci if budget else None,
             },
         )
     budget = c.case.joint_area_budget

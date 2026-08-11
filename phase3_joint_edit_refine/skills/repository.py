@@ -402,6 +402,18 @@ class JointSkillRepository:
             raise JointContractError("tissue primitive requires joint_area_budget")
         if primitive_contract.scope == "cell_only" and case.cell_count_extent_budget is None:
             raise JointContractError("cell-only primitive requires cell_count_extent_budget")
+        if primitive_contract.scope == "cell_only":
+            budget = case.cell_count_extent_budget
+            assert budget is not None
+            if (
+                budget.min_delta_count
+                < primitive_contract.minimum_effect_delta_count
+                or budget.max_delta_count
+                < primitive_contract.minimum_effect_delta_count
+            ):
+                raise JointContractError(
+                    "cell-only budget is below the skill-owned minimum effect count"
+                )
         schema = self.annotation_schema(case.annotation_profile_id)
         if primitive_contract.tissue_action == "required":
             primitive = self.mask_skills.get(
