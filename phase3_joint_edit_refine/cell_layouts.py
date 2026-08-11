@@ -22,7 +22,7 @@ from .scene import JointSceneAnalysis
 from .seam import anchor_coverage_fraction, class_center_mask
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v1"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v2"
 
 
 class SpatialRanker(Protocol):
@@ -341,6 +341,8 @@ def generate_cell_layouts(
             continuity_maximum_empty_run_px=(
                 compiled_program.continuity_maximum_empty_run_px
             ),
+            minimum_effect_span_px=0,
+            minimum_effect_foci=0,
             seed=seed + variant * 104729,
         )
         halo_score = (
@@ -373,6 +375,8 @@ def generate_cell_layouts(
             continuity_region=np.zeros_like(halo),
             continuity_anchor_mask=np.zeros_like(halo),
             continuity_maximum_empty_run_px=0,
+            minimum_effect_span_px=compiled_program.minimum_effect_span_px,
+            minimum_effect_foci=compiled_program.minimum_effect_foci,
             seed=seed + variant * 104729 + 8191,
         )
         placed = core_placed + halo_placed
@@ -772,6 +776,8 @@ def _build_multiclass_addition_results(
                 continuity_region=np.zeros_like(class_zone),
                 continuity_anchor_mask=np.zeros_like(class_zone),
                 continuity_maximum_empty_run_px=0,
+                minimum_effect_span_px=0,
+                minimum_effect_foci=0,
                 seed=seed + variant * 104729 + offset * 8191,
             )
             placements.extend(current)
@@ -1123,6 +1129,8 @@ def _place_layout(
     continuity_region,
     continuity_anchor_mask,
     continuity_maximum_empty_run_px,
+    minimum_effect_span_px,
+    minimum_effect_foci,
     seed,
 ):
     target = np.asarray(base).copy()
@@ -1148,6 +1156,21 @@ def _place_layout(
                 int(continuity_maximum_empty_run_px),
             ),
         )
+        anchors = _effect_first_anchors(
+            anchors,
+            minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
+            minimum_effect_foci=max(0, int(minimum_effect_foci)),
+        )
+    effective_cluster_range = cluster_size_range
+    if minimum_effect_foci > 0 and requested_count > 0:
+        # Reserve enough independent anchors to satisfy the skill-owned focus
+        # count. A legal abundance edit must not collapse into a few maximum-
+        # sized clumps simply because the template family permits them.
+        maximum_per_focus = max(1, requested_count // minimum_effect_foci)
+        effective_cluster_range = (
+            min(int(cluster_size_range[0]), maximum_per_focus),
+            min(int(cluster_size_range[1]), maximum_per_focus),
+        )
     placed = 0
     placement_trace: list[dict[str, Any]] = []
     seam_region = np.asarray(continuity_region, dtype=bool)
@@ -1157,7 +1180,7 @@ def _place_layout(
         anchor_index += 1
         offsets = _layout_offsets(
             layout_program,
-            cluster_size_range,
+            effective_cluster_range,
             anchor_y=ay,
             anchor_x=ax,
             legal_zone=legal_zone,
@@ -1253,6 +1276,59 @@ def _place_layout(
         for item in placement_trace[group_start:]:
             item["cluster_size"] = actual_cluster_size
     return target, placed, placement_trace
+
+
+def _effect_first_anchors(
+    anchors: np.ndarray,
+    *,
+    minimum_effect_span_px: int,
+    minimum_effect_foci: int,
+) -> np.ndarray:
+    """Front-load spatially distinct legal anchors for meaningful cell edits.
+
+    The incoming order remains the ProbNet/ranker preference authority for the
+    first focus.  Subsequent required foci use deterministic farthest-point
+    sampling, after which all remaining anchors retain their original order.
+    This makes the skill's spatial intent executable without allowing the LLM
+    to invent nucleus coordinates.
+    """
+
+    points = np.asarray(anchors, dtype=int)
+    required = min(max(0, int(minimum_effect_foci)), len(points))
+    if required <= 1 and minimum_effect_span_px <= 0:
+        return points
+    if not len(points):
+        return points
+
+    chosen_indices = [0]
+    available = np.ones(len(points), dtype=bool)
+    available[0] = False
+    minimum_span_sq = float(max(0, minimum_effect_span_px) ** 2)
+    while len(chosen_indices) < max(1, required) and np.any(available):
+        chosen = points[np.asarray(chosen_indices, dtype=int)]
+        candidates = np.flatnonzero(available)
+        deltas = points[candidates, None, :] - chosen[None, :, :]
+        minimum_distance_sq = np.min(
+            np.sum(deltas.astype(float) ** 2, axis=2), axis=1
+        )
+        if len(chosen_indices) == 1 and minimum_span_sq > 0:
+            clears_span = minimum_distance_sq >= minimum_span_sq
+            pool = candidates[clears_span] if np.any(clears_span) else candidates
+            pool_distances = (
+                minimum_distance_sq[clears_span]
+                if np.any(clears_span)
+                else minimum_distance_sq
+            )
+        else:
+            pool = candidates
+            pool_distances = minimum_distance_sq
+        next_index = int(pool[int(np.argmax(pool_distances))])
+        chosen_indices.append(next_index)
+        available[next_index] = False
+
+    chosen_set = set(chosen_indices)
+    remainder = [index for index in range(len(points)) if index not in chosen_set]
+    return points[np.asarray([*chosen_indices, *remainder], dtype=int)]
 
 
 def _continuity_first_anchors(

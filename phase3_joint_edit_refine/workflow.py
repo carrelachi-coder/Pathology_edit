@@ -1236,6 +1236,15 @@ class JointPathologyEditWorkflow:
                         primitive_id=primitive_id,
                         semantic_intent=candidate_case.semantic_intent,
                         host_tissue_labels=primitive_contract.host_tissue_labels,
+                        minimum_effect_delta_count=(
+                            primitive_contract.minimum_effect_delta_count
+                        ),
+                        minimum_effect_span_cell_diameters=(
+                            primitive_contract.minimum_effect_span_cell_diameters
+                        ),
+                        minimum_effect_foci=(
+                            primitive_contract.minimum_effect_foci
+                        ),
                     )
                 semantic_metadata = dict(candidate_case.semantic_intent)
                 semantic_metadata.setdefault(
@@ -2456,6 +2465,9 @@ def _derive_local_population_budget(
     primitive_id: str,
     semantic_intent: Mapping[str, Any],
     host_tissue_labels: tuple[str, ...] = (),
+    minimum_effect_delta_count: int = 0,
+    minimum_effect_span_cell_diameters: float = 0.0,
+    minimum_effect_foci: int = 0,
 ) -> tuple[CellCountExtentBudget, dict[str, Any]]:
     """Compile a source-calibrated cell-only budget before candidates exist.
 
@@ -2646,12 +2658,20 @@ def _derive_local_population_budget(
         executable_capacity = local_authority_count
         packing_certificates = {}
     if increase:
-        if executable_capacity < 2:
+        required_capacity = max(2, int(minimum_effect_delta_count))
+        if executable_capacity < required_capacity:
             raise JointContractError(
-                "cell increase has fewer than two conservative complete-shape slots"
+                "cell increase exact packing capacity is below the skill-owned "
+                f"meaningful minimum: {executable_capacity} < {required_capacity}"
             )
         source_scaled = max(2, round(max(local_authority_count, 10) * 0.20))
-        target = int(min(32, executable_capacity, source_scaled))
+        target = int(
+            min(
+                32,
+                executable_capacity,
+                max(source_scaled, int(minimum_effect_delta_count)),
+            )
+        )
     else:
         if local_authority_count < 6:
             raise JointContractError(
@@ -2664,9 +2684,25 @@ def _derive_local_population_budget(
                 min(32, max(2, int(np.floor(local_authority_count * 0.35)))),
             )
         )
-    minimum = max(1, int(np.floor(target * 0.60)))
+    minimum = max(
+        1,
+        int(np.floor(target * 0.60)),
+        int(minimum_effect_delta_count) if increase else 0,
+    )
     maximum = max(target, min(40, int(np.ceil(target * 1.35))))
-    maximum_extent = int(np.clip(round(6.0 * diameter_px), 32, 48))
+    minimum_effect_span = int(
+        np.ceil(float(minimum_effect_span_cell_diameters) * diameter_px)
+    )
+    if minimum_effect_span > 128:
+        raise JointContractError(
+            "source-calibrated meaningful cell effect span exceeds the v1 "
+            "bounded-support limit"
+        )
+    maximum_extent = max(
+        minimum_effect_span,
+        int(np.clip(round(6.0 * diameter_px), 48, 96)),
+    )
+    maximum_extent = min(128, maximum_extent)
     budget = CellCountExtentBudget(
         target_delta_count=target,
         min_delta_count=minimum,
@@ -2674,6 +2710,10 @@ def _derive_local_population_budget(
         maximum_extent_px=maximum_extent,
         interface_min_px=0,
         interface_max_px=maximum_extent,
+        minimum_effect_span_px=minimum_effect_span,
+        minimum_effect_foci=(
+            int(minimum_effect_foci) if increase else 0
+        ),
     )
     return budget, {
         "policy_id": "scene-calibrated-local-population-budget-v1",
@@ -2697,6 +2737,13 @@ def _derive_local_population_budget(
         "estimated_nucleus_diameter_px": diameter_px,
         "target_fraction_of_local_source": 0.20,
         "maximum_decrease_fraction_of_local_source": 0.35,
+        "skill_minimum_effect_delta_count": int(
+            minimum_effect_delta_count
+        ),
+        "skill_minimum_effect_span_cell_diameters": float(
+            minimum_effect_span_cell_diameters
+        ),
+        "skill_minimum_effect_foci": int(minimum_effect_foci),
         "budget": budget.__dict__,
     }
 

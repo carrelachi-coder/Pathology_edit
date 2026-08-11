@@ -133,6 +133,8 @@ class JointSkillTests(unittest.TestCase):
             continuity_region=np.zeros_like(legal),
             continuity_anchor_mask=np.zeros_like(legal),
             continuity_maximum_empty_run_px=0,
+            minimum_effect_span_px=0,
+            minimum_effect_foci=0,
             seed=1,
         )
         self.assertEqual(placed, 1)
@@ -140,6 +142,42 @@ class JointSkillTests(unittest.TestCase):
         col, row = trace[0]["center_xy"]
         self.assertTrue(legal[row, col])
         self.assertEqual(int(np.count_nonzero(target)), 9)
+
+    def test_meaningful_cell_effect_is_distributed_across_foci(self):
+        shape = np.ones((3, 3), dtype=bool)
+        legal = np.zeros((80, 80), dtype=bool)
+        legal[4:-4, 4:-4] = True
+        score = np.zeros_like(legal, dtype=float)
+        score[40, 40] = 10.0
+        _target, placed, trace = _place_layout(
+            base=np.zeros_like(legal, dtype=np.uint8),
+            references=(
+                ReferenceNucleusShape("ref", 2, shape, "test", 9),
+            ),
+            class_id=2,
+            legal_zone=legal,
+            valid_footprint_region=legal,
+            halo=legal,
+            score=score,
+            requested_count=12,
+            layout_program="small_cluster",
+            cluster_size_range=(1, 4),
+            nominal_nucleus_diameter_px=8.0,
+            orientation_mask=np.zeros_like(legal),
+            continuity_region=np.zeros_like(legal),
+            continuity_anchor_mask=np.zeros_like(legal),
+            continuity_maximum_empty_run_px=0,
+            minimum_effect_span_px=40,
+            minimum_effect_foci=4,
+            seed=1,
+        )
+        self.assertEqual(placed, 12)
+        self.assertGreaterEqual(len({item["cluster_id"] for item in trace}), 4)
+        centers = np.asarray([item["center_xy"] for item in trace], dtype=float)
+        distances = centers[:, None, :] - centers[None, :, :]
+        self.assertGreaterEqual(
+            float(np.sqrt(np.max(np.sum(distances**2, axis=2)))), 40.0
+        )
 
     def test_every_mechanism_has_a_unique_registered_postcondition_gate(self):
         repository = JointSkillRepository()
@@ -1733,7 +1771,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v8"
+                program["compiler_version"], "joint-cell-tool-compiler-v9"
             )
             self.assertEqual(
                 program["policies"]["P"],

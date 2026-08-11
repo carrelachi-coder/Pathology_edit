@@ -2000,18 +2000,40 @@ def _joint_area(c):
     if c.bundle.primitive.budget_mode == "count_extent":
         budget = c.case.cell_count_extent_budget
         extent = _maximum_changed_distance_to_interfaces(c)
-        passed = bool(budget and extent <= budget.maximum_extent_px)
+        effect_span, effect_foci = _cell_effect_geometry(c)
+        passed = bool(
+            budget
+            and extent <= budget.maximum_extent_px
+            and effect_span >= budget.minimum_effect_span_px
+            and effect_foci >= budget.minimum_effect_foci
+        )
+        if passed:
+            detail = "cell-only edit satisfies its count/extent/effect budget"
+        elif budget is None:
+            detail = "cell-only edit has no declared count/extent budget"
+        elif extent > budget.maximum_extent_px:
+            detail = "cell-only change exceeds its declared extent budget"
+        elif effect_span < budget.minimum_effect_span_px:
+            detail = "cell-only change is too spatially narrow to be meaningful"
+        else:
+            detail = "cell-only change has too few independent effect foci"
         return _result(
             "joint_area",
             passed,
-            "cell-only edit satisfies its count/extent budget"
-            if passed
-            else "cell-only change exceeds its declared extent budget",
+            detail,
             metrics={
                 "budget_mode": "count_extent",
                 "maximum_observed_extent_px": extent,
                 "maximum_allowed_extent_px": (
                     budget.maximum_extent_px if budget else None
+                ),
+                "observed_effect_span_px": effect_span,
+                "minimum_effect_span_px": (
+                    budget.minimum_effect_span_px if budget else None
+                ),
+                "observed_effect_foci": effect_foci,
+                "minimum_effect_foci": (
+                    budget.minimum_effect_foci if budget else None
                 ),
             },
         )
@@ -2116,6 +2138,39 @@ def _joint_area(c):
             "batch_min_safe_joint_certified": batch_min_certified,
         },
     )
+
+
+def _cell_effect_geometry(c) -> tuple[float, int]:
+    """Return accepted-center diameter and independent template focus count."""
+
+    trace = c.candidate.tool_trace
+    placements = trace.get("placements")
+    centers: list[tuple[float, float]] = []
+    focus_ids: set[str] = set()
+    if isinstance(placements, list):
+        for index, item in enumerate(placements):
+            if not isinstance(item, dict):
+                continue
+            center = item.get("center_xy")
+            if isinstance(center, (list, tuple)) and len(center) == 2:
+                centers.append((float(center[0]), float(center[1])))
+                focus_ids.add(str(item.get("cluster_id") or f"center-{index}"))
+    if not centers:
+        accepted = trace.get("accepted_center_ledger")
+        if isinstance(accepted, list):
+            for index, item in enumerate(accepted):
+                if not isinstance(item, dict):
+                    continue
+                row, col = item.get("row"), item.get("col")
+                if isinstance(row, (int, float)) and isinstance(col, (int, float)):
+                    centers.append((float(col), float(row)))
+                    focus_ids.add(f"center-{index}")
+    if len(centers) < 2:
+        return 0.0, len(focus_ids)
+    points = np.asarray(centers, dtype=float)
+    deltas = points[:, None, :] - points[None, :, :]
+    span = float(np.sqrt(np.max(np.sum(deltas**2, axis=2))))
+    return span, len(focus_ids)
 
 
 def _tissue_floor(c):

@@ -377,6 +377,10 @@ def _qualify_cell_only_case(
     )
     failures: list[str] = []
     packing_metadata: dict[str, Any] | None = None
+    center_points = np.argwhere(program.placement_center_region)
+    executable_effect_span = _certified_center_span(center_points)
+    if executable_effect_span < budget.minimum_effect_span_px:
+        failures.append("meaningful_cell_extent_not_executable")
     if "add" in bundle.mechanism.cell_program.actions:
         metadata = {item.instance_id: item for item in scene.cells.instances}
         references_by_class = {}
@@ -413,6 +417,8 @@ def _qualify_cell_only_case(
             failures.extend(packing.failure_reasons)
         if packing.placed_count < budget.min_delta_count:
             failures.append("meaningful_cell_count_not_executable")
+        if packing.placed_count < budget.minimum_effect_foci:
+            failures.append("meaningful_cell_foci_not_executable")
     elif int(program.target_delta_count or 0) < budget.min_delta_count:
         failures.append("meaningful_cell_count_not_executable")
     return (
@@ -420,10 +426,23 @@ def _qualify_cell_only_case(
             "cell_budget": budget.__dict__,
             "cell_budget_derivation": budget_metadata,
             "cell_program": program.to_metadata(),
+            "maximum_executable_effect_span_px": executable_effect_span,
             "exact_packing_certificate": packing_metadata,
         },
         failures,
     )
+
+
+def _certified_center_span(center_points: np.ndarray) -> float:
+    """Lower-bound an executable span using two actual legal centers."""
+
+    points = np.asarray(center_points, dtype=float)
+    if len(points) < 2:
+        return 0.0
+    seed = points[0]
+    first = points[int(np.argmax(np.sum((points - seed) ** 2, axis=1)))]
+    distances = np.sum((points - first) ** 2, axis=1)
+    return float(np.sqrt(np.max(distances)))
 
 
 def _with_scene_calibrated_cell_budget(
@@ -447,6 +466,11 @@ def _with_scene_calibrated_cell_budget(
             primitive_id=case.primitive_id,
             semantic_intent=case.semantic_intent,
             host_tissue_labels=primitive.host_tissue_labels,
+            minimum_effect_delta_count=primitive.minimum_effect_delta_count,
+            minimum_effect_span_cell_diameters=(
+                primitive.minimum_effect_span_cell_diameters
+            ),
+            minimum_effect_foci=primitive.minimum_effect_foci,
         )
     semantic = dict(case.semantic_intent)
     derived = dict(semantic.get("derived_budget_policies", {}))

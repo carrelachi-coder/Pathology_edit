@@ -17,7 +17,7 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v8"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v9"
 
 
 @dataclass(frozen=True)
@@ -67,6 +67,8 @@ class CompiledCellToolProgram:
     nominal_nucleus_diameter_px: float
     target_delta_count: int | None
     biological_target_delta_count: int | None
+    minimum_effect_span_px: int
+    minimum_effect_foci: int
     policies: dict[str, str]
 
     def to_metadata(self) -> dict:
@@ -535,6 +537,16 @@ class CellToolProgramCompiler:
             nominal_nucleus_diameter_px=diameter,
             target_delta_count=(resolved_delta),
             biological_target_delta_count=biological_delta,
+            minimum_effect_span_px=(
+                case.cell_count_extent_budget.minimum_effect_span_px
+                if case.cell_count_extent_budget is not None
+                else 0
+            ),
+            minimum_effect_foci=(
+                case.cell_count_extent_budget.minimum_effect_foci
+                if case.cell_count_extent_budget is not None
+                else 0
+            ),
             policies={
                 "T_pop": (
                     "changed-target-tissue-population-area"

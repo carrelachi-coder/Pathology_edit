@@ -421,6 +421,9 @@ class JointPrimitiveSkill:
     minimum_source_component_remaining_px: int
     required_source_clearance_classes: tuple[int, ...]
     minimum_source_clearance_instances: int
+    minimum_effect_delta_count: int
+    minimum_effect_span_cell_diameters: float
+    minimum_effect_foci: int
     required_checker_ids: tuple[str, ...]
     source_path: str
 
@@ -478,13 +481,30 @@ class JointPrimitiveSkill:
         minimum_clearance = int(
             payload.get("minimum_source_clearance_instances", 0)
         )
+        effect = payload.get("cell_effect_contract", {})
+        if not isinstance(effect, Mapping):
+            raise JointContractError(
+                "joint primitive cell_effect_contract must be a mapping"
+            )
+        minimum_effect_delta = int(effect.get("minimum_delta_count", 0))
+        minimum_effect_span = float(
+            effect.get("minimum_span_cell_diameters", 0.0)
+        )
+        minimum_effect_foci = int(effect.get("minimum_foci", 0))
         if not 0.0 < maximum_changed <= 1.0:
             raise JointContractError(
                 "maximum source-component changed fraction must lie in (0,1]"
             )
-        if minimum_remaining < 0 or minimum_clearance < 0:
+        if (
+            minimum_remaining < 0
+            or minimum_clearance < 0
+            or minimum_effect_delta < 0
+            or minimum_effect_span < 0
+            or minimum_effect_foci < 0
+            or minimum_effect_foci > minimum_effect_delta
+        ):
             raise JointContractError(
-                "primitive source retention/clearance counts must be non-negative"
+                "primitive source retention, clearance and cell-effect bounds are invalid"
             )
         return cls(
             primitive_id=_string(payload, "primitive_id"),
@@ -513,6 +533,9 @@ class JointPrimitiveSkill:
                 payload, "required_source_clearance_classes"
             ),
             minimum_source_clearance_instances=minimum_clearance,
+            minimum_effect_delta_count=minimum_effect_delta,
+            minimum_effect_span_cell_diameters=minimum_effect_span,
+            minimum_effect_foci=minimum_effect_foci,
             required_checker_ids=_strings(payload, "required_checker_ids"),
             source_path=source_path,
         )

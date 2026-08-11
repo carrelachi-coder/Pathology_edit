@@ -184,6 +184,8 @@ class CellCountExtentBudget:
     maximum_extent_px: int
     interface_min_px: int = 0
     interface_max_px: int = 48
+    minimum_effect_span_px: int = 0
+    minimum_effect_foci: int = 0
 
     def __post_init__(self) -> None:
         if not 0 <= self.min_delta_count <= self.target_delta_count <= self.max_delta_count:
@@ -194,6 +196,14 @@ class CellCountExtentBudget:
             raise JointContractError("cell-only maximum_extent_px must be positive")
         if not 0 <= self.interface_min_px <= self.interface_max_px:
             raise JointContractError("cell-only interface distance interval is invalid")
+        if not 0 <= self.minimum_effect_span_px <= self.maximum_extent_px:
+            raise JointContractError(
+                "cell-only effect span must lie inside the maximum extent"
+            )
+        if not 0 <= self.minimum_effect_foci <= self.min_delta_count:
+            raise JointContractError(
+                "cell-only effect foci cannot exceed the minimum count"
+            )
 
     @classmethod
     def from_value(cls, value: Any) -> CellCountExtentBudget | None:
@@ -209,6 +219,10 @@ class CellCountExtentBudget:
             maximum_extent_px=int(value.get("maximum_extent_px", 48)),
             interface_min_px=int(value.get("interface_min_px", 0)),
             interface_max_px=int(value.get("interface_max_px", 48)),
+            minimum_effect_span_px=int(
+                value.get("minimum_effect_span_px", 0)
+            ),
+            minimum_effect_foci=int(value.get("minimum_effect_foci", 0)),
         )
 
 
