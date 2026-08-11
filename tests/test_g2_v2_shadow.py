@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from phase3_joint_edit_refine.g2_v2_manifest import G2_V2_MANIFEST_SCHEMA
+from phase3_joint_edit_refine.g2_v2_manifest import (
+    G2_V2_MANIFEST_SCHEMA,
+    PRIMITIVE_ONTOLOGY_VERSION,
+)
 from phase3_joint_edit_refine.g2_v2_shadow import build_g2_v2_shadow
 
 
@@ -58,6 +61,7 @@ class G2V2ShadowTests(unittest.TestCase):
                 json.dumps(
                     {
                         "schema_version": G2_V2_MANIFEST_SCHEMA,
+                        "primitive_ontology_version": PRIMITIVE_ONTOLOGY_VERSION,
                         "case_count": len(cases),
                         "cases": cases,
                     }
@@ -78,6 +82,21 @@ class G2V2ShadowTests(unittest.TestCase):
             self.assertEqual({item["provenance"]["provider"] for item in runnable}, {"BCSS", "IGNITE"})
             self.assertTrue(all(item["cell_count_extent_budget"] is None for item in runnable))
             self.assertTrue(all(item["provenance"]["g2_v2_manifest_sha256"] == _sha(manifest) for item in runnable))
+
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["cases"][0]["review_basis"]["reviewer"] = (
+                "offline_heuristic"
+            )
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, "visual_review_not_current_codex"
+            ):
+                build_g2_v2_shadow(
+                    manifest,
+                    output_dir=root / "invalid-shadow",
+                    per_organ=2,
+                    abstain_controls=1,
+                )
 
 
 def _case(index, *, organ, dataset, domain, annotation, population, mechanism, primitive, assets, execution_allowed):
@@ -116,7 +135,11 @@ def _case(index, *, organ, dataset, domain, annotation, population, mechanism, p
                     "rationale": "fixture",
                 }
             ],
-            "parser_metadata": {"reviewer": "fixture"},
+            "parser_metadata": {
+                "reviewer": "current_codex_session",
+                "llm_api_used": False,
+                "execution_runner_may_not_reparse": True,
+            },
         }
         if execution_allowed
         else None
@@ -162,7 +185,10 @@ def _case(index, *, organ, dataset, domain, annotation, population, mechanism, p
         "prebound_semantic_intent_sha256": semantic_digest,
         "decision_reason_code": "fixture",
         "visual_observations": ["fixture review"],
-        "review_basis": {"reviewer": "fixture"},
+        "review_basis": {
+            "reviewer": "current_codex_session",
+            "llm_api_used": False,
+        },
         "joint_area_budget": ({"target_fraction": 0.19, "min_fraction": 0.14, "max_fraction": 0.24, "tissue_min_fraction": 0.14} if execution_allowed else None),
         "seed": 7,
         "pixel_size_um": None,

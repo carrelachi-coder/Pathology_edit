@@ -8,7 +8,12 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from .g2_v2_manifest import G2_V2_MANIFEST_SCHEMA
+from .g2_v2_manifest import (
+    DEPRECATED_PRIMITIVE_IDS,
+    G2_V2_MANIFEST_SCHEMA,
+    PRIMITIVE_ONTOLOGY_VERSION,
+)
+from .skills.repository import JointSkillRepository
 
 SHADOW_SELECTION_SCHEMA = "g2-v2-stratified-joint-shadow-v1"
 
@@ -24,9 +29,12 @@ def build_g2_v2_shadow(
     payload = json.loads(source.read_text(encoding="utf-8"))
     if payload.get("schema_version") != G2_V2_MANIFEST_SCHEMA:
         raise ValueError("unsupported frozen G2-v2 manifest schema")
+    if payload.get("primitive_ontology_version") != PRIMITIVE_ONTOLOGY_VERSION:
+        raise ValueError("shadow requires the frozen joint primitive-v2 ontology")
     rows = payload.get("cases")
     if not isinstance(rows, list) or len(rows) != int(payload.get("case_count", -1)):
         raise ValueError("frozen G2-v2 manifest case count is inconsistent")
+    _validate_current_codex_shadow_authority(rows)
     executable = [item for item in rows if item.get("execution_allowed")]
     rejected = [item for item in rows if not item.get("execution_allowed")]
     selected = _select_executable(executable, per_organ=per_organ)
@@ -92,16 +100,22 @@ def _select_executable(rows: list[dict[str, Any]], *, per_organ: int) -> list[di
                 break
             # Coverage first; then choose the case furthest from existing
             # source indices so the shadow is not a contiguous slice.
-            def score(item: dict[str, Any]) -> tuple[int, int, int, int]:
+            def score(
+                item: dict[str, Any],
+                mechanisms=uncovered_mechanisms,
+                primitives=uncovered_primitives,
+                statuses=uncovered_statuses,
+                current_selection=chosen,
+            ) -> tuple[int, int, int, int]:
                 novelty = (
-                    4 * (str(item["mechanism_id"]) in uncovered_mechanisms)
-                    + 3 * (str(item["primitive_id"]) in uncovered_primitives)
-                    + 2 * (str(item["decision_status"]) in uncovered_statuses)
+                    4 * (str(item["mechanism_id"]) in mechanisms)
+                    + 3 * (str(item["primitive_id"]) in primitives)
+                    + 2 * (str(item["decision_status"]) in statuses)
                 )
                 distance = min(
                     (
                         abs(int(item["source_index"]) - int(current["source_index"]))
-                        for current in chosen
+                        for current in current_selection
                     ),
                     default=10_000,
                 )
@@ -114,6 +128,41 @@ def _select_executable(rows: list[dict[str, Any]], *, per_organ: int) -> list[di
             uncovered_statuses.discard(str(current["decision_status"]))
         selected.extend(chosen)
     return sorted(selected, key=lambda item: (item["organ"], item["source_index"]))
+
+
+def _validate_current_codex_shadow_authority(
+    rows: list[dict[str, Any]],
+) -> None:
+    executable = set(JointSkillRepository().executable_primitive_ids)
+    errors = []
+    for item in rows:
+        if not item.get("execution_allowed"):
+            continue
+        case_id = str(item.get("case_id") or "")
+        primitive_id = str(item.get("primitive_id") or "")
+        review_basis = item.get("review_basis") or {}
+        semantic = item.get("prebound_semantic_intent") or {}
+        parser_metadata = semantic.get("parser_metadata") or {}
+        if primitive_id in DEPRECATED_PRIMITIVE_IDS:
+            errors.append(f"{case_id}:deprecated_primitive")
+        elif primitive_id not in executable:
+            errors.append(f"{case_id}:primitive_not_in_execution_scope")
+        if (
+            review_basis.get("reviewer") != "current_codex_session"
+            or review_basis.get("llm_api_used") is not False
+        ):
+            errors.append(f"{case_id}:visual_review_not_current_codex")
+        if (
+            parser_metadata.get("reviewer") != "current_codex_session"
+            or parser_metadata.get("llm_api_used") is not False
+            or parser_metadata.get("execution_runner_may_not_reparse") is not True
+        ):
+            errors.append(f"{case_id}:semantic_parse_not_current_codex")
+    if errors:
+        raise ValueError(
+            "shadow contains non-Codex, API, deprecated or closed decisions: "
+            + ", ".join(errors[:12])
+        )
 
 
 def _select_abstain_controls(
