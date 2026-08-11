@@ -349,6 +349,19 @@ class CellToolProgramCompiler:
 
         prohibited = tuple(bundle.annotation_profile.prohibit_cell_placement_fine_ids)
         valid = ~np.isin(target_tissue, prohibited)
+        receiving_auxiliary = (
+            bundle.mechanism.representability.receiving_auxiliary_structures
+        )
+        if receiving_auxiliary:
+            receiving_region = np.ones_like(valid, dtype=bool)
+            for structure_id in receiving_auxiliary:
+                structure = scene.auxiliary_structure_masks.get(structure_id)
+                if structure is None:
+                    raise JointContractError(
+                        f"required receiving auxiliary {structure_id!r} is unavailable"
+                    )
+                receiving_region &= np.asarray(structure, dtype=bool)
+            valid &= receiving_region
         if primitive.scope == "cell_only" and cell.core_zone.startswith(
             "pop:component:"
         ):

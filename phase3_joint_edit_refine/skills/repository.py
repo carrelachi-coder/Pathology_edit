@@ -77,6 +77,15 @@ class JointSkillBundle:
                 self.primitive.minimum_source_clearance_instances
             ),
             "mechanism_id": self.mechanism.mechanism_id,
+            "required_auxiliary_structures": list(
+                self.mechanism.representability.required_auxiliary_structures
+            ),
+            "receiving_auxiliary_structures": list(
+                self.mechanism.representability.receiving_auxiliary_structures
+            ),
+            "protected_auxiliary_structures": list(
+                self.mechanism.representability.protected_auxiliary_structures
+            ),
             "compiled_layout_program": self.mechanism.cell_program.layout_for(
                 self.primitive.primitive_id
             ),

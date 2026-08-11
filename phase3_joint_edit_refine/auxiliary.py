@@ -105,14 +105,10 @@ def materialize_profile_auxiliaries(
             protection_semantics = "enclosed_internal_space"
         elif specification.producer_kind == "explicit_profile_structure":
             mask = np.isin(source_tissue, specification.fine_ids)
-            details = {
-                "observed_structure_pixels": int(np.count_nonzero(mask)),
-                "profile_fine_ids": list(specification.fine_ids),
-                "empty_map_is_valid_observation": False,
-                "structural_hierarchy_schema": "explicit-profile-structure-v1",
-                "structure_units": [],
-                "hierarchy_relations": [],
-            }
+            details = _explicit_structure_units(
+                source_tissue,
+                fine_ids=specification.fine_ids,
+            )
             protection_semantics = "explicit_profile_structure"
         else:
             raise JointContractError(
@@ -174,6 +170,16 @@ def _profile_specifications(
         return (
             _AuxiliarySpecification(
                 "native_pattern_and_lumen_map",
+                "enclosed_pattern_spaces",
+                (8, 9, 10),
+            ),
+            _AuxiliarySpecification(
+                "native_pattern_map",
+                "explicit_profile_structure",
+                (8, 9, 10),
+            ),
+            _AuxiliarySpecification(
+                "gland_lumen_map",
                 "enclosed_pattern_spaces",
                 (8, 9, 10),
             ),
@@ -317,6 +323,46 @@ def _structure_unit_record(
         "component_sha256": hashlib.sha256(packed.tobytes()).hexdigest(),
         "enclosed_space_ids": list(enclosed_space_ids),
         "parent_relation": "member_of_tissue_component_resolved_in_scene",
+    }
+
+
+def _explicit_structure_units(
+    tissue: np.ndarray,
+    *,
+    fine_ids: tuple[int, ...],
+) -> dict[str, Any]:
+    units = []
+    for fine_id in fine_ids:
+        labeled, count = ndimage.label(
+            np.asarray(tissue) == int(fine_id),
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        for component_index in range(1, count + 1):
+            component = labeled == component_index
+            rows, cols = np.nonzero(component)
+            if not len(rows):
+                continue
+            units.append(
+                _structure_unit_record(
+                    unit_id=(
+                        f"fine:{int(fine_id)}:unit:{int(component_index):04d}"
+                    ),
+                    fine_id=int(fine_id),
+                    component=component,
+                    rows=rows,
+                    cols=cols,
+                    enclosed_space_ids=(),
+                )
+            )
+    return {
+        "observed_structure_pixels": int(
+            np.count_nonzero(np.isin(tissue, fine_ids))
+        ),
+        "profile_fine_ids": list(fine_ids),
+        "empty_map_is_valid_observation": False,
+        "structural_hierarchy_schema": "explicit-profile-structure-v1",
+        "structure_units": units,
+        "hierarchy_relations": [],
     }
 
 

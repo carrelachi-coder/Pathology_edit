@@ -14,9 +14,9 @@
     "tumor-burden-increase-v1"
   ],
   "closed_primitives": {
-    "architecture-progression-v1": "Fine-label transition compilation, native-pattern postconditions and frozen-generator architecture response are not yet validated.",
+    "architecture-progression-v1": "Mask-side fine-label transition and native-pattern/lumen postconditions are implemented and tested; frozen-generator architecture response and pathology review are not yet validated.",
     "neoplastic-cell-infiltration-increase-v1": "Deprecated ambiguous primitive. Use neoplastic-microinfiltration-increase-v1, invasive-front-expansion-v1, structural-void-spread-v1 or architecture-progression-v1.",
-    "structural-void-spread-v1": "Void-aware instance containment, separation-from-primary and frozen-generator STAS response are not yet validated."
+    "structural-void-spread-v1": "Void-aware complete-instance containment and separation are implemented and tested; digest-bound native airspace/alveolar inputs and frozen-generator STAS response are not yet validated."
   },
   "legacy_primitives_not_yet_joint": {},
   "policy": "fail_closed",

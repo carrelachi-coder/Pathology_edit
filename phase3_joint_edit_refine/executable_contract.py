@@ -599,7 +599,7 @@ class ExecutableJointContractCompiler:
         )
         protected_structure = np.zeros_like(target_tissue, dtype=bool)
         for structure_id in sorted(
-            bundle.mechanism.representability.required_auxiliary_structures
+            bundle.mechanism.representability.protected_auxiliary_structures
         ):
             if structure_id not in scene.auxiliary_structure_masks:
                 raise JointContractError(

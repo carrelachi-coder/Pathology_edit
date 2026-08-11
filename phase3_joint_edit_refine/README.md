@@ -132,6 +132,38 @@ tissue/nuclei, `T`, `C`, `J`, and generation-support `G` masks. `J` is the area
 ledger; `G` is the frozen H&E generator erase/regeneration support and is not
 counted toward the 19% budget.
 
+Before promoting a new mechanism, freeze a three-arm generator ablation:
+
+```bash
+python scripts/prepare_joint_generator_paired_ablation.py \
+  --handoff-manifest artifacts/CASE/generation_handoff/manifest.json \
+  --output-root artifacts/generator_ablation/CASE \
+  --generator-snapshot CHECKPOINT_DIGEST
+```
+
+The arms are source tissue+source nuclei, target tissue+source nuclei, and
+target tissue+target nuclei. They share the source image, generation support,
+route and fixed seed. Segmentator, CellViT, the preservation audit and an
+independent visual critic must demonstrate target-condition contrast; missing
+evaluators or an unresponsive cell condition returns `render_unsupported`.
+Structural-void/STAS stays closed unless externally produced airspace and
+alveolar maps are digest-bound and this generator ablation passes. The H&E
+image itself is never used to fabricate those structural maps.
+
+Freeze and replay-verify the materialized image/tissue/nuclei evidence for all
+six annotation profiles with:
+
+```bash
+python scripts/freeze_joint_dataset_evidence.py \
+  --grouped-manifest grouped_seed42.json \
+  --output-root artifacts/dataset_evidence \
+  --code-revision COMMIT_SHA
+```
+
+Every materialized file is hashed. A preprocessing revision absent from the
+source manifest is recorded as missing evidence, never inferred from a path or
+current checkout.
+
 `--agent-mode api` enables strict-schema multimodal tissue Planner, joint
 Planner and independent joint critic adapters. It is opt-in and reads the key
 only from `--api-key-env`; the default offline path makes no network call.

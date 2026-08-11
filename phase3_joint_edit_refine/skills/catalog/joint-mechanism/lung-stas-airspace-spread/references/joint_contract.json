@@ -29,6 +29,12 @@
       "alveolar_structure_map",
       "airspace_void_map"
     ],
+    "receiving_auxiliary_structures": [
+      "airspace_void_map"
+    ],
+    "protected_auxiliary_structures": [
+      "alveolar_structure_map"
+    ],
     "allow_semantic_instance_fallback": false,
     "failure_action": "abstain_case"
   },

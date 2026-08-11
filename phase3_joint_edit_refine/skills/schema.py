@@ -40,6 +40,8 @@ class RepresentabilityContract:
     status: str
     required_cell_classes: tuple[int, ...]
     required_auxiliary_structures: tuple[str, ...]
+    receiving_auxiliary_structures: tuple[str, ...]
+    protected_auxiliary_structures: tuple[str, ...]
     allow_semantic_instance_fallback: bool
     failure_action: str
 
@@ -272,6 +274,36 @@ class JointMechanismSkill:
                 + ", ".join(sorted(invalid_bound_layouts))
             )
         required_classes = _ints(representability, "required_cell_classes")
+        required_auxiliary = _strings(
+            representability,
+            "required_auxiliary_structures",
+            allow_empty=True,
+        )
+        receiving_auxiliary = _strings(
+            representability,
+            "receiving_auxiliary_structures",
+            allow_empty=True,
+        )
+        protected_auxiliary = (
+            _strings(
+                representability,
+                "protected_auxiliary_structures",
+                allow_empty=True,
+            )
+            if "protected_auxiliary_structures" in representability
+            else required_auxiliary
+        )
+        if (
+            set(receiving_auxiliary) | set(protected_auxiliary)
+        ) - set(required_auxiliary):
+            raise JointContractError(
+                f"{mechanism_id} auxiliary roles reference structures outside "
+                "required_auxiliary_structures"
+            )
+        if set(receiving_auxiliary) & set(protected_auxiliary):
+            raise JointContractError(
+                f"{mechanism_id} cannot mark one auxiliary as both receiving and protected"
+            )
         allowed_classes = _ints(cell, "allowed_cell_classes")
         if set(required_classes) - set(allowed_classes):
             raise JointContractError(
@@ -326,9 +358,9 @@ class JointMechanismSkill:
             representability=RepresentabilityContract(
                 status=status,
                 required_cell_classes=required_classes,
-                required_auxiliary_structures=_strings(
-                    representability, "required_auxiliary_structures", allow_empty=True
-                ),
+                required_auxiliary_structures=required_auxiliary,
+                receiving_auxiliary_structures=receiving_auxiliary,
+                protected_auxiliary_structures=protected_auxiliary,
                 allow_semantic_instance_fallback=bool(
                     representability.get("allow_semantic_instance_fallback", False)
                 ),

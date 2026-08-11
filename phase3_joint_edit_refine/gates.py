@@ -523,6 +523,12 @@ def _structural_hierarchy_binding(c):
     )
 def _native_structure_preserved(c):
     required = set(c.bundle.mechanism.representability.required_auxiliary_structures)
+    protected = set(
+        c.bundle.mechanism.representability.protected_auxiliary_structures
+    )
+    receiving = set(
+        c.bundle.mechanism.representability.receiving_auxiliary_structures
+    )
     available = set(c.scene.auxiliary_structure_masks)
     missing = sorted(required - available)
     tissue_ok = c.tissue_gate_report.passed
@@ -533,7 +539,7 @@ def _native_structure_preserved(c):
                 & c.scene.auxiliary_structure_masks[structure_id]
             )
         )
-        for structure_id in sorted(required - set(missing))
+        for structure_id in sorted(protected - set(missing))
     }
     passed = tissue_ok and not missing and not any(violations.values())
     return _result(
@@ -546,6 +552,8 @@ def _native_structure_preserved(c):
         ),
         metrics={
             "required": sorted(required),
+            "protected": sorted(protected),
+            "receiving": sorted(receiving),
             "missing": missing,
             "generation_support_overlap_pixels": violations,
         },
@@ -1910,6 +1918,16 @@ def _mechanism_specific_postcondition(
     if expected_mechanism_id.startswith("prostate-pattern-"):
         subchecks["fine_pattern_preserved"] = _fine_pattern_preserved(c).passed
 
+    if expected_mechanism_id == "lung-stas-airspace-spread":
+        subchecks["structural_void_spread"] = (
+            _structural_void_spread_postcondition(c).passed
+        )
+
+    if expected_mechanism_id == "prostate-gleason-architecture-progression":
+        subchecks["architecture_progression"] = (
+            _architecture_progression_postcondition(c).passed
+        )
+
     if "treatment-associated" in expected_mechanism_id:
         subchecks["documented_treatment_context"] = bool(
             c.case.semantic_intent.get("treatment_context") == "post_treatment"
@@ -1965,6 +1983,114 @@ def _mechanism_specific_postcondition(
             "primitive_id": c.case.primitive_id,
             "primitive_scope": c.bundle.primitive.scope,
             "subcheck_results": subchecks,
+        },
+    )
+
+
+def _structural_void_spread_postcondition(c):
+    receiving = c.scene.auxiliary_structure_masks.get("airspace_void_map")
+    protected = c.scene.auxiliary_structure_masks.get("alveolar_structure_map")
+    added = (
+        (np.asarray(c.candidate.target_nuclei_mask) == 1)
+        & (np.asarray(c.source_nuclei) != 1)
+    )
+    tissue_immutable = bool(
+        not np.any(c.candidate.tissue_change)
+        and np.array_equal(c.source_tissue, c.candidate.target_tissue_mask)
+    )
+    maps_present = receiving is not None and protected is not None
+    containment = bool(
+        maps_present
+        and np.any(added)
+        and not np.any(added & ~np.asarray(receiving, dtype=bool))
+        and not np.any(added & np.asarray(protected, dtype=bool))
+    )
+    tumor = np.isin(c.source_tissue, c.schema.resolve_fine_ids("Tumor"))
+    diameter = float(c.scene.population.nominal_nucleus_diameter_px or 8.0)
+    distance = ndimage.distance_transform_edt(~tumor)
+    separated = bool(
+        np.any(added)
+        and float(np.min(distance[added])) >= max(1.0, diameter)
+    )
+    passed = tissue_immutable and containment and separated
+    return _result(
+        "structural_void_spread_postcondition",
+        passed,
+        (
+            "new neoplastic footprints are separated from the primary and contained in the producer-bound void"
+            if passed
+            else "structural-void placement lacks containment, separation or tissue immutability"
+        ),
+        metrics={
+            "tissue_immutable": tissue_immutable,
+            "required_maps_present": maps_present,
+            "added_neoplastic_pixels": int(np.count_nonzero(added)),
+            "void_containment_passed": containment,
+            "primary_separation_passed": separated,
+            "minimum_added_distance_to_primary_px": (
+                float(np.min(distance[added])) if np.any(added) else None
+            ),
+            "required_minimum_distance_px": diameter,
+        },
+    )
+
+
+def _architecture_progression_postcondition(c):
+    trace = c.candidate.tool_trace.get("tissue_tool_trace", {})
+    transition_id = str(
+        trace.get("transition_id")
+        or c.case.provenance.get("architecture_transition_id")
+        or ""
+    )
+    transitions = {
+        "gleason_upgrade_3to4": ((8,), 9),
+        "gleason_upgrade_4to5": ((9,), 10),
+    }
+    transition = transitions.get(transition_id)
+    changed = np.asarray(c.candidate.tissue_change, dtype=bool)
+    lumen = c.scene.auxiliary_structure_masks.get("gland_lumen_map")
+    if transition is None:
+        checks = {"explicit_transition": False}
+    else:
+        source_ids, target_id = transition
+        checks = {
+            "explicit_transition": True,
+            "nonempty_tissue_transition": bool(np.any(changed)),
+            "source_fine_ids_only": bool(
+                np.all(np.isin(c.source_tissue[changed], source_ids))
+            ),
+            "target_fine_id_only": bool(
+                np.all(c.candidate.target_tissue_mask[changed] == target_id)
+            ),
+            "unrequested_pixels_preserved": bool(
+                np.array_equal(
+                    c.source_tissue[~changed],
+                    c.candidate.target_tissue_mask[~changed],
+                )
+            ),
+            "gland_lumen_preserved": bool(
+                lumen is not None
+                and not np.any(changed & np.asarray(lumen, dtype=bool))
+                and not np.any(
+                    c.candidate.generation_support
+                    & np.asarray(lumen, dtype=bool)
+                )
+            ),
+            "joint_cell_response_present": bool(c.candidate.ledger.cell_pixels > 0),
+        }
+    passed = bool(checks and all(checks.values()))
+    return _result(
+        "architecture_progression_postcondition",
+        passed,
+        (
+            "fine-ID transition, lumen preservation and coupled cell response are all observed"
+            if passed
+            else "architecture progression lacks an explicit fine transition or coupled protected realization"
+        ),
+        metrics={
+            "transition_id": transition_id or None,
+            "checks": checks,
+            "changed_pixels": int(np.count_nonzero(changed)),
         },
     )
 

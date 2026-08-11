@@ -9,6 +9,8 @@ Use this primitive only when the annotation profile has explicit fine
 architectural labels and the domain mechanism defines a legal source-to-target
 identity. A burden change cannot stand in for an architectural progression.
 
-The primitive is catalogued but fail-closed until the fine-label transition
-compiler, native lumen/pattern maps, postcondition gate and frozen generator
-capability evaluation are all validated.
+The deterministic PANDA fine-label adapter, native pattern/lumen roles and
+mask-side postcondition are implemented and regression-tested. The primitive
+remains fail-closed because a fine-label change is not proof that the frozen
+H&E generator expresses the target architecture. Open execution scope only
+after a digest-bound three-arm generator ablation and pathology review pass.
