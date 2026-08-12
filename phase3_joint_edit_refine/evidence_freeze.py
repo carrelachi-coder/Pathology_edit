@@ -42,6 +42,7 @@ def freeze_dataset_evidence(
     source = Path(grouped_manifest_path)
     payload = _load_json_object(source)
     records_by_dataset = _group_records(payload)
+    split_contract = _split_contract(payload)
     missing = sorted(set(DATASET_PROFILES) - set(records_by_dataset))
     if missing:
         raise RefineContractError(
@@ -75,6 +76,7 @@ def freeze_dataset_evidence(
             "dataset_id": dataset_id,
             "annotation_profile_id": profile_id,
             "preprocessing": preprocessing,
+            "split_contract": split_contract,
             "records": [
                 {
                     "record_id": item["record_id"],
@@ -128,6 +130,7 @@ def freeze_dataset_evidence(
         "code_revision": code_revision,
         "source_grouped_manifest": str(source.resolve()),
         "source_grouped_manifest_sha256": source_manifest_sha256,
+        "split_contract": split_contract,
         "datasets": frozen,
     }
     index_path = root / "evidence_index.json"
@@ -220,7 +223,7 @@ def _group_records(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         ("val", "validation"),
         ("test", "test"),
     ):
-        records = payload.get(source_split)
+        records = payload.get(source_split, [] if source_split == "test" else None)
         if not isinstance(records, list):
             raise RefineContractError(
                 f"grouped dataset manifest lacks {source_split}[]"
@@ -235,6 +238,31 @@ def _group_records(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
                 )
             grouped[dataset_id].append({**raw, "evidence_split": evidence_split})
     return grouped
+
+
+def _split_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    materialized = [
+        split
+        for split in ("train", "val", "test")
+        if isinstance(payload.get(split), list)
+    ]
+    if not {"train", "val"}.issubset(materialized):
+        raise RefineContractError(
+            "dataset evidence requires materialized train and validation partitions"
+        )
+    absent = [split for split in ("train", "val", "test") if split not in materialized]
+    return {
+        "schema_version": "materialized-split-contract-v1",
+        "materialized_partitions": materialized,
+        "absent_partitions": absent,
+        "test_partition_status": (
+            "materialized" if "test" in materialized else "not_materialized"
+        ),
+        "policy": (
+            "Freeze only source-declared partitions; never reinterpret validation "
+            "records as a held-out test set."
+        ),
+    }
 
 
 def _resolve_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:

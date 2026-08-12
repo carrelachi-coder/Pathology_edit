@@ -90,3 +90,59 @@ def test_six_dataset_evidence_freeze_is_complete_and_replayable(tmp_path: Path):
             "Filter: no filtering",
             "Label remap: fixture labels",
         ]
+
+
+def test_evidence_freeze_records_absent_test_without_relabeling_validation(
+    tmp_path: Path,
+):
+    grouped = {
+        "seed": 42,
+        "strategy": "fixture group-disjoint split",
+        "train": [],
+        "val": [],
+    }
+    for dataset_id in DATASET_PROFILES:
+        root = tmp_path / dataset_id
+        for subdir in ("images", "tissue_masks", "nuclei_masks"):
+            (root / subdir).mkdir(parents=True, exist_ok=True)
+        (root / "metadata.jsonl").write_text("{}\n", encoding="utf-8")
+        (root / "stats.txt").write_text(
+            "Source: fixture\nFilter: none\n", encoding="utf-8"
+        )
+        for split in ("train", "val"):
+            name = f"{dataset_id}-{split}.png"
+            Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(
+                root / "images" / name
+            )
+            Image.fromarray(np.zeros((4, 4), dtype=np.uint8)).save(
+                root / "tissue_masks" / name
+            )
+            Image.fromarray(np.zeros((4, 4), dtype=np.uint8)).save(
+                root / "nuclei_masks" / name
+            )
+            grouped[split].append(
+                {
+                    "dataset_id": dataset_id,
+                    "dataset_root": str(root),
+                    "images_dir": "images",
+                    "masks_dir": "tissue_masks",
+                    "nuclei_dir": "nuclei_masks",
+                    "image": name,
+                    "mask": name,
+                    "nuclei": name,
+                    "sample_id": f"{dataset_id}:{split}",
+                    "group_id": f"{dataset_id}:{split}",
+                }
+            )
+    path = tmp_path / "grouped.json"
+    path.write_text(json.dumps(grouped), encoding="utf-8")
+    result = freeze_dataset_evidence(
+        path,
+        output_root=tmp_path / "frozen",
+        code_revision="fixture-commit",
+        workers=2,
+    )
+    assert result["split_contract"]["test_partition_status"] == "not_materialized"
+    assert result["split_contract"]["absent_partitions"] == ["test"]
+    for dataset in result["datasets"]:
+        assert dataset["split_counts"] == {"train": 1, "validation": 1}
