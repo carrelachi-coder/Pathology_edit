@@ -14,6 +14,7 @@ from .models import (
     JointCriticResult,
     JointGateReport,
 )
+from .planner_inputs import MaskPlannerArtifactRegistry
 from .skills.repository import JointSkillBundle
 
 
@@ -29,6 +30,7 @@ class JointCritic(Protocol):
         candidates: Sequence[JointCandidate],
         gate_reports: Sequence[JointGateReport],
         image_paths: Sequence[str | Path],
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> JointCriticResult: ...
 
 
@@ -39,8 +41,17 @@ class DeterministicJointResearchCritic:
     name: str = "deterministic_joint_research_critic"
     supports_pathology_vision: bool = False
 
-    def review(self, *, case, bundle, candidates, gate_reports, image_paths):
-        del image_paths
+    def review(
+        self,
+        *,
+        case,
+        bundle,
+        candidates,
+        gate_reports,
+        image_paths,
+        artifact_registry=None,
+    ):
+        del image_paths, artifact_registry
         passed = {item.candidate_id for item in gate_reports if item.passed}
         rankings = []
         for candidate in candidates:

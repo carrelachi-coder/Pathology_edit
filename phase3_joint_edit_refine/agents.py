@@ -27,7 +27,10 @@ from .planner import (
     LOCAL_POPULATION_PRIMITIVES,
     JointInterpretationOption,
 )
-from .planner_inputs import validate_mask_planner_image_paths
+from .planner_inputs import (
+    MaskPlannerArtifactRegistry,
+    validate_mask_planner_image_paths,
+)
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
@@ -61,8 +64,11 @@ class OpenAIMultimodalJointPlanner:
         scene: JointSceneAnalysis,
         options: Sequence[JointInterpretationOption],
         image_paths: Sequence[str | Path],
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> tuple[str, str, dict[str, Any]]:
-        image_paths = validate_mask_planner_image_paths(image_paths)
+        image_paths = validate_mask_planner_image_paths(
+            image_paths, case=case, artifact_registry=artifact_registry
+        )
         payload = {
             "case": _mask_planner_case_metadata(case),
             "scene": scene.to_metadata(),
@@ -83,6 +89,8 @@ class OpenAIMultimodalJointPlanner:
                 "do_not_infer_annotation_or_population_profile": True,
                 "source_H&E_is_prohibited_for_execution_planning": True,
                 "do_not_infer_unannotated_histology": True,
+                "return_only_certified_candidate_ids": True,
+                "cite_only_current_preference_rule_ids": True,
             },
         }
         available = {item.option_id: item for item in options}
@@ -142,6 +150,10 @@ class OpenAIMultimodalJointPlanner:
                     + str(raw.get("abstain_reason") or "insufficient mask-graph evidence")
                 )
             try:
+                if _required_string(raw, "decision_id") != "select_primitive_mechanism_pair":
+                    raise JointContractError(
+                        "joint Planner returned an illegal interpretation decision"
+                    )
                 primitive_id = _required_string(raw, "primitive_id")
                 mechanism_id = _required_string(raw, "mechanism_id")
                 option_id = f"{primitive_id}::{mechanism_id}"
@@ -150,6 +162,13 @@ class OpenAIMultimodalJointPlanner:
                         "joint Planner selected an unavailable primitive-mechanism pair"
                     )
                 selected = available[option_id]
+                if (
+                    "select_primitive_mechanism_pair"
+                    not in selected.mechanism.planner_policy.allowed_decisions
+                ):
+                    raise JointContractError(
+                        "skill policy forbids primitive-mechanism selection"
+                    )
                 confidence = _unit(raw, "confidence")
                 explanation = _required_string(
                     raw, "interpretation_explanation"
@@ -157,26 +176,48 @@ class OpenAIMultimodalJointPlanner:
                 observations = _strings(
                     raw.get("supporting_observations"), "supporting_observations"
                 )
+                preference_ids = _strings(
+                    raw.get("supporting_preference_rule_ids"),
+                    "supporting_preference_rule_ids",
+                )
+                unknown_preferences = set(preference_ids) - set(
+                    selected.mechanism.planner_policy.selection_preferences
+                )
+                if unknown_preferences:
+                    raise JointContractError(
+                        "joint Planner cited unknown preference rules: "
+                        + ", ".join(sorted(unknown_preferences))
+                    )
+                candidate_metrics = {
+                    item["candidate_metric_id"]
+                    for item in selected.to_metadata()["planner_policy"][
+                        "preference_metric_bindings"
+                    ]
+                    if item["preference_rule_id"] in preference_ids
+                }
+                available_metrics = set(
+                    selected.to_metadata()[
+                        "deterministic_candidate_metrics"
+                    ]
+                )
+                missing_metrics = candidate_metrics - available_metrics
+                if missing_metrics:
+                    raise JointContractError(
+                        "joint Planner cited preferences without candidate metrics: "
+                        + ", ".join(sorted(missing_metrics))
+                    )
                 contraindications = _strings(
                     raw.get("observed_contraindications", []),
                     "observed_contraindications",
                     allow_empty=True,
                 )
-                if (
-                    contraindications
-                    or confidence
-                    < selected.mechanism.recognition.minimum_confidence
-                ):
-                    raise JointContractError(
-                        "joint mechanism evidence is contraindicated or below its confidence threshold"
-                    )
-                if (
-                    selected.semantic_fit == "contextual"
-                    and len(explanation.split()) < 4
-                ):
-                    raise JointContractError(
-                        "contextual semantic selection lacks an adequate explanation"
-                    )
+                _reject_unannotated_pathology_claims(
+                    (explanation, *observations, *contraindications)
+                )
+                # Confidence, prose observations, and self-reported
+                # contraindications are audit-only LLM outputs. They never
+                # authorize or invalidate an option: the listed option already
+                # carries deterministic preflight and hard-gate certificates.
             except JointContractError as exc:
                 errors.append(f"attempt {attempt}: {exc}")
                 continue
@@ -193,6 +234,7 @@ class OpenAIMultimodalJointPlanner:
                     "semantic_priority": selected.semantic_priority,
                     "interpretation_explanation": explanation,
                     "supporting_observations": list(observations),
+                    "supporting_preference_rule_ids": list(preference_ids),
                     "confidence": confidence,
                 },
                 **usage,
@@ -209,8 +251,11 @@ class OpenAIMultimodalJointPlanner:
         bundle: JointSkillBundle,
         tissue_plan: EditPlan | None,
         image_paths: Sequence[str | Path],
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> tuple[JointEditPlan, dict[str, Any]]:
-        image_paths = validate_mask_planner_image_paths(image_paths)
+        image_paths = validate_mask_planner_image_paths(
+            image_paths, case=case, artifact_registry=artifact_registry
+        )
         payload = {
             "case": _mask_planner_case_metadata(case),
             "scene": scene.to_metadata(),
@@ -304,6 +349,25 @@ class OpenAIMultimodalJointPlanner:
         )
 
     def _parse_plan(self, *, raw, case, scene, bundle, tissue_plan):
+        _reject_prohibited_geometry_payload(raw)
+        decision_ids = set(
+            _strings(raw.get("decision_ids"), "decision_ids")
+        )
+        if decision_ids - set(
+            bundle.mechanism.planner_policy.allowed_decisions
+        ):
+            raise JointContractError(
+                "joint Planner returned a decision outside the skill policy"
+            )
+        required_decisions = {"select_allowed_tool_program"}
+        if bundle.primitive.scope == "tissue_and_cell" or case.primitive_id not in LOCAL_POPULATION_PRIMITIVES:
+            required_decisions.add("select_certified_interface_anchor_ids")
+        if not required_decisions.issubset(
+            decision_ids
+        ):
+            raise JointContractError(
+                "joint Planner omitted required deterministic decision bindings"
+            )
         if raw.get("tissue_plan_accepted") is not True:
             raise JointContractError(
                 "joint Planner rejected the tissue execution contract"
@@ -390,6 +454,27 @@ class OpenAIMultimodalJointPlanner:
             raise JointContractError(
                 "joint Planner cited unknown rules: " + ", ".join(sorted(unknown_rules))
             )
+        required_rules = set(
+            bundle.mechanism.coupling.compatibility_rule_ids
+        )
+        missing_rules = required_rules - set(supporting_rules)
+        if missing_rules:
+            raise JointContractError(
+                "joint Planner omitted required mechanism rules: "
+                + ", ".join(sorted(missing_rules))
+            )
+        preference_ids = _strings(
+            raw.get("supporting_preference_rule_ids"),
+            "supporting_preference_rule_ids",
+        )
+        unknown_preferences = set(preference_ids) - set(
+            bundle.mechanism.planner_policy.selection_preferences
+        )
+        if unknown_preferences:
+            raise JointContractError(
+                "joint Planner cited unknown preference rules: "
+                + ", ".join(sorted(unknown_preferences))
+            )
         mechanism = bundle.mechanism
         raw_cell_plan = raw.get("cell_plan")
         if not isinstance(raw_cell_plan, Mapping):
@@ -401,6 +486,20 @@ class OpenAIMultimodalJointPlanner:
         raw_cell_plan["protected_instance_ids"] = list(mandatory_protected)
         raw_cell_plan["interface_ids"] = sorted(bound_interfaces)
         cell_plan = CellEditPlan.from_mapping(raw_cell_plan)
+        unknown_cell_rules = set(cell_plan.supporting_rule_ids) - set(
+            bundle.active_rule_ids
+        )
+        if unknown_cell_rules:
+            raise JointContractError(
+                "joint Planner cell plan cited unknown rules: "
+                + ", ".join(sorted(unknown_cell_rules))
+            )
+        missing_cell_rules = required_rules - set(cell_plan.supporting_rule_ids)
+        if missing_cell_rules:
+            raise JointContractError(
+                "joint Planner cell plan omitted required mechanism rules: "
+                + ", ".join(sorted(missing_cell_rules))
+            )
         known_anchors = {
             anchor.anchor_segment_id: anchor
             for anchor in scene.tissue.graph.anchor_segments
@@ -577,8 +676,12 @@ class OpenAIMultimodalJointPlanner:
         coupling_rules = _strings(
             raw_coupling.get("compatibility_rule_ids"), "compatibility_rule_ids"
         )
-        if set(coupling_rules) - set(mechanism.coupling.compatibility_rule_ids):
-            raise JointContractError("joint Planner changed the coupling rules")
+        if set(coupling_rules) != set(
+            mechanism.coupling.compatibility_rule_ids
+        ):
+            raise JointContractError(
+                "joint Planner omitted or changed required coupling rules"
+            )
         coupling = CouplingPlan(
             compatibility_rule_ids=coupling_rules,
             area_contract_id=(
@@ -652,11 +755,20 @@ class OpenAIMultimodalJointPlanner:
             ),
             escalation_reason=_optional_string(raw.get("escalation_reason")),
             structural_unit_ids=structural_unit_ids,
+            supporting_preference_rule_ids=preference_ids,
         )
-        if plan.representability_confidence < mechanism.recognition.minimum_confidence:
-            raise JointContractError(
-                "joint plan representability confidence is below the mechanism threshold"
+        _reject_unannotated_pathology_claims(
+            (
+                *plan.supporting_observations,
+                plan.cell_plan.expected_morphology,
+                *plan.uncertainties,
+                *(
+                    (plan.escalation_reason,)
+                    if plan.escalation_reason is not None
+                    else ()
+                ),
             )
+        )
         return plan
 
     def _contract_clients(self) -> tuple[OpenAIResponsesJSONClient, ...]:
@@ -674,8 +786,19 @@ class OpenAIMultimodalJointCritic:
     name: str = "openai_mask_condition_critic"
     supports_pathology_vision: bool = False
 
-    def review(self, *, case, bundle, candidates, gate_reports, image_paths):
-        image_paths = validate_mask_planner_image_paths(image_paths)
+    def review(
+        self,
+        *,
+        case,
+        bundle,
+        candidates,
+        gate_reports,
+        image_paths,
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
+    ):
+        image_paths = validate_mask_planner_image_paths(
+            image_paths, case=case, artifact_registry=artifact_registry
+        )
         passed_ids = [item.candidate_id for item in gate_reports if item.passed]
         payload = {
             "case": {
@@ -764,8 +887,10 @@ MECHANISM_SELECTION_SCHEMA = {
         "clarification_primitive_ids",
         "primitive_id",
         "mechanism_id",
+        "decision_id",
         "interpretation_explanation",
         "supporting_observations",
+        "supporting_preference_rule_ids",
         "observed_contraindications",
         "confidence",
     ],
@@ -781,8 +906,13 @@ MECHANISM_SELECTION_SCHEMA = {
         },
         "primitive_id": {"type": ["string", "null"]},
         "mechanism_id": {"type": ["string", "null"]},
+        "decision_id": {
+            "type": ["string", "null"],
+            "enum": ["select_primitive_mechanism_pair", None],
+        },
         "interpretation_explanation": {"type": ["string", "null"]},
         "supporting_observations": {"type": "array", "items": {"type": "string"}},
+        "supporting_preference_rule_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
         "observed_contraindications": {"type": "array", "items": {"type": "string"}},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
@@ -795,8 +925,10 @@ JOINT_PLAN_JSON_SCHEMA = {
         "abstain",
         "abstain_reason",
         "selected_mechanism_id",
+        "decision_ids",
         "supporting_observations",
         "supporting_rule_ids",
+        "supporting_preference_rule_ids",
         "representability_confidence",
         "tissue_plan_accepted",
         "bound_interface_ids",
@@ -810,8 +942,23 @@ JOINT_PLAN_JSON_SCHEMA = {
         "abstain": {"type": "boolean"},
         "abstain_reason": {"type": ["string", "null"]},
         "selected_mechanism_id": {"type": ["string", "null"]},
+        "decision_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": True,
+            "items": {
+                "type": "string",
+                "enum": [
+                    "select_certified_interface_anchor_ids",
+                    "select_allowed_tool_program",
+                    "request_clarification",
+                    "abstain"
+                ]
+            }
+        },
         "supporting_observations": {"type": "array", "items": {"type": "string"}},
         "supporting_rule_ids": {"type": "array", "items": {"type": "string"}},
+        "supporting_preference_rule_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
         "representability_confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "tissue_plan_accepted": {"type": "boolean"},
         "bound_interface_ids": {"type": "array", "items": {"type": "string"}},
@@ -945,6 +1092,66 @@ def _required_string(payload: Mapping[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise JointContractError(f"{key} must be a non-empty string")
     return value.strip()
+
+
+def _reject_prohibited_geometry_payload(payload: Mapping[str, Any]) -> None:
+    """Reject direct LLM control over compiler-owned numeric geometry."""
+
+    prohibited_keys = {
+        "pixels",
+        "polygon",
+        "polygons",
+        "coordinates",
+        "nucleus_coordinates",
+        "nucleus_count",
+        "cell_count",
+        "density_multiplier",
+        "area_budget",
+        "shape_mask",
+        "shape_masks",
+    }
+
+    def walk(value: Any, path: str) -> None:
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                key_text = str(key)
+                if key_text in prohibited_keys:
+                    raise JointContractError(
+                        "joint Planner attempted compiler-owned numeric geometry: "
+                        + f"{path}.{key_text}"
+                    )
+                walk(child, f"{path}.{key_text}")
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{path}[{index}]")
+
+    walk(payload, "plan")
+
+
+def _reject_unannotated_pathology_claims(values: Sequence[str]) -> None:
+    """Prevent free-form Planner text from creating pathology authority."""
+
+    prohibited_claims = {
+        "fibrosis",
+        "fibrotic tumor bed",
+        "tumor bed",
+        "desmoplasia",
+        "histologic invasive front",
+        "molecular subtype",
+        "histologic subtype",
+        "retraction artifact",
+        "vascular embolus",
+    }
+    for value in values:
+        lowered = str(value).casefold()
+        matches = sorted(
+            claim for claim in prohibited_claims if claim in lowered
+        )
+        if matches:
+            raise JointContractError(
+                "joint Planner asserted an unannotated pathology claim: "
+                + ", ".join(matches)
+            )
 
 
 def _optional_string(value: Any) -> str | None:

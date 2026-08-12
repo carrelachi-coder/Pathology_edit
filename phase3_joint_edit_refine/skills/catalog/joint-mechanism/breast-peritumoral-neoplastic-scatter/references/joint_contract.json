@@ -47,9 +47,9 @@
       "no_solid_neoplastic_bridge"
     ],
     "selection_preferences": [
-      "prefer an outer annulus with high complete-shape packing capacity",
-      "prefer several separated legal foci over one dense clump",
-      "prefer anchors with adequate span and no protected overlap"
+      "pref:certificate:maximize-capacity-margin",
+      "pref:protected-clearance:maximize-distance",
+      "pref:topology:minimize-structural-risk"
     ],
     "clarification_triggers": [
       "the instruction could mean tissue burden expansion rather than cell-only scatter",
@@ -155,6 +155,7 @@
       "cell_spatial_distribution",
       "local_shape_distribution",
       "peritumoral_annulus",
+      "peritumoral_scatter_separation",
       "no_remote_neoplastic_focus",
       "no_solid_neoplastic_bridge"
     ]
@@ -177,6 +178,7 @@
     "joint_provenance",
     "external_boundary_binding",
     "peritumoral_annulus",
+    "peritumoral_scatter_separation",
     "no_remote_neoplastic_focus",
     "no_solid_neoplastic_bridge",
     "mechanism_postcondition:breast-peritumoral-neoplastic-scatter"

@@ -17,6 +17,8 @@ from .models import (
     JointContractError,
     JointEditPlan,
 )
+from .planner_inputs import MaskPlannerArtifactRegistry
+from .planner_policy import PREFERENCE_METRIC_CATALOG, preference_metadata
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 from .skills.schema import JointMechanismSkill
@@ -49,6 +51,65 @@ class JointInterpretationOption:
         return f"{self.primitive_id}::{self.mechanism.mechanism_id}"
 
     def to_metadata(self) -> dict[str, Any]:
+        feasibility = dict(self.feasibility)
+        compiler = feasibility.get("whole_mask_topology_witness", {})
+        compiler_interfaces = (
+            compiler.get("compiler", {}).get("interfaces", ())
+            if isinstance(compiler, Mapping)
+            else ()
+        )
+        maximum_depth = max(
+            (
+                float(item.get("compiled_peak_depth_px", 0.0))
+                for item in compiler_interfaces
+                if isinstance(item, Mapping)
+            ),
+            default=0.0,
+        )
+        capacity_margin = float(
+            feasibility.get("aggregate_tissue_capacity_pixels", 0)
+        ) - float(feasibility.get("meaningful_tissue_floor_pixels", 0))
+        reference_count = float(
+            feasibility.get("complete_reference_instances", 0)
+        )
+        interface_count = float(
+            feasibility.get("candidate_infiltration_interface_count", 0)
+        )
+        feasibility_metrics = {
+            "certificate_capacity_margin": float(
+                capacity_margin
+            ),
+            "packing_seam_capacity_margin": reference_count,
+            "separated_focus_capacity": interface_count,
+            "maximum_depth_px": maximum_depth,
+            "depth_span_ratio": maximum_depth
+            / max(1.0, float(feasibility.get("feasible_interface_count", 1))),
+            "protected_exclusion_count": float(
+                len(feasibility.get("annotation_visual_veto_requirements", ()))
+            ),
+            "anchor_length_depth_ratio": max(1.0, interface_count)
+            / max(1.0, maximum_depth),
+            "class1_packing_margin": reference_count,
+            "projection_merge_count": 0.0,
+            "protected_distance_px": 0.0,
+            "median_tumor_distance_px": 0.0,
+            "complete_shape_packing_margin": reference_count,
+            "bridge_risk_count": 0.0,
+            "structural_risk_count": 0.0,
+        }
+        # Every preference exposed to the LLM has a named deterministic
+        # metric slot. Zero can mean a certified absence (for example, no
+        # bridge) but never an absent metric.
+        missing_metrics = {
+            metric_id
+            for metric_id, _direction in PREFERENCE_METRIC_CATALOG.values()
+            if metric_id not in feasibility_metrics
+        }
+        if missing_metrics:
+            raise JointContractError(
+                "candidate certificate omits preference metrics: "
+                + ", ".join(sorted(missing_metrics))
+            )
         return {
             "option_id": self.option_id,
             "primitive_id": self.primitive_id,
@@ -77,6 +138,9 @@ class JointInterpretationOption:
                 "selection_preferences": list(
                     self.mechanism.planner_policy.selection_preferences
                 ),
+                "preference_metric_bindings": list(
+                    preference_metadata(self.mechanism.planner_policy)
+                ),
                 "clarification_triggers": list(
                     self.mechanism.planner_policy.clarification_triggers
                 ),
@@ -84,7 +148,8 @@ class JointInterpretationOption:
                     self.mechanism.planner_policy.allowed_decisions
                 ),
             },
-            "feasibility": dict(self.feasibility),
+            "feasibility": feasibility,
+            "deterministic_candidate_metrics": feasibility_metrics,
         }
 
 
@@ -99,6 +164,7 @@ class JointPlanner(Protocol):
         scene: JointSceneAnalysis,
         options: Sequence[JointInterpretationOption],
         image_paths: Sequence[str | Path],
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> tuple[str, str, dict[str, Any]]: ...
 
     def create_plan(
@@ -109,6 +175,7 @@ class JointPlanner(Protocol):
         bundle: JointSkillBundle,
         tissue_plan: EditPlan | None,
         image_paths: Sequence[str | Path],
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> tuple[JointEditPlan, dict[str, Any]]: ...
 
 
@@ -119,8 +186,10 @@ class HeuristicJointPlanner:
     name: str = "heuristic_joint_planner"
     supports_pathology_vision: bool = False
 
-    def select_interpretation(self, *, case, scene, options, image_paths):
-        del scene, image_paths
+    def select_interpretation(
+        self, *, case, scene, options, image_paths, artifact_registry=None
+    ):
+        del scene, image_paths, artifact_registry
         requested = case.provenance.get("joint_mechanism_id")
         if requested == "__clarify__":
             primitive_ids = tuple(
@@ -191,8 +260,9 @@ class HeuristicJointPlanner:
         bundle: JointSkillBundle,
         tissue_plan: EditPlan | None,
         image_paths: Sequence[str | Path],
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> tuple[JointEditPlan, dict[str, Any]]:
-        del image_paths
+        del image_paths, artifact_registry
         mechanism = bundle.mechanism
         label_contract = mechanism.tissue_program.primitive_label_contracts.get(
             case.primitive_id
@@ -384,6 +454,9 @@ class HeuristicJointPlanner:
             escalation_reason="requires_mask_graph_llm_planner_and_independent_condition_critic",
             structural_unit_ids=_structural_units_for_interfaces(
                 scene, interface_ids
+            ),
+            supporting_preference_rule_ids=(
+                mechanism.planner_policy.selection_preferences
             ),
         )
         return plan, {
@@ -602,6 +675,9 @@ class HeuristicJointPlanner:
             escalation_reason="requires_mask_graph_llm_planner_and_independent_condition_critic",
             structural_unit_ids=_structural_units_for_components(
                 scene, (zone.tissue_component_id,)
+            ),
+            supporting_preference_rule_ids=(
+                bundle.mechanism.planner_policy.selection_preferences
             ),
         )
         return plan, {

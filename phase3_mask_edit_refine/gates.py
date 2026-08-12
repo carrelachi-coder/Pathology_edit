@@ -527,8 +527,16 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
     passed = replay_identity_valid and unowned_change_pixels == 0
     for index, item in enumerate(planned):
         execution = item.execution_contract
-        effective_min_coverage = max(
-            0.50, execution.min_anchor_coverage_fraction
+        directional_projection = (
+            context.plan.tool_program.parameter_ranges.get(
+                "tissue_geometry_mode"
+            )
+            == "annotation_anchored_narrow_connected_extension"
+        )
+        effective_min_coverage = (
+            max(0.02, execution.min_anchor_coverage_fraction)
+            if directional_projection
+            else max(0.50, execution.min_anchor_coverage_fraction)
         )
         effective_max_off_anchor = min(
             0.03, execution.max_off_anchor_contact_fraction
@@ -1141,8 +1149,12 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
     p95_depth = float(np.percentile(distances, 95))
     ratio = max_depth / span
     band_max = max(float(item.allowed_edit_band_px[1]) for item in planned)
+    directional_projection = (
+        context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
+        == "annotation_anchored_narrow_connected_extension"
+    )
     max_ratio = min(
-        2.0,
+        6.0 if directional_projection else 2.0,
         float(context.plan.tool_program.parameter_ranges.get("max_depth_span_ratio", 1.25)),
     )
     passed = max_depth <= band_max + 1e-6 and ratio <= max_ratio

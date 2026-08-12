@@ -14,12 +14,13 @@ from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import GateReport
 
 from .cell_programs import CELL_TOOL_COMPILER_VERSION
-from .feasibility import classify_tumor_stroma_boundary
 from .executable_contract import ExecutableJointContract
+from .feasibility import classify_tumor_stroma_boundary
 from .instance_authority import build_scene_instance_authority
 from .models import (
     JointCandidate,
     JointCaseContext,
+    JointContractError,
     JointEditPlan,
     JointGateCheck,
     JointGateReport,
@@ -33,6 +34,10 @@ from .seam import (
     target_cell_class_for_tissue,
 )
 from .skills.repository import JointSkillBundle
+from .tissue_tools import (
+    JOINT_TOOL_FAMILY_TO_EXECUTOR,
+    compile_tissue_tool_program,
+)
 
 BASE_REQUIRED_CHECKS = (
     "primitive_semantics",
@@ -170,6 +175,9 @@ class JointGateRegistry:
             ),
             "peritumoral_annulus": _peritumoral_annulus,
             "small_cluster_cardinality": _small_cluster_cardinality,
+            "peritumoral_scatter_separation": (
+                _peritumoral_scatter_separation
+            ),
             "no_remote_neoplastic_focus": _no_remote_neoplastic_focus,
             "no_solid_neoplastic_bridge": _no_solid_neoplastic_bridge,
         }
@@ -431,46 +439,171 @@ def _annotation_anchored_extension_geometry(c):
         )
     target_ids = tuple(c.schema.resolve_fine_ids("Tumor"))
     source_tumor = np.isin(c.source_tissue, target_ids)
-    target_tumor = np.isin(c.candidate.target_tissue_mask, target_ids)
-    attached = bool(
-        np.any(change & ndimage.binary_dilation(source_tumor, iterations=1))
-        and ndimage.label(target_tumor, structure=np.ones((3, 3), dtype=bool))[1]
-        <= ndimage.label(source_tumor, structure=np.ones((3, 3), dtype=bool))[1]
+    selected_anchors = np.zeros_like(change)
+    parent_ids = set()
+    for planned in c.plan.tissue_plan.candidate_interfaces:
+        parent_ids.add(planned.target_component_id)
+        for anchor_id in planned.execution_contract.anchor_segment_ids:
+            anchor = c.scene.tissue.anchor_masks.get(anchor_id)
+            if anchor is not None:
+                selected_anchors |= np.asarray(anchor, dtype=bool)
+    parent = np.zeros_like(change)
+    for component_id in parent_ids:
+        component = c.scene.tissue.component_masks.get(component_id)
+        if component is not None:
+            parent |= np.asarray(component, dtype=bool)
+    other_tumor = source_tumor & ~parent
+    nominal = max(1.0, c.executable_contract.cell_program.nominal_nucleus_diameter_px)
+    audit = audit_directional_extension_raster(
+        change=change,
+        parent=parent,
+        other_tumor=other_tumor,
+        selected_anchor=selected_anchors,
+        nominal_nucleus_diameter_px=nominal,
     )
-    _, change_components = ndimage.label(
-        change, structure=np.ones((3, 3), dtype=bool)
-    )
-    rows, cols = np.nonzero(change)
-    height = int(rows.max() - rows.min() + 1) if rows.size else 0
-    width = int(cols.max() - cols.min() + 1) if cols.size else 0
-    elongation = max(height, width) / max(1, min(height, width))
-    trace_parts = c.candidate.tool_trace.get("tissue_tool_trace", {}).get(
-        "parts",
-        c.candidate.tool_trace.get("parts", ()),
-    )
-    profile_modes = {
-        str(item.get("depth_profile", {}).get("mode"))
-        for item in trace_parts
-        if isinstance(item, dict)
-    }
-    tapered = "tapered_lobe" in profile_modes
-    passed = bool(attached and change_components >= 1 and tapered and elongation >= 1.15)
+    passed = bool(audit["passed"])
     return _result(
         "annotation_anchored_extension_geometry",
         passed,
         (
-            "tissue change is an attached, tapered, directionally elongated extension"
+            "final raster proves one narrow tapered single-parent projection"
             if passed
-            else "tissue change is detached, broad, non-tapered, or not directionally elongated"
+            else "final raster is detached, broad, branched, merged, untapered, or bound to the wrong anchor"
         ),
         metrics={
-            "attached_to_source_tumor": attached,
-            "change_component_count": int(change_components),
-            "bbox_elongation": float(elongation),
-            "profile_modes": sorted(profile_modes),
-            "minimum_bbox_elongation": 1.15,
+            **audit,
+            "trace_used_as_geometry_evidence": False,
         },
     )
+
+
+def audit_directional_extension_raster(
+    *,
+    change,
+    parent,
+    other_tumor,
+    selected_anchor,
+    nominal_nucleus_diameter_px,
+):
+    """Reconstruct a cord-extension certificate from raster authority only."""
+
+    change = np.asarray(change, dtype=bool)
+    parent = np.asarray(parent, dtype=bool)
+    other_tumor = np.asarray(other_tumor, dtype=bool)
+    selected_anchor = np.asarray(selected_anchor, dtype=bool)
+    _, change_components = ndimage.label(
+        change, structure=np.ones((3, 3), dtype=bool)
+    )
+    attachment = change & ndimage.binary_dilation(parent, iterations=1)
+    _, attachment_components = ndimage.label(
+        attachment, structure=np.ones((3, 3), dtype=bool)
+    )
+    anchor_contact = int(
+        np.count_nonzero(
+            change & ndimage.binary_dilation(selected_anchor, iterations=1)
+        )
+    )
+    side_merge = int(
+        np.count_nonzero(
+            change & ndimage.binary_dilation(other_tumor, iterations=1)
+        )
+    )
+    distance_to_edge = ndimage.distance_transform_edt(change)
+    skeleton = _morphological_skeleton(change)
+    neighbors = ndimage.convolve(
+        skeleton.astype(np.uint8),
+        np.ones((3, 3), dtype=np.uint8),
+        mode="constant",
+    ) - skeleton.astype(np.uint8)
+    branch_pixels = int(np.count_nonzero(skeleton & (neighbors >= 4)))
+    widths = 2.0 * distance_to_edge[skeleton]
+    median_width = float(np.median(widths)) if widths.size else 0.0
+    maximum_width = float(np.max(widths)) if widths.size else 0.0
+    length_width_ratio = int(np.count_nonzero(skeleton)) / max(1.0, median_width)
+    neck, tip, longitudinal_span, directionality = _projection_taper_metrics(
+        change, attachment=attachment
+    )
+    taper_ratio = tip / max(1.0, neck)
+    maximum_allowed_width = max(
+        8.0, 4.0 * float(nominal_nucleus_diameter_px)
+    )
+    passed = bool(
+        change_components == 1
+        and attachment_components == 1
+        and np.any(attachment)
+        and anchor_contact > 0
+        and side_merge == 0
+        and branch_pixels <= 1
+        and 0 < maximum_width <= maximum_allowed_width
+        and length_width_ratio >= 1.5
+        and taper_ratio <= 0.90
+        and directionality >= 1.35
+    )
+    return {
+        "passed": passed,
+        "change_component_count": int(change_components),
+        "attachment_component_count": int(attachment_components),
+        "selected_anchor_contact_pixels": anchor_contact,
+        "side_merge_pixels": side_merge,
+        "skeleton_branch_pixels": branch_pixels,
+        "median_width_px": median_width,
+        "maximum_width_px": maximum_width,
+        "maximum_allowed_width_px": maximum_allowed_width,
+        "skeleton_length_width_ratio": length_width_ratio,
+        "neck_width_px": neck,
+        "tip_width_px": tip,
+        "tip_to_neck_width_ratio": taper_ratio,
+        "longitudinal_span_px": longitudinal_span,
+        "directionality_ratio": directionality,
+    }
+
+
+def _morphological_skeleton(mask):
+    from skimage.morphology import skeletonize
+
+    return np.asarray(skeletonize(np.asarray(mask, dtype=bool)), dtype=bool)
+
+
+def _projection_taper_metrics(change, *, attachment):
+    """Measure neck-to-tip taper directly from the final projection raster."""
+
+    coordinates = np.argwhere(np.asarray(change, dtype=bool)).astype(float)
+    attached = np.argwhere(np.asarray(attachment, dtype=bool)).astype(float)
+    if coordinates.shape[0] < 3 or attached.size == 0:
+        return 0.0, 0.0, 0.0, 0.0
+    origin = attached.mean(axis=0)
+    direction = coordinates.mean(axis=0) - origin
+    norm = float(np.linalg.norm(direction))
+    if norm <= 1e-6:
+        centered = coordinates - coordinates.mean(axis=0)
+        _, _, vh = np.linalg.svd(centered, full_matrices=False)
+        direction = np.asarray(vh[0], dtype=float)
+    else:
+        direction /= norm
+    tangent = np.asarray((-direction[1], direction[0]), dtype=float)
+    deltas = coordinates - origin
+    longitudinal = deltas @ direction
+    lateral = deltas @ tangent
+    # Orient the axis so the attachment occupies the proximal end.
+    attached_longitudinal = (attached - origin) @ direction
+    if float(np.median(attached_longitudinal)) > float(np.median(longitudinal)):
+        longitudinal = -longitudinal
+    low = float(np.quantile(longitudinal, 0.10))
+    high = float(np.quantile(longitudinal, 0.90))
+    span = max(0.0, high - low)
+    window = max(1.0, 0.22 * span)
+    neck_values = lateral[longitudinal <= low + window]
+    tip_values = lateral[longitudinal >= high - window]
+
+    def width(values):
+        if values.size == 0:
+            return 0.0
+        return float(np.max(values) - np.min(values) + 1.0)
+
+    neck = width(neck_values)
+    tip = width(tip_values)
+    total_width = width(lateral)
+    return neck, tip, span, span / max(1.0, total_width)
 def _peritumoral_annulus(c):
     if c.bundle.primitive.scope != "cell_only":
         return _result(
@@ -507,11 +640,6 @@ def _peritumoral_annulus(c):
 
 
 def _small_cluster_cardinality(c):
-    placements = [
-        item
-        for item in c.candidate.tool_trace.get("placements", ())
-        if isinstance(item, dict)
-    ]
     if c.plan.cell_plan.mechanism_program_id != "small_cluster":
         return _result(
             "small_cluster_cardinality",
@@ -519,12 +647,19 @@ def _small_cluster_cardinality(c):
             "small-cluster cardinality is not applicable",
             metrics={"applicable": False},
         )
-    groups: dict[str, int] = {}
-    for index, item in enumerate(placements):
-        group = str(item.get("cluster_id") or f"single:{index}")
-        groups[group] = max(groups.get(group, 0), int(item.get("cluster_size", 1)))
+    audit = _reconstruct_added_class1_foci(c)
     minimum, maximum = c.bundle.mechanism.cell_program.cluster_size_range
-    passed = bool(groups) and all(minimum <= value <= maximum for value in groups.values())
+    required_foci = max(
+        2, int(c.case.cell_count_extent_budget.minimum_effect_foci)
+    )
+    sizes = audit["focus_sizes"]
+    passed = bool(
+        audit["ledger_matches_instances"]
+        and audit["all_footprints_in_extent"]
+        and audit["source_bridge_pixels"] == 0
+        and len(sizes) >= required_foci
+        and all(minimum <= value <= maximum for value in sizes)
+    )
     return _result(
         "small_cluster_cardinality",
         passed,
@@ -533,32 +668,227 @@ def _small_cluster_cardinality(c):
             if passed
             else "a neoplastic focus violates the skill-owned cluster cardinality"
         ),
-        metrics={"cluster_sizes": groups, "allowed_range": [minimum, maximum]},
+        metrics={
+            **audit,
+            "allowed_range": [minimum, maximum],
+            "required_focus_count": required_foci,
+            "trace_used_as_cardinality_evidence": False,
+        },
     )
+
+
+def _peritumoral_scatter_separation(c):
+    if c.plan.cell_plan.mechanism_program_id != "single":
+        return _result(
+            "peritumoral_scatter_separation",
+            True,
+            "single-instance scatter separation is not applicable",
+            metrics={"applicable": False},
+        )
+    audit = _reconstruct_added_class1_foci(c)
+    required_foci = max(
+        2, int(c.case.cell_count_extent_budget.minimum_effect_foci)
+    )
+    passed = bool(
+        audit["ledger_matches_instances"]
+        and audit["all_footprints_in_extent"]
+        and audit["source_bridge_pixels"] == 0
+        and audit["focus_count"] >= required_foci
+        and all(size == 1 for size in audit["focus_sizes"])
+    )
+    return _result(
+        "peritumoral_scatter_separation",
+        passed,
+        (
+            "final raster proves separated complete single-cell foci"
+            if passed
+            else "final raster contains an untracked, clustered, bridged, or out-of-extent focus"
+        ),
+        metrics={
+            **audit,
+            "required_focus_count": required_foci,
+            "trace_used_as_separation_evidence": False,
+        },
+    )
+def _reconstruct_added_class1_foci(c):
+    ledger = [
+        item
+        for item in c.candidate.tool_trace.get("accepted_center_ledger", ())
+        if isinstance(item, dict) and int(item.get("class_id", -1)) == 1
+    ]
+    return audit_added_class1_foci(
+        source_class1=np.asarray(c.source_nuclei) == 1,
+        target_class1=np.asarray(c.candidate.target_nuclei_mask) == 1,
+        accepted_center_ledger=ledger,
+        valid_footprint_region=np.asarray(
+            c.executable_contract.cell_program.valid_footprint_region,
+            dtype=bool,
+        ),
+        nominal_nucleus_diameter_px=max(
+            1.0,
+            c.executable_contract.cell_program.nominal_nucleus_diameter_px,
+        ),
+    )
+
+
+def audit_added_class1_foci(
+    *,
+    source_class1,
+    target_class1,
+    accepted_center_ledger,
+    valid_footprint_region,
+    nominal_nucleus_diameter_px,
+):
+    """Rebuild added instances/foci from the final raster and center authority.
+
+    Trace-provided cluster identifiers or cluster sizes are intentionally
+    ignored.  The accepted-center ledger is used only as the instance seed
+    authority; final focus topology and extent come from the target raster.
+    """
+
+    source = np.asarray(source_class1, dtype=bool)
+    target = np.asarray(target_class1, dtype=bool)
+    valid_extent = np.asarray(valid_footprint_region, dtype=bool)
+    added = target & ~source
+    centers = []
+    ledger_valid = bool(accepted_center_ledger)
+    for item in accepted_center_ledger:
+        if not isinstance(item, dict) or int(item.get("class_id", -1)) != 1:
+            ledger_valid = False
+            continue
+        row, col = int(item.get("row", -1)), int(item.get("col", -1))
+        if (
+            row < 0
+            or col < 0
+            or row >= target.shape[0]
+            or col >= target.shape[1]
+            or not added[row, col]
+        ):
+            ledger_valid = False
+        centers.append((row, col))
+    if len(set(centers)) != len(centers):
+        ledger_valid = False
+
+    added_labels, added_component_count = ndimage.label(
+        added, structure=np.ones((3, 3), dtype=bool)
+    )
+    seeded_components = set()
+    component_center_counts: dict[int, int] = {}
+    for row, col in centers:
+        if 0 <= row < added.shape[0] and 0 <= col < added.shape[1]:
+            label_id = int(added_labels[row, col])
+            if label_id > 0:
+                seeded_components.add(label_id)
+                component_center_counts[label_id] = (
+                    component_center_counts.get(label_id, 0) + 1
+                )
+    all_components_seeded = seeded_components == set(
+        range(1, int(added_component_count) + 1)
+    )
+    one_center_per_raster_instance = bool(
+        all(value == 1 for value in component_center_counts.values())
+        and len(component_center_counts) == int(added_component_count)
+    )
+    ledger_matches = bool(
+        ledger_valid
+        and len(centers) > 0
+        and all_components_seeded
+        and one_center_per_raster_instance
+    )
+
+    # A deterministic Voronoi partition recovers one complete-instance
+    # footprint for every accepted center, including touching cluster members.
+    recovered_footprints = []
+    if centers:
+        coordinates = np.argwhere(added)
+        center_array = np.asarray(centers, dtype=float)
+        nearest = np.argmin(
+            np.sum(
+                (coordinates[:, None, :] - center_array[None, :, :]) ** 2,
+                axis=2,
+            ),
+            axis=1,
+        )
+        for index in range(len(centers)):
+            footprint = np.zeros_like(added)
+            assigned = coordinates[nearest == index]
+            if assigned.size:
+                footprint[assigned[:, 0], assigned[:, 1]] = True
+            else:
+                ledger_matches = False
+            recovered_footprints.append(footprint)
+
+    nominal = max(1.0, float(nominal_nucleus_diameter_px))
+    center_array = np.asarray(centers, dtype=float)
+    adjacency = np.zeros((len(centers), len(centers)), dtype=bool)
+    if len(centers) > 1:
+        distances = np.linalg.norm(
+            center_array[:, None, :] - center_array[None, :, :], axis=2
+        )
+        adjacency = (distances <= 2.25 * nominal) & (distances > 0)
+    groups = []
+    unseen = set(range(len(centers)))
+    while unseen:
+        seed = unseen.pop()
+        group = {seed}
+        frontier = [seed]
+        while frontier:
+            current = frontier.pop()
+            neighbors = {
+                int(index) for index in np.flatnonzero(adjacency[current])
+            } & unseen
+            unseen -= neighbors
+            group |= neighbors
+            frontier.extend(neighbors)
+        groups.append(group)
+    all_in_extent = all(
+        not np.any(footprint & ~valid_extent)
+        for footprint in recovered_footprints
+    )
+    source_dilated = ndimage.binary_dilation(source, iterations=1)
+    source_bridge = sum(
+        int(np.count_nonzero(footprint & source_dilated))
+        for footprint in recovered_footprints
+    )
+    return {
+        "reconstructed_instance_count": len(recovered_footprints),
+        "accepted_center_count": len(centers),
+        "ledger_matches_instances": bool(ledger_matches),
+        "focus_sizes": [len(group) for group in groups],
+        "focus_count": len(groups),
+        "all_footprints_in_extent": bool(all_in_extent),
+        "source_bridge_pixels": int(source_bridge),
+        "unseeded_added_component_count": int(
+            added_component_count - len(seeded_components)
+        ),
+        "one_center_per_raster_instance": one_center_per_raster_instance,
+        "raster_component_center_counts": {
+            str(key): value
+            for key, value in sorted(component_center_counts.items())
+        },
+    }
 
 
 def _no_remote_neoplastic_focus(c):
     tumor_ids = tuple(c.schema.resolve_fine_ids("Tumor"))
     tumor = np.isin(c.source_tissue, tumor_ids)
     distance = ndimage.distance_transform_edt(~tumor)
-    placements = [
-        item
-        for item in c.candidate.tool_trace.get("placements", ())
-        if isinstance(item, dict)
-        and int(item.get("class_id", item.get("cell_class", -1))) == 1
-    ]
+    target_class1 = np.asarray(c.candidate.target_nuclei_mask) == 1
+    source_class1 = np.asarray(c.source_nuclei) == 1
+    labeled, count = ndimage.label(
+        target_class1, structure=np.ones((3, 3), dtype=bool)
+    )
     maximum = max(1, int(c.bundle.mechanism.cell_program.halo_distance_px[1]))
     remote = []
-    for index, item in enumerate(placements):
-        if isinstance(item.get("center_xy"), (list, tuple)) and len(item["center_xy"]) == 2:
-            col, row = (int(value) for value in item["center_xy"])
-        else:
-            row, col = int(item.get("row", -1)), int(item.get("col", -1))
-        if not (0 <= row < distance.shape[0] and 0 <= col < distance.shape[1]):
-            remote.append(index)
-        elif distance[row, col] > maximum:
-            remote.append(index)
-    passed = bool(placements) and not remote
+    added_count = 0
+    for label_id in range(1, count + 1):
+        footprint = labeled == label_id
+        if np.any(footprint & source_class1):
+            continue
+        added_count += 1
+        if np.any(distance[footprint] > maximum):
+            remote.append(label_id)
+    passed = added_count > 0 and not remote
     return _result(
         "no_remote_neoplastic_focus",
         passed,
@@ -568,9 +898,10 @@ def _no_remote_neoplastic_focus(c):
             else "a new neoplastic focus is absent, untracked, or remote"
         ),
         metrics={
-            "placement_count": len(placements),
-            "remote_placement_indices": remote,
+            "reconstructed_added_instance_count": added_count,
+            "remote_instance_labels": remote,
             "maximum_distance_px": maximum,
+            "trace_used_as_location_evidence": False,
         },
     )
 
@@ -668,6 +999,67 @@ def _tool_program_binding(c):
     program = c.executable_contract.cell_program.to_metadata()
     traced_program = c.candidate.tool_trace.get("compiled_cell_tool_program")
     expected = c.plan.cell_plan
+    tissue_trace = c.candidate.tool_trace.get("tissue_tool_trace", {})
+    if c.bundle.primitive.scope == "cell_only":
+        tissue_binding_ok = bool(
+            tissue_trace.get("tool_name") == "preserve_tissue"
+            and c.candidate.ledger.tissue_pixels == 0
+        )
+    elif c.plan.tissue_plan is None:
+        tissue_binding_ok = False
+    else:
+        expected_tissue_program = (
+            c.plan.tissue_plan.tool_program.parameter_ranges.get(
+                "joint_tissue_tool_program"
+            )
+        )
+        expected_executors = tuple(
+            c.plan.tissue_plan.tool_program.allowed_tools
+        )
+        traced_tissue_program = tissue_trace.get(
+            "joint_tissue_tool_program"
+        )
+        concrete_executor = tissue_trace.get("concrete_tissue_executor")
+        selection_certificate = c.plan.tissue_plan.tool_program.parameter_ranges.get(
+            "planner_selection_certificate"
+        )
+        try:
+            compiled_tissue = compile_tissue_tool_program(
+                primitive_id=c.case.primitive_id,
+                mechanism_id=c.plan.selected_mechanism_id,
+                mechanism_allowed_families=(
+                    c.bundle.mechanism.tissue_program.allowed_tools
+                ),
+                primitive_allowed_executors=tuple(
+                    expected_tissue_program.get(
+                        "allowed_concrete_executors", ()
+                    )
+                    if isinstance(expected_tissue_program, dict)
+                    else ()
+                ),
+            )
+        except JointContractError:
+            tissue_binding_ok = False
+        else:
+            tissue_binding_ok = bool(
+                isinstance(expected_tissue_program, dict)
+                and traced_tissue_program == expected_tissue_program
+                and expected_tissue_program == compiled_tissue.to_metadata()
+                and concrete_executor in expected_executors
+                and concrete_executor
+                in compiled_tissue.allowed_concrete_executors
+                and (
+                    not isinstance(selection_certificate, dict)
+                    or (
+                        selection_certificate.get("selected_tool_family")
+                        in compiled_tissue.allowed_joint_families
+                        and JOINT_TOOL_FAMILY_TO_EXECUTOR.get(
+                            selection_certificate.get("selected_tool_family")
+                        )
+                        == concrete_executor
+                    )
+                )
+            )
     passed = bool(
         isinstance(program, dict)
         and program.get("compiler_version") == CELL_TOOL_COMPILER_VERSION
@@ -699,6 +1091,7 @@ def _tool_program_binding(c):
             )
         )
         and traced_program == program
+        and tissue_binding_ok
     )
     return _result(
         "tool_program_binding",
@@ -709,6 +1102,7 @@ def _tool_program_binding(c):
         metrics={
             "compiled_program": program or {},
             "trace_matches_contract": traced_program == program,
+            "tissue_tool_program_binding": tissue_binding_ok,
         },
     )
 
@@ -719,9 +1113,29 @@ def _mechanism_executor_binding(c):
     engine = str(c.candidate.tool_trace.get("execution_engine") or "")
     mature = c.candidate.tool_trace.get("mature_probnet_contract") is True
     ranker = str(c.candidate.tool_trace.get("ranker") or "")
+    ranker_provenance = c.candidate.tool_trace.get("ranker_provenance", {})
+    mature_provenance_ok = bool(
+        isinstance(ranker_provenance, dict)
+        and ranker_provenance.get("checkpoint_sha256")
+        and ranker_provenance.get("instance_library_sha256")
+        and ranker_provenance.get("dataset_name")
+        and isinstance(c.candidate.tool_trace.get("sampling_audit"), dict)
+        and c.candidate.tool_trace["sampling_audit"].get("passed") is True
+        and c.candidate.tool_trace.get("accepted_center_ledger") is not None
+        and isinstance(
+            c.candidate.tool_trace.get("placed_by_shape_source_counts"), dict
+        )
+        and isinstance(
+            c.candidate.tool_trace.get("placed_by_target_class_counts"), dict
+        )
+    )
     if program_id.startswith("target-population-regeneration-v1:"):
         engine_ok = (
-            (mature and engine.startswith("online-probnet-mature-"))
+            (
+                mature
+                and engine.startswith("online-probnet-mature-")
+                and mature_provenance_ok
+            )
             or (
                 not mature
                 and engine == "deterministic_research_layout_v1"
@@ -778,6 +1192,22 @@ def _mechanism_executor_binding(c):
             "execution_engine": engine,
             "ranker": ranker,
             "mature_probnet_contract": mature,
+            "mature_probnet_provenance_passed": mature_provenance_ok,
+            "checkpoint_sha256": (
+                ranker_provenance.get("checkpoint_sha256")
+                if isinstance(ranker_provenance, dict)
+                else None
+            ),
+            "instance_library_sha256": (
+                ranker_provenance.get("instance_library_sha256")
+                if isinstance(ranker_provenance, dict)
+                else None
+            ),
+            "dataset_name": (
+                ranker_provenance.get("dataset_name")
+                if isinstance(ranker_provenance, dict)
+                else None
+            ),
             "engine_binding_passed": engine_ok,
         },
     )
@@ -2331,6 +2761,10 @@ def _mechanism_specific_postcondition(
     if expected_mechanism_id == "breast-peritumoral-small-cluster":
         subchecks["small_cluster_cardinality"] = (
             _small_cluster_cardinality(c).passed
+        )
+    if expected_mechanism_id == "breast-peritumoral-neoplastic-scatter":
+        subchecks["peritumoral_scatter_separation"] = (
+            _peritumoral_scatter_separation(c).passed
         )
 
     if expected_mechanism_id == "breast-generic-immune-compartment-turnover":

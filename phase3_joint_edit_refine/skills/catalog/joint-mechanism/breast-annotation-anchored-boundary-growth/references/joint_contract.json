@@ -46,10 +46,10 @@
       "bcss_operational_stroma_authority"
     ],
     "selection_preferences": [
-      "prefer broad contact with a shallow depth-to-span ratio",
-      "prefer higher exact packing and seam-capacity margins",
-      "prefer distributed anchors that avoid a deep local notch",
-      "prefer fewer protected-instance exclusions"
+      "pref:broad-contact:minimize-depth-span-ratio",
+      "pref:packing-seam:maximize-capacity-margin",
+      "pref:anchor-distribution:minimize-maximum-depth",
+      "pref:protected-clearance:minimize-exclusions"
     ],
     "clarification_triggers": [
       "the instruction equally supports tissue expansion and a cell-only peritumoral edit",

@@ -1292,6 +1292,16 @@ def _place_layout(
             reference = references[(placed + seed) % len(references)]
             shape = np.asarray(reference.mask, dtype=bool)
             cy, cx = ay + dy, ax + dx
+            if layout_program == "single" and any(
+                (cy - int(item["center_xy"][1])) ** 2
+                + (cx - int(item["center_xy"][0])) ** 2
+                <= (2.25 * float(nominal_nucleus_diameter_px)) ** 2
+                for item in placement_trace
+            ):
+                # A single-cell scatter program must remain separated in the
+                # final instance graph; ordinary non-overlap is insufficient
+                # because two complete nuclei can still form one local focus.
+                continue
             # Every member of a pair/cluster/cord owns its own accepted center.
             # The anchor being legal is not sufficient: template offsets can
             # otherwise leave P while their footprints still happen to fit V.

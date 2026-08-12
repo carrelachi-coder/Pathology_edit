@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from phase3_joint_edit_refine.models import JointCaseContext, JointContractError
+from phase3_joint_edit_refine.planner_policy import validate_planner_policy
 from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
 
 from .evidence import EvidenceGovernance, SkillEvidenceStatus
@@ -761,6 +762,8 @@ class JointSkillRepository:
                 "production joint execution requires calibrated, explicitly "
                 "production-authorized mechanism statistics"
             )
+        if mechanism.pathology_domain_id == "breast-invasive-carcinoma-v1":
+            validate_planner_policy(mechanism.planner_policy)
         required = set(mechanism.joint_gate_ids)
         required.update(mechanism.planner_policy.hard_constraint_checker_ids)
         required.update(primitive_contract.required_checker_ids)

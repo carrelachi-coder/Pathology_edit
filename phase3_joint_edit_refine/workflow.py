@@ -39,6 +39,7 @@ from .clarification import (
     PlannerClarificationRequired,
     build_primitive_clarification_request,
     build_scenario_clarification_request,
+    requires_budding_claim_downgrade,
     resolve_clarification_decision,
 )
 from .critic import JointCritic
@@ -50,6 +51,7 @@ from .feasibility import (
     augment_tissue_scene_with_nuclei_preflight,
     bind_joint_plan_to_nuclei_preflight,
     build_joint_nuclei_preflight,
+    certify_compiled_cell_program_feasibility,
 )
 from .gates import JointGateContext, JointGateRegistry
 from .handoff import write_generation_handoff
@@ -66,10 +68,18 @@ from .models import (
 from .nuclei import load_nuclei_mask
 from .packing import certify_complete_footprint_packing
 from .planner import JointInterpretationOption, JointPlanner
+from .planner_inputs import (
+    MASK_PLANNER_ARTIFACT_KINDS,
+    MaskPlannerArtifactRegistry,
+)
 from .scene import build_joint_scene_analysis
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
 from .tissue_execution import execute_gate_aware_tissue_candidates
+from .tissue_tools import (
+    bind_tissue_plan_tool_program,
+    compile_tissue_tool_program,
+)
 
 
 @dataclass(frozen=True)
@@ -199,6 +209,9 @@ class JointPathologyEditWorkflow:
                 "source_instance_authority.json",
                 build_scene_instance_authority(scene, source_nuclei),
             )
+            planner_artifacts = MaskPlannerArtifactRegistry(
+                case=case, pipeline_owned_root=audit.case_dir
+            )
             tissue_panels = save_mask_planner_panels(
                 mask=source_tissue,
                 scene=scene.tissue,
@@ -207,6 +220,17 @@ class JointPathologyEditWorkflow:
             joint_overlay = audit.write_mask_planner_overlay(
                 source_tissue=source_tissue,
                 source_nuclei=source_nuclei,
+            )
+            for path in (*tissue_panels, joint_overlay):
+                planner_artifacts.register(
+                    path,
+                    artifact_kind=MASK_PLANNER_ARTIFACT_KINDS[Path(path).name],
+                    producer_id="joint-mask-planner-panel-writer",
+                    producer_version="v2",
+                )
+            audit.write_json(
+                "mask_planner_artifact_registry.json",
+                planner_artifacts.to_metadata(),
             )
             planner_images = (*tissue_panels, joint_overlay)
             prepared, interpretation_rejections = self._prepare_interpretations(
@@ -305,6 +329,43 @@ class JointPathologyEditWorkflow:
                     item.option for item in prepared.values()
                 ),
             )
+            if (
+                clarification_resolution is None
+                and requires_budding_claim_downgrade(case.instruction)
+                and any(
+                    item.option.primitive_id
+                    == "peritumoral-small-cluster-increase-v1"
+                    for item in prepared.values()
+                )
+            ):
+                request = build_primitive_clarification_request(
+                    case=case,
+                    prepared_options=tuple(
+                        item.option for item in prepared.values()
+                    ),
+                    why_required=(
+                        "the requested diagnostic budding term exceeds mask authority; "
+                        "execution requires explicit acceptance of a non-diagnostic "
+                        "synthetic one-to-four-cell small-cluster representation"
+                    ),
+                    primitive_ids=(
+                        "peritumoral-small-cluster-increase-v1",
+                    ),
+                ).to_metadata()
+                audit.write_json("clarification_request.json", request)
+                return self._finish(
+                    audit=audit,
+                    case=case,
+                    plan=None,
+                    reports=(),
+                    critic=None,
+                    status="clarification_required",
+                    reasons=(),
+                    selected=None,
+                    condition=None,
+                    usage=usage,
+                    clarification_request=request,
+                )
             clarification_usage = None
             if clarification_resolution is not None:
                 selected_primitive, clarification_usage = clarification_resolution
@@ -326,6 +387,7 @@ class JointPathologyEditWorkflow:
                             item.option for item in prepared.values()
                         ),
                         image_paths=planner_images,
+                        artifact_registry=planner_artifacts,
                     )
                 )
             except PlannerClarificationRequired as exc:
@@ -442,6 +504,7 @@ class JointPathologyEditWorkflow:
                     bundle=bundle,
                     mechanism_id=mechanism_id,
                     planner_images=planner_images,
+                    planner_artifacts=planner_artifacts,
                     usage=usage,
                 )
             allocation = selected.allocation
@@ -617,6 +680,7 @@ class JointPathologyEditWorkflow:
                                 image_paths=planner_images,
                                 nuclei_preflight=nuclei_preflight,
                                 execution_feedback=execution_feedback,
+                                artifact_registry=planner_artifacts,
                             )
                         )
                     else:
@@ -626,6 +690,20 @@ class JointPathologyEditWorkflow:
                             bundle=tissue_bundle,
                             image_paths=planner_images,
                         )
+                    compiled_tool_program = compile_tissue_tool_program(
+                        primitive_id=raw_tissue_plan.primitive_id,
+                        mechanism_id=bundle.mechanism.mechanism_id,
+                        mechanism_allowed_families=(
+                            bundle.mechanism.tissue_program.allowed_tools
+                        ),
+                        primitive_allowed_executors=(
+                            tissue_bundle.edit_contract.allowed_tools
+                        ),
+                    )
+                    raw_tissue_plan = bind_tissue_plan_tool_program(
+                        raw_tissue_plan,
+                        compiled=compiled_tool_program,
+                    )
                     validate_edit_plan(
                         raw_tissue_plan,
                         case=tissue_case,
@@ -655,6 +733,7 @@ class JointPathologyEditWorkflow:
                         bundle=bundle,
                         tissue_plan=tissue_plan,
                         image_paths=planner_images,
+                        artifact_registry=planner_artifacts,
                     )
                     plan = bind_joint_plan_to_nuclei_preflight(
                         plan,
@@ -1179,6 +1258,18 @@ class JointPathologyEditWorkflow:
                 source_nuclei=source_nuclei,
                 candidates=candidates,
             )
+            planner_artifacts.register(
+                mask_review_board,
+                artifact_kind=MASK_PLANNER_ARTIFACT_KINDS[
+                    Path(mask_review_board).name
+                ],
+                producer_id="joint-mask-condition-board-writer",
+                producer_version="v2",
+            )
+            audit.write_json(
+                "mask_planner_artifact_registry.json",
+                planner_artifacts.to_metadata(),
+            )
             usage["tissue_planner"] = {
                 "passes": tissue_pass_usage,
                 "budget_revisions": budget_revisions,
@@ -1205,6 +1296,7 @@ class JointPathologyEditWorkflow:
                 candidates=passing_joint,
                 gate_reports=joint_reports,
                 image_paths=(mask_review_board,),
+                artifact_registry=planner_artifacts,
             )
             usage["critic"] = critic_result.usage
             audit.write_json("joint_critic.json", critic_result.to_metadata())
@@ -2077,6 +2169,7 @@ class JointPathologyEditWorkflow:
         bundle,
         mechanism_id,
         planner_images,
+        planner_artifacts,
         usage,
     ):
         """Execute a count/extent primitive without entering the tissue solver."""
@@ -2087,6 +2180,7 @@ class JointPathologyEditWorkflow:
             bundle=bundle,
             tissue_plan=None,
             image_paths=planner_images,
+            artifact_registry=planner_artifacts,
         )
         usage["joint_planner"] = joint_usage
         audit.write_inputs(
@@ -2140,6 +2234,18 @@ class JointPathologyEditWorkflow:
             tissue_gate_report=tissue_report,
             allocation=None,
             required_checker_ids=(self.joint_gates.required_checker_ids_for(bundle)),
+        )
+        cell_only_preflight = self._certify_cell_only_executable_capacity(
+            case=case,
+            source_nuclei=source_nuclei,
+            scene=scene,
+            bundle=bundle,
+            tissue_candidate=preserved_tissue,
+            executable_contract=executable_contract,
+        )
+        audit.write_json(
+            "cell_only_executable_capacity_preflight.json",
+            cell_only_preflight.to_metadata(),
         )
         audit.write_executable_contract(executable_contract)
         # The mature pipeline owns target-population regeneration. Structured
@@ -2264,7 +2370,7 @@ class JointPathologyEditWorkflow:
             scene=scene,
             executable_contracts=executable_contract,
         )
-        review_board = audit.write_review_board(
+        audit.write_review_board(
             source_image_path=case.source_image_uri,
             source_tissue=source_tissue,
             source_nuclei=source_nuclei,
@@ -2274,6 +2380,18 @@ class JointPathologyEditWorkflow:
             source_tissue=source_tissue,
             source_nuclei=source_nuclei,
             candidates=candidates,
+        )
+        planner_artifacts.register(
+            mask_review_board,
+            artifact_kind=MASK_PLANNER_ARTIFACT_KINDS[
+                Path(mask_review_board).name
+            ],
+            producer_id="joint-mask-condition-board-writer",
+            producer_version="v2",
+        )
+        audit.write_json(
+            "mask_planner_artifact_registry.json",
+            planner_artifacts.to_metadata(),
         )
         passing = [
             candidate
@@ -2294,6 +2412,7 @@ class JointPathologyEditWorkflow:
             candidates=passing,
             gate_reports=reports,
             image_paths=(mask_review_board,),
+            artifact_registry=planner_artifacts,
         )
         usage["critic"] = critic.usage
         audit.write_json("joint_critic.json", critic.to_metadata())
@@ -2367,6 +2486,107 @@ class JointPathologyEditWorkflow:
             condition=condition,
             usage=usage,
         )
+
+    @staticmethod
+    def _certify_cell_only_executable_capacity(
+        *,
+        case,
+        source_nuclei,
+        scene,
+        bundle,
+        tissue_candidate,
+        executable_contract,
+    ):
+        """Run exact P/V/E packing before any cell-only layout execution."""
+
+        from .feasibility import CandidateCellFeasibility
+
+        program = executable_contract.cell_program
+        budget = case.cell_count_extent_budget
+        requested = int(budget.target_delta_count if budget is not None else 0)
+        initial = CandidateCellFeasibility(
+            candidate_id=tissue_candidate.candidate_id,
+            passed=True,
+            removable_instance_ids=tuple(
+                executable_contract.erase_instance_ids
+            ),
+            required_removal_cell_classes=tuple(
+                sorted(plan_class for plan_class in program.target_classes)
+            ),
+            estimated_removal_count=len(
+                executable_contract.erase_instance_ids
+            ),
+            protected_overlap_ids=(),
+            nonlocal_extension_ids=(),
+            legal_core_pixels=int(
+                np.count_nonzero(program.placement_center_region)
+            ),
+            reference_fit_center_pixels=int(
+                np.count_nonzero(program.placement_center_region)
+            ),
+            required_add_count=(
+                requested if "add" in bundle.mechanism.cell_program.actions else 0
+            ),
+            required_seam_count=0,
+            estimated_add_capacity=requested,
+            estimated_seam_capacity=0,
+            continuity_mode=program.continuity_mode,
+            continuity_width_px=program.continuity_width_px,
+            continuity_maximum_empty_run_px=(
+                program.continuity_maximum_empty_run_px
+            ),
+            continuity_anchor_pixels=int(
+                np.count_nonzero(program.continuity_anchor_mask)
+            ),
+            continuity_region_pixels=int(
+                np.count_nonzero(program.continuity_region)
+            ),
+            potential_anchor_coverage_fraction=1.0,
+            minimum_anchor_coverage_fraction=(
+                program.continuity_minimum_anchor_coverage_fraction
+            ),
+            meaningful_tissue_floor_pixels=0,
+            tissue_change_pixels=0,
+            exact_packing_certificate={},
+            complete_instance_spill_pixels=0,
+            target_footprint_spill_pixels=0,
+            predicted_joint_pixels=int(
+                np.count_nonzero(program.erasure_region)
+            ),
+            reasons=(),
+        )
+        # Reuse the same exact packing verifier as the tissue-changing path.
+        pseudo_preflight = type(
+            "CellOnlyPackingAuthority",
+            (),
+            {
+                "eligible_reference_ids": tuple(
+                    item.instance_id
+                    for item in scene.cells.instances
+                    if item.completeness_status == "complete"
+                    and not item.touches_border
+                    and not item.quality_flags
+                ),
+                "target_cell_class": int(program.target_classes[0]),
+                "target_density_by_class": {
+                    int(class_id): 1.0
+                    for class_id in program.target_classes
+                },
+            },
+        )()
+        certified = certify_compiled_cell_program_feasibility(
+            initial,
+            candidate=tissue_candidate,
+            contract=executable_contract,
+            scene=scene,
+            preflight=pseudo_preflight,
+        )
+        if not certified.passed:
+            raise JointContractError(
+                "cell-only exact packing preflight failed before execution: "
+                + ", ".join(certified.reasons)
+            )
+        return certified
 
     def _finish(
         self,

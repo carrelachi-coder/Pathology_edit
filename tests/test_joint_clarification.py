@@ -11,8 +11,8 @@ from phase3_joint_edit_refine.clarification import (
     build_scenario_clarification_request,
     create_clarification_decision,
     create_scenario_clarification_decision,
-    resolve_scenario_clarification_decision,
     resolve_clarification_decision,
+    resolve_scenario_clarification_decision,
 )
 from phase3_joint_edit_refine.models import JointCaseContext, JointContractError
 from phase3_joint_edit_refine.planner import HeuristicJointPlanner
@@ -150,6 +150,76 @@ def test_offline_planner_can_emit_a_clarification_signal():
         "neoplastic-microinfiltration-increase-v1",
         "invasive-front-expansion-v1",
     )
+
+
+def test_new_breast_primitive_clarification_copy_and_roundtrip():
+    case = _case(
+        pathology_domain_id="breast-invasive-carcinoma-v1",
+        annotation_profile_id="bcss-semantic-v1",
+        cell_population_profile_id="breast-cell-population-v1",
+        instruction="Increase the local tumor pattern.",
+    )
+    primitives = (
+        "cohesive-boundary-expansion-v1",
+        "infiltrative-nest-cord-extension-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+    )
+    for pair in ((primitives[0], primitives[1]), (primitives[2], primitives[3])):
+        options = tuple(_option(item, "breast-" + item, index) for index, item in enumerate(pair))
+        request = build_primitive_clarification_request(
+            case=case,
+            prepared_options=options,
+            why_required="mask authority cannot recover the intended edit scale",
+            primitive_ids=pair,
+        ).to_metadata()
+        decision = create_clarification_decision(
+            request,
+            selected_option_id="primitive:" + pair[1],
+            responder="doctor-1",
+            provider="interactive_user_choice",
+        )
+        resolved = resolve_clarification_decision(
+            case=replace(case, clarification_decision=decision),
+            prepared_options=options,
+        )
+        assert resolved[0] == pair[1]
+
+
+def test_diagnostic_budding_requires_digest_bound_claim_downgrade_acceptance():
+    case = _case(
+        pathology_domain_id="breast-invasive-carcinoma-v1",
+        annotation_profile_id="bcss-semantic-v1",
+        cell_population_profile_id="breast-cell-population-v1",
+        instruction="Increase tumor budding.",
+        primitive_id="peritumoral-small-cluster-increase-v1",
+    )
+    options = (
+        _option(
+            "peritumoral-small-cluster-increase-v1",
+            "breast-peritumoral-small-cluster",
+            0,
+        ),
+    )
+    request = build_primitive_clarification_request(
+        case=case,
+        prepared_options=options,
+        why_required="diagnostic claim exceeds mask authority",
+        primitive_ids=("peritumoral-small-cluster-increase-v1",),
+    ).to_metadata()
+    assert len(request["options"]) == 1
+    assert "non-diagnostic" in request["options"][0]["clinician_description"]
+    decision = create_clarification_decision(
+        request,
+        selected_option_id="primitive:peritumoral-small-cluster-increase-v1",
+        responder="doctor-1",
+        provider="interactive_user_choice",
+    )
+    resolved = resolve_clarification_decision(
+        case=replace(case, clarification_decision=decision),
+        prepared_options=options,
+    )
+    assert resolved[0] == "peritumoral-small-cluster-increase-v1"
 
 
 def test_scenario_clarification_is_digest_bound_and_semantic_only():

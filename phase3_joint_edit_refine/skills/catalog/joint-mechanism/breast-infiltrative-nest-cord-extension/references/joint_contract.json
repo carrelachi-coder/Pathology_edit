@@ -46,10 +46,10 @@
       "bcss_operational_stroma_authority"
     ],
     "selection_preferences": [
-      "prefer a long directional anchor with adequate shallow depth",
-      "prefer high class-1 population packing capacity and seam margin",
-      "prefer one connected projection without side merging",
-      "avoid anchors close to protected fine IDs"
+      "pref:directional-anchor:maximize-length-depth-ratio",
+      "pref:class1-packing:maximize-capacity-margin",
+      "pref:projection:minimize-component-and-side-merge-count",
+      "pref:protected-clearance:maximize-distance"
     ],
     "clarification_triggers": [
       "the instruction does not distinguish bulk boundary expansion from a narrow cord extension"
@@ -86,8 +86,7 @@
       }
     },
     "allowed_tools": [
-      "interface_band_sdf",
-      "topology_safe_morphology"
+      "directional_tapered_projection"
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
@@ -113,7 +112,7 @@
       "lobe_count": 1,
       "noise_depth_ratio": 0.02,
       "maximum_band_px": 64,
-      "maximum_depth_span_ratio": 1.8,
+      "maximum_depth_span_ratio": 4.0,
       "maximum_boundary_compactness": 14.0,
       "directional_sector_required": true,
       "maximum_selected_anchor_fraction": 0.5,

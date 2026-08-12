@@ -48,10 +48,10 @@
       "no_solid_neoplastic_bridge"
     ],
     "selection_preferences": [
-      "prefer an annulus that supports multiple separated foci",
-      "prefer proximal legal centers while maintaining required span",
-      "prefer high complete-shape packing margin",
-      "avoid a continuous solid bridge"
+      "pref:annulus:maximize-separated-focus-capacity",
+      "pref:annulus:minimize-distance-with-span-floor",
+      "pref:complete-shape:maximize-packing-margin",
+      "pref:bridge:minimize-connectivity-risk"
     ],
     "clarification_triggers": [
       "the instruction says tumor budding and the user must accept a non-diagnostic synthetic small-cluster representation",

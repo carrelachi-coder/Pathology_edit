@@ -40,8 +40,17 @@ def _sha(path: Path) -> str:
 class _ApprovingCritic(DeterministicJointResearchCritic):
     supports_pathology_vision = True
 
-    def review(self, *, case, bundle, candidates, gate_reports, image_paths):
-        del case, gate_reports, image_paths
+    def review(
+        self,
+        *,
+        case,
+        bundle,
+        candidates,
+        gate_reports,
+        image_paths,
+        artifact_registry=None,
+    ):
+        del case, gate_reports, image_paths, artifact_registry
         candidate = candidates[0]
         return JointCriticResult(
             rankings=(

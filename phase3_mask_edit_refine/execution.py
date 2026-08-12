@@ -9,7 +9,10 @@ import numpy as np
 from scipy import ndimage
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
-from phase3_mask_edit_refine.candidates import compile_depth_profile_map
+from phase3_mask_edit_refine.candidates import (
+    compile_depth_profile_map,
+    compile_directional_tapered_projection_field,
+)
 from phase3_mask_edit_refine.models import (
     EditPlan,
     PlannedInterface,
@@ -534,6 +537,24 @@ def _prepare_compiler_work(
             & (distance <= band_max)
             & (required_scale <= band_max + 1e-6)
         )
+        if params.get("tissue_geometry_mode") == "annotation_anchored_narrow_connected_extension":
+            legal_envelope, required_scale = (
+                compile_directional_tapered_projection_field(
+                    legal_envelope,
+                    anchor_mask=anchor,
+                    parent_mask=scene.component_masks.get(
+                        planned.target_component_id,
+                        np.zeros_like(source_mask, dtype=bool),
+                    ),
+                    maximum_depth_px=band_max,
+                    maximum_width_px=float(
+                        params.get("directional_maximum_width_px", 24.0)
+                    ),
+                    tip_width_px=float(
+                        params.get("directional_tip_width_px", 2.0)
+                    ),
+                )
+            )
         deletion_limit = source_deletion_limit(
             int(np.count_nonzero(source_component)),
             maximum_changed_fraction=maximum_changed_fraction,

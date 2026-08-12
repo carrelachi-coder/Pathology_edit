@@ -7,7 +7,7 @@
   "capabilities": {
     "source_label_options": ["Stroma", "Other tissue"],
     "target_label": "Tumor",
-    "allowed_tools": ["interface_sdf", "connected_morphology", "organic_v2"]
+    "allowed_tools": ["interface_sdf", "connected_morphology", "organic_v2", "directional_tapered_projection"]
   },
   "rules": [
     {

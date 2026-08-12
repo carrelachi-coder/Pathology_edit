@@ -39,6 +39,10 @@ from .instance_authority import build_scene_instance_authority
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
+from .tissue_tools import (
+    compile_tissue_tool_program,
+    validate_tissue_plan_tool_binding,
+)
 
 TISSUE_EXECUTION_VERSION = "joint-gate-aware-tissue-executor-v3"
 
@@ -100,6 +104,17 @@ def execute_gate_aware_tissue_candidates(
     compiled_replay_parts: tuple[Any, ...] | None = None,
     compiled_replay_audit: dict[str, Any] | None = None,
 ) -> TissueExecutionBatch:
+    compiled_tissue_tools = compile_tissue_tool_program(
+        primitive_id=tissue_plan.primitive_id,
+        mechanism_id=joint_bundle.mechanism.mechanism_id,
+        mechanism_allowed_families=(
+            joint_bundle.mechanism.tissue_program.allowed_tools
+        ),
+        primitive_allowed_executors=tissue_bundle.edit_contract.allowed_tools,
+    )
+    validate_tissue_plan_tool_binding(
+        tissue_plan, compiled=compiled_tissue_tools
+    )
     source_authority = build_scene_instance_authority(
         joint_scene, source_nuclei
     )
@@ -122,6 +137,9 @@ def execute_gate_aware_tissue_candidates(
         candidate_limit=1,
         compiled_replay_parts=compiled_replay_parts,
         compiled_replay_audit=compiled_replay_audit,
+    )
+    _bind_and_validate_tissue_candidate_traces(
+        baseline_candidates, compiled_tissue_tools
     )
     baseline = _certify_tissue_candidate_set(
         baseline_candidates,
@@ -157,6 +175,9 @@ def execute_gate_aware_tissue_candidates(
         compiled_replay_parts=compiled_replay_parts,
         compiled_replay_audit=compiled_replay_audit,
     )
+    _bind_and_validate_tissue_candidate_traces(
+        all_candidates, compiled_tissue_tools
+    )
     return _certify_tissue_candidate_set(
         all_candidates,
         source_tissue=source_tissue,
@@ -176,6 +197,34 @@ def execute_gate_aware_tissue_candidates(
         joint_required_checker_ids=joint_required_checker_ids,
         gates=gates,
     )
+
+
+def _bind_and_validate_tissue_candidate_traces(candidates, compiled) -> None:
+    metadata = compiled.to_metadata()
+    for candidate in candidates:
+        if candidate.tool_name not in compiled.allowed_concrete_executors:
+            raise JointContractError(
+                "tissue executor emitted a tool outside the compiled mechanism program"
+            )
+        existing_program = candidate.tool_trace.get(
+            "joint_tissue_tool_program"
+        )
+        if existing_program is not None and existing_program != metadata:
+            raise JointContractError(
+                "tissue executor trace is detached from the compiled mechanism program"
+            )
+        existing_executor = candidate.tool_trace.get(
+            "concrete_tissue_executor"
+        )
+        if (
+            existing_executor is not None
+            and existing_executor != candidate.tool_name
+        ):
+            raise JointContractError(
+                "tissue executor trace names a different concrete executor"
+            )
+        candidate.tool_trace["joint_tissue_tool_program"] = metadata
+        candidate.tool_trace["concrete_tissue_executor"] = candidate.tool_name
 
 
 def _certify_tissue_candidate_set(

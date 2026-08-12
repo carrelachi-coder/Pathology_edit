@@ -91,7 +91,7 @@ class ScenarioClarificationRequest:
 
 
 class PlannerClarificationRequired(JointContractError):
-    """Signal that H&E cannot resolve two executable primitive meanings."""
+    """Signal that mask/annotation authority cannot resolve user intent."""
 
     def __init__(
         self,
@@ -121,6 +121,30 @@ _PRIMITIVE_COPY: dict[str, tuple[str, str, str, str]] = {
         "Retract the tumor boundary at a legal interface and restore the adjacent tissue class.",
         "The tumor tissue footprint decreases.",
         "Whole tumor-cell instances are removed from the converted region and target-tissue cells are regenerated.",
+    ),
+    "cohesive-boundary-expansion-v1": (
+        "Expand the annotated tumor boundary",
+        "Create a shallow connected expansion from a certified external Tumor-to-operational-Stroma boundary without diagnosing a histologic invasive front.",
+        "The annotated invasive-tumor footprint expands locally.",
+        "Whole incompatible instances are removed and complete neoplastic instances are regenerated under the target-population contract.",
+    ),
+    "infiltrative-nest-cord-extension-v1": (
+        "Create a narrow connected tumor extension",
+        "Create one tapered connected projection from a certified external boundary; this is synthetic mask geometry, not a histologic cord diagnosis.",
+        "A narrow, single-parent tumor projection extends into operational Stroma.",
+        "Complete neoplastic instances are regenerated within the connected projection under the target-population contract.",
+    ),
+    "peritumoral-neoplastic-scatter-increase-v1": (
+        "Add sparse peritumoral neoplastic cells",
+        "Keep tissue labels unchanged and add separated complete neoplastic instances in a certified outer annulus.",
+        "Tissue labels remain unchanged.",
+        "Frozen ProbNet ranks legal centers for separated complete class-1 instances.",
+    ),
+    "peritumoral-small-cluster-increase-v1": (
+        "Add non-diagnostic small peritumoral clusters",
+        "Keep tissue labels unchanged and add multiple non-diagnostic synthetic or budding-like foci of one to four complete neoplastic nuclei. This does not create a diagnostic tumor-budding score.",
+        "Tissue labels remain unchanged.",
+        "Frozen ProbNet ranks legal centers for multiple separated one-to-four-cell foci.",
     ),
     "invasive-tumor-footprint-decrease-v1": (
         "Decrease the invasive-tumor footprint",
@@ -243,7 +267,11 @@ def build_primitive_clarification_request(
     """Build one stable request from already executable interpretations."""
 
     requested = tuple(dict.fromkeys(str(value) for value in primitive_ids if value))
-    if len(requested) < 2 or len(requested) > 3:
+    claim_downgrade = (
+        requested == ("peritumoral-small-cluster-increase-v1",)
+        and requires_budding_claim_downgrade(case.instruction)
+    )
+    if (len(requested) < 2 or len(requested) > 3) and not claim_downgrade:
         raise JointContractError(
             "clarification request requires two or three primitive alternatives"
         )
@@ -270,7 +298,11 @@ def build_primitive_clarification_request(
         "schema_version": CLARIFICATION_REQUEST_SCHEMA,
         "case_id": case.case_id,
         "instruction": case.instruction,
-        "question": "Which change should this edit primarily represent?",
+        "question": (
+            "Do you accept a non-diagnostic synthetic one-to-four-cell small-cluster representation?"
+            if claim_downgrade
+            else "Which change should this edit primarily represent?"
+        ),
         "why_required": str(why_required).strip(),
         "input_digests": _input_digests(case),
         "knowledge_context": _knowledge_context(case),
@@ -602,9 +634,9 @@ def validate_request_metadata(payload: Any) -> dict[str, Any]:
     if (
         not isinstance(options, Sequence)
         or isinstance(options, (str, bytes))
-        or not 2 <= len(options) <= 3
+        or not 1 <= len(options) <= 3
     ):
-        raise JointContractError("clarification request requires two or three options")
+        raise JointContractError("clarification request requires one to three options")
     normalized["options"] = [dict(option) for option in options]
     options = normalized["options"]
     required = {
@@ -623,6 +655,14 @@ def validate_request_metadata(payload: Any) -> dict[str, Any]:
             raise JointContractError(
                 "clarification option has no executable mechanism"
             )
+    if len(options) == 1 and (
+        options[0].get("primitive_id")
+        != "peritumoral-small-cluster-increase-v1"
+        or not requires_budding_claim_downgrade(str(normalized["instruction"]))
+    ):
+        raise JointContractError(
+            "a single-option clarification is reserved for diagnostic-claim downgrade acceptance"
+        )
     return normalized
 
 
@@ -741,3 +781,12 @@ def _sha256(payload: Mapping[str, Any]) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def requires_budding_claim_downgrade(instruction: str) -> bool:
+    import re
+
+    return bool(
+        re.search(r"\btumou?r budding\b|\btumou?r buds?\b", instruction, re.IGNORECASE)
+        or re.search(r"\u80bf\u7624\u51fa\u82bd", instruction)
+    )

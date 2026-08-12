@@ -167,13 +167,13 @@ class RuleBasedSemanticParser:
             "necrosis-resolution-v1",
             "necrosis",
             "decrease",
-            (r"\b(resolve|reduce|decrease|remove)\b.*\bnecrosis\b", r"(减轻|减少|消退|去除).*(坏死)"),
+            (r"\b(resolve|reduce|decrease|remove|retract)\b.*\bnecrotic|\b(resolve|reduce|decrease|remove|retract)\b.*\bnecrosis\b", r"(减轻|减少|消退|去除).*(坏死)"),
         ),
         (
             "necrosis-appearance-v1",
             "necrosis",
             "increase",
-            (r"\b(increase|add|expand|create)\b.*\bnecrosis\b", r"(增加|扩大|形成|添加).*(坏死)"),
+            (r"\b(increase|add|expand|create)\b.*\b(?:necrosis|necrotic)\b", r"(增加|扩大|形成|添加).*(坏死)"),
         ),
         (
             "structural-void-spread-v1",
@@ -198,7 +198,8 @@ class RuleBasedSemanticParser:
             "neoplastic-cell-infiltration",
             "increase",
             (
-                r"\b(extend|increase|add)\b.*\b(tumou?r|cancer)\b.*\b(cord|trabecul|narrow extension)\b",
+                r"\b(extend|increase|add)\b.*\b(tumou?r|cancer)\b.*\b(cord|trabecul\w*|narrow extension)\b",
+                r"\b(add|extend)\b.*\bnarrow connected (?:tumou?r|cancer) extension\b",
                 r"(\u589e\u52a0|\u5ef6\u957f|\u6dfb\u52a0).*(\u80bf\u7624|\u764c).*(\u7d22\u72b6|\u7a84\u6761|\u5c0f\u5de2)",
             ),
         ),
@@ -218,7 +219,8 @@ class RuleBasedSemanticParser:
             "neoplastic-cell-infiltration",
             "increase",
             (
-                r"\b(increase|add)\b.*\b(peritumoral small clusters?|small tumou?r clusters?|tumou?r budding|tumou?r buds?)\b",
+                r"\b(increase|add)\b.*\b(peritumoral small clusters?|small tumou?r(?:-cell)? clusters?|tumou?r budding|tumou?r buds?)\b",
+                r"\b(increase|add)\b.*\b(?:budding-like )?small clusters?\b.*\b(?:around|near) the tumou?r\b",
                 r"(\u589e\u52a0|\u6dfb\u52a0).*(\u80bf\u7624\u51fa\u82bd|\u764c\u5468\u5c0f\u7c07|\u80bf\u7624\u5468\u56f4\u5c0f\u7c07)",
             ),
         ),
@@ -227,7 +229,9 @@ class RuleBasedSemanticParser:
             "neoplastic-cell-infiltration",
             "increase",
             (
-                r"\b(increase|add)\b.*\b(peritumoral (?:tumou?r |cancer )?cell scatter|scattered tumou?r cells?)\b",
+                r"\b(increase|add)\b.*\b(peritumoral (?:tumou?r[- ]|cancer[- ])?cell scatter|scattered tumou?r cells?)\b",
+                r"\b(increase|add)\b.*\bsmall-scale peritumoral tumou?r-cell scatter\b",
+                r"\badd\b.*\bscattered tumou?r cells?\b.*\bnear the tumou?r boundary\b",
                 r"\b(increase|add)\b.*\b(tumou?r (?:cell )?infiltration|cancer cell infiltration|neoplastic cell infiltration)\b",
                 r"(\u589e\u52a0|\u6dfb\u52a0).*(\u764c\u5468\u6563\u5728\u80bf\u7624\u7ec6\u80de|\u80bf\u7624\u5468\u56f4\u6563\u5728\u764c\u7ec6\u80de)",
                 r"(\u589e\u52a0|\u6dfb\u52a0).*(\u764c\u7ec6\u80de\u6d78\u6da6|\u80bf\u7624\u7ec6\u80de\u6d78\u6da6)",
@@ -253,7 +257,7 @@ class RuleBasedSemanticParser:
             "stroma-increase-v1",
             "stroma",
             "increase",
-            (r"\b(increase|expand|add)\b.*\bstroma(?:l)?\b", r"(增加|扩大|添加).*(间质)"),
+            (r"\b(increase|expand|add)\b.*\bstroma(?:l)?\b|\breplace\b.*\btumou?r\b.*\boperational stroma\b", r"(增加|扩大|添加).*(间质)"),
         ),
         (
             "generic-immune-infiltrate-decrease-v1",
@@ -261,6 +265,7 @@ class RuleBasedSemanticParser:
             "decrease",
             (
                 r"\b(decrease|reduce|shrink)\b.*\b(immune|inflammatory) infiltrate\b",
+                r"\bretract\b.*\bgeneric inflammatory region\b",
                 r"(减少|降低|缩小).*(免疫浸润区|炎性浸润区|免疫区域)",
             ),
         ),
@@ -270,6 +275,7 @@ class RuleBasedSemanticParser:
             "increase",
             (
                 r"\b(increase|expand|enlarge)\b.*\b(immune|inflammatory) infiltrate\b",
+                r"\bexpand\b.*\bgeneric inflammatory region\b",
                 r"(增加|扩大).*(免疫浸润区|炎性浸润区|免疫区域)",
             ),
         ),
@@ -288,6 +294,7 @@ class RuleBasedSemanticParser:
             "decrease",
             (
                 r"\b(fragment|scatter)\w*\b.*\bresidual (?:tumou?r|disease)\b",
+                r"\b(?:make|separate)\b.*\bresidual invasive tumou?r\b.*\b(?:scattered|controlled foci)\b",
                 r"(残余|残留).*(碎片化|散在|分散病灶)",
             ),
         ),
@@ -297,6 +304,7 @@ class RuleBasedSemanticParser:
             "decrease",
             (
                 r"\b(decrease|reduce|shrink|lower)\b.*\btumou?r(?:\s+(?:burden|area))?\s*(?:[.!?]|$)",
+                r"\bmake\b.*\blocal invasive-tumou?r footprint smaller\b",
                 r"(减少|降低|缩小).*(肿瘤负荷|肿瘤面积|肿瘤)\s*$",
             ),
         ),
@@ -306,6 +314,7 @@ class RuleBasedSemanticParser:
             "increase",
             (
                 r"\b(increase|expand|enlarge|raise)\b.*\btumou?r(?:\s+(?:burden|area))?\s*(?:[.!?]|$)",
+                r"\bmake\b.*\btumou?r occupy more tissue\b",
                 r"(增加|提高|扩大).*(肿瘤负荷|肿瘤面积|肿瘤)\s*$",
             ),
         ),
@@ -313,13 +322,13 @@ class RuleBasedSemanticParser:
             "cellularity-decrease-v1",
             "cellularity",
             "decrease",
-            (r"\b(decrease|reduce|lower)\b.*\b(cellularity|cell density|nuclear density)\b", r"(降低|减少).*(细胞密度|细胞丰富度|细胞量)"),
+            (r"\b(decrease|reduce|lower)\b.*\b(cellularity|cell density|nuclear density)\b|\bmake\b.*\btissue region less cellular\b", r"(降低|减少).*(细胞密度|细胞丰富度|细胞量)"),
         ),
         (
             "cellularity-increase-v1",
             "cellularity",
             "increase",
-            (r"\b(increase|raise)\b.*\b(cellularity|cell density|nuclear density)\b", r"(提高|增加).*(细胞密度|细胞丰富度|细胞量)"),
+            (r"\b(increase|raise)\b.*\b(cellularity|cell density|nuclear density)\b|\bmake\b.*\btissue region more cellular\b", r"(提高|增加).*(细胞密度|细胞丰富度|细胞量)"),
         ),
         (
             "neoplastic-cell-abundance-decrease-v1",
@@ -345,6 +354,7 @@ class RuleBasedSemanticParser:
             "decrease",
             (
                 r"\b(decrease|reduce)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?)\b",
+                r"\bremove\b.*\bgeneric inflammatory cells?\b",
                 r"(减少|降低).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞)",
             ),
         ),
@@ -354,6 +364,7 @@ class RuleBasedSemanticParser:
             "increase",
             (
                 r"\b(increase|add)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?)\b",
+                r"\badd\b.*\bgeneric inflammatory cells?\b",
                 r"(增加|添加).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞)",
             ),
         ),
@@ -386,6 +397,19 @@ class RuleBasedSemanticParser:
         for primitive_id, subject, direction, patterns in self._RULES:
             if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns):
                 matches.append((primitive_id, subject, direction))
+        explicit_peritumoral = {
+            primitive_id
+            for primitive_id, _subject, _direction in matches
+            if primitive_id
+            in {
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "peritumoral-small-cluster-increase-v1",
+            }
+        }
+        if explicit_peritumoral:
+            matches = [
+                item for item in matches if item[0] in explicit_peritumoral
+            ]
         if len(matches) != 1:
             raise JointContractError(
                 "instruction must express exactly one supported edit intent; "

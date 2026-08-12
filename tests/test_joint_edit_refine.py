@@ -17,6 +17,11 @@ from inpaint_cells.instance_authority import array_sha256
 from phase3_joint_edit_refine.agents import (
     JOINT_PLAN_JSON_SCHEMA,
     OpenAIMultimodalJointCritic,
+    OpenAIMultimodalJointPlanner,
+    _reject_prohibited_geometry_payload,
+)
+from phase3_joint_edit_refine.agents import (
+    _mask_planner_case_metadata as joint_planner_case_metadata,
 )
 from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
 from phase3_joint_edit_refine.budget import JointFeasibilitySolver
@@ -43,6 +48,8 @@ from phase3_joint_edit_refine.gates import (
     _discrete_radial_profile_is_monotonic,
     _fine_pattern_preserved,
     _recorded_instance_areas_by_class,
+    audit_added_class1_foci,
+    audit_directional_extension_raster,
     mechanism_postcondition_checker_id,
 )
 from phase3_joint_edit_refine.generator_adapter import (
@@ -72,9 +79,12 @@ from phase3_joint_edit_refine.nuclei import iter_instances
 from phase3_joint_edit_refine.packing import certify_complete_footprint_packing
 from phase3_joint_edit_refine.planner import (
     HeuristicJointPlanner,
+    JointInterpretationOption,
     _structural_units_for_components,
 )
 from phase3_joint_edit_refine.planner_inputs import (
+    MASK_PLANNER_ARTIFACT_KINDS,
+    MaskPlannerArtifactRegistry,
     validate_mask_planner_image_paths,
 )
 from phase3_joint_edit_refine.post_generation import (
@@ -92,19 +102,27 @@ from phase3_joint_edit_refine.semantic_parser import (
     RuleBasedSemanticParser,
     bind_semantic_intent,
 )
-from phase3_joint_edit_refine.skills.repository import JointSkillRepository
 from phase3_joint_edit_refine.skills.execution_aliases import (
     tissue_tool_primitive_id,
 )
+from phase3_joint_edit_refine.skills.repository import JointSkillRepository
+from phase3_joint_edit_refine.tissue_execution import (
+    _bind_and_validate_tissue_candidate_traces,
+)
 from phase3_joint_edit_refine.tissue_planner import (
+    JOINT_TISSUE_DECISION_SCHEMA,
     MultiInterfaceResearchTissuePlanner,
-    _mask_planner_case_metadata as tissue_planner_case_metadata,
+    OpenAIJointAwareTissuePlanner,
     _effective_tissue_topology,
     _normalize_integer_allocations,
     _select_executable_anchor_ids,
 )
-from phase3_joint_edit_refine.agents import (
-    _mask_planner_case_metadata as joint_planner_case_metadata,
+from phase3_joint_edit_refine.tissue_planner import (
+    _mask_planner_case_metadata as tissue_planner_case_metadata,
+)
+from phase3_joint_edit_refine.tissue_tools import (
+    compile_tissue_tool_program,
+    validate_tissue_plan_tool_binding,
 )
 from phase3_joint_edit_refine.workflow import (
     JointPathologyEditWorkflow,
@@ -119,7 +137,7 @@ from phase3_joint_edit_refine.workflow import (
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import HeuristicInterfacePlanner
 from phase3_mask_edit_refine.gates import GateRegistry, _check_edited_label_topology
-from phase3_mask_edit_refine.models import GateReport
+from phase3_mask_edit_refine.models import CandidateMask, GateReport
 from phase3_mask_edit_refine.scene import build_scene_analysis
 
 
@@ -128,6 +146,131 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_llm_planner_schema_excludes_compiler_owned_geometry(self):
+        encoded_joint = json.dumps(JOINT_PLAN_JSON_SCHEMA, sort_keys=True)
+        self.assertNotIn('"coordinates"', encoded_joint)
+        self.assertNotIn('"area_budget"', encoded_joint)
+        self.assertNotIn('"plan"', JOINT_TISSUE_DECISION_SCHEMA["properties"])
+        self.assertIn(
+            "selected_candidate_id",
+            JOINT_TISSUE_DECISION_SCHEMA["properties"],
+        )
+        for key in (
+            "coordinates",
+            "nucleus_count",
+            "density_multiplier",
+            "area_budget",
+            "shape_masks",
+        ):
+            with self.subTest(key=key), self.assertRaisesRegex(
+                JointContractError, "compiler-owned numeric geometry"
+            ):
+                _reject_prohibited_geometry_payload(
+                    {"cell_plan": {key: 1}}
+                )
+
+    def test_mask_planner_direct_caller_cannot_bypass_registry(self):
+        class NeverCalledClient:
+            def call(self, **kwargs):
+                raise AssertionError("client must not receive an unauthorized raster")
+
+        case = _breast_case_stub()
+        mechanism = JointSkillRepository().mechanisms[
+            "breast-annotation-anchored-boundary-growth"
+        ]
+        option = JointInterpretationOption(
+            primitive_id="cohesive-boundary-expansion-v1",
+            semantic_fit="direct",
+            semantic_priority=0,
+            semantic_rationale="fixture",
+            mechanism=mechanism,
+            feasibility={
+                "aggregate_tissue_capacity_pixels": 100,
+                "meaningful_tissue_floor_pixels": 10,
+                "feasible_interface_count": 1,
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            disguised = Path(tmp) / "planner_01_tissue_mask.png"
+            Image.new("RGB", (8, 8), "red").save(disguised)
+            with self.assertRaisesRegex(
+                JointContractError, "artifact registry"
+            ):
+                OpenAIMultimodalJointPlanner(
+                    client=NeverCalledClient()
+                ).select_interpretation(
+                    case=case,
+                    scene=SimpleNamespace(to_metadata=dict),
+                    options=(option,),
+                    image_paths=(disguised,),
+                    artifact_registry=None,
+                )
+
+    def test_llm_interpretation_permissions_fail_closed(self):
+        class FixtureClient:
+            def __init__(self, response):
+                self.response = response
+
+            def call(self, **kwargs):
+                return self.response, {"model": "fixture"}
+
+        case = _breast_case_stub()
+        mechanism = JointSkillRepository().mechanisms[
+            "breast-annotation-anchored-boundary-growth"
+        ]
+        option = JointInterpretationOption(
+            primitive_id="cohesive-boundary-expansion-v1",
+            semantic_fit="direct",
+            semantic_priority=0,
+            semantic_rationale="fixture",
+            mechanism=mechanism,
+            feasibility={
+                "aggregate_tissue_capacity_pixels": 100,
+                "meaningful_tissue_floor_pixels": 10,
+                "feasible_interface_count": 1,
+            },
+        )
+        base = {
+            "abstain": False,
+            "abstain_reason": None,
+            "clarification_required": False,
+            "clarification_reason": None,
+            "clarification_primitive_ids": [],
+            "primitive_id": option.primitive_id,
+            "mechanism_id": mechanism.mechanism_id,
+            "decision_id": "select_primitive_mechanism_pair",
+            "interpretation_explanation": "mask certificate ranking",
+            "supporting_observations": ["mask graph support"],
+            "supporting_preference_rule_ids": [
+                mechanism.planner_policy.selection_preferences[0]
+            ],
+            "observed_contraindications": [],
+            "confidence": 0.8,
+        }
+        adversaries = {
+            "unknown preference": {
+                **base,
+                "supporting_preference_rule_ids": ["pref:forged"],
+            },
+            "illegal decision": {**base, "decision_id": "draw_polygon"},
+            "unannotated claim": {
+                **base,
+                "supporting_observations": ["fibrosis is visible"],
+            },
+        }
+        for label, response in adversaries.items():
+            with self.subTest(label=label), self.assertRaises(JointContractError):
+                OpenAIMultimodalJointPlanner(
+                    client=FixtureClient(response),
+                    max_contract_attempts=1,
+                ).select_interpretation(
+                    case=case,
+                    scene=SimpleNamespace(to_metadata=dict),
+                    options=(option,),
+                    image_paths=(),
+                    artifact_registry=None,
+                )
+
     def test_remaining_population_may_use_unused_seam_capacity(self):
         source = np.zeros((32, 32), dtype=np.uint8)
         reference = ReferenceNucleusShape(
@@ -196,25 +339,246 @@ class JointSkillTests(unittest.TestCase):
         self.assertIn("source_nuclei_mask_uri", joint_planner_case_metadata(case))
 
     def test_mask_graph_llm_rejects_raw_histology_and_reader_boards(self):
-        accepted = validate_mask_planner_image_paths(
-            (
-                "/tmp/planner_01_tissue_mask.png",
-                "/tmp/planner_02_component_map.png",
-                "/tmp/planner_03_interface_anchor_map.png",
-                "/tmp/planner_mask_tissue_nuclei.png",
-                "/tmp/joint_condition_mask_review.png",
+        case = _breast_case_stub()
+        with tempfile.TemporaryDirectory() as tmp:
+            case_root = Path(tmp) / case.case_id
+            case_root.mkdir()
+            registry = MaskPlannerArtifactRegistry(
+                case=case, pipeline_owned_root=case_root
+            )
+            paths = []
+            for name, kind in MASK_PLANNER_ARTIFACT_KINDS.items():
+                path = case_root / name
+                Image.new("RGB", (4, 4), "black").save(path)
+                registry.register(
+                    path,
+                    artifact_kind=kind,
+                    producer_id="test-mask-writer",
+                    producer_version="v1",
+                )
+                paths.append(path)
+            accepted = validate_mask_planner_image_paths(
+                paths, case=case, artifact_registry=registry
+            )
+            self.assertEqual(len(accepted), 5)
+
+            disguised = Path(tmp) / "planner_01_tissue_mask.png"
+            Image.new("RGB", (4, 4), "red").save(disguised)
+            with self.assertRaises(JointContractError, msg="renamed H&E"):
+                validate_mask_planner_image_paths(
+                    (disguised,), case=case, artifact_registry=registry
+                )
+            reader_board = case_root / "joint_execution_review.png"
+            Image.new("RGB", (4, 4), "white").save(reader_board)
+            with self.assertRaises(JointContractError, msg="unregistered review board"):
+                validate_mask_planner_image_paths(
+                    (reader_board,), case=case, artifact_registry=registry
+                )
+            (case_root / "planner_panels").mkdir()
+            traversing = (
+                case_root
+                / "planner_panels"
+                / ".."
+                / "planner_02_component_map.png"
+            )
+            with self.assertRaises(JointContractError, msg="path traversal"):
+                validate_mask_planner_image_paths(
+                    (traversing,), case=case, artifact_registry=registry
+                )
+            symlink = case_root / "symlink.png"
+            symlink.symlink_to(paths[0])
+            with self.assertRaises(JointContractError, msg="symlink"):
+                validate_mask_planner_image_paths(
+                    (symlink,), case=case, artifact_registry=registry
+                )
+            paths[0].write_bytes(b"mutated")
+            with self.assertRaises(JointContractError, msg="digest mismatch"):
+                validate_mask_planner_image_paths(
+                    (paths[0],), case=case, artifact_registry=registry
+                )
+            other_case = replace(case, case_id="other-case")
+            with self.assertRaises(JointContractError, msg="cross case"):
+                validate_mask_planner_image_paths(
+                    (paths[1],), case=other_case, artifact_registry=registry
+                )
+
+    def test_narrow_cord_compiler_rejects_organic_v2(self):
+        program = compile_tissue_tool_program(
+            primitive_id="infiltrative-nest-cord-extension-v1",
+            mechanism_id="breast-infiltrative-nest-cord-extension",
+            mechanism_allowed_families=(
+                "interface_band_sdf",
+                "topology_safe_morphology",
+            ),
+            primitive_allowed_executors=(
+                "interface_sdf",
+                "connected_morphology",
+                "organic_v2",
+            ),
+        )
+        self.assertNotIn("organic_v2", program.allowed_concrete_executors)
+        plan = SimpleNamespace(
+            tool_program=SimpleNamespace(
+                allowed_tools=("organic_v2",),
+                parameter_ranges={
+                    "joint_tissue_tool_program": program.to_metadata()
+                },
             )
         )
-        self.assertEqual(len(accepted), 5)
-        for unauthorized in (
-            "/tmp/source_he.png",
-            "/tmp/planner_01_he.png",
-            "/tmp/joint_condition_review.png",
-        ):
-            with self.subTest(path=unauthorized), self.assertRaises(
-                JointContractError
-            ):
-                validate_mask_planner_image_paths((unauthorized,))
+        with self.assertRaises(JointContractError):
+            validate_tissue_plan_tool_binding(plan, compiled=program)
+
+    def test_tissue_tool_mapping_and_trace_binding_fail_closed(self):
+        with self.assertRaisesRegex(JointContractError, "unmapped"):
+            compile_tissue_tool_program(
+                primitive_id="infiltrative-nest-cord-extension-v1",
+                mechanism_id="breast-infiltrative-nest-cord-extension",
+                mechanism_allowed_families=("unknown-family",),
+                primitive_allowed_executors=("directional_tapered_projection",),
+            )
+        program = compile_tissue_tool_program(
+            primitive_id="infiltrative-nest-cord-extension-v1",
+            mechanism_id="breast-infiltrative-nest-cord-extension",
+            mechanism_allowed_families=("directional_tapered_projection",),
+            primitive_allowed_executors=("directional_tapered_projection",),
+        )
+        candidate = CandidateMask(
+            candidate_id="forged",
+            interface_id="interface-1",
+            tool_name="directional_tapered_projection",
+            target_mask=np.ones((8, 8), dtype=np.uint8),
+            change_region=np.ones((8, 8), dtype=bool),
+            tool_trace={
+                "joint_tissue_tool_program": {"program_sha256": "forged"},
+                "concrete_tissue_executor": "organic_v2",
+            },
+        )
+        with self.assertRaisesRegex(JointContractError, "detached"):
+            _bind_and_validate_tissue_candidate_traces((candidate,), program)
+
+    def test_directional_extension_raster_adversaries_fail_closed(self):
+        shape = (80, 80)
+        parent = np.zeros(shape, dtype=bool)
+        parent[20:61, 5:25] = True
+        anchor = np.zeros(shape, dtype=bool)
+        anchor[32:49, 24] = True
+
+        def valid_projection():
+            result = np.zeros(shape, dtype=bool)
+            for col in range(25, 61):
+                half_width = max(1, round(8 * (60 - col) / 35))
+                result[40 - half_width : 41 + half_width, col] = True
+            return result
+
+        valid = valid_projection()
+        self.assertTrue(
+            audit_directional_extension_raster(
+                change=valid,
+                parent=parent,
+                other_tumor=np.zeros(shape, dtype=bool),
+                selected_anchor=anchor,
+                nominal_nucleus_diameter_px=5,
+            )["passed"]
+        )
+
+        double = valid_projection()
+        double[10:13, 45:50] = True
+        rows, cols = np.ogrid[: shape[0], : shape[1]]
+        broad = ((rows - 40) / 14) ** 2 + ((cols - 43) / 20) ** 2 <= 1
+        branched = np.zeros(shape, dtype=bool)
+        branched[25:42, 25:30] = True
+        for col in range(30, 61):
+            upper = 40 - (col - 30) // 3
+            lower = 40 + (col - 30) // 3
+            branched[upper - 1 : upper + 2, col] = True
+            branched[lower - 1 : lower + 2, col] = True
+        merged = valid_projection()
+        merged[35:46, 60:63] = True
+        second_parent = np.zeros(shape, dtype=bool)
+        second_parent[31:50, 62:69] = True
+        cases = {
+            "two separated projections": (double, np.zeros(shape, bool), anchor),
+            "broad ellipse": (broad, np.zeros(shape, bool), anchor),
+            "Y branch": (branched, np.zeros(shape, bool), anchor),
+            "side merge": (merged, second_parent, anchor),
+            "wrong anchor": (valid, np.zeros(shape, bool), np.roll(anchor, 25, axis=0)),
+        }
+        for label, (change, other_tumor, selected_anchor) in cases.items():
+            with self.subTest(label=label):
+                audit = audit_directional_extension_raster(
+                    change=change,
+                    parent=parent,
+                    other_tumor=other_tumor,
+                    selected_anchor=selected_anchor,
+                    nominal_nucleus_diameter_px=5,
+                )
+                self.assertFalse(audit["passed"])
+
+    def test_final_added_focus_audit_ignores_forged_cluster_trace(self):
+        shape = (80, 80)
+        source = np.zeros(shape, dtype=bool)
+        source[35:38, 10:13] = True
+        valid_extent = np.zeros(shape, dtype=bool)
+        valid_extent[5:75, 15:70] = True
+
+        def target_and_ledger(centers):
+            target = source.copy()
+            ledger = []
+            for row, col in centers:
+                target[row - 1 : row + 2, col - 1 : col + 2] = True
+                ledger.append(
+                    {
+                        "row": row,
+                        "col": col,
+                        "class_id": 1,
+                        "cluster_size": 1,
+                    }
+                )
+            return target, ledger
+
+        target, ledger = target_and_ledger(((20, 25), (20, 31), (50, 55)))
+        valid = audit_added_class1_foci(
+            source_class1=source,
+            target_class1=target,
+            accepted_center_ledger=ledger,
+            valid_footprint_region=valid_extent,
+            nominal_nucleus_diameter_px=4,
+        )
+        self.assertEqual(valid["focus_sizes"], [2, 1])
+        self.assertTrue(valid["ledger_matches_instances"])
+
+        adversaries = {
+            "single focus pretending multiple": ((20, 25), (20, 31), (20, 37)),
+            "footprint crosses extent": ((6, 15), (30, 40)),
+            "bridge to source": ((35, 14), (55, 55)),
+        }
+        for label, centers in adversaries.items():
+            with self.subTest(label=label):
+                target, ledger = target_and_ledger(centers)
+                audit = audit_added_class1_foci(
+                    source_class1=source,
+                    target_class1=target,
+                    accepted_center_ledger=ledger,
+                    valid_footprint_region=valid_extent,
+                    nominal_nucleus_diameter_px=4,
+                )
+                if label == "single focus pretending multiple":
+                    self.assertEqual(audit["focus_count"], 1)
+                elif label == "footprint crosses extent":
+                    self.assertFalse(audit["all_footprints_in_extent"])
+                else:
+                    self.assertGreater(audit["source_bridge_pixels"], 0)
+
+        target, ledger = target_and_ledger(((20, 25), (50, 55)))
+        ledger = ledger[:1]
+        forged = audit_added_class1_foci(
+            source_class1=source,
+            target_class1=target,
+            accepted_center_ledger=ledger,
+            valid_footprint_region=valid_extent,
+            nominal_nucleus_diameter_px=4,
+        )
+        self.assertFalse(forged["ledger_matches_instances"])
 
     def test_new_breast_primitives_bind_parser_mechanism_and_executor_contract(self):
         repository = JointSkillRepository()
@@ -315,6 +679,31 @@ class JointSkillTests(unittest.TestCase):
             self.assertTrue(item["required_conditions"])
             self.assertEqual(item["production_status"], "shadow_only")
 
+    def test_breast_capability_matrix_instructions_parse_to_declared_primitive(self):
+        matrix_path = (
+            Path(__file__).parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+            / "breast_bcss_capability_matrix_v1.json"
+        )
+        entries = json.loads(matrix_path.read_text(encoding="utf-8"))[
+            "capabilities"
+        ]
+        parser = RuleBasedSemanticParser()
+        for entry in entries:
+            expected = entry["primitive_id"]
+            for instruction in entry["simple_instructions"]:
+                with self.subTest(primitive=expected, instruction=instruction):
+                    intent = parser.parse(instruction)
+                    declared = {
+                        intent.primitive_id,
+                        *(
+                            item.primitive_id
+                            for item in intent.primitive_hypotheses
+                        ),
+                    }
+                    self.assertIn(expected, declared)
+
     def test_mask_condition_critic_does_not_receive_histology_veto_authority(self):
         client = _RecordingJointCriticClient()
         repository = JointSkillRepository()
@@ -339,6 +728,32 @@ class JointSkillTests(unittest.TestCase):
         self.assertNotIn("annotation_visual_veto_requirements", payload)
         self.assertTrue(payload["requirements"]["source_H&E_is_prohibited"])
         self.assertIn("Raw H&E is prohibited", client.calls[0]["system_prompt"])
+
+    def test_mask_condition_critic_direct_raster_bypass_fails_closed(self):
+        case = _breast_case_stub()
+        repository = JointSkillRepository()
+        bundle = repository.compose(
+            case=case,
+            mechanism_id="breast-annotation-anchored-boundary-growth",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            disguised = Path(tmp) / "joint_condition_mask_review.png"
+            Image.new("RGB", (8, 8), "red").save(disguised)
+            with self.assertRaisesRegex(
+                JointContractError, "artifact registry"
+            ):
+                OpenAIMultimodalJointCritic(
+                    _RecordingJointCriticClient()
+                ).review(
+                    case=case,
+                    bundle=bundle,
+                    candidates=(),
+                    gate_reports=(),
+                    image_paths=(disguised,),
+                    artifact_registry=None,
+                )
 
     def test_multimodal_plan_schema_requires_unique_structural_units(self):
         structural_units = JOINT_PLAN_JSON_SCHEMA["properties"][
@@ -2154,7 +2569,8 @@ class JointProfileStatisticsTests(unittest.TestCase):
 class _ApprovingJointCritic(DeterministicJointResearchCritic):
     supports_pathology_vision = True
 
-    def review(self, *, case, bundle, candidates, gate_reports, image_paths):
+    def review(self, *, case, bundle, candidates, gate_reports, image_paths, artifact_registry=None):
+        del artifact_registry
         del case, gate_reports, image_paths
         candidate = candidates[0]
         return JointCriticResult(
@@ -2183,6 +2599,33 @@ class _RecordingJointCriticClient:
             "abstain": True,
             "summary": "fixture abstain",
         }, {"model": "fixture"}
+
+
+class _CertifiedTissueSelectionClient:
+    def __init__(self, mutation=None):
+        self.mutation = mutation
+        self.calls = []
+
+    def call(self, **kwargs):
+        self.calls.append(kwargs)
+        payload = json.loads(kwargs["user_prompt"])
+        candidate = payload["certified_tissue_plan_candidates"][0]
+        preferences = payload["joint_mechanism_contract"]["planner_policy"][
+            "selection_preferences"
+        ]
+        response = {
+            "abstain": False,
+            "abstain_reason": None,
+            "decision_id": "select_certified_tissue_plan_candidate",
+            "selected_candidate_id": candidate["candidate_id"],
+            "selected_tool_family": candidate["allowed_tool_families"][0],
+            "supporting_preference_rule_ids": [preferences[0]],
+            "selection_explanation": "Ranked one compiler-certified mask candidate.",
+            "confidence": 0.83,
+        }
+        if self.mutation is not None:
+            response = self.mutation(response)
+        return response, {"model": "fixture-mask-planner"}
 
 
 class _PassingTissueGateFixture(GateRegistry):
@@ -2243,6 +2686,241 @@ class _AlwaysFailingCandidateCellExecutor:
 
 
 class JointWorkflowTests(unittest.TestCase):
+    def test_joint_llm_plan_rejects_unknown_ids_missing_rules_and_numeric_geometry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
+            case = replace(
+                case,
+                case_id="joint-plan-adversarial",
+                instruction="cohesive-boundary-expansion-v1",
+                primitive_id="cohesive-boundary-expansion-v1",
+                joint_area_budget=JointAreaBudget(
+                    target_fraction=0.12,
+                    min_fraction=0.10,
+                    max_fraction=0.14,
+                    tissue_min_fraction=0.10,
+                ),
+                provenance={
+                    **case.provenance,
+                    "joint_mechanism_id": (
+                        "breast-annotation-anchored-boundary-growth"
+                    ),
+                    "joint_primitive_id": "cohesive-boundary-expansion-v1",
+                },
+            )
+            workflow = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            )
+            result = workflow.run(case, output_root=root / "baseline")
+            self.assertEqual(result.status, "selected_research")
+            heuristic = result.joint_plan
+            schema = workflow.mask_skills.annotation_schema(
+                case.annotation_profile_id
+            )
+            scene = build_joint_scene_analysis(
+                np.load(case.source_tissue_mask_uri),
+                np.asarray(Image.open(case.source_nuclei_mask_uri)),
+                schema=schema,
+                pixel_size_um=case.pixel_size_um,
+                nuclei_instances_path=case.source_nuclei_instances_uri,
+            )
+            bundle = workflow.joint_skills.compose(
+                case=case,
+                mechanism_id=heuristic.selected_mechanism_id,
+                available_checker_ids=workflow.joint_gates.available_checker_ids,
+                production=False,
+            )
+            cell = heuristic.cell_plan
+            raw = {
+                "abstain": False,
+                "abstain_reason": None,
+                "selected_mechanism_id": heuristic.selected_mechanism_id,
+                "decision_ids": [
+                    "select_certified_interface_anchor_ids",
+                    "select_allowed_tool_program",
+                ],
+                "supporting_observations": ["certified mask graph"],
+                "supporting_rule_ids": list(bundle.active_rule_ids),
+                "supporting_preference_rule_ids": list(
+                    bundle.mechanism.planner_policy.selection_preferences
+                ),
+                "representability_confidence": 0.8,
+                "tissue_plan_accepted": True,
+                "bound_interface_ids": list(cell.interface_ids),
+                "structural_unit_ids": list(heuristic.structural_unit_ids),
+                "cell_plan": {
+                    "core_zone": cell.core_zone,
+                    "halo_zone": cell.halo_zone,
+                    "actions": list(cell.actions),
+                    "allowed_cell_classes": list(cell.allowed_cell_classes),
+                    "layout_program_id": cell.layout_program_id,
+                    "anchor_ids": list(cell.anchor_ids),
+                    "spatial_anchor_type": cell.spatial_anchor_type,
+                    "spatial_anchor_observation": cell.spatial_anchor_observation,
+                    "baseline_mode": cell.baseline_mode,
+                    "mechanism_program_id": cell.mechanism_program_id,
+                    "mechanism_quota_role": cell.mechanism_quota_role,
+                    "supporting_rule_ids": list(cell.supporting_rule_ids),
+                    "expected_morphology": "synthetic mask-compatible layout",
+                },
+                "coupling_plan": {
+                    "compatibility_rule_ids": list(
+                        heuristic.coupling_plan.compatibility_rule_ids
+                    )
+                },
+                "uncertainties": [],
+                "escalation_reason": None,
+            }
+            parser = OpenAIMultimodalJointPlanner(client=SimpleNamespace())
+            parsed = parser._parse_plan(
+                raw=raw,
+                case=case,
+                scene=scene,
+                bundle=bundle,
+                tissue_plan=heuristic.tissue_plan,
+            )
+            self.assertEqual(
+                parsed.supporting_preference_rule_ids,
+                tuple(raw["supporting_preference_rule_ids"]),
+            )
+            adversaries = {
+                "vetoed interface": {
+                    **raw,
+                    "bound_interface_ids": ["if:forged"],
+                },
+                "unknown anchor": {
+                    **raw,
+                    "cell_plan": {**raw["cell_plan"], "anchor_ids": ["anchor:forged"]},
+                },
+                "missing required rule": {
+                    **raw,
+                    "supporting_rule_ids": [
+                        rule_id
+                        for rule_id in raw["supporting_rule_ids"]
+                        if rule_id
+                        not in heuristic.coupling_plan.compatibility_rule_ids
+                    ],
+                },
+                "illegal decision": {
+                    **raw,
+                    "decision_ids": ["abstain"],
+                },
+                "numeric geometry": {
+                    **raw,
+                    "cell_plan": {**raw["cell_plan"], "nucleus_count": 9},
+                },
+            }
+            for label, payload in adversaries.items():
+                with self.subTest(label=label), self.assertRaises(
+                    JointContractError
+                ):
+                    parser._parse_plan(
+                        raw=payload,
+                        case=case,
+                        scene=scene,
+                        bundle=bundle,
+                        tissue_plan=heuristic.tissue_plan,
+                    )
+
+    def test_online_tissue_planner_only_selects_compiler_certified_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
+            case = replace(
+                case,
+                case_id="online-certified-selection",
+                instruction="cohesive-boundary-expansion-v1",
+                primitive_id="cohesive-boundary-expansion-v1",
+                joint_area_budget=JointAreaBudget(
+                    target_fraction=0.12,
+                    min_fraction=0.10,
+                    max_fraction=0.14,
+                    tissue_min_fraction=0.10,
+                ),
+                provenance={
+                    **case.provenance,
+                    "joint_mechanism_id": (
+                        "breast-annotation-anchored-boundary-growth"
+                    ),
+                    "joint_primitive_id": "cohesive-boundary-expansion-v1",
+                },
+            )
+            client = _CertifiedTissueSelectionClient()
+            result = JointPathologyEditWorkflow(
+                tissue_planner=OpenAIJointAwareTissuePlanner(client=client),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "result")
+            self.assertEqual(
+                result.status, "selected_research", result.abstain_reasons
+            )
+            certificate = result.joint_plan.tissue_plan.tool_program.parameter_ranges[
+                "planner_selection_certificate"
+            ]
+            self.assertEqual(
+                certificate["decision_id"],
+                "select_certified_tissue_plan_candidate",
+            )
+            self.assertTrue(certificate["selected_candidate_id"])
+            schema = client.calls[0]["json_schema"]
+            self.assertNotIn("plan", schema["properties"])
+
+    def test_online_tissue_planner_rejects_forged_candidate_tool_and_preference(self):
+        mutations = {
+            "unknown candidate": lambda value: {
+                **value,
+                "selected_candidate_id": "tissue-plan:forged",
+            },
+            "forbidden tool family": lambda value: {
+                **value,
+                "selected_tool_family": "organic_v2",
+            },
+            "unknown preference": lambda value: {
+                **value,
+                "supporting_preference_rule_ids": ["pref:forged"],
+            },
+        }
+        for label, mutation in mutations.items():
+            with (
+                self.subTest(label=label),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                case = _as_breast_growth_case(_write_synthetic_case(root))
+                case = replace(
+                    case,
+                    case_id="online-forged-" + label.replace(" ", "-"),
+                    instruction="infiltrative-nest-cord-extension-v1",
+                    primitive_id="infiltrative-nest-cord-extension-v1",
+                    joint_area_budget=JointAreaBudget(
+                        target_fraction=0.025,
+                        min_fraction=0.01,
+                        max_fraction=0.04,
+                        tissue_min_fraction=0.01,
+                    ),
+                    provenance={
+                        **case.provenance,
+                        "joint_mechanism_id": (
+                            "breast-infiltrative-nest-cord-extension"
+                        ),
+                        "joint_primitive_id": (
+                            "infiltrative-nest-cord-extension-v1"
+                        ),
+                    },
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=OpenAIJointAwareTissuePlanner(
+                        client=_CertifiedTissueSelectionClient(mutation),
+                        max_contract_attempts=1,
+                    ),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "result")
+                self.assertEqual(result.status, "abstained")
+
     def test_annotation_anchored_breast_primitives_execute_real_gates(self):
         fixtures = (
             (

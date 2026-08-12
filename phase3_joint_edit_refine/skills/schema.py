@@ -1135,9 +1135,9 @@ def _tissue_front_contract(
         raise JointContractError("tissue front noise_depth_ratio must lie in [0,1]")
     if not 1 <= maximum_band <= 256:
         raise JointContractError("tissue front maximum_band_px must lie in [1,256]")
-    if not 0.25 <= depth_span <= 2.0:
+    if not 0.25 <= depth_span <= 6.0:
         raise JointContractError(
-            "tissue front maximum_depth_span_ratio must lie in [0.25,2.0]"
+            "tissue front maximum_depth_span_ratio must lie in [0.25,6.0]"
         )
     if not 4.0 <= boundary_compactness <= 100.0:
         raise JointContractError(

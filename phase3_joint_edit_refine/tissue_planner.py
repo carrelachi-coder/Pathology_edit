@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,6 @@ import numpy as np
 from scipy import ndimage
 
 from phase3_mask_edit_refine.agents import (
-    EDIT_PLAN_JSON_SCHEMA,
     EDIT_PLAN_SCHEMA_VERSION,
     OpenAIResponsesJSONClient,
     validate_edit_plan,
@@ -30,17 +30,48 @@ from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
 from .feasibility import JointNucleiPreflight
-from .planner_inputs import validate_mask_planner_image_paths
+from .planner_inputs import (
+    MaskPlannerArtifactRegistry,
+    validate_mask_planner_image_paths,
+)
+from .planner_policy import PREFERENCE_METRIC_CATALOG
 from .skills.repository import JointSkillBundle
+from .tissue_tools import (
+    JOINT_TOOL_FAMILY_TO_EXECUTOR,
+    compile_tissue_tool_program,
+    validate_tissue_plan_tool_binding,
+)
 
 JOINT_TISSUE_DECISION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["abstain", "abstain_reason", "plan"],
+    "required": [
+        "abstain",
+        "abstain_reason",
+        "decision_id",
+        "selected_candidate_id",
+        "selected_tool_family",
+        "supporting_preference_rule_ids",
+        "selection_explanation",
+        "confidence",
+    ],
     "properties": {
         "abstain": {"type": "boolean"},
         "abstain_reason": {"type": ["string", "null"]},
-        "plan": {"anyOf": [EDIT_PLAN_JSON_SCHEMA, {"type": "null"}]},
+        "decision_id": {
+            "type": ["string", "null"],
+            "enum": ["select_certified_tissue_plan_candidate", None],
+        },
+        "selected_candidate_id": {"type": ["string", "null"]},
+        "selected_tool_family": {"type": ["string", "null"]},
+        "supporting_preference_rule_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+            "uniqueItems": True,
+        },
+        "selection_explanation": {"type": ["string", "null"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
 }
 
@@ -64,6 +95,83 @@ def _normalize_integer_allocations(
             "interface allocation produced no executable tissue pixels"
         )
     return tuple(int(item) / total for item in allocations)
+
+
+def _certified_tissue_plan_candidate_id(plan: EditPlan) -> str:
+    payload = json.dumps(
+        plan.to_metadata(), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return "tissue-plan:" + hashlib.sha256(payload).hexdigest()[:20]
+
+
+def _certified_tissue_plan_metrics(
+    plan: EditPlan,
+    *,
+    nuclei_preflight: JointNucleiPreflight,
+    scene: SceneAnalysis,
+) -> dict[str, float]:
+    """Expose measured compiler metrics used by stable preference rules."""
+
+    interface_capacity = {
+        item.interface_id: item for item in nuclei_preflight.interfaces
+    }
+    depths = [
+        float(item.execution_contract.depth_profile.peak_depth_px)
+        for item in plan.candidate_interfaces
+    ]
+    contacts = [
+        max(
+            1,
+            int(interface_capacity[item.interface_id].contact_pixels),
+        )
+        for item in plan.candidate_interfaces
+        if item.interface_id in interface_capacity
+    ]
+    packing_margins = [
+        float(interface_capacity[item.interface_id].capacity_margin_count)
+        for item in plan.candidate_interfaces
+        if item.interface_id in interface_capacity
+    ]
+    protected_counts = [
+        len(interface_capacity[item.interface_id].protected_fine_ids_within_band)
+        + len(interface_capacity[item.interface_id].protected_instance_overlap_ids)
+        for item in plan.candidate_interfaces
+        if item.interface_id in interface_capacity
+    ]
+    maximum_depth = max(depths, default=0.0)
+    total_contact = float(sum(contacts))
+    protected_region = np.asarray(
+        nuclei_preflight.protected_tissue_change_mask, dtype=bool
+    )
+    protected_distance = ndimage.distance_transform_edt(~protected_region)
+    selected_anchor_mask = np.zeros_like(protected_region)
+    for item in plan.candidate_interfaces:
+        for anchor_id in item.execution_contract.anchor_segment_ids:
+            anchor = scene.anchor_masks.get(anchor_id)
+            if anchor is not None:
+                selected_anchor_mask |= np.asarray(anchor, dtype=bool)
+    minimum_protected_distance = (
+        float(np.min(protected_distance[selected_anchor_mask]))
+        if np.any(selected_anchor_mask)
+        else 0.0
+    )
+    return {
+        "depth_span_ratio": maximum_depth / max(1.0, total_contact),
+        "packing_seam_capacity_margin": min(packing_margins, default=0.0),
+        "maximum_depth_px": maximum_depth,
+        "protected_exclusion_count": float(sum(protected_counts)),
+        "anchor_length_depth_ratio": total_contact / max(1.0, maximum_depth),
+        "class1_packing_margin": min(packing_margins, default=0.0),
+        # Merge/structural risk is certified absent by the deterministic
+        # preflight; final raster gates recompute these outcomes after drawing.
+        "projection_merge_count": 0.0,
+        "structural_risk_count": 0.0,
+        "protected_distance_px": minimum_protected_distance,
+        "certificate_capacity_margin": float(
+            nuclei_preflight.aggregate_feasible_tissue_capacity_pixels
+            - nuclei_preflight.meaningful_tissue_floor_pixels
+        ),
+    }
 
 
 def _effective_tissue_topology(
@@ -153,32 +261,90 @@ class OpenAIJointAwareTissuePlanner:
         image_paths: Sequence[str | Path],
         nuclei_preflight: JointNucleiPreflight | None = None,
         execution_feedback: Mapping[str, Any] | None = None,
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> tuple[EditPlan, dict[str, Any]]:
-        image_paths = validate_mask_planner_image_paths(image_paths)
+        image_paths = validate_mask_planner_image_paths(
+            image_paths, case=case, artifact_registry=artifact_registry
+        )
         if nuclei_preflight is None:
             raise RefineContractError(
                 "joint-aware tissue Planner requires nuclei preflight"
             )
+        # Compile pixels, depths, area allocation and anchor membership before
+        # asking the LLM anything.  The LLM receives an immutable certified
+        # candidate and may only rank/select its stable IDs and an allowed tool
+        # family; it can never author an EditPlan or numeric geometry.
+        compiled_plan, compiler_usage = MultiInterfaceResearchTissuePlanner().create_joint_tissue_plan(
+            case=case,
+            scene=scene,
+            bundle=bundle,
+            joint_bundle=joint_bundle,
+            image_paths=image_paths,
+            nuclei_preflight=nuclei_preflight,
+            execution_feedback=execution_feedback,
+            artifact_registry=artifact_registry,
+        )
+        compiled_tools = compile_tissue_tool_program(
+            primitive_id=compiled_plan.primitive_id,
+            mechanism_id=joint_bundle.mechanism.mechanism_id,
+            mechanism_allowed_families=(
+                joint_bundle.mechanism.tissue_program.allowed_tools
+            ),
+            primitive_allowed_executors=bundle.edit_contract.allowed_tools,
+        )
+        candidate_id = _certified_tissue_plan_candidate_id(compiled_plan)
+        candidate_metrics = _certified_tissue_plan_metrics(
+            compiled_plan,
+            nuclei_preflight=nuclei_preflight,
+            scene=scene,
+        )
         payload = {
             "case": _mask_planner_case_metadata(case),
             "tissue_scene": scene.graph.to_metadata(),
             "tissue_skill_bundle": bundle.to_metadata(),
             "joint_skill_bundle": joint_bundle.to_metadata(),
             "joint_mechanism_contract": {
-                "recognition": joint_bundle.mechanism.recognition.__dict__,
-                "representability": joint_bundle.mechanism.representability.__dict__,
-                "tissue_program": joint_bundle.mechanism.tissue_program.__dict__,
-                "coupling": joint_bundle.mechanism.coupling.__dict__,
-                "planner_policy": joint_bundle.mechanism.planner_policy.__dict__,
+                "recognition": asdict(joint_bundle.mechanism.recognition),
+                "representability": asdict(
+                    joint_bundle.mechanism.representability
+                ),
+                "tissue_program": asdict(
+                    joint_bundle.mechanism.tissue_program
+                ),
+                "coupling": asdict(joint_bundle.mechanism.coupling),
+                "planner_policy": asdict(
+                    joint_bundle.mechanism.planner_policy
+                ),
             },
             "nuclei_preflight": nuclei_preflight.to_metadata(),
             "previous_execution_feedback": dict(execution_feedback or {}),
+            "certified_tissue_plan_candidates": [
+                {
+                    "candidate_id": candidate_id,
+                    "interface_ids": [
+                        item.interface_id
+                        for item in compiled_plan.candidate_interfaces
+                    ],
+                    "anchor_ids": [
+                        anchor_id
+                        for item in compiled_plan.candidate_interfaces
+                        for anchor_id in item.execution_contract.anchor_segment_ids
+                    ],
+                    "allowed_tool_families": list(
+                        compiled_tools.allowed_joint_families
+                    ),
+                    "deterministic_candidate_metrics": candidate_metrics,
+                    "compiler_certificate_sha256": compiled_tools.program_sha256,
+                }
+            ],
             "requirements": {
                 "select_only_nuclei_feasible_interfaces": True,
                 "select_real_anchor_segment_ids": True,
                 "respect_immutable_area_budget": True,
-                "prefer_broad_shallow_interfaces": True,
-                "do_not_output_pixels_or_polygons": True,
+                "select_only_listed_candidate_ids": True,
+                "select_only_listed_tool_families": True,
+                "cite_only_skill_preference_rule_ids": True,
+                "do_not_output_pixels_polygons_coordinates_counts_density_or_area": True,
                 "abstain_when_certificate_capacity_is_insufficient": True,
                 "use_skill_selection_preferences": True,
                 "source_H&E_is_prohibited": True,
@@ -195,8 +361,10 @@ class OpenAIJointAwareTissuePlanner:
                     "You are the certified mask-graph tissue planning stage. Annotation "
                     "semantics, tissue topology, complete-nucleus capacity, candidate "
                     "certificates, and the selected skill mechanism are mandatory. Apply "
-                    "the skill's hard constraints and selection preferences, then select "
-                    "interface and anchor IDs only. Raw H&E is prohibited and cannot be "
+                    "the skill's selection preferences, then select only one listed "
+                    "certified candidate ID and one listed tool family. The compiler, not "
+                    "you, owns interfaces, anchors, pixels, depth, area, cell counts and "
+                    "all numeric parameters. Raw H&E is prohibited and cannot be "
                     "used to invent an unannotated structure. Return an explicit abstention "
                     "when the mask-owned requirements cannot be jointly satisfied."
                 ),
@@ -215,10 +383,68 @@ class OpenAIJointAwareTissuePlanner:
                     + str(raw.get("abstain_reason") or "insufficient evidence")
                 )
             try:
-                raw_plan = raw.get("plan")
-                if not isinstance(raw_plan, dict):
-                    raise RefineContractError("joint tissue plan is missing")
-                plan = EditPlan.from_mapping(raw_plan)
+                if raw.get("decision_id") != "select_certified_tissue_plan_candidate":
+                    raise RefineContractError(
+                        "LLM returned an illegal tissue planning decision"
+                    )
+                if raw.get("selected_candidate_id") != candidate_id:
+                    raise RefineContractError(
+                        "LLM selected an unknown or vetoed tissue plan candidate"
+                    )
+                selected_family = raw.get("selected_tool_family")
+                if selected_family not in compiled_tools.allowed_joint_families:
+                    raise RefineContractError(
+                        "LLM selected a tissue tool family outside the compiled mechanism program"
+                    )
+                preference_ids = raw.get("supporting_preference_rule_ids")
+                if (
+                    not isinstance(preference_ids, list)
+                    or not preference_ids
+                    or set(preference_ids)
+                    - set(joint_bundle.mechanism.planner_policy.selection_preferences)
+                ):
+                    raise RefineContractError(
+                        "LLM cited an unknown tissue-selection preference rule"
+                    )
+                missing_metrics = {
+                    PREFERENCE_METRIC_CATALOG[rule_id][0]
+                    for rule_id in preference_ids
+                } - set(candidate_metrics)
+                if missing_metrics:
+                    raise RefineContractError(
+                        "LLM cited a preference without a certified metric: "
+                        + ", ".join(sorted(missing_metrics))
+                    )
+                selected_executor = JOINT_TOOL_FAMILY_TO_EXECUTOR[selected_family]
+                if selected_executor not in compiled_plan.tool_program.allowed_tools:
+                    raise RefineContractError(
+                        "selected tool family is detached from the certified plan"
+                    )
+                plan = replace(
+                    compiled_plan,
+                    tool_program=replace(
+                        compiled_plan.tool_program,
+                        allowed_tools=(selected_executor,),
+                        parameter_ranges={
+                            **compiled_plan.tool_program.parameter_ranges,
+                            "joint_tissue_tool_program": (
+                                compiled_tools.to_metadata()
+                            ),
+                            "planner_selection_certificate": {
+                                "decision_id": raw["decision_id"],
+                                "selected_candidate_id": candidate_id,
+                                "selected_tool_family": selected_family,
+                                "supporting_preference_rule_ids": list(
+                                    preference_ids
+                                ),
+                                "selection_explanation": raw.get(
+                                    "selection_explanation"
+                                ),
+                                "confidence_audit_only": raw.get("confidence"),
+                            },
+                        },
+                    ),
+                )
                 if plan.normalized_intent != case.instruction:
                     raise RefineContractError(
                         "joint tissue Planner modified the parser-owned intent"
@@ -231,6 +457,7 @@ class OpenAIJointAwareTissuePlanner:
                 )
                 self._validate_joint_binding(
                     plan=plan,
+                    tissue_bundle=bundle,
                     joint_bundle=joint_bundle,
                     nuclei_preflight=nuclei_preflight,
                     scene=scene,
@@ -242,6 +469,10 @@ class OpenAIJointAwareTissuePlanner:
                 "provider": self.name,
                 "contract_attempt": attempt,
                 "escalated": client is self.escalation_client,
+                "compiler": compiler_usage,
+                "selected_candidate_id": candidate_id,
+                "selected_tool_family": selected_family,
+                "supporting_preference_rule_ids": list(preference_ids),
                 **usage,
             }
         raise RefineContractError(
@@ -253,6 +484,7 @@ class OpenAIJointAwareTissuePlanner:
     def _validate_joint_binding(
         *,
         plan: EditPlan,
+        tissue_bundle: ActiveKnowledgeBundle,
         joint_bundle: JointSkillBundle,
         nuclei_preflight: JointNucleiPreflight,
         scene: SceneAnalysis,
@@ -274,6 +506,19 @@ class OpenAIJointAwareTissuePlanner:
             raise RefineContractError("tissue source labels violate joint mechanism")
         if plan.target_label not in label_contract["target_labels"]:
             raise RefineContractError("tissue target label violates joint mechanism")
+        compiled_tools = compile_tissue_tool_program(
+            primitive_id=plan.primitive_id,
+            mechanism_id=joint_bundle.mechanism.mechanism_id,
+            mechanism_allowed_families=(
+                joint_bundle.mechanism.tissue_program.allowed_tools
+            ),
+            primitive_allowed_executors=(
+                tissue_bundle.edit_contract.allowed_tools
+            ),
+        )
+        # The actual primitive contract is carried by the caller's mask bundle;
+        # a detached or fabricated compiled program still fails here.
+        validate_tissue_plan_tool_binding(plan, compiled=compiled_tools)
         anchor_to_interface = {
             item.anchor_segment_id: item.interface_id
             for item in scene.graph.anchor_segments
@@ -287,10 +532,10 @@ class OpenAIJointAwareTissuePlanner:
                 raise RefineContractError(
                     "tissue plan contains an unknown or detached anchor"
                 )
-        if plan.planner_confidence < 0.70:
-            raise RefineContractError(
-                "joint-aware tissue plan confidence is below 0.70"
-            )
+        # Planner confidence is retained for audit/calibration only. Interface,
+        # anchor, tool and capacity legality are established above from
+        # deterministic certificates and cannot be granted or revoked by the
+        # model's self-reported confidence.
 
 
 @dataclass(frozen=True)
@@ -309,14 +554,38 @@ class MultiInterfaceResearchTissuePlanner:
         image_paths: Sequence[str | Path],
         nuclei_preflight: JointNucleiPreflight | None = None,
         execution_feedback: Mapping[str, Any] | None = None,
+        artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ) -> tuple[EditPlan, dict[str, Any]]:
-        del image_paths
+        del image_paths, artifact_registry
         mechanism_contract = joint_bundle.mechanism.tissue_program.primitive_label_contracts.get(case.primitive_id)
         if mechanism_contract is None:
             raise RefineContractError("joint mechanism has no primitive label contract")
         allowed_sources = set(bundle.edit_contract.source_label_options).intersection(mechanism_contract["source_labels"])
         if bundle.edit_contract.target_label not in mechanism_contract["target_labels"]:
             raise RefineContractError("annotation-resolved target is illegal for the joint mechanism")
+        compiled_tools = compile_tissue_tool_program(
+            primitive_id=case.primitive_id,
+            mechanism_id=joint_bundle.mechanism.mechanism_id,
+            mechanism_allowed_families=(
+                joint_bundle.mechanism.tissue_program.allowed_tools
+            ),
+            primitive_allowed_executors=bundle.edit_contract.allowed_tools,
+        )
+        directional_projection = (
+            compiled_tools.allowed_concrete_executors
+            == ("directional_tapered_projection",)
+        )
+        reference_equivalent_diameter = float(
+            np.sqrt(
+                4.0
+                * max(1.0, float(nuclei_preflight.reference_area_p95))
+                / np.pi
+            )
+        )
+        directional_maximum_width_px = float(
+            np.clip(4.0 * reference_equivalent_diameter, 8.0, 24.0)
+        )
+        directional_tip_width_px = 2.0
         legal = [
             item for item in scene.graph.interfaces
             if item.source_label in allowed_sources and item.target_label == bundle.edit_contract.target_label
@@ -639,7 +908,31 @@ class MultiInterfaceResearchTissuePlanner:
             # A tapered/multi-lobe envelope needs more peak depth than the
             # simple area/contact average.  It is nevertheless clamped by the
             # same preflight depth cap that the downstream gate audits.
-            peak = float(np.clip(np.ceil(estimated_depth * 2.0), 2, depth_cap))
+            if directional_projection:
+                # The special executor binds one compact attachment within the
+                # certified anchor and therefore cannot use full-anchor contact
+                # as its area denominator.  Solve the trapezoidal projection
+                # depth from the requested area and the source-calibrated width.
+                estimated_directional_depth = (
+                    2.0
+                    * requested_allocation
+                    / max(
+                        1.0,
+                        directional_maximum_width_px
+                        + directional_tip_width_px,
+                    )
+                )
+                peak = float(
+                    np.clip(
+                        np.ceil(estimated_directional_depth * 1.18),
+                        4,
+                        depth_cap,
+                    )
+                )
+            else:
+                peak = float(
+                    np.clip(np.ceil(estimated_depth * 2.0), 2, depth_cap)
+                )
             requested_mode = (
                 "uniform_front"
                 if topology["allow_source_component_resolution"]
@@ -679,7 +972,9 @@ class MultiInterfaceResearchTissuePlanner:
                                 np.clip(interface.contact_pixels / 6.0, 6.0, 20.0)
                             ),
                         ),
-                        min_anchor_coverage_fraction=0.50,
+                        min_anchor_coverage_fraction=(
+                            0.03 if directional_projection else 0.50
+                        ),
                         # Rasterized curved interfaces can expose one boundary
                         # pixel just outside a selected segment at each end.
                         # A 2% fractional limit is brittle on short segments
@@ -709,8 +1004,9 @@ class MultiInterfaceResearchTissuePlanner:
             area_budget=case.area_budget,
             candidate_interfaces=tuple(planned),
             tool_program=ToolProgram(
-                allowed_tools=bundle.edit_contract.allowed_tools,
+                allowed_tools=compiled_tools.allowed_concrete_executors,
                 parameter_ranges={
+                    "joint_tissue_tool_program": compiled_tools.to_metadata(),
                     "max_changed_components": min(
                         32,
                         sum(
@@ -764,7 +1060,19 @@ class MultiInterfaceResearchTissuePlanner:
                         joint_bundle.mechanism.tissue_program.target_component_merge_policy
                     ),
                     "tissue_geometry_mode": (
-                        topology["geometry_mode"]
+                        "annotation_anchored_narrow_connected_extension"
+                        if directional_projection
+                        else topology["geometry_mode"]
+                    ),
+                    "directional_maximum_width_px": (
+                        directional_maximum_width_px
+                        if directional_projection
+                        else None
+                    ),
+                    "directional_tip_width_px": (
+                        directional_tip_width_px
+                        if directional_projection
+                        else None
                     ),
                     "editable_source_fine_ids": list(
                         joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(

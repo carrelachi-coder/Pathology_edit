@@ -152,11 +152,13 @@
       "source_he_for_execution",
       "unannotated_histology_inference"
     ],
-    "hard_constraint_checker_ids": [],
+    "hard_constraint_checker_ids": [
+      "external_boundary_binding"
+    ],
     "selection_preferences": [
-      "prefer candidates with the largest safe executable capacity",
-      "prefer candidates with greater protected-label clearance and complete-instance capacity",
-      "prefer the smallest sufficient tool program"
+      "pref:certificate:maximize-capacity-margin",
+      "pref:protected-clearance:maximize-distance",
+      "pref:topology:minimize-structural-risk"
     ],
     "clarification_triggers": [
       "the instruction permits multiple materially different executable primitives"

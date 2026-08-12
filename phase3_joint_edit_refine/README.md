@@ -177,6 +177,12 @@ The adapter preserves patch-adaptive density/type priors, context-stabilized
 ProbNet sampling, source-first complete shapes, exact quotas and its sampling
 audit. Production refuses the research substitute.
 
+ProbNet supplies spatial probability and cell-type posterior scores; it does
+not invent the requested cell count or draw nucleus contours. Skill quotas and
+the measured source-zone density own the count. New contours are reused first
+from complete same-patch, same-class instances, with a digest-bound calibrated
+same-class instance library allowed only when local references are insufficient.
+
 Every cell plan is compiled into five non-interchangeable regions: `T_pop` is
 the target-tissue population area used for abundance and density, `E` removes
 complete source instances, `P` admits centers, `V` contains complete new

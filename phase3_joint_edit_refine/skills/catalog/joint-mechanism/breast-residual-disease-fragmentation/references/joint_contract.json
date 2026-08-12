@@ -214,9 +214,9 @@
       "whole_instance_changes"
     ],
     "selection_preferences": [
-      "prefer candidates with the largest safe executable capacity",
-      "prefer candidates with greater protected-label clearance and complete-instance capacity",
-      "prefer the smallest sufficient tool program"
+      "pref:certificate:maximize-capacity-margin",
+      "pref:protected-clearance:maximize-distance",
+      "pref:topology:minimize-structural-risk"
     ],
     "clarification_triggers": [
       "the instruction permits multiple materially different executable primitives"

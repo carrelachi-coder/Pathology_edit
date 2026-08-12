@@ -714,6 +714,7 @@ class JointEditPlan:
     uncertainties: tuple[str, ...]
     escalation_reason: str | None = None
     structural_unit_ids: tuple[str, ...] = ()
+    supporting_preference_rule_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.tissue_plan is not None and self.tissue_plan.case_id != self.case_id:
@@ -726,6 +727,12 @@ class JointEditPlan:
             raise JointContractError("joint plan must cite observations and rules")
         if len(set(self.structural_unit_ids)) != len(self.structural_unit_ids):
             raise JointContractError("joint plan structural unit IDs must be unique")
+        if len(set(self.supporting_preference_rule_ids)) != len(
+            self.supporting_preference_rule_ids
+        ):
+            raise JointContractError(
+                "joint plan preference rule IDs must be unique"
+            )
 
     def to_metadata(self) -> dict[str, Any]:
         return asdict(self)

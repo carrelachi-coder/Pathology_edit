@@ -30,7 +30,14 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-SUPPORTED_TOOLS = frozenset({"interface_sdf", "connected_morphology", "organic_v2"})
+SUPPORTED_TOOLS = frozenset(
+    {
+        "interface_sdf",
+        "connected_morphology",
+        "organic_v2",
+        "directional_tapered_projection",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -215,11 +222,12 @@ def generate_candidates(
             "parts": replay_traces,
             "compiled_topology_replay": replay_audit,
         }
+        replay_executor = plan.tool_program.allowed_tools[0]
         candidates.append(
             CandidateMask(
                 candidate_id="cand:001",
                 interface_id=interface_ids[0],
-                tool_name="interface_sdf",
+                tool_name=replay_executor,
                 target_mask=replay_target,
                 change_region=replay_change,
                 tool_trace=replay_trace,
@@ -472,6 +480,26 @@ def _prepare_interfaces(
             & (anchor_distance <= band_max)
             & (required_scale <= band_max + 1e-6)
         )
+        if params.get("tissue_geometry_mode") == "annotation_anchored_narrow_connected_extension":
+            directional_envelope, directional_priority = (
+                compile_directional_tapered_projection_field(
+                    ownership_envelope,
+                    anchor_mask=anchor_mask,
+                    parent_mask=scene.component_masks.get(
+                        planned.target_component_id,
+                        np.zeros_like(mask, dtype=bool),
+                    ),
+                    maximum_depth_px=band_max,
+                    maximum_width_px=float(
+                        params.get("directional_maximum_width_px", 24.0)
+                    ),
+                    tip_width_px=float(
+                        params.get("directional_tip_width_px", 2.0)
+                    ),
+                )
+            )
+            ownership_envelope &= directional_envelope
+            required_scale = directional_priority
         legal_envelope = ownership_envelope & (
             required_scale <= peak_depth * 1.001 + 1e-9
         )
@@ -737,6 +765,84 @@ def _generate_one(
         "anchor": anchor_trace,
         "topology_safe_growth": topology_audit.to_metadata(),
     }
+
+
+def compile_directional_tapered_projection_field(
+    legal_envelope: np.ndarray,
+    *,
+    anchor_mask: np.ndarray,
+    parent_mask: np.ndarray,
+    maximum_depth_px: float,
+    maximum_width_px: float,
+    tip_width_px: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compile one mask-owned, outward, tapered projection.
+
+    This is a deterministic geometry compiler, not a pathology detector.  The
+    parent component, legal host compartment, and selected anchor have already
+    been certified from annotation geometry.  The function narrows that legal
+    set to one directional projection and returns a raster-derived priority
+    field used identically by feasibility compilation and execution.
+    """
+
+    legal = np.asarray(legal_envelope, dtype=bool)
+    anchor = np.asarray(anchor_mask, dtype=bool)
+    parent = np.asarray(parent_mask, dtype=bool)
+    infinite = np.full(legal.shape, np.inf, dtype=float)
+    if not np.any(legal) or not np.any(anchor) or not np.any(parent):
+        return np.zeros_like(legal), infinite
+
+    anchor_candidates = anchor & ndimage.binary_dilation(
+        legal, structure=np.ones((3, 3), dtype=bool), iterations=1
+    )
+    coordinates = np.argwhere(anchor_candidates)
+    if coordinates.size == 0:
+        coordinates = np.argwhere(anchor)
+    parent_coordinates = np.argwhere(parent)
+    parent_center = parent_coordinates.mean(axis=0)
+
+    # Order the selected boundary sector along its dominant axis and use its
+    # median as the single attachment point.  The normal is annotation-owned:
+    # it points from the parent component centroid through that attachment.
+    centered = coordinates - coordinates.mean(axis=0)
+    if coordinates.shape[0] > 1:
+        _, _, vh = np.linalg.svd(centered, full_matrices=False)
+        tangent = np.asarray(vh[0], dtype=float)
+        order = centered @ tangent
+        pivot = coordinates[int(np.argsort(order)[len(order) // 2])].astype(float)
+    else:
+        pivot = coordinates[0].astype(float)
+        tangent = np.asarray((0.0, 1.0), dtype=float)
+    normal = pivot - parent_center
+    normal_norm = float(np.linalg.norm(normal))
+    if normal_norm <= 1e-6:
+        normal = np.asarray((-tangent[1], tangent[0]), dtype=float)
+    else:
+        normal /= normal_norm
+    tangent = np.asarray((-normal[1], normal[0]), dtype=float)
+
+    rows, cols = np.indices(legal.shape, dtype=float)
+    delta_row = rows - pivot[0]
+    delta_col = cols - pivot[1]
+    longitudinal = delta_row * normal[0] + delta_col * normal[1]
+    lateral = np.abs(delta_row * tangent[0] + delta_col * tangent[1])
+    depth = max(2.0, float(maximum_depth_px))
+    neck_width = max(4.0, float(maximum_width_px))
+    tip_width = float(np.clip(tip_width_px, 1.0, neck_width * 0.45))
+    progress = np.clip(longitudinal / depth, 0.0, 1.0)
+    local_width = neck_width + (tip_width - neck_width) * np.power(progress, 0.72)
+    projection = (
+        legal
+        & (longitudinal >= -1.0)
+        & (longitudinal <= depth)
+        & (lateral <= 0.5 * local_width)
+    )
+    priority = np.where(
+        projection,
+        np.maximum(longitudinal, 0.0) + 0.08 * lateral,
+        np.inf,
+    )
+    return projection, priority
 
 
 def compile_depth_profile_map(
