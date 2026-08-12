@@ -262,6 +262,24 @@ class JointSkillRepository:
                 "executable joint primitives have no mechanism coverage: "
                 + ", ".join(sorted(executable - covered))
             )
+        closed_mechanisms = self.execution_scope.get(
+            "closed_mechanisms", {}
+        )
+        if not isinstance(closed_mechanisms, dict) or not all(
+            isinstance(mechanism_id, str)
+            and isinstance(reason, str)
+            and bool(reason.strip())
+            for mechanism_id, reason in closed_mechanisms.items()
+        ):
+            raise JointContractError(
+                "closed mechanism scope must map mechanism IDs to reasons"
+            )
+        unknown_closed = set(closed_mechanisms) - set(self.mechanisms)
+        if unknown_closed:
+            raise JointContractError(
+                "execution scope closes unknown mechanisms: "
+                + ", ".join(sorted(unknown_closed))
+            )
         for mechanism in self.mechanisms.values():
             burden_directions = {
                 primitive_id
@@ -291,6 +309,12 @@ class JointSkillRepository:
         if primitive_id in legacy:
             return str(legacy[primitive_id])
         return None
+
+    def mechanism_scope_reason(self, mechanism_id: str) -> str | None:
+        reason = self.execution_scope.get("closed_mechanisms", {}).get(
+            mechanism_id
+        )
+        return str(reason) if reason else None
 
     def _load_mechanisms(self) -> dict[str, JointMechanismSkill]:
         result: dict[str, JointMechanismSkill] = {}
@@ -426,6 +450,15 @@ class JointSkillRepository:
             pathology_domain_id=case.pathology_domain_id,
             primitive_id=case.primitive_id,
         ):
+            mechanism_scope_reason = self.mechanism_scope_reason(
+                mechanism.mechanism_id
+            )
+            if mechanism_scope_reason is not None:
+                rejected[mechanism.mechanism_id] = (
+                    "joint mechanism is explicitly closed: "
+                    + mechanism_scope_reason
+                )
+                continue
             try:
                 self.compose(
                     case=case,

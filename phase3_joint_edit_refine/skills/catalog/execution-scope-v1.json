@@ -19,6 +19,10 @@
     "tumor-burden-decrease-v1": "A growth mechanism cannot be inverted into treatment response or regression. This primitive remains closed until a domain-specific, evidence-backed response mechanism and frozen-generator capability are validated."
   },
   "legacy_primitives_not_yet_joint": {},
+  "closed_mechanisms": {
+    "colorectal-gland-forming-front": "The current generic interface-band executor thickens an existing gland wall but cannot create or extend one complete malignant gland unit with an auditable target-lumen generation support. Keep this mechanism closed until a unit-aware executor and paired frozen-generator validation exist.",
+    "prostate-pattern-3-growth": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist."
+  },
   "policy": "fail_closed",
   "review_status": "implementation_scoped"
 }

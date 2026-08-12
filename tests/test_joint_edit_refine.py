@@ -1097,6 +1097,29 @@ class JointSkillTests(unittest.TestCase):
                 "tumor-burden-decrease-v1",
             },
         )
+        self.assertEqual(
+            set(repository.execution_scope["closed_mechanisms"]),
+            {
+                "colorectal-gland-forming-front",
+                "prostate-pattern-3-growth",
+            },
+        )
+        colorectal_growth = replace(
+            _case_stub(primitive="tumor-burden-increase-v1"),
+            pathology_domain_id="colorectal-adenocarcinoma-v1",
+            annotation_profile_id="glas-gland-v1",
+            cell_population_profile_id=(
+                "colorectal-cellvit-source-first-v1"
+            ),
+        )
+        eligible, rejected = repository.eligible_mechanisms_for_case(
+            case=colorectal_growth,
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        self.assertFalse(eligible)
+        self.assertIn("colorectal-gland-forming-front", rejected)
+        self.assertIn("explicitly closed", rejected["colorectal-gland-forming-front"])
         local = _case_stub(
             primitive="cellularity-increase-v1",
             cell_budget=CellCountExtentBudget(3, 2, 4, 48, 0, 32),
@@ -1892,7 +1915,7 @@ class JointWorkflowTests(unittest.TestCase):
     def test_tissue_gate_failure_is_replanned_and_retooled_before_abstain(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            case = _write_synthetic_case(root)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
             gates = _RetryThenPassingTissueGate()
             result = JointPathologyEditWorkflow(
                 tissue_planner=HeuristicInterfacePlanner(),
@@ -1918,7 +1941,7 @@ class JointWorkflowTests(unittest.TestCase):
     def test_candidate_local_cell_failure_is_audited_and_replanned(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            case = _write_synthetic_case(root)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
             executor = _AlwaysFailingCandidateCellExecutor()
             result = JointPathologyEditWorkflow(
                 tissue_planner=HeuristicInterfacePlanner(),
@@ -1956,7 +1979,7 @@ class JointWorkflowTests(unittest.TestCase):
     def test_explicit_mature_regeneration_requirement_rejects_ranker_only_layout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = _write_synthetic_case(root)
+            source = _as_breast_growth_case(_write_synthetic_case(root))
             case = replace(
                 source,
                 provenance={
@@ -1982,7 +2005,7 @@ class JointWorkflowTests(unittest.TestCase):
     def test_offline_joint_workflow_emits_review_artifacts_and_never_calls_api(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            case = _write_synthetic_case(root)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
             workflow = JointPathologyEditWorkflow(
                 tissue_planner=MultiInterfaceResearchTissuePlanner(),
                 joint_planner=HeuristicJointPlanner(),
@@ -2005,7 +2028,7 @@ class JointWorkflowTests(unittest.TestCase):
     def test_approved_joint_candidate_emits_frozen_generator_handoff(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            case = _write_synthetic_case(root)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
             workflow = JointPathologyEditWorkflow(
                 tissue_planner=HeuristicInterfacePlanner(),
                 joint_planner=HeuristicJointPlanner(),
@@ -2106,7 +2129,7 @@ class JointWorkflowTests(unittest.TestCase):
             scene = build_joint_scene_analysis(
                 source_tissue,
                 source_nuclei,
-                schema=MaskProfileSchema.from_reference_profile("GLaS"),
+                schema=MaskProfileSchema.from_reference_profile("BCSS"),
                 pixel_size_um=case.pixel_size_um,
                 nuclei_instances_path=case.source_nuclei_instances_uri,
                 auxiliary_structure_paths=case.auxiliary_structure_uris,
@@ -2274,11 +2297,9 @@ class JointWorkflowTests(unittest.TestCase):
                 resolution["selection"]["semantic_fit"], "contextual"
             )
             self.assertIsNotNone(resolution["selected_cell_budget"])
-            self.assertTrue(
-                any(
-                    key.startswith("tumor-burden-increase-v1::")
-                    for key in resolution["rejected_interpretations"]
-                )
+            self.assertIn(
+                "tumor-burden-increase-v1",
+                resolution["rejected_interpretations"],
             )
 
     def test_local_population_primitives_use_component_contract(self):
@@ -2842,6 +2863,34 @@ def _write_synthetic_case(root: Path) -> JointCaseContext:
         seed=17,
         provenance=provenance,
         pixel_size_um=0.465,
+    )
+
+
+def _as_breast_growth_case(source: JointCaseContext) -> JointCaseContext:
+    """Use an executable broad-front mechanism for generic workflow tests."""
+
+    tissue_path = Path(source.source_tissue_mask_uri)
+    tissue = np.load(tissue_path, allow_pickle=False)
+    tissue[np.isin(tissue, (11, 12, 13))] = 1
+    np.save(tissue_path, tissue, allow_pickle=False)
+    tissue_digest = _sha(tissue_path)
+    provenance = {
+        **source.provenance,
+        "source_tissue_mask_sha256": tissue_digest,
+        "original_label_map_digest": tissue_digest,
+        "preprocessing_revision": "synthetic-bcss-v1",
+        "joint_mechanism_id": "breast-cohesive-nst-front",
+        "available_auxiliary_structures": [],
+    }
+    provenance.pop("auxiliary_structure_sha256", None)
+    provenance.pop("auxiliary_structure_provenance", None)
+    return replace(
+        source,
+        pathology_domain_id="breast-invasive-carcinoma-v1",
+        annotation_profile_id="bcss-semantic-v1",
+        cell_population_profile_id="breast-cellvit-source-first-v1",
+        auxiliary_structure_uris={},
+        provenance=provenance,
     )
 
 

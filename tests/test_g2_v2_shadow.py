@@ -98,6 +98,24 @@ class G2V2ShadowTests(unittest.TestCase):
                     abstain_controls=1,
                 )
 
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["cases"][0]["review_basis"]["reviewer"] = (
+                "current_codex_session"
+            )
+            payload["cases"][0]["mechanism_id"] = (
+                "colorectal-gland-forming-front"
+            )
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, "mechanism_not_in_execution_scope"
+            ):
+                build_g2_v2_shadow(
+                    manifest,
+                    output_dir=root / "closed-mechanism-shadow",
+                    per_organ=2,
+                    abstain_controls=1,
+                )
+
 
 def _case(index, *, organ, dataset, domain, annotation, population, mechanism, primitive, assets, execution_allowed):
     instruction = (

@@ -133,13 +133,15 @@ def _select_executable(rows: list[dict[str, Any]], *, per_organ: int) -> list[di
 def _validate_current_codex_shadow_authority(
     rows: list[dict[str, Any]],
 ) -> None:
-    executable = set(JointSkillRepository().executable_primitive_ids)
+    repository = JointSkillRepository()
+    executable = set(repository.executable_primitive_ids)
     errors = []
     for item in rows:
         if not item.get("execution_allowed"):
             continue
         case_id = str(item.get("case_id") or "")
         primitive_id = str(item.get("primitive_id") or "")
+        mechanism_id = str(item.get("mechanism_id") or "")
         review_basis = item.get("review_basis") or {}
         semantic = item.get("prebound_semantic_intent") or {}
         parser_metadata = semantic.get("parser_metadata") or {}
@@ -147,6 +149,14 @@ def _validate_current_codex_shadow_authority(
             errors.append(f"{case_id}:deprecated_primitive")
         elif primitive_id not in executable:
             errors.append(f"{case_id}:primitive_not_in_execution_scope")
+        if not mechanism_id or mechanism_id not in repository.mechanisms:
+            errors.append(f"{case_id}:unknown_mechanism")
+        elif repository.mechanism_scope_reason(mechanism_id) is not None:
+            errors.append(f"{case_id}:mechanism_not_in_execution_scope")
+        elif primitive_id not in repository.mechanisms[
+            mechanism_id
+        ].supported_primitives:
+            errors.append(f"{case_id}:primitive_mechanism_mismatch")
         if (
             review_basis.get("reviewer") != "current_codex_session"
             or review_basis.get("llm_api_used") is not False
