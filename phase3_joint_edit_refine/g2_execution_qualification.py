@@ -191,6 +191,19 @@ def _qualify_case(
             "failure_reasons": [str(row.get("decision_reason_code"))],
             "metrics": {},
         }
+    selection_reason = joint_skills.execution_selection_reason(
+        primitive_id=str(row.get("primitive_id") or ""),
+        mechanism_id=str(row.get("mechanism_id") or ""),
+    )
+    if selection_reason is not None:
+        return {
+            **base,
+            "status": "execution_requalification_required",
+            "failure_reasons": [
+                "execution_scope_rejected: " + selection_reason
+            ],
+            "metrics": {},
+        }
     try:
         raw = _materialize_joint_context(
             row, manifest_sha256=manifest_digest

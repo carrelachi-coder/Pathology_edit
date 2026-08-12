@@ -316,6 +316,31 @@ class JointSkillRepository:
         )
         return str(reason) if reason else None
 
+    def execution_selection_reason(
+        self, *, primitive_id: str, mechanism_id: str
+    ) -> str | None:
+        """Return why one primitive--mechanism pair may not enter execution.
+
+        Static ``compose`` remains available for catalog and compiler tests.
+        Every runtime entry point must call this method (directly or through
+        ``eligible_mechanisms_for_case``) before exposing a pair to a Planner.
+        """
+
+        if primitive_id not in self.execution_scope["executable_primitives"]:
+            return (
+                self.primitive_scope_reason(primitive_id)
+                or "primitive is outside the reviewed joint executable scope"
+            )
+        mechanism = self.mechanisms.get(mechanism_id)
+        if mechanism is None:
+            return "joint mechanism is unknown"
+        mechanism_reason = self.mechanism_scope_reason(mechanism_id)
+        if mechanism_reason is not None:
+            return mechanism_reason
+        if primitive_id not in mechanism.supported_primitives:
+            return "joint mechanism does not support the selected primitive"
+        return None
+
     def _load_mechanisms(self) -> dict[str, JointMechanismSkill]:
         result: dict[str, JointMechanismSkill] = {}
         for path in sorted(self.root.glob("joint-mechanism/*/references/joint_contract.json")):
@@ -450,13 +475,14 @@ class JointSkillRepository:
             pathology_domain_id=case.pathology_domain_id,
             primitive_id=case.primitive_id,
         ):
-            mechanism_scope_reason = self.mechanism_scope_reason(
-                mechanism.mechanism_id
+            selection_reason = self.execution_selection_reason(
+                primitive_id=case.primitive_id,
+                mechanism_id=mechanism.mechanism_id,
             )
-            if mechanism_scope_reason is not None:
+            if selection_reason is not None:
                 rejected[mechanism.mechanism_id] = (
                     "joint mechanism is explicitly closed: "
-                    + mechanism_scope_reason
+                    + selection_reason
                 )
                 continue
             try:

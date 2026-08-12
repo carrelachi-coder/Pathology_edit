@@ -1120,6 +1120,19 @@ class JointSkillTests(unittest.TestCase):
         self.assertFalse(eligible)
         self.assertIn("colorectal-gland-forming-front", rejected)
         self.assertIn("explicitly closed", rejected["colorectal-gland-forming-front"])
+        self.assertIn(
+            "unit-aware executor",
+            repository.execution_selection_reason(
+                primitive_id="tumor-burden-increase-v1",
+                mechanism_id="colorectal-gland-forming-front",
+            ),
+        )
+        self.assertIsNone(
+            repository.execution_selection_reason(
+                primitive_id="tumor-burden-increase-v1",
+                mechanism_id="breast-cohesive-nst-front",
+            )
+        )
         local = _case_stub(
             primitive="cellularity-increase-v1",
             cell_budget=CellCountExtentBudget(3, 2, 4, 48, 0, 32),

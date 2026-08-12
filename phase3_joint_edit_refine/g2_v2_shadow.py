@@ -149,14 +149,12 @@ def _validate_current_codex_shadow_authority(
             errors.append(f"{case_id}:deprecated_primitive")
         elif primitive_id not in executable:
             errors.append(f"{case_id}:primitive_not_in_execution_scope")
-        if not mechanism_id or mechanism_id not in repository.mechanisms:
-            errors.append(f"{case_id}:unknown_mechanism")
-        elif repository.mechanism_scope_reason(mechanism_id) is not None:
+        selection_reason = repository.execution_selection_reason(
+            primitive_id=primitive_id,
+            mechanism_id=mechanism_id,
+        )
+        if selection_reason is not None:
             errors.append(f"{case_id}:mechanism_not_in_execution_scope")
-        elif primitive_id not in repository.mechanisms[
-            mechanism_id
-        ].supported_primitives:
-            errors.append(f"{case_id}:primitive_mechanism_mismatch")
         if (
             review_basis.get("reviewer") != "current_codex_session"
             or review_basis.get("llm_api_used") is not False
