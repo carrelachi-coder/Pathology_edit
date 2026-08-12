@@ -11,7 +11,7 @@
   "host_tissue_labels": [],
   "target_cell_classes": [],
   "tissue_topology_contract": {
-    "geometry_mode": "component_boundary_turnover",
+    "geometry_mode": "interface_front",
     "allow_source_component_resolution": true,
     "allow_target_hole_resolution": false,
     "allow_source_component_split": false,

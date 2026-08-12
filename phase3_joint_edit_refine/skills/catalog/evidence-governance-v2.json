@@ -7,11 +7,11 @@
     "model_representability"
   ],
   "sources": {
-    "pathology-breast-cap-treatment-v2025": {
+    "pathology-breast-cap-invasive-resection-v4.11.0.0": {
       "category": "pathology_fact",
-      "title": "CAP Protocol for Invasive Breast Carcinoma",
-      "uri": "https://documents.cap.org/protocols/Breast.Invasive_4.10.0.0.REL.CAPCP.pdf",
-      "locator": "Treatment effect / residual cancer burden sections; fibrotic tumor bed and residual cellularity",
+      "title": "CAP Protocol for the Examination of Resection Specimens from Patients with Invasive Carcinoma of the Breast, version 4.11.0.0",
+      "uri": "https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf",
+      "locator": "June 2026 release; treatment-effect and residual-cancer-burden sections distinguish local residual tumor, tumor-bed dimensions, and residual cellularity from complete-response and patient-level claims",
       "verification_status": "verified"
     },
     "pathology-breast-ilc-single-file-2021": {
@@ -212,16 +212,16 @@
     }
   },
   "mechanism_pathology_sources": {
-    "breast-cohesive-nst-front": ["pathology-breast-cap-treatment-v2025"],
+    "breast-cohesive-nst-front": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
     "breast-discohesive-single-file": ["pathology-breast-ilc-single-file-2021"],
     "breast-generic-immune-compartment-turnover": ["pathology-breast-tils-working-group-2014"],
     "breast-intratumoral-necrosis-turnover": ["pathology-mechanism-internal-review-pending"],
     "breast-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
-    "breast-local-invasive-clearance": ["pathology-breast-cap-treatment-v2025"],
-    "breast-post-treatment-invasive-regression": ["pathology-breast-cap-treatment-v2025"],
-    "breast-post-treatment-residual-neoplastic-depletion": ["pathology-breast-cap-treatment-v2025"],
-    "breast-residual-disease-fragmentation": ["pathology-breast-cap-treatment-v2025"],
-    "breast-treatment-associated-stromal-replacement": ["pathology-breast-cap-treatment-v2025"],
+    "breast-local-invasive-clearance": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
+    "breast-post-treatment-invasive-regression": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
+    "breast-post-treatment-residual-neoplastic-depletion": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
+    "breast-residual-disease-fragmentation": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
+    "breast-treatment-associated-stromal-replacement": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
     "colorectal-gland-forming-front": ["pathology-colorectal-cap-v2024"],
     "colorectal-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
     "colorectal-tumor-budding-front": ["pathology-colorectal-itbcc-2016"],

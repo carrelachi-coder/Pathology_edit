@@ -77,12 +77,15 @@ class PrimitiveHypothesis:
     semantic_fit: str
     priority: int
     rationale: str
+    scenario: str | None = None
 
     def __post_init__(self) -> None:
         if self.semantic_fit not in {"explicit", "direct", "contextual"}:
             raise JointContractError("unsupported primitive semantic-fit level")
         if self.priority < 0:
             raise JointContractError("primitive hypothesis priority cannot be negative")
+        if self.scenario is not None and self.scenario not in CLINICAL_SCENARIOS:
+            raise JointContractError("primitive hypothesis has an unsupported scenario")
 
 
 @dataclass(frozen=True)
@@ -286,8 +289,8 @@ class RuleBasedSemanticParser:
             "cell-type-abundance",
             "decrease",
             (
-                r"\b(decrease|reduce)\b.*\b(neoplastic cells?|tumou?r cells?)\b",
-                r"(减少|降低).*(肿瘤细胞|癌细胞)",
+                r"\b(decrease|reduce)\b.*\b(neoplastic cells?|tumou?r cells?)\b(?!\s+(?:infiltration|invasion|budding|buds?))",
+                r"(减少|降低).*(肿瘤细胞|癌细胞)(?!浸润|侵袭|出芽)",
             ),
         ),
         (
@@ -295,8 +298,8 @@ class RuleBasedSemanticParser:
             "cell-type-abundance",
             "increase",
             (
-                r"\b(increase|add)\b.*\b(neoplastic cells?|tumou?r cells?)\b",
-                r"(增加|添加).*(肿瘤细胞|癌细胞)",
+                r"\b(increase|add)\b.*\b(neoplastic cells?|tumou?r cells?)\b(?!\s+(?:infiltration|invasion|budding|buds?))",
+                r"(增加|添加).*(肿瘤细胞|癌细胞)(?!浸润|侵袭|出芽)",
             ),
         ),
         (
@@ -620,6 +623,7 @@ def semantic_intent_from_metadata(
             semantic_fit=_required_text(item, "semantic_fit"),
             priority=int(item.get("priority", -1)),
             rationale=_required_text(item, "rationale"),
+            scenario=_optional_text(item, "scenario"),
         )
         for item in raw_hypotheses
         if isinstance(item, Mapping)
@@ -719,8 +723,10 @@ def bind_semantic_intent(
                 input_digests=input_digests,
                 knowledge_context=knowledge_context,
                 why_required=(
-                    "当前描述只说明发生了治疗后变化，但未说明是缓解、继续进展还是残余病灶；"
-                    "H&E 不能代替用户决定临床方向。"
+                    "The instruction states that a post-treatment change should be "
+                    "simulated but does not specify response, continued progression, "
+                    "or residual disease. H&E cannot choose a clinical direction on "
+                    "the user's behalf."
                 ),
             ).to_metadata()
             raise ScenarioClarificationRequired(request) from exc
@@ -939,22 +945,65 @@ def _build_scenario_intent(
         scenario_target=scenario_target,
         explicit_edit_scope=explicit_edit_scope,
     )
-    specs = _scenario_primitive_specs(
-        scenario=scenario,
-        clinical_direction=clinical_direction,
-        treatment_context=treatment_context,
-        scenario_target=scenario_target,
-        explicit_edit_scope=explicit_edit_scope,
-    )
-    hypotheses = tuple(
-        PrimitiveHypothesis(
-            primitive_id=primitive_id,
-            semantic_fit=fit,
-            priority=priority,
-            rationale=rationale,
+    if scenario == "post_treatment_change":
+        branches = (
+            ("treatment_response", "improve"),
+            ("post_treatment_progression", "worsen"),
+            ("residual_disease", "persist"),
         )
-        for priority, (primitive_id, fit, rationale) in enumerate(specs)
-    )
+        branch_specs = tuple(
+            (branch_scenario, primitive_id, fit, rationale)
+            for branch_scenario, branch_direction in branches
+            for primitive_id, fit, rationale in _scenario_primitive_specs(
+                scenario=branch_scenario,
+                clinical_direction=branch_direction,
+                treatment_context="post_treatment",
+                scenario_target=scenario_target,
+                explicit_edit_scope=explicit_edit_scope,
+            )
+        )
+        hypotheses = tuple(
+            PrimitiveHypothesis(
+                primitive_id=primitive_id,
+                semantic_fit=fit,
+                priority=priority,
+                rationale=rationale,
+                scenario=branch_scenario,
+            )
+            for priority, (
+                branch_scenario,
+                primitive_id,
+                fit,
+                rationale,
+            ) in enumerate(branch_specs)
+        )
+    else:
+        specs = _scenario_primitive_specs(
+            scenario=scenario,
+            clinical_direction=clinical_direction,
+            treatment_context=treatment_context,
+            scenario_target=scenario_target,
+            explicit_edit_scope=explicit_edit_scope,
+        )
+        hypotheses = tuple(
+            PrimitiveHypothesis(
+                primitive_id=primitive_id,
+                semantic_fit=fit,
+                priority=priority,
+                rationale=rationale,
+                scenario=scenario,
+            )
+            for priority, (primitive_id, fit, rationale) in enumerate(specs)
+        )
+    resolved_cell_class = explicit_cell_class
+    if (
+        resolved_cell_class is None
+        and explicit_edit_scope == "cell_population"
+        and hypotheses[0].primitive_id.startswith(
+            "neoplastic-cell-abundance-"
+        )
+    ):
+        resolved_cell_class = "neoplastic"
     return SemanticEditIntent(
         instruction=instruction,
         instruction_mode=instruction_mode,
@@ -966,7 +1015,7 @@ def _build_scenario_intent(
         primitive_id=hypotheses[0].primitive_id,
         subject=scenario_target,
         direction=clinical_direction,
-        explicit_cell_class=explicit_cell_class,
+        explicit_cell_class=resolved_cell_class,
         explicit_location=explicit_location,
         user_constraints=user_constraints,
         uncertainties=uncertainties,
@@ -1221,6 +1270,25 @@ def _rule_based_clinical_scenario(instruction: str) -> dict[str, str] | None:
         )
     if re.search(r"局部复发", instruction) or re.search(r"\blocal recurrence\b", lowered):
         return _scenario_fields("local_recurrence", "worsen", "unspecified")
+    residual_neoplastic_decrease = bool(
+        (
+            re.search(r"残余|残留", instruction)
+            and re.search(r"肿瘤细胞|癌细胞", instruction)
+            and re.search(r"减少|降低|去除", instruction)
+        )
+        or (
+            re.search(r"\bresidual\b", lowered)
+            and re.search(r"\b(?:tumou?r|neoplastic|cancer) cells?\b", lowered)
+            and re.search(r"\b(?:decrease|reduce|remove|deplete)\b", lowered)
+        )
+    )
+    if is_post_treatment and residual_neoplastic_decrease:
+        return _scenario_fields(
+            "residual_disease",
+            "persist",
+            "post_treatment",
+            "cell_population",
+        )
     if is_post_treatment and (
         re.search(r"残余|残留", instruction)
         or re.search(r"\bresidual (?:tumou?r|disease)\b", lowered)
@@ -1371,7 +1439,7 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
         "why": "The parser preserves infiltration-scale ambiguity; deterministic hypotheses also expose invasive-front expansion for visual/mechanism selection.",
     },
     {
-        "instruction": "模拟这个肿瘤继续进展。",
+        "instruction": "Simulate continued progression of this tumor.",
         "output": {
             "instruction_mode": "clinical_scenario",
             "scenario": "disease_progression",
@@ -1386,7 +1454,7 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
         "why": "The user specified a trajectory but did not prescribe its tissue or cellular realization.",
     },
     {
-        "instruction": "模拟治疗后肿瘤缩小。",
+        "instruction": "Simulate local tumor shrinkage after treatment.",
         "output": {
             "instruction_mode": "clinical_scenario",
             "scenario": "treatment_response",
@@ -1401,7 +1469,7 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
         "why": "Treatment is context and shrinkage explicitly constrains the realization to tissue burden.",
     },
     {
-        "instruction": "模拟治疗后肿瘤仍然进展。",
+        "instruction": "Simulate continued tumor progression after treatment.",
         "output": {
             "instruction_mode": "clinical_scenario",
             "scenario": "post_treatment_progression",
@@ -1416,7 +1484,7 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
         "why": "Post-treatment does not reverse the explicit worsening direction.",
     },
     {
-        "instruction": "模拟治疗后的变化。",
+        "instruction": "Simulate a post-treatment change.",
         "output": {
             "abstain": False,
             "abstain_reason": None,

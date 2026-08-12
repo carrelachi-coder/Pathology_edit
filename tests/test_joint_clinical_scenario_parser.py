@@ -11,6 +11,7 @@ from phase3_joint_edit_refine.semantic_parser import (
     PreboundSemanticParser,
     RuleBasedSemanticParser,
     bind_semantic_intent,
+    semantic_intent_from_metadata,
 )
 
 
@@ -142,12 +143,19 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             for item in json.loads(client.calls[0]["user_prompt"])[
                 "few_shot_examples"
             ]
-            if item["instruction"] == "模拟治疗后的变化。"
+            if item["instruction"] == "Simulate a post-treatment change."
         )
         self.assertFalse(directionless["output"]["abstain"])
         self.assertIn(
             "residual-tumor-fragmentation-v1",
             [item.primitive_id for item in intent.primitive_hypotheses],
+        )
+        priorities = [item.priority for item in intent.primitive_hypotheses]
+        self.assertEqual(priorities, list(range(len(priorities))))
+        frozen = semantic_intent_from_metadata(intent.to_metadata())
+        self.assertEqual(
+            [item.scenario for item in frozen.primitive_hypotheses],
+            [item.scenario for item in intent.primitive_hypotheses],
         )
 
     def test_offline_parser_exercises_same_scenario_lattice(self):
@@ -201,6 +209,31 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             ],
         )
 
+    def test_infiltration_rules_do_not_collide_with_abundance(self):
+        parser = RuleBasedSemanticParser()
+        for instruction in (
+            "increase tumor cell infiltration",
+            "增加肿瘤细胞浸润",
+        ):
+            intent = parser.parse(instruction)
+            self.assertEqual(
+                intent.primitive_id,
+                "neoplastic-microinfiltration-increase-v1",
+            )
+
+    def test_residual_neoplastic_cell_reduction_keeps_cell_scope(self):
+        parser = RuleBasedSemanticParser()
+        for instruction in (
+            "Reduce residual tumor cells after treatment",
+            "减少治疗后残余肿瘤细胞",
+        ):
+            intent = parser.parse(instruction)
+            self.assertEqual(intent.scenario, "residual_disease")
+            self.assertEqual(intent.explicit_edit_scope, "cell_population")
+            self.assertEqual(
+                intent.primitive_id,
+                "neoplastic-cell-abundance-decrease-v1",
+            )
     def test_parser_keeps_front_void_and_architecture_scales_separate(self):
         parser = RuleBasedSemanticParser()
         self.assertEqual(

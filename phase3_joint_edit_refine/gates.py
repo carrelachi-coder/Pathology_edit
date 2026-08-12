@@ -2326,13 +2326,13 @@ def _residual_fragmentation_topology(c):
     before = selected_source & np.isin(source, editable_ids)
     after = selected_source & np.isin(target, editable_ids)
     structure = np.ones((3, 3), dtype=bool)
+    primitive = c.bundle.primitive
     labeled, count = ndimage.label(after, structure=structure)
     sizes = [
         int(np.count_nonzero(labeled == index))
         for index in range(1, count + 1)
     ]
     spacing_px = _minimum_component_spacing_px(labeled, count)
-    primitive = c.bundle.primitive
     residual_fraction = int(np.count_nonzero(after)) / max(
         int(np.count_nonzero(before)), 1
     )

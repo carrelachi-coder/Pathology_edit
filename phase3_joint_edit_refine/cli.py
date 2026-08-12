@@ -95,6 +95,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--probnet-base-ch", type=int, default=64)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--meta-eval",
+        action="store_true",
+        help=(
+            "Fail closed unless target-population regeneration uses mature "
+            "ProbNet and cell-only additions use its frozen spatial ranker"
+        ),
+    )
     return parser
 
 
@@ -102,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.production and args.cell_executor != "mature":
         raise ValueError("production joint execution requires --cell-executor mature")
+    if args.meta_eval and args.cell_executor != "mature":
+        raise ValueError("Meta evaluation requires --cell-executor mature")
     if args.production and not (
         args.agent_mode == "api" and args.semantic_parser in {"auto", "api"}
     ):
@@ -268,7 +278,13 @@ def main(argv: list[str] | None = None) -> int:
             joint_skills=repository,
             ranker=ranker,
             cell_executor=cell_executor,
-            config=JointWorkflowConfig(production=args.production),
+            config=JointWorkflowConfig(
+                production=args.production,
+                require_mature_probnet_for_target_population_regeneration=(
+                    args.meta_eval
+                ),
+                require_probnet_ranker_for_cell_addition=args.meta_eval,
+            ),
         )
         result = workflow.run(case, output_root=args.output_root)
         resolution_path = result.artifact_paths.get(

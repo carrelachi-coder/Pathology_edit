@@ -85,6 +85,6 @@
     "mask_guarantees": ["only invasive Tumor fine ID 1 converts to operational Stroma ID 2", "complete class-1 instances are removed from converted tissue", "residual invasive floor is retained"],
     "render_only_claims": ["fibrosis", "specific therapy effect", "degree of response", "tumor-bed identity", "pCR or RCB"]
   },
-  "evidence_citations": ["https://documents.cap.org/protocols/Breast.Invasive_4.10.0.0.REL.CAPCP.pdf"],
+  "evidence_citations": ["https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"],
   "counterexamples": ["calling ordinary stromal replacement fibrosis", "erasing all invasive tumor without an explicit local clearance ROI", "retreating through DCIS or angioinvasion"]
 }

@@ -609,6 +609,20 @@ class JointSkillRepository:
             raise JointContractError(
                 f"{mechanism_id} requires an explicit compatible post-treatment scenario; H&E cannot infer treatment history"
             )
+        if (
+            mechanism_id == "breast-local-population-modulation"
+            and case.primitive_id
+            in {"cellularity-increase-v1", "cellularity-decrease-v1"}
+            and case.provenance.get(
+                "breast_cellularity_shadow_review_authority"
+            )
+            != "approved_for_shadow_v1"
+        ):
+            raise JointContractError(
+                "Breast cellularity editing remains pending mechanism-level "
+                "pathology review and requires digest-bound "
+                "breast_cellularity_shadow_review_authority=approved_for_shadow_v1"
+            )
         if mechanism_id == "breast-local-invasive-clearance":
             if "local_clearance_roi" not in case.auxiliary_structure_uris:
                 raise JointContractError(

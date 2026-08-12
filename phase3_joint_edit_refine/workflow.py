@@ -79,6 +79,8 @@ class JointWorkflowConfig:
     cell_layouts_per_tissue: int = 3
     critic_confidence_threshold: float = 0.70
     require_mature_probnet_in_production: bool = True
+    require_mature_probnet_for_target_population_regeneration: bool = False
+    require_probnet_ranker_for_cell_addition: bool = False
     # One initial solve plus two feedback-directed alternatives.  Each pass
     # executes a fixed 12-candidate contract; a case that still lacks a safe
     # tissue--cell pair abstains instead of creating an unbounded search tail.
@@ -244,32 +246,19 @@ class JointPathologyEditWorkflow:
                     )
                 )
             if case.semantic_intent.get("scenario") == "post_treatment_change":
-                scenario_primitives = {
-                    "treatment_response": {
-                        "invasive-tumor-footprint-decrease-v1",
-                        "neoplastic-cell-abundance-decrease-v1",
-                        "necrosis-appearance-v1",
-                        "stroma-increase-v1",
-                    },
-                    "post_treatment_progression": {
-                        "tumor-burden-increase-v1",
-                        "invasive-front-expansion-v1",
-                        "neoplastic-microinfiltration-increase-v1",
-                        "neoplastic-cell-abundance-increase-v1",
-                    },
-                    "residual_disease": {
-                        "residual-tumor-fragmentation-v1",
-                        "invasive-tumor-footprint-decrease-v1",
-                        "neoplastic-cell-abundance-decrease-v1",
-                    },
-                }
-                prepared_primitives = {
-                    item.option.primitive_id for item in prepared.values()
+                scenario_order = (
+                    "treatment_response",
+                    "post_treatment_progression",
+                    "residual_disease",
+                )
+                prepared_scenarios = {
+                    str(item.case.semantic_intent.get("scenario") or "")
+                    for item in prepared.values()
                 }
                 available_scenarios = tuple(
                     scenario
-                    for scenario, primitives in scenario_primitives.items()
-                    if prepared_primitives.intersection(primitives)
+                    for scenario in scenario_order
+                    if scenario in prepared_scenarios
                 )
                 if not available_scenarios:
                     raise JointContractError(
@@ -292,8 +281,9 @@ class JointPathologyEditWorkflow:
                         "cell_population_profile_id": case.cell_population_profile_id,
                     },
                     why_required=(
-                        "方向不明确；以下选项已通过当前 profile、mechanism、"
-                        "auxiliary 与容量预检。"
+                        "The post-treatment direction is unspecified. These options "
+                        "survived the active profile, mechanism, auxiliary-authority, "
+                        "and capacity preflight."
                     ),
                     available_scenarios=available_scenarios,
                 ).to_metadata()
@@ -1352,6 +1342,12 @@ class JointPathologyEditWorkflow:
             )
         prepared: dict[str, _PreparedInterpretation] = {}
         rejected: dict[str, str] = {}
+        directionless_scenario = (
+            case.semantic_intent.get("scenario") == "post_treatment_change"
+        )
+        raw_hypothesis_items = tuple(
+            item for item in raw_hypotheses if isinstance(item, Mapping)
+        )
         for raw in sorted(
             raw_hypotheses,
             key=lambda item: (
@@ -1369,6 +1365,38 @@ class JointPathologyEditWorkflow:
             rationale = str(raw.get("rationale") or "")
             priority = int(raw.get("priority", 0))
             candidate_case = replace(case, primitive_id=primitive_id)
+            candidate_scenario = str(raw.get("scenario") or "")
+            if directionless_scenario:
+                scenario_directions = {
+                    "treatment_response": "improve",
+                    "post_treatment_progression": "worsen",
+                    "residual_disease": "persist",
+                }
+                if candidate_scenario not in scenario_directions:
+                    rejected[
+                        f"unbound-scenario::{primitive_id or 'missing-primitive'}"
+                    ] = (
+                        "directionless post-treatment hypothesis lacks a bound "
+                        "executable scenario"
+                    )
+                    continue
+                bound_hypotheses = [
+                    dict(item)
+                    for item in raw_hypothesis_items
+                    if item.get("scenario") == candidate_scenario
+                ]
+                bound_intent = {
+                    **case.semantic_intent,
+                    "scenario": candidate_scenario,
+                    "clinical_direction": scenario_directions[candidate_scenario],
+                    "direction": scenario_directions[candidate_scenario],
+                    "treatment_context": "post_treatment",
+                    "primitive_hypotheses": bound_hypotheses,
+                }
+                candidate_case = replace(
+                    candidate_case,
+                    semantic_intent=bound_intent,
+                )
             primitive_contract = self.joint_skills.primitives.get(primitive_id)
             if (
                 primitive_contract is not None
@@ -1432,7 +1460,15 @@ class JointPathologyEditWorkflow:
                 ) or "no joint mechanism supports this primitive"
                 continue
             for mechanism in mechanisms:
-                option_id = f"{primitive_id}::{mechanism.mechanism_id}"
+                option_id = "::".join(
+                    item
+                    for item in (
+                        candidate_scenario if directionless_scenario else "",
+                        primitive_id,
+                        mechanism.mechanism_id,
+                    )
+                    if item
+                )
                 try:
                     bundle = self.joint_skills.compose(
                         case=candidate_case,
@@ -1700,8 +1736,11 @@ class JointPathologyEditWorkflow:
                 and self.cell_executor.supports(executable_contract)
             )
             requires_mature = bool(
-                case.provenance.get(
-                    "require_mature_probnet_regeneration", False
+                (
+                    case.provenance.get(
+                        "require_mature_probnet_regeneration", False
+                    )
+                    or self.config.require_mature_probnet_for_target_population_regeneration
                 )
                 and plan.cell_plan.baseline_mode
                 == "regenerate_target_population"
@@ -2068,12 +2107,21 @@ class JointPathologyEditWorkflow:
         # The mature pipeline owns target-population regeneration. Structured
         # additions are deterministic templates whose anchors may be ranked by
         # the frozen ProbNet but whose count and geometry remain skill-owned.
-        if self.config.production and (
+        cell_addition = "add" in bundle.mechanism.cell_program.actions
+        ranker_required = bool(
+            self.config.production
+            or (
+                self.config.require_probnet_ranker_for_cell_addition
+                and cell_addition
+            )
+        )
+        if ranker_required and (
             self.ranker is None
             or getattr(self.ranker, "name", "") == "deterministic_distance_ranker"
         ):
             raise JointContractError(
-                "production cell-only execution requires the frozen ProbNet ranker"
+                "cell-only addition requires the frozen ProbNet spatial ranker; "
+                "deterministic distance fallback is forbidden by the active evaluation contract"
             )
         layouts = generate_cell_layouts(
             source_tissue=source_tissue,

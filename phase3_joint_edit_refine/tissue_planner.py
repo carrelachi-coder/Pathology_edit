@@ -548,11 +548,13 @@ class MultiInterfaceResearchTissuePlanner:
                 if preflight_item is not None
                 else max(1, min(128, int(interface.contact_pixels)))
             )
-            if component_turnover:
+            if component_turnover or residual_fragmentation:
                 # A closed compartment is one biological object even when the
                 # raster graph splits its boundary into several directed
-                # segments. Use the complete selected boundary; candidate-local
-                # cell feasibility remains authoritative.
+                # segments. Residual fragmentation likewise needs the complete
+                # outside boundary so the deterministic corridor compiler can
+                # enter and leave an editable neck. Candidate-local cell
+                # feasibility remains authoritative in both cases.
                 anchor_ids = tuple(interface.anchor_segment_ids)
             elif (
                 retry_index > 0

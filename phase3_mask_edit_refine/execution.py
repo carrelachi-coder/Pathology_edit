@@ -539,6 +539,18 @@ def _prepare_compiler_work(
             maximum_changed_fraction=maximum_changed_fraction,
             minimum_remaining_pixels=minimum_remaining,
         )
+        if params.get("tissue_geometry_mode") == "residual_fragmentation":
+            required_scale = _residual_fragmentation_priority(
+                source_component=np.asarray(source_component, dtype=bool),
+                legal_envelope=legal_envelope,
+                default_priority=required_scale,
+                minimum_residual_component_area_px=int(
+                    params.get("minimum_residual_component_area_px", 1)
+                ),
+                minimum_residual_spacing_px=int(
+                    params.get("minimum_residual_spacing_px", 0)
+                ),
+            )
         provisional.append(
             {
                 "planned": planned,
@@ -579,6 +591,108 @@ def _prepare_compiler_work(
             )
         )
     return tuple(item for item in works if item.item_capacity_px > 0)
+
+
+def _residual_fragmentation_priority(
+    *,
+    source_component: np.ndarray,
+    legal_envelope: np.ndarray,
+    default_priority: np.ndarray,
+    minimum_residual_component_area_px: int,
+    minimum_residual_spacing_px: int,
+) -> np.ndarray:
+    """Prioritize a source-owned neck corridor before peripheral turnover.
+
+    A generic distance-from-interface erosion peels an entire tumor perimeter
+    before it ever reaches an internal neck. Residual fragmentation instead
+    needs a narrow stromal corridor between robust interior lobes. This helper
+    discovers those lobes by deterministic erosion, constructs their Voronoi
+    separator, and assigns that separator the lowest execution cost. The
+    ordinary topology solver and whole-mask audit remain authoritative: a
+    convex source with no stable multi-lobe witness still fails closed.
+    """
+
+    source = np.asarray(source_component, dtype=bool)
+    legal = np.asarray(legal_envelope, dtype=bool)
+    if not np.any(source & legal):
+        return np.asarray(default_priority, dtype=float)
+    structure = np.ones((3, 3), dtype=bool)
+    distance = ndimage.distance_transform_edt(source)
+    max_iterations = max(1, int(np.floor(distance.max(initial=0.0))) - 1)
+    seed_labels = None
+    seed_count = 0
+    for iterations in range(1, max_iterations + 1):
+        eroded = distance > float(iterations)
+        labeled, count = ndimage.label(eroded, structure=structure)
+        sizes = sorted(
+            (
+                int(np.count_nonzero(labeled == index)),
+                index,
+            )
+            for index in range(1, count + 1)
+            if int(np.count_nonzero(labeled == index))
+            >= minimum_residual_component_area_px
+        )
+        if len(sizes) < 2:
+            continue
+        # Start from the two largest stable lobes. Additional residual foci
+        # may be introduced by a future mechanism-specific program, but using
+        # every erosion fragment as a seed creates tiny diagonal raster
+        # remnants rather than biologically meaningful residual foci.
+        retained = sorted(sizes, reverse=True)[:2]
+        seed_labels = np.zeros_like(labeled, dtype=np.int32)
+        for new_id, (_size, old_id) in enumerate(retained, start=1):
+            seed_labels[labeled == old_id] = new_id
+        seed_count = len(retained)
+        break
+    if seed_labels is None or seed_count < 2:
+        return np.asarray(default_priority, dtype=float)
+
+    seeds = seed_labels > 0
+    _distance_to_seed, nearest = ndimage.distance_transform_edt(
+        ~seeds,
+        return_indices=True,
+    )
+    partition = seed_labels[nearest[0], nearest[1]]
+    separator = np.zeros_like(source, dtype=bool)
+    for row_offset, col_offset in ((1, 0), (0, 1), (1, 1), (1, -1)):
+        shifted = np.roll(partition, (row_offset, col_offset), axis=(0, 1))
+        valid = source & (partition > 0) & (shifted > 0) & (partition != shifted)
+        if row_offset > 0:
+            valid[:row_offset, :] = False
+        if col_offset > 0:
+            valid[:, :col_offset] = False
+        elif col_offset < 0:
+            valid[:, col_offset:] = False
+        separator |= valid
+    if not np.any(separator & legal):
+        return np.asarray(default_priority, dtype=float)
+    corridor_radius = max(
+        1,
+        int(np.ceil(max(1, minimum_residual_spacing_px + 1) / 2.0)),
+    )
+    corridor = ndimage.binary_dilation(
+        separator,
+        structure=structure,
+        iterations=corridor_radius,
+    ) & source & legal
+    # Fill tiny source remnants enclosed by the proposed corridor. They are
+    # raster artifacts of a diagonal cut, not residual foci, and leaving them
+    # would violate the same minimum-focus-area contract used by the gate.
+    provisional_after = source & ~corridor
+    provisional_labels, provisional_count = ndimage.label(
+        provisional_after, structure=structure
+    )
+    tiny_remnants = np.zeros_like(source, dtype=bool)
+    for index in range(1, provisional_count + 1):
+        component = provisional_labels == index
+        if int(np.count_nonzero(component)) < minimum_residual_component_area_px:
+            tiny_remnants |= component
+    corridor |= tiny_remnants & legal
+    corridor_distance = ndimage.distance_transform_edt(~corridor)
+    tie_break = np.asarray(default_priority, dtype=float)
+    tie_break /= max(float(np.max(tie_break[legal], initial=1.0)), 1.0)
+    return corridor_distance + 1e-3 * tie_break
 
 
 def _bounded_allocations(
@@ -812,7 +926,8 @@ def _resolve_topology_safe_area(
     if not floor_result[-1]:
         raise RefineContractError(
             "no whole-mask topology-safe edit reaches the task hard minimum: "
-            f"minimum={hard_min_pixels}"
+            f"minimum={hard_min_pixels}, realized={int(floor_result[-2])}, "
+            f"topology={floor_result[3]}, desired_probe_topology={first[3]}"
         )
     low = hard_min_pixels
     high = upper + 1
@@ -914,11 +1029,26 @@ def _whole_mask_topology_audit(
             if allow_source_component_resolution
             else source_components_after == source_components_before
         )
-    target_holes_valid = (
-        target_holes_after <= target_holes_before
-        if allow_target_hole_resolution
-        else target_holes_after == target_holes_before
-    )
+    if allow_source_component_split:
+        # Each additional residual source focus is represented as one
+        # additional hole in the already-adjacent target compartment. This is
+        # the intended dual topology of a bounded fragmentation corridor, not
+        # an arbitrary target-ring artifact.
+        allowed_added_target_holes = max(
+            0,
+            source_components_after - source_components_before,
+        )
+        target_holes_valid = bool(
+            target_holes_before
+            <= target_holes_after
+            <= target_holes_before + allowed_added_target_holes
+        )
+    else:
+        target_holes_valid = (
+            target_holes_after <= target_holes_before
+            if allow_target_hole_resolution
+            else target_holes_after == target_holes_before
+        )
     passed = (
         source_components_valid
         and target_components_after <= target_components_before

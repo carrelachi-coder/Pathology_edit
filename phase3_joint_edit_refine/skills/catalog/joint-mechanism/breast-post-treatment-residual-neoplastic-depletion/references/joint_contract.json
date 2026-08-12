@@ -43,6 +43,6 @@
     "mask_guarantees": ["tissue mask unchanged", "only complete class-1 instances removed", "smooth spatial depletion gradient with retained residual class-1 cells"],
     "render_only_claims": ["specific therapy effect", "degree of response", "pCR or RCB"]
   },
-  "evidence_citations": ["https://documents.cap.org/protocols/Breast.Invasive_4.10.0.0.REL.CAPCP.pdf"],
+  "evidence_citations": ["https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"],
   "counterexamples": ["using generic cellularity decrease for every class", "removing a random circular cluster", "claiming tissue regression when tissue is unchanged"]
 }

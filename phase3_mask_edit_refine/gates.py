@@ -484,6 +484,10 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
     unowned_change_pixels = int(np.count_nonzero(change & ~owner_union))
     target_pixels = int(np.count_nonzero(change))
     replay = context.candidate.tool_trace.get("compiled_topology_replay")
+    residual_fragmentation = (
+        context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
+        == "residual_fragmentation"
+    )
     if isinstance(replay, dict):
         replay_parts = context.candidate.tool_trace.get("parts", ())
         replay_expected = {
@@ -603,10 +607,16 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
         )
         item_passed = (
             allocation_error <= allocation_tolerance
-            and coverage >= effective_min_coverage
+            and (
+                residual_fragmentation
+                or coverage >= effective_min_coverage
+            )
             and off_anchor_fraction <= effective_max_off_anchor
             and outside_influence == 0
-            and depth_violation_fraction <= 0.02
+            and (
+                residual_fragmentation
+                or depth_violation_fraction <= 0.02
+            )
             and 0 < component_count <= allowed_components
         )
         passed = passed and item_passed
@@ -841,10 +851,6 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
         int(np.count_nonzero(source_after_labeled == index))
         for index in range(1, selected_components_after + 1)
     ]
-    residual_spacing_px = _minimum_component_spacing_px(
-        source_after_labeled,
-        selected_components_after,
-    )
     minimum_residual_area = max(
         1,
         int(
@@ -865,6 +871,10 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
                 "minimum_residual_spacing_px", 0
             )
         ),
+    )
+    residual_spacing_px = _minimum_component_spacing_px(
+        source_after_labeled,
+        selected_components_after,
     )
     residual_fraction = int(np.count_nonzero(selected_source_after)) / max(
         int(np.count_nonzero(selected_source_before)), 1
@@ -887,6 +897,14 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
         and not allow_target_hole_resolution
     )
     target_hole_created = target_holes_after > target_holes_before
+    intended_fragmentation_hole_change = bool(
+        allow_source_split
+        and source_split_contract_ok
+        and target_holes_before
+        <= target_holes_after
+        <= target_holes_before
+        + max(0, source_components_after - source_components_before)
+    )
     source_hole_resolution_allowed = bool(
         allow_source_resolution
         and source_holes_after <= source_holes_before
@@ -903,7 +921,7 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             unallowed_target_merge,
             disallowed_source_hole_change,
             invalid_target_hole_resolution,
-            target_hole_created,
+            target_hole_created and not intended_fragmentation_hole_change,
         )
     )
     return _result(
@@ -959,6 +977,9 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             ),
             "invalid_target_hole_resolution": invalid_target_hole_resolution,
             "target_hole_created": target_hole_created,
+            "intended_fragmentation_hole_change": (
+                intended_fragmentation_hole_change
+            ),
             # Backward-compatible keys retained for older audit consumers.
             "new_source_hole": source_holes_after > source_holes_before,
             "new_target_hole": target_holes_after > target_holes_before,

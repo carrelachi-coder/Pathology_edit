@@ -424,6 +424,33 @@ class MatureProbNetCellExecutor:
             accepted_instance_area_ledger = _accepted_instance_area_ledger(
                 selected
             )
+            placed_by_shape_source = {
+                "same_patch_complete_instance": 0,
+                "calibrated_instance_library": 0,
+                "unknown": 0,
+            }
+            placed_by_target_class: dict[str, int] = {}
+            for item in accepted_instance_area_ledger:
+                raw_source = str(item.get("shape_source") or "unknown")
+                if raw_source in {
+                    "same_patch",
+                    "same_patch_complete_instance",
+                    "reference_patch",
+                }:
+                    source_key = "same_patch_complete_instance"
+                elif raw_source in {
+                    "library",
+                    "calibrated_library",
+                    "instance_library",
+                }:
+                    source_key = "calibrated_instance_library"
+                else:
+                    source_key = "unknown"
+                placed_by_shape_source[source_key] += 1
+                class_key = str(int(item["class_id"]))
+                placed_by_target_class[class_key] = (
+                    placed_by_target_class.get(class_key, 0) + 1
+                )
             contract_errors = contract.validate_candidate(
                 source_tissue=source_tissue,
                 source_nuclei=source_nuclei,
@@ -555,6 +582,12 @@ class MatureProbNetCellExecutor:
                         ],
                         "accepted_instance_area_ledger": (
                             accepted_instance_area_ledger
+                        ),
+                        "placed_by_shape_source_counts": (
+                            placed_by_shape_source
+                        ),
+                        "placed_by_target_class_counts": (
+                            placed_by_target_class
                         ),
                         "mature_generation_region_policy": (
                             "population_T_pop_union_placement_P_union_erasure_E"

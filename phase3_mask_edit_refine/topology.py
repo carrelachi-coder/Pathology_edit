@@ -285,7 +285,9 @@ def _topology_rejection_reason(
     # explicitly authorized source-component resolution primitive.
     if source_background_components == 0 or (
         source_background_components > 1
-        and not allow_source_component_resolution
+        and not (
+            allow_source_component_resolution or allow_source_component_split
+        )
     ):
         return "source_hole_change"
 
@@ -295,7 +297,9 @@ def _topology_rejection_reason(
     )
     if target_neighbor_components == 0:
         return "target_island"
-    if target_neighbor_components != 1 and not allow_target_hole_resolution:
+    if target_neighbor_components != 1 and not (
+        allow_target_hole_resolution or allow_source_component_split
+    ):
         return "target_hole_change"
 
     # Adding a target pixel removes one background pixel.  If that pixel is a
@@ -310,7 +314,10 @@ def _topology_rejection_reason(
     # Zero background neighbours removes an existing one-pixel target hole;
     # more than one splits background and creates a new target hole. The
     # latter remains forbidden even when hole *resolution* is authorized.
-    if target_background_components > 1 or (
+    if (
+        target_background_components > 1
+        and not allow_source_component_split
+    ) or (
         target_background_components == 0
         and not allow_target_hole_resolution
     ):
