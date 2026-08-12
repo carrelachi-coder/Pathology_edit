@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast Residual Disease Fragmentation"
+  short_description: "Create bounded residual invasive foci in post-treatment disease."
+  default_prompt: "Use $breast-residual-disease-fragmentation only when the residual topology is executable and post-treatment residual disease is explicit."

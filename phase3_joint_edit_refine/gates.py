@@ -58,8 +58,14 @@ BASE_REQUIRED_CHECKS = (
 MECHANISM_POSTCONDITION_IDS = (
     "breast-cohesive-nst-front",
     "breast-discohesive-single-file",
+    "breast-generic-immune-compartment-turnover",
     "breast-intratumoral-necrosis-turnover",
     "breast-local-population-modulation",
+    "breast-local-invasive-clearance",
+    "breast-post-treatment-invasive-regression",
+    "breast-post-treatment-residual-neoplastic-depletion",
+    "breast-residual-disease-fragmentation",
+    "breast-treatment-associated-stromal-replacement",
     "colorectal-gland-forming-front",
     "colorectal-local-population-modulation",
     "colorectal-tumor-budding-front",
@@ -130,6 +136,12 @@ class JointGateRegistry:
             "cell_zone_localization": _cell_zone_localization,
             "joint_provenance": _joint_provenance,
             "profile_provenance": _profile_provenance,
+            "profile_fine_transition_authority": (
+                _profile_fine_transition_authority
+            ),
+            "bcss_operational_stroma_authority": (
+                _bcss_operational_stroma_authority
+            ),
             "prohibited_cell_region": _prohibited_cell_region,
             "prohibited_generation_support": _prohibited_generation_support,
             "orca_fragment_protection": _orca_fragment_protection,
@@ -143,6 +155,10 @@ class JointGateRegistry:
             "colorectal_gland_unit_coupling": (
                 _colorectal_gland_unit_coupling
             ),
+            "residual_fragmentation_topology": (
+                _residual_fragmentation_topology
+            ),
+            "local_clearance_roi_binding": _local_clearance_roi_binding,
         }
         self._checks.update(
             {
@@ -197,6 +213,164 @@ class JointGateRegistry:
 
 def _result(check_id, passed, detail, *, metrics=None, severity="hard"):
     return JointGateCheck(check_id, bool(passed), severity, detail, metrics or {})
+
+
+def _profile_fine_transition_authority(c):
+    """Bind canonical execution to profile-owned fine-label authority."""
+
+    profile = c.bundle.annotation_profile
+    source = np.asarray(c.source_tissue)
+    target = np.asarray(c.candidate.target_tissue_mask)
+    change = source != target
+    key = f"{c.bundle.mechanism.mechanism_id}::{c.case.primitive_id}"
+    source_authority = profile.mechanism_editable_source_fine_ids.get(
+        key,
+        profile.mechanism_editable_source_fine_ids.get(
+            c.bundle.mechanism.mechanism_id, ()
+        ),
+    )
+    target_authority = profile.mechanism_editable_target_fine_ids.get(
+        key,
+        profile.mechanism_editable_target_fine_ids.get(
+            c.bundle.mechanism.mechanism_id, ()
+        ),
+    )
+    # A profile may narrow authority for one mechanism (BCSS uses this to
+    # separate invasive carcinoma from DCIS/angioinvasion).  Other existing
+    # mechanisms fall back to their canonical plan contract instead of being
+    # closed accidentally by an unrelated profile upgrade.
+    if c.plan.tissue_plan is not None and not source_authority:
+        resolved = {
+            fine_id
+            for label in c.plan.tissue_plan.source_labels
+            for fine_id in c.schema.resolve_fine_ids(label)
+        }
+        if profile.annotation_profile_id == "bcss-semantic-v1":
+            resolved.difference_update({14, 15})
+        source_authority = tuple(sorted(resolved))
+    if c.plan.tissue_plan is not None and not target_authority:
+        resolved = set(
+            c.schema.resolve_fine_ids(c.plan.tissue_plan.target_label)
+        )
+        if profile.annotation_profile_id == "bcss-semantic-v1":
+            resolved.difference_update({14, 15})
+        target_authority = tuple(sorted(resolved))
+    changed_source_ids = tuple(
+        sorted(int(value) for value in np.unique(source[change]))
+    )
+    changed_target_ids = tuple(
+        sorted(int(value) for value in np.unique(target[change]))
+    )
+    transition_authorized = bool(
+        not np.any(change)
+        or (
+            source_authority
+            and target_authority
+            and set(changed_source_ids).issubset(source_authority)
+            and set(changed_target_ids).issubset(target_authority)
+        )
+    )
+    protected_changed = tuple(
+        sorted(
+            set(changed_source_ids)
+            .intersection(profile.protected_fine_ids)
+            .difference(source_authority)
+        )
+    )
+    passed = transition_authorized and not protected_changed
+    return _result(
+        "profile_fine_transition_authority",
+        passed,
+        (
+            "fine-label transition is explicitly authorized by the annotation profile"
+            if passed
+            else "canonical transition lacks profile fine-label authority or changes a protected fine label"
+        ),
+        metrics={
+            "authority_key": key,
+            "changed_source_fine_ids": list(changed_source_ids),
+            "changed_target_fine_ids": list(changed_target_ids),
+            "authorized_source_fine_ids": list(source_authority),
+            "authorized_target_fine_ids": list(target_authority),
+            "protected_changed_fine_ids": list(protected_changed),
+        },
+    )
+
+
+def _bcss_operational_stroma_authority(c):
+    """Audit the user-approved operational-Stroma policy without overclaiming.
+
+    The mask proves unified ID 2, not native fibrosis.  H&E distinction of an
+    obvious lumen/secretion is intentionally owned by the visual Planner and
+    independent critic; this deterministic gate ensures the pixel transition
+    and claim boundary cannot drift while leaving ambiguous broad tissue open.
+    """
+
+    profile = c.bundle.annotation_profile
+    if profile.annotation_profile_id != "bcss-semantic-v1":
+        return _result(
+            "bcss_operational_stroma_authority",
+            True,
+            "BCSS operational-Stroma policy is not applicable",
+        )
+    source = np.asarray(c.source_tissue)
+    target = np.asarray(c.candidate.target_tissue_mask)
+    change = source != target
+    stroma_ids = set(profile.operational_stroma_fine_ids)
+    touches_stroma = bool(
+        np.any(change)
+        and (
+            np.any(np.isin(source[change], tuple(stroma_ids)))
+            or np.any(np.isin(target[change], tuple(stroma_ids)))
+        )
+    )
+    canonical_stroma_ids = set(c.schema.resolve_fine_ids("Stroma"))
+    changed_stroma_ids = {
+        int(value)
+        for value in np.concatenate((source[change], target[change]))
+        if int(value) in canonical_stroma_ids
+    }
+    stroma_pixels_authorized = bool(
+        not touches_stroma
+        or (
+            stroma_ids
+            and changed_stroma_ids
+            and changed_stroma_ids.issubset(stroma_ids)
+        )
+    )
+    fibrosis_claim = any(
+        token
+        in (
+            c.case.instruction
+            + " "
+            + c.case.compiled_normalized_intent()
+        ).lower()
+        for token in ("fibrosis", "fibrotic", "纤维化")
+    )
+    claim_ok = profile.fibrosis_claim_authorized or not fibrosis_claim
+    passed = stroma_pixels_authorized and claim_ok
+    return _result(
+        "bcss_operational_stroma_authority",
+        passed,
+        (
+            "BCSS ID 2 is used only as operational Stroma; lumen/secretion veto remains bound to Planner and critic"
+            if passed
+            else "BCSS operational Stroma was used for an unauthorized fibrosis claim"
+        ),
+        metrics={
+            "touches_operational_stroma": touches_stroma,
+            "operational_stroma_fine_ids": sorted(stroma_ids),
+            "changed_canonical_stroma_fine_ids": sorted(
+                changed_stroma_ids
+            ),
+            "fibrosis_claim_authorized": profile.fibrosis_claim_authorized,
+            "fibrosis_claim_detected": fibrosis_claim,
+            "visual_veto_requirements": list(
+                profile.visual_veto_requirements
+            ),
+            "visual_veto_stage": "planner_then_independent_critic",
+        },
+    )
 
 
 def _primitive_semantics(c):
@@ -1907,6 +2081,87 @@ def _mechanism_specific_postcondition(
     if expected_mechanism_id.endswith("local-population-modulation"):
         subchecks["local_population_density"] = _local_population_density(c).passed
 
+    if expected_mechanism_id == "breast-generic-immune-compartment-turnover":
+        source = np.asarray(c.source_tissue)
+        target = np.asarray(c.candidate.target_tissue_mask)
+        change = np.asarray(c.candidate.tissue_change, dtype=bool)
+        expected = {
+            "generic-immune-infiltrate-increase-v1": ((2,), (4,), (2,)),
+            "generic-immune-infiltrate-decrease-v1": ((4,), (2,), (3,)),
+        }[c.case.primitive_id]
+        source_ids, target_ids, target_classes = expected
+        subchecks["stroma_immune_transition_only"] = bool(
+            np.any(change)
+            and np.all(np.isin(source[change], source_ids))
+            and np.all(np.isin(target[change], target_ids))
+        )
+        subchecks["direction_specific_cell_population"] = bool(
+            c.plan.cell_plan.allowed_cell_classes == target_classes
+        )
+        subchecks["generic_claim_boundary"] = not any(
+            token in c.case.instruction.casefold()
+            for token in (
+                "plasma",
+                "macrophage",
+                "til score",
+                "response",
+                "prognosis",
+                "浆细胞",
+                "巨噬细胞",
+                "疗效",
+                "预后",
+            )
+        )
+
+    if expected_mechanism_id == "breast-post-treatment-residual-neoplastic-depletion":
+        subchecks["documented_post_treatment_context"] = bool(
+            c.case.semantic_intent.get("treatment_context") == "post_treatment"
+            and c.case.semantic_intent.get("scenario")
+            in {"treatment_response", "residual_disease"}
+        )
+        subchecks["class1_only_depletion"] = bool(
+            c.plan.cell_plan.allowed_cell_classes == (1,)
+            and c.plan.cell_plan.baseline_mode == "selective_remove"
+            and not np.any(c.candidate.tissue_change)
+        )
+
+    if expected_mechanism_id in {
+        "breast-post-treatment-invasive-regression",
+        "breast-treatment-associated-stromal-replacement",
+        "breast-residual-disease-fragmentation",
+    }:
+        allowed_scenarios = {
+            "breast-residual-disease-fragmentation": {"residual_disease"},
+            "breast-post-treatment-invasive-regression": {
+                "treatment_response",
+                "disease_regression",
+                "residual_disease",
+            },
+            "breast-treatment-associated-stromal-replacement": {
+                "treatment_response"
+            },
+        }[expected_mechanism_id]
+        subchecks["documented_post_treatment_context"] = bool(
+            c.case.semantic_intent.get("treatment_context") == "post_treatment"
+            and c.case.semantic_intent.get("scenario") in allowed_scenarios
+        )
+        subchecks["profile_fine_transition_authority"] = (
+            _profile_fine_transition_authority(c).passed
+        )
+        subchecks["operational_stroma_authority"] = (
+            _bcss_operational_stroma_authority(c).passed
+        )
+
+    if expected_mechanism_id == "breast-residual-disease-fragmentation":
+        subchecks["residual_fragmentation_topology"] = (
+            _residual_fragmentation_topology(c).passed
+        )
+
+    if expected_mechanism_id == "breast-local-invasive-clearance":
+        subchecks["local_clearance_roi_binding"] = (
+            _local_clearance_roi_binding(c).passed
+        )
+
     if expected_mechanism_id.endswith("intratumoral-necrosis-turnover"):
         subchecks["necrosis_cell_turnover"] = _necrosis_cell_turnover(c).passed
 
@@ -2021,6 +2276,174 @@ def _mechanism_specific_postcondition(
             "primitive_id": c.case.primitive_id,
             "primitive_scope": c.bundle.primitive.scope,
             "subcheck_results": subchecks,
+        },
+    )
+
+
+def _minimum_component_spacing_px(
+    labeled: np.ndarray,
+    component_count: int,
+) -> float:
+    if component_count < 2:
+        return float("inf")
+    minimum = float("inf")
+    for left in range(1, component_count):
+        distance = ndimage.distance_transform_edt(labeled != left)
+        for right in range(left + 1, component_count + 1):
+            minimum = min(
+                minimum,
+                float(np.min(distance[labeled == right], initial=np.inf)),
+            )
+    return minimum
+
+
+def _residual_fragmentation_topology(c):
+    if c.case.primitive_id != "residual-tumor-fragmentation-v1":
+        return _result(
+            "residual_fragmentation_topology",
+            True,
+            "residual fragmentation topology is not applicable",
+        )
+    source = np.asarray(c.source_tissue)
+    target = np.asarray(c.candidate.target_tissue_mask)
+    change = np.asarray(c.candidate.tissue_change, dtype=bool)
+    selected_components = tuple(
+        dict.fromkeys(
+            item.source_component_id
+            for item in c.plan.tissue_plan.candidate_interfaces
+        )
+    )
+    selected_source = np.zeros_like(change, dtype=bool)
+    for component_id in selected_components:
+        selected_source |= np.asarray(
+            c.scene.tissue.component_masks[component_id], dtype=bool
+        )
+    editable_ids = tuple(
+        c.bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+            c.bundle.mechanism.mechanism_id, (1,)
+        )
+    )
+    before = selected_source & np.isin(source, editable_ids)
+    after = selected_source & np.isin(target, editable_ids)
+    structure = np.ones((3, 3), dtype=bool)
+    labeled, count = ndimage.label(after, structure=structure)
+    sizes = [
+        int(np.count_nonzero(labeled == index))
+        for index in range(1, count + 1)
+    ]
+    spacing_px = _minimum_component_spacing_px(labeled, count)
+    primitive = c.bundle.primitive
+    residual_fraction = int(np.count_nonzero(after)) / max(
+        int(np.count_nonzero(before)), 1
+    )
+    holes_before = int(
+        ndimage.label(
+            ndimage.binary_fill_holes(before) & ~before,
+            structure=structure,
+        )[1]
+    )
+    holes_after = int(
+        ndimage.label(
+            ndimage.binary_fill_holes(after) & ~after,
+            structure=structure,
+        )[1]
+    )
+    source_ids_ok = bool(
+        np.any(change)
+        and np.all(np.isin(source[change], editable_ids))
+    )
+    passed = bool(
+        source_ids_ok
+        and primitive.minimum_residual_components <= count
+        <= primitive.maximum_residual_components
+        and sizes
+        and min(sizes) >= primitive.minimum_residual_component_area_px
+        and spacing_px + 1e-9 >= primitive.minimum_residual_spacing_px
+        and residual_fraction + 1e-9
+        >= primitive.residual_area_floor_fraction
+        and holes_after <= holes_before
+    )
+    return _result(
+        "residual_fragmentation_topology",
+        passed,
+        (
+            "residual focus count, size, floor and no-new-hole contract pass"
+            if passed
+            else "residual fragmentation violates focus topology or residual floor"
+        ),
+        metrics={
+            "selected_source_component_ids": list(selected_components),
+            "residual_component_count": count,
+            "residual_component_sizes_px": sizes,
+            "minimum_residual_components": primitive.minimum_residual_components,
+            "maximum_residual_components": primitive.maximum_residual_components,
+            "minimum_residual_component_area_px": (
+                primitive.minimum_residual_component_area_px
+            ),
+            "minimum_residual_spacing_px": (
+                primitive.minimum_residual_spacing_px
+            ),
+            "observed_minimum_residual_spacing_px": spacing_px,
+            "residual_fraction": residual_fraction,
+            "residual_floor_fraction": primitive.residual_area_floor_fraction,
+            "holes_before": holes_before,
+            "holes_after": holes_after,
+            "changed_source_fine_ids": sorted(
+                int(value) for value in np.unique(source[change])
+            ),
+        },
+    )
+
+
+def _local_clearance_roi_binding(c):
+    if c.case.primitive_id != "local-invasive-clearance-v1":
+        return _result(
+            "local_clearance_roi_binding",
+            True,
+            "local clearance ROI is not applicable",
+        )
+    roi = c.scene.auxiliary_structure_masks.get("local_clearance_roi")
+    tissue_change = np.asarray(c.candidate.tissue_change, dtype=bool)
+    cell_change = np.asarray(c.candidate.cell_change, dtype=bool)
+    outside_tissue = (
+        int(np.count_nonzero(tissue_change))
+        if roi is None
+        else int(np.count_nonzero(tissue_change & ~np.asarray(roi, dtype=bool)))
+    )
+    # Complete-instance closure may extend a nucleus footprint by one source
+    # instance, but the edited instance center must remain in the ROI.  The
+    # whole-instance and protected-exterior gates audit the footprint itself.
+    changed_centers_outside = 0
+    if roi is not None:
+        for item in c.scene.cells.instances:
+            instance = np.asarray(
+                c.scene.instance_masks[item.instance_id], dtype=bool
+            )
+            if np.any(instance & cell_change):
+                row = round(item.centroid_xy[1])
+                col = round(item.centroid_xy[0])
+                if not np.asarray(roi, dtype=bool)[row, col]:
+                    changed_centers_outside += 1
+    passed = bool(
+        roi is not None
+        and np.any(roi)
+        and np.any(tissue_change)
+        and outside_tissue == 0
+        and changed_centers_outside == 0
+    )
+    return _result(
+        "local_clearance_roi_binding",
+        passed,
+        (
+            "tissue change and changed-instance centers are bound to the explicit ROI"
+            if passed
+            else "local clearance lacks an explicit ROI or edits outside it"
+        ),
+        metrics={
+            "roi_present": roi is not None,
+            "roi_pixels": int(np.count_nonzero(roi)) if roi is not None else 0,
+            "tissue_change_outside_roi_pixels": outside_tissue,
+            "changed_instance_centers_outside_roi": changed_centers_outside,
         },
     )
 

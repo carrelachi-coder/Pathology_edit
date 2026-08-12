@@ -49,6 +49,7 @@ def topology_safe_priority_grow(
     seed: int,
     allow_source_component_resolution: bool = False,
     allow_target_hole_resolution: bool = False,
+    allow_source_component_split: bool = False,
 ) -> tuple[np.ndarray, TopologyGrowAudit]:
     """Grow a front while preserving source/target digital topology.
 
@@ -130,6 +131,7 @@ def topology_safe_priority_grow(
                 allow_source_component_resolution
             ),
             allow_target_hole_resolution=allow_target_hole_resolution,
+            allow_source_component_split=allow_source_component_split,
         )
         if reason is not None:
             counters[reason] += 1
@@ -235,6 +237,7 @@ def _topology_rejection_reason(
     unselected_target: np.ndarray,
     allow_source_component_resolution: bool = False,
     allow_target_hole_resolution: bool = False,
+    allow_source_component_split: bool = False,
 ) -> str | None:
     """Return the first local digital-topology violation for one conversion.
 
@@ -264,7 +267,8 @@ def _topology_rejection_reason(
         source_pattern, 8, False
     )
     if source_neighbor_components != 1 and not (
-        allow_source_component_resolution and source_neighbor_components == 0
+        (allow_source_component_resolution and source_neighbor_components == 0)
+        or (allow_source_component_split and source_neighbor_components > 1)
     ):
         return "source_connectivity"
 

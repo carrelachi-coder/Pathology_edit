@@ -61,6 +61,7 @@ class OpenAIMultimodalJointPlanner:
                 "contextual_fit_requires_explicit_explanation": True,
                 "do_not_abstain_when_a_listed_option_is_supported": True,
                 "abstain_only_if_no_listed_option_has_required_visual_evidence": True,
+                "annotation_visual_veto_requirements_are_hard_visual_vetoes": True,
                 "request_user_clarification_only_when_two_or_three_executable_primitives_remain_and_they_encode_materially_different_user_intent": True,
                 "do_not_request_clarification_for_tool_parameters_or_mechanisms_that_H&E_can_resolve": True,
                 "do_not_infer_annotation_or_population_profile": True,
@@ -85,7 +86,11 @@ class OpenAIMultimodalJointPlanner:
                     "those primitive IDs. Do not ask about numeric parameters, interfaces or a "
                     "mechanism that H&E can resolve. Abstain only when none of the listed options "
                     "is supportable. Do not output pixels, coordinates, counts or density "
-                    "multipliers."
+                    "multipliers. Treat every annotation_visual_veto_requirement in "
+                    "an option's deterministic feasibility payload as a hard visual "
+                    "contraindication for that option. In particular, a dataset label "
+                    "being numerically editable does not waive an obvious lumen, "
+                    "secretion, protected native structure, or other listed visual veto."
                 ),
                 user_prompt=json.dumps(
                     {**payload, "previous_contract_errors": errors},
@@ -653,11 +658,18 @@ class OpenAIMultimodalJointCritic:
                 bundle.mechanism.render.vetoes_for(case.primitive_id)
             ),
             "render_only_claims": list(bundle.mechanism.render.render_only_claims),
+            "annotation_visual_veto_requirements": list(
+                bundle.annotation_profile.visual_veto_requirements
+            ),
+            "annotation_operational_stroma_policy": (
+                bundle.annotation_profile.operational_stroma_policy
+            ),
             "requirements": {
                 "rank_only_gate_passing_candidates": True,
                 "review_tissue_and_nuclei_as_one_condition": True,
                 "do_not_restore_gate_failures": True,
                 "veto_if_mechanism_is_not_visually_supported": True,
+                "apply_annotation_visual_veto_requirements_to_every_candidate": True,
             },
         }
         raw, usage = self.client.call(
@@ -665,7 +677,11 @@ class OpenAIMultimodalJointCritic:
                 "You are an independent multimodal pathology critic. You receive no Planner "
                 "free-form reasoning. Rank only deterministic-gate-passing joint candidates, "
                 "considering tissue geometry, complete nuclei layouts, their coupling and the "
-                "original H&E. A hard-gate failure can never be waived."
+                "original H&E. A hard-gate failure can never be waived. Annotation-profile "
+                "visual veto requirements are also mandatory: reject a candidate whose "
+                "edited support contains an obvious lumen, secretion-like material, "
+                "protected native structure, or any other listed visual contraindication, "
+                "even when its numeric tissue label is operationally editable."
             ),
             user_prompt=json.dumps(payload, ensure_ascii=False, sort_keys=True),
             image_paths=image_paths,

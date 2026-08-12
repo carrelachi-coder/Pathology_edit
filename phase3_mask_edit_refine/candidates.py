@@ -78,6 +78,11 @@ def generate_candidates(
         raise RefineContractError("EditPlan contains no supported deterministic tools")
 
     source_ids = tuple(
+        int(value)
+        for value in plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    ) or tuple(
         sorted(
             {
                 fine_id
@@ -591,8 +596,13 @@ def _generate_one(
     allow_target_hole_resolution = bool(
         parameter_ranges.get("allow_target_hole_resolution", False)
     )
+    allow_source_component_split = bool(
+        parameter_ranges.get("allow_source_component_split", False)
+    )
     effective_protected_necks = (
-        None if allow_source_resolution else protected_source_necks
+        None
+        if (allow_source_resolution or allow_source_component_split)
+        else protected_source_necks
     )
     distance = ndimage.distance_transform_edt(~anchor_mask)
     band_min, band_max = planned_band
@@ -663,6 +673,7 @@ def _generate_one(
             seed=topology_seed + 17,
             allow_source_component_resolution=allow_source_resolution,
             allow_target_hole_resolution=allow_target_hole_resolution,
+            allow_source_component_split=allow_source_component_split,
         )
         target = np.array(mask, copy=True)
         target[change] = int(target_fine_id)
@@ -706,6 +717,7 @@ def _generate_one(
         seed=topology_seed,
         allow_source_component_resolution=allow_source_resolution,
         allow_target_hole_resolution=allow_target_hole_resolution,
+        allow_source_component_split=allow_source_component_split,
     )
     target = np.array(mask, copy=True)
     target[selected] = int(target_fine_id)

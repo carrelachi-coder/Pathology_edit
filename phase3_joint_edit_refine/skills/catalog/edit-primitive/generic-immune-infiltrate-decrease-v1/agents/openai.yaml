@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generic immune-infiltrate decrease"
+  short_description: "Retreat an annotated generic immune compartment"
+  default_prompt: "Use $generic-immune-infiltrate-decrease-v1 only with an independently reviewed domain mechanism and annotation authority."

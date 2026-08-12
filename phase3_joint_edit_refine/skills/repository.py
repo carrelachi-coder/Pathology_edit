@@ -69,6 +69,24 @@ class JointSkillBundle:
                 "minimum_source_component_remaining_px": (
                     self.primitive.minimum_source_component_remaining_px
                 ),
+                "allow_source_component_split": (
+                    self.primitive.allow_source_component_split
+                ),
+                "minimum_residual_components": (
+                    self.primitive.minimum_residual_components
+                ),
+                "maximum_residual_components": (
+                    self.primitive.maximum_residual_components
+                ),
+                "minimum_residual_component_area_px": (
+                    self.primitive.minimum_residual_component_area_px
+                ),
+                "minimum_residual_spacing_px": (
+                    self.primitive.minimum_residual_spacing_px
+                ),
+                "residual_area_floor_fraction": (
+                    self.primitive.residual_area_floor_fraction
+                ),
             },
             "primitive_required_source_clearance_classes": list(
                 self.primitive.required_source_clearance_classes
@@ -112,6 +130,21 @@ class JointSkillBundle:
             "annotation_profile_id": self.annotation_profile.annotation_profile_id,
             "annotation_supports_explicit_stroma": (
                 self.annotation_profile.supports_explicit_stroma
+            ),
+            "annotation_protected_fine_ids": list(
+                self.annotation_profile.protected_fine_ids
+            ),
+            "annotation_operational_stroma_fine_ids": list(
+                self.annotation_profile.operational_stroma_fine_ids
+            ),
+            "annotation_operational_stroma_policy": (
+                self.annotation_profile.operational_stroma_policy
+            ),
+            "annotation_fibrosis_claim_authorized": (
+                self.annotation_profile.fibrosis_claim_authorized
+            ),
+            "annotation_visual_veto_requirements": list(
+                self.annotation_profile.visual_veto_requirements
             ),
             "cell_observation_profile_id": self.cell_observation_profile.profile_id,
             "cell_population_profile_id": self.cell_population_profile.profile_id,
@@ -535,16 +568,58 @@ class JointSkillRepository:
                 "annotation profile has no explicit stromal authority; a non-gland "
                 "complement or Other tissue label cannot authorize stroma increase"
             )
-        if case.primitive_id == "stroma-increase-v1":
-            if "treatment-associated" not in mechanism_id:
+        if (
+            case.primitive_id == "stroma-increase-v1"
+            and "treatment-associated" not in mechanism_id
+        ):
+            raise JointContractError(
+                "Tumor-to-Stroma replacement is not owned by a growth mechanism"
+            )
+        if (
+            "treatment-associated" in mechanism_id
+            and case.semantic_intent.get("treatment_context")
+            != "post_treatment"
+        ):
+            raise JointContractError(
+                "treatment-associated mechanism requires explicit "
+                "post-treatment context from the Semantic Parser; H&E cannot "
+                "invent treatment history"
+            )
+        treatment_context_required = {
+            "breast-post-treatment-invasive-regression": {
+                "treatment_response",
+                "disease_regression",
+                "residual_disease",
+            },
+            "breast-post-treatment-residual-neoplastic-depletion": {
+                "treatment_response",
+                "residual_disease",
+            },
+            "breast-residual-disease-fragmentation": {"residual_disease"},
+            "breast-treatment-associated-stromal-replacement": {
+                "treatment_response"
+            },
+        }
+        if mechanism_id in treatment_context_required and (
+            case.semantic_intent.get("treatment_context")
+            != "post_treatment"
+            or case.semantic_intent.get("scenario")
+            not in treatment_context_required[mechanism_id]
+        ):
+            raise JointContractError(
+                f"{mechanism_id} requires an explicit compatible post-treatment scenario; H&E cannot infer treatment history"
+            )
+        if mechanism_id == "breast-local-invasive-clearance":
+            if "local_clearance_roi" not in case.auxiliary_structure_uris:
                 raise JointContractError(
-                    "Tumor-to-Stroma replacement is not owned by a growth mechanism"
+                    "local invasive clearance requires a user-supplied local_clearance_roi"
                 )
-            if case.semantic_intent.get("treatment_context") != "post_treatment":
+            if not any(
+                token in case.instruction.casefold()
+                for token in ("local", "roi", "局部", "圈定")
+            ):
                 raise JointContractError(
-                    "treatment-associated stromal replacement requires an explicit "
-                    "post-treatment context from the Semantic Parser; H&E cannot "
-                    "invent treatment history"
+                    "local invasive clearance must be explicit in the user instruction"
                 )
         if primitive_contract.scope == "tissue_and_cell" and case.joint_area_budget is None:
             raise JointContractError("tissue primitive requires joint_area_budget")

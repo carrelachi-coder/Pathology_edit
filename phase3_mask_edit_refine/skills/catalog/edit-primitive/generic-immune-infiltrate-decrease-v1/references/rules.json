@@ -1,0 +1,12 @@
+{
+  "skill_id": "generic-immune-infiltrate-decrease-v1",
+  "skill_kind": "edit_primitive",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Interface-bound retreat of existing annotated immune infiltrate into stroma.",
+  "capabilities": {"source_label_options": ["Immune infiltrate"], "target_label": "Stroma", "allowed_tools": ["interface_sdf", "connected_morphology", "organic_v2"]},
+  "rules": [
+    {"rule_id": "primitive.generic_immune_infiltrate_decrease.transition", "scope": "candidate_gate", "applies_when": {}, "claim": "Every changed pixel converts Immune infiltrate to Stroma and no unrelated label changes.", "required_observation": "Compare source and target masks pixelwise.", "severity": "hard", "deterministic_check_id": "label_transition", "critic_requirement": null, "exceptions": [], "counterexamples": ["Deleting immune infiltrate into background or tumor."], "evidence_citations": [], "dataset_statistics": {}, "version": "1.0.0-draft", "review_status": "draft", "known_limitations": []},
+    {"rule_id": "primitive.generic_immune_infiltrate_decrease.interface", "scope": "candidate_gate", "applies_when": {}, "claim": "The change starts from a real selected Stroma/Immune interface and passes full area, topology and boundary gates.", "required_observation": "Run the deterministic gate registry.", "severity": "hard", "deterministic_check_id": "interface_contact", "critic_requirement": null, "exceptions": [], "counterexamples": ["Erasing a remote immune component without adjacent stroma."], "evidence_citations": [], "dataset_statistics": {}, "version": "1.0.0-draft", "review_status": "draft", "known_limitations": []}
+  ]
+}

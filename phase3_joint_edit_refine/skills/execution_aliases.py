@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-
 # The alias selects an implementation family only. It does not import the
 # legacy primitive's pathology meaning: source/target labels, interfaces,
 # morphology and postconditions remain owned by the selected joint mechanism.
 TISSUE_TOOL_PRIMITIVE_ALIASES = {
     "invasive-front-expansion-v1": "tumor-burden-increase-v1",
+    "invasive-tumor-footprint-decrease-v1": "tumor-burden-decrease-v1",
+    "residual-tumor-fragmentation-v1": "tumor-burden-decrease-v1",
+    "local-invasive-clearance-v1": "tumor-burden-decrease-v1",
 }
 
 

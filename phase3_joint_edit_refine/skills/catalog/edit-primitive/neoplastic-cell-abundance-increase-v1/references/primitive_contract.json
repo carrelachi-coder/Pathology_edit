@@ -1,0 +1,15 @@
+{
+  "primitive_id": "neoplastic-cell-abundance-increase-v1",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "scope": "cell_only",
+  "summary": "Increase only observable class-1 neoplastic nuclei within an existing tumor compartment while preserving tissue and non-target cells.",
+  "tissue_action": "forbidden",
+  "budget_mode": "count_extent",
+  "allowed_baseline_modes": ["structured_add"],
+  "allowed_quota_roles": ["explicit_increment"],
+  "host_tissue_labels": ["Tumor"],
+  "target_cell_classes": [1],
+  "cell_effect_contract": {"minimum_delta_count": 12, "minimum_span_cell_diameters": 6.0, "minimum_foci": 2},
+  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_population_density", "mechanism_realization"]
+}

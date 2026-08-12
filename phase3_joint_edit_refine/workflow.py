@@ -38,6 +38,7 @@ from .cell_programs import CellToolProgramCompiler
 from .clarification import (
     PlannerClarificationRequired,
     build_primitive_clarification_request,
+    build_scenario_clarification_request,
     resolve_clarification_decision,
 )
 from .critic import JointCritic
@@ -242,6 +243,74 @@ class JointPathologyEditWorkflow:
                         )
                     )
                 )
+            if case.semantic_intent.get("scenario") == "post_treatment_change":
+                scenario_primitives = {
+                    "treatment_response": {
+                        "invasive-tumor-footprint-decrease-v1",
+                        "neoplastic-cell-abundance-decrease-v1",
+                        "necrosis-appearance-v1",
+                        "stroma-increase-v1",
+                    },
+                    "post_treatment_progression": {
+                        "tumor-burden-increase-v1",
+                        "invasive-front-expansion-v1",
+                        "neoplastic-microinfiltration-increase-v1",
+                        "neoplastic-cell-abundance-increase-v1",
+                    },
+                    "residual_disease": {
+                        "residual-tumor-fragmentation-v1",
+                        "invasive-tumor-footprint-decrease-v1",
+                        "neoplastic-cell-abundance-decrease-v1",
+                    },
+                }
+                prepared_primitives = {
+                    item.option.primitive_id for item in prepared.values()
+                }
+                available_scenarios = tuple(
+                    scenario
+                    for scenario, primitives in scenario_primitives.items()
+                    if prepared_primitives.intersection(primitives)
+                )
+                if not available_scenarios:
+                    raise JointContractError(
+                        "no treatment direction has an executable primitive after preflight"
+                    )
+                request = build_scenario_clarification_request(
+                    case_id=case.case_id,
+                    instruction=case.instruction,
+                    input_digests={
+                        key: str(value)
+                        for key, value in case.provenance.items()
+                        if key.startswith("source_")
+                        and key.endswith("_sha256")
+                        and value
+                    },
+                    knowledge_context={
+                        "pathology_domain_id": case.pathology_domain_id,
+                        "annotation_profile_id": case.annotation_profile_id,
+                        "cell_observation_profile_id": case.cell_observation_profile_id,
+                        "cell_population_profile_id": case.cell_population_profile_id,
+                    },
+                    why_required=(
+                        "方向不明确；以下选项已通过当前 profile、mechanism、"
+                        "auxiliary 与容量预检。"
+                    ),
+                    available_scenarios=available_scenarios,
+                ).to_metadata()
+                audit.write_json("clarification_request.json", request)
+                return self._finish(
+                    audit=audit,
+                    case=case,
+                    plan=None,
+                    reports=(),
+                    critic=None,
+                    status="clarification_required",
+                    reasons=(),
+                    selected=None,
+                    condition=None,
+                    usage=usage,
+                    clarification_request=request,
+                )
             clarification_resolution = resolve_clarification_decision(
                 case=case,
                 prepared_options=tuple(
@@ -413,7 +482,7 @@ class JointPathologyEditWorkflow:
                 nuclei_preflight,
                 auxiliary_structure_masks=scene.auxiliary_structure_masks,
                 required_auxiliary_structure_ids=(
-                    bundle.mechanism.representability.required_auxiliary_structures
+                    bundle.mechanism.representability.protected_auxiliary_structures
                 ),
             )
             audit.write_inputs(
@@ -824,7 +893,7 @@ class JointPathologyEditWorkflow:
                                 scene.auxiliary_structure_masks
                             ),
                             required_auxiliary_structure_ids=(
-                                bundle.mechanism.representability.required_auxiliary_structures
+                                bundle.mechanism.representability.protected_auxiliary_structures
                             ),
                         )
                         audit.write_json(
@@ -1062,7 +1131,7 @@ class JointPathologyEditWorkflow:
                                 scene.auxiliary_structure_masks
                             ),
                             required_auxiliary_structure_ids=(
-                                bundle.mechanism.representability.required_auxiliary_structures
+                                bundle.mechanism.representability.protected_auxiliary_structures
                             ),
                         )
                         audit.write_json(
@@ -1380,6 +1449,12 @@ class JointPathologyEditWorkflow:
                     feasibility: dict[str, Any] = {
                         "four_axis_skill_intersection": "passed",
                         "deterministic_preflight": "passed",
+                        "annotation_operational_stroma_policy": (
+                            bundle.annotation_profile.operational_stroma_policy
+                        ),
+                        "annotation_visual_veto_requirements": list(
+                            bundle.annotation_profile.visual_veto_requirements
+                        ),
                     }
                     if bundle.primitive.scope == "tissue_and_cell":
                         if candidate_case.joint_area_budget is None:

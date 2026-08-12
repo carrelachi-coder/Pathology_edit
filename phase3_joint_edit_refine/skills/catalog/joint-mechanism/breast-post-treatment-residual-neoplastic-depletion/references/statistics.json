@@ -1,0 +1,1 @@
+{"status":"uncalibrated","production_allowed":false,"required_strata":["dataset_revision","patient_or_wsi","pixel_size","primitive","mechanism"],"metrics":["class1_count_delta","depletion_gradient","nearest_neighbor_distance","maximum_new_gap","effect_span"],"note":"Research-only until calibration, paired generator ablation and internal pathology review."}

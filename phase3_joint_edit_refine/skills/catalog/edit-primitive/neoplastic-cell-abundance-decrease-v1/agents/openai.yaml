@@ -1,0 +1,4 @@
+interface:
+  display_name: "Neoplastic-cell abundance decrease"
+  short_description: "Reduce only class-1 neoplastic nuclei in a bounded field."
+  default_prompt: "Use $neoplastic-cell-abundance-decrease-v1 for a class-1-only decrease with tissue preserved."

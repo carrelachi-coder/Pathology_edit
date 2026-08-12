@@ -216,7 +216,43 @@ class RuleBasedSemanticParser:
             (r"\b(increase|expand|add)\b.*\bstroma(?:l)?\b", r"(增加|扩大|添加).*(间质)"),
         ),
         (
-            "tumor-burden-decrease-v1",
+            "generic-immune-infiltrate-decrease-v1",
+            "immune",
+            "decrease",
+            (
+                r"\b(decrease|reduce|shrink)\b.*\b(immune|inflammatory) infiltrate\b",
+                r"(减少|降低|缩小).*(免疫浸润区|炎性浸润区|免疫区域)",
+            ),
+        ),
+        (
+            "generic-immune-infiltrate-increase-v1",
+            "immune",
+            "increase",
+            (
+                r"\b(increase|expand|enlarge)\b.*\b(immune|inflammatory) infiltrate\b",
+                r"(增加|扩大).*(免疫浸润区|炎性浸润区|免疫区域)",
+            ),
+        ),
+        (
+            "local-invasive-clearance-v1",
+            "tumor-burden",
+            "decrease",
+            (
+                r"\b(clear|remove)\b.*\b(invasive )?tumou?r\b.*\b(local|roi|region)\b",
+                r"(清除|去除).*(局部|圈定区域|ROI).*(浸润癌|肿瘤)",
+            ),
+        ),
+        (
+            "residual-tumor-fragmentation-v1",
+            "tumor-burden",
+            "decrease",
+            (
+                r"\b(fragment|scatter)\w*\b.*\bresidual (?:tumou?r|disease)\b",
+                r"(残余|残留).*(碎片化|散在|分散病灶)",
+            ),
+        ),
+        (
+            "invasive-tumor-footprint-decrease-v1",
             "tumor-burden",
             "decrease",
             (
@@ -246,12 +282,30 @@ class RuleBasedSemanticParser:
             (r"\b(increase|raise)\b.*\b(cellularity|cell density|nuclear density)\b", r"(提高|增加).*(细胞密度|细胞丰富度|细胞量)"),
         ),
         (
+            "neoplastic-cell-abundance-decrease-v1",
+            "cell-type-abundance",
+            "decrease",
+            (
+                r"\b(decrease|reduce)\b.*\b(neoplastic cells?|tumou?r cells?)\b",
+                r"(减少|降低).*(肿瘤细胞|癌细胞)",
+            ),
+        ),
+        (
+            "neoplastic-cell-abundance-increase-v1",
+            "cell-type-abundance",
+            "increase",
+            (
+                r"\b(increase|add)\b.*\b(neoplastic cells?|tumou?r cells?)\b",
+                r"(增加|添加).*(肿瘤细胞|癌细胞)",
+            ),
+        ),
+        (
             "cell-type-abundance-decrease-v1",
             "cell-type-abundance",
             "decrease",
             (
-                r"\b(decrease|reduce)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?|neoplastic cells?|tumou?r cells?)\b",
-                r"(减少|降低).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞|肿瘤细胞)",
+                r"\b(decrease|reduce)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?)\b",
+                r"(减少|降低).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞)",
             ),
         ),
         (
@@ -259,8 +313,8 @@ class RuleBasedSemanticParser:
             "cell-type-abundance",
             "increase",
             (
-                r"\b(increase|add)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?|neoplastic cells?|tumou?r cells?)\b",
-                r"(增加|添加).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞|肿瘤细胞)",
+                r"\b(increase|add)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?)\b",
+                r"(增加|添加).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞)",
             ),
         ),
     )
@@ -369,9 +423,12 @@ class OpenAIClinicalScenarioParser:
                 "expansion, native-void spread and fine architecture progression are "
                 "different primitives and must not be collapsed. Do not treat "
                 "post-treatment context as improvement: 'progresses "
-                "after treatment' is worsening. Abstain when the requested future "
-                "direction is genuinely unresolved, such as 'simulate changes after "
-                "treatment', because an image cannot recover the user's desired future."
+                "after treatment' is worsening. When the user explicitly supplies "
+                "post-treatment context but leaves the future direction unresolved, "
+                "return post_treatment_change with clinical_direction=unspecified. "
+                "A later deterministic representability preflight will then offer only "
+                "the executable response, progression, or residual-disease choices; "
+                "do not choose one from the image and do not abstain at this parser stage."
             ),
             user_prompt=json.dumps(
                 {
@@ -421,10 +478,18 @@ class OpenAIClinicalScenarioParser:
             json_schema=SEMANTIC_INTENT_JSON_SCHEMA,
         )
         if raw.get("abstain") is True:
-            raise JointContractError(
-                "semantic parser abstained: "
-                + str(raw.get("abstain_reason") or "ambiguous instruction")
-            )
+            raw_scenario = raw.get("scenario")
+            raw_direction = raw.get("clinical_direction")
+            raw_treatment = raw.get("treatment_context")
+            if not (
+                raw_scenario == "post_treatment_change"
+                and raw_direction == "unspecified"
+                and raw_treatment == "post_treatment"
+            ):
+                raise JointContractError(
+                    "semantic parser abstained: "
+                    + str(raw.get("abstain_reason") or "ambiguous instruction")
+                )
         instruction_mode = _enum_text(
             raw, "instruction_mode", INSTRUCTION_MODES
         )
@@ -478,6 +543,13 @@ class OpenAIClinicalScenarioParser:
                 raise JointContractError(
                     "semantic parser subject/direction conflicts with its primitive"
                 )
+            if primitive_id.startswith("neoplastic-cell-abundance-"):
+                if cell_class not in {None, "neoplastic"}:
+                    raise JointContractError(
+                        "neoplastic abundance primitive cannot target a non-neoplastic class"
+                    )
+                cell_class = "neoplastic"
+                shared["explicit_cell_class"] = "neoplastic"
             if primitive_id.startswith("cell-type-abundance-") and cell_class is None:
                 raise JointContractError(
                     "cell abundance instruction must identify the requested cell class"
@@ -652,6 +724,43 @@ def bind_semantic_intent(
                 ),
             ).to_metadata()
             raise ScenarioClarificationRequired(request) from exc
+    decision = payload.get("clarification_decision")
+    if (
+        intent.scenario == "post_treatment_change"
+        and isinstance(decision, Mapping)
+        and decision.get("schema_version")
+        == SCENARIO_CLARIFICATION_DECISION_SCHEMA
+    ):
+        input_digests = {
+            key: str(value)
+            for key, value in dict(payload.get("provenance") or {}).items()
+            if key.startswith("source_") and key.endswith("_sha256") and value
+        }
+        knowledge_context = {
+            key: _required_text(payload, key)
+            for key in (
+                "pathology_domain_id",
+                "annotation_profile_id",
+                "cell_observation_profile_id",
+                "cell_population_profile_id",
+            )
+        }
+        fields, usage = resolve_scenario_clarification_decision(
+            decision,
+            case_id=_required_text(payload, "case_id"),
+            instruction=instruction,
+            input_digests=input_digests,
+            knowledge_context=knowledge_context,
+        )
+        intent = _build_scenario_intent(
+            instruction=instruction,
+            parser=f"{parser.name}+executable_scenario_clarification_v2",
+            parser_metadata={
+                "mode": "post_preflight_user_choice",
+                "user_clarification": usage,
+            },
+            **fields,
+        )
     manifest_primitive = payload.get("primitive_id")
     candidate_ids = {
         item.primitive_id for item in intent.primitive_hypotheses
@@ -897,7 +1006,7 @@ def _validate_scenario_contract(
         "local_recurrence": "worsen",
         "invasion_progression": "worsen",
     }
-    if scenario == "post_treatment_change" or clinical_direction == "unspecified":
+    if scenario != "post_treatment_change" and clinical_direction == "unspecified":
         raise JointContractError(
             "clinical scenario leaves the requested future direction unresolved; "
             "instruction rewrite is required"
@@ -930,6 +1039,33 @@ def _scenario_primitive_specs(
     explicit_edit_scope: str,
 ) -> tuple[tuple[str, str, str], ...]:
     del clinical_direction, scenario_target, treatment_context
+    if scenario == "post_treatment_change":
+        # This union is never executed directly. The workflow first composes
+        # skills and runs deterministic capacity preflight, then asks the user
+        # only about scenarios that retain at least one executable option.
+        return (
+            *_scenario_primitive_specs(
+                scenario="treatment_response",
+                clinical_direction="improve",
+                treatment_context="post_treatment",
+                scenario_target="tumor",
+                explicit_edit_scope=explicit_edit_scope,
+            ),
+            *_scenario_primitive_specs(
+                scenario="post_treatment_progression",
+                clinical_direction="worsen",
+                treatment_context="post_treatment",
+                scenario_target="tumor",
+                explicit_edit_scope=explicit_edit_scope,
+            ),
+            *_scenario_primitive_specs(
+                scenario="residual_disease",
+                clinical_direction="persist",
+                treatment_context="post_treatment",
+                scenario_target="tumor",
+                explicit_edit_scope=explicit_edit_scope,
+            ),
+        )
     if scenario in {
         "disease_progression",
         "post_treatment_progression",
@@ -946,9 +1082,9 @@ def _scenario_primitive_specs(
         if explicit_edit_scope == "cell_population":
             return (
                 (
-                    "cellularity-increase-v1",
+                    "neoplastic-cell-abundance-increase-v1",
                     "direct",
-                    "the requested progression is explicitly limited to tumor cellularity",
+                    "the requested progression is explicitly limited to neoplastic cell abundance",
                 ),
                 (
                     "neoplastic-microinfiltration-increase-v1",
@@ -973,9 +1109,9 @@ def _scenario_primitive_specs(
                 "a verified invasive front can express progression through neoplastic infiltration",
             ),
             (
-                "cellularity-increase-v1",
+                "neoplastic-cell-abundance-increase-v1",
                 "contextual",
-                "a viable tumor compartment may express progression through higher cellularity",
+                "a viable tumor compartment may express progression through higher neoplastic abundance",
             ),
         )
     if scenario == "invasion_progression":
@@ -1000,29 +1136,29 @@ def _scenario_primitive_specs(
         if explicit_edit_scope == "tissue_burden":
             return (
                 (
-                    "tumor-burden-decrease-v1",
+                    "invasive-tumor-footprint-decrease-v1",
                     "explicit",
-                    "the instruction explicitly requests tumor shrinkage",
+                    "the instruction explicitly requests a lower invasive tumor footprint",
                 ),
             )
         if explicit_edit_scope == "cell_population":
             return (
                 (
-                    "cellularity-decrease-v1",
+                    "neoplastic-cell-abundance-decrease-v1",
                     "explicit",
-                    "the instruction explicitly requests reduced viable tumor cellularity",
+                    "the instruction explicitly requests reduced viable neoplastic abundance",
                 ),
             )
         return (
             (
-                "tumor-burden-decrease-v1",
+                "invasive-tumor-footprint-decrease-v1",
                 "direct",
-                "lower tissue-level tumor burden is the primary response reading",
+                "lower invasive tissue footprint is the primary generic response reading",
             ),
             (
-                "cellularity-decrease-v1",
+                "neoplastic-cell-abundance-decrease-v1",
                 "contextual",
-                "reduced viable tumor cellularity can express treatment response without changing the compartment",
+                "reduced viable neoplastic abundance can express treatment response without changing the compartment",
             ),
             (
                 "necrosis-appearance-v1",
@@ -1034,7 +1170,7 @@ def _scenario_primitive_specs(
                     (
                         "stroma-increase-v1",
                         "contextual",
-                        "documented treatment response may replace viable tumor with explicitly labelled fibrotic/inflammatory stroma",
+                        "documented treatment response may replace viable tumor with operationally labelled stroma; fibrosis remains render-only",
                     ),
                 )
                 if scenario == "treatment_response"
@@ -1045,21 +1181,26 @@ def _scenario_primitive_specs(
         if explicit_edit_scope == "cell_population":
             return (
                 (
-                    "cellularity-decrease-v1",
+                    "neoplastic-cell-abundance-decrease-v1",
                     "direct",
-                    "residual disease is explicitly framed as reduced viable tumor cellularity",
+                    "residual disease is explicitly framed as reduced viable neoplastic abundance",
                 ),
             )
         return (
             (
-                "tumor-burden-decrease-v1",
+                "residual-tumor-fragmentation-v1",
                 "direct",
-                "residual disease may be represented by a reduced but retained tumor compartment",
+                "residual disease may be represented by bounded scattered residual invasive foci",
             ),
             (
-                "cellularity-decrease-v1",
+                "invasive-tumor-footprint-decrease-v1",
                 "contextual",
-                "residual disease may instead preserve the tumor bed while reducing viable cellularity",
+                "residual disease may preserve a measurable tumor floor after footprint decrease",
+            ),
+            (
+                "neoplastic-cell-abundance-decrease-v1",
+                "contextual",
+                "residual disease may preserve tissue while reducing viable neoplastic abundance",
             ),
         )
     raise JointContractError("clinical scenario has no executable primitive lattice")
@@ -1172,7 +1313,10 @@ def _scenario_target_for_subject(subject: str) -> str:
 
 
 def _direct_scope_for_primitive(primitive_id: str) -> str:
-    if primitive_id.startswith("tumor-burden-"):
+    if primitive_id.startswith("tumor-burden-") or primitive_id in {
+        "invasive-tumor-footprint-decrease-v1",
+        "residual-tumor-fragmentation-v1",
+    }:
         return "tissue_burden"
     if primitive_id in {
         "invasive-front-expansion-v1",
@@ -1183,9 +1327,11 @@ def _direct_scope_for_primitive(primitive_id: str) -> str:
         "stroma-increase-v1",
         "necrosis-appearance-v1",
         "necrosis-resolution-v1",
+        "generic-immune-infiltrate-increase-v1",
+        "generic-immune-infiltrate-decrease-v1",
     }:
         return "tissue_compartment"
-    if primitive_id.startswith(("cellularity-", "cell-type-abundance-")) or primitive_id in {
+    if primitive_id.startswith(("cellularity-", "cell-type-abundance-", "neoplastic-cell-abundance-")) or primitive_id in {
         "neoplastic-microinfiltration-increase-v1",
         "structural-void-spread-v1",
     }:
@@ -1272,8 +1418,8 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
     {
         "instruction": "模拟治疗后的变化。",
         "output": {
-            "abstain": True,
-            "abstain_reason": "The requested future direction could be response or progression.",
+            "abstain": False,
+            "abstain_reason": None,
             "instruction_mode": "clinical_scenario",
             "scenario": "post_treatment_change",
             "clinical_direction": "unspecified",
@@ -1284,7 +1430,7 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
             "subject": None,
             "edit_direction": None,
         },
-        "why": "An H&E patch cannot recover which future the user intended.",
+        "why": "The parser preserves the unresolved direction so a later capability preflight can offer only executable response, progression, or residual-disease choices.",
     },
 ]
 

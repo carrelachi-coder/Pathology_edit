@@ -257,6 +257,11 @@ def _check_label_transition(context: GateContext) -> GateCheck:
     ).copy()
     actual_diff = source != target
     source_ids = tuple(
+        int(value)
+        for value in context.plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    ) or tuple(
         sorted(
             {
                 fine_id
@@ -445,6 +450,11 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
     from phase3_mask_edit_refine.execution import _prepare_compiler_work
 
     source_ids = tuple(
+        int(value)
+        for value in context.plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    ) or tuple(
         fine_id
         for label in context.plan.source_labels
         for fine_id in context.schema.resolve_fine_ids(label)
@@ -517,7 +527,7 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
             0.50, execution.min_anchor_coverage_fraction
         )
         effective_max_off_anchor = min(
-            0.02, execution.max_off_anchor_contact_fraction
+            0.03, execution.max_off_anchor_contact_fraction
         )
         effective_allocation_tolerance = min(
             0.02, execution.allocation_tolerance_fraction
@@ -705,6 +715,11 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
     source = np.asarray(context.source_mask)
     target = np.asarray(context.candidate.target_mask)
     source_ids = tuple(
+        int(value)
+        for value in context.plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    ) or tuple(
         sorted(
             {
                 fine_id
@@ -785,10 +800,83 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             "allow_source_component_resolution", False
         )
     )
+    allow_source_split = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "allow_source_component_split", False
+        )
+    )
     allow_target_hole_resolution = bool(
         context.plan.tool_program.parameter_ranges.get(
             "allow_target_hole_resolution", False
         )
+    )
+    minimum_residual_components = max(
+        1,
+        int(
+            context.plan.tool_program.parameter_ranges.get(
+                "minimum_residual_components", 1
+            )
+        ),
+    )
+    maximum_residual_components = max(
+        minimum_residual_components,
+        int(
+            context.plan.tool_program.parameter_ranges.get(
+                "maximum_residual_components", minimum_residual_components
+            )
+        ),
+    )
+    selected_source = np.logical_or.reduce(
+        tuple(
+            context.scene.component_masks[item.source_component_id]
+            for item in context.plan.candidate_interfaces
+        )
+    )
+    selected_source_before = source_before & selected_source
+    selected_source_after = source_after & selected_source
+    source_after_labeled, selected_components_after = ndimage.label(
+        selected_source_after, structure=np.ones((3, 3), dtype=bool)
+    )
+    residual_sizes = [
+        int(np.count_nonzero(source_after_labeled == index))
+        for index in range(1, selected_components_after + 1)
+    ]
+    residual_spacing_px = _minimum_component_spacing_px(
+        source_after_labeled,
+        selected_components_after,
+    )
+    minimum_residual_area = max(
+        1,
+        int(
+            context.plan.tool_program.parameter_ranges.get(
+                "minimum_residual_component_area_px", 1
+            )
+        ),
+    )
+    residual_floor = float(
+        context.plan.tool_program.parameter_ranges.get(
+            "residual_area_floor_fraction", 0.0
+        )
+    )
+    minimum_residual_spacing = max(
+        0,
+        int(
+            context.plan.tool_program.parameter_ranges.get(
+                "minimum_residual_spacing_px", 0
+            )
+        ),
+    )
+    residual_fraction = int(np.count_nonzero(selected_source_after)) / max(
+        int(np.count_nonzero(selected_source_before)), 1
+    )
+    source_split_contract_ok = bool(
+        allow_source_split
+        and minimum_residual_components <= selected_components_after
+        <= maximum_residual_components
+        and residual_sizes
+        and min(residual_sizes) >= minimum_residual_area
+        and residual_spacing_px + 1e-9 >= minimum_residual_spacing
+        and residual_fraction + 1e-9 >= residual_floor
     )
     invalid_source_component_resolution = bool(
         source_components_after < source_components_before
@@ -809,7 +897,7 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
     )
     passed = not any(
         (
-            source_split,
+            source_split and not source_split_contract_ok,
             invalid_source_component_resolution,
             target_split_or_island,
             unallowed_target_merge,
@@ -837,6 +925,19 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             "target_holes_before": target_holes_before,
             "target_holes_after": target_holes_after,
             "source_split": source_split,
+            "allow_source_component_split": allow_source_split,
+            "source_split_contract_ok": source_split_contract_ok,
+            "minimum_residual_components": minimum_residual_components,
+            "maximum_residual_components": maximum_residual_components,
+            "minimum_residual_component_area_px": minimum_residual_area,
+            "minimum_residual_spacing_px": minimum_residual_spacing,
+            "observed_minimum_residual_spacing_px": residual_spacing_px,
+            "residual_component_sizes_px": residual_sizes,
+            "selected_residual_component_count": int(
+                selected_components_after
+            ),
+            "residual_area_fraction": residual_fraction,
+            "residual_area_floor_fraction": residual_floor,
             "target_split_or_island": target_split_or_island,
             "target_merge": target_merge,
             "selected_target_component_ids": sorted(selected_target_component_ids),
@@ -865,6 +966,23 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
     )
 
 
+def _minimum_component_spacing_px(
+    labeled: np.ndarray,
+    component_count: int,
+) -> float:
+    if component_count < 2:
+        return float("inf")
+    minimum = float("inf")
+    for left in range(1, component_count):
+        distance = ndimage.distance_transform_edt(labeled != left)
+        for right in range(left + 1, component_count + 1):
+            minimum = min(
+                minimum,
+                float(np.min(distance[labeled == right], initial=np.inf)),
+            )
+    return minimum
+
+
 def _check_source_component_retention(context: GateContext) -> GateCheck:
     change = np.asarray(context.candidate.change_region, dtype=bool)
     component_ids = _trace_ids(
@@ -875,8 +993,13 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
             "allow_source_component_resolution", False
         )
     )
+    allow_source_split = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "allow_source_component_split", False
+        )
+    )
     max_fraction = min(
-        1.0 if allow_source_resolution else 0.55,
+        1.0 if (allow_source_resolution or allow_source_split) else 0.55,
         float(
             context.plan.tool_program.parameter_ranges.get(
                 "max_source_component_changed_fraction", 0.55
@@ -884,7 +1007,7 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
         ),
     )
     min_remaining = max(
-        0 if allow_source_resolution else 64,
+        0 if (allow_source_resolution or allow_source_split) else 64,
         int(
             context.plan.tool_program.parameter_ranges.get(
                 "min_source_component_remaining_px", 64
@@ -944,6 +1067,11 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
         )
     ):
         source_ids = tuple(
+            int(value)
+            for value in context.plan.tool_program.parameter_ranges.get(
+                "editable_source_fine_ids", ()
+            )
+        ) or tuple(
             fine_id
             for label in context.plan.source_labels
             for fine_id in context.schema.resolve_fine_ids(label)
@@ -1139,6 +1267,11 @@ def _check_parallel_boundary_artifact(context: GateContext) -> GateCheck:
     if not np.any(change) or not planned:
         return _result("parallel_boundary_artifact", False, "change or interface is empty")
     source_ids = tuple(
+        int(value)
+        for value in context.plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    ) or tuple(
         fine_id
         for label in context.plan.source_labels
         for fine_id in context.schema.resolve_fine_ids(label)

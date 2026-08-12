@@ -29,6 +29,8 @@ LOCAL_POPULATION_PRIMITIVES = frozenset(
         "cell-type-abundance-increase-v1",
         "cellularity-decrease-v1",
         "cellularity-increase-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
     }
 )
 
@@ -416,7 +418,9 @@ class HeuristicJointPlanner:
                 }
             )
         )
-        abundance = case.primitive_id.startswith("cell-type-abundance-")
+        abundance = case.primitive_id.startswith(
+            ("cell-type-abundance-", "neoplastic-cell-abundance-")
+        )
         if abundance and len(classes) != 1:
             raise JointContractError(
                 "offline cell abundance planning requires exactly one target_cell_class_id"

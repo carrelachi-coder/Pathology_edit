@@ -1,0 +1,4 @@
+interface:
+  display_name: "Residual tumor fragmentation"
+  short_description: "Create bounded, nonempty residual invasive foci."
+  default_prompt: "Use $residual-tumor-fragmentation-v1 only for explicit post-treatment residual disease with an executable residual topology."

@@ -70,36 +70,49 @@ def build_scene_analysis(
     for label in sorted(schema.readable_labels):
         label_mask = np.isin(arr, schema.resolve_fine_ids(label))
         label_counts[label] = int(np.count_nonzero(label_mask))
-        labeled, count = ndimage.label(label_mask, structure=CONNECTIVITY_8)
-        for component_index in range(1, count + 1):
-            component_mask = labeled == component_index
-            area = int(np.count_nonzero(component_mask))
-            if area == 0:
-                continue
-            component_id = f"cmp:{_slug(label)}:{component_index:04d}"
-            bbox = _bbox_xyxy(component_mask)
-            touches_border = bool(
-                np.any(component_mask[0, :])
-                or np.any(component_mask[-1, :])
-                or np.any(component_mask[:, 0])
-                or np.any(component_mask[:, -1])
+        has_explicit_partitions = label in schema.component_partition_fine_ids
+        partitions = schema.component_partition_fine_ids.get(
+            label, (tuple(schema.resolve_fine_ids(label)),)
+        )
+        component_counter = 0
+        for partition_index, partition_ids in enumerate(partitions, start=1):
+            partition_mask = label_mask & np.isin(arr, partition_ids)
+            labeled, count = ndimage.label(
+                partition_mask, structure=CONNECTIVITY_8
             )
-            component_masks[component_id] = component_mask
-            components.append(
-                SceneComponent(
-                    component_id=component_id,
-                    label=label,
-                    fine_ids=tuple(schema.resolve_fine_ids(label)),
-                    area_px=area,
-                    bbox_xyxy=bbox,
-                    touches_border=touches_border,
+            for local_index in range(1, count + 1):
+                component_mask = labeled == local_index
+                area = int(np.count_nonzero(component_mask))
+                if area == 0:
+                    continue
+                component_counter += 1
+                component_id = (
+                    f"cmp:{_slug(label)}:p{partition_index:02d}:"
+                    f"{component_counter:04d}"
+                    if has_explicit_partitions
+                    else f"cmp:{_slug(label)}:{component_counter:04d}"
                 )
-            )
-            # One-based dense indices make component adjacency discoverable in
-            # O(image pixels) below.  The previous all-pairs dilation loop was
-            # quadratic in component count and became pathological for profiles
-            # with deliberately fragmented annotations (notably ORCA).
-            component_index_map[component_mask] = len(components)
+                bbox = _bbox_xyxy(component_mask)
+                touches_border = bool(
+                    np.any(component_mask[0, :])
+                    or np.any(component_mask[-1, :])
+                    or np.any(component_mask[:, 0])
+                    or np.any(component_mask[:, -1])
+                )
+                component_masks[component_id] = component_mask
+                components.append(
+                    SceneComponent(
+                        component_id=component_id,
+                        label=label,
+                        fine_ids=tuple(partition_ids),
+                        area_px=area,
+                        bbox_xyxy=bbox,
+                        touches_border=touches_border,
+                    )
+                )
+                # One-based dense indices make component adjacency discoverable
+                # in O(image pixels) below while retaining fine-label authority.
+                component_index_map[component_mask] = len(components)
 
     interfaces: list[SceneInterface] = []
     interface_masks: dict[str, np.ndarray] = {}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast Local Invasive Clearance"
+  short_description: "Clear invasive tumor inside an explicit ROI only."
+  default_prompt: "Use $breast-local-invasive-clearance only with a digest-bound user local_clearance_roi."

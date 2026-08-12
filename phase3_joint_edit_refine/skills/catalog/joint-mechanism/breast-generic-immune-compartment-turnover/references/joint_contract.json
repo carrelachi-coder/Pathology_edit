@@ -1,0 +1,57 @@
+{
+  "mechanism_id": "breast-generic-immune-compartment-turnover",
+  "pathology_domain_id": "breast-invasive-carcinoma-v1",
+  "supported_primitives": ["generic-immune-infiltrate-increase-v1", "generic-immune-infiltrate-decrease-v1"],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Expand or retreat an already annotated generic breast immune-infiltrate compartment at a BCSS Stroma/Immune interface, with atomic inflammatory/connective-cell turnover and no immune-subtype claim.",
+  "recognition_contract": {
+    "required_observations": ["explicit BCSS Immune-infiltrate fine ID 4", "broad Stroma fine ID 2/Immune fine ID 4 interface", "complete local class-2 inflammatory and class-3 connective reference nuclei"],
+    "contraindications": ["remote de-novo immune focus", "immune subtype or TIL score requested", "tumor, DCIS, angioinvasion, benign duct, vessel, necrosis or collapsed-zero in edit band", "instruction claims treatment response or prognosis"],
+    "minimum_confidence": 0.86
+  },
+  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [2, 3], "required_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "tissue_program": {
+    "mode": "existing_generic_immune_stroma_interface_turnover",
+    "target_component_merge_policy": "selected_only",
+    "front_contract": {"profile_mode": "multi_lobe", "edge_depth_ratio": 0.48, "taper_fraction": 0.24, "lobe_count": 3, "noise_depth_ratio": 0.13, "maximum_band_px": 128, "maximum_depth_span_ratio": 1.1, "maximum_boundary_compactness": 48.0, "directional_sector_required": true, "maximum_selected_anchor_fraction": 0.75, "minimum_unselected_anchor_count": 1},
+    "topology_fallback_by_primitive": {},
+    "primitive_label_contracts": {
+      "generic-immune-infiltrate-increase-v1": {"source_labels": ["Stroma"], "target_labels": ["Immune infiltrate"]},
+      "generic-immune-infiltrate-decrease-v1": {"source_labels": ["Immune infiltrate"], "target_labels": ["Stroma"]}
+    },
+    "allowed_tools": ["interface_band_sdf", "topology_safe_morphology", "organic_v2"],
+    "required_checker_ids": ["tissue_gate_binding", "profile_fine_transition_authority", "bcss_operational_stroma_authority"],
+    "prohibited_structures": ["tumor", "dcis_unit", "angioinvasion", "benign_duct", "benign_lobule", "vessel", "necrosis", "collapsed_zero"]
+  },
+  "cell_program": {
+    "actions": ["retain", "remove_whole", "add"],
+    "allowed_cell_classes": [2, 3],
+    "layout_programs": ["population_replacement"],
+    "core_policy": "increase removes complete class-3 connective instances in converted tissue and regenerates class-2 inflammatory nuclei; decrease removes complete class-2 instances and regenerates class-3 connective nuclei",
+    "halo_policy": "preserve every exterior instance except exact whole-instance closure",
+    "halo_distance_px": [0, 24],
+    "cluster_size_range": [1, 8],
+    "seam_contract": {"mode": "turnover_transition", "width_cell_diameters": [0.75, 1.5], "reference_area_quantiles": [0.25, 0.75], "maximum_empty_run_cell_diameters": 2.5, "density_ratio_range": [0.4, 2.5], "minimum_anchor_coverage_fraction": 0.4, "requires_new_target_cells": true},
+    "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density", "interface_seam_continuity"],
+    "layout_program_by_primitive": {"generic-immune-infiltrate-increase-v1": "population_replacement", "generic-immune-infiltrate-decrease-v1": "population_replacement"}
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": ["breast.immune.generic_compartment_only", "breast.immune.existing_stroma_immune_interface", "breast.immune.whole_instance_turnover", "breast.immune.no_subtype_or_outcome_claim"],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "cell_footprint_spill_reserve_fraction": 0.006,
+    "render_support_policy_id": "joint_change_plus_bounded_cell_context_v1"
+  },
+  "joint_gate_ids": ["joint_area", "tissue_floor", "cell_tissue_compatibility", "cell_zone_localization", "joint_provenance", "profile_fine_transition_authority", "bcss_operational_stroma_authority", "mechanism_postcondition:breast-generic-immune-compartment-turnover"],
+  "render_contract": {
+    "required_findings": ["target compartment remains compatible with generic inflammatory or stromal tissue", "cell population follows the target tissue identity"],
+    "veto_findings": ["remote immune island", "immune region with predominantly class-3 connective nuclei", "stromal region with artificial inflammatory packing", "TIL subtype, treatment-response, prognostic or clinical-benefit claim"],
+    "mask_guarantees": ["only BCSS Stroma fine ID 2 and Immune-infiltrate fine ID 4 turn over", "only complete class-2/class-3 instances are added or removed in the changed support"],
+    "render_only_claims": ["lymphocyte, plasma-cell or macrophage identity", "TIL score", "immune activation", "therapy response", "prognosis"]
+  },
+  "evidence_citations": ["https://pubmed.ncbi.nlm.nih.gov/30923821/", "https://pubmed.ncbi.nlm.nih.gov/25214542/"],
+  "counterexamples": ["calling generic inflammatory class a plasma-cell infiltrate", "creating immune tissue without a native immune interface", "claiming response from immune increase"]
+}

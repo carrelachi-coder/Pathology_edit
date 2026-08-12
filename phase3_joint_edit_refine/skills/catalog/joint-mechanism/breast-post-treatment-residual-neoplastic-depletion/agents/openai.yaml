@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast Residual Neoplastic Depletion"
+  short_description: "Decrease class-1 residual tumor cells with tissue preserved."
+  default_prompt: "Use $breast-post-treatment-residual-neoplastic-depletion only for explicit post-treatment class-1 depletion."

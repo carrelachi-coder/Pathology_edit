@@ -1,0 +1,1 @@
+{"status":"uncalibrated","production_allowed":false,"required_strata":["dataset_revision","patient_or_wsi","pixel_size","primitive","mechanism"],"metrics":["residual_component_count","residual_component_area","interfocus_spacing","residual_fraction","class1_density_per_focus"],"note":"Research-only until calibration, generator response and internal pathology review."}

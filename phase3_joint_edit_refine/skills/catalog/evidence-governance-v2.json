@@ -21,6 +21,13 @@
       "locator": "Single-file and discohesive invasive growth morphology",
       "verification_status": "verified"
     },
+    "pathology-breast-tils-working-group-2014": {
+      "category": "pathology_fact",
+      "title": "International TILs Working Group 2014 breast cancer recommendations",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/25214542/",
+      "locator": "Stromal and intratumoral lymphocytic infiltration are observable on H&E, while this editor intentionally retains only generic inflammatory representability",
+      "verification_status": "verified"
+    },
     "pathology-colorectal-cap-v2024": {
       "category": "pathology_fact",
       "title": "CAP Protocol for Colon and Rectum Carcinoma",
@@ -207,8 +214,14 @@
   "mechanism_pathology_sources": {
     "breast-cohesive-nst-front": ["pathology-breast-cap-treatment-v2025"],
     "breast-discohesive-single-file": ["pathology-breast-ilc-single-file-2021"],
+    "breast-generic-immune-compartment-turnover": ["pathology-breast-tils-working-group-2014"],
     "breast-intratumoral-necrosis-turnover": ["pathology-mechanism-internal-review-pending"],
     "breast-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
+    "breast-local-invasive-clearance": ["pathology-breast-cap-treatment-v2025"],
+    "breast-post-treatment-invasive-regression": ["pathology-breast-cap-treatment-v2025"],
+    "breast-post-treatment-residual-neoplastic-depletion": ["pathology-breast-cap-treatment-v2025"],
+    "breast-residual-disease-fragmentation": ["pathology-breast-cap-treatment-v2025"],
+    "breast-treatment-associated-stromal-replacement": ["pathology-breast-cap-treatment-v2025"],
     "colorectal-gland-forming-front": ["pathology-colorectal-cap-v2024"],
     "colorectal-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
     "colorectal-tumor-budding-front": ["pathology-colorectal-itbcc-2016"],

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Neoplastic-cell abundance increase"
+  short_description: "Increase class-1 nuclei inside existing tumor tissue."
+  default_prompt: "Use $neoplastic-cell-abundance-increase-v1 only for tissue-preserving class-1 abundance increase."

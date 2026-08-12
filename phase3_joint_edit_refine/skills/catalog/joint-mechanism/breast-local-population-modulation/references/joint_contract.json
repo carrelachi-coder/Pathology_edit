@@ -5,7 +5,8 @@
     "cell-type-abundance-increase-v1",
     "cell-type-abundance-decrease-v1",
     "cellularity-increase-v1",
-    "cellularity-decrease-v1"
+    "cellularity-decrease-v1",
+    "neoplastic-cell-abundance-increase-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
@@ -97,6 +98,10 @@
           "Normal epithelium",
           "Immune infiltrate"
         ]
+      },
+      "neoplastic-cell-abundance-increase-v1": {
+        "source_labels": ["Tumor"],
+        "target_labels": ["Tumor"]
       }
     },
     "allowed_tools": [
@@ -185,6 +190,7 @@
       "cell-type-abundance-decrease-v1": "localized_density_gradient",
       "cellularity-increase-v1": "single",
       "cellularity-decrease-v1": "localized_density_gradient"
+      ,"neoplastic-cell-abundance-increase-v1": "small_cluster"
     }
   },
   "coupling_contract": {

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast generic immune compartment turnover"
+  short_description: "Couple BCSS immune-region and inflammatory-cell change"
+  default_prompt: "Use $breast-generic-immune-compartment-turnover only for generic Stroma/Immune-infiltrate turnover with BCSS authority."

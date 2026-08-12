@@ -14,7 +14,8 @@
         "prohibit_generation_support_fine_ids",
         "unavailable_mechanisms",
         "conditional_mechanisms",
-        "supports_explicit_stroma"
+        "supports_explicit_stroma",
+        "fibrosis_claim_authorized"
       ],
       "source_ids": [
         "dataset-bcss-official-v1",
@@ -27,7 +28,13 @@
       "authority_category": "engineering_proxy",
       "claim_scope": [
         "required_provenance_fields",
-        "required_checker_ids"
+        "required_checker_ids",
+        "protected_fine_ids",
+        "operational_stroma_fine_ids",
+        "operational_stroma_policy",
+        "mechanism_editable_source_fine_ids",
+        "mechanism_editable_target_fine_ids",
+        "visual_veto_requirements"
       ],
       "source_ids": [
         "engineering-joint-contract-v2"

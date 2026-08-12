@@ -29,7 +29,11 @@
       "Unified zero combines outside-ROI, excluded, and undetermined pixels; it is not a biological tissue class.",
       "Unified Stroma also contains native glandular secretions in this repository remap.",
       "Unified Other tissue mixes blood, metaplasia, fat, mucoid material, nerve, skin adnexa, and native other."
-    ]
+    ],
+    "component_partition_fine_ids": {
+      "Tumor": [[1], [14], [15]],
+      "Stroma": [[2]]
+    }
   },
   "rules": [
     {

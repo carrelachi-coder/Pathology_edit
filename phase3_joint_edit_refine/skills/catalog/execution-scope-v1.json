@@ -5,12 +5,19 @@
     "cell-type-abundance-increase-v1",
     "cellularity-decrease-v1",
     "cellularity-increase-v1",
+    "generic-immune-infiltrate-decrease-v1",
+    "generic-immune-infiltrate-increase-v1",
     "invasive-front-expansion-v1",
+    "invasive-tumor-footprint-decrease-v1",
+    "local-invasive-clearance-v1",
+    "neoplastic-cell-abundance-decrease-v1",
+    "neoplastic-cell-abundance-increase-v1",
     "neoplastic-microinfiltration-increase-v1",
     "necrosis-appearance-v1",
     "necrosis-resolution-v1",
     "stroma-increase-v1",
-    "tumor-burden-increase-v1"
+    "tumor-burden-increase-v1",
+    "residual-tumor-fragmentation-v1"
   ],
   "closed_primitives": {
     "architecture-progression-v1": "Mask-side fine-label transition and native-pattern/lumen postconditions are implemented and tested; frozen-generator architecture response and pathology review are not yet validated.",

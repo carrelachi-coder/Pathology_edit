@@ -1,0 +1,1 @@
+{"status":"uncalibrated","production_allowed":false,"required_strata":["dataset_revision","patient_or_wsi","pixel_size","primitive","mechanism"],"metrics":["interface_depth","class1_clearance","stromal_density","seam_coverage","generator_fibrosis_response"],"note":"Research-only; fibrosis is render-only until paired generator validation and review."}

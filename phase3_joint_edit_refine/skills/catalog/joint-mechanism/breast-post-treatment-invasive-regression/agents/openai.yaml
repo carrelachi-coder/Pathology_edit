@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast Post-treatment Invasive Regression"
+  short_description: "Retreat an invasive breast tumor footprint with a residual floor."
+  default_prompt: "Use $breast-post-treatment-invasive-regression only with explicit post-treatment context and every BCSS authority/gate satisfied."

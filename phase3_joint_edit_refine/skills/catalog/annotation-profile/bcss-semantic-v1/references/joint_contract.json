@@ -1,6 +1,6 @@
 {
   "annotation_profile_id": "bcss-semantic-v1",
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "prohibited_fine_ids": [
     0
@@ -25,7 +25,40 @@
   "required_checker_ids": [
     "profile_provenance",
     "prohibited_cell_region",
-    "prohibited_generation_support"
+    "prohibited_generation_support",
+    "profile_fine_transition_authority",
+    "bcss_operational_stroma_authority"
   ],
-  "supports_explicit_stroma": true
+  "supports_explicit_stroma": true,
+  "protected_fine_ids": [0, 3, 4, 5, 7, 14, 15],
+  "operational_stroma_fine_ids": [2],
+  "operational_stroma_policy": "unified_id_2_is_operational_stroma_by_default; Planner and critic veto clearly enclosed duct/gland lumen or secretion-like regions, while ambiguous broad tissue remains executable",
+  "fibrosis_claim_authorized": false,
+  "mechanism_editable_source_fine_ids": {
+    "breast-cohesive-nst-front": [2],
+    "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [2],
+    "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [4],
+    "breast-intratumoral-necrosis-turnover::necrosis-appearance-v1": [1],
+    "breast-intratumoral-necrosis-turnover::necrosis-resolution-v1": [3],
+    "breast-post-treatment-invasive-regression": [1],
+    "breast-treatment-associated-stromal-replacement": [1],
+    "breast-residual-disease-fragmentation": [1],
+    "breast-local-invasive-clearance": [1]
+  },
+  "mechanism_editable_target_fine_ids": {
+    "breast-cohesive-nst-front": [1],
+    "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [4],
+    "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [2],
+    "breast-intratumoral-necrosis-turnover::necrosis-appearance-v1": [3],
+    "breast-intratumoral-necrosis-turnover::necrosis-resolution-v1": [1],
+    "breast-post-treatment-invasive-regression": [2],
+    "breast-treatment-associated-stromal-replacement": [2],
+    "breast-residual-disease-fragmentation": [2],
+    "breast-local-invasive-clearance": [2]
+  },
+  "visual_veto_requirements": [
+    "clear enclosed duct or gland lumen",
+    "obvious secretion-like material incompatible with editable stromal tissue",
+    "DCIS, angioinvasion, benign duct or lobule, vessel, necrosis or collapsed-zero in the edit band"
+  ]
 }

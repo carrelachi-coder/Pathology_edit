@@ -122,6 +122,36 @@ _PRIMITIVE_COPY: dict[str, tuple[str, str, str, str]] = {
         "肿瘤组织区域缩小",
         "删除被替换区域内的完整肿瘤细胞并重建目标组织细胞",
     ),
+    "invasive-tumor-footprint-decrease-v1": (
+        "缩小浸润癌组织范围",
+        "沿合法界面回退浸润癌，保留可测量的残余肿瘤，不代表整例完全缓解。",
+        "浸润癌组织范围缩小但保留残余灶",
+        "删除转换区完整肿瘤细胞并重建非肿瘤细胞",
+    ),
+    "residual-tumor-fragmentation-v1": (
+        "形成散在残余肿瘤灶",
+        "将连续浸润癌变为受控的多个残余灶，只在原肿瘤范围内执行。",
+        "连续肿瘤变成有面积下限的散在残余灶",
+        "间质通道移除完整肿瘤细胞，各残余灶保留肿瘤细胞",
+    ),
+    "neoplastic-cell-abundance-decrease-v1": (
+        "减少肿瘤细胞",
+        "组织结构不变，仅降低可观察的肿瘤细胞数量。",
+        "组织标签保持不变",
+        "按渐变场删除完整 class-1 肿瘤细胞",
+    ),
+    "neoplastic-cell-abundance-increase-v1": (
+        "增加肿瘤细胞",
+        "组织结构不变，仅提高现有肿瘤区内的肿瘤细胞数量。",
+        "组织标签保持不变",
+        "按同 patch 大小和密度先验增加完整 class-1 肿瘤细胞",
+    ),
+    "local-invasive-clearance-v1": (
+        "清除圈定区域内的浸润癌",
+        "只在用户明确 ROI 内清除浸润癌；不代表 pCR 或整例完全缓解。",
+        "ROI 内浸润癌被局部替代，ROI 外保持",
+        "ROI 内完整肿瘤细胞被移除并重建目标组织细胞",
+    ),
     "invasive-front-expansion-v1": (
         "推进肿瘤浸润前缘",
         "沿当前可见且合法的浸润界面推进肿瘤，而不是制造远端肿瘤岛。",
@@ -171,10 +201,22 @@ _PRIMITIVE_COPY: dict[str, tuple[str, str, str, str]] = {
         "在恢复组织区域重新生成匹配细胞",
     ),
     "stroma-increase-v1": (
-        "增加治疗相关纤维化间质",
-        "仅在明确的治疗后语境和受支持机制下，以纤维化间质替换相应区域。",
-        "受支持区域转为间质",
-        "按治疗相关纤维化合同重建细胞组成",
+        "增加治疗相关间质替代",
+        "仅在明确治疗后语境和受支持机制下，以可操作间质替换局部肿瘤；mask 不声称纤维化。",
+        "受支持区域转为可操作间质",
+        "删除完整肿瘤细胞并按间质先验重建细胞组成",
+    ),
+    "generic-immune-infiltrate-increase-v1": (
+        "扩大通用免疫浸润区",
+        "从现有间质—免疫浸润界面扩大通用免疫区域，不推断免疫亚型或治疗反应。",
+        "间质转为通用免疫浸润组织",
+        "移除转换区完整结缔组织细胞并重建 class-2 炎性细胞",
+    ),
+    "generic-immune-infiltrate-decrease-v1": (
+        "缩小通用免疫浸润区",
+        "沿现有免疫—间质界面回退通用免疫区域，不声称免疫抑制或治疗结局。",
+        "通用免疫浸润组织转为间质",
+        "移除转换区完整 class-2 炎性细胞并重建结缔组织细胞",
     ),
     "architecture-progression-v1": (
         "改变肿瘤结构模式",
@@ -288,6 +330,7 @@ def build_scenario_clarification_request(
     input_digests: Mapping[str, str],
     knowledge_context: Mapping[str, str],
     why_required: str,
+    available_scenarios: Sequence[str] | None = None,
 ) -> ScenarioClarificationRequest:
     """Ask a clinician to resolve directionless post-treatment language.
 
@@ -295,7 +338,7 @@ def build_scenario_clarification_request(
     mechanisms, tool parameters or numeric edit strength.
     """
 
-    options = (
+    all_options = (
         ScenarioClarificationOption(
             option_id="scenario:treatment_response",
             clinician_label="治疗后出现缓解",
@@ -327,6 +370,16 @@ def build_scenario_clarification_request(
             explicit_edit_scope="unspecified",
         ),
     )
+    allowed = (
+        {str(value) for value in available_scenarios}
+        if available_scenarios is not None
+        else {item.scenario for item in all_options}
+    )
+    options = tuple(item for item in all_options if item.scenario in allowed)
+    if not options:
+        raise JointContractError(
+            "no post-treatment scenario survives deterministic execution preflight"
+        )
     core = {
         "schema_version": SCENARIO_CLARIFICATION_REQUEST_SCHEMA,
         "case_id": str(case_id),
@@ -605,9 +658,11 @@ def validate_scenario_request_metadata(payload: Any) -> dict[str, Any]:
     if (
         not isinstance(options, Sequence)
         or isinstance(options, (str, bytes))
-        or len(options) != 3
+        or not 1 <= len(options) <= 3
     ):
-        raise JointContractError("scenario clarification requires three options")
+        raise JointContractError(
+            "scenario clarification requires one to three executable options"
+        )
     normalized["options"] = [dict(item) for item in options]
     required_option = {
         "option_id",

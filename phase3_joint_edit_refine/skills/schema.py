@@ -20,7 +20,7 @@ REVIEW_STATUSES = frozenset({"draft", "empirically_validated", "internally_revie
 PRIMITIVE_SCOPES = frozenset({"tissue_and_cell", "cell_only"})
 PRIMITIVE_BUDGET_MODES = frozenset({"joint_area_with_tissue_floor", "count_extent"})
 TISSUE_GEOMETRY_MODES = frozenset(
-    {"interface_front", "component_boundary_turnover"}
+    {"interface_front", "component_boundary_turnover", "residual_fragmentation"}
 )
 SEAM_MODES = frozenset(
     {"adaptive_population_continuity", "turnover_transition", "not_applicable"}
@@ -451,6 +451,12 @@ class JointPrimitiveSkill:
     allow_target_hole_resolution: bool
     maximum_source_component_changed_fraction: float
     minimum_source_component_remaining_px: int
+    allow_source_component_split: bool
+    minimum_residual_components: int
+    maximum_residual_components: int
+    minimum_residual_component_area_px: int
+    minimum_residual_spacing_px: int
+    residual_area_floor_fraction: float
     required_source_clearance_classes: tuple[int, ...]
     minimum_source_clearance_instances: int
     minimum_effect_delta_count: int
@@ -510,6 +516,21 @@ class JointPrimitiveSkill:
         minimum_remaining = int(
             topology.get("minimum_source_component_remaining_px", 64)
         )
+        minimum_residual_components = int(
+            topology.get("minimum_residual_components", 1)
+        )
+        maximum_residual_components = int(
+            topology.get("maximum_residual_components", 1)
+        )
+        minimum_residual_component_area_px = int(
+            topology.get("minimum_residual_component_area_px", 64)
+        )
+        minimum_residual_spacing_px = int(
+            topology.get("minimum_residual_spacing_px", 0)
+        )
+        residual_area_floor_fraction = float(
+            topology.get("residual_area_floor_fraction", 0.0)
+        )
         minimum_clearance = int(
             payload.get("minimum_source_clearance_instances", 0)
         )
@@ -529,6 +550,11 @@ class JointPrimitiveSkill:
             )
         if (
             minimum_remaining < 0
+            or minimum_residual_components < 1
+            or maximum_residual_components < minimum_residual_components
+            or minimum_residual_component_area_px < 1
+            or minimum_residual_spacing_px < 0
+            or not 0.0 <= residual_area_floor_fraction < 1.0
             or minimum_clearance < 0
             or minimum_effect_delta < 0
             or minimum_effect_span < 0
@@ -561,6 +587,16 @@ class JointPrimitiveSkill:
             ),
             maximum_source_component_changed_fraction=maximum_changed,
             minimum_source_component_remaining_px=minimum_remaining,
+            allow_source_component_split=bool(
+                topology.get("allow_source_component_split", False)
+            ),
+            minimum_residual_components=minimum_residual_components,
+            maximum_residual_components=maximum_residual_components,
+            minimum_residual_component_area_px=(
+                minimum_residual_component_area_px
+            ),
+            minimum_residual_spacing_px=minimum_residual_spacing_px,
+            residual_area_floor_fraction=residual_area_floor_fraction,
             required_source_clearance_classes=_ints(
                 payload, "required_source_clearance_classes"
             ),
@@ -587,6 +623,13 @@ class JointProfileContract:
     required_checker_ids: tuple[str, ...]
     mechanism_required_fine_ids: dict[str, tuple[int, ...]]
     supports_explicit_stroma: bool
+    protected_fine_ids: tuple[int, ...]
+    operational_stroma_fine_ids: tuple[int, ...]
+    operational_stroma_policy: str
+    fibrosis_claim_authorized: bool
+    mechanism_editable_source_fine_ids: dict[str, tuple[int, ...]]
+    mechanism_editable_target_fine_ids: dict[str, tuple[int, ...]]
+    visual_veto_requirements: tuple[str, ...]
     source_path: str
 
     @classmethod
@@ -619,6 +662,31 @@ class JointProfileContract:
             },
             supports_explicit_stroma=bool(
                 payload.get("supports_explicit_stroma", False)
+            ),
+            protected_fine_ids=_ints(payload, "protected_fine_ids"),
+            operational_stroma_fine_ids=_ints(
+                payload, "operational_stroma_fine_ids"
+            ),
+            operational_stroma_policy=str(
+                payload.get("operational_stroma_policy", "not_applicable")
+            ),
+            fibrosis_claim_authorized=bool(
+                payload.get("fibrosis_claim_authorized", False)
+            ),
+            mechanism_editable_source_fine_ids={
+                str(key): tuple(int(value) for value in values)
+                for key, values in payload.get(
+                    "mechanism_editable_source_fine_ids", {}
+                ).items()
+            },
+            mechanism_editable_target_fine_ids={
+                str(key): tuple(int(value) for value in values)
+                for key, values in payload.get(
+                    "mechanism_editable_target_fine_ids", {}
+                ).items()
+            },
+            visual_veto_requirements=_strings(
+                payload, "visual_veto_requirements", allow_empty=True
             ),
             source_path=source_path,
         )

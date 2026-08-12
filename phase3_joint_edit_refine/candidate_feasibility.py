@@ -83,7 +83,7 @@ class CandidateFeasibilityCompiler:
             nuclei_preflight,
             auxiliary_structure_masks=scene.auxiliary_structure_masks,
             required_auxiliary_structure_ids=(
-                joint_bundle.mechanism.representability.required_auxiliary_structures
+                joint_bundle.mechanism.representability.protected_auxiliary_structures
             ),
         )
         planner = MultiInterfaceResearchTissuePlanner()
@@ -132,7 +132,7 @@ class CandidateFeasibilityCompiler:
                     ).hexdigest(),
                     prior_errors=tuple(errors),
                 )
-            except Exception as exc:  # fail closed with a bounded retry ledger
+            except Exception as exc:  # noqa: BLE001 - fail closed and audit any compiler failure
                 error = f"{type(exc).__name__}: {exc}"
                 errors.append(error)
                 feedback = {

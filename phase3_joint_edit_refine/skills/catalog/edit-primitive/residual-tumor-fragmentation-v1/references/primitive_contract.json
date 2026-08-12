@@ -1,0 +1,29 @@
+{
+  "primitive_id": "residual-tumor-fragmentation-v1",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Create a bounded set of nonempty residual invasive-tumor foci within the source component without inventing a historical tumor bed.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [],
+  "tissue_topology_contract": {
+    "geometry_mode": "residual_fragmentation",
+    "allow_source_component_resolution": false,
+    "allow_target_hole_resolution": false,
+    "allow_source_component_split": true,
+    "maximum_source_component_changed_fraction": 0.7,
+    "minimum_source_component_remaining_px": 384,
+    "minimum_residual_components": 2,
+    "maximum_residual_components": 6,
+    "minimum_residual_component_area_px": 96,
+    "minimum_residual_spacing_px": 4,
+    "residual_area_floor_fraction": 0.3
+  },
+  "required_source_clearance_classes": [1],
+  "minimum_source_clearance_instances": 2,
+  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_shape_distribution", "local_population_density", "residual_fragmentation_topology", "profile_fine_transition_authority"]
+}

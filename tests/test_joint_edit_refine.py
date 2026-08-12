@@ -14,7 +14,10 @@ import numpy as np
 from PIL import Image
 
 from inpaint_cells.instance_authority import array_sha256
-from phase3_joint_edit_refine.agents import JOINT_PLAN_JSON_SCHEMA
+from phase3_joint_edit_refine.agents import (
+    JOINT_PLAN_JSON_SCHEMA,
+    OpenAIMultimodalJointCritic,
+)
 from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
 from phase3_joint_edit_refine.budget import JointFeasibilitySolver
 from phase3_joint_edit_refine.cell_layouts import (
@@ -115,6 +118,74 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_breast_bcss_capability_matrix_matches_executable_skills(self):
+        repository = JointSkillRepository()
+        matrix_path = (
+            Path(__file__).parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+            / "breast_bcss_capability_matrix_v1.json"
+        )
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+        entries = matrix["capabilities"]
+        pairs = {
+            (item["primitive_id"], item["mechanism_id"])
+            for item in entries
+        }
+        expected = {
+            (primitive_id, mechanism.mechanism_id)
+            for mechanism in repository.mechanisms.values()
+            if mechanism.pathology_domain_id
+            == "breast-invasive-carcinoma-v1"
+            for primitive_id in mechanism.supported_primitives
+            if repository.execution_selection_reason(
+                primitive_id=primitive_id,
+                mechanism_id=mechanism.mechanism_id,
+            )
+            is None
+        }
+        self.assertEqual(pairs, expected)
+        self.assertEqual(len(entries), len(pairs))
+        self.assertEqual(matrix["production_status"], "shadow_only")
+        for item in entries:
+            self.assertTrue(item["simple_instructions"])
+            self.assertTrue(item["tissue_action"])
+            self.assertTrue(item["nuclei_action"])
+            self.assertTrue(item["required_conditions"])
+            self.assertEqual(item["production_status"], "shadow_only")
+
+    def test_multimodal_critic_receives_bcss_visual_stroma_vetoes(self):
+        client = _RecordingJointCriticClient()
+        repository = JointSkillRepository()
+        case = _breast_case_stub()
+        bundle = repository.compose(
+            case=case,
+            mechanism_id="breast-cohesive-nst-front",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+
+        result = OpenAIMultimodalJointCritic(client).review(
+            case=case,
+            bundle=bundle,
+            candidates=(),
+            gate_reports=(),
+            image_paths=(),
+        )
+
+        self.assertTrue(result.abstain)
+        payload = json.loads(client.calls[0]["user_prompt"])
+        self.assertIn(
+            "obvious secretion-like material incompatible with editable stromal tissue",
+            payload["annotation_visual_veto_requirements"],
+        )
+        self.assertTrue(
+            payload["requirements"][
+                "apply_annotation_visual_veto_requirements_to_every_candidate"
+            ]
+        )
+        self.assertIn("visual veto requirements", client.calls[0]["system_prompt"])
+
     def test_multimodal_plan_schema_requires_unique_structural_units(self):
         structural_units = JOINT_PLAN_JSON_SCHEMA["properties"][
             "structural_unit_ids"
@@ -335,7 +406,7 @@ class JointSkillTests(unittest.TestCase):
         parser = RuleBasedSemanticParser()
         examples = {
             "increase tumor burden": "tumor-burden-increase-v1",
-            "reduce tumor burden": "tumor-burden-decrease-v1",
+            "reduce tumor burden": "invasive-tumor-footprint-decrease-v1",
             "increase necrosis": "necrosis-appearance-v1",
             "increase intratumoral necrosis": "necrosis-appearance-v1",
             "reduce intratumoral necrosis": "necrosis-resolution-v1",
@@ -345,13 +416,68 @@ class JointSkillTests(unittest.TestCase):
                 "neoplastic-microinfiltration-increase-v1"
             ),
             "increase immune cells": "cell-type-abundance-increase-v1",
+            "increase immune infiltrate": (
+                "generic-immune-infiltrate-increase-v1"
+            ),
+            "decrease immune infiltrate": (
+                "generic-immune-infiltrate-decrease-v1"
+            ),
             "降低细胞密度": "cellularity-decrease-v1",
         }
         for instruction, expected in examples.items():
             with self.subTest(instruction=instruction):
                 intent = parser.parse(instruction)
                 self.assertEqual(intent.primitive_id, expected)
-                self.assertNotIn("mechanism", intent.to_metadata())
+        self.assertNotIn("mechanism", intent.to_metadata())
+
+    def test_breast_generic_immune_turnover_is_direction_specific(self):
+        repository = JointSkillRepository()
+        mechanism = repository.mechanisms[
+            "breast-generic-immune-compartment-turnover"
+        ]
+        self.assertEqual(
+            mechanism.tissue_program.primitive_label_contracts[
+                "generic-immune-infiltrate-increase-v1"
+            ],
+            {
+                "source_labels": ("Stroma",),
+                "target_labels": ("Immune infiltrate",),
+            },
+        )
+        self.assertEqual(
+            mechanism.tissue_program.primitive_label_contracts[
+                "generic-immune-infiltrate-decrease-v1"
+            ],
+            {
+                "source_labels": ("Immune infiltrate",),
+                "target_labels": ("Stroma",),
+            },
+        )
+        self.assertEqual(
+            repository.primitives[
+                "generic-immune-infiltrate-increase-v1"
+            ].target_cell_classes,
+            (2,),
+        )
+        self.assertEqual(
+            repository.primitives[
+                "generic-immune-infiltrate-decrease-v1"
+            ].target_cell_classes,
+            (3,),
+        )
+        profile = repository.annotation_profiles["bcss-semantic-v1"]
+        self.assertEqual(
+            profile.mechanism_editable_source_fine_ids[
+                "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1"
+            ],
+            (2,),
+        )
+        self.assertEqual(
+            profile.mechanism_editable_target_fine_ids[
+                "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1"
+            ],
+            (2,),
+        )
 
     def test_semantic_intent_is_compiler_owned_after_binding(self):
         raw = {
@@ -954,8 +1080,8 @@ class JointSkillTests(unittest.TestCase):
 
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
-        self.assertEqual(len(repository.mechanisms), 29)
-        self.assertEqual(len(repository.primitives), 14)
+        self.assertEqual(len(repository.mechanisms), 35)
+        self.assertEqual(len(repository.primitives), 21)
         self.assertEqual(len(repository.annotation_profiles), 6)
         self.assertEqual(len(repository.cell_observation_profiles), 1)
         self.assertEqual(len(repository.cell_population_profiles), 6)
@@ -1080,10 +1206,17 @@ class JointSkillTests(unittest.TestCase):
                 "cell-type-abundance-increase-v1",
                 "cellularity-decrease-v1",
                 "cellularity-increase-v1",
+                "generic-immune-infiltrate-decrease-v1",
+                "generic-immune-infiltrate-increase-v1",
                 "invasive-front-expansion-v1",
+                "invasive-tumor-footprint-decrease-v1",
+                "local-invasive-clearance-v1",
                 "necrosis-appearance-v1",
                 "necrosis-resolution-v1",
+                "neoplastic-cell-abundance-decrease-v1",
+                "neoplastic-cell-abundance-increase-v1",
                 "neoplastic-microinfiltration-increase-v1",
+                "residual-tumor-fragmentation-v1",
                 "stroma-increase-v1",
                 "tumor-burden-increase-v1",
             },
@@ -1870,6 +2003,19 @@ class _ApprovingJointCritic(DeterministicJointResearchCritic):
         )
 
 
+class _RecordingJointCriticClient:
+    def __init__(self):
+        self.calls = []
+
+    def call(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "rankings": [],
+            "abstain": True,
+            "summary": "fixture abstain",
+        }, {"model": "fixture"}
+
+
 class _PassingTissueGateFixture(GateRegistry):
     def run(self, context):
         report = super().run(context)
@@ -1928,6 +2074,56 @@ class _AlwaysFailingCandidateCellExecutor:
 
 
 class JointWorkflowTests(unittest.TestCase):
+    def test_breast_generic_immune_compartment_turnover_executes_both_directions(self):
+        for primitive, source_label, target_label, source_cell, target_cell in (
+            ("generic-immune-infiltrate-increase-v1", 2, 4, 3, 2),
+            ("generic-immune-infiltrate-decrease-v1", 4, 2, 2, 3),
+        ):
+            with (
+                self.subTest(primitive=primitive),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                case = _write_breast_immune_case(root, primitive=primitive)
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "immune-turnover")
+
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
+                )
+                change = result.condition.tissue_change
+                source_tissue = np.load(case.source_tissue_mask_uri)
+                target_tissue = result.condition.target_tissue_mask
+                self.assertEqual(set(np.unique(source_tissue[change])), {source_label})
+                self.assertEqual(set(np.unique(target_tissue[change])), {target_label})
+                source_nuclei = np.asarray(Image.open(case.source_nuclei_mask_uri))
+                target_nuclei = result.condition.target_nuclei_mask
+                self.assertGreater(
+                    np.count_nonzero(target_nuclei == target_cell),
+                    np.count_nonzero(source_nuclei == target_cell),
+                )
+                self.assertLess(
+                    np.count_nonzero(target_nuclei == source_cell),
+                    np.count_nonzero(source_nuclei == source_cell),
+                )
+                reports = json.loads(
+                    Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                mechanism_checks = [
+                    check
+                    for report in reports
+                    for check in report["checks"]
+                    if check["check_id"]
+                    == "mechanism_postcondition:breast-generic-immune-compartment-turnover"
+                ]
+                self.assertTrue(mechanism_checks)
+                self.assertTrue(any(item["passed"] for item in mechanism_checks))
+
     def test_integer_interface_allocations_are_normalized_after_rounding(self):
         # Independent integer rounding used to produce 1.00002008 for breast
         # case 073 and incorrectly fail a valid multi-interface plan.
@@ -2939,6 +3135,81 @@ def _make_stroma_multiclass(source: JointCaseContext) -> JointCaseContext:
             "source_nuclei_instances_sha256": _sha(instances_path),
             "original_instance_mask_digest": _sha(instances_path),
         },
+    )
+
+
+def _write_breast_immune_case(
+    root: Path, *, primitive: str
+) -> JointCaseContext:
+    """BCSS fixture with an existing Stroma/Immune interface and two populations."""
+
+    size = 160
+    rows, cols = np.ogrid[:size, :size]
+    tissue = np.full((size, size), 2, dtype=np.uint8)
+    immune = (rows - 80) ** 2 + (cols - 80) ** 2 <= 34**2
+    tissue[immune] = 4
+    nuclei = np.zeros_like(tissue)
+    native_instances = {}
+    native_index = 0
+    for y in range(8, size - 8, 9):
+        for x in range(8, size - 8, 9):
+            class_id = 2 if immune[y, x] else 3
+            nuclei[y - 1 : y + 2, x - 1 : x + 2] = class_id
+            native_instances[str(native_index)] = {
+                "type": class_id,
+                "centroid": [x, y],
+                "contour": [
+                    [x - 1, y - 1],
+                    [x + 1, y - 1],
+                    [x + 1, y + 1],
+                    [x - 1, y + 1],
+                ],
+            }
+            native_index += 1
+    tissue_path = root / "immune-tissue.npy"
+    nuclei_path = root / "immune-nuclei.png"
+    image_path = root / "immune-image.png"
+    instances_path = root / "immune-instances.json"
+    np.save(tissue_path, tissue, allow_pickle=False)
+    Image.fromarray(nuclei).save(nuclei_path)
+    image = np.full((size, size, 3), (210, 182, 200), dtype=np.uint8)
+    image[immune] = (174, 128, 170)
+    Image.fromarray(image).save(image_path)
+    instances_path.write_text(
+        json.dumps({"nuc": native_instances}), encoding="utf-8"
+    )
+    provenance = {
+        "source_image_sha256": _sha(image_path),
+        "source_tissue_mask_sha256": _sha(tissue_path),
+        "source_nuclei_mask_sha256": _sha(nuclei_path),
+        "source_nuclei_instances_sha256": _sha(instances_path),
+        "original_label_map_digest": _sha(tissue_path),
+        "original_instance_mask_digest": _sha(instances_path),
+        "preprocessing_revision": "synthetic-bcss-immune-v1",
+        "joint_mechanism_id": "breast-generic-immune-compartment-turnover",
+        "joint_primitive_id": primitive,
+    }
+    return JointCaseContext(
+        case_id="synthetic-" + primitive,
+        instruction=primitive,
+        source_image_uri=str(image_path),
+        source_tissue_mask_uri=str(tissue_path),
+        source_nuclei_mask_uri=str(nuclei_path),
+        source_nuclei_instances_uri=str(instances_path),
+        pathology_domain_id="breast-invasive-carcinoma-v1",
+        annotation_profile_id="bcss-semantic-v1",
+        cell_observation_profile_id="cellvit-five-class-v1",
+        cell_population_profile_id="breast-cellvit-source-first-v1",
+        primitive_id=primitive,
+        joint_area_budget=JointAreaBudget(
+            target_fraction=0.03,
+            min_fraction=0.01,
+            max_fraction=0.06,
+            tissue_min_fraction=0.01,
+        ),
+        seed=33,
+        provenance=provenance,
+        pixel_size_um=0.5,
     )
 
 

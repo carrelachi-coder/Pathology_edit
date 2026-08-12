@@ -93,7 +93,38 @@ class SkillRepository:
             raise RefineContractError(
                 f"annotation profile {annotation_profile_id} has no dataset_config_name"
             )
-        return MaskProfileSchema.from_reference_profile(dataset_config_name)
+        schema = MaskProfileSchema.from_reference_profile(dataset_config_name)
+        raw_partitions = package.capabilities.get(
+            "component_partition_fine_ids", {}
+        )
+        if raw_partitions:
+            if not isinstance(raw_partitions, dict):
+                raise RefineContractError(
+                    "component_partition_fine_ids must be a mapping"
+                )
+            partitions: dict[str, tuple[tuple[int, ...], ...]] = {}
+            for label, groups in raw_partitions.items():
+                if label not in schema.readable_labels or not isinstance(groups, list):
+                    raise RefineContractError(
+                        f"invalid component partition for {label!r}"
+                    )
+                normalized = tuple(
+                    tuple(int(value) for value in group)
+                    for group in groups
+                    if isinstance(group, list) and group
+                )
+                available = set(schema.resolve_fine_ids(str(label)))
+                flattened = {value for group in normalized for value in group}
+                if not normalized or not flattened.issubset(available):
+                    raise RefineContractError(
+                        f"component partition for {label!r} contains unavailable fine IDs"
+                    )
+                partitions[str(label)] = normalized
+            schema = replace(
+                schema,
+                component_partition_fine_ids=partitions,
+            )
+        return schema
 
     def compose(
         self,

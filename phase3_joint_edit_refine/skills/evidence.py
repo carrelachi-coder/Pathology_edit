@@ -82,6 +82,13 @@ _PROFILE_FIELDS = {
     "required_checker_ids": "engineering_proxy",
     "mechanism_required_fine_ids": "dataset_fact",
     "supports_explicit_stroma": "dataset_fact",
+    "protected_fine_ids": "engineering_proxy",
+    "operational_stroma_fine_ids": "engineering_proxy",
+    "operational_stroma_policy": "engineering_proxy",
+    "fibrosis_claim_authorized": "dataset_fact",
+    "mechanism_editable_source_fine_ids": "engineering_proxy",
+    "mechanism_editable_target_fine_ids": "engineering_proxy",
+    "visual_veto_requirements": "engineering_proxy",
 }
 
 
@@ -290,6 +297,13 @@ class EvidenceGovernance:
             "minimum_source_clearance_instances",
             "cell_effect_contract",
             "mechanism_required_fine_ids",
+            "protected_fine_ids",
+            "operational_stroma_fine_ids",
+            "operational_stroma_policy",
+            "fibrosis_claim_authorized",
+            "mechanism_editable_source_fine_ids",
+            "mechanism_editable_target_fine_ids",
+            "visual_veto_requirements",
         }
         missing_fields = [item for item in missing_fields if item not in optional]
         if missing_fields:

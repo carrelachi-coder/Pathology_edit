@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from dataset_config import get_config
 from dataset_config.unified_labels import COARSE_LABELS
 
-
 BIOLOGICAL_LABELS = tuple(label for idx, label in COARSE_LABELS.items() if idx != 0)
 DEFAULT_BACKFILL_PRIORITY = (
     "Stroma",
@@ -33,9 +32,16 @@ class MaskProfileSchema:
     skip_fine_ids: frozenset[int]
     backfill_priority: tuple[str, ...]
     semantic_warnings: dict[str, str] = field(default_factory=dict)
+    # Some annotation profiles collapse several fine identities into one
+    # canonical label.  A scene component must not silently bridge those fine
+    # identities when the profile declares them independently editable (for
+    # example BCSS invasive tumor, DCIS and angioinvasion).
+    component_partition_fine_ids: dict[str, tuple[tuple[int, ...], ...]] = field(
+        default_factory=dict
+    )
 
     @classmethod
-    def from_reference_profile(cls, reference_profile: str) -> "MaskProfileSchema":
+    def from_reference_profile(cls, reference_profile: str) -> MaskProfileSchema:
         """Build schema from an existing dataset config used as reference profile."""
 
         try:

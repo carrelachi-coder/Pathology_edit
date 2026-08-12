@@ -253,17 +253,33 @@ def build_joint_nuclei_preflight(
         joint_bundle.primitive.required_source_clearance_classes
     )
     maximum_halo = int(joint_bundle.mechanism.cell_program.halo_distance_px[1])
+    representability = joint_bundle.mechanism.representability
     required_auxiliary = set(
-        joint_bundle.mechanism.representability.required_auxiliary_structures
+        representability.required_auxiliary_structures
+    )
+    protected_auxiliary = set(
+        representability.protected_auxiliary_structures
+    )
+    receiving_auxiliary = set(
+        representability.receiving_auxiliary_structures
     )
     missing_auxiliary = tuple(
         sorted(required_auxiliary - set(scene.auxiliary_structure_masks))
     )
     protected_structure = np.zeros_like(source_tissue, dtype=bool)
-    for structure_id in sorted(required_auxiliary - set(missing_auxiliary)):
+    for structure_id in sorted(protected_auxiliary - set(missing_auxiliary)):
         protected_structure |= np.asarray(
             scene.auxiliary_structure_masks[structure_id], dtype=bool
         )
+    receiving_structure = np.ones_like(source_tissue, dtype=bool)
+    if receiving_auxiliary:
+        receiving_structure = np.zeros_like(source_tissue, dtype=bool)
+        for structure_id in sorted(
+            receiving_auxiliary - set(missing_auxiliary)
+        ):
+            receiving_structure |= np.asarray(
+                scene.auxiliary_structure_masks[structure_id], dtype=bool
+            )
     source_generation_prohibited = np.isin(
         source_tissue,
         joint_bundle.annotation_profile.prohibit_generation_support_fine_ids,
@@ -367,6 +383,14 @@ def build_joint_nuclei_preflight(
     source_authority = build_scene_instance_authority(
         scene, scene.source_nuclei
     )
+    editable_source_ids = (
+        joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+            f"{joint_bundle.mechanism.mechanism_id}::{case.primitive_id}",
+            joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+                joint_bundle.mechanism.mechanism_id, ()
+            ),
+        )
+    )
     target_density, target_density_by_class = (
         _target_interface_population_density(
             scene,
@@ -424,6 +448,22 @@ def build_joint_nuclei_preflight(
             or interface.target_label != target_label
         ):
             continue
+        source_component_metadata = next(
+            (
+                item
+                for item in scene.tissue.graph.components
+                if item.component_id == interface.source_component_id
+            ),
+            None,
+        )
+        if (
+            editable_source_ids
+            and source_component_metadata is not None
+            and not set(source_component_metadata.fine_ids).issubset(
+                editable_source_ids
+            )
+        ):
+            continue
         source_component = scene.tissue.component_masks[interface.source_component_id]
         interface_mask = scene.tissue.interface_masks[interface.interface_id]
         # Capacity must use the same geometric upper bound as the downstream
@@ -467,6 +507,9 @@ def build_joint_nuclei_preflight(
             )
         distance = ndimage.distance_transform_edt(~interface_mask)
         raw_envelope = source_component & ~prohibited_tissue & ~protected_mask
+        raw_envelope &= receiving_structure
+        if editable_source_ids:
+            raw_envelope &= np.isin(source_tissue, editable_source_ids)
         if not effective_allow_source_resolution:
             raw_envelope &= distance <= depth_cap
         source_component_pixels = int(np.count_nonzero(source_component))

@@ -1,0 +1,32 @@
+{
+  "primitive_id": "invasive-tumor-footprint-decrease-v1",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Decrease an authorized invasive-tumor footprint through a broad interface while preserving a measurable residual tumor floor.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [],
+  "tissue_topology_contract": {
+    "geometry_mode": "interface_front",
+    "allow_source_component_resolution": false,
+    "allow_target_hole_resolution": false,
+    "allow_source_component_split": false,
+    "maximum_source_component_changed_fraction": 0.65,
+    "minimum_source_component_remaining_px": 256,
+    "residual_area_floor_fraction": 0.25
+  },
+  "required_source_clearance_classes": [1],
+  "minimum_source_clearance_instances": 1,
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "local_shape_distribution",
+    "local_population_density",
+    "interface_seam_continuity",
+    "profile_fine_transition_authority"
+  ]
+}

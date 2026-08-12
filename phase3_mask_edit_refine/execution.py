@@ -91,6 +91,11 @@ def compile_edit_plan_with_witness(
 
     mask = np.asarray(source_mask)
     source_ids = tuple(
+        int(value)
+        for value in plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    ) or tuple(
         fine_id
         for label in plan.source_labels
         for fine_id in schema.resolve_fine_ids(label)
@@ -318,6 +323,11 @@ def replay_compiled_edit_plan(
         raise RefineContractError("only a compiled EditPlan can be replayed")
     mask = np.asarray(source_mask)
     source_ids = tuple(
+        int(value)
+        for value in plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    ) or tuple(
         fine_id
         for label in plan.source_labels
         for fine_id in schema.resolve_fine_ids(label)
@@ -394,6 +404,24 @@ def replay_compiled_edit_plan(
         ),
         allow_target_hole_resolution=bool(
             topology_policy["allow_target_hole_resolution"]
+        ),
+        allow_source_component_split=bool(
+            topology_policy["allow_source_component_split"]
+        ),
+        minimum_residual_components=int(
+            topology_policy["minimum_residual_components"]
+        ),
+        maximum_residual_components=int(
+            topology_policy["maximum_residual_components"]
+        ),
+        minimum_residual_component_area_px=int(
+            topology_policy["minimum_residual_component_area_px"]
+        ),
+        minimum_residual_spacing_px=int(
+            topology_policy["minimum_residual_spacing_px"]
+        ),
+        residual_area_floor_fraction=float(
+            topology_policy["residual_area_floor_fraction"]
         ),
     )
     if realized != resolved or not topology["passed"]:
@@ -637,6 +665,24 @@ def _topology_policy(plan: EditPlan) -> dict[str, Any]:
         "allow_target_hole_resolution": bool(
             params.get("allow_target_hole_resolution", False)
         ),
+        "allow_source_component_split": bool(
+            params.get("allow_source_component_split", False)
+        ),
+        "minimum_residual_components": max(
+            1, int(params.get("minimum_residual_components", 1))
+        ),
+        "maximum_residual_components": max(
+            1, int(params.get("maximum_residual_components", 1))
+        ),
+        "minimum_residual_component_area_px": max(
+            1, int(params.get("minimum_residual_component_area_px", 1))
+        ),
+        "minimum_residual_spacing_px": max(
+            0, int(params.get("minimum_residual_spacing_px", 0))
+        ),
+        "residual_area_floor_fraction": float(
+            params.get("residual_area_floor_fraction", 0.0)
+        ),
         "minimum_changed_component_area_px": max(
             1, int(params.get("min_component_area_px", 16))
         ),
@@ -655,6 +701,12 @@ def _resolve_topology_safe_area(
     fallback_policy: str,
     allow_source_component_resolution: bool = False,
     allow_target_hole_resolution: bool = False,
+    allow_source_component_split: bool = False,
+    minimum_residual_components: int = 1,
+    maximum_residual_components: int = 1,
+    minimum_residual_component_area_px: int = 1,
+    minimum_residual_spacing_px: int = 0,
+    residual_area_floor_fraction: float = 0.0,
     minimum_changed_component_area_px: int = 16,
 ) -> tuple[
     tuple[int, ...],
@@ -680,6 +732,7 @@ def _resolve_topology_safe_area(
                 allow_source_component_resolution
             ),
             allow_target_hole_resolution=allow_target_hole_resolution,
+            allow_source_component_split=allow_source_component_split,
             minimum_changed_component_area_px=(
                 minimum_changed_component_area_px
             ),
@@ -694,6 +747,14 @@ def _resolve_topology_safe_area(
                 allow_source_component_resolution
             ),
             allow_target_hole_resolution=allow_target_hole_resolution,
+            allow_source_component_split=allow_source_component_split,
+            minimum_residual_components=minimum_residual_components,
+            maximum_residual_components=maximum_residual_components,
+            minimum_residual_component_area_px=(
+                minimum_residual_component_area_px
+            ),
+            minimum_residual_spacing_px=minimum_residual_spacing_px,
+            residual_area_floor_fraction=residual_area_floor_fraction,
         )
         valid = realized == total and bool(topology["passed"])
         attempts.append(
@@ -785,6 +846,12 @@ def _whole_mask_topology_audit(
     works: tuple[_CompilerWork, ...],
     allow_source_component_resolution: bool = False,
     allow_target_hole_resolution: bool = False,
+    allow_source_component_split: bool = False,
+    minimum_residual_components: int = 1,
+    maximum_residual_components: int = 1,
+    minimum_residual_component_area_px: int = 1,
+    minimum_residual_spacing_px: int = 0,
+    residual_area_floor_fraction: float = 0.0,
 ) -> dict[str, Any]:
     change = np.logical_or.reduce(selected_by_work)
     source_after = source_region & ~change
@@ -810,11 +877,43 @@ def _whole_mask_topology_audit(
             or source_hole_change_allowed
         )
     )
-    source_components_valid = (
-        source_components_after <= source_components_before
-        if allow_source_component_resolution
-        else source_components_after == source_components_before
+    residual_source_before = source_region
+    residual_source_after = source_after
+    if allow_source_component_split:
+        selected_source = np.logical_or.reduce(
+            tuple(work.source_component for work in works)
+        )
+        residual_source_before = source_region & selected_source
+        residual_source_after = source_after & selected_source
+    source_labeled_after, source_components_after_selected = ndimage.label(
+        residual_source_after, structure=structure
     )
+    residual_sizes = sorted(
+        int(np.count_nonzero(source_labeled_after == index))
+        for index in range(1, source_components_after_selected + 1)
+    )
+    source_area_before = int(np.count_nonzero(residual_source_before))
+    source_area_after = int(np.count_nonzero(residual_source_after))
+    residual_fraction = source_area_after / max(source_area_before, 1)
+    residual_spacing_px = _minimum_component_spacing_px(
+        source_labeled_after,
+        source_components_after_selected,
+    )
+    if allow_source_component_split:
+        source_components_valid = bool(
+            minimum_residual_components <= source_components_after_selected
+            <= maximum_residual_components
+            and residual_sizes
+            and min(residual_sizes) >= minimum_residual_component_area_px
+            and residual_spacing_px + 1e-9 >= minimum_residual_spacing_px
+            and residual_fraction + 1e-9 >= residual_area_floor_fraction
+        )
+    else:
+        source_components_valid = (
+            source_components_after <= source_components_before
+            if allow_source_component_resolution
+            else source_components_after == source_components_before
+        )
     target_holes_valid = (
         target_holes_after <= target_holes_before
         if allow_target_hole_resolution
@@ -830,6 +929,9 @@ def _whole_mask_topology_audit(
         "passed": bool(passed),
         "source_components_before": source_components_before,
         "source_components_after": source_components_after,
+        "selected_source_components_after": int(
+            source_components_after_selected
+        ),
         "target_components_before": target_components_before,
         "target_components_after": target_components_after,
         "source_holes_before": source_holes_before,
@@ -849,7 +951,39 @@ def _whole_mask_topology_audit(
         "allow_target_hole_resolution": bool(
             allow_target_hole_resolution
         ),
+        "allow_source_component_split": bool(allow_source_component_split),
+        "minimum_residual_components": int(minimum_residual_components),
+        "maximum_residual_components": int(maximum_residual_components),
+        "minimum_residual_component_area_px": int(
+            minimum_residual_component_area_px
+        ),
+        "minimum_residual_spacing_px": int(minimum_residual_spacing_px),
+        "observed_minimum_residual_spacing_px": float(
+            residual_spacing_px
+        ),
+        "residual_component_sizes_px": residual_sizes,
+        "residual_area_fraction": float(residual_fraction),
+        "residual_area_floor_fraction": float(residual_area_floor_fraction),
     }
+
+
+def _minimum_component_spacing_px(
+    labeled: np.ndarray,
+    component_count: int,
+) -> float:
+    """Return the closest Euclidean gap between distinct residual foci."""
+
+    if component_count < 2:
+        return float("inf")
+    minimum = float("inf")
+    for left in range(1, component_count):
+        distance = ndimage.distance_transform_edt(labeled != left)
+        for right in range(left + 1, component_count + 1):
+            minimum = min(
+                minimum,
+                float(np.min(distance[labeled == right], initial=np.inf)),
+            )
+    return minimum
 
 
 def _hole_count(mask: np.ndarray) -> int:
@@ -867,8 +1001,24 @@ def _simulate_topology_safe_execution(
     seed: int,
     allow_source_component_resolution: bool = False,
     allow_target_hole_resolution: bool = False,
+    allow_source_component_split: bool = False,
+    minimum_residual_components: int = 1,
+    maximum_residual_components: int = 1,
+    minimum_residual_component_area_px: int = 1,
+    minimum_residual_spacing_px: int = 0,
+    residual_area_floor_fraction: float = 0.0,
     minimum_changed_component_area_px: int = 16,
 ) -> tuple[tuple[np.ndarray, ...], tuple[dict[str, Any], ...]]:
+    # Whole-mask residual constraints are audited after all fronts have been
+    # jointly simulated. Accept them here so the shared topology-policy object
+    # can be passed intact without duplicating partial per-front semantics.
+    del (
+        minimum_residual_components,
+        maximum_residual_components,
+        minimum_residual_component_area_px,
+        minimum_residual_spacing_px,
+        residual_area_floor_fraction,
+    )
     source_states = {
         work.planned.source_component_id: np.array(
             scene.component_masks[work.planned.source_component_id], copy=True
@@ -923,7 +1073,10 @@ def _simulate_topology_safe_execution(
             already_deleted_from_source=deleted_by_source[component_id],
             protected_source_necks=(
                 None
-                if allow_source_component_resolution
+                if (
+                    allow_source_component_resolution
+                    or allow_source_component_split
+                )
                 else work.protected_source_necks
             ),
             seed=seed + index * 13007 + pass_index * 104729,
@@ -931,6 +1084,7 @@ def _simulate_topology_safe_execution(
                 allow_source_component_resolution
             ),
             allow_target_hole_resolution=allow_target_hole_resolution,
+            allow_source_component_split=allow_source_component_split,
         )
         realized = int(np.count_nonzero(selected))
         selected_by_work[index] |= selected

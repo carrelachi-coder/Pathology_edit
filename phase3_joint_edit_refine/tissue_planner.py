@@ -86,6 +86,14 @@ def _effective_tissue_topology(
         "minimum_source_component_remaining_px": (
             primitive.minimum_source_component_remaining_px
         ),
+        "allow_source_component_split": primitive.allow_source_component_split,
+        "minimum_residual_components": primitive.minimum_residual_components,
+        "maximum_residual_components": primitive.maximum_residual_components,
+        "minimum_residual_component_area_px": (
+            primitive.minimum_residual_component_area_px
+        ),
+        "minimum_residual_spacing_px": primitive.minimum_residual_spacing_px,
+        "residual_area_floor_fraction": primitive.residual_area_floor_fraction,
         "fallback_activated": False,
     }
     fallback = joint_bundle.mechanism.tissue_program.topology_fallback_for(
@@ -316,6 +324,9 @@ class MultiInterfaceResearchTissuePlanner:
         component_turnover = (
             topology["geometry_mode"] == "component_boundary_turnover"
         )
+        residual_fragmentation = (
+            topology["geometry_mode"] == "residual_fragmentation"
+        )
 
         # One connected source component can border several independent target
         # components.  Collapsing those contacts to its single longest edge was
@@ -384,6 +395,33 @@ class MultiInterfaceResearchTissuePlanner:
                 item.interface_id,
             ),
         )
+        if residual_fragmentation and ranked:
+            # Fragmentation is defined within one pre-existing invasive-tumor
+            # component. Selecting unrelated components could satisfy an
+            # island-count gate without actually fragmenting anything.
+            capacity_by_source: dict[str, int] = {}
+            for item in ranked:
+                capacity_by_source[item.source_component_id] = (
+                    capacity_by_source.get(item.source_component_id, 0)
+                    + capacity_by_id[item.interface_id]
+                )
+            selected_source_component_id = max(
+                capacity_by_source,
+                key=lambda component_id: (
+                    capacity_by_source[component_id],
+                    sum(
+                        item.contact_pixels
+                        for item in ranked
+                        if item.source_component_id == component_id
+                    ),
+                    component_id,
+                ),
+            )
+            ranked = [
+                item
+                for item in ranked
+                if item.source_component_id == selected_source_component_id
+            ]
         source_region = np.zeros((scene.graph.height, scene.graph.width), dtype=bool)
         for item in ranked:
             source_region |= scene.component_masks[item.source_component_id]
@@ -624,7 +662,13 @@ class MultiInterfaceResearchTissuePlanner:
                             ),
                         ),
                         min_anchor_coverage_fraction=0.50,
-                        max_off_anchor_contact_fraction=0.02,
+                        # Rasterized curved interfaces can expose one boundary
+                        # pixel just outside a selected segment at each end.
+                        # A 2% fractional limit is brittle on short segments
+                        # (3/145 fails although it is the same connected
+                        # front); 3% remains strict while covering that finite
+                        # endpoint effect.
+                        max_off_anchor_contact_fraction=0.03,
                         allocation_tolerance_fraction=0.02,
                     ),
                     prohibited_region_ids=(),
@@ -680,17 +724,53 @@ class MultiInterfaceResearchTissuePlanner:
                     "allow_target_hole_resolution": (
                         topology["allow_target_hole_resolution"]
                     ),
+                    "allow_source_component_split": (
+                        topology["allow_source_component_split"]
+                    ),
+                    "minimum_residual_components": (
+                        topology["minimum_residual_components"]
+                    ),
+                    "maximum_residual_components": (
+                        topology["maximum_residual_components"]
+                    ),
+                    "minimum_residual_component_area_px": (
+                        topology["minimum_residual_component_area_px"]
+                    ),
+                    "minimum_residual_spacing_px": (
+                        topology["minimum_residual_spacing_px"]
+                    ),
+                    "residual_area_floor_fraction": (
+                        topology["residual_area_floor_fraction"]
+                    ),
                     "target_component_merge_policy": (
                         joint_bundle.mechanism.tissue_program.target_component_merge_policy
                     ),
                     "tissue_geometry_mode": (
                         topology["geometry_mode"]
                     ),
+                    "editable_source_fine_ids": list(
+                        joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+                            f"{joint_bundle.mechanism.mechanism_id}::{case.primitive_id}",
+                            joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+                                joint_bundle.mechanism.mechanism_id, ()
+                            ),
+                        )
+                    ),
+                    "editable_target_fine_ids": list(
+                        joint_bundle.annotation_profile.mechanism_editable_target_fine_ids.get(
+                            f"{joint_bundle.mechanism.mechanism_id}::{case.primitive_id}",
+                            joint_bundle.annotation_profile.mechanism_editable_target_fine_ids.get(
+                                joint_bundle.mechanism.mechanism_id, ()
+                            ),
+                        )
+                    ),
                     "mechanism_topology_fallback_activated": bool(
                         topology["fallback_activated"]
                     ),
                     "min_parallel_front_depth_cv": (
-                        0.10 if component_turnover else 0.25
+                        0.10 if component_turnover else (
+                            0.18 if residual_fragmentation else 0.25
+                        )
                     ),
                     "parallel_front_linearity_ratio": 20.0,
                     "parallel_front_min_depth_px": 5.0,

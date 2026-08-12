@@ -1,0 +1,4 @@
+interface:
+  display_name: "Breast Treatment-associated Stromal Replacement"
+  short_description: "Replace invasive tumor with operational BCSS Stroma after treatment."
+  default_prompt: "Use $breast-treatment-associated-stromal-replacement only with explicit post-treatment context and no fibrosis claim from the mask."

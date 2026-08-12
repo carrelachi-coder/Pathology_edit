@@ -1,0 +1,4 @@
+interface:
+  display_name: "Invasive tumor footprint decrease"
+  short_description: "Compile a residual-preserving invasive tumor retreat."
+  default_prompt: "Use $invasive-tumor-footprint-decrease-v1 only with an independently reviewed regression mechanism and fine-label authority."

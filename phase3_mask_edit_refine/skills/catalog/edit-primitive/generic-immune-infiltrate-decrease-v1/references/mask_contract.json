@@ -1,0 +1,10 @@
+{
+  "skill_id": "generic-immune-infiltrate-decrease-v1",
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "purpose": "Executable Immune-infiltrate-to-Stroma interface retreat.",
+  "constraints": [
+    {"constraint_id": "primitive.mask.generic_immune_infiltrate_decrease_transition", "applies_when": {}, "mask_statement": "Convert only Immune infiltrate to Stroma from the selected interface and satisfy the caller area budget.", "observability": ["semantic_mask", "scene_graph"], "enforcement": "deterministic", "enforcement_stages": ["candidate_generation", "mask_gate"], "checker_ids": ["label_transition", "unrequested_labels_preserved", "changed_area", "interface_contact"], "critic_requirement": null, "required_inputs": ["source mask", "area budget", "Stroma/Immune interface"], "failure_action": "reject_candidate", "generation_handoff": [], "known_limitations": []},
+    {"constraint_id": "primitive.mask.generic_immune_infiltrate_decrease_topology", "applies_when": {}, "mask_statement": "Reject remote cuts, protected overlap, topology damage or unnatural boundary geometry.", "observability": ["semantic_mask", "scene_graph"], "enforcement": "deterministic", "enforcement_stages": ["candidate_generation", "mask_gate"], "checker_ids": ["prohibited_region", "component_topology", "edited_label_topology", "depth_span_ratio", "boundary_naturalness"], "critic_requirement": null, "required_inputs": ["component/interface graph"], "failure_action": "reject_candidate", "generation_handoff": [], "known_limitations": []}
+  ]
+}
