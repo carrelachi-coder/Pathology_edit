@@ -2,12 +2,11 @@
   "mechanism_id": "colorectal-gland-forming-front",
   "pathology_domain_id": "colorectal-adenocarcinoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1",
-    "tumor-burden-decrease-v1"
+    "tumor-burden-increase-v1"
   ],
-  "version": "1.1.0-draft",
+  "version": "1.2.0-draft",
   "review_status": "draft",
-  "summary": "Extend or regress a verified malignant colorectal gland unit at a true non-gland interface, preserving its lumen/topology and regenerating the direction-appropriate cell population.",
+  "summary": "Extend a verified malignant colorectal gland unit at a true non-gland interface while preserving its lumen/topology and regenerating a compatible neoplastic population.",
   "recognition_contract": {
     "required_observations": [
       "continuous malignant gland epithelium",
@@ -45,15 +44,6 @@
         ],
         "target_labels": [
           "Tumor"
-        ]
-      },
-      "tumor-burden-decrease-v1": {
-        "source_labels": [
-          "Tumor"
-        ],
-        "target_labels": [
-          "Stroma",
-          "Other tissue"
         ]
       }
     },
@@ -118,24 +108,6 @@
       24
     ],
     "seam_contract_by_primitive": {
-      "tumor-burden-decrease-v1": {
-        "mode": "adaptive_population_continuity",
-        "width_cell_diameters": [
-          1,
-          1.5
-        ],
-        "reference_area_quantiles": [
-          0.25,
-          0.75
-        ],
-        "maximum_empty_run_cell_diameters": 1.5,
-        "density_ratio_range": [
-          0.7,
-          1.45
-        ],
-        "minimum_anchor_coverage_fraction": 0.6,
-        "requires_new_target_cells": true
-      },
       "tumor-burden-increase-v1": {
         "mode": "adaptive_population_continuity",
         "width_cell_diameters": [
@@ -166,13 +138,12 @@
       "mechanism_realization"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "boundary_aligned",
-      "tumor-burden-decrease-v1": "population_replacement"
+      "tumor-burden-increase-v1": "boundary_aligned"
     }
   },
   "coupling_contract": {
     "compatibility_rule_ids": [
-      "colorectal.joint.malignant_gland_unit_extension_or_regression",
+      "colorectal.joint.malignant_gland_unit_extension",
       "colorectal.joint.gland_boundary_population",
       "colorectal.joint.lumen_and_crypt_protection"
     ],

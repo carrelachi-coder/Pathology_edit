@@ -2,10 +2,9 @@
   "mechanism_id": "prostate-pattern-3-growth",
   "pathology_domain_id": "prostate-adenocarcinoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1",
-    "tumor-burden-decrease-v1"
+    "tumor-burden-increase-v1"
   ],
-  "version": "1.2.0-draft",
+  "version": "1.3.0-draft",
   "review_status": "draft",
   "summary": "Preserve separated, complete gland units and lumina while rebuilding a boundary-aligned epithelial/neoplastic population.",
   "recognition_contract": {
@@ -45,15 +44,6 @@
         ],
         "target_labels": [
           "Tumor"
-        ]
-      },
-      "tumor-burden-decrease-v1": {
-        "source_labels": [
-          "Tumor"
-        ],
-        "target_labels": [
-          "Stroma",
-          "Other tissue"
         ]
       }
     },
@@ -117,26 +107,6 @@
       "minimum_anchor_coverage_fraction": 0.5,
       "requires_new_target_cells": true
     },
-    "seam_contract_by_primitive": {
-      "tumor-burden-decrease-v1": {
-        "mode": "adaptive_population_continuity",
-        "width_cell_diameters": [
-          1,
-          1.5
-        ],
-        "reference_area_quantiles": [
-          0.25,
-          0.75
-        ],
-        "maximum_empty_run_cell_diameters": 2,
-        "density_ratio_range": [
-          0.25,
-          4
-        ],
-        "minimum_anchor_coverage_fraction": 0,
-        "requires_new_target_cells": true
-      }
-    },
     "required_checker_ids": [
       "whole_instance_changes",
       "protected_nuclei_preserved",
@@ -146,8 +116,7 @@
       "cell_spatial_distribution"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "boundary_aligned",
-      "tumor-burden-decrease-v1": "population_replacement"
+      "tumor-burden-increase-v1": "boundary_aligned"
     }
   },
   "coupling_contract": {

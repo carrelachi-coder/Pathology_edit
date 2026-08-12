@@ -262,6 +262,22 @@ class JointSkillRepository:
                 "executable joint primitives have no mechanism coverage: "
                 + ", ".join(sorted(executable - covered))
             )
+        for mechanism in self.mechanisms.values():
+            burden_directions = {
+                primitive_id
+                for primitive_id in mechanism.supported_primitives
+                if primitive_id
+                in {
+                    "tumor-burden-increase-v1",
+                    "tumor-burden-decrease-v1",
+                }
+            }
+            if len(burden_directions) > 1:
+                raise JointContractError(
+                    f"{mechanism.mechanism_id} conflates tumor growth with "
+                    "unspecified regression; burden directions require separate "
+                    "mechanism contracts"
+                )
 
     @property
     def executable_primitive_ids(self) -> tuple[str, ...]:

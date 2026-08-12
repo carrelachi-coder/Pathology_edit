@@ -971,18 +971,30 @@ class JointSkillTests(unittest.TestCase):
             },
         )
 
-    def test_growth_mechanisms_do_not_own_tumor_to_stroma_replacement(self):
+    def test_growth_mechanisms_are_increase_only_and_do_not_own_replacement(self):
         repository = JointSkillRepository()
-        for mechanism_id in (
-            "lung-lepidic-growth",
-            "lung-acinar-papillary-growth",
-            "lung-solid-squamous-growth",
-            "prostate-pattern-3-growth",
-            "prostate-pattern-4-growth",
-            "prostate-pattern-5-growth",
-        ):
+        growth_mechanism_ids = (
+            mechanism_id
+            for mechanism_id in repository.mechanisms
+            if mechanism_id.endswith("-growth")
+            or mechanism_id in {
+                "breast-cohesive-nst-front",
+                "colorectal-gland-forming-front",
+                "melanoma-cohesive-nest-sheet",
+                "oral-scc-cohesive-nest-cord",
+            }
+        )
+        for mechanism_id in growth_mechanism_ids:
             mechanism = repository.mechanisms[mechanism_id]
+            self.assertIn("tumor-burden-increase-v1", mechanism.supported_primitives)
+            self.assertNotIn(
+                "tumor-burden-decrease-v1", mechanism.supported_primitives
+            )
             self.assertNotIn("stroma-increase-v1", mechanism.supported_primitives)
+            self.assertNotIn(
+                "tumor-burden-decrease-v1",
+                mechanism.tissue_program.primitive_label_contracts,
+            )
             self.assertNotIn(
                 "stroma-increase-v1",
                 mechanism.tissue_program.primitive_label_contracts,
@@ -1046,20 +1058,18 @@ class JointSkillTests(unittest.TestCase):
         self.assertGreater(seam.maximum_empty_run_cell_diameters, 0)
         self.assertTrue(seam.requires_new_target_cells)
 
-    def test_melanoma_stromal_backfill_uses_density_not_cell_wall_coverage(self):
+    def test_melanoma_growth_seam_is_increase_only(self):
         mechanism = JointSkillRepository().mechanisms[
             "melanoma-cohesive-nest-sheet"
         ]
         increase = mechanism.cell_program.seam_for(
             "tumor-burden-increase-v1"
         )
-        decrease = mechanism.cell_program.seam_for(
-            "tumor-burden-decrease-v1"
-        )
-
         self.assertEqual(increase.minimum_anchor_coverage_fraction, 0.5)
-        self.assertEqual(decrease.minimum_anchor_coverage_fraction, 0.0)
-        self.assertTrue(decrease.requires_new_target_cells)
+        self.assertNotIn(
+            "tumor-burden-decrease-v1",
+            mechanism.cell_program.layout_program_by_primitive,
+        )
 
     def test_joint_primitive_execution_scope_is_explicit(self):
         repository = JointSkillRepository()
@@ -1075,7 +1085,6 @@ class JointSkillTests(unittest.TestCase):
                 "necrosis-resolution-v1",
                 "neoplastic-microinfiltration-increase-v1",
                 "stroma-increase-v1",
-                "tumor-burden-decrease-v1",
                 "tumor-burden-increase-v1",
             },
         )
@@ -1085,6 +1094,7 @@ class JointSkillTests(unittest.TestCase):
                 "architecture-progression-v1",
                 "neoplastic-cell-infiltration-increase-v1",
                 "structural-void-spread-v1",
+                "tumor-burden-decrease-v1",
             },
         )
         local = _case_stub(
@@ -3032,11 +3042,8 @@ class StructuralHierarchyTests(unittest.TestCase):
                 ).minimum_anchor_coverage_fraction,
                 0.5,
             )
-            self.assertEqual(
-                mechanism.cell_program.seam_for(
-                    "tumor-burden-decrease-v1"
-                ).minimum_anchor_coverage_fraction,
-                0.0,
+            self.assertNotIn(
+                "tumor-burden-decrease-v1", mechanism.supported_primitives
             )
 
     def test_colorectal_gland_front_requires_a_directional_boundary_sector(self):

@@ -2,12 +2,11 @@
   "mechanism_id": "lung-acinar-papillary-growth",
   "pathology_domain_id": "lung-carcinoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1",
-    "tumor-burden-decrease-v1"
+    "tumor-burden-increase-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
-  "summary": "Edit verified acinar or papillary units while preserving lumina or fibrovascular cores and rebuilding boundary-compatible nuclei.",
+  "summary": "Expand verified acinar or papillary units while preserving lumina or fibrovascular cores and rebuilding boundary-compatible nuclei.",
   "recognition_contract": {
     "required_observations": [
       "verified acinar lumen or papillary core",
@@ -43,15 +42,6 @@
         ],
         "target_labels": [
           "Tumor"
-        ]
-      },
-      "tumor-burden-decrease-v1": {
-        "source_labels": [
-          "Tumor"
-        ],
-        "target_labels": [
-          "Stroma",
-          "Other tissue"
         ]
       }
     },
@@ -107,8 +97,7 @@
       "cell_spatial_distribution"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "boundary_aligned",
-      "tumor-burden-decrease-v1": "population_replacement"
+      "tumor-burden-increase-v1": "boundary_aligned"
     }
   },
   "coupling_contract": {

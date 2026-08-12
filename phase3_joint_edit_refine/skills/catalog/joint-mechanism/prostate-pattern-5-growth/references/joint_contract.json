@@ -2,10 +2,9 @@
   "mechanism_id": "prostate-pattern-5-growth",
   "pathology_domain_id": "prostate-adenocarcinoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1",
-    "tumor-burden-decrease-v1"
+    "tumor-burden-increase-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "summary": "Represent verified non-gland-forming sheet, cord or single-cell pattern-5 growth without inventing gland lumina.",
   "recognition_contract": {
@@ -40,15 +39,6 @@
         ],
         "target_labels": [
           "Tumor"
-        ]
-      },
-      "tumor-burden-decrease-v1": {
-        "source_labels": [
-          "Tumor"
-        ],
-        "target_labels": [
-          "Stroma",
-          "Other tissue"
         ]
       }
     },
@@ -105,8 +95,7 @@
       "cell_spatial_distribution"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "dense_sheet",
-      "tumor-burden-decrease-v1": "population_replacement"
+      "tumor-burden-increase-v1": "dense_sheet"
     }
   },
   "coupling_contract": {
