@@ -20,7 +20,8 @@
   },
   "legacy_primitives_not_yet_joint": {},
   "closed_mechanisms": {
-    "colorectal-gland-forming-front": "The current generic interface-band executor thickens an existing gland wall but cannot create or extend one complete malignant gland unit with an auditable target-lumen generation support. Keep this mechanism closed until a unit-aware executor and paired frozen-generator validation exist.",
+    "colorectal-gland-forming-front": "GLaS lacks explicit stromal authority and the attempted H&E/mask-derived gland-unit producer could not reliably distinguish lumen, mucin, necrosis and cleft. Keep tissue-level malignant-gland growth closed.",
+    "colorectal-tumor-budding-front": "Tumor budding requires a reliable invasive-front stromal context. GLaS supplies gland instances plus a heterogeneous non-gland complement, so H&E review alone cannot authorize stable budding execution.",
     "prostate-pattern-3-growth": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist."
   },
   "policy": "fail_closed",

@@ -6,10 +6,15 @@ import json
 import unittest
 
 from phase3_joint_edit_refine.models import JointContractError
+from phase3_joint_edit_refine.clarification import (
+    create_scenario_clarification_decision,
+)
 from phase3_joint_edit_refine.semantic_parser import (
     OpenAIClinicalScenarioParser,
     PreboundSemanticParser,
     RuleBasedSemanticParser,
+    ScenarioClarificationRequired,
+    bind_semantic_intent,
 )
 
 
@@ -142,6 +147,40 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             [item.primitive_id for item in intent.primitive_hypotheses],
             ["tumor-burden-decrease-v1"],
         )
+
+    def test_directionless_post_treatment_language_requests_user_choice(self):
+        raw = {
+            "case_id": "scenario-clarify",
+            "instruction": "模拟治疗后的变化",
+            "source_image_uri": "/tmp/image.png",
+            "source_tissue_mask_uri": "/tmp/tissue.png",
+            "source_nuclei_mask_uri": "/tmp/nuclei.png",
+            "pathology_domain_id": "prostate-adenocarcinoma-v1",
+            "annotation_profile_id": "panda-gleason-v1",
+            "cell_observation_profile_id": "cellvit-five-class-v1",
+            "cell_population_profile_id": "prostate-cell-population-v1",
+            "seed": 42,
+            "provenance": {
+                "source_image_sha256": "image-a",
+                "source_tissue_mask_sha256": "tissue-a",
+                "source_nuclei_mask_sha256": "nuclei-a",
+            },
+        }
+        with self.assertRaises(ScenarioClarificationRequired) as error:
+            bind_semantic_intent(raw, RuleBasedSemanticParser())
+        decision = create_scenario_clarification_decision(
+            error.exception.request,
+            selected_option_id="scenario:treatment_response",
+            responder="doctor-1",
+            provider="interactive_user_choice",
+        )
+        case, intent = bind_semantic_intent(
+            {**raw, "clarification_decision": decision},
+            RuleBasedSemanticParser(),
+        )
+        self.assertEqual(intent.scenario, "treatment_response")
+        self.assertEqual(intent.treatment_context, "post_treatment")
+        self.assertEqual(case.clarification_decision, decision)
 
     def test_offline_parser_understands_plain_tumor_infiltration(self):
         intent = RuleBasedSemanticParser().parse(

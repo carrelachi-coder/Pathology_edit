@@ -19,12 +19,12 @@
   ],
   "unavailable_mechanisms": [
     "breast-intratumoral-necrosis-turnover",
+    "colorectal-gland-forming-front",
+    "colorectal-tumor-budding-front",
     "lung-intratumoral-necrosis-turnover",
     "melanoma-intratumoral-necrosis-turnover"
   ],
-  "conditional_mechanisms": [
-    "colorectal-tumor-budding-front"
-  ],
+  "conditional_mechanisms": [],
   "required_checker_ids": [
     "profile_provenance",
     "prohibited_cell_region",

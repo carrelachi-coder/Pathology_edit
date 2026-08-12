@@ -1939,6 +1939,44 @@ def _mechanism_specific_postcondition(
                 "post_treatment_change",
             }
         )
+        if expected_mechanism_id == "prostate-treatment-associated-fibrotic-replacement":
+            source = np.asarray(c.source_tissue)
+            target = np.asarray(c.candidate.target_tissue_mask)
+            change = np.asarray(c.candidate.tissue_change, dtype=bool)
+            pattern5_ids = set(
+                c.bundle.annotation_profile.mechanism_required_fine_ids.get(
+                    expected_mechanism_id, ()
+                )
+            )
+            stroma_ids = set(c.schema.resolve_fine_ids("Stroma"))
+            only_pattern5_to_stroma = bool(
+                np.any(change)
+                and pattern5_ids
+                and np.all(np.isin(source[change], tuple(pattern5_ids)))
+                and np.all(np.isin(target[change], tuple(stroma_ids)))
+            )
+            stroma_before = np.isin(source, tuple(stroma_ids))
+            connected_to_existing_stroma = bool(
+                np.any(
+                    ndimage.binary_dilation(change, iterations=1)
+                    & stroma_before
+                )
+            )
+            unrequested_pattern_pixels_unchanged = bool(
+                np.array_equal(
+                    source[np.isin(source, (8, 9))],
+                    target[np.isin(source, (8, 9))],
+                )
+            )
+            subchecks["pattern5_to_explicit_stroma_only"] = (
+                only_pattern5_to_stroma
+            )
+            subchecks["existing_stroma_interface_anchor"] = (
+                connected_to_existing_stroma
+            )
+            subchecks["pattern3_pattern4_pixel_exact"] = (
+                unrequested_pattern_pixels_unchanged
+            )
 
     if c.bundle.mechanism.representability.required_auxiliary_structures:
         subchecks["native_structure_preserved"] = (

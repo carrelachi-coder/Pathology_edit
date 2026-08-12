@@ -20,6 +20,8 @@ from .models import JointCaseContext, JointContractError
 
 CLARIFICATION_REQUEST_SCHEMA = "joint-primitive-clarification-request-v1"
 CLARIFICATION_DECISION_SCHEMA = "joint-primitive-clarification-decision-v1"
+SCENARIO_CLARIFICATION_REQUEST_SCHEMA = "joint-scenario-clarification-request-v1"
+SCENARIO_CLARIFICATION_DECISION_SCHEMA = "joint-scenario-clarification-decision-v1"
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,39 @@ class PrimitiveClarificationRequest:
     semantic_intent_sha256: str
     options: tuple[PrimitiveClarificationOption, ...]
     schema_version: str = CLARIFICATION_REQUEST_SCHEMA
+
+    def to_metadata(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["request_sha256"] = clarification_request_sha256(payload)
+        return payload
+
+
+@dataclass(frozen=True)
+class ScenarioClarificationOption:
+    option_id: str
+    clinician_label: str
+    clinician_description: str
+    scenario: str
+    clinical_direction: str
+    treatment_context: str
+    scenario_target: str
+    explicit_edit_scope: str
+
+    def to_metadata(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ScenarioClarificationRequest:
+    clarification_id: str
+    case_id: str
+    instruction: str
+    question: str
+    why_required: str
+    input_digests: dict[str, str]
+    knowledge_context: dict[str, str]
+    options: tuple[ScenarioClarificationOption, ...]
+    schema_version: str = SCENARIO_CLARIFICATION_REQUEST_SCHEMA
 
     def to_metadata(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -246,6 +281,167 @@ def create_clarification_decision(
     return {**core, "decision_sha256": _sha256(core)}
 
 
+def build_scenario_clarification_request(
+    *,
+    case_id: str,
+    instruction: str,
+    input_digests: Mapping[str, str],
+    knowledge_context: Mapping[str, str],
+    why_required: str,
+) -> ScenarioClarificationRequest:
+    """Ask a clinician to resolve directionless post-treatment language.
+
+    The answer supplies clinical semantics only. It never selects pixels,
+    mechanisms, tool parameters or numeric edit strength.
+    """
+
+    options = (
+        ScenarioClarificationOption(
+            option_id="scenario:treatment_response",
+            clinician_label="治疗后出现缓解",
+            clinician_description="模拟肿瘤负荷或活性细胞减少，并允许受支持的治疗相关坏死或纤维化替代。",
+            scenario="treatment_response",
+            clinical_direction="improve",
+            treatment_context="post_treatment",
+            scenario_target="tumor",
+            explicit_edit_scope="unspecified",
+        ),
+        ScenarioClarificationOption(
+            option_id="scenario:post_treatment_progression",
+            clinician_label="治疗后仍然进展",
+            clinician_description="模拟治疗后肿瘤继续扩大、浸润或局部细胞负荷升高。",
+            scenario="post_treatment_progression",
+            clinical_direction="worsen",
+            treatment_context="post_treatment",
+            scenario_target="tumor",
+            explicit_edit_scope="unspecified",
+        ),
+        ScenarioClarificationOption(
+            option_id="scenario:residual_disease",
+            clinician_label="治疗后仍有残余病灶",
+            clinician_description="模拟治疗后仍保留肿瘤，但可表现为较低组织负荷或较低活性细胞密度。",
+            scenario="residual_disease",
+            clinical_direction="persist",
+            treatment_context="post_treatment",
+            scenario_target="tumor",
+            explicit_edit_scope="unspecified",
+        ),
+    )
+    core = {
+        "schema_version": SCENARIO_CLARIFICATION_REQUEST_SCHEMA,
+        "case_id": str(case_id),
+        "instruction": str(instruction).strip(),
+        "question": "您希望这次治疗后的变化主要表现为哪一种情况？",
+        "why_required": str(why_required).strip(),
+        "input_digests": dict(sorted(input_digests.items())),
+        "knowledge_context": dict(sorted(knowledge_context.items())),
+        "options": [item.to_metadata() for item in options],
+    }
+    return ScenarioClarificationRequest(
+        clarification_id="clarify-scenario-" + _sha256(core)[:20],
+        case_id=core["case_id"],
+        instruction=core["instruction"],
+        question=core["question"],
+        why_required=core["why_required"],
+        input_digests=core["input_digests"],
+        knowledge_context=core["knowledge_context"],
+        options=options,
+    )
+
+
+def create_scenario_clarification_decision(
+    request: Mapping[str, Any],
+    *,
+    selected_option_id: str,
+    responder: str,
+    provider: str,
+    rationale: str | None = None,
+) -> dict[str, Any]:
+    normalized = validate_scenario_request_metadata(request)
+    if selected_option_id not in {
+        str(item["option_id"]) for item in normalized["options"]
+    }:
+        raise JointContractError("scenario clarification selected an unavailable option")
+    if not str(responder).strip() or not str(provider).strip():
+        raise JointContractError(
+            "scenario clarification requires responder and provider provenance"
+        )
+    core = {
+        "schema_version": SCENARIO_CLARIFICATION_DECISION_SCHEMA,
+        "request": normalized,
+        "selected_option_id": selected_option_id,
+        "responder": str(responder).strip(),
+        "provider": str(provider).strip(),
+        "rationale": str(rationale).strip() if rationale else None,
+    }
+    return {**core, "decision_sha256": _sha256(core)}
+
+
+def resolve_scenario_clarification_decision(
+    decision: Mapping[str, Any],
+    *,
+    case_id: str,
+    instruction: str,
+    input_digests: Mapping[str, str],
+    knowledge_context: Mapping[str, str],
+) -> tuple[dict[str, str], dict[str, Any]]:
+    if decision.get("schema_version") != SCENARIO_CLARIFICATION_DECISION_SCHEMA:
+        raise JointContractError("unsupported scenario clarification decision schema")
+    core = {
+        key: decision.get(key)
+        for key in (
+            "schema_version",
+            "request",
+            "selected_option_id",
+            "responder",
+            "provider",
+            "rationale",
+        )
+    }
+    if decision.get("decision_sha256") != _sha256(core):
+        raise JointContractError("scenario clarification decision digest mismatch")
+    request = validate_scenario_request_metadata(decision.get("request"))
+    if (
+        request["case_id"] != str(case_id)
+        or request["instruction"] != str(instruction).strip()
+        or request["input_digests"] != dict(sorted(input_digests.items()))
+        or request["knowledge_context"] != dict(sorted(knowledge_context.items()))
+    ):
+        raise JointContractError(
+            "scenario clarification decision is detached from the current case"
+        )
+    selected = next(
+        (
+            item
+            for item in request["options"]
+            if item["option_id"] == decision.get("selected_option_id")
+        ),
+        None,
+    )
+    if selected is None:
+        raise JointContractError("scenario clarification selected an unknown option")
+    fields = {
+        key: str(selected[key])
+        for key in (
+            "scenario",
+            "clinical_direction",
+            "treatment_context",
+            "scenario_target",
+            "explicit_edit_scope",
+        )
+    }
+    usage = {
+        "provider": str(decision["provider"]),
+        "responder": str(decision["responder"]),
+        "request_id": request["clarification_id"],
+        "request_sha256": request["request_sha256"],
+        "decision_sha256": str(decision["decision_sha256"]),
+        "selected_option_id": str(decision["selected_option_id"]),
+        "rationale": decision.get("rationale"),
+    }
+    return fields, usage
+
+
 def resolve_clarification_decision(
     *,
     case: JointCaseContext,
@@ -374,6 +570,57 @@ def validate_request_metadata(payload: Any) -> dict[str, Any]:
             raise JointContractError(
                 "clarification option has no executable mechanism"
             )
+    return normalized
+
+
+def validate_scenario_request_metadata(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        raise JointContractError("scenario clarification request must be an object")
+    normalized = dict(payload)
+    if normalized.get("schema_version") != SCENARIO_CLARIFICATION_REQUEST_SCHEMA:
+        raise JointContractError("unsupported scenario clarification request schema")
+    required_fields = {
+        "clarification_id",
+        "case_id",
+        "instruction",
+        "question",
+        "why_required",
+        "input_digests",
+        "knowledge_context",
+        "options",
+        "request_sha256",
+    }
+    if required_fields - set(normalized):
+        raise JointContractError("scenario clarification request is incomplete")
+    identity_core = dict(normalized)
+    identity_core.pop("clarification_id", None)
+    identity_core.pop("request_sha256", None)
+    if normalized["clarification_id"] != (
+        "clarify-scenario-" + _sha256(identity_core)[:20]
+    ):
+        raise JointContractError("scenario clarification request identity mismatch")
+    if normalized["request_sha256"] != clarification_request_sha256(normalized):
+        raise JointContractError("scenario clarification request digest mismatch")
+    options = normalized.get("options")
+    if (
+        not isinstance(options, Sequence)
+        or isinstance(options, (str, bytes))
+        or len(options) != 3
+    ):
+        raise JointContractError("scenario clarification requires three options")
+    normalized["options"] = [dict(item) for item in options]
+    required_option = {
+        "option_id",
+        "clinician_label",
+        "clinician_description",
+        "scenario",
+        "clinical_direction",
+        "treatment_context",
+        "scenario_target",
+        "explicit_edit_scope",
+    }
+    if any(required_option - set(item) for item in normalized["options"]):
+        raise JointContractError("scenario clarification option is malformed")
     return normalized
 
 

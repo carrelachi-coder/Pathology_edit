@@ -16,6 +16,11 @@ from typing import Any, Protocol
 
 from phase3_mask_edit_refine.agents import OpenAIResponsesJSONClient
 
+from .clarification import (
+    SCENARIO_CLARIFICATION_DECISION_SCHEMA,
+    build_scenario_clarification_request,
+    resolve_scenario_clarification_decision,
+)
 from .models import JointCaseContext, JointContractError
 
 SEMANTIC_INTENT_SCHEMA_VERSION = "joint-semantic-intent-v3"
@@ -110,6 +115,14 @@ class SemanticParser(Protocol):
 
     def parse(self, instruction: str) -> SemanticEditIntent:
         """Extract only user-stated semantic intent."""
+
+
+class ScenarioClarificationRequired(JointContractError):
+    """Signal that semantic direction must be supplied by the user."""
+
+    def __init__(self, request: Mapping[str, Any]) -> None:
+        self.request = dict(request)
+        super().__init__("clinical scenario clarification is required")
 
 
 class PreboundSemanticParser:
@@ -584,7 +597,61 @@ def bind_semantic_intent(
     """Parse, validate any manifest hint, and bind immutable semantic intent."""
 
     payload = dict(raw_case)
-    intent = parser.parse(_required_text(payload, "instruction"))
+    instruction = _required_text(payload, "instruction")
+    try:
+        intent = parser.parse(instruction)
+    except JointContractError as exc:
+        if not _is_directionless_post_treatment_instruction(instruction):
+            raise
+        input_digests = {
+            key: str(value)
+            for key, value in dict(payload.get("provenance") or {}).items()
+            if key.startswith("source_") and key.endswith("_sha256") and value
+        }
+        knowledge_context = {
+            key: _required_text(payload, key)
+            for key in (
+                "pathology_domain_id",
+                "annotation_profile_id",
+                "cell_observation_profile_id",
+                "cell_population_profile_id",
+            )
+        }
+        decision = payload.get("clarification_decision")
+        if (
+            isinstance(decision, Mapping)
+            and decision.get("schema_version")
+            == SCENARIO_CLARIFICATION_DECISION_SCHEMA
+        ):
+            fields, usage = resolve_scenario_clarification_decision(
+                decision,
+                case_id=_required_text(payload, "case_id"),
+                instruction=instruction,
+                input_digests=input_digests,
+                knowledge_context=knowledge_context,
+            )
+            intent = _build_scenario_intent(
+                instruction=instruction,
+                parser=f"{parser.name}+interactive_scenario_clarification_v1",
+                parser_metadata={
+                    "mode": "interactive_user_choice",
+                    "user_clarification": usage,
+                    "original_parser_error": str(exc),
+                },
+                **fields,
+            )
+        else:
+            request = build_scenario_clarification_request(
+                case_id=_required_text(payload, "case_id"),
+                instruction=instruction,
+                input_digests=input_digests,
+                knowledge_context=knowledge_context,
+                why_required=(
+                    "当前描述只说明发生了治疗后变化，但未说明是缓解、继续进展还是残余病灶；"
+                    "H&E 不能代替用户决定临床方向。"
+                ),
+            ).to_metadata()
+            raise ScenarioClarificationRequired(request) from exc
     manifest_primitive = payload.get("primitive_id")
     candidate_ids = {
         item.primitive_id for item in intent.primitive_hypotheses
@@ -1053,6 +1120,30 @@ def _rule_based_clinical_scenario(instruction: str) -> dict[str, str] | None:
     ):
         return _scenario_fields("disease_regression", "improve", "unspecified")
     return None
+
+
+def _is_directionless_post_treatment_instruction(instruction: str) -> bool:
+    lowered = instruction.casefold()
+    post_treatment = bool(
+        re.search(r"\b(?:after|post)[ -]?treatment\b", lowered)
+        or re.search(r"治疗后|治疗之后", instruction)
+    )
+    directionless_change = bool(
+        re.search(r"变化|改变", instruction)
+        or re.search(r"\bchanges?\b", lowered)
+    )
+    explicit_direction = bool(
+        re.search(
+            r"缓解|改善|缩小|减少|消退|进展|恶化|变严重|复发|残余|残留",
+            instruction,
+        )
+        or re.search(
+            r"\b(?:respond|response|regress|shrink|improve|progress|worsen|"
+            r"recurrence|residual)\w*\b",
+            lowered,
+        )
+    )
+    return post_treatment and directionless_change and not explicit_direction
 
 
 def _scenario_fields(

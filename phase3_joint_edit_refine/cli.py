@@ -22,6 +22,7 @@ from .semantic_parser import (
     OpenAIClinicalScenarioParser,
     PreboundSemanticParser,
     RuleBasedSemanticParser,
+    ScenarioClarificationRequired,
     bind_semantic_intent,
 )
 from .skills.repository import JointSkillRepository
@@ -190,7 +191,30 @@ def main(argv: list[str] | None = None) -> int:
                 or (args.semantic_parser == "auto" and client is not None)
                 else RuleBasedSemanticParser()
             )
-        case, semantic_intent = bind_semantic_intent(raw, semantic_parser)
+        try:
+            case, semantic_intent = bind_semantic_intent(raw, semantic_parser)
+        except ScenarioClarificationRequired as exc:
+            case_id = str(raw.get("case_id") or "unknown")
+            request_path = (
+                Path(args.output_root)
+                / case_id
+                / "scenario_clarification_request.json"
+            )
+            request_path.parent.mkdir(parents=True, exist_ok=True)
+            request_path.write_text(
+                json.dumps(exc.request, indent=2, ensure_ascii=False, sort_keys=True)
+                + "\n",
+                encoding="utf-8",
+            )
+            summaries.append(
+                {
+                    "case_id": case_id,
+                    "status": "clarification_required",
+                    "clarification_request": str(request_path.resolve()),
+                    "clarification_request_sha256": exc.request["request_sha256"],
+                }
+            )
+            continue
         population = repository.cell_population_profiles[
             case.cell_population_profile_id
         ]

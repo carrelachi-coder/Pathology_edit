@@ -12,7 +12,7 @@
   "summary": "Change a bounded colorectal cell population without changing gland, crypt, lumen, mucin, necrosis or muscle geometry.",
   "recognition_contract": {
     "required_observations": [
-      "one explicit tumor, stroma or epithelial component population zone",
+      "one H&E-confirmed non-luminal tumor, non-gland tissue or epithelial population zone",
       "observable compatible target cell class",
       "complete local instances and stable gland context"
     ],
@@ -208,13 +208,16 @@
       "uniform artificial spacing"
     ],
     "mask_guarantees": [
-      "tissue labels unchanged",
-      "only complete nuclei added or removed inside the compiled zone"
+      "tissue mask remains pixel-exactly unchanged",
+      "only complete nuclei are added or removed inside the compiled zone",
+      "gland, crypt, lumen, mucin and necrosis geometry is unchanged"
     ],
     "render_only_claims": [
-      "tumor budding identity",
+      "tumor burden progression or regression",
+      "tumor budding or invasive-front identity",
       "immune activation",
-      "gland differentiation grade"
+      "gland differentiation grade",
+      "definitive treatment response"
     ]
   },
   "evidence_citations": [

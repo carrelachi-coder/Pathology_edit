@@ -3,6 +3,9 @@
   "counterexamples": [
     "using this mechanism for ordinary tumor decrease",
     "calling pattern change fibrosis",
-    "erasing benign glands"
+    "erasing benign glands",
+    "using Pattern 3 or Pattern 4 as the replacement source",
+    "creating a de novo stromal island disconnected from explicit stroma",
+    "inferring treatment history from morphology without a user scenario"
   ]
 }

@@ -1101,6 +1101,7 @@ class JointSkillTests(unittest.TestCase):
             set(repository.execution_scope["closed_mechanisms"]),
             {
                 "colorectal-gland-forming-front",
+                "colorectal-tumor-budding-front",
                 "prostate-pattern-3-growth",
             },
         )
@@ -1121,7 +1122,7 @@ class JointSkillTests(unittest.TestCase):
         self.assertIn("colorectal-gland-forming-front", rejected)
         self.assertIn("explicitly closed", rejected["colorectal-gland-forming-front"])
         self.assertIn(
-            "unit-aware executor",
+            "lacks explicit stromal authority",
             repository.execution_selection_reason(
                 primitive_id="tumor-burden-increase-v1",
                 mechanism_id="colorectal-gland-forming-front",
@@ -1195,11 +1196,14 @@ class JointSkillTests(unittest.TestCase):
 
     def test_cross_domain_cell_population_is_rejected(self):
         repository = JointSkillRepository()
-        case = _case_stub(population="breast-cellvit-source-first-v1")
+        case = replace(
+            _breast_case_stub(),
+            cell_population_profile_id="colorectal-cellvit-source-first-v1",
+        )
         with self.assertRaisesRegex(ValueError, "domain mismatch"):
             repository.compose(
                 case=case,
-                mechanism_id="colorectal-gland-forming-front",
+                mechanism_id="breast-cohesive-nst-front",
                 available_checker_ids=JointGateRegistry().available_checker_ids,
                 production=False,
             )
@@ -1228,8 +1232,8 @@ class JointSkillTests(unittest.TestCase):
         repository = JointSkillRepository()
         with self.assertRaisesRegex(ValueError, "internally reviewed"):
             repository.compose(
-                case=_case_stub(),
-                mechanism_id="colorectal-gland-forming-front",
+                case=_breast_case_stub(),
+                mechanism_id="breast-cohesive-nst-front",
                 available_checker_ids=JointGateRegistry().available_checker_ids,
                 production=True,
             )
@@ -1276,10 +1280,10 @@ class JointSkillTests(unittest.TestCase):
 
     def test_budget_broker_reserves_whole_instance_union_without_lowering_floor(self):
         repository = JointSkillRepository()
-        case = _case_stub()
+        case = _breast_case_stub()
         bundle = repository.compose(
             case=case,
-            mechanism_id="colorectal-gland-forming-front",
+            mechanism_id="breast-cohesive-nst-front",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -1364,10 +1368,10 @@ class JointSkillTests(unittest.TestCase):
 
     def test_budget_broker_rebalances_from_exact_executed_cell_spill(self):
         repository = JointSkillRepository()
-        case = _case_stub()
+        case = _breast_case_stub()
         bundle = repository.compose(
             case=case,
-            mechanism_id="colorectal-gland-forming-front",
+            mechanism_id="breast-cohesive-nst-front",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -1423,12 +1427,12 @@ class JointSkillTests(unittest.TestCase):
 
     def test_capacity_adaptive_budget_can_compile_below_standard_floor(self):
         repository = JointSkillRepository()
-        case = _case_stub(
+        case = _breast_case_stub(
             budget=JointAreaBudget(capacity_floor_policy="lower_to_proven_max_safe")
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="colorectal-gland-forming-front",
+            mechanism_id="breast-cohesive-nst-front",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -1446,7 +1450,7 @@ class JointSkillTests(unittest.TestCase):
 
     def test_capacity_adaptive_budget_enforces_meaningful_edit_floor(self):
         repository = JointSkillRepository()
-        case = _case_stub(
+        case = _breast_case_stub(
             budget=JointAreaBudget(
                 capacity_floor_policy="lower_to_proven_max_safe",
                 minimum_effective_fraction=0.05,
@@ -1454,7 +1458,7 @@ class JointSkillTests(unittest.TestCase):
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="colorectal-gland-forming-front",
+            mechanism_id="breast-cohesive-nst-front",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -1469,7 +1473,7 @@ class JointSkillTests(unittest.TestCase):
 
     def test_tissue_tool_rejects_allocation_below_binding_public_floor(self):
         repository = JointSkillRepository()
-        case = _case_stub(
+        case = _breast_case_stub(
             budget=JointAreaBudget(
                 capacity_floor_policy="lower_to_proven_max_safe",
                 minimum_effective_fraction=0.05,
@@ -1477,7 +1481,7 @@ class JointSkillTests(unittest.TestCase):
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="colorectal-gland-forming-front",
+            mechanism_id="breast-cohesive-nst-front",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -1509,15 +1513,20 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(route.mode, "inpaint")
         self.assertGreater(route.joint_fraction, 0)
 
-    def test_tumor_budding_is_cell_only_and_does_not_borrow_tissue_floor(self):
+    def test_microinfiltration_is_cell_only_and_does_not_borrow_tissue_floor(self):
         repository = JointSkillRepository()
-        case = _case_stub(
-            primitive="neoplastic-microinfiltration-increase-v1",
-            cell_budget=CellCountExtentBudget(3, 3, 4, 48, 4, 32),
+        case = replace(
+            _case_stub(
+                primitive="neoplastic-microinfiltration-increase-v1",
+                cell_budget=CellCountExtentBudget(3, 3, 4, 48, 4, 32),
+            ),
+            pathology_domain_id="melanoma-v1",
+            annotation_profile_id="puma-semantic-v1",
+            cell_population_profile_id="melanoma-cellvit-source-first-v1",
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="colorectal-tumor-budding-front",
+            mechanism_id="melanoma-discohesive-junctional",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -2229,7 +2238,7 @@ class JointWorkflowTests(unittest.TestCase):
                 result.abstain_reasons[0],
             )
 
-    def test_cell_only_budding_preserves_tissue_and_uses_count_budget(self):
+    def test_glas_cell_only_budding_is_rejected_without_stromal_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = _write_synthetic_case(root)
@@ -2249,16 +2258,13 @@ class JointWorkflowTests(unittest.TestCase):
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=root / "cell-only")
-            self.assertEqual(result.status, "selected_research", result.abstain_reasons)
-            self.assertIsNotNone(result.condition)
-            self.assertEqual(result.condition.ledger.tissue_pixels, 0)
-            self.assertGreater(result.condition.ledger.cell_pixels, 0)
-            np.testing.assert_array_equal(
-                result.condition.target_tissue_mask,
-                np.load(source.source_tissue_mask_uri),
+            self.assertEqual(result.status, "abstained")
+            self.assertIn(
+                "reliable invasive-front stromal context",
+                result.abstain_reasons[0],
             )
 
-    def test_generic_tumor_increase_can_resolve_to_visible_budding(self):
+    def test_generic_glas_tumor_increase_does_not_fall_back_to_budding(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = _write_synthetic_case(root)
@@ -2292,27 +2298,10 @@ class JointWorkflowTests(unittest.TestCase):
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=output_root)
 
-            self.assertEqual(
-                result.status, "selected_research", result.abstain_reasons
-            )
-            resolution = json.loads(
-                (
-                    output_root
-                    / case.case_id
-                    / "semantic_resolution.json"
-                ).read_text(encoding="utf-8")
-            )
-            self.assertEqual(
-                resolution["selected_option_id"],
-                "neoplastic-microinfiltration-increase-v1::colorectal-tumor-budding-front",
-            )
-            self.assertEqual(
-                resolution["selection"]["semantic_fit"], "contextual"
-            )
-            self.assertIsNotNone(resolution["selected_cell_budget"])
+            self.assertEqual(result.status, "abstained")
             self.assertIn(
-                "tumor-burden-increase-v1",
-                resolution["rejected_interpretations"],
+                "colorectal-tumor-budding-front",
+                result.abstain_reasons[0],
             )
 
     def test_local_population_primitives_use_component_contract(self):
@@ -2773,6 +2762,15 @@ def _case_stub(
             "source_nuclei_mask_sha256": "z",
         },
         cell_count_extent_budget=cell_budget,
+    )
+
+
+def _breast_case_stub(*, budget=None) -> JointCaseContext:
+    return replace(
+        _case_stub(budget=budget),
+        pathology_domain_id="breast-invasive-carcinoma-v1",
+        annotation_profile_id="bcss-semantic-v1",
+        cell_population_profile_id="breast-cellvit-source-first-v1",
     )
 
 

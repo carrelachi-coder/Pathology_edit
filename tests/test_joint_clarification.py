@@ -8,7 +8,10 @@ import pytest
 from phase3_joint_edit_refine.clarification import (
     PlannerClarificationRequired,
     build_primitive_clarification_request,
+    build_scenario_clarification_request,
     create_clarification_decision,
+    create_scenario_clarification_decision,
+    resolve_scenario_clarification_decision,
     resolve_clarification_decision,
 )
 from phase3_joint_edit_refine.models import JointCaseContext, JointContractError
@@ -147,3 +150,47 @@ def test_offline_planner_can_emit_a_clarification_signal():
         "neoplastic-microinfiltration-increase-v1",
         "invasive-front-expansion-v1",
     )
+
+
+def test_scenario_clarification_is_digest_bound_and_semantic_only():
+    case = _case(instruction="模拟治疗后的变化")
+    digests = {
+        "source_image_sha256": "image-a",
+        "source_tissue_mask_sha256": "tissue-a",
+        "source_nuclei_mask_sha256": "nuclei-a",
+    }
+    knowledge = {
+        "pathology_domain_id": case.pathology_domain_id,
+        "annotation_profile_id": case.annotation_profile_id,
+        "cell_observation_profile_id": case.cell_observation_profile_id,
+        "cell_population_profile_id": case.cell_population_profile_id,
+    }
+    request = build_scenario_clarification_request(
+        case_id=case.case_id,
+        instruction=case.instruction,
+        input_digests=digests,
+        knowledge_context=knowledge,
+        why_required="direction is unspecified",
+    ).to_metadata()
+    assert [item["scenario"] for item in request["options"]] == [
+        "treatment_response",
+        "post_treatment_progression",
+        "residual_disease",
+    ]
+    assert all("primitive_id" not in item for item in request["options"])
+    decision = create_scenario_clarification_decision(
+        request,
+        selected_option_id="scenario:treatment_response",
+        responder="doctor-1",
+        provider="interactive_user_choice",
+    )
+    fields, usage = resolve_scenario_clarification_decision(
+        decision,
+        case_id=case.case_id,
+        instruction=case.instruction,
+        input_digests=digests,
+        knowledge_context=knowledge,
+    )
+    assert fields["scenario"] == "treatment_response"
+    assert fields["treatment_context"] == "post_treatment"
+    assert usage["selected_option_id"] == "scenario:treatment_response"

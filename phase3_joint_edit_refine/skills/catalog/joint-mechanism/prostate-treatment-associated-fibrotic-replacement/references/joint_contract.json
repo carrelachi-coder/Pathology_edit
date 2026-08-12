@@ -4,19 +4,21 @@
   "supported_primitives": [
     "stroma-increase-v1"
   ],
-  "version": "1.0.0-research",
+  "version": "1.1.0-research",
   "review_status": "draft",
   "summary": "Replace a portion of viable prostate tumor with explicitly labelled treatment-associated stromal/fibrotic tissue only when prior therapy is documented and Gleason progression is not being simulated.",
   "recognition_contract": {
     "required_observations": [
-      "documented presurgical therapy context",
-      "treatment-effect morphology in the selected tumor bed",
-      "explicit stromal label authority"
+      "explicit post-treatment simulation context supplied by the user or a digest-bound clarification",
+      "an existing Pattern-5 Tumor-to-explicit-Stroma interface",
+      "no protected glandular or native space in the selected edit band"
     ],
     "contraindications": [
       "untreated disease progression",
       "Gleason architecture progression",
-      "stroma inferred from a coarse complement label"
+      "stroma inferred from a coarse complement label",
+      "de novo stromal island inside viable tumor",
+      "Pattern-3 or Pattern-4 source tissue"
     ],
     "minimum_confidence": 0.9
   },
@@ -25,10 +27,7 @@
     "required_cell_classes": [
       3
     ],
-    "required_auxiliary_structures": [
-      "native_pattern_map",
-      "gland_lumen_map"
-    ],
+    "required_auxiliary_structures": [],
     "allow_semantic_instance_fallback": false,
     "failure_action": "abstain_case"
   },
@@ -51,7 +50,7 @@
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
-      "native_structure_preserved"
+      "fine_pattern_preserved"
     ],
     "prohibited_structures": [
       "benign_gland",
@@ -129,7 +128,8 @@
     ],
     "mask_guarantees": [
       "only complete nuclei are removed",
-      "native lumen and fine-pattern maps remain protected"
+      "only Pattern-5 Tumor may transition to explicit Stroma",
+      "Pattern-3, Pattern-4 and every unrequested label remain pixel-exact"
     ],
     "render_only_claims": [
       "specific therapy effect",
@@ -143,6 +143,8 @@
   "counterexamples": [
     "using this mechanism for ordinary tumor decrease",
     "calling pattern change fibrosis",
-    "erasing benign glands"
+    "erasing benign glands",
+    "creating an isolated stromal hole inside viable tumor",
+    "claiming observed treatment history from H&E alone"
   ]
 }
