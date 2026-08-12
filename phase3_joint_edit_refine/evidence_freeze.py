@@ -56,11 +56,16 @@ def freeze_dataset_evidence(
         raw_records = records_by_dataset[dataset_id]
         resolved = _resolve_records(raw_records)
         hashed = _hash_records(resolved, workers=workers)
+        materialization_evidence = _dataset_materialization_evidence(
+            resolved,
+            dataset_id=dataset_id,
+        )
         preprocessing = _preprocessing_contract(
             payload,
             dataset_id=dataset_id,
             code_revision=code_revision,
             source_manifest_sha256=source_manifest_sha256,
+            materialization_evidence=materialization_evidence,
         )
         records = [
             _evidence_record(item, preprocessing=preprocessing)
@@ -95,6 +100,7 @@ def freeze_dataset_evidence(
             "source_grouped_manifest": str(source.resolve()),
             "source_grouped_manifest_sha256": source_manifest_sha256,
             "preprocessing": preprocessing,
+            "materialization_evidence": materialization_evidence,
             "record_count": len(records),
             "split_counts": _split_counts(records),
             "records": records,
@@ -157,6 +163,20 @@ def verify_frozen_evidence_index(path: str | Path) -> dict[str, Any]:
             )
             continue
         manifest = _load_json_object(manifest_path)
+        materialization = manifest.get("materialization_evidence") or {}
+        for artifact_name in ("metadata_jsonl", "stats_txt"):
+            artifact = materialization.get(artifact_name) or {}
+            target = Path(str(artifact.get("uri") or ""))
+            if (
+                not target.is_file()
+                or sha256_file(target) != artifact.get("sha256")
+            ):
+                failures.append(
+                    {
+                        "dataset_id": dataset.get("dataset_id"),
+                        "error": f"{artifact_name}_digest",
+                    }
+                )
         for record in manifest.get("records", []):
             for path_key, digest_key in (
                 ("image_uri", "image_sha256"),
@@ -282,8 +302,10 @@ def _preprocessing_contract(
     dataset_id: str,
     code_revision: str,
     source_manifest_sha256: str,
+    materialization_evidence: dict[str, Any],
 ) -> dict[str, Any]:
     upstream = grouped_payload.get("preprocessing_revision")
+    evidence_revision = _sha256_json(materialization_evidence)
     core = {
         "schema_version": MATERIALIZED_PREPROCESSING_SCHEMA,
         "dataset_id": dataset_id,
@@ -294,11 +316,84 @@ def _preprocessing_contract(
         "grouping_authority": "scripts/build_segmentator_multidataset_manifest.py:_group_id",
         "materialized_subdirectories": ["images", "tissue_masks", "nuclei_masks"],
         "upstream_preprocessing_revision": (
-            str(upstream) if upstream else "not_recorded_in_source_manifest"
+            str(upstream) if upstream else evidence_revision
         ),
         "upstream_preprocessing_complete": bool(upstream),
+        "materialization_evidence_complete": True,
+        "materialization_evidence_revision": evidence_revision,
+        "preprocessing_statements": materialization_evidence[
+            "preprocessing_statements"
+        ],
+        "known_limitations": (
+            []
+            if upstream
+            else [
+                "The source grouped manifest did not name an upstream preprocessing "
+                "code revision. This freeze binds the materialized stats, metadata "
+                "and every image/mask/nuclei digest, but does not claim that the "
+                "original preprocessing code is reconstructable."
+            ]
+        ),
     }
     return {**core, "revision": _sha256_json(core)}
+
+
+def _dataset_materialization_evidence(
+    records: list[dict[str, Any]], *, dataset_id: str
+) -> dict[str, Any]:
+    roots = {Path(str(item["dataset_root"])).resolve() for item in records}
+    if len(roots) != 1:
+        raise RefineContractError(
+            f"dataset {dataset_id} resolves to multiple materialized roots"
+        )
+    root = next(iter(roots))
+    metadata_path = root / "metadata.jsonl"
+    stats_path = root / "stats.txt"
+    missing = [str(path) for path in (metadata_path, stats_path) if not path.is_file()]
+    if missing:
+        raise RefineContractError(
+            f"dataset {dataset_id} lacks materialization evidence: {missing}"
+        )
+    stats_text = stats_path.read_text(encoding="utf-8")
+    statements = _extract_preprocessing_statements(stats_text)
+    if not statements:
+        raise RefineContractError(
+            f"dataset {dataset_id} stats.txt has no auditable preprocessing statements"
+        )
+    return {
+        "schema_version": "materialized-dataset-evidence-v1",
+        "dataset_id": dataset_id,
+        "dataset_root": str(root),
+        "metadata_jsonl": {
+            "uri": str(metadata_path),
+            "sha256": sha256_file(metadata_path),
+        },
+        "stats_txt": {
+            "uri": str(stats_path),
+            "sha256": sha256_file(stats_path),
+        },
+        "preprocessing_statements": statements,
+    }
+
+
+def _extract_preprocessing_statements(stats_text: str) -> list[str]:
+    prefixes = (
+        "Source:",
+        "Resize:",
+        "Magnification:",
+        "Mask quantization:",
+        "Patch extraction:",
+        "Filter:",
+        "Unannotated/context padding filter:",
+        "Label remap:",
+        "Label scheme:",
+        "Organ filter:",
+    )
+    return [
+        line.strip()
+        for line in stats_text.splitlines()
+        if line.strip().startswith(prefixes)
+    ]
 
 
 def _evidence_record(

@@ -27,6 +27,18 @@ def test_six_dataset_evidence_freeze_is_complete_and_replayable(tmp_path: Path):
         root = tmp_path / dataset_id
         for subdir in ("images", "tissue_masks", "nuclei_masks"):
             (root / subdir).mkdir(parents=True, exist_ok=True)
+        (root / "metadata.jsonl").write_text(
+            '{"image":"images/sample.png","conditioning_image":"conditioning/sample.png"}\n',
+            encoding="utf-8",
+        )
+        (root / "stats.txt").write_text(
+            "Fixture Dataset Statistics\n"
+            "Source: fixture source images\n"
+            "Resize: no resize\n"
+            "Filter: no filtering\n"
+            "Label remap: fixture labels\n",
+            encoding="utf-8",
+        )
         for split_index, split in enumerate(("train", "val", "test")):
             name = f"{dataset_id}-{split}.png"
             image = np.full((8, 8, 3), 30 + split_index, dtype=np.uint8)
@@ -68,3 +80,13 @@ def test_six_dataset_evidence_freeze_is_complete_and_replayable(tmp_path: Path):
         manifest = EvidenceManifest.load(dataset["manifest_path"])
         assert len(manifest.records) == 3
         assert manifest.dataset_revision == dataset["dataset_revision"]
+        raw = json.loads(Path(dataset["manifest_path"]).read_text())
+        assert raw["preprocessing"]["materialization_evidence_complete"]
+        assert raw["materialization_evidence"]["metadata_jsonl"]["sha256"]
+        assert raw["materialization_evidence"]["stats_txt"]["sha256"]
+        assert raw["preprocessing"]["preprocessing_statements"] == [
+            "Source: fixture source images",
+            "Resize: no resize",
+            "Filter: no filtering",
+            "Label remap: fixture labels",
+        ]
