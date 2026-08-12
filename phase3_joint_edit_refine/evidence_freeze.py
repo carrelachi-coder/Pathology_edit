@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -43,6 +44,18 @@ def freeze_dataset_evidence(
     payload = _load_json_object(source)
     records_by_dataset = _group_records(payload)
     split_contract = _split_contract(payload)
+    record_normalization = {
+        "schema_version": "materialized-record-normalization-v1",
+        "nuclei_resolution": (
+            "Use manifest nuclei_dir/nuclei when present; otherwise require the "
+            "same image filename under nuclei_masks."
+        ),
+        "group_resolution": (
+            "Use manifest group_id when present; otherwise reproduce "
+            "scripts/build_segmentator_multidataset_manifest.py:_group_id."
+        ),
+        "group_disjointness": "required_across_materialized_partitions",
+    }
     missing = sorted(set(DATASET_PROFILES) - set(records_by_dataset))
     if missing:
         raise RefineContractError(
@@ -77,6 +90,7 @@ def freeze_dataset_evidence(
             "annotation_profile_id": profile_id,
             "preprocessing": preprocessing,
             "split_contract": split_contract,
+            "record_normalization": record_normalization,
             "records": [
                 {
                     "record_id": item["record_id"],
@@ -131,6 +145,7 @@ def freeze_dataset_evidence(
         "source_grouped_manifest": str(source.resolve()),
         "source_grouped_manifest_sha256": source_manifest_sha256,
         "split_contract": split_contract,
+        "record_normalization": record_normalization,
         "datasets": frozen,
     }
     index_path = root / "evidence_index.json"
@@ -218,6 +233,7 @@ def verify_frozen_evidence_index(path: str | Path) -> dict[str, Any]:
 
 def _group_records(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    group_splits: dict[tuple[str, str], str] = {}
     for source_split, evidence_split in (
         ("train", "train"),
         ("val", "validation"),
@@ -236,8 +252,44 @@ def _group_records(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
                 raise RefineContractError(
                     f"unsupported grouped dataset ID: {dataset_id!r}"
                 )
-            grouped[dataset_id].append({**raw, "evidence_split": evidence_split})
+            image_name = str(raw.get("image") or "")
+            normalized = {
+                **raw,
+                "nuclei_dir": str(raw.get("nuclei_dir") or "nuclei_masks"),
+                "nuclei": str(raw.get("nuclei") or image_name),
+                "group_id": str(
+                    raw.get("group_id")
+                    or _legacy_group_id(dataset_id, image_name)
+                ),
+                "evidence_split": evidence_split,
+            }
+            group_key = (dataset_id, normalized["group_id"])
+            previous_split = group_splits.get(group_key)
+            if previous_split is not None and previous_split != evidence_split:
+                raise RefineContractError(
+                    "group leakage across materialized partitions: "
+                    f"{dataset_id}:{normalized['group_id']}"
+                )
+            group_splits[group_key] = evidence_split
+            grouped[dataset_id].append(normalized)
     return grouped
+
+
+def _legacy_group_id(dataset_id: str, filename: str) -> str:
+    stem = Path(filename).stem
+    if not stem:
+        raise RefineContractError(
+            f"cannot derive {dataset_id} group ID from an empty image filename"
+        )
+    if dataset_id == "bcss":
+        return stem.split("_x", 1)[0]
+    if dataset_id == "ignite":
+        return stem.split("_he_", 1)[0]
+    if dataset_id == "orca":
+        return re.sub(r"_\d+$", "", stem.split("_py", 1)[0])
+    if dataset_id == "panda":
+        return stem.split("_y", 1)[0]
+    return stem.split("_py", 1)[0]
 
 
 def _split_contract(payload: dict[str, Any]) -> dict[str, Any]:

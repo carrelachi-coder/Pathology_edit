@@ -146,3 +146,53 @@ def test_evidence_freeze_records_absent_test_without_relabeling_validation(
     assert result["split_contract"]["absent_partitions"] == ["test"]
     for dataset in result["datasets"]:
         assert dataset["split_counts"] == {"train": 1, "validation": 1}
+
+
+def test_evidence_freeze_derives_nuclei_and_groups_from_stage4_records(
+    tmp_path: Path,
+):
+    grouped = {"train": [], "val": []}
+    for dataset_id in DATASET_PROFILES:
+        root = tmp_path / dataset_id
+        for subdir in ("images", "tissue_masks", "nuclei_masks"):
+            (root / subdir).mkdir(parents=True, exist_ok=True)
+        (root / "metadata.jsonl").write_text("{}\n", encoding="utf-8")
+        (root / "stats.txt").write_text(
+            "Source: fixture\nFilter: none\n", encoding="utf-8"
+        )
+        for split, suffix in (("train", "caseA"), ("val", "caseB")):
+            name = f"{suffix}_py0_px0.png"
+            for subdir, array in (
+                ("images", np.zeros((4, 4, 3), dtype=np.uint8)),
+                ("tissue_masks", np.zeros((4, 4), dtype=np.uint8)),
+                ("nuclei_masks", np.zeros((4, 4), dtype=np.uint8)),
+            ):
+                Image.fromarray(array).save(root / subdir / name)
+            grouped[split].append(
+                {
+                    "dataset_id": dataset_id,
+                    "dataset_root": str(root),
+                    "images_dir": "images",
+                    "masks_dir": "tissue_masks",
+                    "image": name,
+                    "mask": name,
+                    "sample_id": f"{dataset_id}:{split}",
+                }
+            )
+    path = tmp_path / "stage4.json"
+    path.write_text(json.dumps(grouped), encoding="utf-8")
+    result = freeze_dataset_evidence(
+        path,
+        output_root=tmp_path / "frozen",
+        code_revision="fixture-commit",
+        workers=2,
+    )
+    assert result["record_normalization"]["group_disjointness"] == (
+        "required_across_materialized_partitions"
+    )
+    for dataset in result["datasets"]:
+        raw = json.loads(Path(dataset["manifest_path"]).read_text())
+        assert all(
+            "/nuclei_masks/" in record["provenance"]["nuclei_mask_uri"]
+            for record in raw["records"]
+        )
