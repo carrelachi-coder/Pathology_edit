@@ -233,7 +233,8 @@ def _bind_structural_hierarchy(
 ) -> tuple[dict[str, object], dict[str, np.ndarray]]:
     """Bind producer units to tissue components without inventing histology."""
 
-    units = []
+    units_by_id: dict[str, dict] = {}
+    anonymous_units: list[dict] = []
     relations = []
     unit_masks: dict[str, np.ndarray] = {}
     for structure_id, provenance in sorted(provenance_by_structure.items()):
@@ -252,6 +253,14 @@ def _bind_structural_hierarchy(
                 expected_digest=item.get("component_sha256"),
             )
             if unit_id and unit_mask is not None:
+                previous_mask = unit_masks.get(unit_id)
+                if previous_mask is not None and not np.array_equal(
+                    previous_mask, unit_mask
+                ):
+                    raise JointContractError(
+                        "conflicting structural-unit masks for "
+                        f"{unit_id}"
+                    )
                 unit_masks[unit_id] = unit_mask
                 overlaps = [
                     (
@@ -264,8 +273,41 @@ def _bind_structural_hierarchy(
                     count, candidate_parent = max(overlaps)
                     if count > 0:
                         parent_id = candidate_parent
-            record = {**item, "auxiliary_structure_id": structure_id, "parent_tissue_component_id": parent_id}
-            units.append(record)
+            record = {
+                **item,
+                "auxiliary_structure_id": structure_id,
+                "auxiliary_structure_ids": [structure_id],
+                "parent_tissue_component_id": parent_id,
+            }
+            if unit_id:
+                existing = units_by_id.get(unit_id)
+                if existing is None:
+                    units_by_id[unit_id] = record
+                else:
+                    for key in (
+                        "fine_id",
+                        "component_sha256",
+                        "parent_tissue_component_id",
+                    ):
+                        if existing.get(key) != record.get(key):
+                            raise JointContractError(
+                                "conflicting structural-unit observations for "
+                                f"{unit_id}: {key}"
+                            )
+                    existing["auxiliary_structure_ids"] = sorted(
+                        {
+                            *existing.get("auxiliary_structure_ids", ()),
+                            structure_id,
+                        }
+                    )
+                    existing["enclosed_space_ids"] = sorted(
+                        {
+                            *existing.get("enclosed_space_ids", ()),
+                            *record.get("enclosed_space_ids", ()),
+                        }
+                    )
+            else:
+                anonymous_units.append(record)
             if parent_id is not None:
                 relations.append(
                     {
@@ -275,6 +317,10 @@ def _bind_structural_hierarchy(
                     }
                 )
         relations.extend(provenance.get("hierarchy_relations", ()))
+    units = [
+        *(units_by_id[unit_id] for unit_id in sorted(units_by_id)),
+        *anonymous_units,
+    ]
     compartments = [
         {
             "component_id": item.component_id,

@@ -765,7 +765,11 @@ JOINT_PLAN_JSON_SCHEMA = {
         "representability_confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "tissue_plan_accepted": {"type": "boolean"},
         "bound_interface_ids": {"type": "array", "items": {"type": "string"}},
-        "structural_unit_ids": {"type": "array", "items": {"type": "string"}},
+        "structural_unit_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": True,
+        },
         "cell_plan": {
             "type": ["object", "null"],
             "additionalProperties": False,

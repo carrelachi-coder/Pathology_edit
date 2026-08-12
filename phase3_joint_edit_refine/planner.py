@@ -604,10 +604,14 @@ def _structural_units_for_components(
     selected = set(component_ids)
     return tuple(
         sorted(
-            str(item["unit_id"])
-            for item in scene.structural_hierarchy.get("structure_units", ())
-            if isinstance(item, Mapping)
-            and item.get("unit_id")
-            and item.get("parent_tissue_component_id") in selected
+            {
+                str(item["unit_id"])
+                for item in scene.structural_hierarchy.get(
+                    "structure_units", ()
+                )
+                if isinstance(item, Mapping)
+                and item.get("unit_id")
+                and item.get("parent_tissue_component_id") in selected
+            }
         )
     )

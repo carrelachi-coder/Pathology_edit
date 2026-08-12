@@ -67,7 +67,10 @@ from phase3_joint_edit_refine.models import (
 )
 from phase3_joint_edit_refine.nuclei import iter_instances
 from phase3_joint_edit_refine.packing import certify_complete_footprint_packing
-from phase3_joint_edit_refine.planner import HeuristicJointPlanner
+from phase3_joint_edit_refine.planner import (
+    HeuristicJointPlanner,
+    _structural_units_for_components,
+)
 from phase3_joint_edit_refine.post_generation import (
     audit_joint_generation_handoff,
 )
@@ -112,6 +115,79 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_multimodal_plan_schema_requires_unique_structural_units(self):
+        structural_units = JOINT_PLAN_JSON_SCHEMA["properties"][
+            "structural_unit_ids"
+        ]
+        self.assertTrue(structural_units["uniqueItems"])
+
+    def test_structural_unit_selection_deduplicates_auxiliary_observations(self):
+        scene = SimpleNamespace(
+            structural_hierarchy={
+                "structure_units": [
+                    {
+                        "unit_id": "fine:8:unit:0002",
+                        "parent_tissue_component_id": "cmp:tumor:0001",
+                    },
+                    {
+                        "unit_id": "fine:8:unit:0001",
+                        "parent_tissue_component_id": "cmp:tumor:0001",
+                    },
+                    {
+                        "unit_id": "fine:8:unit:0002",
+                        "parent_tissue_component_id": "cmp:tumor:0001",
+                    },
+                    {
+                        "unit_id": "fine:9:unit:0001",
+                        "parent_tissue_component_id": "cmp:tumor:0002",
+                    },
+                ]
+            }
+        )
+
+        selected = _structural_units_for_components(
+            scene, ("cmp:tumor:0001",)
+        )
+
+        self.assertEqual(
+            selected,
+            ("fine:8:unit:0001", "fine:8:unit:0002"),
+        )
+
+    def test_scene_merges_duplicate_structural_unit_producer_bindings(self):
+        tissue = np.full((32, 32), 2, dtype=np.uint8)
+        tissue[8:24, 8:24] = 8
+        nuclei = np.zeros_like(tissue, dtype=np.uint8)
+        unit_mask = tissue == 8
+        digest = hashlib.sha256(
+            np.packbits(unit_mask.astype(np.uint8), axis=None).tobytes()
+        ).hexdigest()
+        unit = {
+            "unit_id": "fine:8:unit:0001",
+            "fine_id": 8,
+            "component_sha256": digest,
+            "enclosed_space_ids": [],
+        }
+        scene = build_joint_scene_analysis(
+            tissue,
+            nuclei,
+            schema=MaskProfileSchema.from_reference_profile("PANDA"),
+            pixel_size_um=None,
+            auxiliary_structure_provenance={
+                "native_pattern_map": {"structure_units": [unit]},
+                "native_pattern_and_lumen_map": {
+                    "structure_units": [unit]
+                },
+            },
+        )
+
+        records = scene.structural_hierarchy["structure_units"]
+        self.assertEqual(len(records), 1)
+        self.assertEqual(
+            records[0]["auxiliary_structure_ids"],
+            ["native_pattern_and_lumen_map", "native_pattern_map"],
+        )
+
     def test_codex_visual_plan_overrides_are_digest_bound(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
