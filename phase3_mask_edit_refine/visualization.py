@@ -62,6 +62,28 @@ def save_mask_planner_panels(
 
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
+    semantic, component, interface = build_mask_planner_panels(
+        mask=mask,
+        scene=scene,
+    )
+    semantic_path = output / "planner_01_tissue_mask.png"
+    component_path = output / "planner_02_component_map.png"
+    interface_path = output / "planner_03_interface_anchor_map.png"
+    Image.fromarray(semantic).save(semantic_path)
+    Image.fromarray(component).save(component_path)
+    Image.fromarray(interface).save(interface_path)
+    return tuple(
+        str(path) for path in (semantic_path, component_path, interface_path)
+    )
+
+
+def build_mask_planner_panels(
+    *,
+    mask: np.ndarray,
+    scene: SceneAnalysis,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Render canonical mask-only Planner panels without writing files."""
+
     semantic = id_mask_to_rgb(mask)
     component = np.full_like(semantic, 24, dtype=np.uint8)
     for index, item in enumerate(scene.graph.components):
@@ -80,15 +102,7 @@ def save_mask_planner_panels(
                 draw.point((col, row), fill=color)
         x0, y0, _, _ = item.bbox_xyxy
         draw.text((x0, y0), f"A{item.display_index}", fill=color)
-    semantic_path = output / "planner_01_tissue_mask.png"
-    component_path = output / "planner_02_component_map.png"
-    interface_path = output / "planner_03_interface_anchor_map.png"
-    Image.fromarray(semantic).save(semantic_path)
-    Image.fromarray(component).save(component_path)
-    draw_image.save(interface_path)
-    return tuple(
-        str(path) for path in (semantic_path, component_path, interface_path)
-    )
+    return semantic, component, np.asarray(draw_image)
 
 
 def save_critic_contact_sheet(

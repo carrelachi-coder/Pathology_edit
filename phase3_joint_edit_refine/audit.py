@@ -14,6 +14,49 @@ from .models import JointCandidate, JointCaseContext
 from .nuclei import to_raw_nuclei_mask
 
 
+def build_mask_planner_overlay(
+    *, source_tissue: np.ndarray, source_nuclei: np.ndarray
+) -> np.ndarray:
+    """Build the canonical source mask panel used by planning stages."""
+
+    base = np.full((*source_tissue.shape, 3), 28, dtype=np.uint8)
+    return _overlay(
+        base,
+        source_tissue,
+        source_nuclei,
+        np.zeros_like(source_tissue, dtype=bool),
+    )
+
+
+def build_mask_review_board(
+    *,
+    source_tissue: np.ndarray,
+    source_nuclei: np.ndarray,
+    candidates: tuple[JointCandidate, ...],
+) -> np.ndarray:
+    """Build the canonical mask-only Critic board for an exact portfolio."""
+
+    base = np.full((*source_tissue.shape, 3), 28, dtype=np.uint8)
+    rows = []
+    empty = np.zeros_like(source_tissue, dtype=bool)
+    source_panel = _overlay(base, source_tissue, source_nuclei, empty)
+    for candidate in candidates:
+        target_panel = _overlay(
+            base,
+            candidate.target_tissue_mask,
+            candidate.target_nuclei_mask,
+            candidate.joint_change,
+        )
+        row = np.concatenate([source_panel, target_panel], axis=1)
+        labeled = Image.new("RGB", (row.shape[1], row.shape[0] + 22), "black")
+        labeled.paste(Image.fromarray(row), (0, 22))
+        ImageDraw.Draw(labeled).text((6, 4), candidate.candidate_id, fill="white")
+        rows.append(np.asarray(labeled))
+    if not rows:
+        rows = [source_panel]
+    return np.concatenate(rows, axis=0)
+
+
 class JointAuditWriter:
     def __init__(self, root: str | Path, *, case_id: str) -> None:
         self.case_dir = Path(root) / str(case_id)
@@ -316,25 +359,11 @@ class JointAuditWriter:
         and skill compliance without performing unsupported histologic reads.
         """
 
-        base = np.full((*source_tissue.shape, 3), 28, dtype=np.uint8)
-        rows = []
-        empty = np.zeros_like(source_tissue, dtype=bool)
-        source_panel = _overlay(base, source_tissue, source_nuclei, empty)
-        for candidate in candidates:
-            target_panel = _overlay(
-                base,
-                candidate.target_tissue_mask,
-                candidate.target_nuclei_mask,
-                candidate.joint_change,
-            )
-            row = np.concatenate([source_panel, target_panel], axis=1)
-            labeled = Image.new("RGB", (row.shape[1], row.shape[0] + 22), "black")
-            labeled.paste(Image.fromarray(row), (0, 22))
-            ImageDraw.Draw(labeled).text((6, 4), candidate.candidate_id, fill="white")
-            rows.append(np.asarray(labeled))
-        if not rows:
-            rows = [source_panel]
-        board = np.concatenate(rows, axis=0)
+        board = build_mask_review_board(
+            source_tissue=source_tissue,
+            source_nuclei=source_nuclei,
+            candidates=candidates,
+        )
         path = self.case_dir / "joint_condition_mask_review.png"
         Image.fromarray(board).save(path)
         self.paths["joint_condition_mask_review"] = str(path)
@@ -679,12 +708,9 @@ class JointAuditWriter:
         source_tissue: np.ndarray,
         source_nuclei: np.ndarray,
     ) -> str:
-        base = np.full((*source_tissue.shape, 3), 28, dtype=np.uint8)
-        panel = _overlay(
-            base,
-            source_tissue,
-            source_nuclei,
-            np.zeros_like(source_tissue, dtype=bool),
+        panel = build_mask_planner_overlay(
+            source_tissue=source_tissue,
+            source_nuclei=source_nuclei,
         )
         path = self.case_dir / "planner_mask_tissue_nuclei.png"
         Image.fromarray(panel).save(path)

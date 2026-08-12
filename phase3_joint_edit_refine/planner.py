@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +20,7 @@ from .models import (
     JointEditPlan,
 )
 from .planner_inputs import MaskPlannerArtifactRegistry
-from .planner_policy import PREFERENCE_METRIC_CATALOG, preference_metadata
+from .planner_policy import preference_metadata
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 from .skills.schema import JointMechanismSkill
@@ -52,64 +54,31 @@ class JointInterpretationOption:
 
     def to_metadata(self) -> dict[str, Any]:
         feasibility = dict(self.feasibility)
-        compiler = feasibility.get("whole_mask_topology_witness", {})
-        compiler_interfaces = (
-            compiler.get("compiler", {}).get("interfaces", ())
-            if isinstance(compiler, Mapping)
-            else ()
-        )
-        maximum_depth = max(
-            (
-                float(item.get("compiled_peak_depth_px", 0.0))
-                for item in compiler_interfaces
-                if isinstance(item, Mapping)
-            ),
-            default=0.0,
-        )
-        capacity_margin = float(
-            feasibility.get("aggregate_tissue_capacity_pixels", 0)
-        ) - float(feasibility.get("meaningful_tissue_floor_pixels", 0))
-        reference_count = float(
-            feasibility.get("complete_reference_instances", 0)
-        )
-        interface_count = float(
-            feasibility.get("candidate_infiltration_interface_count", 0)
-        )
+        # Semantic selection exposes only quantities actually measured during
+        # capability preflight. Spatial/naturalness preference metrics belong
+        # to the later immutable tissue/cell candidate portfolios.
         feasibility_metrics = {
-            "certificate_capacity_margin": float(
-                capacity_margin
-            ),
-            "packing_seam_capacity_margin": reference_count,
-            "separated_focus_capacity": interface_count,
-            "maximum_depth_px": maximum_depth,
-            "depth_span_ratio": maximum_depth
-            / max(1.0, float(feasibility.get("feasible_interface_count", 1))),
-            "protected_exclusion_count": float(
-                len(feasibility.get("annotation_visual_veto_requirements", ()))
-            ),
-            "anchor_length_depth_ratio": max(1.0, interface_count)
-            / max(1.0, maximum_depth),
-            "class1_packing_margin": reference_count,
-            "projection_merge_count": 0.0,
-            "protected_distance_px": 0.0,
-            "median_tumor_distance_px": 0.0,
-            "complete_shape_packing_margin": reference_count,
-            "bridge_risk_count": 0.0,
-            "structural_risk_count": 0.0,
+            key: value
+            for key, value in {
+                "semantic_priority": float(self.semantic_priority),
+                "feasible_interface_count": feasibility.get(
+                    "feasible_interface_count"
+                ),
+                "aggregate_tissue_capacity_pixels": feasibility.get(
+                    "aggregate_tissue_capacity_pixels"
+                ),
+                "meaningful_tissue_floor_pixels": feasibility.get(
+                    "meaningful_tissue_floor_pixels"
+                ),
+                "complete_reference_instances": feasibility.get(
+                    "complete_reference_instances"
+                ),
+                "candidate_infiltration_interface_count": feasibility.get(
+                    "candidate_infiltration_interface_count"
+                ),
+            }.items()
+            if isinstance(value, (int, float))
         }
-        # Every preference exposed to the LLM has a named deterministic
-        # metric slot. Zero can mean a certified absence (for example, no
-        # bridge) but never an absent metric.
-        missing_metrics = {
-            metric_id
-            for metric_id, _direction in PREFERENCE_METRIC_CATALOG.values()
-            if metric_id not in feasibility_metrics
-        }
-        if missing_metrics:
-            raise JointContractError(
-                "candidate certificate omits preference metrics: "
-                + ", ".join(sorted(missing_metrics))
-            )
         return {
             "option_id": self.option_id,
             "primitive_id": self.primitive_id,
@@ -176,7 +145,134 @@ class JointPlanner(Protocol):
         tissue_plan: EditPlan | None,
         image_paths: Sequence[str | Path],
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
+        candidate_portfolio: Sequence[Any] = (),
     ) -> tuple[JointEditPlan, dict[str, Any]]: ...
+
+
+@dataclass(frozen=True)
+class CertifiedCellPlanCandidate:
+    """Immutable pre-LLM cell plan with an exact executable-capacity witness."""
+
+    candidate_id: str
+    plan: JointEditPlan
+    deterministic_candidate_metrics: dict[str, float]
+    allowed_tool_program_ids: tuple[str, ...]
+    compiler_certificate_sha256: str
+    executable_contract_id: str
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "candidate_id": self.candidate_id,
+            "interface_ids": list(self.plan.cell_plan.interface_ids),
+            "anchor_ids": list(self.plan.cell_plan.anchor_ids),
+            "zone_id": self.plan.cell_plan.core_zone,
+            "allowed_tool_program_ids": list(self.allowed_tool_program_ids),
+            "deterministic_candidate_metrics": dict(
+                self.deterministic_candidate_metrics
+            ),
+            "compiler_certificate_sha256": self.compiler_certificate_sha256,
+            "executable_contract_id": self.executable_contract_id,
+            "veto_reasons": [],
+        }
+
+
+@dataclass(frozen=True)
+class CellPlanCandidateVeto:
+    """Audited, non-selectable cell-plan variant rejected before the LLM."""
+
+    candidate_id: str
+    bound_interface_ids: tuple[str, ...]
+    bound_anchor_ids: tuple[str, ...]
+    bound_zone_id: str | None
+    veto_reasons: tuple[str, ...]
+    compiler_certificate_sha256: str
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "candidate_id": self.candidate_id,
+            "interface_ids": list(self.bound_interface_ids),
+            "anchor_ids": list(self.bound_anchor_ids),
+            "zone_id": self.bound_zone_id,
+            "selectable": False,
+            "veto_reasons": list(self.veto_reasons),
+            "compiler_certificate_sha256": (
+                self.compiler_certificate_sha256
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class CertifiedCellPlanPortfolio:
+    """Immutable pre-LLM survivors plus audited non-selectable variants."""
+
+    survivors: tuple[CertifiedCellPlanCandidate, ...]
+    vetoed: tuple[CellPlanCandidateVeto, ...]
+
+    def __iter__(self):
+        return iter(self.survivors)
+
+    def __len__(self) -> int:
+        return len(self.survivors)
+
+    def __getitem__(self, index: int) -> CertifiedCellPlanCandidate:
+        return self.survivors[index]
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "surviving_candidates": [
+                item.to_metadata() for item in self.survivors
+            ],
+            "vetoed_candidates": [
+                item.to_metadata() for item in self.vetoed
+            ],
+        }
+
+
+def certify_cell_plan_candidate(
+    *,
+    plan: JointEditPlan,
+    deterministic_candidate_metrics: Mapping[str, float],
+    allowed_tool_program_ids: Sequence[str],
+    executable_contract_id: str,
+) -> CertifiedCellPlanCandidate:
+    payload = {
+        "plan": plan.to_metadata(),
+        "deterministic_candidate_metrics": dict(
+            sorted(deterministic_candidate_metrics.items())
+        ),
+        "allowed_tool_program_ids": list(allowed_tool_program_ids),
+        "executable_contract_id": executable_contract_id,
+    }
+    certificate_sha = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    return CertifiedCellPlanCandidate(
+        candidate_id="cell-plan:" + certificate_sha[:20],
+        plan=plan,
+        deterministic_candidate_metrics=dict(deterministic_candidate_metrics),
+        allowed_tool_program_ids=tuple(allowed_tool_program_ids),
+        compiler_certificate_sha256=certificate_sha,
+        executable_contract_id=executable_contract_id,
+    )
+
+
+def validate_cell_plan_candidate(candidate: CertifiedCellPlanCandidate) -> None:
+    expected = certify_cell_plan_candidate(
+        plan=candidate.plan,
+        deterministic_candidate_metrics=(
+            candidate.deterministic_candidate_metrics
+        ),
+        allowed_tool_program_ids=candidate.allowed_tool_program_ids,
+        executable_contract_id=candidate.executable_contract_id,
+    )
+    if (
+        expected.candidate_id != candidate.candidate_id
+        or expected.compiler_certificate_sha256
+        != candidate.compiler_certificate_sha256
+    ):
+        raise JointContractError("cell candidate certificate SHA is detached")
 
 
 @dataclass(frozen=True)
@@ -261,8 +357,20 @@ class HeuristicJointPlanner:
         tissue_plan: EditPlan | None,
         image_paths: Sequence[str | Path],
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
+        candidate_portfolio: Sequence[Any] = (),
     ) -> tuple[JointEditPlan, dict[str, Any]]:
         del image_paths, artifact_registry
+        if candidate_portfolio:
+            selected = next(iter(candidate_portfolio))
+            return selected.plan, {
+                "provider": self.name,
+                "supports_pathology_vision": False,
+                "planning_mode": "first_pre_llm_certified_cell_candidate",
+                "selected_candidate_id": selected.candidate_id,
+                "portfolio_candidate_count": len(tuple(candidate_portfolio)),
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
         mechanism = bundle.mechanism
         label_contract = mechanism.tissue_program.primitive_label_contracts.get(
             case.primitive_id
@@ -359,6 +467,23 @@ class HeuristicJointPlanner:
                 if item.interface_id in interface_ids
                 for anchor in item.anchor_segment_ids[:2]
             )
+            requested_anchors = case.provenance.get("joint_anchor_ids", ())
+            if isinstance(requested_anchors, str):
+                requested_anchors = (requested_anchors,)
+            if requested_anchors:
+                known_anchors = {
+                    anchor
+                    for item in scene.tissue.graph.interfaces
+                    if item.interface_id in interface_ids
+                    for anchor in item.anchor_segment_ids
+                }
+                anchor_ids = tuple(
+                    value for value in requested_anchors if value in known_anchors
+                )
+                if not anchor_ids:
+                    raise JointContractError(
+                        "requested cell anchors are detached from the certified interfaces"
+                    )
             baseline_mode = "structured_add"
             quota_role = "explicit_increment"
             layout = mechanism.cell_program.layout_for(case.primitive_id)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -10,6 +11,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 from phase3_mask_edit_refine.agents import Planner, validate_edit_plan
 from phase3_mask_edit_refine.evidence import load_id_mask, sha256_file
@@ -23,7 +25,6 @@ from phase3_mask_edit_refine.models import (
     RefineContractError,
 )
 from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
-from phase3_mask_edit_refine.visualization import save_mask_planner_panels
 
 from .audit import JointAuditWriter
 from .auxiliary import materialize_profile_auxiliaries
@@ -67,11 +68,15 @@ from .models import (
 )
 from .nuclei import load_nuclei_mask
 from .packing import certify_complete_footprint_packing
-from .planner import JointInterpretationOption, JointPlanner
-from .planner_inputs import (
-    MASK_PLANNER_ARTIFACT_KINDS,
-    MaskPlannerArtifactRegistry,
+from .planner import (
+    CellPlanCandidateVeto,
+    CertifiedCellPlanPortfolio,
+    HeuristicJointPlanner,
+    JointInterpretationOption,
+    JointPlanner,
+    certify_cell_plan_candidate,
 )
+from .planner_inputs import MaskPlannerArtifactRegistry
 from .scene import build_joint_scene_analysis
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
@@ -109,7 +114,20 @@ class _PreparedInterpretation:
     allocation: Any | None
     tissue_bundle: Any | None
     nuclei_preflight: Any | None
-    tissue_feasibility_witness: Any | None
+    tissue_feasibility_portfolio: Any | None
+
+
+@dataclass(frozen=True)
+class _CertifiedCellExecutionChoice:
+    certificate: Any
+    executable_contract: ExecutableJointContract
+    preflight: Any
+
+
+@dataclass(frozen=True)
+class _CertifiedCellExecutionPortfolio:
+    choices: tuple[_CertifiedCellExecutionChoice, ...]
+    certificates: CertifiedCellPlanPortfolio
 
 
 class JointPathologyEditWorkflow:
@@ -209,30 +227,19 @@ class JointPathologyEditWorkflow:
                 "source_instance_authority.json",
                 build_scene_instance_authority(scene, source_nuclei),
             )
-            planner_artifacts = MaskPlannerArtifactRegistry(
-                case=case, pipeline_owned_root=audit.case_dir
-            )
-            tissue_panels = save_mask_planner_panels(
-                mask=source_tissue,
-                scene=scene.tissue,
-                output_dir=audit.case_dir / "planner_panels",
-            )
-            joint_overlay = audit.write_mask_planner_overlay(
+            planner_artifacts = MaskPlannerArtifactRegistry.issue(
+                case=case,
+                pipeline_owned_root=audit.case_dir,
                 source_tissue=source_tissue,
                 source_nuclei=source_nuclei,
+                schema=schema,
+                pixel_size_um=case.pixel_size_um,
             )
-            for path in (*tissue_panels, joint_overlay):
-                planner_artifacts.register(
-                    path,
-                    artifact_kind=MASK_PLANNER_ARTIFACT_KINDS[Path(path).name],
-                    producer_id="joint-mask-planner-panel-writer",
-                    producer_version="v2",
-                )
             audit.write_json(
                 "mask_planner_artifact_registry.json",
                 planner_artifacts.to_metadata(),
             )
-            planner_images = (*tissue_panels, joint_overlay)
+            planner_images = planner_artifacts.source_image_paths
             prepared, interpretation_rejections = self._prepare_interpretations(
                 case=case,
                 source_tissue=source_tissue,
@@ -510,7 +517,7 @@ class JointPathologyEditWorkflow:
             allocation = selected.allocation
             tissue_bundle = selected.tissue_bundle
             nuclei_preflight = selected.nuclei_preflight
-            tissue_feasibility_witness = selected.tissue_feasibility_witness
+            tissue_feasibility_portfolio = selected.tissue_feasibility_portfolio
             if (
                 allocation is None
                 or tissue_bundle is None
@@ -523,10 +530,10 @@ class JointPathologyEditWorkflow:
                 "joint_nuclei_preflight.json",
                 nuclei_preflight.to_metadata(),
             )
-            if tissue_feasibility_witness is not None:
+            if tissue_feasibility_portfolio:
                 audit.write_json(
-                    "candidate_feasibility_witness.json",
-                    tissue_feasibility_witness.to_metadata(),
+                    "candidate_feasibility_portfolio.json",
+                    tissue_feasibility_portfolio.to_metadata(),
                 )
             tissue_scene = augment_tissue_scene_with_nuclei_preflight(
                 scene.tissue,
@@ -681,6 +688,9 @@ class JointPathologyEditWorkflow:
                                 nuclei_preflight=nuclei_preflight,
                                 execution_feedback=execution_feedback,
                                 artifact_registry=planner_artifacts,
+                                candidate_portfolio=(
+                                    tissue_feasibility_portfolio
+                                ),
                             )
                         )
                     else:
@@ -1253,18 +1263,8 @@ class JointPathologyEditWorkflow:
                 source_nuclei=source_nuclei,
                 candidates=candidates,
             )
-            mask_review_board = audit.write_mask_review_board(
-                source_tissue=source_tissue,
-                source_nuclei=source_nuclei,
-                candidates=candidates,
-            )
-            planner_artifacts.register(
-                mask_review_board,
-                artifact_kind=MASK_PLANNER_ARTIFACT_KINDS[
-                    Path(mask_review_board).name
-                ],
-                producer_id="joint-mask-condition-board-writer",
-                producer_version="v2",
+            mask_review_board = planner_artifacts.write_candidate_board(
+                candidates=passing_joint,
             )
             audit.write_json(
                 "mask_planner_artifact_registry.json",
@@ -1580,7 +1580,7 @@ class JointPathologyEditWorkflow:
                     allocation = None
                     tissue_bundle = None
                     nuclei_preflight = None
-                    tissue_feasibility_witness = None
+                    tissue_feasibility_portfolio = ()
                     feasibility: dict[str, Any] = {
                         "four_axis_skill_intersection": "passed",
                         "deterministic_preflight": "passed",
@@ -1672,12 +1672,12 @@ class JointPathologyEditWorkflow:
                             allocation=allocation,
                             shape=source_tissue.shape,
                         )
-                        tissue_feasibility_witness = (
+                        tissue_feasibility_portfolio = (
                             CandidateFeasibilityCompiler(
                                 maximum_attempts=(
                                     self.config.maximum_tissue_planning_attempts
                                 )
-                            ).compile_tissue_witness(
+                            ).compile_tissue_portfolio(
                                 tissue_case=tissue_case,
                                 source_tissue=source_tissue,
                                 schema=schema,
@@ -1698,8 +1698,8 @@ class JointPathologyEditWorkflow:
                                 "meaningful_tissue_floor_pixels": (
                                     nuclei_preflight.meaningful_tissue_floor_pixels
                                 ),
-                                "whole_mask_topology_witness": (
-                                    tissue_feasibility_witness.to_metadata()
+                                "whole_mask_topology_portfolio": (
+                                    tissue_feasibility_portfolio.to_metadata()
                                 ),
                             }
                         )
@@ -1808,8 +1808,8 @@ class JointPathologyEditWorkflow:
                         allocation=allocation,
                         tissue_bundle=tissue_bundle,
                         nuclei_preflight=nuclei_preflight,
-                        tissue_feasibility_witness=(
-                            tissue_feasibility_witness
+                        tissue_feasibility_portfolio=(
+                            tissue_feasibility_portfolio
                         ),
                     )
                 except (JointContractError, RefineContractError, ValueError) as exc:
@@ -2174,6 +2174,14 @@ class JointPathologyEditWorkflow:
     ):
         """Execute a count/extent primitive without entering the tissue solver."""
 
+        cell_portfolio = self._compile_cell_only_candidate_portfolio(
+            case=case,
+            source_tissue=source_tissue,
+            source_nuclei=source_nuclei,
+            schema=schema,
+            scene=scene,
+            bundle=bundle,
+        )
         plan, joint_usage = self.joint_planner.create_plan(
             case=case,
             scene=scene,
@@ -2181,8 +2189,21 @@ class JointPathologyEditWorkflow:
             tissue_plan=None,
             image_paths=planner_images,
             artifact_registry=planner_artifacts,
+            candidate_portfolio=cell_portfolio.certificates,
         )
         usage["joint_planner"] = joint_usage
+        selected_cell_choice = next(
+            (
+                item
+                for item in cell_portfolio.choices
+                if item.certificate.plan == plan
+            ),
+            None,
+        )
+        if selected_cell_choice is None:
+            raise JointContractError(
+                "cell Planner result is detached from the pre-LLM portfolio"
+            )
         audit.write_inputs(
             case=case,
             scene_metadata=scene.to_metadata(),
@@ -2204,7 +2225,7 @@ class JointPathologyEditWorkflow:
             else plan.cell_plan.core_zone
         )
         preserved_tissue = CandidateMask(
-            candidate_id="tissue-preserved",
+            candidate_id=selected_cell_choice.executable_contract.tissue_candidate_id,
             interface_id=interface_id,
             tool_name="preserve_tissue",
             target_mask=np.asarray(source_tissue).copy(),
@@ -2222,7 +2243,21 @@ class JointPathologyEditWorkflow:
             checks=(),
         )
         audit.write_json("tissue_gate_reports.json", [tissue_report.to_metadata()])
-        executable_contract = self.executable_contract_compiler.compile(
+        executable_contract = selected_cell_choice.executable_contract
+        cell_only_preflight = selected_cell_choice.preflight
+        executable_contract.validate_identity()
+        plan_digest = hashlib.sha256(
+            json.dumps(
+                plan.to_metadata(),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if executable_contract.plan_digest != plan_digest:
+            raise JointContractError(
+                "selected cell candidate plan digest is detached from its contract"
+            )
+        if executable_contract.plan_digest != self.executable_contract_compiler.compile(
             case=case,
             source_tissue=source_tissue,
             source_nuclei=source_nuclei,
@@ -2233,16 +2268,13 @@ class JointPathologyEditWorkflow:
             tissue_candidate=preserved_tissue,
             tissue_gate_report=tissue_report,
             allocation=None,
-            required_checker_ids=(self.joint_gates.required_checker_ids_for(bundle)),
-        )
-        cell_only_preflight = self._certify_cell_only_executable_capacity(
-            case=case,
-            source_nuclei=source_nuclei,
-            scene=scene,
-            bundle=bundle,
-            tissue_candidate=preserved_tissue,
-            executable_contract=executable_contract,
-        )
+            required_checker_ids=(
+                self.joint_gates.required_checker_ids_for(bundle)
+            ),
+        ).plan_digest:
+            raise JointContractError(
+                "selected cell candidate no longer matches the executable compiler"
+            )
         audit.write_json(
             "cell_only_executable_capacity_preflight.json",
             cell_only_preflight.to_metadata(),
@@ -2376,23 +2408,6 @@ class JointPathologyEditWorkflow:
             source_nuclei=source_nuclei,
             candidates=candidates,
         )
-        mask_review_board = audit.write_mask_review_board(
-            source_tissue=source_tissue,
-            source_nuclei=source_nuclei,
-            candidates=candidates,
-        )
-        planner_artifacts.register(
-            mask_review_board,
-            artifact_kind=MASK_PLANNER_ARTIFACT_KINDS[
-                Path(mask_review_board).name
-            ],
-            producer_id="joint-mask-condition-board-writer",
-            producer_version="v2",
-        )
-        audit.write_json(
-            "mask_planner_artifact_registry.json",
-            planner_artifacts.to_metadata(),
-        )
         passing = [
             candidate
             for candidate in candidates
@@ -2406,6 +2421,13 @@ class JointPathologyEditWorkflow:
             raise JointContractError(
                 "no cell-only candidate passed its joint condition gates"
             )
+        mask_review_board = planner_artifacts.write_candidate_board(
+            candidates=passing,
+        )
+        audit.write_json(
+            "mask_planner_artifact_registry.json",
+            planner_artifacts.to_metadata(),
+        )
         critic = self.critic.review(
             case=case,
             bundle=bundle,
@@ -2587,6 +2609,345 @@ class JointPathologyEditWorkflow:
                 + ", ".join(certified.reasons)
             )
         return certified
+
+    def _compile_cell_only_candidate_portfolio(
+        self,
+        *,
+        case,
+        source_tissue,
+        source_nuclei,
+        schema,
+        scene,
+        bundle,
+    ) -> _CertifiedCellExecutionPortfolio:
+        """Certify zone/interface/annulus choices before the cell LLM stage."""
+
+        variants: list[dict[str, Any]] = []
+        local_population = case.primitive_id in {
+            "cell-type-abundance-decrease-v1",
+            "cell-type-abundance-increase-v1",
+            "cellularity-decrease-v1",
+            "cellularity-increase-v1",
+            "neoplastic-cell-abundance-decrease-v1",
+            "neoplastic-cell-abundance-increase-v1",
+        }
+        if local_population:
+            component_labels = {
+                item.component_id: item.label
+                for item in scene.tissue.graph.components
+            }
+            zones = [
+                item
+                for item in scene.population.zones
+                if item.zone_kind == "component"
+                and component_labels.get(item.tissue_component_id)
+                in set(bundle.primitive.host_tissue_labels)
+                and item.area_px > 0
+            ]
+            zones.sort(
+                key=lambda item: (-item.nucleus_count, -item.area_px, item.zone_id)
+            )
+            for zone in zones[:4]:
+                provenance = {"joint_population_zone_id": zone.zone_id}
+                if case.primitive_id == "cellularity-decrease-v1":
+                    requested_anchor = case.provenance.get(
+                        "cellularity_depletion_anchor"
+                    )
+                    if (
+                        case.pathology_domain_id
+                        != "breast-invasive-carcinoma-v1"
+                        and not isinstance(requested_anchor, Mapping)
+                    ):
+                        raise JointContractError(
+                            "cellularity decrease requires an explicit mask-graph depletion anchor"
+                        )
+                    touching = [
+                        interface
+                        for interface in scene.tissue.graph.interfaces
+                        if zone.tissue_component_id
+                        in {
+                            interface.source_component_id,
+                            interface.target_component_id,
+                        }
+                    ]
+                    for interface in touching[:4]:
+                        if not interface.anchor_segment_ids:
+                            continue
+                        variants.append(
+                            {
+                                **provenance,
+                                "cellularity_depletion_anchor": {
+                                    "type": "interface",
+                                    "interface_ids": [interface.interface_id],
+                                    "anchor_ids": [interface.anchor_segment_ids[0]],
+                                    "observation": "deterministic component-interface adjacency",
+                                    "confidence": 1.0,
+                                },
+                            }
+                        )
+                else:
+                    variants.append(provenance)
+        else:
+            host = set(bundle.primitive.host_tissue_labels)
+            compatible = [
+                item
+                for item in scene.tissue.graph.interfaces
+                if (
+                    item.source_label in host and item.target_label == "Tumor"
+                )
+                or (
+                    item.target_label in host and item.source_label == "Tumor"
+                )
+            ]
+            if (
+                "external_boundary_binding"
+                in bundle.mechanism.planner_policy.hard_constraint_checker_ids
+            ):
+                from .feasibility import classify_tumor_stroma_boundary
+
+                compatible = [
+                    item
+                    for item in compatible
+                    if classify_tumor_stroma_boundary(
+                        scene=scene,
+                        interface=item,
+                    )["external_tumor_stroma_boundary"]
+                ]
+            compatible.sort(key=lambda item: (-item.contact_pixels, item.interface_id))
+            for interface in compatible[:4]:
+                anchors = interface.anchor_segment_ids or ()
+                for anchor_id in anchors[:2]:
+                    variants.append(
+                        {
+                            "joint_interface_ids": [interface.interface_id],
+                            "joint_anchor_ids": [anchor_id],
+                        }
+                    )
+        if not variants:
+            raise JointContractError(
+                "cell-only feasibility compiler found no legal zone/interface choice"
+            )
+
+        planner = HeuristicJointPlanner()
+        choices: list[_CertifiedCellExecutionChoice] = []
+        seen_sha: set[str] = set()
+        vetoes: list[CellPlanCandidateVeto] = []
+        for index, provenance_update in enumerate(variants):
+            candidate_case = replace(
+                case,
+                provenance={**case.provenance, **provenance_update},
+            )
+            try:
+                plan, _usage = planner.create_plan(
+                    case=candidate_case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                )
+                interface_id = (
+                    plan.cell_plan.interface_ids[0]
+                    if plan.cell_plan.interface_ids
+                    else plan.cell_plan.core_zone
+                )
+                preserved = CandidateMask(
+                    candidate_id=f"tissue-preserved-portfolio-{index}",
+                    interface_id=interface_id,
+                    tool_name="preserve_tissue",
+                    target_mask=np.asarray(source_tissue).copy(),
+                    change_region=np.zeros_like(source_tissue, dtype=bool),
+                    tool_trace={
+                        "tool_name": "preserve_tissue",
+                        "desired_target_pixels": 0,
+                        "resolved_target_pixels": 0,
+                        "unrequested_label_violations": 0,
+                    },
+                )
+                report = GateReport(
+                    candidate_id=preserved.candidate_id,
+                    passed=True,
+                    checks=(),
+                )
+                contract = self.executable_contract_compiler.compile(
+                    case=candidate_case,
+                    source_tissue=source_tissue,
+                    source_nuclei=source_nuclei,
+                    schema=schema,
+                    scene=scene,
+                    plan=plan,
+                    bundle=bundle,
+                    tissue_candidate=preserved,
+                    tissue_gate_report=report,
+                    allocation=None,
+                    required_checker_ids=(
+                        self.joint_gates.required_checker_ids_for(bundle)
+                    ),
+                )
+                preflight = self._certify_cell_only_executable_capacity(
+                    case=candidate_case,
+                    source_nuclei=source_nuclei,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_candidate=preserved,
+                    executable_contract=contract,
+                )
+                packing = preflight.exact_packing_certificate
+                placements = packing.get("placements", ())
+                center_rows = [int(item["row"]) for item in placements]
+                center_cols = [int(item["col"]) for item in placements]
+                median_distance = 0.0
+                if center_rows:
+                    tumor = np.isin(
+                        source_tissue,
+                        tuple(schema.resolve_fine_ids("Tumor")),
+                    )
+                    distance = ndimage.distance_transform_edt(~tumor)
+                    median_distance = float(
+                        np.median(distance[center_rows, center_cols])
+                    )
+                packing_margin = float(
+                    preflight.estimated_add_capacity - preflight.required_add_count
+                )
+                placement_mask = np.zeros_like(source_tissue, dtype=bool)
+                if center_rows:
+                    placement_mask[center_rows, center_cols] = True
+                focus_radius = max(
+                    1,
+                    int(
+                        np.ceil(
+                            contract.cell_program.nominal_nucleus_diameter_px
+                            * 1.25
+                        )
+                    ),
+                )
+                focus_labels, focus_count = ndimage.label(
+                    ndimage.binary_dilation(
+                        placement_mask,
+                        iterations=focus_radius,
+                    ),
+                    structure=np.ones((3, 3), dtype=bool),
+                )
+                del focus_labels
+                valid_region = np.asarray(
+                    contract.cell_program.valid_footprint_region,
+                    dtype=bool,
+                )
+                protected_distance = ndimage.distance_transform_edt(valid_region)
+                minimum_protected_distance = (
+                    float(np.min(protected_distance[placement_mask]))
+                    if np.any(placement_mask)
+                    else 0.0
+                )
+                tumor_population = np.asarray(source_nuclei) == 1
+                bridge_zone = ndimage.binary_dilation(
+                    tumor_population,
+                    iterations=max(
+                        1,
+                        int(
+                            np.ceil(
+                                contract.cell_program.nominal_nucleus_diameter_px
+                            )
+                        ),
+                    ),
+                )
+                bridge_risk = int(
+                    np.count_nonzero(placement_mask & bridge_zone)
+                )
+                structural_risk = int(
+                    np.count_nonzero(
+                        placement_mask
+                        & ~np.asarray(
+                            contract.cell_program.placement_center_region,
+                            dtype=bool,
+                        )
+                    )
+                )
+                metrics = {
+                    "certificate_capacity_margin": packing_margin,
+                    "packing_seam_capacity_margin": float(
+                        preflight.estimated_seam_capacity
+                        - preflight.required_seam_count
+                    ),
+                    "separated_focus_capacity": float(focus_count),
+                    "median_tumor_distance_px": median_distance,
+                    "complete_shape_packing_margin": packing_margin,
+                    "bridge_risk_count": float(bridge_risk),
+                    "structural_risk_count": float(structural_risk),
+                    "protected_distance_px": minimum_protected_distance,
+                }
+                certificate = certify_cell_plan_candidate(
+                    plan=plan,
+                    deterministic_candidate_metrics=metrics,
+                    allowed_tool_program_ids=(
+                        contract.execution_program_id,
+                    ),
+                    executable_contract_id=contract.contract_id,
+                )
+                if certificate.compiler_certificate_sha256 in seen_sha:
+                    continue
+                seen_sha.add(certificate.compiler_certificate_sha256)
+                choices.append(
+                    _CertifiedCellExecutionChoice(
+                        certificate=certificate,
+                        executable_contract=contract,
+                        preflight=preflight,
+                    )
+                )
+            except (JointContractError, RefineContractError, ValueError) as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                interface_ids = tuple(
+                    str(value)
+                    for value in provenance_update.get(
+                        "joint_interface_ids", ()
+                    )
+                )
+                anchor_ids = tuple(
+                    str(value)
+                    for value in provenance_update.get("joint_anchor_ids", ())
+                )
+                zone_id = provenance_update.get("joint_population_zone_id")
+                veto_payload = {
+                    "variant_index": index,
+                    "interface_ids": list(interface_ids),
+                    "anchor_ids": list(anchor_ids),
+                    "zone_id": zone_id,
+                    "veto_reasons": [error],
+                }
+                veto_sha = hashlib.sha256(
+                    json.dumps(
+                        veto_payload,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+                vetoes.append(
+                    CellPlanCandidateVeto(
+                        candidate_id="cell-veto:" + veto_sha[:20],
+                        bound_interface_ids=interface_ids,
+                        bound_anchor_ids=anchor_ids,
+                        bound_zone_id=(
+                            str(zone_id) if zone_id is not None else None
+                        ),
+                        veto_reasons=(error,),
+                        compiler_certificate_sha256=veto_sha,
+                    )
+                )
+        if not choices:
+            raise JointContractError(
+                "cell-only pre-LLM portfolio has no exact-capacity survivor: "
+                + "; ".join(
+                    reason
+                    for item in vetoes
+                    for reason in item.veto_reasons
+                )
+            )
+        return _CertifiedCellExecutionPortfolio(
+            choices=tuple(choices),
+            certificates=CertifiedCellPlanPortfolio(
+                survivors=tuple(item.certificate for item in choices),
+                vetoed=tuple(vetoes),
+            ),
+        )
 
     def _finish(
         self,

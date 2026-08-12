@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
@@ -97,83 +96,6 @@ def _normalize_integer_allocations(
     return tuple(int(item) / total for item in allocations)
 
 
-def _certified_tissue_plan_candidate_id(plan: EditPlan) -> str:
-    payload = json.dumps(
-        plan.to_metadata(), sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    return "tissue-plan:" + hashlib.sha256(payload).hexdigest()[:20]
-
-
-def _certified_tissue_plan_metrics(
-    plan: EditPlan,
-    *,
-    nuclei_preflight: JointNucleiPreflight,
-    scene: SceneAnalysis,
-) -> dict[str, float]:
-    """Expose measured compiler metrics used by stable preference rules."""
-
-    interface_capacity = {
-        item.interface_id: item for item in nuclei_preflight.interfaces
-    }
-    depths = [
-        float(item.execution_contract.depth_profile.peak_depth_px)
-        for item in plan.candidate_interfaces
-    ]
-    contacts = [
-        max(
-            1,
-            int(interface_capacity[item.interface_id].contact_pixels),
-        )
-        for item in plan.candidate_interfaces
-        if item.interface_id in interface_capacity
-    ]
-    packing_margins = [
-        float(interface_capacity[item.interface_id].capacity_margin_count)
-        for item in plan.candidate_interfaces
-        if item.interface_id in interface_capacity
-    ]
-    protected_counts = [
-        len(interface_capacity[item.interface_id].protected_fine_ids_within_band)
-        + len(interface_capacity[item.interface_id].protected_instance_overlap_ids)
-        for item in plan.candidate_interfaces
-        if item.interface_id in interface_capacity
-    ]
-    maximum_depth = max(depths, default=0.0)
-    total_contact = float(sum(contacts))
-    protected_region = np.asarray(
-        nuclei_preflight.protected_tissue_change_mask, dtype=bool
-    )
-    protected_distance = ndimage.distance_transform_edt(~protected_region)
-    selected_anchor_mask = np.zeros_like(protected_region)
-    for item in plan.candidate_interfaces:
-        for anchor_id in item.execution_contract.anchor_segment_ids:
-            anchor = scene.anchor_masks.get(anchor_id)
-            if anchor is not None:
-                selected_anchor_mask |= np.asarray(anchor, dtype=bool)
-    minimum_protected_distance = (
-        float(np.min(protected_distance[selected_anchor_mask]))
-        if np.any(selected_anchor_mask)
-        else 0.0
-    )
-    return {
-        "depth_span_ratio": maximum_depth / max(1.0, total_contact),
-        "packing_seam_capacity_margin": min(packing_margins, default=0.0),
-        "maximum_depth_px": maximum_depth,
-        "protected_exclusion_count": float(sum(protected_counts)),
-        "anchor_length_depth_ratio": total_contact / max(1.0, maximum_depth),
-        "class1_packing_margin": min(packing_margins, default=0.0),
-        # Merge/structural risk is certified absent by the deterministic
-        # preflight; final raster gates recompute these outcomes after drawing.
-        "projection_merge_count": 0.0,
-        "structural_risk_count": 0.0,
-        "protected_distance_px": minimum_protected_distance,
-        "certificate_capacity_margin": float(
-            nuclei_preflight.aggregate_feasible_tissue_capacity_pixels
-            - nuclei_preflight.meaningful_tissue_floor_pixels
-        ),
-    }
-
-
 def _effective_tissue_topology(
     joint_bundle: JointSkillBundle,
     *,
@@ -262,6 +184,7 @@ class OpenAIJointAwareTissuePlanner:
         nuclei_preflight: JointNucleiPreflight | None = None,
         execution_feedback: Mapping[str, Any] | None = None,
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
+        candidate_portfolio: Sequence[Any] = (),
     ) -> tuple[EditPlan, dict[str, Any]]:
         image_paths = validate_mask_planner_image_paths(
             image_paths, case=case, artifact_registry=artifact_registry
@@ -270,34 +193,37 @@ class OpenAIJointAwareTissuePlanner:
             raise RefineContractError(
                 "joint-aware tissue Planner requires nuclei preflight"
             )
-        # Compile pixels, depths, area allocation and anchor membership before
-        # asking the LLM anything.  The LLM receives an immutable certified
-        # candidate and may only rank/select its stable IDs and an allowed tool
-        # family; it can never author an EditPlan or numeric geometry.
-        compiled_plan, compiler_usage = MultiInterfaceResearchTissuePlanner().create_joint_tissue_plan(
-            case=case,
-            scene=scene,
-            bundle=bundle,
-            joint_bundle=joint_bundle,
-            image_paths=image_paths,
-            nuclei_preflight=nuclei_preflight,
-            execution_feedback=execution_feedback,
-            artifact_registry=artifact_registry,
+        portfolio = tuple(candidate_portfolio)
+        vetoed_portfolio = tuple(
+            getattr(candidate_portfolio, "vetoed", ())
         )
+        if not portfolio:
+            raise RefineContractError(
+                "online tissue Planner requires a pre-LLM compiler portfolio"
+            )
+        candidates_by_id = {item.candidate_id: item for item in portfolio}
+        if len(candidates_by_id) != len(portfolio):
+            raise RefineContractError("tissue portfolio candidate IDs are not unique")
         compiled_tools = compile_tissue_tool_program(
-            primitive_id=compiled_plan.primitive_id,
+            primitive_id=portfolio[0].compiled_plan.primitive_id,
             mechanism_id=joint_bundle.mechanism.mechanism_id,
             mechanism_allowed_families=(
                 joint_bundle.mechanism.tissue_program.allowed_tools
             ),
             primitive_allowed_executors=bundle.edit_contract.allowed_tools,
         )
-        candidate_id = _certified_tissue_plan_candidate_id(compiled_plan)
-        candidate_metrics = _certified_tissue_plan_metrics(
-            compiled_plan,
-            nuclei_preflight=nuclei_preflight,
-            scene=scene,
-        )
+        portfolio_metadata = []
+        for item in portfolio:
+            item.validate_identity()
+            if item.allowed_tool_families != compiled_tools.allowed_joint_families:
+                raise RefineContractError(
+                    "tissue candidate tool families are detached from the current mechanism"
+                )
+            if item.tool_program_sha256 != compiled_tools.program_sha256:
+                raise RefineContractError(
+                    "tissue candidate concrete program SHA is detached"
+                )
+            portfolio_metadata.append(item.to_metadata())
         payload = {
             "case": _mask_planner_case_metadata(case),
             "tissue_scene": scene.graph.to_metadata(),
@@ -318,24 +244,9 @@ class OpenAIJointAwareTissuePlanner:
             },
             "nuclei_preflight": nuclei_preflight.to_metadata(),
             "previous_execution_feedback": dict(execution_feedback or {}),
-            "certified_tissue_plan_candidates": [
-                {
-                    "candidate_id": candidate_id,
-                    "interface_ids": [
-                        item.interface_id
-                        for item in compiled_plan.candidate_interfaces
-                    ],
-                    "anchor_ids": [
-                        anchor_id
-                        for item in compiled_plan.candidate_interfaces
-                        for anchor_id in item.execution_contract.anchor_segment_ids
-                    ],
-                    "allowed_tool_families": list(
-                        compiled_tools.allowed_joint_families
-                    ),
-                    "deterministic_candidate_metrics": candidate_metrics,
-                    "compiler_certificate_sha256": compiled_tools.program_sha256,
-                }
+            "certified_tissue_plan_candidates": portfolio_metadata,
+            "vetoed_tissue_plan_candidates": [
+                item.to_metadata() for item in vetoed_portfolio
             ],
             "requirements": {
                 "select_only_nuclei_feasible_interfaces": True,
@@ -387,10 +298,20 @@ class OpenAIJointAwareTissuePlanner:
                     raise RefineContractError(
                         "LLM returned an illegal tissue planning decision"
                     )
-                if raw.get("selected_candidate_id") != candidate_id:
+                if raw["decision_id"] not in set(
+                    joint_bundle.mechanism.planner_policy.allowed_decisions
+                ):
+                    raise RefineContractError(
+                        "tissue planning decision is outside the skill policy"
+                    )
+                candidate_id = raw.get("selected_candidate_id")
+                if candidate_id not in candidates_by_id:
                     raise RefineContractError(
                         "LLM selected an unknown or vetoed tissue plan candidate"
                     )
+                selected_witness = candidates_by_id[candidate_id]
+                compiled_plan = selected_witness.compiled_plan
+                candidate_metrics = selected_witness.deterministic_candidate_metrics
                 selected_family = raw.get("selected_tool_family")
                 if selected_family not in compiled_tools.allowed_joint_families:
                     raise RefineContractError(
@@ -469,7 +390,13 @@ class OpenAIJointAwareTissuePlanner:
                 "provider": self.name,
                 "contract_attempt": attempt,
                 "escalated": client is self.escalation_client,
-                "compiler": compiler_usage,
+                    "compiler": selected_witness.to_metadata(),
+                    "portfolio_candidate_count": len(portfolio),
+                    "ranking_mode": (
+                        "rank_surviving_candidates"
+                        if len(portfolio) > 1
+                        else "single_candidate_accept_or_abstain"
+                    ),
                 "selected_candidate_id": candidate_id,
                 "selected_tool_family": selected_family,
                 "supporting_preference_rule_ids": list(preference_ids),
@@ -555,8 +482,9 @@ class MultiInterfaceResearchTissuePlanner:
         nuclei_preflight: JointNucleiPreflight | None = None,
         execution_feedback: Mapping[str, Any] | None = None,
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
+        candidate_portfolio: Sequence[Any] = (),
     ) -> tuple[EditPlan, dict[str, Any]]:
-        del image_paths, artifact_registry
+        del image_paths, artifact_registry, candidate_portfolio
         mechanism_contract = joint_bundle.mechanism.tissue_program.primitive_label_contracts.get(case.primitive_id)
         if mechanism_contract is None:
             raise RefineContractError("joint mechanism has no primitive label contract")
@@ -600,6 +528,9 @@ class MultiInterfaceResearchTissuePlanner:
         feedback = dict(execution_feedback or {})
         retry_index = max(0, int(feedback.get("retry_index", 0)))
         failed_interface_ids = set(feedback.get("failed_interface_ids", ()))
+        preferred_anchor_ids = tuple(
+            str(value) for value in feedback.get("preferred_anchor_ids", ())
+        )
         topology = _effective_tissue_topology(
             joint_bundle,
             primitive_id=case.primitive_id,
@@ -868,6 +799,7 @@ class MultiInterfaceResearchTissuePlanner:
                     minimum_unselected_anchor_count=(
                         front_contract.minimum_unselected_anchor_count
                     ),
+                    preferred_anchor_ids=preferred_anchor_ids,
                 )
             if not anchor_ids:
                 raise RefineContractError(
@@ -1153,6 +1085,7 @@ def _select_executable_anchor_ids(
     allowed_anchor_ids: tuple[str, ...] = (),
     maximum_selected_anchor_fraction: float = 1.0,
     minimum_unselected_anchor_count: int = 0,
+    preferred_anchor_ids: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     """Choose the shortest broad anchor group with enough legal capacity.
 
@@ -1204,7 +1137,14 @@ def _select_executable_anchor_ids(
     )
     if selection_limit < 1:
         return ()
-    records.sort(key=lambda item: (-item[1], item[0]))
+    preferred = set(preferred_anchor_ids)
+    records.sort(
+        key=lambda item: (
+            item[0] not in preferred,
+            -item[1],
+            item[0],
+        )
+    )
     selected = [records.pop(0)]
     preferred_minimum_span = int(
         np.ceil(np.sqrt(max(1.0, 2.0 * required_pixels / 0.45)))

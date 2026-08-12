@@ -25,12 +25,15 @@ from .models import (
 from .planner import (
     JOINT_PLAN_SCHEMA_VERSION,
     LOCAL_POPULATION_PRIMITIVES,
+    CertifiedCellPlanCandidate,
     JointInterpretationOption,
+    validate_cell_plan_candidate,
 )
 from .planner_inputs import (
     MaskPlannerArtifactRegistry,
     validate_mask_planner_image_paths,
 )
+from .planner_policy import PREFERENCE_METRIC_CATALOG
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
@@ -90,7 +93,7 @@ class OpenAIMultimodalJointPlanner:
                 "source_H&E_is_prohibited_for_execution_planning": True,
                 "do_not_infer_unannotated_histology": True,
                 "return_only_certified_candidate_ids": True,
-                "cite_only_current_preference_rule_ids": True,
+                "cite_only_measured_capability_metric_ids": True,
             },
         }
         available = {item.option_id: item for item in options}
@@ -176,35 +179,18 @@ class OpenAIMultimodalJointPlanner:
                 observations = _strings(
                     raw.get("supporting_observations"), "supporting_observations"
                 )
-                preference_ids = _strings(
-                    raw.get("supporting_preference_rule_ids"),
-                    "supporting_preference_rule_ids",
+                capability_metric_ids = _strings(
+                    raw.get("supporting_capability_metric_ids"),
+                    "supporting_capability_metric_ids",
                 )
-                unknown_preferences = set(preference_ids) - set(
-                    selected.mechanism.planner_policy.selection_preferences
-                )
-                if unknown_preferences:
-                    raise JointContractError(
-                        "joint Planner cited unknown preference rules: "
-                        + ", ".join(sorted(unknown_preferences))
-                    )
-                candidate_metrics = {
-                    item["candidate_metric_id"]
-                    for item in selected.to_metadata()["planner_policy"][
-                        "preference_metric_bindings"
-                    ]
-                    if item["preference_rule_id"] in preference_ids
-                }
                 available_metrics = set(
-                    selected.to_metadata()[
-                        "deterministic_candidate_metrics"
-                    ]
+                    selected.to_metadata()["deterministic_candidate_metrics"]
                 )
-                missing_metrics = candidate_metrics - available_metrics
-                if missing_metrics:
+                unknown_metrics = set(capability_metric_ids) - available_metrics
+                if unknown_metrics:
                     raise JointContractError(
-                        "joint Planner cited preferences without candidate metrics: "
-                        + ", ".join(sorted(missing_metrics))
+                        "joint Planner cited unmeasured capability metrics: "
+                        + ", ".join(sorted(unknown_metrics))
                     )
                 contraindications = _strings(
                     raw.get("observed_contraindications", []),
@@ -234,7 +220,9 @@ class OpenAIMultimodalJointPlanner:
                     "semantic_priority": selected.semantic_priority,
                     "interpretation_explanation": explanation,
                     "supporting_observations": list(observations),
-                    "supporting_preference_rule_ids": list(preference_ids),
+                    "supporting_capability_metric_ids": list(
+                        capability_metric_ids
+                    ),
                     "confidence": confidence,
                 },
                 **usage,
@@ -252,10 +240,18 @@ class OpenAIMultimodalJointPlanner:
         tissue_plan: EditPlan | None,
         image_paths: Sequence[str | Path],
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
+        candidate_portfolio: Sequence[Any] = (),
     ) -> tuple[JointEditPlan, dict[str, Any]]:
         image_paths = validate_mask_planner_image_paths(
             image_paths, case=case, artifact_registry=artifact_registry
         )
+        if bundle.primitive.scope == "cell_only":
+            return self._select_certified_cell_plan(
+                case=case,
+                bundle=bundle,
+                portfolio=candidate_portfolio,
+                image_paths=image_paths,
+            )
         payload = {
             "case": _mask_planner_case_metadata(case),
             "scene": scene.to_metadata(),
@@ -346,6 +342,135 @@ class OpenAIMultimodalJointPlanner:
             }
         raise JointContractError(
             "joint edit Planner exhausted contract attempts: " + "; ".join(errors)
+        )
+
+    def _select_certified_cell_plan(
+        self,
+        *,
+        case: JointCaseContext,
+        bundle: JointSkillBundle,
+        portfolio: Sequence[Any],
+        image_paths: Sequence[str | Path],
+    ) -> tuple[JointEditPlan, dict[str, Any]]:
+        portfolio_object = portfolio
+        vetoed = tuple(getattr(portfolio_object, "vetoed", ()))
+        portfolio = tuple(portfolio_object)
+        if not portfolio or any(
+            not isinstance(item, CertifiedCellPlanCandidate)
+            for item in portfolio
+        ):
+            raise JointContractError(
+                "cell-only LLM planning requires a pre-LLM certified portfolio"
+            )
+        for item in portfolio:
+            validate_cell_plan_candidate(item)
+            if item.plan.selected_mechanism_id != bundle.mechanism.mechanism_id:
+                raise JointContractError(
+                    "cell candidate belongs to another mechanism"
+                )
+        available = {item.candidate_id: item for item in portfolio}
+        if len(available) != len(portfolio):
+            raise JointContractError("cell candidate portfolio IDs are not unique")
+        payload = {
+            "case": _mask_planner_case_metadata(case),
+            "selected_mechanism": bundle.mechanism.mechanism_id,
+            "planner_policy": asdict(bundle.mechanism.planner_policy),
+            "certified_cell_plan_candidates": [
+                item.to_metadata() for item in portfolio
+            ],
+            "vetoed_cell_plan_candidates": [
+                item.to_metadata() for item in vetoed
+            ],
+            "requirements": {
+                "select_only_surviving_candidate_id": True,
+                "select_only_candidate_tool_program": True,
+                "do_not_output_geometry_counts_or_density": True,
+                "source_H&E_is_prohibited": True,
+            },
+        }
+        errors = []
+        for attempt, client in enumerate(self._contract_clients(), start=1):
+            raw, usage = client.call(
+                system_prompt=(
+                    "Select one immutable cell-plan certificate using only mask-graph "
+                    "metrics and skill preference IDs. The compiler owns zones, "
+                    "interfaces, anchors, counts, shapes and all numeric parameters."
+                ),
+                user_prompt=json.dumps(
+                    {**payload, "previous_contract_errors": errors},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                image_paths=image_paths,
+                schema_name="certified_cell_plan_selection",
+                json_schema=CELL_PLAN_SELECTION_SCHEMA,
+            )
+            if raw.get("abstain") is True:
+                raise JointContractError(
+                    "cell-plan Planner abstained: "
+                    + str(raw.get("abstain_reason") or "no acceptable candidate")
+                )
+            try:
+                decision = _required_string(raw, "decision_id")
+                if decision != "select_certified_cell_plan_candidate" or decision not in set(
+                    bundle.mechanism.planner_policy.allowed_decisions
+                ):
+                    raise JointContractError(
+                        "cell-plan decision is outside the skill policy"
+                    )
+                candidate_id = _required_string(raw, "selected_candidate_id")
+                selected = available.get(candidate_id)
+                if selected is None:
+                    raise JointContractError(
+                        "LLM selected an unknown or vetoed cell candidate"
+                    )
+                program_id = _required_string(raw, "selected_tool_program_id")
+                if program_id not in selected.allowed_tool_program_ids:
+                    raise JointContractError(
+                        "LLM selected a cell tool program outside the certificate"
+                    )
+                preference_ids = _strings(
+                    raw.get("supporting_preference_rule_ids"),
+                    "supporting_preference_rule_ids",
+                )
+                if set(preference_ids) - set(
+                    bundle.mechanism.planner_policy.selection_preferences
+                ):
+                    raise JointContractError(
+                        "LLM cited an unknown cell-selection preference"
+                    )
+                missing_metrics = {
+                    PREFERENCE_METRIC_CATALOG[rule_id][0]
+                    for rule_id in preference_ids
+                } - set(selected.deterministic_candidate_metrics)
+                if missing_metrics:
+                    raise JointContractError(
+                        "cell candidate omits a cited measured metric: "
+                        + ", ".join(sorted(missing_metrics))
+                    )
+                validate_cell_plan_candidate(selected)
+            except JointContractError as exc:
+                errors.append(f"attempt {attempt}: {exc}")
+                continue
+            return selected.plan, {
+                "provider": self.name,
+                "stage": "certified_cell_plan_selection",
+                "contract_attempt": attempt,
+                "selected_candidate_id": selected.candidate_id,
+                "selected_tool_program_id": program_id,
+                "compiler_certificate_sha256": (
+                    selected.compiler_certificate_sha256
+                ),
+                "portfolio_candidate_count": len(portfolio),
+                "ranking_mode": (
+                    "rank_surviving_candidates"
+                    if len(portfolio) > 1
+                    else "single_candidate_accept_or_abstain"
+                ),
+                **usage,
+            }
+        raise JointContractError(
+            "cell-plan Planner exhausted contract attempts: " + "; ".join(errors)
         )
 
     def _parse_plan(self, *, raw, case, scene, bundle, tissue_plan):
@@ -797,7 +922,10 @@ class OpenAIMultimodalJointCritic:
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
     ):
         image_paths = validate_mask_planner_image_paths(
-            image_paths, case=case, artifact_registry=artifact_registry
+            image_paths,
+            case=case,
+            artifact_registry=artifact_registry,
+            candidate_portfolio=candidates,
         )
         passed_ids = [item.candidate_id for item in gate_reports if item.passed]
         payload = {
@@ -890,7 +1018,7 @@ MECHANISM_SELECTION_SCHEMA = {
         "decision_id",
         "interpretation_explanation",
         "supporting_observations",
-        "supporting_preference_rule_ids",
+        "supporting_capability_metric_ids",
         "observed_contraindications",
         "confidence",
     ],
@@ -912,8 +1040,41 @@ MECHANISM_SELECTION_SCHEMA = {
         },
         "interpretation_explanation": {"type": ["string", "null"]},
         "supporting_observations": {"type": "array", "items": {"type": "string"}},
-        "supporting_preference_rule_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "supporting_capability_metric_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
         "observed_contraindications": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
+CELL_PLAN_SELECTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "abstain",
+        "abstain_reason",
+        "decision_id",
+        "selected_candidate_id",
+        "selected_tool_program_id",
+        "supporting_preference_rule_ids",
+        "selection_explanation",
+        "confidence",
+    ],
+    "properties": {
+        "abstain": {"type": "boolean"},
+        "abstain_reason": {"type": ["string", "null"]},
+        "decision_id": {
+            "type": ["string", "null"],
+            "enum": ["select_certified_cell_plan_candidate", None],
+        },
+        "selected_candidate_id": {"type": ["string", "null"]},
+        "selected_tool_program_id": {"type": ["string", "null"]},
+        "supporting_preference_rule_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": True,
+            "items": {"type": "string"},
+        },
+        "selection_explanation": {"type": ["string", "null"]},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
 }

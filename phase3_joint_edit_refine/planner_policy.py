@@ -20,6 +20,8 @@ PLANNER_OBSERVATION_SOURCES = frozenset(
 PLANNER_DECISIONS = frozenset(
     {
         "select_primitive_mechanism_pair",
+        "select_certified_tissue_plan_candidate",
+        "select_certified_cell_plan_candidate",
         "select_certified_interface_anchor_ids",
         "select_allowed_tool_program",
         "request_clarification",

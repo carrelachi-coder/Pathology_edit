@@ -87,6 +87,7 @@ from phase3_joint_edit_refine.planner_inputs import (
     MaskPlannerArtifactRegistry,
     validate_mask_planner_image_paths,
 )
+from phase3_joint_edit_refine.planner_policy import PLANNER_DECISIONS
 from phase3_joint_edit_refine.post_generation import (
     audit_joint_generation_handoff,
 )
@@ -241,16 +242,14 @@ class JointSkillTests(unittest.TestCase):
             "decision_id": "select_primitive_mechanism_pair",
             "interpretation_explanation": "mask certificate ranking",
             "supporting_observations": ["mask graph support"],
-            "supporting_preference_rule_ids": [
-                mechanism.planner_policy.selection_preferences[0]
-            ],
+            "supporting_capability_metric_ids": ["semantic_priority"],
             "observed_contraindications": [],
             "confidence": 0.8,
         }
         adversaries = {
-            "unknown preference": {
+            "unknown capability metric": {
                 **base,
-                "supporting_preference_rule_ids": ["pref:forged"],
+                "supporting_capability_metric_ids": ["metric:forged"],
             },
             "illegal decision": {**base, "decision_id": "draw_polygon"},
             "unannotated claim": {
@@ -321,6 +320,71 @@ class JointSkillTests(unittest.TestCase):
                 self.assertTrue(policy.hard_constraint_checker_ids)
                 self.assertTrue(policy.selection_preferences)
 
+    def test_planner_decision_vocabulary_matches_schema_and_breast_skills(self):
+        tissue_decision = next(
+            value
+            for value in JOINT_TISSUE_DECISION_SCHEMA["properties"][
+                "decision_id"
+            ]["enum"]
+            if value is not None
+        )
+        from phase3_joint_edit_refine.agents import CELL_PLAN_SELECTION_SCHEMA
+
+        cell_decision = next(
+            value
+            for value in CELL_PLAN_SELECTION_SCHEMA["properties"][
+                "decision_id"
+            ]["enum"]
+            if value is not None
+        )
+        self.assertIn(tissue_decision, PLANNER_DECISIONS)
+        self.assertIn(cell_decision, PLANNER_DECISIONS)
+        repository = JointSkillRepository()
+        for mechanism in repository.mechanisms.values():
+            if (
+                mechanism.pathology_domain_id
+                != "breast-invasive-carcinoma-v1"
+                or mechanism.mechanism_id
+                in repository.execution_scope["closed_mechanisms"]
+            ):
+                continue
+            with self.subTest(mechanism=mechanism.mechanism_id):
+                self.assertIn(
+                    tissue_decision,
+                    mechanism.planner_policy.allowed_decisions,
+                )
+                self.assertIn(
+                    cell_decision,
+                    mechanism.planner_policy.allowed_decisions,
+                )
+
+    def test_semantic_options_expose_only_measured_capability_metrics(self):
+        mechanism = JointSkillRepository().mechanisms[
+            "breast-annotation-anchored-boundary-growth"
+        ]
+        metadata = JointInterpretationOption(
+            primitive_id="cohesive-boundary-expansion-v1",
+            semantic_fit="direct",
+            semantic_priority=0,
+            semantic_rationale="fixture",
+            mechanism=mechanism,
+            feasibility={
+                "aggregate_tissue_capacity_pixels": 100,
+                "meaningful_tissue_floor_pixels": 10,
+                "feasible_interface_count": 2,
+            },
+        ).to_metadata()
+        metrics = metadata["deterministic_candidate_metrics"]
+        self.assertEqual(metrics["feasible_interface_count"], 2)
+        for placeholder in (
+            "projection_merge_count",
+            "protected_distance_px",
+            "median_tumor_distance_px",
+            "bridge_risk_count",
+            "structural_risk_count",
+        ):
+            self.assertNotIn(placeholder, metrics)
+
     def test_mask_planner_metadata_excludes_histology_locator(self):
         case = _breast_case_stub()
         self.assertNotIn("source_image_uri", joint_planner_case_metadata(case))
@@ -339,30 +403,59 @@ class JointSkillTests(unittest.TestCase):
         self.assertIn("source_nuclei_mask_uri", joint_planner_case_metadata(case))
 
     def test_mask_graph_llm_rejects_raw_histology_and_reader_boards(self):
-        case = _breast_case_stub()
         with tempfile.TemporaryDirectory() as tmp:
-            case_root = Path(tmp) / case.case_id
-            case_root.mkdir()
-            registry = MaskPlannerArtifactRegistry(
-                case=case, pipeline_owned_root=case_root
+            root = Path(tmp)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
+            source_tissue = np.load(case.source_tissue_mask_uri)
+            source_nuclei = np.asarray(Image.open(case.source_nuclei_mask_uri))
+            case_root = root / case.case_id
+            registry = MaskPlannerArtifactRegistry.issue(
+                case=case,
+                pipeline_owned_root=case_root,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                pixel_size_um=case.pixel_size_um,
             )
-            paths = []
-            for name, kind in MASK_PLANNER_ARTIFACT_KINDS.items():
-                path = case_root / name
-                Image.new("RGB", (4, 4), "black").save(path)
-                registry.register(
-                    path,
-                    artifact_kind=kind,
-                    producer_id="test-mask-writer",
-                    producer_version="v1",
-                )
-                paths.append(path)
+            paths = [Path(value) for value in registry.source_image_paths]
             accepted = validate_mask_planner_image_paths(
-                paths, case=case, artifact_registry=registry
+                paths,
+                case=case,
+                artifact_registry=registry,
             )
-            self.assertEqual(len(accepted), 5)
+            self.assertEqual(len(accepted), 4)
 
-            disguised = Path(tmp) / "planner_01_tissue_mask.png"
+            forged_root = root / "forged-registry"
+            forged_root.mkdir()
+            disguised_registered = forged_root / "planner_01_tissue_mask.png"
+            Image.open(case.source_image_uri).convert("RGB").save(disguised_registered)
+            with self.assertRaisesRegex(
+                JointContractError, "deterministic panel factory"
+            ):
+                MaskPlannerArtifactRegistry(
+                    case=case,
+                    pipeline_owned_root=forged_root,
+                    source_tissue=source_tissue,
+                    source_nuclei=source_nuclei,
+                    schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                    pixel_size_um=case.pixel_size_um,
+                )
+            for name, kind in MASK_PLANNER_ARTIFACT_KINDS.items():
+                forged = forged_root / name
+                Image.open(case.source_image_uri).convert("RGB").save(forged)
+                with self.subTest(name=name), self.assertRaisesRegex(
+                    JointContractError, "generic.*registration"
+                ):
+                    registry.register(
+                        forged,
+                        artifact_kind=kind,
+                        producer_id=(
+                            "sealed-deterministic-mask-panel-writer-v3"
+                        ),
+                        producer_version="v3",
+                    )
+
+            disguised = root / "planner_01_tissue_mask.png"
             Image.new("RGB", (4, 4), "red").save(disguised)
             with self.assertRaises(JointContractError, msg="renamed H&E"):
                 validate_mask_planner_image_paths(
@@ -374,7 +467,6 @@ class JointSkillTests(unittest.TestCase):
                 validate_mask_planner_image_paths(
                     (reader_board,), case=case, artifact_registry=registry
                 )
-            (case_root / "planner_panels").mkdir()
             traversing = (
                 case_root
                 / "planner_panels"
@@ -2628,6 +2720,33 @@ class _CertifiedTissueSelectionClient:
         return response, {"model": "fixture-mask-planner"}
 
 
+class _CertifiedCellSelectionClient:
+    def __init__(self, mutation=None):
+        self.mutation = mutation
+        self.calls = []
+
+    def call(self, **kwargs):
+        self.calls.append(kwargs)
+        payload = json.loads(kwargs["user_prompt"])
+        candidate = payload["certified_cell_plan_candidates"][0]
+        preferences = payload["planner_policy"]["selection_preferences"]
+        response = {
+            "abstain": False,
+            "abstain_reason": None,
+            "decision_id": "select_certified_cell_plan_candidate",
+            "selected_candidate_id": candidate["candidate_id"],
+            "selected_tool_program_id": candidate[
+                "allowed_tool_program_ids"
+            ][0],
+            "supporting_preference_rule_ids": [preferences[0]],
+            "selection_explanation": "selected measured packing certificate",
+            "confidence": 0.8,
+        }
+        if self.mutation is not None:
+            response = self.mutation(response)
+        return response, {"model": "fixture-cell-planner"}
+
+
 class _PassingTissueGateFixture(GateRegistry):
     def run(self, context):
         report = super().run(context)
@@ -2867,6 +2986,212 @@ class JointWorkflowTests(unittest.TestCase):
             self.assertTrue(certificate["selected_candidate_id"])
             schema = client.calls[0]["json_schema"]
             self.assertNotIn("plan", schema["properties"])
+
+    def test_online_tissue_planner_receives_real_multi_candidate_portfolio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
+            tissue_path = Path(case.source_tissue_mask_uri)
+            nuclei_path = Path(case.source_nuclei_mask_uri)
+            instances_path = Path(case.source_nuclei_instances_uri)
+            rows, cols = np.ogrid[:128, :128]
+            tissue = np.full((128, 128), 2, dtype=np.uint8)
+            # One sufficiently long external boundary is intentionally split
+            # into multiple geodesic anchors.  The portfolio must expose those
+            # independently executable spatial choices to the LLM instead of
+            # pre-selecting a single anchor behind its back.
+            tumor = (rows - 64) ** 2 + (cols - 64) ** 2 <= 30**2
+            tissue[tumor] = 1
+            np.save(tissue_path, tissue, allow_pickle=False)
+            nuclei = np.asarray(Image.open(nuclei_path)).copy()
+            payload = json.loads(instances_path.read_text(encoding="utf-8"))
+            for item in payload["nuc"].values():
+                row, col = map(int, item["centroid"])
+                class_id = 1 if tissue[row, col] == 1 else 3
+                contour = np.asarray(item["contour"], dtype=int)
+                x0, y0 = contour.min(axis=0)
+                x1, y1 = contour.max(axis=0)
+                nuclei[y0 : y1 + 1, x0 : x1 + 1] = class_id
+                item["type"] = class_id
+            Image.fromarray(nuclei).save(nuclei_path)
+            instances_path.write_text(json.dumps(payload), encoding="utf-8")
+            case = replace(
+                case,
+                case_id="online-multi-candidate",
+                primitive_id="cohesive-boundary-expansion-v1",
+                instruction="cohesive-boundary-expansion-v1",
+                joint_area_budget=JointAreaBudget(
+                    target_fraction=0.12,
+                    min_fraction=0.10,
+                    max_fraction=0.14,
+                    tissue_min_fraction=0.10,
+                ),
+                provenance={
+                    **case.provenance,
+                    "source_tissue_mask_sha256": _sha(tissue_path),
+                    "source_nuclei_mask_sha256": _sha(nuclei_path),
+                    "source_nuclei_instances_sha256": _sha(instances_path),
+                    "original_label_map_digest": _sha(tissue_path),
+                    "original_instance_mask_digest": _sha(instances_path),
+                    "joint_mechanism_id": (
+                        "breast-annotation-anchored-boundary-growth"
+                    ),
+                    "joint_primitive_id": "cohesive-boundary-expansion-v1",
+                },
+            )
+            client = _CertifiedTissueSelectionClient()
+            result = JointPathologyEditWorkflow(
+                tissue_planner=OpenAIJointAwareTissuePlanner(client=client),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "multi")
+            self.assertEqual(
+                result.status, "selected_research", result.abstain_reasons
+            )
+            payload = json.loads(client.calls[0]["user_prompt"])
+            candidates = payload["certified_tissue_plan_candidates"]
+            portfolio_path = (
+                root
+                / "multi"
+                / case.case_id
+                / "candidate_feasibility_portfolio.json"
+            )
+            prepared = json.loads(portfolio_path.read_text(encoding="utf-8"))
+            prepared_survivors = prepared["surviving_candidates"]
+            self.assertGreaterEqual(len(prepared_survivors), 2)
+            self.assertGreaterEqual(len(candidates), 2)
+            for candidate in candidates:
+                self.assertTrue(candidate["selected_interface_ids"])
+                self.assertTrue(candidate["selected_anchor_ids"])
+                self.assertTrue(candidate["compiler_certificate_sha256"])
+                self.assertTrue(candidate["tool_program_sha256"])
+                self.assertFalse(candidate["veto_reasons"])
+                self.assertTrue(candidate["deterministic_candidate_metrics"])
+
+    def test_cell_candidate_certificate_rejects_detached_sha(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _as_breast_growth_case(_write_synthetic_case(root))
+            case = replace(
+                source,
+                case_id="cell-certificate-adversarial",
+                instruction="increase tumor cell abundance",
+                primitive_id="neoplastic-cell-abundance-increase-v1",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    12, 12, 15, 96, 0, 128,
+                    minimum_effect_span_px=72,
+                    minimum_effect_foci=2,
+                ),
+                provenance={
+                    **source.provenance,
+                    "joint_mechanism_id": "breast-local-population-modulation",
+                    "joint_primitive_id": (
+                        "neoplastic-cell-abundance-increase-v1"
+                    ),
+                    "target_cell_class_ids": [1],
+                },
+            )
+            workflow = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            )
+            source_tissue = np.load(case.source_tissue_mask_uri)
+            source_nuclei = np.asarray(Image.open(case.source_nuclei_mask_uri))
+            schema = workflow.mask_skills.annotation_schema(
+                case.annotation_profile_id
+            )
+            scene = build_joint_scene_analysis(
+                source_tissue,
+                source_nuclei,
+                schema=schema,
+                pixel_size_um=case.pixel_size_um,
+                nuclei_instances_path=case.source_nuclei_instances_uri,
+            )
+            bundle = workflow.joint_skills.compose(
+                case=case,
+                mechanism_id="breast-local-population-modulation",
+                available_checker_ids=workflow.joint_gates.available_checker_ids,
+                production=False,
+            )
+            choices = workflow._compile_cell_only_candidate_portfolio(
+                case=case,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                schema=schema,
+                scene=scene,
+                bundle=bundle,
+            )
+            self.assertTrue(choices.choices)
+            self.assertEqual(
+                choices.certificates.survivors,
+                tuple(item.certificate for item in choices.choices),
+            )
+            candidate = choices.choices[0].certificate
+            client = _CertifiedCellSelectionClient()
+            selected, usage = OpenAIMultimodalJointPlanner(
+                client=client,
+                max_contract_attempts=1,
+            ).create_plan(
+                case=case,
+                scene=scene,
+                bundle=bundle,
+                tissue_plan=None,
+                image_paths=(),
+                candidate_portfolio=choices.certificates,
+            )
+            self.assertEqual(selected, candidate.plan)
+            self.assertEqual(
+                usage["selected_candidate_id"], candidate.candidate_id
+            )
+            adversaries = {
+                "unknown": _CertifiedCellSelectionClient(
+                    lambda value: {
+                        **value,
+                        "selected_candidate_id": "cell-plan:forged",
+                    }
+                ),
+                "tool": _CertifiedCellSelectionClient(
+                    lambda value: {
+                        **value,
+                        "selected_tool_program_id": "forged-program",
+                    }
+                ),
+            }
+            for label, bad_client in adversaries.items():
+                with self.subTest(label=label), self.assertRaises(
+                    JointContractError
+                ):
+                    OpenAIMultimodalJointPlanner(
+                        client=bad_client,
+                        max_contract_attempts=1,
+                    ).create_plan(
+                        case=case,
+                        scene=scene,
+                        bundle=bundle,
+                        tissue_plan=None,
+                        image_paths=(),
+                        candidate_portfolio=choices.certificates,
+                    )
+            detached = replace(
+                candidate,
+                compiler_certificate_sha256="0" * 64,
+            )
+            with self.assertRaisesRegex(
+                JointContractError, "certificate SHA"
+            ):
+                OpenAIMultimodalJointPlanner(
+                    client=client,
+                    max_contract_attempts=1,
+                ).create_plan(
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                    candidate_portfolio=(detached,),
+                )
 
     def test_online_tissue_planner_rejects_forged_candidate_tool_and_preference(self):
         mutations = {
