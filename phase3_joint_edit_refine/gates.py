@@ -14,6 +14,7 @@ from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import GateReport
 
 from .cell_programs import CELL_TOOL_COMPILER_VERSION
+from .feasibility import classify_tumor_stroma_boundary
 from .executable_contract import ExecutableJointContract
 from .instance_authority import build_scene_instance_authority
 from .models import (
@@ -56,6 +57,10 @@ BASE_REQUIRED_CHECKS = (
 )
 
 MECHANISM_POSTCONDITION_IDS = (
+    "breast-annotation-anchored-boundary-growth",
+    "breast-infiltrative-nest-cord-extension",
+    "breast-peritumoral-neoplastic-scatter",
+    "breast-peritumoral-small-cluster",
     "breast-cohesive-nst-front",
     "breast-discohesive-single-file",
     "breast-generic-immune-compartment-turnover",
@@ -159,6 +164,14 @@ class JointGateRegistry:
                 _residual_fragmentation_topology
             ),
             "local_clearance_roi_binding": _local_clearance_roi_binding,
+            "external_boundary_binding": _external_boundary_binding,
+            "annotation_anchored_extension_geometry": (
+                _annotation_anchored_extension_geometry
+            ),
+            "peritumoral_annulus": _peritumoral_annulus,
+            "small_cluster_cardinality": _small_cluster_cardinality,
+            "no_remote_neoplastic_focus": _no_remote_neoplastic_focus,
+            "no_solid_neoplastic_bridge": _no_solid_neoplastic_bridge,
         }
         self._checks.update(
             {
@@ -300,10 +313,10 @@ def _profile_fine_transition_authority(c):
 def _bcss_operational_stroma_authority(c):
     """Audit the user-approved operational-Stroma policy without overclaiming.
 
-    The mask proves unified ID 2, not native fibrosis.  H&E distinction of an
-    obvious lumen/secretion is intentionally owned by the visual Planner and
-    independent critic; this deterministic gate ensures the pixel transition
-    and claim boundary cannot drift while leaving ambiguous broad tissue open.
+    The mask proves unified ID 2, not native fibrosis.  The user-approved
+    operational policy permits ID 2 geometry without asking a visual model to
+    distinguish secretion from stroma.  This gate preserves that narrow claim
+    boundary and all protected fine IDs.
     """
 
     profile = c.bundle.annotation_profile
@@ -324,6 +337,8 @@ def _bcss_operational_stroma_authority(c):
             or np.any(np.isin(target[change], tuple(stroma_ids)))
         )
     )
+
+
     canonical_stroma_ids = set(c.schema.resolve_fine_ids("Stroma"))
     changed_stroma_ids = {
         int(value)
@@ -353,7 +368,7 @@ def _bcss_operational_stroma_authority(c):
         "bcss_operational_stroma_authority",
         passed,
         (
-            "BCSS ID 2 is used only as operational Stroma; lumen/secretion veto remains bound to Planner and critic"
+            "BCSS ID 2 is used only as operational Stroma without a fibrosis or tumor-bed claim"
             if passed
             else "BCSS operational Stroma was used for an unauthorized fibrosis claim"
         ),
@@ -365,10 +380,222 @@ def _bcss_operational_stroma_authority(c):
             ),
             "fibrosis_claim_authorized": profile.fibrosis_claim_authorized,
             "fibrosis_claim_detected": fibrosis_claim,
-            "visual_veto_requirements": list(
-                profile.visual_veto_requirements
-            ),
-            "visual_veto_stage": "planner_then_independent_critic",
+            "visual_veto_requirements": [],
+            "execution_observation_authority": "semantic_masks_and_profile_contract",
+        },
+    )
+
+
+def _external_boundary_binding(c):
+    if c.plan.tissue_plan is not None:
+        interface_ids = tuple(
+            item.interface_id for item in c.plan.tissue_plan.candidate_interfaces
+        )
+    else:
+        interface_ids = tuple(c.plan.cell_plan.interface_ids)
+    interfaces = {
+        item.interface_id: item for item in c.scene.tissue.graph.interfaces
+    }
+    reports = {}
+    for interface_id in interface_ids:
+        interface = interfaces.get(interface_id)
+        reports[interface_id] = (
+            classify_tumor_stroma_boundary(scene=c.scene, interface=interface)
+            if interface is not None
+            else {"classification": "unknown", "external_tumor_stroma_boundary": False}
+        )
+    passed = bool(reports) and all(
+        item.get("external_tumor_stroma_boundary") is True
+        for item in reports.values()
+    )
+    return _result(
+        "external_boundary_binding",
+        passed,
+        (
+            "every selected interface is an external annotated Tumor--Stroma boundary"
+            if passed
+            else "a selected interface is internal, non-Tumor--Stroma, or unknown"
+        ),
+        metrics={"interfaces": reports},
+    )
+
+
+def _annotation_anchored_extension_geometry(c):
+    change = np.asarray(c.candidate.tissue_change, dtype=bool)
+    if c.plan.tissue_plan is None or not np.any(change):
+        return _result(
+            "annotation_anchored_extension_geometry",
+            False,
+            "extension geometry requires a nonempty tissue plan",
+            metrics={"applicable": True},
+        )
+    target_ids = tuple(c.schema.resolve_fine_ids("Tumor"))
+    source_tumor = np.isin(c.source_tissue, target_ids)
+    target_tumor = np.isin(c.candidate.target_tissue_mask, target_ids)
+    attached = bool(
+        np.any(change & ndimage.binary_dilation(source_tumor, iterations=1))
+        and ndimage.label(target_tumor, structure=np.ones((3, 3), dtype=bool))[1]
+        <= ndimage.label(source_tumor, structure=np.ones((3, 3), dtype=bool))[1]
+    )
+    _, change_components = ndimage.label(
+        change, structure=np.ones((3, 3), dtype=bool)
+    )
+    rows, cols = np.nonzero(change)
+    height = int(rows.max() - rows.min() + 1) if rows.size else 0
+    width = int(cols.max() - cols.min() + 1) if cols.size else 0
+    elongation = max(height, width) / max(1, min(height, width))
+    trace_parts = c.candidate.tool_trace.get("tissue_tool_trace", {}).get(
+        "parts",
+        c.candidate.tool_trace.get("parts", ()),
+    )
+    profile_modes = {
+        str(item.get("depth_profile", {}).get("mode"))
+        for item in trace_parts
+        if isinstance(item, dict)
+    }
+    tapered = "tapered_lobe" in profile_modes
+    passed = bool(attached and change_components >= 1 and tapered and elongation >= 1.15)
+    return _result(
+        "annotation_anchored_extension_geometry",
+        passed,
+        (
+            "tissue change is an attached, tapered, directionally elongated extension"
+            if passed
+            else "tissue change is detached, broad, non-tapered, or not directionally elongated"
+        ),
+        metrics={
+            "attached_to_source_tumor": attached,
+            "change_component_count": int(change_components),
+            "bbox_elongation": float(elongation),
+            "profile_modes": sorted(profile_modes),
+            "minimum_bbox_elongation": 1.15,
+        },
+    )
+def _peritumoral_annulus(c):
+    if c.bundle.primitive.scope != "cell_only":
+        return _result(
+            "peritumoral_annulus",
+            True,
+            "peritumoral annulus is not applicable",
+            metrics={"applicable": False},
+        )
+    tumor_ids = tuple(c.schema.resolve_fine_ids("Tumor"))
+    tumor = np.isin(c.source_tissue, tumor_ids)
+    outer_distance = ndimage.distance_transform_edt(~tumor)
+    added = (c.candidate.target_nuclei_mask > 0) & (c.source_nuclei == 0)
+    allowed_max = max(1, int(c.bundle.mechanism.cell_program.halo_distance_px[1]))
+    outside_host = ~tumor
+    violations = int(
+        np.count_nonzero(added & (~outside_host | (outer_distance > allowed_max)))
+    )
+    added_pixels = int(np.count_nonzero(added))
+    passed = added_pixels > 0 and violations == 0
+    return _result(
+        "peritumoral_annulus",
+        passed,
+        (
+            "new nuclei are confined to the skill-bounded outer tumor annulus"
+            if passed
+            else "new nuclei are absent or leave the peritumoral annulus"
+        ),
+        metrics={
+            "added_nucleus_pixels": added_pixels,
+            "maximum_outer_distance_px": allowed_max,
+            "violation_pixels": violations,
+        },
+    )
+
+
+def _small_cluster_cardinality(c):
+    placements = [
+        item
+        for item in c.candidate.tool_trace.get("placements", ())
+        if isinstance(item, dict)
+    ]
+    if c.plan.cell_plan.mechanism_program_id != "small_cluster":
+        return _result(
+            "small_cluster_cardinality",
+            True,
+            "small-cluster cardinality is not applicable",
+            metrics={"applicable": False},
+        )
+    groups: dict[str, int] = {}
+    for index, item in enumerate(placements):
+        group = str(item.get("cluster_id") or f"single:{index}")
+        groups[group] = max(groups.get(group, 0), int(item.get("cluster_size", 1)))
+    minimum, maximum = c.bundle.mechanism.cell_program.cluster_size_range
+    passed = bool(groups) and all(minimum <= value <= maximum for value in groups.values())
+    return _result(
+        "small_cluster_cardinality",
+        passed,
+        (
+            "every neoplastic focus satisfies the skill-owned cluster cardinality"
+            if passed
+            else "a neoplastic focus violates the skill-owned cluster cardinality"
+        ),
+        metrics={"cluster_sizes": groups, "allowed_range": [minimum, maximum]},
+    )
+
+
+def _no_remote_neoplastic_focus(c):
+    tumor_ids = tuple(c.schema.resolve_fine_ids("Tumor"))
+    tumor = np.isin(c.source_tissue, tumor_ids)
+    distance = ndimage.distance_transform_edt(~tumor)
+    placements = [
+        item
+        for item in c.candidate.tool_trace.get("placements", ())
+        if isinstance(item, dict)
+        and int(item.get("class_id", item.get("cell_class", -1))) == 1
+    ]
+    maximum = max(1, int(c.bundle.mechanism.cell_program.halo_distance_px[1]))
+    remote = []
+    for index, item in enumerate(placements):
+        if isinstance(item.get("center_xy"), (list, tuple)) and len(item["center_xy"]) == 2:
+            col, row = (int(value) for value in item["center_xy"])
+        else:
+            row, col = int(item.get("row", -1)), int(item.get("col", -1))
+        if not (0 <= row < distance.shape[0] and 0 <= col < distance.shape[1]):
+            remote.append(index)
+        elif distance[row, col] > maximum:
+            remote.append(index)
+    passed = bool(placements) and not remote
+    return _result(
+        "no_remote_neoplastic_focus",
+        passed,
+        (
+            "all new neoplastic foci remain within the certified tumor-adjacent halo"
+            if passed
+            else "a new neoplastic focus is absent, untracked, or remote"
+        ),
+        metrics={
+            "placement_count": len(placements),
+            "remote_placement_indices": remote,
+            "maximum_distance_px": maximum,
+        },
+    )
+
+
+def _no_solid_neoplastic_bridge(c):
+    source_class1 = np.asarray(c.source_nuclei) == 1
+    target_class1 = np.asarray(c.candidate.target_nuclei_mask) == 1
+    added = target_class1 & ~source_class1
+    bridge_pixels = int(
+        np.count_nonzero(
+            added & ndimage.binary_dilation(source_class1, iterations=1)
+        )
+    )
+    passed = bool(np.any(added) and bridge_pixels == 0)
+    return _result(
+        "no_solid_neoplastic_bridge",
+        passed,
+        (
+            "new peritumoral neoplastic foci remain separate from the source nucleus population"
+            if passed
+            else "new neoplastic nuclei are absent or form a direct raster bridge to the source population"
+        ),
+        metrics={
+            "added_class1_pixels": int(np.count_nonzero(added)),
+            "bridge_pixels": bridge_pixels,
         },
     )
 
@@ -2080,6 +2307,31 @@ def _mechanism_specific_postcondition(
 
     if expected_mechanism_id.endswith("local-population-modulation"):
         subchecks["local_population_density"] = _local_population_density(c).passed
+
+    if expected_mechanism_id in {
+        "breast-annotation-anchored-boundary-growth",
+        "breast-infiltrative-nest-cord-extension",
+        "breast-peritumoral-neoplastic-scatter",
+        "breast-peritumoral-small-cluster",
+    }:
+        subchecks["external_boundary_binding"] = _external_boundary_binding(c).passed
+
+    if expected_mechanism_id in {
+        "breast-peritumoral-neoplastic-scatter",
+        "breast-peritumoral-small-cluster",
+    }:
+        subchecks["peritumoral_annulus"] = _peritumoral_annulus(c).passed
+        subchecks["no_remote_neoplastic_focus"] = (
+            _no_remote_neoplastic_focus(c).passed
+        )
+        subchecks["no_solid_neoplastic_bridge"] = (
+            _no_solid_neoplastic_bridge(c).passed
+        )
+
+    if expected_mechanism_id == "breast-peritumoral-small-cluster":
+        subchecks["small_cluster_cardinality"] = (
+            _small_cluster_cardinality(c).passed
+        )
 
     if expected_mechanism_id == "breast-generic-immune-compartment-turnover":
         source = np.asarray(c.source_tissue)

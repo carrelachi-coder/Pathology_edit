@@ -1,0 +1,4 @@
+interface:
+  display_name: "breast-annotation-anchored-boundary-growth"
+  short_description: "Select a certified Breast Tumor--Stroma boundary program."
+  default_prompt: "Use $breast-annotation-anchored-boundary-growth from mask and certificate inputs only; never infer an invasive front from H&E."

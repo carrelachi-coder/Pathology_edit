@@ -17,7 +17,10 @@
   ],
   "unavailable_mechanisms": [],
   "conditional_mechanisms": [
-    "breast-discohesive-single-file",
+    "breast-annotation-anchored-boundary-growth",
+    "breast-infiltrative-nest-cord-extension",
+    "breast-peritumoral-neoplastic-scatter",
+    "breast-peritumoral-small-cluster",
     "breast-intratumoral-necrosis-turnover",
     "lung-intratumoral-necrosis-turnover",
     "melanoma-intratumoral-necrosis-turnover"
@@ -32,10 +35,11 @@
   "supports_explicit_stroma": true,
   "protected_fine_ids": [0, 3, 4, 5, 7, 14, 15],
   "operational_stroma_fine_ids": [2],
-  "operational_stroma_policy": "unified_id_2_is_operational_stroma_by_default; Planner and critic veto clearly enclosed duct/gland lumen or secretion-like regions, while ambiguous broad tissue remains executable",
+  "operational_stroma_policy": "unified_id_2_is_operational_stroma_by_default; execution does not ask a visual LLM to separate native stroma from merged glandular secretions and therefore makes no fibrosis, tumor-bed, or lumen claim",
   "fibrosis_claim_authorized": false,
   "mechanism_editable_source_fine_ids": {
-    "breast-cohesive-nst-front": [2],
+    "breast-annotation-anchored-boundary-growth": [2],
+    "breast-infiltrative-nest-cord-extension": [2],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [2],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [4],
     "breast-intratumoral-necrosis-turnover::necrosis-appearance-v1": [1],
@@ -46,7 +50,8 @@
     "breast-local-invasive-clearance": [1]
   },
   "mechanism_editable_target_fine_ids": {
-    "breast-cohesive-nst-front": [1],
+    "breast-annotation-anchored-boundary-growth": [1],
+    "breast-infiltrative-nest-cord-extension": [1],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [4],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [2],
     "breast-intratumoral-necrosis-turnover::necrosis-appearance-v1": [3],
@@ -56,9 +61,5 @@
     "breast-residual-disease-fragmentation": [2],
     "breast-local-invasive-clearance": [2]
   },
-  "visual_veto_requirements": [
-    "clear enclosed duct or gland lumen",
-    "obvious secretion-like material incompatible with editable stromal tissue",
-    "DCIS, angioinvasion, benign duct or lobule, vessel, necrosis or collapsed-zero in the edit band"
-  ]
+  "visual_veto_requirements": []
 }

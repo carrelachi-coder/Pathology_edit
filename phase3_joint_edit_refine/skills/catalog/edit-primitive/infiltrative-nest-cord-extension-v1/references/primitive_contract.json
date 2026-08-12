@@ -1,0 +1,32 @@
+{
+  "primitive_id": "infiltrative-nest-cord-extension-v1",
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Create a narrow connected Tumor projection from a certified external host boundary and regenerate a source-calibrated class-1 population with boundary continuity.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [1],
+  "tissue_topology_contract": {
+    "geometry_mode": "interface_front",
+    "allow_source_component_resolution": false,
+    "allow_target_hole_resolution": false,
+    "maximum_source_component_changed_fraction": 0.35,
+    "minimum_source_component_remaining_px": 96
+  },
+  "required_source_clearance_classes": [],
+  "minimum_source_clearance_instances": 0,
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "external_boundary_binding",
+    "annotation_anchored_extension_geometry",
+    "local_shape_distribution",
+    "local_population_density",
+    "interface_seam_continuity",
+    "mechanism_realization"
+  ]
+}

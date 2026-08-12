@@ -1,9 +1,50 @@
 {
-  "schema_version": "joint-skill-evidence-v2", "skill_kind": "joint-mechanism", "skill_id": "breast-post-treatment-invasive-regression", "review_status": "draft", "authority_policy": "../../../evidence-governance-v2.json",
+  "schema_version": "joint-skill-evidence-v2",
+  "skill_kind": "joint-mechanism",
+  "skill_id": "breast-post-treatment-invasive-regression",
+  "review_status": "draft",
+  "authority_policy": "../../../evidence-governance-v2.json",
   "records": [
-    {"evidence_id": "breast-post-treatment-invasive-regression.pathology", "authority_category": "pathology_fact", "claim_scope": ["summary", "recognition_contract", "counterexamples"], "source_ids": ["pathology-breast-cap-invasive-resection-v4.11.0.0"], "production_eligible": false},
-    {"evidence_id": "breast-post-treatment-invasive-regression.execution", "authority_category": "engineering_proxy", "claim_scope": ["tissue_program", "cell_program", "coupling_contract", "joint_gate_ids"], "source_ids": ["engineering-joint-contract-v2"], "production_eligible": false},
-    {"evidence_id": "breast-post-treatment-invasive-regression.representability", "authority_category": "model_representability", "claim_scope": ["representability_contract", "render_contract"], "source_ids": ["representability-frozen-generator-v1"], "production_eligible": false}
+    {
+      "evidence_id": "breast-post-treatment-invasive-regression.pathology",
+      "authority_category": "pathology_fact",
+      "claim_scope": [
+        "summary",
+        "recognition_contract",
+        "counterexamples"
+      ],
+      "source_ids": [
+        "pathology-breast-cap-invasive-resection-v4.11.0.0"
+      ],
+      "production_eligible": false
+    },
+    {
+      "evidence_id": "breast-post-treatment-invasive-regression.execution",
+      "authority_category": "engineering_proxy",
+      "claim_scope": [
+        "cell_program",
+        "coupling_contract",
+        "joint_gate_ids",
+        "planner_policy",
+        "tissue_program"
+      ],
+      "source_ids": [
+        "engineering-joint-contract-v2"
+      ],
+      "production_eligible": false
+    },
+    {
+      "evidence_id": "breast-post-treatment-invasive-regression.representability",
+      "authority_category": "model_representability",
+      "claim_scope": [
+        "representability_contract",
+        "render_contract"
+      ],
+      "source_ids": [
+        "representability-frozen-generator-v1"
+      ],
+      "production_eligible": false
+    }
   ],
   "dataset_fact_policy": "BCSS authority is supplied only by the independently composed annotation profile."
 }

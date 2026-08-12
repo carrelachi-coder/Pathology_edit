@@ -1,0 +1,4 @@
+interface:
+  display_name: "breast-peritumoral-small-cluster"
+  short_description: "Plan 1--4-cell peritumoral foci from mask certificates."
+  default_prompt: "Use $breast-peritumoral-small-cluster on a certified outer mask annulus; select IDs only and do not diagnose tumor budding."

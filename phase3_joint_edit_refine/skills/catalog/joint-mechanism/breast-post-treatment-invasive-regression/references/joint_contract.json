@@ -1,7 +1,9 @@
 {
   "mechanism_id": "breast-post-treatment-invasive-regression",
   "pathology_domain_id": "breast-invasive-carcinoma-v1",
-  "supported_primitives": ["invasive-tumor-footprint-decrease-v1"],
+  "supported_primitives": [
+    "invasive-tumor-footprint-decrease-v1"
+  ],
   "version": "1.0.0-draft",
   "review_status": "draft",
   "summary": "Model a local post-treatment decrease of invasive breast carcinoma footprint with viable residual disease retained and no whole-lesion response claim.",
@@ -13,14 +15,16 @@
     ],
     "contraindications": [
       "DCIS fine ID 14 or angioinvasion fine ID 15 in the edit band",
-      "clearly enclosed duct/gland lumen or secretion-like target",
       "request for pCR, RCB or whole-lesion clinical response"
     ],
     "minimum_confidence": 0.85
   },
   "representability_contract": {
     "status": "conditionally_supported",
-    "required_cell_classes": [1, 3],
+    "required_cell_classes": [
+      1,
+      3
+    ],
     "required_auxiliary_structures": [],
     "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"
@@ -43,34 +47,99 @@
     },
     "topology_fallback_by_primitive": {},
     "primitive_label_contracts": {
-      "invasive-tumor-footprint-decrease-v1": {"source_labels": ["Tumor"], "target_labels": ["Stroma"]}
+      "invasive-tumor-footprint-decrease-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      }
     },
-    "allowed_tools": ["interface_band_sdf", "topology_safe_morphology", "organic_v2"],
-    "required_checker_ids": ["tissue_gate_binding", "native_structure_preserved", "profile_fine_transition_authority"],
-    "prohibited_structures": ["dcis_unit", "angioinvasion", "benign_duct", "benign_lobule", "vessel", "necrosis", "clear_lumen_or_secretion"]
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "native_structure_preserved",
+      "profile_fine_transition_authority"
+    ],
+    "prohibited_structures": [
+      "dcis_unit",
+      "angioinvasion",
+      "benign_duct",
+      "benign_lobule",
+      "vessel",
+      "necrosis"
+    ]
   },
   "cell_program": {
-    "actions": ["retain", "remove_whole", "add"],
-    "allowed_cell_classes": [1, 2, 3, 5],
-    "layout_programs": ["population_replacement", "boundary_aligned"],
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "population_replacement",
+      "boundary_aligned"
+    ],
     "core_policy": "remove every complete class-1 instance whose footprint enters the converted tissue and regenerate a source-matched non-neoplastic population",
     "halo_policy": "preserve every exterior instance; only whole-instance closure may extend beyond tissue change",
-    "halo_distance_px": [0, 32],
-    "cluster_size_range": [1, 12],
+    "halo_distance_px": [
+      0,
+      32
+    ],
+    "cluster_size_range": [
+      1,
+      12
+    ],
     "seam_contract": {
       "mode": "turnover_transition",
-      "width_cell_diameters": [0.75, 1.5],
-      "reference_area_quantiles": [0.25, 0.75],
+      "width_cell_diameters": [
+        0.75,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
       "maximum_empty_run_cell_diameters": 2.5,
-      "density_ratio_range": [0.4, 2.2],
+      "density_ratio_range": [
+        0.4,
+        2.2
+      ],
       "minimum_anchor_coverage_fraction": 0.4,
       "requires_new_target_cells": true
     },
-    "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density", "interface_seam_continuity"],
-    "layout_program_by_primitive": {"invasive-tumor-footprint-decrease-v1": "population_replacement"}
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_population_density",
+      "interface_seam_continuity"
+    ],
+    "layout_program_by_primitive": {
+      "invasive-tumor-footprint-decrease-v1": "population_replacement"
+    }
   },
   "coupling_contract": {
-    "compatibility_rule_ids": ["breast.response.post_treatment_context", "breast.response.invasive_id1_only", "breast.response.residual_floor", "breast.response.whole_neoplastic_clearance"],
+    "compatibility_rule_ids": [
+      "breast.response.post_treatment_context",
+      "breast.response.invasive_id1_only",
+      "breast.response.residual_floor",
+      "breast.response.whole_neoplastic_clearance"
+    ],
     "allow_neoplastic_in_non_tumor_tissue": false,
     "joint_area_mode": "joint_footprint",
     "tissue_floor_applies": true,
@@ -78,13 +147,82 @@
     "cell_footprint_spill_reserve_fraction": 0.006,
     "render_support_policy_id": "joint_change_plus_bounded_cell_context_v1"
   },
-  "joint_gate_ids": ["joint_area", "tissue_floor", "cell_tissue_compatibility", "cell_zone_localization", "joint_provenance", "profile_fine_transition_authority", "bcss_operational_stroma_authority", "mechanism_postcondition:breast-post-treatment-invasive-regression"],
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "profile_fine_transition_authority",
+    "bcss_operational_stroma_authority",
+    "mechanism_postcondition:breast-post-treatment-invasive-regression"
+  ],
   "render_contract": {
-    "required_findings": ["local invasive footprint and viable neoplastic population decrease in a morphology compatible with post-treatment response", "residual invasive carcinoma remains outside the edited retreat"],
-    "veto_findings": ["DCIS or angioinvasion altered", "clear lumen rendered as stroma", "converted region retains viable class-1 nuclei", "pCR, RCB or patient-benefit claim"],
-    "mask_guarantees": ["only invasive Tumor fine ID 1 converts to operational Stroma ID 2", "complete class-1 instances are removed from converted tissue", "residual invasive floor is retained"],
-    "render_only_claims": ["fibrosis", "specific therapy effect", "degree of response", "tumor-bed identity", "pCR or RCB"]
+    "required_findings": [
+      "local invasive footprint and viable neoplastic population decrease in a morphology compatible with post-treatment response",
+      "residual invasive carcinoma remains outside the edited retreat"
+    ],
+    "veto_findings": [
+      "DCIS or angioinvasion altered",
+      "converted region retains viable class-1 nuclei",
+      "pCR, RCB or patient-benefit claim"
+    ],
+    "mask_guarantees": [
+      "only invasive Tumor fine ID 1 converts to operational Stroma ID 2",
+      "complete class-1 instances are removed from converted tissue",
+      "residual invasive floor is retained"
+    ],
+    "render_only_claims": [
+      "fibrosis",
+      "specific therapy effect",
+      "degree of response",
+      "tumor-bed identity",
+      "pCR or RCB"
+    ]
   },
-  "evidence_citations": ["https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"],
-  "counterexamples": ["calling ordinary stromal replacement fibrosis", "erasing all invasive tumor without an explicit local clearance ROI", "retreating through DCIS or angioinvasion"]
+  "evidence_citations": [
+    "https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"
+  ],
+  "counterexamples": [
+    "calling ordinary stromal replacement fibrosis",
+    "erasing all invasive tumor without an explicit local clearance ROI",
+    "retreating through DCIS or angioinvasion"
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "profile_fine_transition_authority",
+      "native_structure_preserved",
+      "whole_instance_changes"
+    ],
+    "selection_preferences": [
+      "prefer candidates with the largest safe executable capacity",
+      "prefer candidates with greater protected-label clearance and complete-instance capacity",
+      "prefer the smallest sufficient tool program"
+    ],
+    "clarification_triggers": [
+      "the instruction permits multiple materially different executable primitives"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

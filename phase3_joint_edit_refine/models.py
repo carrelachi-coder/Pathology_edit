@@ -253,7 +253,7 @@ class JointCaseContext:
     def compiled_normalized_intent(self) -> str:
         """Return the parser-owned intent used by all downstream planners.
 
-        The visual Planner is allowed to select a pathology mechanism, but it
+        The mask-graph Planner is allowed to select a pathology mechanism, but it
         must never reinterpret the user's requested primitive.  Older research
         fixtures without a semantic-intent ledger retain their literal
         instruction for backward-compatible, non-production use.

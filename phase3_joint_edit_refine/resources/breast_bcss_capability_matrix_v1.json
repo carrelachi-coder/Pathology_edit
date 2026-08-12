@@ -1,18 +1,45 @@
 {
-  "schema_version": "breast-bcss-joint-capability-matrix-v1",
+  "schema_version": "breast-bcss-joint-capability-matrix-v2",
   "pathology_domain_id": "breast-invasive-carcinoma-v1",
   "annotation_profile_id": "bcss-semantic-v1",
   "cell_observation_profile_id": "cellvit-five-class-v1",
   "cell_population_profile_id": "breast-cellvit-source-first-v1",
-  "review_status": "implementation_complete_pending_independent_review",
+  "review_status": "implementation_updated_pending_independent_review",
   "production_status": "shadow_only",
   "profile_policy": {
     "operational_stroma_fine_id": 2,
-    "protected_fine_ids": [0, 3, 4, 5, 7, 14, 15],
-    "planner_critic_vetoes": [
-      "clear enclosed duct or gland lumen",
-      "obvious secretion-like material incompatible with editable stromal tissue",
-      "DCIS, angioinvasion, benign duct or lobule, vessel, necrosis or collapsed-zero in the edit band"
+    "protected_fine_ids": [
+      0,
+      3,
+      4,
+      5,
+      7,
+      14,
+      15
+    ],
+    "planner_observation_authority": [
+      "instruction",
+      "semantic intent",
+      "tissue mask",
+      "nuclei mask",
+      "scene graph",
+      "deterministic candidate certificates",
+      "skill rules",
+      "user ROI",
+      "authorized auxiliary masks"
+    ],
+    "planner_prohibited_authority": [
+      "source H&E for execution decisions",
+      "unannotated histologic identity",
+      "fibrosis or tumor-bed inference",
+      "dynamic invasive-front diagnosis"
+    ],
+    "deterministic_vetoes": [
+      "protected fine ID in the edit support",
+      "unregistered checker",
+      "insufficient tissue or complete-instance capacity",
+      "illegal interface topology",
+      "invalid ProbNet provenance when generation is required"
     ],
     "claim_boundary": "Unified fine ID 2 authorizes operational Stroma geometry, not fibrosis or tumor-bed identity.",
     "probnet_execution_contract": "ProbNet supplies spatial probability fields and cell-type posterior scores. Skill quotas and source-zone density own counts. Nuclear contours are reused first from complete same-patch instances and use a calibrated same-class instance library only when local references are insufficient; ProbNet does not draw arbitrary nucleus contours."
@@ -20,224 +47,553 @@
   "capabilities": [
     {
       "primitive_id": "tumor-burden-increase-v1",
-      "mechanism_id": "breast-cohesive-nst-front",
-      "scenarios": ["direct_edit", "disease_progression", "post_treatment_progression"],
-      "simple_instructions": ["Increase tumor burden.", "Make this tumor occupy more tissue."],
-      "tissue_action": "operational Stroma 2 to invasive Tumor 1 along an existing cohesive front",
+      "mechanism_id": "breast-annotation-anchored-boundary-growth",
+      "scenarios": [
+        "direct_edit",
+        "disease_progression",
+        "post_treatment_progression"
+      ],
+      "simple_instructions": [
+        "Increase tumor burden.",
+        "Make this tumor occupy more tissue."
+      ],
+      "tissue_action": "operational Stroma 2 to invasive Tumor 1 through a certified external boundary",
       "nuclei_action": "remove complete incompatible source instances and regenerate complete class-1 neoplastic instances with a boundary-aligned seam",
+      "planner_role": "Use the parsed scenario and skill bounds to rank certified external boundary segments by capacity, shallow depth, protected-label clearance, and target-population seam quality; select tool family and permitted parameter range, or request clarification/abstain.",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["existing Tumor 1/Stroma 2 interface", "cohesive front visible on H&E", "no annotation visual veto in the edit band"],
-      "forbidden_claims": ["specific breast carcinoma subtype", "desmoplastic reaction"]
+      "required_conditions": [
+        "existing external Tumor 1/operational Stroma 2 boundary",
+        "deterministic external-boundary certificate",
+        "adequate tissue and complete-instance capacity",
+        "no protected fine identity in the edit band"
+      ],
+      "forbidden_claims": [
+        "histologic invasive-front recognition",
+        "specific breast carcinoma subtype",
+        "desmoplastic reaction"
+      ]
     },
     {
-      "primitive_id": "invasive-front-expansion-v1",
-      "mechanism_id": "breast-cohesive-nst-front",
-      "scenarios": ["direct_edit", "invasion_progression", "disease_progression", "post_treatment_progression"],
-      "simple_instructions": ["Expand the invasive front.", "Advance the tumor into adjacent tissue."],
-      "tissue_action": "Stroma 2 to invasive Tumor 1 at a selected cohesive invasive front",
-      "nuclei_action": "whole-instance turnover followed by boundary-aligned class-1 neoplastic regeneration",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "mechanism_id": "breast-annotation-anchored-boundary-growth",
+      "scenarios": [
+        "direct_edit",
+        "invasion_progression",
+        "disease_progression",
+        "post_treatment_progression"
+      ],
+      "simple_instructions": [
+        "Expand the tumor boundary locally.",
+        "Advance the annotated tumor boundary into adjacent tissue."
+      ],
+      "tissue_action": "a shallow, connected, multi-lobed operational Stroma 2 to invasive Tumor 1 expansion from a certified external boundary",
+      "nuclei_action": "whole-instance turnover followed by source-calibrated class-1 regeneration",
+      "planner_role": "Choose among certified external boundary anchors, preferring broad shallow displacement with adequate packing and seam capacity; the LLM cannot diagnose an invasive front or specify pixels.",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["visually supported cohesive NST-like front", "executable Tumor/Stroma interface", "no protected fine identity in the band"],
-      "forbidden_claims": ["histologic subtype diagnosis", "stromal reaction"]
+      "required_conditions": [
+        "certified external boundary",
+        "sufficient editable Stroma 2 band",
+        "no protected fine ID",
+        "mature ProbNet regeneration contract"
+      ],
+      "forbidden_claims": [
+        "dynamic invasion",
+        "histologic subtype",
+        "growth rate",
+        "prognosis"
+      ]
     },
     {
-      "primitive_id": "neoplastic-microinfiltration-increase-v1",
-      "mechanism_id": "breast-discohesive-single-file",
-      "scenarios": ["direct_edit", "invasion_progression", "disease_progression", "post_treatment_progression"],
-      "simple_instructions": ["Increase small-scale tumor cell infiltration.", "Add a few scattered infiltrating tumor cells."],
+      "primitive_id": "infiltrative-nest-cord-extension-v1",
+      "mechanism_id": "breast-infiltrative-nest-cord-extension",
+      "scenarios": [
+        "direct_edit",
+        "invasion_progression",
+        "disease_progression",
+        "post_treatment_progression"
+      ],
+      "simple_instructions": [
+        "Extend the tumor locally as a narrow cord.",
+        "Add a narrow connected tumor extension."
+      ],
+      "tissue_action": "a narrow tapered fine-1 extension attached to a certified external Tumor 1/Stroma 2 boundary",
+      "nuclei_action": "whole-instance turnover and Mature ProbNet class-1 regeneration with a boundary-aligned seam contract",
+      "planner_role": "Rank certified anchors for directional depth, narrow-cord packing, seam margin, and isolation from protected labels; select only a skill-authorized tapered tool program.",
+      "execution_scope": "tissue_and_cell",
+      "support_status": "conditionally_supported",
+      "production_status": "shadow_only",
+      "required_conditions": [
+        "certified external boundary",
+        "directional space for a narrow extension",
+        "a local joint-area budget compatible with narrow-cord geometry",
+        "complete class-1 shape authority",
+        "postcondition-compatible width and elongation"
+      ],
+      "forbidden_claims": [
+        "histologic cord diagnosis",
+        "single-file carcinoma",
+        "invasion speed"
+      ]
+    },
+    {
+      "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+      "mechanism_id": "breast-peritumoral-neoplastic-scatter",
+      "scenarios": [
+        "direct_edit",
+        "invasion_progression",
+        "disease_progression",
+        "post_treatment_progression"
+      ],
+      "simple_instructions": [
+        "Add scattered tumor cells near the tumor boundary.",
+        "Increase small-scale peritumoral tumor-cell scatter."
+      ],
       "tissue_action": "preserve tissue labels",
-      "nuclei_action": "add complete class-1 single cells in a bounded existing tumor-host interface halo; ProbNet ranks legal placements",
+      "nuclei_action": "add complete class-1 single nuclei in the certified external Stroma-side annulus; Frozen ProbNet ranks legal centers",
+      "planner_role": "Choose a certified external annulus and a skill-bounded scatter layout according to packing capacity, source-shape availability, spatial extent, and protected-label distance.",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["visible discohesive or single-cell-compatible front", "complete class-1 reference shapes", "receiving tissue is not lumen, secretion, vessel or collapsed-zero"],
-      "forbidden_claims": ["invasive lobular carcinoma diagnosis", "true single-file cytology"]
+      "required_conditions": [
+        "certified external Tumor 1/Stroma 2 boundary",
+        "complete class-1 reference shapes",
+        "sufficient annular packing capacity",
+        "Frozen ProbNet ranker"
+      ],
+      "forbidden_claims": [
+        "tumor budding",
+        "single-file carcinoma",
+        "dynamic invasion"
+      ]
+    },
+    {
+      "primitive_id": "peritumoral-small-cluster-increase-v1",
+      "mechanism_id": "breast-peritumoral-small-cluster",
+      "scenarios": [
+        "direct_edit",
+        "invasion_progression",
+        "disease_progression",
+        "post_treatment_progression"
+      ],
+      "simple_instructions": [
+        "Add small tumor-cell clusters near the tumor boundary.",
+        "Increase budding-like small clusters around the tumor."
+      ],
+      "tissue_action": "preserve tissue labels in the cell-only representation",
+      "nuclei_action": "add multiple spatially separated foci containing one to four complete class-1 nuclei in the certified external annulus",
+      "planner_role": "Select a certified annulus and small-cluster layout only when deterministic packing can satisfy focus count, one-to-four cardinality, no bridge, and distance constraints.",
+      "execution_scope": "cell_only",
+      "support_status": "conditionally_supported",
+      "production_status": "shadow_only",
+      "required_conditions": [
+        "certified external boundary",
+        "capacity for multiple one-to-four-nucleus foci",
+        "complete class-1 shapes",
+        "Frozen ProbNet ranker"
+      ],
+      "forbidden_claims": [
+        "diagnostic tumor budding",
+        "prognosis",
+        "EMT",
+        "growth rate"
+      ]
     },
     {
       "primitive_id": "neoplastic-cell-abundance-increase-v1",
       "mechanism_id": "breast-local-population-modulation",
-      "scenarios": ["direct_edit", "disease_progression", "post_treatment_progression"],
-      "simple_instructions": ["Increase tumor cell abundance.", "Add more tumor cells in this local region."],
+      "scenarios": [
+        "direct_edit",
+        "disease_progression",
+        "post_treatment_progression"
+      ],
+      "simple_instructions": [
+        "Increase tumor cell abundance.",
+        "Add more tumor cells in this local region."
+      ],
       "tissue_action": "preserve tissue labels",
       "nuclei_action": "add complete class-1 neoplastic instances inside one bounded invasive Tumor 1 population zone",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["invasive Tumor fine ID 1", "complete local class-1 shape references", "sufficient packing capacity"],
-      "forbidden_claims": ["invasive footprint expansion", "molecular subtype"]
+      "required_conditions": [
+        "invasive Tumor fine ID 1",
+        "complete local class-1 shape references",
+        "sufficient packing capacity"
+      ],
+      "forbidden_claims": [
+        "invasive footprint expansion",
+        "molecular subtype"
+      ],
+      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
     },
     {
       "primitive_id": "invasive-tumor-footprint-decrease-v1",
       "mechanism_id": "breast-post-treatment-invasive-regression",
-      "scenarios": ["treatment_response", "disease_regression", "residual_disease"],
-      "simple_instructions": ["Simulate local tumor shrinkage after treatment.", "Make the local invasive-tumor footprint smaller after treatment."],
+      "scenarios": [
+        "treatment_response",
+        "disease_regression",
+        "residual_disease"
+      ],
+      "simple_instructions": [
+        "Simulate local tumor shrinkage after treatment.",
+        "Make the local invasive-tumor footprint smaller after treatment."
+      ],
       "tissue_action": "controlled retreat of invasive Tumor 1 to operational Stroma 2 with a residual tumor floor",
       "nuclei_action": "remove whole class-1 instances in converted tissue and regenerate a complete stromal-compatible population",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["explicit post-treatment context", "existing invasive Tumor 1/Stroma 2 interface", "DCIS 14 and angioinvasion 15 remain protected"],
-      "forbidden_claims": ["fibrosis", "tumor-bed identity", "pCR", "RCB", "clinical benefit"]
+      "required_conditions": [
+        "explicit post-treatment context",
+        "existing invasive Tumor 1/Stroma 2 interface",
+        "DCIS 14 and angioinvasion 15 remain protected"
+      ],
+      "forbidden_claims": [
+        "fibrosis",
+        "tumor-bed identity",
+        "pCR",
+        "RCB",
+        "clinical benefit"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "neoplastic-cell-abundance-decrease-v1",
       "mechanism_id": "breast-post-treatment-residual-neoplastic-depletion",
-      "scenarios": ["treatment_response", "residual_disease"],
-      "simple_instructions": ["Reduce residual tumor cells after treatment.", "Keep the tissue footprint but reduce viable residual tumor cells."],
+      "scenarios": [
+        "treatment_response",
+        "residual_disease"
+      ],
+      "simple_instructions": [
+        "Reduce residual tumor cells after treatment.",
+        "Keep the tissue footprint but reduce viable residual tumor cells."
+      ],
       "tissue_action": "preserve tissue labels pixel-exactly",
       "nuclei_action": "remove only complete class-1 neoplastic instances through a bounded density gradient while preserving all other classes",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["explicit post-treatment context", "at least twelve complete class-1 instances", "visible interface anchor and meaningful spatial extent"],
-      "forbidden_claims": ["tissue shrinkage", "specific therapy effect", "pCR", "RCB"]
+      "required_conditions": [
+        "explicit post-treatment context",
+        "at least twelve complete class-1 instances",
+        "mask-graph anchor and meaningful spatial extent"
+      ],
+      "forbidden_claims": [
+        "tissue shrinkage",
+        "specific therapy effect",
+        "pCR",
+        "RCB"
+      ],
+      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
     },
     {
       "primitive_id": "residual-tumor-fragmentation-v1",
       "mechanism_id": "breast-residual-disease-fragmentation",
-      "scenarios": ["residual_disease"],
-      "simple_instructions": ["Make the residual invasive tumor more scattered.", "Separate the residual invasive tumor into controlled foci."],
+      "scenarios": [
+        "residual_disease"
+      ],
+      "simple_instructions": [
+        "Make the residual invasive tumor more scattered.",
+        "Separate the residual invasive tumor into controlled foci."
+      ],
       "tissue_action": "Tumor 1 to operational Stroma 2 inside the selected source component while preserving bounded residual islands, area floor and spacing",
       "nuclei_action": "whole-instance turnover in removed support and stromal-compatible regeneration without deleting retained residual tumor cells",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["explicit post-treatment residual-disease scenario", "an editable neck or source topology whose in-support corridor can produce at least two legal residual components", "sufficient component area for legal residual islands", "no invented tumor bed outside current tumor support"],
-      "forbidden_claims": ["fibrotic tumor bed", "pCR", "RCB", "whole-lesion response"]
+      "required_conditions": [
+        "explicit post-treatment residual-disease scenario",
+        "an editable neck or source topology whose in-support corridor can produce at least two legal residual components",
+        "sufficient component area for legal residual islands",
+        "no invented tumor bed outside current tumor support"
+      ],
+      "forbidden_claims": [
+        "fibrotic tumor bed",
+        "pCR",
+        "RCB",
+        "whole-lesion response"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "stroma-increase-v1",
       "mechanism_id": "breast-treatment-associated-stromal-replacement",
-      "scenarios": ["treatment_response"],
-      "simple_instructions": ["Increase stromal replacement after treatment.", "Replace part of the local invasive tumor with operational stroma after treatment."],
+      "scenarios": [
+        "treatment_response"
+      ],
+      "simple_instructions": [
+        "Increase stromal replacement after treatment.",
+        "Replace part of the local invasive tumor with operational stroma after treatment."
+      ],
       "tissue_action": "invasive Tumor 1 to operational Stroma 2 at a legal native interface",
       "nuclei_action": "remove whole class-1 instances and regenerate complete stromal-compatible class-3 instances",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["explicit post-treatment response context", "operational Stroma authority", "Planner and critic do not see lumen or secretion in the target support"],
-      "forbidden_claims": ["fibrosis", "fibrotic tumor bed", "pCR", "RCB"]
+      "required_conditions": [
+        "explicit post-treatment response context",
+        "operational Stroma authority",
+        "protected fine IDs excluded by deterministic checks"
+      ],
+      "forbidden_claims": [
+        "fibrosis",
+        "fibrotic tumor bed",
+        "pCR",
+        "RCB"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "local-invasive-clearance-v1",
       "mechanism_id": "breast-local-invasive-clearance",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Clear invasive tumor in this selected region.", "Remove invasive tumor only inside my selected ROI."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Clear invasive tumor in this selected region.",
+        "Remove invasive tumor only inside my selected ROI."
+      ],
       "tissue_action": "Tumor 1 to operational Stroma 2 only inside a digest-bound user ROI",
       "nuclei_action": "remove complete class-1 instances whose centers are in the ROI and regenerate stromal-compatible instances",
       "execution_scope": "tissue_and_cell_with_user_roi",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["explicit local-clearance wording", "non-empty digest-bound local_clearance_roi", "all tissue edits and changed-instance centers remain in ROI"],
-      "forbidden_claims": ["pCR", "RCB", "whole-lesion clearance", "clinical benefit"]
+      "required_conditions": [
+        "explicit local-clearance wording",
+        "non-empty digest-bound local_clearance_roi",
+        "all tissue edits and changed-instance centers remain in ROI"
+      ],
+      "forbidden_claims": [
+        "pCR",
+        "RCB",
+        "whole-lesion clearance",
+        "clinical benefit"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "necrosis-appearance-v1",
       "mechanism_id": "breast-intratumoral-necrosis-turnover",
-      "scenarios": ["direct_edit", "treatment_response"],
-      "simple_instructions": ["Increase local tumor necrosis.", "Expand this existing necrotic region locally."],
+      "scenarios": [
+        "direct_edit",
+        "treatment_response"
+      ],
+      "simple_instructions": [
+        "Increase local tumor necrosis.",
+        "Expand this existing necrotic region locally."
+      ],
       "tissue_action": "invasive Tumor 1 to existing adjacent Necrosis 3 support",
       "nuclei_action": "remove whole viable class-1 instances and regenerate a sparse allowed necrosis-compatible population with mature ProbNet when available",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["existing Tumor/Necrosis interface", "necrosis authority in source mask", "no de-novo remote necrotic island"],
-      "forbidden_claims": ["hypoxia", "treatment response unless post-treatment was explicit", "non-nuclear debris as a mask guarantee"]
+      "required_conditions": [
+        "existing Tumor/Necrosis interface",
+        "necrosis authority in source mask",
+        "no de-novo remote necrotic island"
+      ],
+      "forbidden_claims": [
+        "hypoxia",
+        "treatment response unless post-treatment was explicit",
+        "non-nuclear debris as a mask guarantee"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "necrosis-resolution-v1",
       "mechanism_id": "breast-intratumoral-necrosis-turnover",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Reduce this local necrotic area.", "Retract this existing necrotic region locally."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Reduce this local necrotic area.",
+        "Retract this existing necrotic region locally."
+      ],
       "tissue_action": "Necrosis 3 to adjacent invasive Tumor 1",
       "nuclei_action": "remove complete incompatible necrosis-support instances and regenerate complete class-1 neoplastic instances",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["existing Necrosis/Tumor interface", "complete class-1 reference shapes", "remaining necrosis topology remains legal"],
-      "forbidden_claims": ["biologic recovery", "treatment failure", "restored viability outside the edited support"]
+      "required_conditions": [
+        "existing Necrosis/Tumor interface",
+        "complete class-1 reference shapes",
+        "remaining necrosis topology remains legal"
+      ],
+      "forbidden_claims": [
+        "biologic recovery",
+        "treatment failure",
+        "restored viability outside the edited support"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "generic-immune-infiltrate-increase-v1",
       "mechanism_id": "breast-generic-immune-compartment-turnover",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Increase the inflammatory infiltrate area.", "Expand the generic inflammatory region."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Increase the inflammatory infiltrate area.",
+        "Expand the generic inflammatory region."
+      ],
       "tissue_action": "operational Stroma 2 to existing adjacent generic Immune infiltrate 4",
       "nuclei_action": "remove whole class-3 connective instances and regenerate complete class-2 inflammatory instances",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["existing Stroma 2/Immune 4 interface", "complete class-2 and class-3 references", "no remote de-novo immune focus"],
-      "forbidden_claims": ["TIL score", "plasma cells", "macrophages", "treatment response", "prognosis"]
+      "required_conditions": [
+        "existing Stroma 2/Immune 4 interface",
+        "complete class-2 and class-3 references",
+        "no remote de-novo immune focus"
+      ],
+      "forbidden_claims": [
+        "TIL score",
+        "plasma cells",
+        "macrophages",
+        "treatment response",
+        "prognosis"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "generic-immune-infiltrate-decrease-v1",
       "mechanism_id": "breast-generic-immune-compartment-turnover",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Reduce the inflammatory infiltrate area.", "Retract the generic inflammatory region."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Reduce the inflammatory infiltrate area.",
+        "Retract the generic inflammatory region."
+      ],
       "tissue_action": "generic Immune infiltrate 4 to adjacent operational Stroma 2",
       "nuclei_action": "remove whole class-2 inflammatory instances and regenerate complete class-3 connective instances",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["existing Immune 4/Stroma 2 interface", "complete class-2 and class-3 references", "immune compartment remains topologically legal"],
-      "forbidden_claims": ["TIL score", "immune suppression", "treatment response", "prognosis"]
+      "required_conditions": [
+        "existing Immune 4/Stroma 2 interface",
+        "complete class-2 and class-3 references",
+        "immune compartment remains topologically legal"
+      ],
+      "forbidden_claims": [
+        "TIL score",
+        "immune suppression",
+        "treatment response",
+        "prognosis"
+      ],
+      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
     },
     {
       "primitive_id": "cell-type-abundance-increase-v1",
       "mechanism_id": "breast-local-population-modulation",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Increase immune cells in this local region.", "Add generic inflammatory cells in this local region."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Increase immune cells in this local region.",
+        "Add generic inflammatory cells in this local region."
+      ],
       "tissue_action": "preserve tissue labels",
       "nuclei_action": "add complete instances of one explicitly observable class inside one bounded compatible component zone",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["explicit observable cell class", "compatible host tissue", "complete same-class references and packing capacity"],
-      "forbidden_claims": ["plasma-cell or macrophage identity with CellViT-5", "immune activation state"]
+      "required_conditions": [
+        "explicit observable cell class",
+        "compatible host tissue",
+        "complete same-class references and packing capacity"
+      ],
+      "forbidden_claims": [
+        "plasma-cell or macrophage identity with CellViT-5",
+        "immune activation state"
+      ],
+      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
     },
     {
       "primitive_id": "cell-type-abundance-decrease-v1",
       "mechanism_id": "breast-local-population-modulation",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Reduce immune cells in this local region.", "Remove some generic inflammatory cells from this local region."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Reduce immune cells in this local region.",
+        "Remove some generic inflammatory cells from this local region."
+      ],
       "tissue_action": "preserve tissue labels",
       "nuclei_action": "remove only complete instances of the explicitly observable class through a localized density gradient",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
-      "required_conditions": ["explicit observable cell class", "sufficient complete target instances", "meaningful spatial extent and retained reference population"],
-      "forbidden_claims": ["plasma-cell or macrophage-specific depletion with CellViT-5", "treatment effect"]
+      "required_conditions": [
+        "explicit observable cell class",
+        "sufficient complete target instances",
+        "meaningful spatial extent and retained reference population"
+      ],
+      "forbidden_claims": [
+        "plasma-cell or macrophage-specific depletion with CellViT-5",
+        "treatment effect"
+      ],
+      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
     },
     {
       "primitive_id": "cellularity-increase-v1",
       "mechanism_id": "breast-local-population-modulation",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Increase local cellularity.", "Make this local tissue region more cellular."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Increase local cellularity.",
+        "Make this local tissue region more cellular."
+      ],
       "tissue_action": "preserve tissue labels",
       "nuclei_action": "add complete locally compatible instances across the source-observed population composition",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported_pending_pathology_review",
       "production_status": "shadow_only",
-      "required_conditions": ["one bounded population zone", "source-observed class composition", "no filling of fat, cleft, lumen or secretion", "digest-bound breast_cellularity_shadow_review_authority=approved_for_shadow_v1"],
-      "forbidden_claims": ["tumor progression", "immune activation", "treatment effect"]
+      "required_conditions": [
+        "one bounded population zone",
+        "source-observed class composition",
+        "no filling of fat, cleft, lumen or secretion",
+        "digest-bound breast_cellularity_shadow_review_authority=approved_for_shadow_v1"
+      ],
+      "forbidden_claims": [
+        "tumor progression",
+        "immune activation",
+        "treatment effect"
+      ],
+      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
     },
     {
       "primitive_id": "cellularity-decrease-v1",
       "mechanism_id": "breast-local-population-modulation",
-      "scenarios": ["direct_edit"],
-      "simple_instructions": ["Reduce local cellularity.", "Make this local tissue region less cellular."],
+      "scenarios": [
+        "direct_edit"
+      ],
+      "simple_instructions": [
+        "Reduce local cellularity.",
+        "Make this local tissue region less cellular."
+      ],
       "tissue_action": "preserve tissue labels",
       "nuclei_action": "remove complete source-observed instances along an interface-anchored stronger-core to weaker-transition density gradient",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported_pending_pathology_review",
       "production_status": "shadow_only",
-      "required_conditions": ["visible interface anchor", "meaningful field area", "minimum residual population and unchanged outer reference", "digest-bound breast_cellularity_shadow_review_authority=approved_for_shadow_v1"],
-      "forbidden_claims": ["necrosis", "treatment response", "random cell-cluster disappearance"]
+      "required_conditions": [
+        "mask-graph interface or component anchor",
+        "meaningful field area",
+        "minimum residual population and unchanged outer reference",
+        "digest-bound breast_cellularity_shadow_review_authority=approved_for_shadow_v1"
+      ],
+      "forbidden_claims": [
+        "necrosis",
+        "treatment response",
+        "random cell-cluster disappearance"
+      ],
+      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
     }
   ],
   "closed_or_render_only": [

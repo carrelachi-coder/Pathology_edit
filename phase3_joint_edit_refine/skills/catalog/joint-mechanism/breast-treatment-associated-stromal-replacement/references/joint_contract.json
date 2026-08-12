@@ -1,12 +1,225 @@
 {
-  "mechanism_id":"breast-treatment-associated-stromal-replacement","pathology_domain_id":"breast-invasive-carcinoma-v1","supported_primitives":["stroma-increase-v1"],"version":"1.0.0-draft","review_status":"draft",
-  "summary":"Model local post-treatment replacement of invasive breast carcinoma by operational BCSS Stroma without inferring fibrosis, tumor-bed identity or whole-lesion response from the mask.",
-  "recognition_contract":{"required_observations":["explicit post-treatment response scenario","invasive Tumor fine ID 1 adjacent to operational Stroma fine ID 2","Planner finds a broad tissue-compatible target and excludes clear lumen/secretion"],"contraindications":["untreated growth or progression","clear enclosed lumen or secretion-like target","DCIS or angioinvasion in edit band","fibrosis or tumor-bed claim based only on unified ID 2"],"minimum_confidence":0.88},
-  "representability_contract":{"status":"conditionally_supported","required_cell_classes":[1,3],"required_auxiliary_structures":[],"allow_semantic_instance_fallback":true,"failure_action":"abstain_case"},
-  "tissue_program":{"mode":"post_treatment_operational_stromal_replacement","target_component_merge_policy":"selected_only","front_contract":{"profile_mode":"multi_lobe","edge_depth_ratio":0.52,"taper_fraction":0.24,"lobe_count":3,"noise_depth_ratio":0.12,"maximum_band_px":160,"maximum_depth_span_ratio":1.2,"maximum_boundary_compactness":4.8,"directional_sector_required":true,"maximum_selected_anchor_fraction":0.75,"minimum_unselected_anchor_count":1},"topology_fallback_by_primitive":{},"primitive_label_contracts":{"stroma-increase-v1":{"source_labels":["Tumor"],"target_labels":["Stroma"]}},"allowed_tools":["interface_band_sdf","topology_safe_morphology","organic_v2"],"required_checker_ids":["tissue_gate_binding","profile_fine_transition_authority","bcss_operational_stroma_authority"],"prohibited_structures":["dcis_unit","angioinvasion","benign_duct","benign_lobule","vessel","necrosis","clear_lumen_or_secretion"]},
-  "cell_program":{"actions":["retain","remove_whole","add"],"allowed_cell_classes":[1,2,3,5],"layout_programs":["population_replacement"],"core_policy":"remove complete class-1 instances in converted tissue and regenerate a source-matched operational stromal population","halo_policy":"preserve every exterior instance except whole-instance closure","halo_distance_px":[0,32],"cluster_size_range":[1,12],"seam_contract":{"mode":"turnover_transition","width_cell_diameters":[0.75,1.5],"reference_area_quantiles":[0.25,0.75],"maximum_empty_run_cell_diameters":2.5,"density_ratio_range":[0.35,2.5],"minimum_anchor_coverage_fraction":0.4,"requires_new_target_cells":true},"required_checker_ids":["whole_instance_changes","protected_nuclei_preserved","nuclei_overlap","nuclei_tissue_containment","cell_quota","cell_spatial_distribution","local_population_density","interface_seam_continuity"],"layout_program_by_primitive":{"stroma-increase-v1":"population_replacement"}},
-  "coupling_contract":{"compatibility_rule_ids":["breast.stromal_replacement.post_treatment_context","breast.stromal_replacement.operational_stroma_only","breast.stromal_replacement.no_fibrosis_mask_claim"],"allow_neoplastic_in_non_tumor_tissue":false,"joint_area_mode":"joint_footprint","tissue_floor_applies":true,"cell_only_target_fraction":0,"cell_footprint_spill_reserve_fraction":0.006,"render_support_policy_id":"joint_change_plus_bounded_cell_context_v1"},
-  "joint_gate_ids":["joint_area","tissue_floor","cell_tissue_compatibility","cell_zone_localization","joint_provenance","profile_fine_transition_authority","bcss_operational_stroma_authority","mechanism_postcondition:breast-treatment-associated-stromal-replacement"],
-  "render_contract":{"required_findings":["local invasive tissue is replaced by non-neoplastic stromal-appearing tissue compatible with post-treatment change"],"veto_findings":["clear lumen or secretion rendered as fibrous stroma","viable class-1 nuclei remain in replaced tissue","ordinary desmoplasia called treatment response","pCR, RCB or clinical-benefit claim"],"mask_guarantees":["Tumor fine ID 1 to operational Stroma fine ID 2 only","complete class-1 instances removed from changed tissue"],"render_only_claims":["fibrosis","fibrotic tumor bed","specific therapy effect","pCR or RCB"]},
-  "evidence_citations":["https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"],"counterexamples":["calling all ID-2 pixels fibrosis","using this mechanism without post-treatment context","silently replacing the primitive after generator failure"]
+  "mechanism_id": "breast-treatment-associated-stromal-replacement",
+  "pathology_domain_id": "breast-invasive-carcinoma-v1",
+  "supported_primitives": [
+    "stroma-increase-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Model local post-treatment replacement of invasive breast carcinoma by operational BCSS Stroma without inferring fibrosis, tumor-bed identity or whole-lesion response from the mask.",
+  "recognition_contract": {
+    "required_observations": [
+      "explicit post-treatment response scenario",
+      "invasive Tumor fine ID 1 adjacent to operational Stroma fine ID 2",
+      "a deterministic external Tumor-to-operational-Stroma interface certificate with sufficient retreat and population capacity"
+    ],
+    "contraindications": [
+      "untreated growth or progression",
+      "DCIS or angioinvasion in edit band",
+      "fibrosis or tumor-bed claim based only on unified ID 2"
+    ],
+    "minimum_confidence": 0.88
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "post_treatment_operational_stromal_replacement",
+    "target_component_merge_policy": "selected_only",
+    "front_contract": {
+      "profile_mode": "multi_lobe",
+      "edge_depth_ratio": 0.52,
+      "taper_fraction": 0.24,
+      "lobe_count": 3,
+      "noise_depth_ratio": 0.12,
+      "maximum_band_px": 160,
+      "maximum_depth_span_ratio": 1.2,
+      "maximum_boundary_compactness": 4.8,
+      "directional_sector_required": true,
+      "maximum_selected_anchor_fraction": 0.75,
+      "minimum_unselected_anchor_count": 1
+    },
+    "topology_fallback_by_primitive": {},
+    "primitive_label_contracts": {
+      "stroma-increase-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "profile_fine_transition_authority",
+      "bcss_operational_stroma_authority"
+    ],
+    "prohibited_structures": [
+      "dcis_unit",
+      "angioinvasion",
+      "benign_duct",
+      "benign_lobule",
+      "vessel",
+      "necrosis"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "population_replacement"
+    ],
+    "core_policy": "remove complete class-1 instances in converted tissue and regenerate a source-matched operational stromal population",
+    "halo_policy": "preserve every exterior instance except whole-instance closure",
+    "halo_distance_px": [
+      0,
+      32
+    ],
+    "cluster_size_range": [
+      1,
+      12
+    ],
+    "seam_contract": {
+      "mode": "turnover_transition",
+      "width_cell_diameters": [
+        0.75,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 2.5,
+      "density_ratio_range": [
+        0.35,
+        2.5
+      ],
+      "minimum_anchor_coverage_fraction": 0.4,
+      "requires_new_target_cells": true
+    },
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_population_density",
+      "interface_seam_continuity"
+    ],
+    "layout_program_by_primitive": {
+      "stroma-increase-v1": "population_replacement"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "breast.stromal_replacement.post_treatment_context",
+      "breast.stromal_replacement.operational_stroma_only",
+      "breast.stromal_replacement.no_fibrosis_mask_claim"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "cell_footprint_spill_reserve_fraction": 0.006,
+    "render_support_policy_id": "joint_change_plus_bounded_cell_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "profile_fine_transition_authority",
+    "bcss_operational_stroma_authority",
+    "mechanism_postcondition:breast-treatment-associated-stromal-replacement"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "local invasive tissue is replaced by non-neoplastic stromal-appearing tissue compatible with post-treatment change"
+    ],
+    "veto_findings": [
+      "the rendered replacement is incompatible with the operational-Stroma condition",
+      "viable class-1 nuclei remain in replaced tissue",
+      "ordinary desmoplasia called treatment response",
+      "pCR, RCB or clinical-benefit claim"
+    ],
+    "mask_guarantees": [
+      "Tumor fine ID 1 to operational Stroma fine ID 2 only",
+      "complete class-1 instances removed from changed tissue"
+    ],
+    "render_only_claims": [
+      "fibrosis",
+      "fibrotic tumor bed",
+      "specific therapy effect",
+      "pCR or RCB"
+    ]
+  },
+  "evidence_citations": [
+    "https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"
+  ],
+  "counterexamples": [
+    "calling all ID-2 pixels fibrosis",
+    "using this mechanism without post-treatment context",
+    "silently replacing the primitive after generator failure"
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "profile_fine_transition_authority",
+      "bcss_operational_stroma_authority",
+      "whole_instance_changes"
+    ],
+    "selection_preferences": [
+      "prefer candidates with the largest safe executable capacity",
+      "prefer candidates with greater protected-label clearance and complete-instance capacity",
+      "prefer the smallest sufficient tool program"
+    ],
+    "clarification_triggers": [
+      "the instruction permits multiple materially different executable primitives"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

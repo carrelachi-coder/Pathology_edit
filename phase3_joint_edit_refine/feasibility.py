@@ -40,7 +40,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v11"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v12"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -49,6 +49,10 @@ class InterfaceNucleiCapacity:
     interface_id: str
     source_component_id: str
     target_component_id: str
+    boundary_topology: str
+    external_tumor_stroma_boundary: bool
+    internal_enclosed_interface: bool
+    protected_fine_ids_within_band: tuple[int, ...]
     contact_pixels: int
     gate_bounded_depth_px: int
     source_component_capacity_pixels: int
@@ -466,6 +470,10 @@ def build_joint_nuclei_preflight(
             continue
         source_component = scene.tissue.component_masks[interface.source_component_id]
         interface_mask = scene.tissue.interface_masks[interface.interface_id]
+        boundary_topology = classify_tumor_stroma_boundary(
+            scene=scene,
+            interface=interface,
+        )
         # Capacity must use the same geometric upper bound as the downstream
         # depth/span gate.  The former 0.80*contact heuristic was only a shape
         # preference, yet it was treated as a hard capacity ceiling; short
@@ -512,6 +520,26 @@ def build_joint_nuclei_preflight(
             raw_envelope &= np.isin(source_tissue, editable_source_ids)
         if not effective_allow_source_resolution:
             raw_envelope &= distance <= depth_cap
+        authority_key = (
+            f"{joint_bundle.mechanism.mechanism_id}::{case.primitive_id}"
+        )
+        transition_authorized_ids = set(
+            joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+                authority_key,
+                joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+                    joint_bundle.mechanism.mechanism_id, ()
+                ),
+            )
+        )
+        protected_fine_ids_in_band = tuple(
+            sorted(
+                int(value)
+                for value in np.unique(source_tissue[raw_envelope])
+                if int(value)
+                in set(joint_bundle.annotation_profile.protected_fine_ids)
+                and int(value) not in transition_authorized_ids
+            )
+        )
         source_component_pixels = int(np.count_nonzero(source_component))
         if effective_allow_source_resolution:
             source_component_capacity = source_component_pixels
@@ -690,6 +718,14 @@ def build_joint_nuclei_preflight(
             reasons.append("required_profile_provenance_missing")
         if not np.any(envelope):
             reasons.append("no_cell_safe_tissue_capacity")
+        if (
+            "external_boundary_binding"
+            in joint_bundle.mechanism.planner_policy.hard_constraint_checker_ids
+            and not boundary_topology["external_tumor_stroma_boundary"]
+        ):
+            reasons.append("interface_is_not_external_tumor_stroma_boundary")
+        if protected_fine_ids_in_band:
+            reasons.append("protected_fine_id_in_candidate_band")
         if executable_envelope_pixels <= 0:
             reasons.append("no_topology_safe_source_component_capacity")
         if (
@@ -715,6 +751,14 @@ def build_joint_nuclei_preflight(
                 interface_id=interface.interface_id,
                 source_component_id=interface.source_component_id,
                 target_component_id=interface.target_component_id,
+                boundary_topology=str(boundary_topology["classification"]),
+                external_tumor_stroma_boundary=bool(
+                    boundary_topology["external_tumor_stroma_boundary"]
+                ),
+                internal_enclosed_interface=bool(
+                    boundary_topology["internal_enclosed_interface"]
+                ),
+                protected_fine_ids_within_band=protected_fine_ids_in_band,
                 contact_pixels=int(interface.contact_pixels),
                 gate_bounded_depth_px=depth_cap,
                 source_component_capacity_pixels=int(
@@ -817,6 +861,57 @@ def build_joint_nuclei_preflight(
         ),
         interfaces=tuple(interface_reports),
         protected_tissue_change_mask=protected_mask,
+    )
+
+
+def classify_tumor_stroma_boundary(*, scene, interface) -> dict[str, Any]:
+    """Classify an annotated Tumor--Stroma interface without using H&E."""
+
+    labels = {interface.source_label, interface.target_label}
+    if labels != {"Tumor", "Stroma"}:
+        return {
+            "classification": "not_tumor_stroma",
+            "external_tumor_stroma_boundary": False,
+            "internal_enclosed_interface": False,
+        }
+    tumor_component_id = (
+        interface.source_component_id
+        if interface.source_label == "Tumor"
+        else interface.target_component_id
+    )
+    stroma_component_id = (
+        interface.source_component_id
+        if interface.source_label == "Stroma"
+        else interface.target_component_id
+    )
+    tumor = np.asarray(scene.tissue.component_masks[tumor_component_id], dtype=bool)
+    stroma = np.asarray(scene.tissue.component_masks[stroma_component_id], dtype=bool)
+    exterior = _border_connected_complement(tumor)
+    contact_host = stroma & ndimage.binary_dilation(tumor, iterations=1)
+    external = bool(np.any(contact_host & exterior))
+    enclosed = bool(np.any(contact_host) and not external)
+    return {
+        "classification": (
+            "external_tumor_stroma_boundary"
+            if external
+            else "internal_enclosed_interface"
+        ),
+        "external_tumor_stroma_boundary": external,
+        "internal_enclosed_interface": enclosed,
+    }
+
+
+def _border_connected_complement(component: np.ndarray) -> np.ndarray:
+    complement = ~np.asarray(component, dtype=bool)
+    seeds = np.zeros_like(complement, dtype=bool)
+    seeds[0, :] = complement[0, :]
+    seeds[-1, :] = complement[-1, :]
+    seeds[:, 0] |= complement[:, 0]
+    seeds[:, -1] |= complement[:, -1]
+    return ndimage.binary_propagation(
+        seeds,
+        mask=complement,
+        structure=np.ones((3, 3), dtype=bool),
     )
 
 

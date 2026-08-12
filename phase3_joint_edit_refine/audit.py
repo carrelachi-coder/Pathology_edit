@@ -302,6 +302,44 @@ class JointAuditWriter:
         self.paths["joint_condition_review"] = str(path)
         return str(path)
 
+    def write_mask_review_board(
+        self,
+        *,
+        source_tissue: np.ndarray,
+        source_nuclei: np.ndarray,
+        candidates: tuple[JointCandidate, ...],
+    ) -> str:
+        """Write the condition critic board from masks only.
+
+        The reader-facing review board remains H&E-backed, but the LLM critic
+        receives this neutral mask board so it can audit topology, cell layout,
+        and skill compliance without performing unsupported histologic reads.
+        """
+
+        base = np.full((*source_tissue.shape, 3), 28, dtype=np.uint8)
+        rows = []
+        empty = np.zeros_like(source_tissue, dtype=bool)
+        source_panel = _overlay(base, source_tissue, source_nuclei, empty)
+        for candidate in candidates:
+            target_panel = _overlay(
+                base,
+                candidate.target_tissue_mask,
+                candidate.target_nuclei_mask,
+                candidate.joint_change,
+            )
+            row = np.concatenate([source_panel, target_panel], axis=1)
+            labeled = Image.new("RGB", (row.shape[1], row.shape[0] + 22), "black")
+            labeled.paste(Image.fromarray(row), (0, 22))
+            ImageDraw.Draw(labeled).text((6, 4), candidate.candidate_id, fill="white")
+            rows.append(np.asarray(labeled))
+        if not rows:
+            rows = [source_panel]
+        board = np.concatenate(rows, axis=0)
+        path = self.case_dir / "joint_condition_mask_review.png"
+        Image.fromarray(board).save(path)
+        self.paths["joint_condition_mask_review"] = str(path)
+        return str(path)
+
     def write_joint_execution_review(
         self,
         *,
@@ -633,6 +671,24 @@ class JointAuditWriter:
         path = self.case_dir / "source_joint_overlay.png"
         Image.fromarray(panel).save(path)
         self.paths["source_joint_overlay"] = str(path)
+        return str(path)
+
+    def write_mask_planner_overlay(
+        self,
+        *,
+        source_tissue: np.ndarray,
+        source_nuclei: np.ndarray,
+    ) -> str:
+        base = np.full((*source_tissue.shape, 3), 28, dtype=np.uint8)
+        panel = _overlay(
+            base,
+            source_tissue,
+            source_nuclei,
+            np.zeros_like(source_tissue, dtype=bool),
+        )
+        path = self.case_dir / "planner_mask_tissue_nuclei.png"
+        Image.fromarray(panel).save(path)
+        self.paths["planner_mask_tissue_nuclei"] = str(path)
         return str(path)
 
     def write_abstain_review(

@@ -254,11 +254,13 @@ def certify_complete_footprint_packing(
             footprint_union=footprint_union,
             references_by_class=normalized_references,
             class_quotas=remaining_quotas,
-            class_center_regions=(
-                {seam_class: centers & ~seam}
-                if seam_required and seam_class is not None
-                else None
-            ),
+            # The first stratum has already guaranteed the minimum number of
+            # target-class centers in the seam. Remaining target-population
+            # placements may use every still-free legal center, including
+            # unused seam pixels. Excluding the entire seam here made a broad
+            # boundary candidate falsely fail exact capacity whenever its
+            # adaptive continuity region covered most or all of the new core.
+            class_center_regions=None,
             class_counts=class_counts,
             reference_offsets=reference_offsets,
             placements=placements,

@@ -36,6 +36,18 @@ class RecognitionContract:
 
 
 @dataclass(frozen=True)
+class PlannerPolicyContract:
+    """Skill-owned authority and preference contract for LLM planning."""
+
+    allowed_observation_sources: tuple[str, ...]
+    prohibited_observation_sources: tuple[str, ...]
+    hard_constraint_checker_ids: tuple[str, ...]
+    selection_preferences: tuple[str, ...]
+    clarification_triggers: tuple[str, ...]
+    allowed_decisions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RepresentabilityContract:
     status: str
     required_cell_classes: tuple[int, ...]
@@ -209,6 +221,7 @@ class JointMechanismSkill:
     review_status: str
     summary: str
     recognition: RecognitionContract
+    planner_policy: PlannerPolicyContract
     representability: RepresentabilityContract
     tissue_program: TissueProgramContract
     cell_program: CellProgramContract
@@ -249,6 +262,11 @@ class JointMechanismSkill:
         cell = _mapping(payload, "cell_program")
         coupling = _mapping(payload, "coupling_contract")
         render = _mapping(payload, "render_contract")
+        planner_policy = payload.get("planner_policy", {})
+        if not isinstance(planner_policy, Mapping):
+            raise JointContractError(
+                f"{mechanism_id}.planner_policy must be a mapping"
+            )
         status = _string(representability, "status")
         if status not in SUPPORT_STATUSES:
             raise JointContractError(f"unknown representability status: {status}")
@@ -354,6 +372,60 @@ class JointMechanismSkill:
                     recognition, "contraindications", allow_empty=True
                 ),
                 minimum_confidence=confidence,
+            ),
+            planner_policy=PlannerPolicyContract(
+                allowed_observation_sources=_strings(
+                    planner_policy,
+                    "allowed_observation_sources",
+                    allow_empty=True,
+                )
+                or (
+                    "instruction",
+                    "semantic_intent",
+                    "tissue_mask",
+                    "nuclei_mask",
+                    "scene_graph",
+                    "candidate_certificate",
+                    "skill_rules",
+                    "user_roi",
+                    "auxiliary_masks",
+                ),
+                prohibited_observation_sources=_strings(
+                    planner_policy,
+                    "prohibited_observation_sources",
+                    allow_empty=True,
+                )
+                or (
+                    "source_he_for_execution",
+                    "unannotated_histology_inference",
+                ),
+                hard_constraint_checker_ids=_strings(
+                    planner_policy,
+                    "hard_constraint_checker_ids",
+                    allow_empty=True,
+                ),
+                selection_preferences=_strings(
+                    planner_policy,
+                    "selection_preferences",
+                    allow_empty=True,
+                ),
+                clarification_triggers=_strings(
+                    planner_policy,
+                    "clarification_triggers",
+                    allow_empty=True,
+                ),
+                allowed_decisions=_strings(
+                    planner_policy,
+                    "allowed_decisions",
+                    allow_empty=True,
+                )
+                or (
+                    "select_primitive_mechanism_pair",
+                    "select_certified_interface_anchor_ids",
+                    "select_allowed_tool_program",
+                    "request_clarification",
+                    "abstain",
+                ),
             ),
             representability=RepresentabilityContract(
                 status=status,

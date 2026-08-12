@@ -74,6 +74,9 @@ from phase3_joint_edit_refine.planner import (
     HeuristicJointPlanner,
     _structural_units_for_components,
 )
+from phase3_joint_edit_refine.planner_inputs import (
+    validate_mask_planner_image_paths,
+)
 from phase3_joint_edit_refine.post_generation import (
     audit_joint_generation_handoff,
 )
@@ -90,11 +93,18 @@ from phase3_joint_edit_refine.semantic_parser import (
     bind_semantic_intent,
 )
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
+from phase3_joint_edit_refine.skills.execution_aliases import (
+    tissue_tool_primitive_id,
+)
 from phase3_joint_edit_refine.tissue_planner import (
     MultiInterfaceResearchTissuePlanner,
+    _mask_planner_case_metadata as tissue_planner_case_metadata,
     _effective_tissue_topology,
     _normalize_integer_allocations,
     _select_executable_anchor_ids,
+)
+from phase3_joint_edit_refine.agents import (
+    _mask_planner_case_metadata as joint_planner_case_metadata,
 )
 from phase3_joint_edit_refine.workflow import (
     JointPathologyEditWorkflow,
@@ -118,6 +128,157 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_remaining_population_may_use_unused_seam_capacity(self):
+        source = np.zeros((32, 32), dtype=np.uint8)
+        reference = ReferenceNucleusShape(
+            instance_id="complete-local-1",
+            class_id=1,
+            mask=np.ones((3, 3), dtype=bool),
+            source="native_instance",
+            area_px=9,
+        )
+        legal = np.zeros_like(source, dtype=bool)
+        legal[4:28, 4:28] = True
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=source,
+            erased_footprint=np.zeros_like(legal),
+            center_region=legal,
+            valid_footprint_region=legal,
+            references_by_class={1: (reference,)},
+            requested_count=6,
+            class_request_weights={1: 1.0},
+            continuity_region=legal,
+            required_seam_count=2,
+            minimum_seam_count=2,
+            required_seam_class=1,
+        )
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertEqual(certificate.placed_seam_count, 2)
+        self.assertEqual(certificate.placed_count, 6)
+
+    def test_open_breast_planner_policies_are_mask_only_and_executable(self):
+        repository = JointSkillRepository()
+        for mechanism in repository.mechanisms.values():
+            if mechanism.pathology_domain_id != "breast-invasive-carcinoma-v1":
+                continue
+            if mechanism.mechanism_id in repository.execution_scope["closed_mechanisms"]:
+                continue
+            with self.subTest(mechanism=mechanism.mechanism_id):
+                policy = mechanism.planner_policy
+                self.assertIn(
+                    "source_he_for_execution",
+                    policy.prohibited_observation_sources,
+                )
+                self.assertIn(
+                    "unannotated_histology_inference",
+                    policy.prohibited_observation_sources,
+                )
+                self.assertNotIn("source_he_for_execution", policy.allowed_observation_sources)
+                self.assertTrue(policy.allowed_decisions)
+                self.assertTrue(policy.hard_constraint_checker_ids)
+                self.assertTrue(policy.selection_preferences)
+
+    def test_mask_planner_metadata_excludes_histology_locator(self):
+        case = _breast_case_stub()
+        self.assertNotIn("source_image_uri", joint_planner_case_metadata(case))
+        tissue_case = _as_tissue_case(
+            case,
+            allocation=SimpleNamespace(
+                tissue_target_pixels=36_701,
+                tissue_execution_floor_pixels=36_701,
+            ),
+            shape=(512, 512),
+        )
+        self.assertNotIn(
+            "source_image_uri", tissue_planner_case_metadata(tissue_case)
+        )
+        self.assertIn("source_tissue_mask_uri", joint_planner_case_metadata(case))
+        self.assertIn("source_nuclei_mask_uri", joint_planner_case_metadata(case))
+
+    def test_mask_graph_llm_rejects_raw_histology_and_reader_boards(self):
+        accepted = validate_mask_planner_image_paths(
+            (
+                "/tmp/planner_01_tissue_mask.png",
+                "/tmp/planner_02_component_map.png",
+                "/tmp/planner_03_interface_anchor_map.png",
+                "/tmp/planner_mask_tissue_nuclei.png",
+                "/tmp/joint_condition_mask_review.png",
+            )
+        )
+        self.assertEqual(len(accepted), 5)
+        for unauthorized in (
+            "/tmp/source_he.png",
+            "/tmp/planner_01_he.png",
+            "/tmp/joint_condition_review.png",
+        ):
+            with self.subTest(path=unauthorized), self.assertRaises(
+                JointContractError
+            ):
+                validate_mask_planner_image_paths((unauthorized,))
+
+    def test_new_breast_primitives_bind_parser_mechanism_and_executor_contract(self):
+        repository = JointSkillRepository()
+        expected = {
+            "cohesive-boundary-expansion-v1": (
+                "breast-annotation-anchored-boundary-growth",
+                "tissue_and_cell",
+            ),
+            "infiltrative-nest-cord-extension-v1": (
+                "breast-infiltrative-nest-cord-extension",
+                "tissue_and_cell",
+            ),
+            "peritumoral-neoplastic-scatter-increase-v1": (
+                "breast-peritumoral-neoplastic-scatter",
+                "cell_only",
+            ),
+            "peritumoral-small-cluster-increase-v1": (
+                "breast-peritumoral-small-cluster",
+                "cell_only",
+            ),
+        }
+        checker_ids = set(JointGateRegistry().available_checker_ids)
+        for primitive_id, (mechanism_id, scope) in expected.items():
+            with self.subTest(primitive=primitive_id):
+                case = replace(
+                    _breast_case_stub(),
+                    primitive_id=primitive_id,
+                    joint_area_budget=(
+                        JointAreaBudget() if scope == "tissue_and_cell" else None
+                    ),
+                    cell_count_extent_budget=(
+                        None
+                        if scope == "tissue_and_cell"
+                        else CellCountExtentBudget(
+                            8,
+                            6,
+                            12,
+                            64,
+                            0,
+                            64,
+                            minimum_effect_span_px=32,
+                            minimum_effect_foci=3,
+                        )
+                    ),
+                )
+                bundle = repository.compose(
+                    case=case,
+                    mechanism_id=mechanism_id,
+                    available_checker_ids=checker_ids,
+                    production=False,
+                )
+                self.assertEqual(bundle.primitive.scope, scope)
+                self.assertEqual(
+                    tissue_tool_primitive_id(primitive_id),
+                    (
+                        "tumor-burden-increase-v1"
+                        if scope == "tissue_and_cell"
+                        else primitive_id
+                    ),
+                )
+                self.assertTrue(
+                    set(bundle.required_checker_ids).issubset(checker_ids)
+                )
+
     def test_breast_bcss_capability_matrix_matches_executable_skills(self):
         repository = JointSkillRepository()
         matrix_path = (
@@ -154,13 +315,13 @@ class JointSkillTests(unittest.TestCase):
             self.assertTrue(item["required_conditions"])
             self.assertEqual(item["production_status"], "shadow_only")
 
-    def test_multimodal_critic_receives_bcss_visual_stroma_vetoes(self):
+    def test_mask_condition_critic_does_not_receive_histology_veto_authority(self):
         client = _RecordingJointCriticClient()
         repository = JointSkillRepository()
         case = _breast_case_stub()
         bundle = repository.compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -175,16 +336,9 @@ class JointSkillTests(unittest.TestCase):
 
         self.assertTrue(result.abstain)
         payload = json.loads(client.calls[0]["user_prompt"])
-        self.assertIn(
-            "obvious secretion-like material incompatible with editable stromal tissue",
-            payload["annotation_visual_veto_requirements"],
-        )
-        self.assertTrue(
-            payload["requirements"][
-                "apply_annotation_visual_veto_requirements_to_every_candidate"
-            ]
-        )
-        self.assertIn("visual veto requirements", client.calls[0]["system_prompt"])
+        self.assertNotIn("annotation_visual_veto_requirements", payload)
+        self.assertTrue(payload["requirements"]["source_H&E_is_prohibited"])
+        self.assertIn("Raw H&E is prohibited", client.calls[0]["system_prompt"])
 
     def test_multimodal_plan_schema_requires_unique_structural_units(self):
         structural_units = JOINT_PLAN_JSON_SCHEMA["properties"][
@@ -346,15 +500,15 @@ class JointSkillTests(unittest.TestCase):
             continuity_region=np.zeros_like(legal),
             continuity_anchor_mask=np.zeros_like(legal),
             continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
             minimum_effect_span_px=0,
             minimum_effect_foci=0,
             seed=1,
         )
-        self.assertEqual(placed, 1)
-        self.assertEqual(len(trace), 1)
-        col, row = trace[0]["center_xy"]
-        self.assertTrue(legal[row, col])
-        self.assertEqual(int(np.count_nonzero(target)), 9)
+        self.assertEqual(placed, 0)
+        self.assertEqual(len(trace), 0)
+        self.assertEqual(int(np.count_nonzero(target)), 0)
 
     def test_meaningful_cell_effect_is_distributed_across_foci(self):
         shape = np.ones((3, 3), dtype=bool)
@@ -380,6 +534,8 @@ class JointSkillTests(unittest.TestCase):
             continuity_region=np.zeros_like(legal),
             continuity_anchor_mask=np.zeros_like(legal),
             continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
             minimum_effect_span_px=40,
             minimum_effect_foci=4,
             seed=1,
@@ -412,9 +568,7 @@ class JointSkillTests(unittest.TestCase):
             "reduce intratumoral necrosis": "necrosis-resolution-v1",
             "increase tumor-associated stroma": "stroma-increase-v1",
             "减少坏死": "necrosis-resolution-v1",
-            "increase tumor budding": (
-                "neoplastic-microinfiltration-increase-v1"
-            ),
+            "increase tumor budding": "peritumoral-small-cluster-increase-v1",
             "increase immune cells": "cell-type-abundance-increase-v1",
             "increase immune infiltrate": (
                 "generic-immune-infiltrate-increase-v1"
@@ -516,8 +670,8 @@ class JointSkillTests(unittest.TestCase):
             [item.primitive_id for item in intent.primitive_hypotheses],
             [
                 "tumor-burden-increase-v1",
-                "invasive-front-expansion-v1",
-                "neoplastic-microinfiltration-increase-v1",
+                "cohesive-boundary-expansion-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
             ],
         )
         self.assertEqual(
@@ -534,14 +688,14 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(len(budding.primitive_hypotheses), 1)
         self.assertEqual(
             budding.primitive_hypotheses[0].primitive_id,
-            "neoplastic-microinfiltration-increase-v1",
+            "peritumoral-small-cluster-increase-v1",
         )
 
     def test_manifest_may_hint_a_contextual_generic_tumor_interpretation(self):
         raw = {
             **_case_stub().to_metadata(),
             "instruction": "increase tumor",
-            "primitive_id": "neoplastic-microinfiltration-increase-v1",
+            "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
         }
         case, _intent = bind_semantic_intent(
             raw, RuleBasedSemanticParser()
@@ -549,7 +703,7 @@ class JointSkillTests(unittest.TestCase):
 
         self.assertEqual(
             case.primitive_id,
-            "neoplastic-microinfiltration-increase-v1",
+            "peritumoral-neoplastic-scatter-increase-v1",
         )
         self.assertIn(
             case.primitive_id,
@@ -1080,8 +1234,8 @@ class JointSkillTests(unittest.TestCase):
 
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
-        self.assertEqual(len(repository.mechanisms), 35)
-        self.assertEqual(len(repository.primitives), 21)
+        self.assertEqual(len(repository.mechanisms), 39)
+        self.assertEqual(len(repository.primitives), 25)
         self.assertEqual(len(repository.annotation_profiles), 6)
         self.assertEqual(len(repository.cell_observation_profiles), 1)
         self.assertEqual(len(repository.cell_population_profiles), 6)
@@ -1177,7 +1331,9 @@ class JointSkillTests(unittest.TestCase):
 
     def test_breast_seam_contract_is_anchor_conditioned_and_skill_owned(self):
         repository = JointSkillRepository()
-        cohesive = repository.mechanisms["breast-cohesive-nst-front"]
+        cohesive = repository.mechanisms[
+            "breast-annotation-anchored-boundary-growth"
+        ]
         seam = cohesive.cell_program.seam
         self.assertEqual(seam.mode, "adaptive_population_continuity")
         self.assertEqual(seam.reference_area_quantiles, (0.25, 0.75))
@@ -1208,6 +1364,8 @@ class JointSkillTests(unittest.TestCase):
                 "cellularity-increase-v1",
                 "generic-immune-infiltrate-decrease-v1",
                 "generic-immune-infiltrate-increase-v1",
+                "cohesive-boundary-expansion-v1",
+                "infiltrative-nest-cord-extension-v1",
                 "invasive-front-expansion-v1",
                 "invasive-tumor-footprint-decrease-v1",
                 "local-invasive-clearance-v1",
@@ -1216,6 +1374,8 @@ class JointSkillTests(unittest.TestCase):
                 "neoplastic-cell-abundance-decrease-v1",
                 "neoplastic-cell-abundance-increase-v1",
                 "neoplastic-microinfiltration-increase-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "peritumoral-small-cluster-increase-v1",
                 "residual-tumor-fragmentation-v1",
                 "stroma-increase-v1",
                 "tumor-burden-increase-v1",
@@ -1233,6 +1393,8 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(
             set(repository.execution_scope["closed_mechanisms"]),
             {
+                "breast-cohesive-nst-front",
+                "breast-discohesive-single-file",
                 "colorectal-gland-forming-front",
                 "colorectal-tumor-budding-front",
                 "prostate-pattern-3-growth",
@@ -1261,10 +1423,17 @@ class JointSkillTests(unittest.TestCase):
                 mechanism_id="colorectal-gland-forming-front",
             ),
         )
-        self.assertIsNone(
+        self.assertIn(
+            "no longer asks a general visual LLM",
             repository.execution_selection_reason(
                 primitive_id="tumor-burden-increase-v1",
                 mechanism_id="breast-cohesive-nst-front",
+            ),
+        )
+        self.assertIsNone(
+            repository.execution_selection_reason(
+                primitive_id="tumor-burden-increase-v1",
+                mechanism_id="breast-annotation-anchored-boundary-growth",
             )
         )
         local = _case_stub(
@@ -2074,6 +2243,132 @@ class _AlwaysFailingCandidateCellExecutor:
 
 
 class JointWorkflowTests(unittest.TestCase):
+    def test_annotation_anchored_breast_primitives_execute_real_gates(self):
+        fixtures = (
+            (
+                "cohesive-boundary-expansion-v1",
+                "breast-annotation-anchored-boundary-growth",
+                JointAreaBudget(
+                    target_fraction=0.12,
+                    min_fraction=0.10,
+                    max_fraction=0.14,
+                    tissue_min_fraction=0.10,
+                    relative_tolerance=0.05,
+                ),
+                None,
+            ),
+            (
+                "infiltrative-nest-cord-extension-v1",
+                "breast-infiltrative-nest-cord-extension",
+                JointAreaBudget(
+                    target_fraction=0.025,
+                    min_fraction=0.01,
+                    max_fraction=0.04,
+                    tissue_min_fraction=0.01,
+                    relative_tolerance=0.05,
+                ),
+                None,
+            ),
+            (
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "breast-peritumoral-neoplastic-scatter",
+                None,
+                CellCountExtentBudget(
+                    target_delta_count=8,
+                    min_delta_count=6,
+                    max_delta_count=10,
+                    maximum_extent_px=48,
+                    interface_min_px=4,
+                    interface_max_px=48,
+                    minimum_effect_span_px=20,
+                    minimum_effect_foci=3,
+                ),
+            ),
+            (
+                "peritumoral-small-cluster-increase-v1",
+                "breast-peritumoral-small-cluster",
+                None,
+                CellCountExtentBudget(
+                    target_delta_count=8,
+                    min_delta_count=6,
+                    max_delta_count=10,
+                    maximum_extent_px=48,
+                    interface_min_px=4,
+                    interface_max_px=48,
+                    minimum_effect_span_px=20,
+                    minimum_effect_foci=2,
+                ),
+            ),
+        )
+        for index, (primitive, mechanism, joint_budget, cell_budget) in enumerate(
+            fixtures
+        ):
+            with (
+                self.subTest(primitive=primitive),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                case = _as_breast_growth_case(_write_synthetic_case(root))
+                case = replace(
+                    case,
+                    case_id=f"breast-mask-graph-{index:02d}",
+                    instruction=primitive,
+                    primitive_id=primitive,
+                    joint_area_budget=joint_budget,
+                    cell_count_extent_budget=cell_budget,
+                    provenance={
+                        **case.provenance,
+                        "joint_mechanism_id": mechanism,
+                        "joint_primitive_id": primitive,
+                    },
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "result")
+
+                self.assertEqual(
+                    result.status,
+                    "selected_research",
+                    result.abstain_reasons,
+                )
+                reports = json.loads(
+                    Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                selected = next(
+                    item
+                    for item in reports
+                    if item["candidate_id"] == result.selected_candidate_id
+                )
+                self.assertTrue(selected["passed"])
+                self.assertTrue(
+                    all(
+                        item["passed"]
+                        for item in selected["checks"]
+                        if item["severity"] == "hard"
+                    )
+                )
+                if primitive == "infiltrative-nest-cord-extension-v1":
+                    self.assertTrue(
+                        next(
+                            check
+                            for check in selected["checks"]
+                            if check["check_id"]
+                            == "annotation_anchored_extension_geometry"
+                        )["passed"]
+                    )
+                    self.assertTrue(
+                        next(
+                            check
+                            for check in selected["checks"]
+                            if check["check_id"]
+                            == "interface_seam_continuity"
+                        )["passed"]
+                    )
+
     def test_breast_generic_immune_compartment_turnover_executes_both_directions(self):
         for primitive, source_label, target_label, source_cell, target_cell in (
             ("generic-immune-infiltrate-increase-v1", 2, 4, 3, 2),
@@ -2481,7 +2776,7 @@ class JointWorkflowTests(unittest.TestCase):
                 **raw["provenance"],
                 "joint_mechanism_id": "colorectal-tumor-budding-front",
                 "joint_primitive_id": (
-                    "neoplastic-microinfiltration-increase-v1"
+                    "peritumoral-neoplastic-scatter-increase-v1"
                 ),
             }
             case, _intent = bind_semantic_intent(
@@ -2496,7 +2791,7 @@ class JointWorkflowTests(unittest.TestCase):
 
             self.assertEqual(result.status, "abstained")
             self.assertIn(
-                "colorectal-tumor-budding-front",
+                "no joint mechanism supports this primitive",
                 result.abstain_reasons[0],
             )
 
@@ -2700,7 +2995,10 @@ class JointWorkflowTests(unittest.TestCase):
             ).run(case, output_root=root / "unanchored")
             self.assertEqual(result.status, "abstained")
             self.assertTrue(
-                any("explicit visual depletion anchor" in reason for reason in result.abstain_reasons)
+                any(
+                    "explicit mask-graph depletion anchor" in reason
+                    for reason in result.abstain_reasons
+                )
             )
 
     def test_cell_only_budget_cannot_undercut_skill_minimum_effect(self):
@@ -3086,7 +3384,8 @@ def _as_breast_growth_case(source: JointCaseContext) -> JointCaseContext:
         "source_tissue_mask_sha256": tissue_digest,
         "original_label_map_digest": tissue_digest,
         "preprocessing_revision": "synthetic-bcss-v1",
-        "joint_mechanism_id": "breast-cohesive-nst-front",
+        "joint_mechanism_id": "breast-annotation-anchored-boundary-growth",
+        "joint_primitive_id": "tumor-burden-increase-v1",
         "available_auxiliary_structures": [],
     }
     provenance.pop("auxiliary_structure_sha256", None)

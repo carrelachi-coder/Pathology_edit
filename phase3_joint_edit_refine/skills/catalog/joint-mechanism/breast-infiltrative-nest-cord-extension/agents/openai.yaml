@@ -1,0 +1,4 @@
+interface:
+  display_name: "breast-infiltrative-nest-cord-extension"
+  short_description: "Plan a narrow certified Breast boundary extension."
+  default_prompt: "Use $breast-infiltrative-nest-cord-extension from mask certificates only; select IDs and the skill-owned narrow tool program."

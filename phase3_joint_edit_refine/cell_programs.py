@@ -347,6 +347,61 @@ class CellToolProgramCompiler:
                 mechanism_region = center_region.copy()
                 population_target_region = center_region.copy()
 
+        if (
+            primitive.scope == "cell_only"
+            and cell.baseline_mode == "structured_add"
+            and cell.interface_ids
+        ):
+            # Interface distance constrains the complete nucleus, not only its
+            # center.  Without this inward footprint margin, a legal center at
+            # the inner or outer annulus edge could paste several pixels into
+            # Tumor or beyond the declared extent.  Use the largest complete
+            # same-patch shape authorized for this action; the exact executor
+            # still performs per-shape containment afterward.
+            half_extents = []
+            for instance in scene.cells.instances:
+                if (
+                    instance.class_id not in effect_classes
+                    or instance.completeness_status != "complete"
+                    or instance.touches_border
+                    or instance.quality_flags
+                ):
+                    continue
+                shape = np.asarray(
+                    scene.instance_masks[instance.instance_id], dtype=bool
+                )
+                rows, cols = np.nonzero(shape)
+                if rows.size:
+                    center_row = 0.5 * (rows.min() + rows.max())
+                    center_col = 0.5 * (cols.min() + cols.max())
+                    half_extents.append(
+                        int(
+                            np.ceil(
+                                np.sqrt(
+                                    np.max(
+                                        (rows - center_row) ** 2
+                                        + (cols - center_col) ** 2
+                                    )
+                                )
+                            )
+                        )
+                    )
+            if not half_extents:
+                raise JointContractError(
+                    "structured interface addition lacks a complete source shape"
+                )
+            footprint_margin_px = max(1, max(half_extents))
+            center_region = ndimage.binary_erosion(
+                center_region,
+                structure=np.ones(
+                    (2 * footprint_margin_px + 1,) * 2,
+                    dtype=bool,
+                ),
+                border_value=0,
+            )
+            mechanism_region = center_region.copy()
+            population_target_region = center_region.copy()
+
         prohibited = tuple(bundle.annotation_profile.prohibit_cell_placement_fine_ids)
         valid = ~np.isin(target_tissue, prohibited)
         receiving_auxiliary = (

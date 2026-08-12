@@ -6,6 +6,8 @@ from __future__ import annotations
 # legacy primitive's pathology meaning: source/target labels, interfaces,
 # morphology and postconditions remain owned by the selected joint mechanism.
 TISSUE_TOOL_PRIMITIVE_ALIASES = {
+    "cohesive-boundary-expansion-v1": "tumor-burden-increase-v1",
+    "infiltrative-nest-cord-extension-v1": "tumor-burden-increase-v1",
     "invasive-front-expansion-v1": "tumor-burden-increase-v1",
     "invasive-tumor-footprint-decrease-v1": "tumor-burden-decrease-v1",
     "residual-tumor-fragmentation-v1": "tumor-burden-decrease-v1",

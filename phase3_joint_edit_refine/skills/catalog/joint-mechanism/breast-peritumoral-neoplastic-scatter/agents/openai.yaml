@@ -1,0 +1,4 @@
+interface:
+  display_name: "breast-peritumoral-neoplastic-scatter"
+  short_description: "Plan sparse peritumoral single-cell additions from masks."
+  default_prompt: "Use $breast-peritumoral-neoplastic-scatter only on an externally certified mask boundary and select IDs, never coordinates."

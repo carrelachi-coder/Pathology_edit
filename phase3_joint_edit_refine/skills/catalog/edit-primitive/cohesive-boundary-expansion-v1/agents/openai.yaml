@@ -1,0 +1,4 @@
+interface:
+  display_name: "cohesive-boundary-expansion-v1"
+  short_description: "Plan a certified external boundary expansion from semantic masks."
+  default_prompt: "Use $cohesive-boundary-expansion-v1 with a domain mechanism; select certified IDs only and never infer unannotated histology from H&E."

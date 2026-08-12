@@ -46,6 +46,51 @@ def save_planner_panels(
     return tuple(str(path) for path in (original_path, semantic_path, interface_path))
 
 
+def save_mask_planner_panels(
+    *,
+    mask: np.ndarray,
+    scene: SceneAnalysis,
+    output_dir: str | Path,
+) -> tuple[str, ...]:
+    """Write execution-planning panels without exposing the source H&E.
+
+    These panels are the only raster inputs permitted for interface/anchor
+    planning.  The tissue raster and deterministic scene graph are annotation
+    authorities; the Planner must not infer an unannotated structure from raw
+    histology.
+    """
+
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    semantic = id_mask_to_rgb(mask)
+    component = np.full_like(semantic, 24, dtype=np.uint8)
+    for index, item in enumerate(scene.graph.components):
+        region = scene.component_masks[item.component_id]
+        color = np.asarray(_indexed_color(index), dtype=np.uint8)
+        component[region] = np.clip(0.65 * semantic[region] + 0.35 * color, 0, 255)
+    interface = np.array(semantic, copy=True)
+    draw_image = Image.fromarray(interface)
+    draw = ImageDraw.Draw(draw_image)
+    for item in scene.graph.anchor_segments:
+        anchor = scene.anchor_masks[item.anchor_segment_id]
+        rows, cols = np.where(anchor)
+        color = _indexed_color(item.display_index - 1)
+        for row, col in zip(rows.tolist(), cols.tolist()):
+            if 0 <= col < draw_image.width and 0 <= row < draw_image.height:
+                draw.point((col, row), fill=color)
+        x0, y0, _, _ = item.bbox_xyxy
+        draw.text((x0, y0), f"A{item.display_index}", fill=color)
+    semantic_path = output / "planner_01_tissue_mask.png"
+    component_path = output / "planner_02_component_map.png"
+    interface_path = output / "planner_03_interface_anchor_map.png"
+    Image.fromarray(semantic).save(semantic_path)
+    Image.fromarray(component).save(component_path)
+    draw_image.save(interface_path)
+    return tuple(
+        str(path) for path in (semantic_path, component_path, interface_path)
+    )
+
+
 def save_critic_contact_sheet(
     *,
     image_path: str | Path,

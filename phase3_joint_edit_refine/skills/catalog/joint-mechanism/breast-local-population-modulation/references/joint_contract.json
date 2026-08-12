@@ -10,7 +10,7 @@
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
-  "summary": "Change a bounded local breast cell population while preserving ducts, lobules, tumor nests, stroma and adipose/non-tissue geometry.",
+  "summary": "Change a bounded local breast cell population inside one mask-defined tissue component while preserving every tissue label pixel-exactly.",
   "recognition_contract": {
     "required_observations": [
       "one explicit component population zone",
@@ -18,9 +18,9 @@
       "complete local source instances for removal or shape reference"
     ],
     "contraindications": [
-      "fat or retraction void used as a cell-bearing host",
-      "benign duct or lobule boundary crossed",
-      "DCIS/in-situ versus invasive identity unresolved",
+      "selected component has no compatible observed cell population",
+      "selected zone overlaps a protected annotation ID",
+      "fine-ID authority does not distinguish the requested invasive population",
       "target class not distinguishable in the observation schema"
     ],
     "minimum_confidence": 0.8
@@ -100,8 +100,12 @@
         ]
       },
       "neoplastic-cell-abundance-increase-v1": {
-        "source_labels": ["Tumor"],
-        "target_labels": ["Tumor"]
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
       }
     },
     "allowed_tools": [
@@ -111,12 +115,11 @@
       "tissue_gate_binding"
     ],
     "prohibited_structures": [
-      "duct_lumen",
-      "lobule_lumen",
       "vessel",
       "necrosis",
-      "adipose_void",
-      "retraction_cleft"
+      "normal_epithelium",
+      "other_tissue",
+      "collapsed_zero"
     ]
   },
   "cell_program": {
@@ -189,8 +192,8 @@
       "cell-type-abundance-increase-v1": "small_cluster",
       "cell-type-abundance-decrease-v1": "localized_density_gradient",
       "cellularity-increase-v1": "single",
-      "cellularity-decrease-v1": "localized_density_gradient"
-      ,"neoplastic-cell-abundance-increase-v1": "small_cluster"
+      "cellularity-decrease-v1": "localized_density_gradient",
+      "neoplastic-cell-abundance-increase-v1": "small_cluster"
     }
   },
   "coupling_contract": {
@@ -238,5 +241,42 @@
     "raising cellularity by filling adipose holes",
     "removing a contiguous epithelial rim",
     "calling all stromal nuclei immune cells"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "local_population_density"
+    ],
+    "selection_preferences": [
+      "prefer candidates with the largest safe executable capacity",
+      "prefer candidates with greater protected-label clearance and complete-instance capacity",
+      "prefer the smallest sufficient tool program"
+    ],
+    "clarification_triggers": [
+      "the instruction permits multiple materially different executable primitives"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

@@ -1,4 +1,4 @@
-"""Strict multimodal Planner/Critic adapters for the joint pipeline."""
+"""Strict mask-graph Planner/Critic adapters for the joint pipeline."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from phase3_mask_edit_refine.agents import OpenAIResponsesJSONClient
 from phase3_mask_edit_refine.models import EditPlan
 
 from .clarification import PlannerClarificationRequired
+from .feasibility import classify_tumor_stroma_boundary
 from .models import (
     CellEditPlan,
     CouplingPlan,
@@ -26,8 +27,23 @@ from .planner import (
     LOCAL_POPULATION_PRIMITIVES,
     JointInterpretationOption,
 )
+from .planner_inputs import validate_mask_planner_image_paths
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
+
+
+def _mask_planner_case_metadata(case: JointCaseContext) -> dict[str, Any]:
+    """Return case metadata without a raw histology locator.
+
+    The source-image digest remains part of the audit bundle, but the execution
+    Planner receives neither H&E pixels nor a path from which they could be
+    loaded. Tissue and nuclei locators remain because they are the declared
+    observation authority for this planning stage.
+    """
+
+    metadata = dict(case.to_metadata())
+    metadata.pop("source_image_uri", None)
+    return metadata
 
 
 @dataclass(frozen=True)
@@ -35,8 +51,8 @@ class OpenAIMultimodalJointPlanner:
     client: OpenAIResponsesJSONClient
     escalation_client: OpenAIResponsesJSONClient | None = None
     max_contract_attempts: int = 2
-    name: str = "openai_multimodal_joint_planner"
-    supports_pathology_vision: bool = True
+    name: str = "openai_mask_graph_joint_planner"
+    supports_pathology_vision: bool = False
 
     def select_interpretation(
         self,
@@ -46,25 +62,27 @@ class OpenAIMultimodalJointPlanner:
         options: Sequence[JointInterpretationOption],
         image_paths: Sequence[str | Path],
     ) -> tuple[str, str, dict[str, Any]]:
+        image_paths = validate_mask_planner_image_paths(image_paths)
         payload = {
-            "case": case.to_metadata(),
+            "case": _mask_planner_case_metadata(case),
             "scene": scene.to_metadata(),
             "available_interpretations": [
                 item.to_metadata() for item in options
             ],
             "requirements": {
                 "choose_only_listed_primitive_mechanism_pair": True,
-                "use_H&E_and_both_overlays": True,
-                "prefer_best_semantic_fit_that_is_visually_supported": True,
+                "use_only_mask_graph_and_candidate_certificate_inputs": True,
+                "prefer_best_semantic_fit_that_is_deterministically_supported": True,
                 "semantic_fit_is_a_prior_not_a_veto": True,
-                "contextual_option_may_win_when_visual_support_is_substantially_stronger": True,
+                "contextual_option_may_win_when_mask_graph_support_is_substantially_stronger": True,
                 "contextual_fit_requires_explicit_explanation": True,
                 "do_not_abstain_when_a_listed_option_is_supported": True,
-                "abstain_only_if_no_listed_option_has_required_visual_evidence": True,
-                "annotation_visual_veto_requirements_are_hard_visual_vetoes": True,
+                "abstain_only_if_no_listed_option_has_required_certificate_evidence": True,
                 "request_user_clarification_only_when_two_or_three_executable_primitives_remain_and_they_encode_materially_different_user_intent": True,
-                "do_not_request_clarification_for_tool_parameters_or_mechanisms_that_H&E_can_resolve": True,
+                "do_not_request_clarification_for_tool_parameters_owned_by_skills": True,
                 "do_not_infer_annotation_or_population_profile": True,
+                "source_H&E_is_prohibited_for_execution_planning": True,
+                "do_not_infer_unannotated_histology": True,
             },
         }
         available = {item.option_id: item for item in options}
@@ -72,25 +90,22 @@ class OpenAIMultimodalJointPlanner:
         for attempt, client in enumerate(self._contract_clients(), start=1):
             raw, usage = client.call(
                 system_prompt=(
-                    "You are the visual semantic-resolution and mechanism-selection stage of a "
-                    "joint pathology editor. The user's natural language may intentionally leave "
-                    "tumor increase underspecified. Select the most semantically faithful listed "
-                    "primitive-mechanism pair that is supported by H&E, tissue architecture, nuclei "
-                    "layout and deterministic feasibility. Semantic fit is a prior, not an absolute "
+                    "You are the mask-graph semantic-resolution and planning stage of a joint "
+                    "pathology editor. The user's natural language may intentionally leave tumor "
+                    "increase underspecified. Select the most semantically faithful listed "
+                    "primitive-mechanism pair supported by the tissue mask, nuclei mask, scene "
+                    "graph, skill rules, and deterministic candidate certificates. Semantic fit is "
+                    "a prior, not an absolute "
                     "ordering: a contextual interpretation may outrank a direct one when the patch "
-                    "supports it substantially better. A contextual interpretation such as tumor "
-                    "budding is allowed only when its required morphology is visibly supported and "
-                    "must be disclosed in interpretation_explanation. If two or three executable "
+                    "has substantially stronger certified mask support. If two or three executable "
                     "primitive meanings remain equally plausible but encode materially different "
-                    "user intent that H&E cannot recover, request user clarification and list only "
+                    "user intent that masks cannot recover, request user clarification and list only "
                     "those primitive IDs. Do not ask about numeric parameters, interfaces or a "
-                    "mechanism that H&E can resolve. Abstain only when none of the listed options "
-                    "is supportable. Do not output pixels, coordinates, counts or density "
-                    "multipliers. Treat every annotation_visual_veto_requirement in "
-                    "an option's deterministic feasibility payload as a hard visual "
-                    "contraindication for that option. In particular, a dataset label "
-                    "being numerically editable does not waive an obvious lumen, "
-                    "secretion, protected native structure, or other listed visual veto."
+                    "mechanism already resolved by skill rules and certificates. Abstain only when "
+                    "none of the listed options is supportable. Do not output pixels, coordinates, "
+                    "counts or density multipliers. Never infer invasive morphology, lumen, "
+                    "secretion, fibrosis, tumor bed, or another unannotated structure from raw H&E; "
+                    "raw H&E is not an execution-planning input."
                 ),
                 user_prompt=json.dumps(
                     {**payload, "previous_contract_errors": errors},
@@ -124,7 +139,7 @@ class OpenAIMultimodalJointPlanner:
             if raw.get("abstain") is True:
                 raise JointContractError(
                     "joint mechanism Planner abstained: "
-                    + str(raw.get("abstain_reason") or "insufficient visual evidence")
+                    + str(raw.get("abstain_reason") or "insufficient mask-graph evidence")
                 )
             try:
                 primitive_id = _required_string(raw, "primitive_id")
@@ -195,8 +210,9 @@ class OpenAIMultimodalJointPlanner:
         tissue_plan: EditPlan | None,
         image_paths: Sequence[str | Path],
     ) -> tuple[JointEditPlan, dict[str, Any]]:
+        image_paths = validate_mask_planner_image_paths(image_paths)
         payload = {
-            "case": case.to_metadata(),
+            "case": _mask_planner_case_metadata(case),
             "scene": scene.to_metadata(),
             "selected_mechanism": bundle.to_metadata(),
             "mechanism_contract": {
@@ -206,13 +222,14 @@ class OpenAIMultimodalJointPlanner:
                 "cell_program": asdict(bundle.mechanism.cell_program),
                 "coupling": asdict(bundle.mechanism.coupling),
                 "render": asdict(bundle.mechanism.render),
+                "planner_policy": asdict(bundle.mechanism.planner_policy),
             },
             "compiled_tissue_plan": (
                 tissue_plan.to_metadata() if tissue_plan is not None else None
             ),
             "primitive_contract": asdict(bundle.primitive),
             "requirements": {
-                "accept_only_if_tissue_plan_matches_visible_mechanism": True,
+                "accept_only_if_tissue_plan_matches_skill_and_candidate_certificate": True,
                 "cell_plan_is_required_even_when_policy_is_retain": True,
                 "cite_only_active_rule_ids": True,
                 "select_only_skill_allowed_layout": True,
@@ -229,22 +246,26 @@ class OpenAIMultimodalJointPlanner:
                 ),
                 "select_interface_and_anchor_ids_not_coordinates": True,
                 "local_population_primitives_select_component_population_zone": True,
-                "cellularity_decrease_requires_visible_interface_anchor_and_density_gradient": (
+                "cellularity_decrease_requires_mask_graph_interface_anchor_and_density_gradient": (
                     case.primitive_id == "cellularity-decrease-v1"
                 ),
                 "choose_baseline_and_mechanism_program_separately": True,
+                "source_H&E_is_prohibited_for_execution_planning": True,
+                "do_not_infer_unannotated_histology": True,
             },
         }
         errors = []
         for attempt, client in enumerate(self._contract_clients(), start=1):
             raw, usage = client.call(
                 system_prompt=(
-                    "You are a multimodal joint pathology edit Planner. Review the already compiled "
-                    "deterministic tissue interface plan (or an explicit preserve-tissue contract) "
-                    "together with H&E and nuclei. Output a tissue binding, cell intent and coupling "
+                    "You are a mask-graph joint pathology edit Planner. Review the already compiled "
+                    "deterministic tissue interface plan (or an explicit preserve-tissue contract), "
+                    "the tissue/nuclei masks, scene graph, candidate certificate, and skill policy. "
+                    "Output a tissue binding, cell intent and coupling "
                     "intent. The Semantic Parser already owns the immutable user intent; do not "
                     "reinterpret it. Deterministic tools own every pixel, coordinate, count and "
-                    "numeric spatial parameter. Use the explicit abstain field instead of guessing."
+                    "numeric spatial parameter. Do not infer unannotated pathology from H&E. Use "
+                    "the explicit abstain field instead of guessing."
                 ),
                 user_prompt=json.dumps(
                     {**payload, "previous_contract_errors": errors},
@@ -318,6 +339,23 @@ class OpenAIMultimodalJointPlanner:
                     "joint Planner selected unknown cell interfaces: "
                     + ", ".join(sorted(unknown))
                 )
+            if (
+                "external_boundary_binding"
+                in bundle.mechanism.planner_policy.hard_constraint_checker_ids
+            ):
+                non_external = [
+                    interface_id
+                    for interface_id in bound_interfaces
+                    if not classify_tumor_stroma_boundary(
+                        scene=scene,
+                        interface=known_interfaces[interface_id],
+                    )["external_tumor_stroma_boundary"]
+                ]
+                if non_external:
+                    raise JointContractError(
+                        "joint Planner selected an internal or non-Tumor--Stroma interface: "
+                        + ", ".join(sorted(non_external))
+                    )
             if not local_population:
                 host = set(bundle.primitive.host_tissue_labels)
                 incompatible = [
@@ -633,10 +671,11 @@ class OpenAIMultimodalJointPlanner:
 @dataclass(frozen=True)
 class OpenAIMultimodalJointCritic:
     client: OpenAIResponsesJSONClient
-    name: str = "openai_multimodal_joint_critic"
-    supports_pathology_vision: bool = True
+    name: str = "openai_mask_condition_critic"
+    supports_pathology_vision: bool = False
 
     def review(self, *, case, bundle, candidates, gate_reports, image_paths):
+        image_paths = validate_mask_planner_image_paths(image_paths)
         passed_ids = [item.candidate_id for item in gate_reports if item.passed]
         payload = {
             "case": {
@@ -658,30 +697,25 @@ class OpenAIMultimodalJointCritic:
                 bundle.mechanism.render.vetoes_for(case.primitive_id)
             ),
             "render_only_claims": list(bundle.mechanism.render.render_only_claims),
-            "annotation_visual_veto_requirements": list(
-                bundle.annotation_profile.visual_veto_requirements
-            ),
             "annotation_operational_stroma_policy": (
                 bundle.annotation_profile.operational_stroma_policy
             ),
+            "planner_policy": asdict(bundle.mechanism.planner_policy),
             "requirements": {
                 "rank_only_gate_passing_candidates": True,
                 "review_tissue_and_nuclei_as_one_condition": True,
                 "do_not_restore_gate_failures": True,
-                "veto_if_mechanism_is_not_visually_supported": True,
-                "apply_annotation_visual_veto_requirements_to_every_candidate": True,
+                "veto_if_condition_violates_skill_or_certificate": True,
+                "source_H&E_is_prohibited": True,
             },
         }
         raw, usage = self.client.call(
             system_prompt=(
-                "You are an independent multimodal pathology critic. You receive no Planner "
+                "You are an independent mask-condition critic. You receive no Planner "
                 "free-form reasoning. Rank only deterministic-gate-passing joint candidates, "
-                "considering tissue geometry, complete nuclei layouts, their coupling and the "
-                "original H&E. A hard-gate failure can never be waived. Annotation-profile "
-                "visual veto requirements are also mandatory: reject a candidate whose "
-                "edited support contains an obvious lumen, secretion-like material, "
-                "protected native structure, or any other listed visual contraindication, "
-                "even when its numeric tissue label is operationally editable."
+                "considering tissue geometry, complete nuclei layouts, their coupling, skill "
+                "preferences, and deterministic certificates. A hard-gate failure can never be "
+                "waived. Raw H&E is prohibited and you must not diagnose an unannotated structure."
             ),
             user_prompt=json.dumps(payload, ensure_ascii=False, sort_keys=True),
             image_paths=image_paths,

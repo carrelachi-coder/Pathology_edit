@@ -1,0 +1,26 @@
+{
+  "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+  "version": "1.0.0-research",
+  "review_status": "draft",
+  "scope": "cell_only",
+  "summary": "Add sparse complete class-1 neoplastic nuclei to a certified outer Tumor--host annulus without changing tissue labels.",
+  "tissue_action": "forbidden",
+  "budget_mode": "count_extent",
+  "allowed_baseline_modes": ["structured_add"],
+  "allowed_quota_roles": ["explicit_increment"],
+  "host_tissue_labels": ["Stroma"],
+  "target_cell_classes": [1],
+  "cell_effect_contract": {"minimum_delta_count": 4, "minimum_span_cell_diameters": 4.0, "minimum_foci": 3},
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "whole_instance_changes",
+    "external_boundary_binding",
+    "peritumoral_annulus",
+    "no_remote_neoplastic_focus",
+    "no_solid_neoplastic_bridge",
+    "local_shape_distribution",
+    "cell_zone_localization",
+    "mechanism_realization"
+  ]
+}

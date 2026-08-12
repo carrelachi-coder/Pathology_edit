@@ -123,8 +123,9 @@ python scripts/run_joint_edit_refine.py \
 ```
 
 The decision is bound to the instruction and all source/auxiliary digests. It
-locks only the primitive; the visual Planner still selects the compatible
-mechanism and interfaces. Changed inputs or capability options invalidate the
+locks only the primitive; the mask-graph Planner still selects the compatible
+mechanism and certified interfaces from tissue/nuclei observations. Changed
+inputs or capability options invalidate the
 answer instead of silently replaying it.
 
 An approved candidate emits `generation_handoff/manifest.json` plus target

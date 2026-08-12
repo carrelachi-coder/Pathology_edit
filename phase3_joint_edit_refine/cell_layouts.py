@@ -19,7 +19,12 @@ from .executable_contract import ExecutableJointContract
 from .models import JointContractError, JointEditPlan
 from .nuclei import normalize_nuclei_mask
 from .scene import JointSceneAnalysis
-from .seam import anchor_coverage_fraction, class_center_mask
+from .seam import (
+    anchor_coverage_fraction,
+    class_center_mask,
+    compile_continuity_center_quota,
+    compile_executable_continuity_count,
+)
 from .skills.repository import JointSkillBundle
 
 LAYOUT_TOOL_VERSION = "joint-cell-layout-v3"
@@ -285,14 +290,60 @@ def generate_cell_layouts(
                 tissue_ids=_target_tissue_ids(plan.tissue_plan.target_label, schema),
             )
         replacement_count = round(np.count_nonzero(legal_core) * source_density)
-        replacement_count = max(
-            replacement_count, len(removed_ids) if removed_ids else 1
-        )
+        # Source-cell clearance and target-population synthesis are separate
+        # actions. A Stroma-to-Tumor transition may remove many stromal nuclei
+        # but must regenerate the neoplastic population at the observed target
+        # density; one-for-one replacement caused systematic overpopulation.
+        replacement_count = max(replacement_count, 1)
         reserve_count = round(
             allocation.reserved_layout_halo_pixels / max(1.0, average_area)
         )
         if not np.any(halo):
             reserve_count = 0
+    source_density_requested_count = replacement_count
+    continuity_quota = None
+    preferred_seam_count = 0
+    if bundle.primitive.scope == "tissue_and_cell":
+        continuity_quota = compile_continuity_center_quota(
+            nuclei_mask=base,
+            target_tissue_mask=target_tissue,
+            tissue_change=np.asarray(tissue_candidate.change_region, dtype=bool),
+            continuity_region=compiled_program.continuity_region,
+            continuity_anchor_mask=compiled_program.continuity_anchor_mask,
+            continuity_width_px=compiled_program.continuity_width_px,
+            density_ratio_range=compiled_program.continuity_density_ratio_range,
+            requires_new_target_cells=(
+                compiled_program.continuity_requires_new_target_cells
+            ),
+            target_class=target_class,
+            target_fine_ids=_target_tissue_ids(
+                plan.tissue_plan.target_label,
+                schema,
+            ),
+        )
+        preferred_seam_count = compile_executable_continuity_count(
+            continuity_quota,
+            anchor_pixels=int(
+                np.count_nonzero(compiled_program.continuity_anchor_mask)
+            ),
+            maximum_empty_run_px=(
+                compiled_program.continuity_maximum_empty_run_px
+            ),
+            minimum_anchor_coverage_fraction=(
+                compiled_program.continuity_minimum_anchor_coverage_fraction
+            ),
+        )
+        if (
+            continuity_quota.maximum_count is not None
+            and np.all(
+                ~legal_core
+                | np.asarray(compiled_program.continuity_region, dtype=bool)
+            )
+        ):
+            replacement_count = min(
+                replacement_count,
+                int(continuity_quota.maximum_count),
+            )
     biological_replacement_count = replacement_count
     biological_reserve_count = reserve_count
     biological_desired_count = replacement_count + reserve_count
@@ -341,6 +392,10 @@ def generate_cell_layouts(
             continuity_maximum_empty_run_px=(
                 compiled_program.continuity_maximum_empty_run_px
             ),
+            continuity_minimum_anchor_coverage_fraction=(
+                compiled_program.continuity_minimum_anchor_coverage_fraction
+            ),
+            continuity_preferred_count=preferred_seam_count,
             minimum_effect_span_px=0,
             minimum_effect_foci=0,
             seed=seed + variant * 104729,
@@ -375,6 +430,8 @@ def generate_cell_layouts(
             continuity_region=np.zeros_like(halo),
             continuity_anchor_mask=np.zeros_like(halo),
             continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
             minimum_effect_span_px=compiled_program.minimum_effect_span_px,
             minimum_effect_foci=compiled_program.minimum_effect_foci,
             seed=seed + variant * 104729 + 8191,
@@ -416,6 +473,9 @@ def generate_cell_layouts(
                     # mistaken for an execution failure.
                     "biological_desired_count": biological_desired_count,
                     "biological_replacement_count": biological_replacement_count,
+                    "source_density_requested_count": (
+                        source_density_requested_count
+                    ),
                     "biological_halo_count": biological_reserve_count,
                     "geometric_capacity_estimate": capacity_bound,
                     "desired_count": biological_desired_count,
@@ -769,6 +829,8 @@ def _build_multiclass_addition_results(
                 continuity_region=np.zeros_like(class_zone),
                 continuity_anchor_mask=np.zeros_like(class_zone),
                 continuity_maximum_empty_run_px=0,
+                continuity_minimum_anchor_coverage_fraction=0.0,
+                continuity_preferred_count=0,
                 minimum_effect_span_px=0,
                 minimum_effect_foci=0,
                 seed=seed + variant * 104729 + offset * 8191,
@@ -1122,6 +1184,8 @@ def _place_layout(
     continuity_region,
     continuity_anchor_mask,
     continuity_maximum_empty_run_px,
+    continuity_minimum_anchor_coverage_fraction,
+    continuity_preferred_count,
     minimum_effect_span_px,
     minimum_effect_foci,
     seed,
@@ -1164,6 +1228,13 @@ def _place_layout(
                 1,
                 int(continuity_maximum_empty_run_px),
             ),
+            minimum_anchor_coverage_fraction=float(
+                continuity_minimum_anchor_coverage_fraction
+            ),
+            maximum_preferred_count=min(
+                requested_count,
+                max(1, int(continuity_preferred_count)),
+            ),
         )
         anchors = _effect_first_anchors(
             anchors,
@@ -1187,6 +1258,7 @@ def _place_layout(
     while placed < requested_count and anchor_index < len(anchors):
         ay, ax = (int(v) for v in anchors[anchor_index])
         anchor_index += 1
+        remaining_count = requested_count - placed
         offsets = _layout_offsets(
             layout_program,
             effective_cluster_range,
@@ -1197,7 +1269,22 @@ def _place_layout(
             nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
             seed=seed,
         )
+        if layout_program in {"pair", "small_cluster", "short_cord"}:
+            minimum_group_size = max(1, int(effective_cluster_range[0]))
+            maximum_group_size = max(
+                minimum_group_size,
+                int(effective_cluster_range[1]),
+            )
+            if remaining_count < minimum_group_size:
+                break
+            offsets = offsets[: min(len(offsets), remaining_count, maximum_group_size)]
+            leftover = remaining_count - len(offsets)
+            if 0 < leftover < minimum_group_size:
+                shrink_by = minimum_group_size - leftover
+                if len(offsets) - shrink_by >= minimum_group_size:
+                    offsets = offsets[:-shrink_by]
         group_start = len(placement_trace)
+        group_footprints: list[tuple[int, int, int, int, np.ndarray]] = []
         group_id = f"cluster-{anchor_index:04d}"
         for dy, dx in offsets:
             if placed >= requested_count:
@@ -1255,6 +1342,7 @@ def _place_layout(
             target_view = target[y0:y1, x0:x1]
             target_view[shape] = class_id
             occupied[y0:y1, x0:x1] |= shape
+            group_footprints.append((y0, y1, x0, x1, shape))
             placement_trace.append(
                 {
                     "center_xy": [cx, cy],
@@ -1282,6 +1370,20 @@ def _place_layout(
             )
             placed += 1
         actual_cluster_size = len(placement_trace) - group_start
+        if (
+            layout_program in {"pair", "small_cluster", "short_cord"}
+            and actual_cluster_size < int(effective_cluster_range[0])
+        ):
+            # Pair/cluster/cord semantics are atomic.  A partially fitting
+            # template must not silently become one or more isolated cells.
+            # Every committed footprint was collision-free against the source,
+            # so clearing these trial pixels exactly restores the prior state.
+            for y0, y1, x0, x1, shape in group_footprints:
+                target[y0:y1, x0:x1][shape] = 0
+                occupied[y0:y1, x0:x1][shape] = False
+            del placement_trace[group_start:]
+            placed -= actual_cluster_size
+            continue
         for item in placement_trace[group_start:]:
             item["cluster_size"] = actual_cluster_size
     return target, placed, placement_trace
@@ -1366,8 +1468,16 @@ def _continuity_first_anchors(
     continuity_region: np.ndarray,
     continuity_anchor_mask: np.ndarray,
     maximum_empty_run_px: int,
+    minimum_anchor_coverage_fraction: float,
+    maximum_preferred_count: int,
 ) -> np.ndarray:
-    """Prioritize distributed, anchor-covering centers without a count quota."""
+    """Prioritize distributed seam centers without overpopulating the seam.
+
+    The seam contract requires sufficient anchor coverage, but that does not
+    authorize every sampled anchor neighborhood to receive a new nucleus. The
+    density compiler and exact packing certificate own the finite seam quota.
+    Extra target-population cells may still use the rest of the changed core.
+    """
 
     if not np.any(continuity_region) or not np.any(continuity_anchor_mask):
         return default_order
@@ -1405,14 +1515,40 @@ def _continuity_first_anchors(
         preferred_indices.append(region_indices[chosen])
     if not preferred_indices:
         return default_order
+    # Mirror the hard geometric lower edge used by the seam compiler. This is
+    # intentionally independent of tissue type and never asks the LLM for a
+    # cell count.
+    required = max(
+        1,
+        int(
+            np.ceil(
+                np.count_nonzero(continuity_anchor_mask)
+                * float(
+                    np.clip(minimum_anchor_coverage_fraction, 0.0, 1.0)
+                )
+                / max(1, 2 * int(maximum_empty_run_px) + 1)
+            )
+        ),
+    )
+    preferred_indices = preferred_indices[
+        : max(required, int(maximum_preferred_count))
+    ]
     preferred = coords[np.asarray(preferred_indices, dtype=int)]
     preferred_set = {tuple(value) for value in preferred.tolist()}
+    non_seam_remainder = []
+    seam_remainder = []
+    for value in default_order.tolist():
+        key = tuple(value)
+        if key in preferred_set:
+            continue
+        target = (
+            seam_remainder
+            if continuity_region[int(value[0]), int(value[1])]
+            else non_seam_remainder
+        )
+        target.append(value)
     remainder = np.asarray(
-        [
-            value
-            for value in default_order.tolist()
-            if tuple(value) not in preferred_set
-        ],
+        [*non_seam_remainder, *seam_remainder],
         dtype=int,
     )
     return (

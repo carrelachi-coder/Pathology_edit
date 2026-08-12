@@ -23,7 +23,7 @@ from phase3_mask_edit_refine.models import (
     RefineContractError,
 )
 from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
-from phase3_mask_edit_refine.visualization import save_planner_panels
+from phase3_mask_edit_refine.visualization import save_mask_planner_panels
 
 from .audit import JointAuditWriter
 from .auxiliary import materialize_profile_auxiliaries
@@ -199,14 +199,12 @@ class JointPathologyEditWorkflow:
                 "source_instance_authority.json",
                 build_scene_instance_authority(scene, source_nuclei),
             )
-            tissue_panels = save_planner_panels(
-                image_path=case.source_image_uri,
+            tissue_panels = save_mask_planner_panels(
                 mask=source_tissue,
                 scene=scene.tissue,
                 output_dir=audit.case_dir / "planner_panels",
             )
-            joint_overlay = audit.write_source_joint_overlay(
-                source_image_path=case.source_image_uri,
+            joint_overlay = audit.write_mask_planner_overlay(
                 source_tissue=source_tissue,
                 source_nuclei=source_nuclei,
             )
@@ -375,7 +373,7 @@ class JointPathologyEditWorkflow:
                     "semantic_resolution.json",
                     {
                         **resolution_base,
-                        "status": "visual_resolution_abstained",
+                        "status": "mask_graph_resolution_abstained",
                         "selected_option_id": None,
                         "selection": None,
                         "abstain_reason": str(exc),
@@ -1176,6 +1174,11 @@ class JointPathologyEditWorkflow:
                 source_nuclei=source_nuclei,
                 candidates=candidates,
             )
+            mask_review_board = audit.write_mask_review_board(
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                candidates=candidates,
+            )
             usage["tissue_planner"] = {
                 "passes": tissue_pass_usage,
                 "budget_revisions": budget_revisions,
@@ -1201,12 +1204,12 @@ class JointPathologyEditWorkflow:
                 bundle=bundle,
                 candidates=passing_joint,
                 gate_reports=joint_reports,
-                image_paths=(case.source_image_uri, review_board),
+                image_paths=(mask_review_board,),
             )
             usage["critic"] = critic_result.usage
             audit.write_json("joint_critic.json", critic_result.to_metadata())
             if critic_result.abstain or not critic_result.rankings:
-                reasons.append("independent_multimodal_critic_approval_required")
+                reasons.append("independent_mask_condition_critic_approval_required")
                 return self._finish(
                     audit=audit,
                     case=case,
@@ -1319,9 +1322,9 @@ class JointPathologyEditWorkflow:
         schema,
         scene,
     ) -> tuple[dict[str, _PreparedInterpretation], dict[str, str]]:
-        """Compile every semantic hypothesis before visual disambiguation.
+        """Compile every semantic hypothesis before mask-graph disambiguation.
 
-        The visual Planner only sees primitive--mechanism pairs that already
+        The mask-graph Planner only sees primitive--mechanism pairs that already
         satisfy the four knowledge axes and deterministic tissue/nucleus
         preflight. This allows a contextual interpretation to remain available
         when the direct interpretation is physically impossible, without
@@ -1403,7 +1406,11 @@ class JointPathologyEditWorkflow:
                 and primitive_contract.scope == "cell_only"
                 and candidate_case.cell_count_extent_budget is None
             ):
-                if primitive_id == "neoplastic-microinfiltration-increase-v1":
+                if primitive_id in {
+                    "neoplastic-microinfiltration-increase-v1",
+                    "peritumoral-neoplastic-scatter-increase-v1",
+                    "peritumoral-small-cluster-increase-v1",
+                }:
                     budget, budget_metadata = _derive_infiltration_budget(scene)
                 else:
                     budget, budget_metadata = _derive_local_population_budget(
@@ -1619,7 +1626,11 @@ class JointPathologyEditWorkflow:
                             )
                         if (
                             primitive_id
-                            == "neoplastic-microinfiltration-increase-v1"
+                            in {
+                                "neoplastic-microinfiltration-increase-v1",
+                                "peritumoral-neoplastic-scatter-increase-v1",
+                                "peritumoral-small-cluster-increase-v1",
+                            }
                         ):
                             label_contract = (
                                 bundle.mechanism.tissue_program.primitive_label_contracts[
@@ -1629,15 +1640,8 @@ class JointPathologyEditWorkflow:
                             receiving_labels = set(
                                 label_contract["source_labels"]
                             )
-                            interface_pairs = {
-                                tuple(
-                                    sorted(
-                                        (
-                                            interface.source_component_id,
-                                            interface.target_component_id,
-                                        )
-                                    )
-                                )
+                            compatible_interfaces = [
+                                interface
                                 for interface in scene.tissue.graph.interfaces
                                 if "Tumor"
                                 in {
@@ -1651,6 +1655,31 @@ class JointPathologyEditWorkflow:
                                     }
                                     - {"Tumor"}
                                 ).intersection(receiving_labels)
+                            ]
+                            if (
+                                "external_boundary_binding"
+                                in bundle.mechanism.planner_policy.hard_constraint_checker_ids
+                            ):
+                                from .feasibility import classify_tumor_stroma_boundary
+
+                                compatible_interfaces = [
+                                    interface
+                                    for interface in compatible_interfaces
+                                    if classify_tumor_stroma_boundary(
+                                        scene=scene,
+                                        interface=interface,
+                                    )["external_tumor_stroma_boundary"]
+                                ]
+                            interface_pairs = {
+                                tuple(
+                                    sorted(
+                                        (
+                                            interface.source_component_id,
+                                            interface.target_component_id,
+                                        )
+                                    )
+                                )
+                                for interface in compatible_interfaces
                             }
                             if not interface_pairs:
                                 raise JointContractError(
@@ -1659,6 +1688,10 @@ class JointPathologyEditWorkflow:
                             feasibility[
                                 "candidate_infiltration_interface_count"
                             ] = len(interface_pairs)
+                            feasibility["external_boundary_required"] = (
+                                "external_boundary_binding"
+                                in bundle.mechanism.planner_policy.hard_constraint_checker_ids
+                            )
                         feasibility["complete_reference_instances"] = int(
                             complete_references
                         )
@@ -2019,6 +2052,11 @@ class JointPathologyEditWorkflow:
             source_nuclei=source_nuclei,
             candidates=candidates,
         )
+        audit.write_mask_review_board(
+            source_tissue=source_tissue,
+            source_nuclei=source_nuclei,
+            candidates=candidates,
+        )
         return (
             candidates,
             joint_reports,
@@ -2232,6 +2270,11 @@ class JointPathologyEditWorkflow:
             source_nuclei=source_nuclei,
             candidates=candidates,
         )
+        mask_review_board = audit.write_mask_review_board(
+            source_tissue=source_tissue,
+            source_nuclei=source_nuclei,
+            candidates=candidates,
+        )
         passing = [
             candidate
             for candidate in candidates
@@ -2250,7 +2293,7 @@ class JointPathologyEditWorkflow:
             bundle=bundle,
             candidates=passing,
             gate_reports=reports,
-            image_paths=(case.source_image_uri, review_board),
+            image_paths=(mask_review_board,),
         )
         usage["critic"] = critic.usage
         audit.write_json("joint_critic.json", critic.to_metadata())
@@ -2262,7 +2305,7 @@ class JointPathologyEditWorkflow:
                 reports=reports,
                 critic=critic,
                 status="review_required",
-                reasons=("independent_multimodal_critic_approval_required",),
+                reasons=("independent_mask_condition_critic_approval_required",),
                 selected=None,
                 condition=None,
                 usage=usage,
@@ -2650,7 +2693,7 @@ def _derive_infiltration_budget(
 
     This policy is deterministic and auditable. It uses source complete-nucleus
     scale plus the amount of visible tumor/non-tumor interface; neither the
-    Semantic Parser nor the visual Planner is allowed to invent a cell count.
+    Semantic Parser nor the mask-graph Planner is allowed to invent a cell count.
     """
 
     complete_areas = [

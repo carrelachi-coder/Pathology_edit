@@ -1,0 +1,4 @@
+interface:
+  display_name: "infiltrative-nest-cord-extension-v1"
+  short_description: "Plan a narrow annotation-anchored tumor extension."
+  default_prompt: "Use $infiltrative-nest-cord-extension-v1 only on certified external mask boundaries and select a skill-allowed narrow tool program."

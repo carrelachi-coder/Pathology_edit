@@ -1,48 +1,242 @@
 {
   "mechanism_id": "breast-post-treatment-residual-neoplastic-depletion",
   "pathology_domain_id": "breast-invasive-carcinoma-v1",
-  "supported_primitives": ["neoplastic-cell-abundance-decrease-v1"],
-  "version": "1.0.0-draft", "review_status": "draft",
+  "supported_primitives": [
+    "neoplastic-cell-abundance-decrease-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
   "summary": "Model a local post-treatment decrease of viable residual neoplastic cellularity while preserving tumor tissue geometry and every non-target population.",
   "recognition_contract": {
-    "required_observations": ["explicit post-treatment scenario", "existing invasive Tumor fine ID 1", "at least twelve complete observable class-1 instances over a meaningful bounded extent"],
-    "contraindications": ["request for tissue shrinkage", "DCIS versus invasive identity unresolved", "insufficient complete class-1 instances", "all-cell depletion requested"],
+    "required_observations": [
+      "explicit post-treatment scenario",
+      "existing invasive Tumor fine ID 1",
+      "at least twelve complete observable class-1 instances over a meaningful bounded extent"
+    ],
+    "contraindications": [
+      "request for tissue shrinkage",
+      "fine ID 1 versus protected DCIS 14 or angioinvasion 15 identity is unavailable",
+      "insufficient complete class-1 instances",
+      "all-cell depletion requested"
+    ],
     "minimum_confidence": 0.85
   },
-  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [1], "required_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
   "tissue_program": {
     "mode": "preserve_invasive_tissue_select_class1_population_zone",
     "target_component_merge_policy": "forbid",
-    "front_contract": {"profile_mode": "tapered_lobe", "edge_depth_ratio": 0.5, "taper_fraction": 0.2, "lobe_count": 1, "noise_depth_ratio": 0, "maximum_band_px": 1, "maximum_depth_span_ratio": 1, "maximum_boundary_compactness": 5, "directional_sector_required": false, "maximum_selected_anchor_fraction": 1, "minimum_unselected_anchor_count": 0},
+    "front_contract": {
+      "profile_mode": "tapered_lobe",
+      "edge_depth_ratio": 0.5,
+      "taper_fraction": 0.2,
+      "lobe_count": 1,
+      "noise_depth_ratio": 0,
+      "maximum_band_px": 1,
+      "maximum_depth_span_ratio": 1,
+      "maximum_boundary_compactness": 5,
+      "directional_sector_required": false,
+      "maximum_selected_anchor_fraction": 1,
+      "minimum_unselected_anchor_count": 0
+    },
     "topology_fallback_by_primitive": {},
-    "primitive_label_contracts": {"neoplastic-cell-abundance-decrease-v1": {"source_labels": ["Tumor"], "target_labels": ["Tumor"]}},
-    "allowed_tools": ["preserve_tissue"], "required_checker_ids": ["tissue_gate_binding"],
-    "prohibited_structures": ["duct_lumen", "lobule_lumen", "vessel", "necrosis", "adipose_void", "retraction_cleft"]
+    "primitive_label_contracts": {
+      "neoplastic-cell-abundance-decrease-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "preserve_tissue"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding"
+    ],
+    "prohibited_structures": [
+      "vessel",
+      "necrosis",
+      "normal_epithelium",
+      "other_tissue",
+      "collapsed_zero"
+    ]
   },
   "cell_program": {
-    "actions": ["retain", "remove_whole"], "allowed_cell_classes": [1],
-    "layout_programs": ["localized_density_gradient"],
+    "actions": [
+      "retain",
+      "remove_whole"
+    ],
+    "allowed_cell_classes": [
+      1
+    ],
+    "layout_programs": [
+      "localized_density_gradient"
+    ],
     "core_policy": "remove only complete class-1 instances selected by the source-density field",
     "halo_policy": "preserve every non-class1 and every exterior instance pixel-exactly",
-    "halo_distance_px": [0, 56], "cluster_size_range": [1, 1],
-    "seam_contract": {"mode": "not_applicable", "width_cell_diameters": [0.5, 1], "reference_area_quantiles": [0.25, 0.75], "maximum_empty_run_cell_diameters": 3, "density_ratio_range": [0.2, 3], "minimum_anchor_coverage_fraction": 0, "requires_new_target_cells": false},
-    "cellularity_depletion_contract": {
-      "program_id": "localized-neoplastic-density-gradient-v1", "resolution_mode": "density_field", "allowed_anchor_types": ["interface"], "allowed_neighbor_labels": ["Stroma", "Immune infiltrate", "Necrosis"],
-      "core_width_cell_diameters": 1.5, "transition_width_cell_diameters": 4, "outer_reference_width_cell_diameters": 1.5,
-      "core_removal_weight": 1, "transition_removal_weight": 0.45, "core_target_removal_fraction": 0.55, "transition_start_removal_fraction": 0.42, "transition_end_removal_fraction": 0.1, "transition_subband_count": 4,
-      "minimum_core_residual_fraction": 0.3, "minimum_transition_residual_fraction": 0.5, "minimum_core_removals": 3, "minimum_transition_removals": 3, "maximum_new_gap_cell_diameters": 3, "minimum_outer_reference_instances": 3, "minimum_field_area_cell_diameter_squares": 80
+    "halo_distance_px": [
+      0,
+      56
+    ],
+    "cluster_size_range": [
+      1,
+      1
+    ],
+    "seam_contract": {
+      "mode": "not_applicable",
+      "width_cell_diameters": [
+        0.5,
+        1
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 3,
+      "density_ratio_range": [
+        0.2,
+        3
+      ],
+      "minimum_anchor_coverage_fraction": 0,
+      "requires_new_target_cells": false
     },
-    "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density", "cellularity_depletion_gradient"],
-    "layout_program_by_primitive": {"neoplastic-cell-abundance-decrease-v1": "localized_density_gradient"}
+    "cellularity_depletion_contract": {
+      "program_id": "localized-neoplastic-density-gradient-v1",
+      "resolution_mode": "density_field",
+      "allowed_anchor_types": [
+        "interface"
+      ],
+      "allowed_neighbor_labels": [
+        "Stroma",
+        "Immune infiltrate",
+        "Necrosis"
+      ],
+      "core_width_cell_diameters": 1.5,
+      "transition_width_cell_diameters": 4,
+      "outer_reference_width_cell_diameters": 1.5,
+      "core_removal_weight": 1,
+      "transition_removal_weight": 0.45,
+      "core_target_removal_fraction": 0.55,
+      "transition_start_removal_fraction": 0.42,
+      "transition_end_removal_fraction": 0.1,
+      "transition_subband_count": 4,
+      "minimum_core_residual_fraction": 0.3,
+      "minimum_transition_residual_fraction": 0.5,
+      "minimum_core_removals": 3,
+      "minimum_transition_removals": 3,
+      "maximum_new_gap_cell_diameters": 3,
+      "minimum_outer_reference_instances": 3,
+      "minimum_field_area_cell_diameter_squares": 80
+    },
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_population_density",
+      "cellularity_depletion_gradient"
+    ],
+    "layout_program_by_primitive": {
+      "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient"
+    }
   },
-  "coupling_contract": {"compatibility_rule_ids": ["breast.response.post_treatment_context", "breast.response.class1_only_depletion", "breast.response.tissue_pixel_exact"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "cell_count_extent", "tissue_floor_applies": false, "cell_only_target_fraction": 1, "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"},
-  "joint_gate_ids": ["cell_tissue_compatibility", "cell_zone_localization", "joint_provenance", "local_population_density", "cellularity_depletion_gradient", "mechanism_postcondition:breast-post-treatment-residual-neoplastic-depletion"],
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "breast.response.post_treatment_context",
+      "breast.response.class1_only_depletion",
+      "breast.response.tissue_pixel_exact"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "cell_count_extent",
+    "tissue_floor_applies": false,
+    "cell_only_target_fraction": 1,
+    "render_support_policy_id": "bounded_population_zone_plus_cell_context_v1"
+  },
+  "joint_gate_ids": [
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "local_population_density",
+    "cellularity_depletion_gradient",
+    "mechanism_postcondition:breast-post-treatment-residual-neoplastic-depletion"
+  ],
   "render_contract": {
-    "required_findings": ["lower viable neoplastic cellularity in a bounded residual tumor field", "tissue architecture and non-target populations remain stable"],
-    "veto_findings": ["all cell classes decrease together", "random empty cellular hole", "tissue footprint changes", "pCR or RCB claim"],
-    "mask_guarantees": ["tissue mask unchanged", "only complete class-1 instances removed", "smooth spatial depletion gradient with retained residual class-1 cells"],
-    "render_only_claims": ["specific therapy effect", "degree of response", "pCR or RCB"]
+    "required_findings": [
+      "lower viable neoplastic cellularity in a bounded residual tumor field",
+      "tissue architecture and non-target populations remain stable"
+    ],
+    "veto_findings": [
+      "all cell classes decrease together",
+      "random empty cellular hole",
+      "tissue footprint changes",
+      "pCR or RCB claim"
+    ],
+    "mask_guarantees": [
+      "tissue mask unchanged",
+      "only complete class-1 instances removed",
+      "smooth spatial depletion gradient with retained residual class-1 cells"
+    ],
+    "render_only_claims": [
+      "specific therapy effect",
+      "degree of response",
+      "pCR or RCB"
+    ]
   },
-  "evidence_citations": ["https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"],
-  "counterexamples": ["using generic cellularity decrease for every class", "removing a random circular cluster", "claiming tissue regression when tissue is unchanged"]
+  "evidence_citations": [
+    "https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"
+  ],
+  "counterexamples": [
+    "using generic cellularity decrease for every class",
+    "removing a random circular cluster",
+    "claiming tissue regression when tissue is unchanged"
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "cellularity_depletion_gradient"
+    ],
+    "selection_preferences": [
+      "prefer candidates with the largest safe executable capacity",
+      "prefer candidates with greater protected-label clearance and complete-instance capacity",
+      "prefer the smallest sufficient tool program"
+    ],
+    "clarification_triggers": [
+      "the instruction permits multiple materially different executable primitives"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

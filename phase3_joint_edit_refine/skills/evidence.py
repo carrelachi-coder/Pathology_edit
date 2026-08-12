@@ -38,6 +38,7 @@ _MECHANISM_FIELDS = {
     "review_status": "metadata",
     "summary": "pathology_fact",
     "recognition_contract": "pathology_fact",
+    "planner_policy": "engineering_proxy",
     "representability_contract": "model_representability",
     "tissue_program": "engineering_proxy",
     "cell_program": "engineering_proxy",
@@ -292,6 +293,7 @@ class EvidenceGovernance:
         missing_fields = sorted(set(classification) - set(payload))
         # Optional primitive fields are still classified but may be absent.
         optional = {
+            "planner_policy",
             "tissue_topology_contract",
             "required_source_clearance_classes",
             "minimum_source_clearance_instances",

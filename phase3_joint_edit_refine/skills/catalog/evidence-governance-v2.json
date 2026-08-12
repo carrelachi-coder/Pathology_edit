@@ -21,6 +21,27 @@
       "locator": "Single-file and discohesive invasive growth morphology",
       "verification_status": "verified"
     },
+    "pathology-breast-tumor-budding-review-2018": {
+      "category": "pathology_fact",
+      "title": "Tumor budding in breast cancer: current knowledge and clinical perspectives",
+      "uri": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6134264/",
+      "locator": "Breast tumor-budding definitions are heterogeneous; published studies commonly describe isolated cells or small clusters near the invasive margin, often with a maximum of five cells. The editor adopts the stricter executable 1--4-cell mask representation and does not claim a diagnostic score.",
+      "verification_status": "verified"
+    },
+    "pathology-breast-invasive-compartment-study-2010": {
+      "category": "pathology_fact",
+      "title": "Localization of CD44 and CD90 Positive Cells to the Invasive Front of Breast Tumors",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/20533389/",
+      "locator": "The primary breast-tumor study defines tumor-peripheral regions immediately outside morphologically identifiable tumor nests or trabeculae and distinguishes them from central epithelial and intratumoral stromal compartments. The editor uses only the compartment relationship; it does not reproduce the biomarker analysis or ask a visual model to diagnose an invasive front.",
+      "verification_status": "verified"
+    },
+    "pathology-breast-tumor-budding-study-2021": {
+      "category": "pathology_fact",
+      "title": "Joint Tumor Bud-MMP/TIMP Count at the Invasive Front Improves the Prognostic Evaluation of Invasive Breast Carcinoma",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/33669393/",
+      "locator": "The primary study evaluates breast tumor buds as detached groups of one to five malignant cells in tumor stroma. The editor uses a stricter synthetic one-to-four-cell mask variant and makes no diagnostic, grading, biomarker, or prognostic claim.",
+      "verification_status": "verified"
+    },
     "pathology-breast-tils-working-group-2014": {
       "category": "pathology_fact",
       "title": "International TILs Working Group 2014 breast cancer recommendations",
@@ -212,6 +233,10 @@
     }
   },
   "mechanism_pathology_sources": {
+    "breast-annotation-anchored-boundary-growth": ["pathology-breast-cap-invasive-resection-v4.11.0.0", "pathology-breast-invasive-compartment-study-2010"],
+    "breast-infiltrative-nest-cord-extension": ["pathology-breast-invasive-compartment-study-2010"],
+    "breast-peritumoral-neoplastic-scatter": ["pathology-breast-invasive-compartment-study-2010", "pathology-breast-tumor-budding-review-2018"],
+    "breast-peritumoral-small-cluster": ["pathology-breast-tumor-budding-review-2018", "pathology-breast-tumor-budding-study-2021"],
     "breast-cohesive-nst-front": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
     "breast-discohesive-single-file": ["pathology-breast-ilc-single-file-2021"],
     "breast-generic-immune-compartment-turnover": ["pathology-breast-tils-working-group-2014"],

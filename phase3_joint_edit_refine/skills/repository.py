@@ -95,6 +95,26 @@ class JointSkillBundle:
                 self.primitive.minimum_source_clearance_instances
             ),
             "mechanism_id": self.mechanism.mechanism_id,
+            "planner_policy": {
+                "allowed_observation_sources": list(
+                    self.mechanism.planner_policy.allowed_observation_sources
+                ),
+                "prohibited_observation_sources": list(
+                    self.mechanism.planner_policy.prohibited_observation_sources
+                ),
+                "hard_constraint_checker_ids": list(
+                    self.mechanism.planner_policy.hard_constraint_checker_ids
+                ),
+                "selection_preferences": list(
+                    self.mechanism.planner_policy.selection_preferences
+                ),
+                "clarification_triggers": list(
+                    self.mechanism.planner_policy.clarification_triggers
+                ),
+                "allowed_decisions": list(
+                    self.mechanism.planner_policy.allowed_decisions
+                ),
+            },
             "required_auxiliary_structures": list(
                 self.mechanism.representability.required_auxiliary_structures
             ),
@@ -467,6 +487,9 @@ class JointSkillRepository:
 
         required = set()
         for mechanism in self.mechanisms.values():
+            required.update(
+                mechanism.planner_policy.hard_constraint_checker_ids
+            )
             required.update(mechanism.tissue_program.required_checker_ids)
             required.update(mechanism.cell_program.required_checker_ids)
             required.update(mechanism.joint_gate_ids)
@@ -630,7 +653,12 @@ class JointSkillRepository:
                 )
             if not any(
                 token in case.instruction.casefold()
-                for token in ("local", "roi", "局部", "圈定")
+                for token in (
+                    "local",
+                    "roi",
+                    "\u5c40\u90e8",
+                    "\u5708\u5b9a",
+                )
             ):
                 raise JointContractError(
                     "local invasive clearance must be explicit in the user instruction"
@@ -734,6 +762,7 @@ class JointSkillRepository:
                 "production-authorized mechanism statistics"
             )
         required = set(mechanism.joint_gate_ids)
+        required.update(mechanism.planner_policy.hard_constraint_checker_ids)
         required.update(primitive_contract.required_checker_ids)
         required.update(mechanism.tissue_program.required_checker_ids)
         required.update(mechanism.cell_program.required_checker_ids)
@@ -762,6 +791,7 @@ class JointSkillRepository:
                         *mechanism.tissue_program.required_checker_ids,
                         *mechanism.cell_program.required_checker_ids,
                         *mechanism.joint_gate_ids,
+                        *mechanism.planner_policy.hard_constraint_checker_ids,
                         *mechanism.coupling.compatibility_rule_ids,
                         *annotation.required_checker_ids,
                         *observation.required_checker_ids,

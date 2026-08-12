@@ -63,8 +63,8 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             [item.primitive_id for item in intent.primitive_hypotheses],
             [
                 "tumor-burden-increase-v1",
-                "invasive-front-expansion-v1",
-                "neoplastic-microinfiltration-increase-v1",
+                "cohesive-boundary-expansion-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
                 "neoplastic-cell-abundance-increase-v1",
             ],
         )
@@ -198,14 +198,14 @@ class ClinicalScenarioParserTests(unittest.TestCase):
 
         self.assertEqual(
             intent.primitive_id,
-            "neoplastic-microinfiltration-increase-v1",
+            "peritumoral-neoplastic-scatter-increase-v1",
         )
         self.assertEqual(intent.explicit_edit_scope, "unspecified")
         self.assertEqual(
             [item.primitive_id for item in intent.primitive_hypotheses],
             [
-                "neoplastic-microinfiltration-increase-v1",
-                "invasive-front-expansion-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "infiltrative-nest-cord-extension-v1",
             ],
         )
 
@@ -218,7 +218,7 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             intent = parser.parse(instruction)
             self.assertEqual(
                 intent.primitive_id,
-                "neoplastic-microinfiltration-increase-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
             )
 
     def test_residual_neoplastic_cell_reduction_keeps_cell_scope(self):
@@ -238,7 +238,7 @@ class ClinicalScenarioParserTests(unittest.TestCase):
         parser = RuleBasedSemanticParser()
         self.assertEqual(
             parser.parse("expand the invasive front").primitive_id,
-            "invasive-front-expansion-v1",
+            "cohesive-boundary-expansion-v1",
         )
         self.assertEqual(
             parser.parse("increase STAS").primitive_id,

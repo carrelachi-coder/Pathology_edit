@@ -1,0 +1,4 @@
+interface:
+  display_name: "peritumoral-small-cluster-increase-v1"
+  short_description: "Plan bounded 1--4-cell peritumoral foci from masks."
+  default_prompt: "Use $peritumoral-small-cluster-increase-v1 only in a certified outer annulus; never convert it into an unverified tumor-budding diagnosis."

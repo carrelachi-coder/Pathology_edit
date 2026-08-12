@@ -64,6 +64,26 @@ class JointInterpretationOption:
                 self.mechanism.recognition.contraindications
             ),
             "minimum_confidence": self.mechanism.recognition.minimum_confidence,
+            "planner_policy": {
+                "allowed_observation_sources": list(
+                    self.mechanism.planner_policy.allowed_observation_sources
+                ),
+                "prohibited_observation_sources": list(
+                    self.mechanism.planner_policy.prohibited_observation_sources
+                ),
+                "hard_constraint_checker_ids": list(
+                    self.mechanism.planner_policy.hard_constraint_checker_ids
+                ),
+                "selection_preferences": list(
+                    self.mechanism.planner_policy.selection_preferences
+                ),
+                "clarification_triggers": list(
+                    self.mechanism.planner_policy.clarification_triggers
+                ),
+                "allowed_decisions": list(
+                    self.mechanism.planner_policy.allowed_decisions
+                ),
+            },
             "feasibility": dict(self.feasibility),
         }
 
@@ -128,9 +148,9 @@ class HeuristicJointPlanner:
         if requested == "__abstain__":
             reason = case.provenance.get(
                 "joint_mechanism_abstain_reason",
-                "current-session visual review found no safely representable mechanism",
+                "current-session mask-graph review found no safely representable mechanism",
             )
-            raise JointContractError(f"offline visual Planner abstained: {reason}")
+            raise JointContractError(f"offline mask-graph Planner abstained: {reason}")
         requested_primitive = case.provenance.get("joint_primitive_id")
         matching = [
             item
@@ -145,7 +165,7 @@ class HeuristicJointPlanner:
             raise JointContractError(
                 "offline joint planner requires an unambiguous provenance "
                 "joint_mechanism_id/joint_primitive_id decision; it will not "
-                "resolve natural-language ambiguity without H&E vision"
+                "resolve natural-language ambiguity without the mask-graph LLM Planner"
             )
         selected = matching[0]
         return selected.primitive_id, requested, {
@@ -244,6 +264,20 @@ class HeuristicJointPlanner:
                 compatible.sort(
                     key=lambda item: (-item.contact_pixels, item.interface_id)
                 )
+                if (
+                    "external_boundary_binding"
+                    in mechanism.planner_policy.hard_constraint_checker_ids
+                ):
+                    from .feasibility import classify_tumor_stroma_boundary
+
+                    compatible = [
+                        item
+                        for item in compatible
+                        if classify_tumor_stroma_boundary(
+                            scene=scene,
+                            interface=item,
+                        )["external_tumor_stroma_boundary"]
+                    ]
                 interface_ids = tuple(item.interface_id for item in compatible[:3])
             if not interface_ids:
                 raise JointContractError(
@@ -345,9 +379,9 @@ class HeuristicJointPlanner:
                 maximum_halo_px=mechanism.cell_program.halo_distance_px[1],
             ),
             uncertainties=(
-                "offline heuristic did not inspect H&E; visual pathology review is required",
+                "offline heuristic does not resolve natural-language ambiguity or rank certified options semantically",
             ),
-            escalation_reason="requires_multimodal_joint_planner_and_critic",
+            escalation_reason="requires_mask_graph_llm_planner_and_independent_condition_critic",
             structural_unit_ids=_structural_units_for_interfaces(
                 scene, interface_ids
             ),
@@ -450,7 +484,7 @@ class HeuristicJointPlanner:
             raw_anchor = case.provenance.get("cellularity_depletion_anchor")
             if depletion is None or not isinstance(raw_anchor, Mapping):
                 raise JointContractError(
-                    "cellularity decrease requires an explicit visual depletion anchor"
+                    "cellularity decrease requires an explicit mask-graph depletion anchor"
                 )
             spatial_anchor_type = str(raw_anchor.get("type", ""))
             if spatial_anchor_type not in depletion.allowed_anchor_types:
@@ -516,7 +550,7 @@ class HeuristicJointPlanner:
                 or confidence < bundle.mechanism.recognition.minimum_confidence
             ):
                 raise JointContractError(
-                    "depletion anchor lacks a confident visible pathology observation"
+                    "depletion anchor lacks a confident mask-graph certificate"
                 )
         plan = JointEditPlan(
             schema_version=JOINT_PLAN_SCHEMA_VERSION,
@@ -563,9 +597,9 @@ class HeuristicJointPlanner:
                 maximum_halo_px=bundle.mechanism.cell_program.halo_distance_px[1],
             ),
             uncertainties=(
-                "offline heuristic did not inspect H&E; visual pathology review is required",
+                "offline heuristic does not resolve natural-language ambiguity or rank certified options semantically",
             ),
-            escalation_reason="requires_multimodal_joint_planner_and_critic",
+            escalation_reason="requires_mask_graph_llm_planner_and_independent_condition_critic",
             structural_unit_ids=_structural_units_for_components(
                 scene, (zone.tissue_component_id,)
             ),

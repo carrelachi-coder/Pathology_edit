@@ -2,8 +2,8 @@
 
 This stage deliberately knows nothing about pixels, interfaces, pathology
 mechanisms or numeric execution parameters.  Its only authority is the edit
-intent explicitly stated by the user.  Visual mechanism selection and skill
-composition happen later and remain fail-closed.
+intent explicitly stated by the user. Mask-graph mechanism selection and
+skill composition happen later and remain fail-closed.
 """
 
 from __future__ import annotations
@@ -194,13 +194,51 @@ class RuleBasedSemanticParser:
             ),
         ),
         (
+            "infiltrative-nest-cord-extension-v1",
+            "neoplastic-cell-infiltration",
+            "increase",
+            (
+                r"\b(extend|increase|add)\b.*\b(tumou?r|cancer)\b.*\b(cord|trabecul|narrow extension)\b",
+                r"(\u589e\u52a0|\u5ef6\u957f|\u6dfb\u52a0).*(\u80bf\u7624|\u764c).*(\u7d22\u72b6|\u7a84\u6761|\u5c0f\u5de2)",
+            ),
+        ),
+        (
+            "cohesive-boundary-expansion-v1",
+            "tumor-burden",
+            "increase",
+            (
+                r"\b(expand|advance|increase)\b.*\b(tumou?r boundary|tumou?r edge|cohesive boundary)\b",
+                r"\b(expand|advance|increase)\b.*\b(invasive front|invasion front)\b",
+                r"(\u6269\u5927|\u63a8\u8fdb|\u589e\u52a0).*(\u80bf\u7624\u8fb9\u754c|\u80bf\u7624\u8fb9\u7f18|\u8fde\u7eed\u8fb9\u754c)",
+                r"(\u6269\u5927|\u63a8\u8fdb|\u589e\u52a0).*(\u6d78\u6da6\u524d\u7f18|\u4fb5\u88ad\u524d\u7f18)",
+            ),
+        ),
+        (
+            "peritumoral-small-cluster-increase-v1",
+            "neoplastic-cell-infiltration",
+            "increase",
+            (
+                r"\b(increase|add)\b.*\b(peritumoral small clusters?|small tumou?r clusters?|tumou?r budding|tumou?r buds?)\b",
+                r"(\u589e\u52a0|\u6dfb\u52a0).*(\u80bf\u7624\u51fa\u82bd|\u764c\u5468\u5c0f\u7c07|\u80bf\u7624\u5468\u56f4\u5c0f\u7c07)",
+            ),
+        ),
+        (
+            "peritumoral-neoplastic-scatter-increase-v1",
+            "neoplastic-cell-infiltration",
+            "increase",
+            (
+                r"\b(increase|add)\b.*\b(peritumoral (?:tumou?r |cancer )?cell scatter|scattered tumou?r cells?)\b",
+                r"\b(increase|add)\b.*\b(tumou?r (?:cell )?infiltration|cancer cell infiltration|neoplastic cell infiltration)\b",
+                r"(\u589e\u52a0|\u6dfb\u52a0).*(\u764c\u5468\u6563\u5728\u80bf\u7624\u7ec6\u80de|\u80bf\u7624\u5468\u56f4\u6563\u5728\u764c\u7ec6\u80de)",
+                r"(\u589e\u52a0|\u6dfb\u52a0).*(\u764c\u7ec6\u80de\u6d78\u6da6|\u80bf\u7624\u7ec6\u80de\u6d78\u6da6)",
+            ),
+        ),
+        (
             "invasive-front-expansion-v1",
             "neoplastic-cell-infiltration",
             "increase",
             (
-                r"\b(expand|advance|increase)\b.*\b(invasive front|invasion front)\b",
-                r"\b(invade|invasion into)\b.*\b(stroma|adjacent tissue)\b",
-                r"(扩大|推进|增加).*(浸润前缘|侵袭前缘)",
+                r"(?!)",
             ),
         ),
         (
@@ -208,8 +246,7 @@ class RuleBasedSemanticParser:
             "neoplastic-cell-infiltration",
             "increase",
             (
-                r"\b(increase|add)\b.*\b(tumou?r (?:cell )?infiltration|cancer cell infiltration|tumou?r budding|tumou?r buds?|neoplastic cell infiltration)\b",
-                r"(增加|添加).*(肿瘤出芽|癌细胞浸润|肿瘤细胞浸润)",
+                r"(?!)",
             ),
         ),
         (
@@ -400,7 +437,7 @@ class OpenAIClinicalScenarioParser:
 
     The model extracts a closed scenario ontology.  A deterministic compiler,
     not the model, expands clinical scenarios into primitive hypotheses.
-    Pathology mechanism selection remains a later multimodal stage.
+    Pathology mechanism selection remains a later mask-graph planning stage.
     """
 
     name = "openai_clinical_scenario_parser_v1"
@@ -422,8 +459,9 @@ class OpenAIClinicalScenarioParser:
                 "primitive hypotheses later. Never infer organ morphology, dataset "
                 "labels, pathology mechanism, interface, coordinates, counts, area, "
                 "density multiplier or tool parameters. Preserve negation and explicit "
-                "scale. Cell-only microinfiltration, tissue-displacing invasive-front "
-                "expansion, native-void spread and fine architecture progression are "
+                "scale. Cell-only peritumoral scatter, peritumoral small clusters, "
+                "cohesive boundary expansion, narrow cord extension, native-void spread, "
+                "and fine architecture progression are "
                 "different primitives and must not be collapsed. Do not treat "
                 "post-treatment context as improvement: 'progresses "
                 "after treatment' is worsening. When the user explicitly supplies "
@@ -457,12 +495,12 @@ class OpenAIClinicalScenarioParser:
                     "deterministic_ambiguity_policy": {
                         "generic_tumor_increase": [
                             "tumor-burden-increase-v1",
-                            "invasive-front-expansion-v1",
-                            "neoplastic-microinfiltration-increase-v1",
+                            "cohesive-boundary-expansion-v1",
+                            "peritumoral-neoplastic-scatter-increase-v1",
                         ],
                         "infiltration_without_scale": [
-                            "neoplastic-microinfiltration-increase-v1",
-                            "invasive-front-expansion-v1"
+                            "peritumoral-neoplastic-scatter-increase-v1",
+                            "infiltrative-nest-cord-extension-v1"
                         ],
                         "never_merge": [
                             "structural-void-spread-v1 with stromal invasion",
@@ -858,6 +896,7 @@ def _compile_primitive_hypotheses(
         in {
             "tumor-burden-increase-v1",
             "neoplastic-microinfiltration-increase-v1",
+            "peritumoral-neoplastic-scatter-increase-v1",
         }
         and not explicit_burden
         and not explicit_microinfiltration
@@ -867,6 +906,34 @@ def _compile_primitive_hypotheses(
             or re.search(r"(增加|提高|扩大|增多).*(肿瘤|癌)", instruction)
         )
     )
+    explicit_legacy_front = bool(
+        re.search(r"\b(invasive front|invasion front)\b", lowered)
+        or re.search(r"\u6d78\u6da6\u524d\u7f18|\u4fb5\u88ad\u524d\u7f18", instruction)
+    )
+    if (
+        primary_primitive_id == "cohesive-boundary-expansion-v1"
+        and explicit_legacy_front
+    ):
+        return (
+            PrimitiveHypothesis(
+                primitive_id="cohesive-boundary-expansion-v1",
+                semantic_fit="direct",
+                priority=0,
+                rationale="the legacy front wording can be realized as broad annotation-anchored boundary expansion",
+            ),
+            PrimitiveHypothesis(
+                primitive_id="infiltrative-nest-cord-extension-v1",
+                semantic_fit="contextual",
+                priority=1,
+                rationale="the legacy front wording can instead denote a narrow connected cord-like extension",
+            ),
+            PrimitiveHypothesis(
+                primitive_id="peritumoral-small-cluster-increase-v1",
+                semantic_fit="contextual",
+                priority=2,
+                rationale="the user may intend small peritumoral clusters; this requires a non-diagnostic mask representation",
+            ),
+        )
     if generic_tumor_increase:
         return (
             PrimitiveHypothesis(
@@ -878,35 +945,35 @@ def _compile_primitive_hypotheses(
                 ),
             ),
             PrimitiveHypothesis(
-                primitive_id="invasive-front-expansion-v1",
+                primitive_id="cohesive-boundary-expansion-v1",
                 semantic_fit="contextual",
                 priority=1,
                 rationale=(
-                    "a verified, tissue-displacing invasive front can realize tumor progression"
+                    "a certified external mask boundary can realize cohesive tissue expansion"
                 ),
             ),
             PrimitiveHypothesis(
-                primitive_id="neoplastic-microinfiltration-increase-v1",
+                primitive_id="peritumoral-neoplastic-scatter-increase-v1",
                 semantic_fit="contextual",
                 priority=2,
                 rationale=(
-                    "a verified sparse neoplastic population can realize progression without changing tissue labels"
+                    "a certified peritumoral annulus can realize sparse cell-only progression"
                 ),
             ),
         )
     if ambiguous_infiltration:
         return (
             PrimitiveHypothesis(
-                primitive_id="neoplastic-microinfiltration-increase-v1",
+                primitive_id="peritumoral-neoplastic-scatter-increase-v1",
                 semantic_fit="direct",
                 priority=0,
                 rationale="infiltration can denote sparse neoplastic cells in a preserved host compartment",
             ),
             PrimitiveHypothesis(
-                primitive_id="invasive-front-expansion-v1",
+                primitive_id="infiltrative-nest-cord-extension-v1",
                 semantic_fit="contextual",
                 priority=1,
-                rationale="the same wording can denote a tissue-displacing invasive front when H&E and the mechanism support it",
+                rationale="the same wording can denote a narrow tissue-displacing extension when mask capacity supports it",
             ),
         )
     return (
@@ -1136,9 +1203,9 @@ def _scenario_primitive_specs(
                     "the requested progression is explicitly limited to neoplastic cell abundance",
                 ),
                 (
-                    "neoplastic-microinfiltration-increase-v1",
+                    "peritumoral-neoplastic-scatter-increase-v1",
                     "contextual",
-                    "a visually supported invasive population can realize cellular progression",
+                    "a certified outer annulus can realize cellular progression through sparse additions",
                 ),
             )
         return (
@@ -1148,14 +1215,14 @@ def _scenario_primitive_specs(
                 "greater tissue-level tumor burden is the primary generic progression reading",
             ),
             (
-                "invasive-front-expansion-v1",
+                "cohesive-boundary-expansion-v1",
                 "contextual",
-                "a verified tissue-displacing invasive interface can express progression",
+                "a certified external mask boundary can express cohesive tissue progression",
             ),
             (
-                "neoplastic-microinfiltration-increase-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
                 "contextual",
-                "a verified invasive front can express progression through neoplastic infiltration",
+                "a certified peritumoral annulus can express sparse cell-only progression",
             ),
             (
                 "neoplastic-cell-abundance-increase-v1",
@@ -1166,14 +1233,14 @@ def _scenario_primitive_specs(
     if scenario == "invasion_progression":
         return (
             (
-                "invasive-front-expansion-v1",
+                "infiltrative-nest-cord-extension-v1",
                 "direct",
-                "a verified tissue-displacing invasive front is the primary invasion reading",
+                "a certified external boundary can support a narrow connected tissue extension",
             ),
             (
-                "neoplastic-microinfiltration-increase-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
                 "contextual",
-                "sparse cell-only microinfiltration can realize invasion when the host tissue is preserved",
+                "sparse peritumoral cell-only scatter can realize the requested direction while preserving host tissue",
             ),
             (
                 "structural-void-spread-v1",
@@ -1388,6 +1455,8 @@ def _direct_scope_for_primitive(primitive_id: str) -> str:
         return "tissue_burden"
     if primitive_id in {
         "invasive-front-expansion-v1",
+        "cohesive-boundary-expansion-v1",
+        "infiltrative-nest-cord-extension-v1",
         "architecture-progression-v1",
     }:
         return "joint"
@@ -1401,6 +1470,8 @@ def _direct_scope_for_primitive(primitive_id: str) -> str:
         return "tissue_compartment"
     if primitive_id.startswith(("cellularity-", "cell-type-abundance-", "neoplastic-cell-abundance-")) or primitive_id in {
         "neoplastic-microinfiltration-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
         "structural-void-spread-v1",
     }:
         return "cell_population"
@@ -1432,11 +1503,11 @@ _CLINICAL_SCENARIO_FEW_SHOTS = [
             "treatment_context": "none",
             "target": "cell_population",
             "explicit_edit_scope": "cell_population",
-            "primitive_id": "neoplastic-microinfiltration-increase-v1",
+            "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
             "subject": "neoplastic-cell-infiltration",
             "edit_direction": "increase",
         },
-        "why": "The parser preserves infiltration-scale ambiguity; deterministic hypotheses also expose invasive-front expansion for visual/mechanism selection.",
+        "why": "The parser preserves infiltration-scale ambiguity; deterministic hypotheses also expose a narrow annotation-anchored cord extension for mask-based planning.",
     },
     {
         "instruction": "Simulate continued progression of this tumor.",

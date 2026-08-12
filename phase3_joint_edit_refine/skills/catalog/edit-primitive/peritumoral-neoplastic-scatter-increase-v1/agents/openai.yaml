@@ -1,0 +1,4 @@
+interface:
+  display_name: "peritumoral-neoplastic-scatter-increase-v1"
+  short_description: "Plan sparse peritumoral single-cell additions from masks."
+  default_prompt: "Use $peritumoral-neoplastic-scatter-increase-v1 only in a certified outer annulus and preserve tissue labels exactly."

@@ -30,6 +30,7 @@ from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
 from .feasibility import JointNucleiPreflight
+from .planner_inputs import validate_mask_planner_image_paths
 from .skills.repository import JointSkillBundle
 
 JOINT_TISSUE_DECISION_SCHEMA = {
@@ -42,6 +43,14 @@ JOINT_TISSUE_DECISION_SCHEMA = {
         "plan": {"anyOf": [EDIT_PLAN_JSON_SCHEMA, {"type": "null"}]},
     },
 }
+
+
+def _mask_planner_case_metadata(case: CaseContext) -> dict[str, Any]:
+    """Remove the raw histology locator from tissue-planning metadata."""
+
+    metadata = dict(case.to_metadata())
+    metadata.pop("source_image_uri", None)
+    return metadata
 
 
 def _normalize_integer_allocations(
@@ -127,12 +136,12 @@ def _effective_tissue_topology(
 
 @dataclass(frozen=True)
 class OpenAIJointAwareTissuePlanner:
-    """Multimodal tissue Planner that sees the mechanism and cell capacity."""
+    """Mask-graph tissue Planner that selects certified interfaces and anchors."""
 
     client: OpenAIResponsesJSONClient
     escalation_client: OpenAIResponsesJSONClient | None = None
     max_contract_attempts: int = 2
-    name: str = "openai_joint_aware_tissue_planner"
+    name: str = "openai_certified_mask_tissue_planner"
 
     def create_joint_tissue_plan(
         self,
@@ -145,12 +154,13 @@ class OpenAIJointAwareTissuePlanner:
         nuclei_preflight: JointNucleiPreflight | None = None,
         execution_feedback: Mapping[str, Any] | None = None,
     ) -> tuple[EditPlan, dict[str, Any]]:
+        image_paths = validate_mask_planner_image_paths(image_paths)
         if nuclei_preflight is None:
             raise RefineContractError(
                 "joint-aware tissue Planner requires nuclei preflight"
             )
         payload = {
-            "case": case.to_metadata(),
+            "case": _mask_planner_case_metadata(case),
             "tissue_scene": scene.graph.to_metadata(),
             "tissue_skill_bundle": bundle.to_metadata(),
             "joint_skill_bundle": joint_bundle.to_metadata(),
@@ -159,6 +169,7 @@ class OpenAIJointAwareTissuePlanner:
                 "representability": joint_bundle.mechanism.representability.__dict__,
                 "tissue_program": joint_bundle.mechanism.tissue_program.__dict__,
                 "coupling": joint_bundle.mechanism.coupling.__dict__,
+                "planner_policy": joint_bundle.mechanism.planner_policy.__dict__,
             },
             "nuclei_preflight": nuclei_preflight.to_metadata(),
             "previous_execution_feedback": dict(execution_feedback or {}),
@@ -168,7 +179,10 @@ class OpenAIJointAwareTissuePlanner:
                 "respect_immutable_area_budget": True,
                 "prefer_broad_shallow_interfaces": True,
                 "do_not_output_pixels_or_polygons": True,
-                "abstain_when_H&E_or_capacity_is_insufficient": True,
+                "abstain_when_certificate_capacity_is_insufficient": True,
+                "use_skill_selection_preferences": True,
+                "source_H&E_is_prohibited": True,
+                "do_not_infer_unannotated_histology": True,
             },
         }
         errors: list[str] = []
@@ -178,11 +192,13 @@ class OpenAIJointAwareTissuePlanner:
         for attempt, client in enumerate(clients, start=1):
             raw, usage = client.call(
                 system_prompt=(
-                    "You are the joint-aware tissue planning stage. H&E pathology, "
-                    "annotation semantics, tissue topology, complete-nucleus capacity "
-                    "and the selected mechanism are all mandatory. Select interface and "
-                    "anchor IDs only. Return an explicit abstention when they cannot be "
-                    "jointly satisfied."
+                    "You are the certified mask-graph tissue planning stage. Annotation "
+                    "semantics, tissue topology, complete-nucleus capacity, candidate "
+                    "certificates, and the selected skill mechanism are mandatory. Apply "
+                    "the skill's hard constraints and selection preferences, then select "
+                    "interface and anchor IDs only. Raw H&E is prohibited and cannot be "
+                    "used to invent an unannotated structure. Return an explicit abstention "
+                    "when the mask-owned requirements cannot be jointly satisfied."
                 ),
                 user_prompt=json.dumps(
                     {**payload, "previous_contract_errors": errors},
@@ -795,9 +811,9 @@ class MultiInterfaceResearchTissuePlanner:
                 candidate_count=4,
             ),
             hard_invariants=tuple(sorted(set(bundle.edit_contract.required_check_ids))),
-            uncertainties=("current Codex session supplied mechanism; this tissue adapter did not inspect H&E",),
+            uncertainties=("current Codex session supplied the mechanism; this deterministic adapter only compiled certified mask geometry",),
             planner_confidence=0.45,
-            escalation_reason="requires_independent_multimodal_joint_critic",
+            escalation_reason="requires_independent_mask_condition_critic",
         )
         return plan, {
             "provider": self.name,
