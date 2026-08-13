@@ -1974,6 +1974,29 @@ def _recorded_instance_areas_by_class(tool_trace) -> dict[int, list[float]]:
     return result
 
 
+def _nearest_reference_area_ratio(
+    area: float,
+    reference_areas: list[float],
+) -> float | None:
+    """Return the multiplicative ratio to the closest complete reference.
+
+    A same-class patch can legitimately contain more than one nucleus-size
+    mode.  Comparing every realized shape with the median of that mixture can
+    reject a source shape copied pixel-for-pixel from its large mode.  The
+    shape contract is instead satisfied when each realized complete instance
+    is supported by at least one eligible complete same-class reference.
+    """
+
+    positive = [float(value) for value in reference_areas if float(value) > 0]
+    if area <= 0 or not positive:
+        return None
+    reference = min(
+        positive,
+        key=lambda value: abs(np.log(float(area) / value)),
+    )
+    return float(area) / reference
+
+
 def _local_shape_distribution(c):
     if "add" not in c.plan.cell_plan.actions:
         return _result(
@@ -2047,7 +2070,28 @@ def _local_shape_distribution(c):
             float(np.median(added_areas)),
             float(np.median(local_areas)) if local_areas else None,
         )
-        current_passed = ratio is not None and 0.60 <= ratio <= 1.67
+        nearest_reference_ratios = [
+            _nearest_reference_area_ratio(area, local_areas)
+            for area in added_areas
+        ]
+        nearest_reference_passed = bool(
+            nearest_reference_ratios
+            and all(
+                value is not None and 0.60 <= value <= 1.67
+                for value in nearest_reference_ratios
+            )
+        )
+        # Mature execution records complete accepted-instance areas, so every
+        # realized shape can be compared to the eligible complete-reference
+        # distribution.  The lightweight fallback reconstructs additions from
+        # the semantic raster; adjacent instances can merge or clip in that
+        # measurement, for which the historical distribution-median audit is
+        # the stable contract.
+        current_passed = (
+            nearest_reference_passed
+            if mature
+            else ratio is not None and 0.60 <= ratio <= 1.67
+        )
         class_checks.append(current_passed)
         class_metrics[str(class_id)] = {
             "added_count": len(added_areas),
@@ -2066,6 +2110,13 @@ def _local_shape_distribution(c):
                 float(np.median(local_areas)) if local_areas else None
             ),
             "median_area_ratio": ratio,
+            "nearest_reference_area_ratios": nearest_reference_ratios,
+            "comparison_policy": (
+                "each_realized_complete_shape_matches_an_eligible_complete_"
+                "same_class_reference"
+                if mature
+                else "semantic_raster_distribution_median"
+            ),
             "passed": current_passed,
         }
     shape_sampling = c.candidate.tool_trace.get("shape_sampling", {})

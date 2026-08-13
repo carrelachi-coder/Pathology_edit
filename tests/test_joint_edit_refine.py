@@ -56,6 +56,7 @@ from phase3_joint_edit_refine.gates import (
     _cell_tissue_compatibility,
     _discrete_radial_profile_is_monotonic,
     _fine_pattern_preserved,
+    _nearest_reference_area_ratio,
     _recorded_instance_areas_by_class,
     audit_added_class1_foci,
     audit_directional_extension_raster,
@@ -2114,6 +2115,22 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(
             _recorded_instance_areas_by_class(trace),
             {1: [900.0, 1050.0], 2: [420.0]},
+        )
+
+    def test_shape_support_uses_nearest_complete_reference_not_mixture_median(self):
+        references = [193.0, 231.0, 264.0, 377.0, 527.0]
+
+        self.assertEqual(
+            _nearest_reference_area_ratio(527.0, references),
+            1.0,
+        )
+        self.assertLess(
+            _nearest_reference_area_ratio(569.0, references),
+            1.10,
+        )
+        self.assertGreater(
+            _nearest_reference_area_ratio(1000.0, references),
+            1.67,
         )
 
     def test_max_safe_area_fallback_excludes_larger_unsafe_candidate(self):
