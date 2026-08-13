@@ -795,6 +795,7 @@ class MultiInterfaceResearchTissuePlanner:
             compiled_tools.allowed_concrete_executors
             == ("directional_tapered_projection",)
         )
+        front_contract = joint_bundle.mechanism.tissue_program.front
         reference_equivalent_diameter = float(
             np.sqrt(
                 4.0
@@ -813,6 +814,30 @@ class MultiInterfaceResearchTissuePlanner:
         if nuclei_preflight is not None:
             feasible_ids = set(nuclei_preflight.feasible_interface_ids)
             legal = [item for item in legal if item.interface_id in feasible_ids]
+        if front_contract.directional_sector_required:
+            legal = [
+                item
+                for item in legal
+                if _directional_sector_selection_limit(
+                    interface_anchor_ids=item.anchor_segment_ids,
+                    allowed_anchor_ids=(
+                        nuclei_preflight.interface(
+                            item.interface_id
+                        ).cell_feasible_anchor_segment_ids
+                        if nuclei_preflight is not None
+                        and nuclei_preflight.interface(item.interface_id)
+                        is not None
+                        else ()
+                    ),
+                    maximum_selected_anchor_fraction=(
+                        front_contract.maximum_selected_anchor_fraction
+                    ),
+                    minimum_unselected_anchor_count=(
+                        front_contract.minimum_unselected_anchor_count
+                    ),
+                )
+                >= 1
+            ]
         if not legal:
             raise RefineContractError(
                 "no directed interface satisfies both the tissue and preflight nuclei contracts"
@@ -1077,7 +1102,6 @@ class MultiInterfaceResearchTissuePlanner:
             component_allocations
         )
         rule_ids = tuple(rule.rule_id for rule in bundle.active_rules) + tuple(item.constraint_id for item in bundle.active_mask_constraints)
-        front_contract = joint_bundle.mechanism.tissue_program.front
         planned = []
         for interface, capacity, requested_allocation, fraction in zip(
             selected,
@@ -1489,11 +1513,11 @@ def _select_executable_anchor_ids(
         records.append((anchor_id, capacity, contact, centroid))
     if not records:
         return ()
-    total_anchor_count = len(interface.anchor_segment_ids)
-    selection_limit = min(
-        len(records),
-        int(np.floor(total_anchor_count * maximum_selected_anchor_fraction)),
-        total_anchor_count - minimum_unselected_anchor_count,
+    selection_limit = _directional_sector_selection_limit(
+        interface_anchor_ids=interface.anchor_segment_ids,
+        allowed_anchor_ids=allowed_anchor_ids,
+        maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
+        minimum_unselected_anchor_count=minimum_unselected_anchor_count,
     )
     if selection_limit < 1:
         return ()
@@ -1547,3 +1571,39 @@ def _select_executable_anchor_ids(
         )
         selected.append(records.pop(next_index))
     return tuple(sorted(item[0] for item in selected))
+
+
+def _directional_sector_selection_limit(
+    *,
+    interface_anchor_ids: tuple[str, ...],
+    allowed_anchor_ids: tuple[str, ...] = (),
+    maximum_selected_anchor_fraction: float,
+    minimum_unselected_anchor_count: int,
+) -> int:
+    """Return the executable anchor count before admitting an interface.
+
+    Global underfill replans must not add an interface whose complete anchor
+    inventory cannot leave the mechanism-owned unedited boundary witness.
+    Filtering it after allocation aborts an otherwise valid maximum-safe
+    fallback and incorrectly turns a local zero-capacity front into a global
+    failure.
+    """
+
+    interface_ids = tuple(interface_anchor_ids)
+    total_anchor_count = len(interface_ids)
+    allowed = set(allowed_anchor_ids)
+    selectable_count = sum(
+        not allowed or anchor_id in allowed for anchor_id in interface_ids
+    )
+    return max(
+        0,
+        min(
+            selectable_count,
+            int(
+                np.floor(
+                    total_anchor_count * maximum_selected_anchor_fraction
+                )
+            ),
+            total_anchor_count - minimum_unselected_anchor_count,
+        ),
+    )

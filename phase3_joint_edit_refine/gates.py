@@ -13,7 +13,11 @@ from scipy.spatial import cKDTree
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import GateReport
 
-from .cell_programs import CELL_TOOL_COMPILER_VERSION
+from .cell_programs import (
+    CELL_TOOL_COMPILER_VERSION,
+    DEPLETION_FIELD_AREA_RASTER_TOLERANCE,
+    depletion_field_area_is_sufficient,
+)
 from .executable_contract import ExecutableJointContract
 from .feasibility import classify_tumor_stroma_boundary
 from .instance_authority import build_scene_instance_authority
@@ -2299,18 +2303,19 @@ def _cellularity_depletion_gradient(c):
         for key in source_counts
     }
     residuals = {key: 1.0 - fractions[key] for key in fractions}
-    field_area_cell_squares = int(
-        np.count_nonzero(core | transition | outer)
-    ) / max(1.0, program.nominal_nucleus_diameter_px**2)
-    # The field area is normalized by an estimated local nucleus diameter and
-    # rasterized against an irregular component. A five-percent finite-raster
-    # allowance is narrower than one typical boundary-cell layer while
-    # preventing a 2--3% quantization miss from overriding an otherwise hard
-    # topology/count/gradient contract.
-    effective_minimum_field_area = (
-        0.95 * skill.minimum_field_area_cell_diameter_squares
+    (
+        field_area_ok,
+        field_area_cell_squares,
+        effective_minimum_field_area,
+    ) = depletion_field_area_is_sufficient(
+        core_region=core,
+        transition_region=transition,
+        outer_reference_region=outer,
+        nominal_nucleus_diameter_px=program.nominal_nucleus_diameter_px,
+        minimum_field_area_cell_diameter_squares=(
+            skill.minimum_field_area_cell_diameter_squares
+        ),
     )
-    field_area_ok = field_area_cell_squares >= effective_minimum_field_area
     outer_reference_count_ok = (
         source_counts["outer_reference"]
         >= skill.minimum_outer_reference_instances
@@ -2454,7 +2459,9 @@ def _cellularity_depletion_gradient(c):
             "effective_minimum_field_area_with_raster_tolerance": (
                 effective_minimum_field_area
             ),
-            "field_area_relative_raster_tolerance": 0.05,
+            "field_area_relative_raster_tolerance": (
+                DEPLETION_FIELD_AREA_RASTER_TOLERANCE
+            ),
             "field_area_ok": field_area_ok,
             "outer_reference_instance_count_ok": outer_reference_count_ok,
             "minimum_outer_reference_instances": (

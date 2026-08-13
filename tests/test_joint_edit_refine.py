@@ -39,6 +39,7 @@ from phase3_joint_edit_refine.cell_programs import (
     _cap_density_field_quotas,
     _depletion_band_edges,
     _enforce_density_field_gradient_quotas,
+    depletion_field_area_is_sufficient,
 )
 from phase3_joint_edit_refine.critic import DeterministicJointResearchCritic
 from phase3_joint_edit_refine.feasibility import (
@@ -127,6 +128,7 @@ from phase3_joint_edit_refine.tissue_planner import (
     MultiInterfaceResearchTissuePlanner,
     OpenAIJointAwareTissuePlanner,
     _component_capped_allocation_capacities,
+    _directional_sector_selection_limit,
     _effective_tissue_topology,
     _normalize_integer_allocations,
     _rank_interfaces_by_marginal_capacity,
@@ -169,6 +171,44 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_depletion_field_area_preflight_matches_gate_tolerance(self):
+        core = np.ones((8, 8), dtype=bool)
+        transition = np.ones((8, 8), dtype=bool)
+        outer = np.ones((8, 8), dtype=bool)
+
+        passed, observed, effective_minimum = (
+            depletion_field_area_is_sufficient(
+                core_region=core,
+                transition_region=transition,
+                outer_reference_region=outer,
+                nominal_nucleus_diameter_px=1.0,
+                minimum_field_area_cell_diameter_squares=68.0,
+            )
+        )
+
+        self.assertFalse(passed)
+        self.assertEqual(observed, 64.0)
+        self.assertEqual(effective_minimum, 64.6)
+
+    def test_single_anchor_interface_is_not_a_directional_sector(self):
+        self.assertEqual(
+            _directional_sector_selection_limit(
+                interface_anchor_ids=("anchor:only",),
+                maximum_selected_anchor_fraction=0.8,
+                minimum_unselected_anchor_count=1,
+            ),
+            0,
+        )
+        self.assertEqual(
+            _directional_sector_selection_limit(
+                interface_anchor_ids=("a", "b", "c", "d", "e"),
+                allowed_anchor_ids=("a", "b"),
+                maximum_selected_anchor_fraction=0.8,
+                minimum_unselected_anchor_count=1,
+            ),
+            2,
+        )
+
     def test_llm_planner_schema_excludes_compiler_owned_geometry(self):
         encoded_joint = json.dumps(JOINT_PLAN_JSON_SCHEMA, sort_keys=True)
         self.assertNotIn('"coordinates"', encoded_joint)

@@ -18,6 +18,48 @@ from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
 CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v13"
+DEPLETION_FIELD_AREA_RASTER_TOLERANCE = 0.05
+
+
+def depletion_field_area_cell_squares(
+    *,
+    core_region: np.ndarray,
+    transition_region: np.ndarray,
+    outer_reference_region: np.ndarray,
+    nominal_nucleus_diameter_px: float,
+) -> float:
+    """Measure the exact three-band field in nucleus-diameter squares."""
+
+    field = (
+        np.asarray(core_region, dtype=bool)
+        | np.asarray(transition_region, dtype=bool)
+        | np.asarray(outer_reference_region, dtype=bool)
+    )
+    return float(np.count_nonzero(field)) / max(
+        1.0, float(nominal_nucleus_diameter_px) ** 2
+    )
+
+
+def depletion_field_area_is_sufficient(
+    *,
+    core_region: np.ndarray,
+    transition_region: np.ndarray,
+    outer_reference_region: np.ndarray,
+    nominal_nucleus_diameter_px: float,
+    minimum_field_area_cell_diameter_squares: float,
+) -> tuple[bool, float, float]:
+    """Apply the shared finite-raster tolerance used by compiler and gate."""
+
+    observed = depletion_field_area_cell_squares(
+        core_region=core_region,
+        transition_region=transition_region,
+        outer_reference_region=outer_reference_region,
+        nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
+    )
+    effective_minimum = (
+        1.0 - DEPLETION_FIELD_AREA_RASTER_TOLERANCE
+    ) * float(minimum_field_area_cell_diameter_squares)
+    return observed >= effective_minimum, observed, effective_minimum
 
 
 @dataclass(frozen=True)
@@ -532,6 +574,7 @@ class CellToolProgramCompiler:
                             if case.cell_count_extent_budget is not None
                             else int(biological_delta or 0)
                         ),
+                        nominal_nucleus_diameter_px=diameter,
                         contract=depletion,
                     )
                 )
@@ -816,9 +859,29 @@ class CellToolProgramCompiler:
         target_count: int,
         minimum_count: int,
         maximum_count: int,
+        nominal_nucleus_diameter_px: float,
         contract,
     ) -> tuple[tuple[str, ...], DepletionInstanceAuthority]:
         """Select complete nuclei with a stronger core than transition thinning."""
+
+        field_area_ok, field_area, effective_minimum_field_area = (
+            depletion_field_area_is_sufficient(
+                core_region=core_region,
+                transition_region=transition_region,
+                outer_reference_region=outer_reference_region,
+                nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
+                minimum_field_area_cell_diameter_squares=(
+                    contract.minimum_field_area_cell_diameter_squares
+                ),
+            )
+        )
+        if not field_area_ok:
+            raise JointContractError(
+                "depletion three-band field is below the skill-owned minimum "
+                "area: "
+                f"observed={field_area:.6f}, "
+                f"minimum={effective_minimum_field_area:.6f}"
+            )
 
         protected = set(protected_instance_ids)
         allowed = set(cell_classes)
