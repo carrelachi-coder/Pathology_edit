@@ -28,7 +28,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v3"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v4"
 
 
 class SpatialRanker(Protocol):
@@ -354,7 +354,24 @@ def generate_cell_layouts(
     capacity_bound = max(
         1, int(np.count_nonzero(add_zone) / max(1.0, average_area * 2.0))
     )
-    requested_count = min(executable_desired_count, capacity_bound)
+    packing_certificate = executable_contract.packing_certificate or {}
+    certified_requested_count = int(
+        packing_certificate.get("requested_count", 0)
+        if packing_certificate.get("passed") is True
+        else 0
+    )
+    if bundle.primitive.scope == "cell_only" and certified_requested_count > 0:
+        if certified_requested_count != executable_desired_count:
+            raise JointContractError(
+                "cell-only executable count differs from its packing certificate"
+            )
+        # The exact certificate has already tested concrete complete shapes,
+        # retained nuclei, V and one-pixel collision clearance.  A rough
+        # area/(2*median-area) estimate is only a diagnostic and must not cap
+        # the immutable executable count after that stronger proof passes.
+        requested_count = certified_requested_count
+    else:
+        requested_count = min(executable_desired_count, capacity_bound)
     replacement_count = min(replacement_count, requested_count)
     reserve_count = min(reserve_count, max(0, requested_count - replacement_count))
 
@@ -440,7 +457,12 @@ def generate_cell_layouts(
             continuity_minimum_anchor_coverage_fraction=0.0,
             continuity_preferred_count=0,
             minimum_effect_span_px=compiled_program.minimum_effect_span_px,
-            minimum_effect_foci=compiled_program.minimum_effect_foci,
+            minimum_effect_foci=(
+                requested_count
+                if bundle.primitive.primitive_id
+                == "peritumoral-neoplastic-scatter-increase-v1"
+                else compiled_program.minimum_effect_foci
+            ),
             enforce_single_scatter_separation=(
                 bundle.primitive.primitive_id != "cellularity-increase-v1"
             ),

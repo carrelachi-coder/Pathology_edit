@@ -1835,6 +1835,12 @@ def _cell_quota(c):
     capacity_max = int(c.candidate.tool_trace.get("capacity_max_count", batch_max))
     certified = c.candidate.tool_trace.get("cell_capacity_certified") is True
     fallback = bool(c.candidate.tool_trace.get("cell_capacity_fallback_used"))
+    packing_certificate = c.executable_contract.packing_certificate or {}
+    certificate_minimum = int(
+        packing_certificate.get("minimum_safe_count", 0)
+        if packing_certificate.get("passed") is True
+        else 0
+    )
     completion = placed / max(1, resolved)
     exact = (
         desired >= 0
@@ -1846,6 +1852,7 @@ def _cell_quota(c):
     maximum_safe_fallback = (
         fallback
         and certified
+        and resolved >= certificate_minimum
         and 0 <= resolved < desired
         and resolved == batch_max
         and resolved == capacity_max
@@ -1877,6 +1884,10 @@ def _cell_quota(c):
             "completion": completion,
             "used_capacity_fallback": maximum_safe_fallback,
             "capacity_certified": certified,
+            "packing_certificate_minimum_safe_count": certificate_minimum,
+            "packing_certificate_minimum_satisfied": (
+                resolved >= certificate_minimum
+            ),
         },
     )
 
@@ -3974,6 +3985,16 @@ def _authorized_cell_zone(c):
     ):
         return np.asarray(
             c.executable_contract.cell_program.support_context_region,
+            dtype=bool,
+        )
+    if c.plan.cell_plan.interface_ids:
+        # M is the immutable, anchor-segment-bound mechanism zone compiled
+        # before execution and already intersected with V. Reconstructing a
+        # second annulus from the entire interface changed the distance field
+        # near unselected segments and could reject footprints that were
+        # exactly contained in the authoritative M raster.
+        return np.asarray(
+            c.executable_contract.cell_program.mechanism_region,
             dtype=bool,
         )
     interface_masks = [

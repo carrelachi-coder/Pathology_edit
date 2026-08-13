@@ -52,6 +52,7 @@ from phase3_joint_edit_refine.gates import (
     MECHANISM_POSTCONDITION_IDS,
     JointGateRegistry,
     _added_instance_areas_by_class,
+    _cell_quota,
     _cell_tissue_compatibility,
     _discrete_radial_profile_is_monotonic,
     _fine_pattern_preserved,
@@ -3147,6 +3148,40 @@ class JointSkillTests(unittest.TestCase):
 
         self.assertTrue(check.passed, check.metrics)
         self.assertEqual(check.metrics["incompatible_host_pixels"], 0)
+
+    def test_cell_quota_rejects_fallback_below_packing_safe_minimum(self):
+        context = SimpleNamespace(
+            candidate=SimpleNamespace(
+                tool_trace={
+                    "biological_desired_count": 8,
+                    "desired_count": 8,
+                    "resolved_count": 5,
+                    "requested_count": 5,
+                    "placed_count": 5,
+                    "batch_max_attainable_count": 5,
+                    "capacity_max_count": 5,
+                    "cell_capacity_certified": True,
+                    "cell_capacity_fallback_used": True,
+                }
+            ),
+            executable_contract=SimpleNamespace(
+                packing_certificate={
+                    "passed": True,
+                    "requested_count": 8,
+                    "minimum_safe_count": 6,
+                }
+            ),
+        )
+
+        check = _cell_quota(context)
+
+        self.assertFalse(check.passed)
+        self.assertEqual(
+            check.metrics["packing_certificate_minimum_safe_count"], 6
+        )
+        self.assertFalse(
+            check.metrics["packing_certificate_minimum_satisfied"]
+        )
 
     def test_g2_defaults_never_assign_cell_only_or_unrepresentable_mechanism(self):
         with tempfile.TemporaryDirectory() as directory:
