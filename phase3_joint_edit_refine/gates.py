@@ -3635,12 +3635,13 @@ def _cell_tissue_compatibility(c):
     added_instance_classes = []
     incompatible_host_pixels = 0
     for _, class_id, component in iter_instances(target):
-        if np.any(component & added):
+        added_footprint = component & added
+        if np.any(added_footprint):
             added_instance_classes.append(int(class_id))
             if (
                 class_id == 1
                 and c.plan.coupling_plan.allow_neoplastic_in_non_tumor_tissue
-                and not np.any(component & ~_authorized_cell_zone(c))
+                and not np.any(added_footprint & ~_authorized_cell_zone(c))
             ):
                 continue
             compatible_labels = [
@@ -3657,7 +3658,7 @@ def _cell_tissue_compatibility(c):
             }
             incompatible_host_pixels += int(
                 np.count_nonzero(
-                    component
+                    added_footprint
                     & ~np.isin(
                         c.candidate.target_tissue_mask,
                         tuple(sorted(compatible_ids)),

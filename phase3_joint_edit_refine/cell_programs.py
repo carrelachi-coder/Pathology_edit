@@ -17,7 +17,7 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v12"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v13"
 
 
 @dataclass(frozen=True)
@@ -416,6 +416,26 @@ class CellToolProgramCompiler:
                 if label in schema.readable_labels:
                     host_ids.update(schema.resolve_fine_ids(label))
             valid &= np.isin(target_tissue, tuple(sorted(host_ids)))
+        if primitive.primitive_id in {
+            "peritumoral-neoplastic-scatter-increase-v1",
+            "peritumoral-small-cluster-increase-v1",
+        }:
+            # The peritumoral postcondition defines its outer radius from the
+            # source Tumor raster, whereas the interface compiler measures P
+            # from a one-pixel boundary segment.  Those two distance fields
+            # differ by one raster pixel at some orientations.  Bind V to the
+            # biological Tumor-relative annulus as well, so exact footprint
+            # containment and the final gate share one geometry authority.
+            tumor = np.isin(
+                target_tissue,
+                tuple(schema.resolve_fine_ids("Tumor")),
+            )
+            outer_distance = ndimage.distance_transform_edt(~tumor)
+            outer_maximum = max(
+                1,
+                int(bundle.mechanism.cell_program.halo_distance_px[1]),
+            )
+            valid &= ~tumor & (outer_distance <= outer_maximum)
         if (
             primitive.scope == "cell_only"
             and cell.layout_program_id != "localized_density_gradient"

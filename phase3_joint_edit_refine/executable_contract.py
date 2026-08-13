@@ -25,7 +25,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v8"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v9"
 
 POPULATION_DISPOSITIONS = frozenset(
     {
@@ -637,7 +637,19 @@ class ExecutableJointContractCompiler:
             target_tissue,
             bundle.annotation_profile.prohibit_cell_placement_fine_ids,
         ) & ~protected_structure
-        valid = profile_valid & np.isin(target_tissue, host_ids)
+        # The candidate-level contract may further restrict the compiler's
+        # footprint domain for the concrete target tissue, but it must never
+        # broaden it.  In particular, interface-local cell-only programs bind
+        # ``base_program.valid_footprint_region`` to their exact mechanism
+        # annulus.  Reconstructing V from host labels alone silently expanded
+        # that annulus to the whole compatible tissue component, allowing a
+        # legal center whose calibrated nucleus edge escaped the authorized
+        # mechanism zone.
+        valid = (
+            profile_valid
+            & np.isin(target_tissue, host_ids)
+            & np.asarray(base_program.valid_footprint_region, dtype=bool)
+        )
         # P is a center-domain contract, not a pre-eroded approximation of V.
         # The exact packing certificate below tests every concrete reference
         # footprint against V. Eroding P here by a nominal radius and then
@@ -715,7 +727,10 @@ class ExecutableJointContractCompiler:
                 ),
                 "E": "exact-union-of-complete-source-instance-footprints",
                 "P": "contract-legal-centers-exact-footprint-certified-against-V",
-                "V": "profile-and-target-host-fine-id-containment",
+                "V": (
+                    "compiler-monotonic-profile-target-host-and-"
+                    "mechanism-containment"
+                ),
                 "S": "bounded-context-containing-T-E-P-and-mechanism-zone",
                 "S_footprint_margin": (
                     "placement-centers-dilated-by-1.5-local-nucleus-diameters"

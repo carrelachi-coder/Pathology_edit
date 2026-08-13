@@ -51,6 +51,7 @@ from phase3_joint_edit_refine.gates import (
     MECHANISM_POSTCONDITION_IDS,
     JointGateRegistry,
     _added_instance_areas_by_class,
+    _cell_tissue_compatibility,
     _discrete_radial_profile_is_monotonic,
     _fine_pattern_preserved,
     _recorded_instance_areas_by_class,
@@ -3051,6 +3052,62 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(profile.tissue_compatible_classes["Stroma"], (2, 3))
         self.assertNotIn(1, profile.tissue_compatible_classes["Stroma"])
 
+    def test_cell_tissue_compatibility_audits_only_the_added_footprint(self):
+        schema = MaskProfileSchema.from_reference_profile("BCSS")
+        tumor_id = schema.resolve_fine_ids("Tumor")[0]
+        stroma_id = schema.resolve_fine_ids("Stroma")[0]
+        source = np.zeros((7, 7), dtype=np.uint8)
+        source[3, 3] = 1
+        target = source.copy()
+        target[3, 4] = 1  # same-class addition touches an existing instance
+        tissue = np.full(source.shape, tumor_id, dtype=np.uint8)
+        tissue[3, 4] = stroma_id
+        authorized = np.zeros(source.shape, dtype=bool)
+        authorized[3, 4] = True
+        context = SimpleNamespace(
+            source_nuclei=source,
+            schema=schema,
+            candidate=SimpleNamespace(
+                target_nuclei_mask=target,
+                target_tissue_mask=tissue,
+                cell_change=target != source,
+                tissue_change=np.zeros(source.shape, dtype=bool),
+            ),
+            plan=SimpleNamespace(
+                cell_plan=SimpleNamespace(
+                    interface_ids=(),
+                    core_zone="pop:component:test",
+                ),
+                coupling_plan=SimpleNamespace(
+                    allow_neoplastic_in_non_tumor_tissue=True,
+                ),
+            ),
+            scene=SimpleNamespace(
+                population_zone_masks={"pop:component:test": authorized},
+            ),
+            bundle=SimpleNamespace(
+                primitive=SimpleNamespace(scope="cell_only"),
+                cell_observation_profile=SimpleNamespace(
+                    tissue_compatible_classes={
+                        "Tumor": (1,),
+                        "Stroma": (2, 3),
+                    }
+                ),
+            ),
+            executable_contract=SimpleNamespace(
+                allowed_new_cell_classes=(1,),
+                cell_program=SimpleNamespace(
+                    depletion_profile_id=None,
+                    support_context_region=authorized,
+                ),
+            ),
+        )
+
+        check = _cell_tissue_compatibility(context)
+
+        self.assertTrue(check.passed, check.metrics)
+        self.assertEqual(check.metrics["incompatible_host_pixels"], 0)
+
     def test_g2_defaults_never_assign_cell_only_or_unrepresentable_mechanism(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -5024,7 +5081,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v12"
+                program["compiler_version"], "joint-cell-tool-compiler-v13"
             )
             self.assertEqual(
                 program["policies"]["P"],
