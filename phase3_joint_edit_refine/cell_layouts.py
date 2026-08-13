@@ -479,7 +479,7 @@ def generate_cell_layouts(
             compiled_program.nominal_nucleus_diameter_px
         ),
     )
-    certified_focus_witness_centers = (
+    candidate_focus_witness_centers = (
         tuple(
             (int(item["row"]), int(item["col"]))
             for item in packing_certificate.get("placements", ())
@@ -492,7 +492,14 @@ def generate_cell_layouts(
         and packing_certificate.get("passed") is True
         and packing_certificate.get("capacity_optimized_shape_fallback_used")
         is True
-        and compiled_program.minimum_effect_span_px <= 0
+        else ()
+    )
+    certified_focus_witness_centers = (
+        candidate_focus_witness_centers
+        if _centers_satisfy_minimum_span(
+            candidate_focus_witness_centers,
+            minimum_span_px=compiled_program.minimum_effect_span_px,
+        )
         else ()
     )
 
@@ -1810,6 +1817,23 @@ def _certified_witness_first_anchors(
         index for index in range(len(points)) if index not in witness_set
     ]
     return points[np.asarray([*witness_indices, *remainder], dtype=int)]
+
+
+def _centers_satisfy_minimum_span(
+    centers,
+    *,
+    minimum_span_px: int,
+) -> bool:
+    """Prove that certificate centers preserve the compiled effect span."""
+
+    minimum = max(0, int(minimum_span_px))
+    if minimum <= 0:
+        return bool(centers)
+    points = np.asarray(centers, dtype=float)
+    if len(points) < 2:
+        return False
+    _left, _right, diameter_sq = _exact_diameter_endpoint_pair(points)
+    return diameter_sq + 1e-6 >= float(minimum**2)
 
 
 def _first_fitting_reference(

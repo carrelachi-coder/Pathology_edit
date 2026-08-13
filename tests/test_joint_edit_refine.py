@@ -32,6 +32,7 @@ from phase3_joint_edit_refine.candidate_feasibility import (
 )
 from phase3_joint_edit_refine.cell_layouts import (
     ReferenceNucleusShape,
+    _centers_satisfy_minimum_span,
     _certified_witness_first_anchors,
     _effect_first_anchors,
     _place_layout,
@@ -1594,6 +1595,18 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(
             ordered.tolist(),
             [[12, 12], [4, 4], [8, 8], [16, 16]],
+        )
+        self.assertTrue(
+            _centers_satisfy_minimum_span(
+                ((44, 375), (200, 310), (90, 429)),
+                minimum_span_px=126,
+            )
+        )
+        self.assertFalse(
+            _centers_satisfy_minimum_span(
+                ((44, 375), (90, 429)),
+                minimum_span_px=126,
+            )
         )
 
     def test_layout_tries_another_eligible_shape_at_same_center(self):
