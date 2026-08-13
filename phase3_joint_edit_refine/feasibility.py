@@ -932,6 +932,7 @@ def augment_tissue_scene_with_nuclei_preflight(
     *,
     auxiliary_structure_masks: dict[str, np.ndarray] | None = None,
     required_auxiliary_structure_ids: tuple[str, ...] = (),
+    receiving_auxiliary_structure_ids: tuple[str, ...] = (),
 ) -> SceneAnalysis:
     """Make cell and native-structure exclusions unavailable to tissue tools.
 
@@ -947,13 +948,22 @@ def augment_tissue_scene_with_nuclei_preflight(
         dtype=bool,
     )
     available = auxiliary_structure_masks or {}
-    for structure_id in sorted(required_auxiliary_structure_ids):
+    receiving_ids = set(receiving_auxiliary_structure_ids)
+    required_ids = set(required_auxiliary_structure_ids) | receiving_ids
+    for structure_id in sorted(required_ids):
         if structure_id not in available:
             raise JointContractError(
                 f"required auxiliary structure {structure_id!r} is unavailable"
             )
-        prohibited[f"joint:auxiliary:{structure_id}"] = np.asarray(
-            available[structure_id], dtype=bool
+        structure = np.asarray(available[structure_id], dtype=bool)
+        # A protected auxiliary is itself forbidden. A receiving auxiliary is
+        # the opposite contract: the edit must remain *inside* it, so its
+        # complement is forbidden. Local invasive clearance uses the latter
+        # for the explicit user ROI. Treating receiving maps as a late-only
+        # joint gate allowed the topology solver to draw a few tissue pixels
+        # outside the ROI and then reject an otherwise executable candidate.
+        prohibited[f"joint:auxiliary:{structure_id}"] = (
+            ~structure if structure_id in receiving_ids else structure
         )
     return replace(scene, prohibited_region_masks=prohibited)
 

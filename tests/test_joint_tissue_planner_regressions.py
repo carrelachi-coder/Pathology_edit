@@ -74,10 +74,11 @@ def test_component_turnover_does_not_treat_annulus_compactness_as_roughness() ->
     assert result.metrics["maximum_component_compactness"] > 40.0
 
 
-def test_interface_front_still_enforces_change_region_compactness() -> None:
+def test_interface_front_uses_front_specific_geometry_gates() -> None:
     result = _check_boundary_naturalness(
         _annular_boundary_context(geometry_mode="interface_front")
     )
 
-    assert not result.passed
-    assert result.metrics["change_band_compactness_applicable"]
+    assert result.passed
+    assert not result.metrics["change_band_compactness_applicable"]
+    assert result.metrics["boundary_attached_geometry"]

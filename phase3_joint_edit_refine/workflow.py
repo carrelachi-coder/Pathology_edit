@@ -666,6 +666,9 @@ class JointPathologyEditWorkflow:
                 required_auxiliary_structure_ids=(
                     bundle.mechanism.representability.protected_auxiliary_structures
                 ),
+                receiving_auxiliary_structure_ids=(
+                    bundle.mechanism.representability.receiving_auxiliary_structures
+                ),
             )
             audit.write_inputs(
                 case=case,
@@ -1216,6 +1219,9 @@ class JointPathologyEditWorkflow:
                             required_auxiliary_structure_ids=(
                                 bundle.mechanism.representability.protected_auxiliary_structures
                             ),
+                            receiving_auxiliary_structure_ids=(
+                                bundle.mechanism.representability.receiving_auxiliary_structures
+                            ),
                         )
                         audit.write_json(
                             f"joint_nuclei_preflight_pass_{planning_pass + 2}.json",
@@ -1457,6 +1463,9 @@ class JointPathologyEditWorkflow:
                             ),
                             required_auxiliary_structure_ids=(
                                 bundle.mechanism.representability.protected_auxiliary_structures
+                            ),
+                            receiving_auxiliary_structure_ids=(
+                                bundle.mechanism.representability.receiving_auxiliary_structures
                             ),
                         )
                         audit.write_json(

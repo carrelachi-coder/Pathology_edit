@@ -767,6 +767,9 @@ class CandidateFeasibilityCompiler:
             required_auxiliary_structure_ids=(
                 joint_bundle.mechanism.representability.protected_auxiliary_structures
             ),
+            receiving_auxiliary_structure_ids=(
+                joint_bundle.mechanism.representability.receiving_auxiliary_structures
+            ),
         )
         planner = MultiInterfaceResearchTissuePlanner()
         feedback: dict[str, Any] = {
