@@ -32,6 +32,7 @@ from phase3_joint_edit_refine.candidate_feasibility import (
 )
 from phase3_joint_edit_refine.cell_layouts import (
     ReferenceNucleusShape,
+    _certified_witness_first_anchors,
     _effect_first_anchors,
     _place_layout,
     build_reference_shape_library,
@@ -1577,6 +1578,22 @@ class JointSkillTests(unittest.TestCase):
         self.assertGreaterEqual(
             float(np.linalg.norm(ordered[0] - ordered[1])),
             50.0,
+        )
+
+    def test_exact_packing_witnesses_precede_probnet_anchor_order(self):
+        anchors = np.asarray(
+            [[4, 4], [8, 8], [12, 12], [16, 16]],
+            dtype=int,
+        )
+
+        ordered = _certified_witness_first_anchors(
+            anchors,
+            certified_witness_centers=((12, 12), (4, 4)),
+        )
+
+        self.assertEqual(
+            ordered.tolist(),
+            [[12, 12], [4, 4], [8, 8], [16, 16]],
         )
 
     def test_layout_tries_another_eligible_shape_at_same_center(self):

@@ -28,7 +28,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v8"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v9"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -479,6 +479,22 @@ def generate_cell_layouts(
             compiled_program.nominal_nucleus_diameter_px
         ),
     )
+    certified_focus_witness_centers = (
+        tuple(
+            (int(item["row"]), int(item["col"]))
+            for item in packing_certificate.get("placements", ())
+            if isinstance(item, dict)
+            and int(item.get("class_id", -1)) == target_class
+            and "row" in item
+            and "col" in item
+        )
+        if bundle.primitive.primitive_id in _INDEPENDENT_FOCUS_PRIMITIVES
+        and packing_certificate.get("passed") is True
+        and packing_certificate.get("capacity_optimized_shape_fallback_used")
+        is True
+        and compiled_program.minimum_effect_span_px <= 0
+        else ()
+    )
 
     score = ranker.score(
         tissue_mask=target_tissue,
@@ -531,6 +547,7 @@ def generate_cell_layouts(
                 bundle.primitive.primitive_id
                 == "peritumoral-small-cluster-increase-v1"
             ),
+            certified_witness_centers=(),
             seed=seed + variant * 104729,
         )
         halo_score = (
@@ -579,6 +596,7 @@ def generate_cell_layouts(
                 bundle.primitive.primitive_id
                 == "peritumoral-small-cluster-increase-v1"
             ),
+            certified_witness_centers=certified_focus_witness_centers,
             seed=seed + variant * 104729 + 8191,
         )
         placed = core_placed + halo_placed
@@ -1455,6 +1473,7 @@ def _place_layout(
     seed,
     enforce_single_scatter_separation=True,
     enforce_small_cluster_group_separation=True,
+    certified_witness_centers=(),
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
@@ -1506,6 +1525,10 @@ def _place_layout(
             anchors,
             minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
             minimum_effect_foci=max(0, int(minimum_effect_foci)),
+        )
+        anchors = _certified_witness_first_anchors(
+            anchors,
+            certified_witness_centers=certified_witness_centers,
         )
     effective_cluster_range = cluster_size_range
     if minimum_effect_foci > 0 and requested_count > 0:
@@ -1760,6 +1783,33 @@ def _exact_diameter_endpoint_pair(
         int(candidate_indices[right]),
         float(distances_sq[left, right]),
     )
+
+
+def _certified_witness_first_anchors(
+    anchors: np.ndarray,
+    *,
+    certified_witness_centers,
+) -> np.ndarray:
+    """Front-load exact packing witnesses without inventing new coordinates."""
+
+    points = np.asarray(anchors, dtype=int)
+    if not len(points) or not certified_witness_centers:
+        return points
+    index_by_center = {
+        (int(row), int(col)): index
+        for index, (row, col) in enumerate(points)
+    }
+    witness_indices = []
+    for center in certified_witness_centers:
+        key = tuple(int(value) for value in center)
+        index = index_by_center.get(key)
+        if index is not None and index not in witness_indices:
+            witness_indices.append(index)
+    witness_set = set(witness_indices)
+    remainder = [
+        index for index in range(len(points)) if index not in witness_set
+    ]
+    return points[np.asarray([*witness_indices, *remainder], dtype=int)]
 
 
 def _first_fitting_reference(
