@@ -403,6 +403,19 @@ class MatureProbNetCellExecutor:
                 text=True,
             )
             if completed.returncode != 0:
+                sampling_rejection = _probnet_sampling_audit_rejection(
+                    completed=completed,
+                    output_path=output_path,
+                )
+                if sampling_rejection is not None:
+                    rejected_variants.append(
+                        {
+                            "variant": variant + 1,
+                            "seed": current_seed,
+                            **sampling_rejection,
+                        }
+                    )
+                    continue
                 raise JointContractError(
                     "mature ProbNet cell execution failed: "
                     + (completed.stderr or completed.stdout)[-2000:]
@@ -418,7 +431,15 @@ class MatureProbNetCellExecutor:
             selected = diagnostics[0]
             audit = selected.get("sampling_audit") or {}
             if audit.get("passed") is not True:
-                raise JointContractError("mature ProbNet sampling audit did not pass")
+                rejected_variants.append(
+                    {
+                        "variant": variant + 1,
+                        "seed": current_seed,
+                        "reasons": _sampling_audit_reason_codes(audit),
+                        "sampling_audit": audit,
+                    }
+                )
+                continue
             target = load_nuclei_mask(output_path)
             accepted_center_ledger = _accepted_center_ledger(selected)
             accepted_instance_area_ledger = _accepted_instance_area_ledger(
@@ -469,8 +490,10 @@ class MatureProbNetCellExecutor:
                 # Variants are independent paired candidates. One stochastic
                 # layout that crosses S/P/V must be rejected at candidate
                 # granularity; it must not erase sibling variants that already
-                # passed the immutable contract. Systemic command/audit errors
-                # still fail the whole executor above.
+                # passed the immutable contract. Sampling-audit failures are
+                # likewise variant-local because each seed has an independent
+                # spatial draw. Only a genuine subprocess/artifact failure is
+                # systemic and fails the whole executor above.
                 rejected_variants.append(
                     {
                         "variant": variant + 1,
@@ -672,12 +695,66 @@ class MatureProbNetCellExecutor:
                 }
             )
             raise JointContractError(
-                "all mature ProbNet variants violated the executable contract: "
+                "all mature ProbNet variants failed sampling audit or violated "
+                "the executable contract: "
                 + "; ".join(reasons)
             )
         for result in results:
             result.trace["rejected_variant_audit"] = list(rejected_variants)
         return tuple(results)
+
+
+_SAMPLING_AUDIT_FAILURE_SENTINEL = (
+    "ProbNet count/type/spatial sampling audit failed"
+)
+
+
+def _sampling_audit_reason_codes(audit: dict) -> list[str]:
+    reasons = [str(item) for item in (audit.get("failure_reasons") or ())]
+    if not reasons and audit.get("primary_failure_reason"):
+        reasons = [str(audit["primary_failure_reason"])]
+    if not reasons:
+        reasons = ["sampling_audit_failed"]
+    return [f"sampling_audit:{item}" for item in sorted(set(reasons))]
+
+
+def _probnet_sampling_audit_rejection(
+    *,
+    completed: subprocess.CompletedProcess,
+    output_path: Path,
+) -> dict | None:
+    """Recognize a complete but audit-rejected stochastic variant.
+
+    The mature CLI intentionally exits nonzero when ``--require-sampling-audit``
+    rejects a spatial draw, after it has atomically written the mask and its
+    diagnostics. That is candidate evidence, not a process failure. We only
+    downgrade the exact audited condition; missing/malformed artifacts and all
+    unrelated subprocess errors remain fail-closed in the caller.
+    """
+
+    process_text = (completed.stderr or completed.stdout or "")
+    if _SAMPLING_AUDIT_FAILURE_SENTINEL not in process_text:
+        return None
+    diagnostic_path = output_path.with_suffix(".diagnostics.json")
+    if not output_path.is_file() or not diagnostic_path.is_file():
+        return None
+    try:
+        diagnostics = json.loads(diagnostic_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(diagnostics, list) or not diagnostics:
+        return None
+    selected = diagnostics[0]
+    if not isinstance(selected, dict):
+        return None
+    audit = selected.get("sampling_audit") or {}
+    if not isinstance(audit, dict) or audit.get("passed") is not False:
+        return None
+    return {
+        "reasons": _sampling_audit_reason_codes(audit),
+        "sampling_audit": audit,
+        "subprocess_return_code": int(completed.returncode),
+    }
 
 
 def _compile_packing_witness(
