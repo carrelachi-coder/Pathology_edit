@@ -111,6 +111,7 @@ from phase3_joint_edit_refine.reference_shapes import (
 )
 from phase3_joint_edit_refine.scene import build_joint_scene_analysis
 from phase3_joint_edit_refine.seam import (
+    anchor_coverage_fraction,
     compile_continuity_center_quota,
     compile_executable_continuity_count,
 )
@@ -1826,6 +1827,46 @@ class JointSkillTests(unittest.TestCase):
         self.assertTrue(certificate.passed)
         self.assertEqual(certificate.requested_count, 3)
         self.assertEqual(certificate.placed_count, 3)
+
+    def test_packing_distributes_seam_witness_over_uncovered_anchor(self):
+        shape = (24, 64)
+        centers = np.zeros(shape, dtype=bool)
+        centers[12, [8, 16, 40, 48]] = True
+        anchor = np.zeros(shape, dtype=bool)
+        anchor[12, 4:53] = True
+        reference = ReferenceNucleusShape(
+            instance_id="complete-ref-1",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="semantic_complete_instance",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=2,
+            continuity_region=centers,
+            continuity_anchor_mask=anchor,
+            preexisting_continuity_centers=np.zeros(shape, dtype=bool),
+            continuity_maximum_empty_run_px=8,
+            required_seam_count=2,
+            required_seam_class=1,
+        )
+
+        witness = np.zeros(shape, dtype=bool)
+        for placement in certificate.placements:
+            witness[placement.row, placement.col] = True
+        coverage = anchor_coverage_fraction(
+            anchor,
+            witness,
+            maximum_empty_run_px=8,
+        )
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertGreaterEqual(coverage, 0.60)
 
     def test_scatter_packing_certificate_enforces_focus_separation(self):
         shape = (20, 20)

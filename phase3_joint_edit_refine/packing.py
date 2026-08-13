@@ -14,11 +14,11 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass, replace
 
 import numpy as np
-from scipy import ndimage
+from scipy import ndimage, signal
 
 from .cell_layouts import ReferenceNucleusShape
 
-PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v18"
+PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v19"
 MAX_PACKING_REFERENCE_SHAPES_PER_CLASS = 3
 MINIMUM_LOCAL_MEDIAN_AREA_RATIO = 0.60
 MAXIMUM_LOCAL_MEDIAN_AREA_RATIO = 1.67
@@ -122,6 +122,9 @@ def certify_complete_footprint_packing(
     requested_count: int,
     class_request_weights: dict[int, float] | None = None,
     continuity_region: np.ndarray | None = None,
+    continuity_anchor_mask: np.ndarray | None = None,
+    preexisting_continuity_centers: np.ndarray | None = None,
+    continuity_maximum_empty_run_px: int = 0,
     required_seam_count: int = 0,
     minimum_seam_count: int | None = None,
     required_seam_class: int | None = None,
@@ -168,6 +171,21 @@ def certify_complete_footprint_packing(
         if continuity_region is None
         else np.asarray(continuity_region, dtype=bool) & centers
     )
+    continuity_anchor = (
+        np.zeros_like(centers, dtype=bool)
+        if continuity_anchor_mask is None
+        else np.asarray(continuity_anchor_mask, dtype=bool)
+    )
+    continuity_centers = (
+        np.zeros_like(centers, dtype=bool)
+        if preexisting_continuity_centers is None
+        else np.asarray(preexisting_continuity_centers, dtype=bool).copy()
+    )
+    if not (
+        continuity_anchor.shape == centers.shape
+        and continuity_centers.shape == centers.shape
+    ):
+        raise ValueError("continuity packing inputs must share one shape")
     complete_references = {
         int(class_id): tuple(items)
         for class_id, items in references_by_class.items()
@@ -233,6 +251,9 @@ def certify_complete_footprint_packing(
                 placements=placements,
                 required_seam=True,
                 minimum_center_separation_px=minimum_center_separation_px,
+                coverage_anchor_mask=continuity_anchor,
+                coverage_centers=continuity_centers,
+                coverage_radius_px=continuity_maximum_empty_run_px,
             )
 
     placed_seam = sum(item.required_seam for item in placements)
@@ -328,6 +349,11 @@ def certify_complete_footprint_packing(
             required_seam_class=required_seam_class,
             minimum_acceptable_count=minimum_acceptable_count,
             minimum_center_separation_px=minimum_center_separation_px,
+            continuity_anchor_mask=continuity_anchor_mask,
+            preexisting_continuity_centers=preexisting_continuity_centers,
+            continuity_maximum_empty_run_px=(
+                continuity_maximum_empty_run_px
+            ),
             allow_finite_count_fallback=allow_finite_count_fallback,
             allow_shape_capacity_fallback=allow_shape_capacity_fallback,
         )
@@ -370,6 +396,13 @@ def certify_complete_footprint_packing(
                 required_seam_class=required_seam_class,
                 minimum_acceptable_count=minimum_acceptable_count,
                 minimum_center_separation_px=minimum_center_separation_px,
+                continuity_anchor_mask=continuity_anchor_mask,
+                preexisting_continuity_centers=(
+                    preexisting_continuity_centers
+                ),
+                continuity_maximum_empty_run_px=(
+                    continuity_maximum_empty_run_px
+                ),
                 allow_finite_count_fallback=allow_finite_count_fallback,
                 allow_shape_capacity_fallback=False,
             )
@@ -415,6 +448,11 @@ def certify_complete_footprint_packing(
             required_seam_class=required_seam_class,
             minimum_acceptable_count=minimum_safe_count,
             minimum_center_separation_px=minimum_center_separation_px,
+            continuity_anchor_mask=continuity_anchor_mask,
+            preexisting_continuity_centers=preexisting_continuity_centers,
+            continuity_maximum_empty_run_px=(
+                continuity_maximum_empty_run_px
+            ),
             allow_finite_count_fallback=False,
             allow_shape_capacity_fallback=allow_shape_capacity_fallback,
         )
@@ -443,6 +481,9 @@ def _pack_into_zone(
     placements: list[PackingPlacement],
     required_seam: bool,
     minimum_center_separation_px: float,
+    coverage_anchor_mask: np.ndarray | None = None,
+    coverage_centers: np.ndarray | None = None,
+    coverage_radius_px: int = 0,
 ) -> None:
     remaining_by_class = {
         int(class_id): max(0, int(count))
@@ -455,6 +496,36 @@ def _pack_into_zone(
         or not references_by_class
         or not remaining_by_class
     ):
+        return
+    if (
+        required_seam
+        and coverage_anchor_mask is not None
+        and coverage_centers is not None
+        and np.any(coverage_anchor_mask)
+    ):
+        # Continuity is a coverage contract, not merely a count inside a
+        # boundary band. Recompute exact fits after every accepted footprint
+        # and prefer the center covering the most still-uncovered anchor. This
+        # prevents a valid small seam quota from clustering at one end of a
+        # long interface and being rejected only after certification.
+        _pack_dynamic_tail(
+            requested=requested,
+            zone=zone,
+            valid=valid,
+            occupied=occupied,
+            footprint_union=footprint_union,
+            references_by_class=references_by_class,
+            class_center_regions=class_center_regions,
+            class_counts=class_counts,
+            remaining_by_class=remaining_by_class,
+            reference_offsets=reference_offsets,
+            placements=placements,
+            required_seam=required_seam,
+            minimum_center_separation_px=minimum_center_separation_px,
+            coverage_anchor_mask=coverage_anchor_mask,
+            coverage_centers=coverage_centers,
+            coverage_radius_px=coverage_radius_px,
+        )
         return
     # Fast path: one vectorized static screen followed by deterministic local
     # collision checks. Successful candidates normally finish here.
@@ -549,6 +620,9 @@ def _pack_dynamic_tail(
     placements: list[PackingPlacement],
     required_seam: bool,
     minimum_center_separation_px: float,
+    coverage_anchor_mask: np.ndarray | None = None,
+    coverage_centers: np.ndarray | None = None,
+    coverage_radius_px: int = 0,
 ) -> None:
     """Finish or disprove a shortfall with current-occupancy fit maps."""
 
@@ -575,9 +649,21 @@ def _pack_dynamic_tail(
                 if class_region is None
                 else fit_by_class[class_id] & class_region
             )
-        coords = _distributed_center_order(
-            zone & active,
-            distance_map=zone_distance,
+        active_zone = zone & active
+        coords = (
+            _coverage_center_order(
+                active_zone,
+                anchor_mask=coverage_anchor_mask,
+                existing_centers=coverage_centers,
+                coverage_radius_px=coverage_radius_px,
+                distance_map=zone_distance,
+            )
+            if coverage_anchor_mask is not None
+            and coverage_centers is not None
+            else _distributed_center_order(
+                active_zone,
+                distance_map=zone_distance,
+            )
         )
         accepted = False
         for row, col in coords:
@@ -601,6 +687,8 @@ def _pack_dynamic_tail(
             ):
                 placed += 1
                 accepted = True
+                if coverage_centers is not None:
+                    coverage_centers[int(row), int(col)] = True
                 break
         if not accepted:
             break
@@ -785,6 +873,48 @@ def _distributed_center_order(
     # This avoids consuming one corner first while remaining deterministic.
     phase = (coords[:, 0] % 2) * 2 + (coords[:, 1] % 2)
     order = np.lexsort((coords[:, 1], coords[:, 0], phase, -distance[zone]))
+    return coords[order]
+
+
+def _coverage_center_order(
+    zone: np.ndarray,
+    *,
+    anchor_mask: np.ndarray,
+    existing_centers: np.ndarray,
+    coverage_radius_px: int,
+    distance_map: np.ndarray,
+) -> np.ndarray:
+    """Rank legal centers by exact incremental anchor coverage."""
+
+    candidates = np.asarray(zone, dtype=bool)
+    coords = np.argwhere(candidates)
+    if not len(coords):
+        return coords
+    anchor = np.asarray(anchor_mask, dtype=bool)
+    centers = np.asarray(existing_centers, dtype=bool)
+    radius = max(1, int(coverage_radius_px))
+    uncovered = anchor.copy()
+    if np.any(centers):
+        uncovered &= ndimage.distance_transform_edt(~centers) > radius
+    if not np.any(uncovered):
+        return _distributed_center_order(
+            candidates,
+            distance_map=distance_map,
+        )
+    yy, xx = np.ogrid[-radius : radius + 1, -radius : radius + 1]
+    disk = (yy * yy + xx * xx) <= radius * radius
+    coverage = signal.fftconvolve(
+        uncovered.astype(float),
+        disk.astype(float),
+        mode="same",
+    )
+    scores = coverage[coords[:, 0], coords[:, 1]]
+    distance = np.asarray(distance_map, dtype=float)[
+        coords[:, 0], coords[:, 1]
+    ]
+    order = np.lexsort(
+        (coords[:, 1], coords[:, 0], -distance, -scores)
+    )
     return coords[order]
 
 

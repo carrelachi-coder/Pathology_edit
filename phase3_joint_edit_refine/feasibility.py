@@ -1150,6 +1150,11 @@ def assess_candidate_cell_feasibility(
         requested_count=effective_required_count,
         class_request_weights=preflight.target_density_by_class,
         continuity_region=adaptive_seam.continuity_region,
+        continuity_anchor_mask=adaptive_seam.anchor_mask,
+        preexisting_continuity_centers=retained_target_centers,
+        continuity_maximum_empty_run_px=(
+            adaptive_seam.maximum_empty_run_px
+        ),
         required_seam_count=required_seam,
         minimum_seam_count=minimum_seam,
         required_seam_class=preflight.target_cell_class,
@@ -1333,6 +1338,14 @@ def certify_compiled_cell_program_feasibility(
     prior_fallback_used = bool(
         prior_certificate.get("finite_count_fallback_used", False)
     )
+    retained_centers = class_center_mask(
+        np.where(
+            np.asarray(program.erasure_region, dtype=bool),
+            0,
+            np.asarray(scene.source_nuclei),
+        ),
+        class_id=target_class,
+    )
     certificate = certify_complete_footprint_packing(
         source_nuclei=scene.source_nuclei,
         erased_footprint=program.erasure_region,
@@ -1342,6 +1355,11 @@ def certify_compiled_cell_program_feasibility(
         requested_count=report.required_add_count,
         class_request_weights=preflight.target_density_by_class,
         continuity_region=program.continuity_region,
+        continuity_anchor_mask=program.continuity_anchor_mask,
+        preexisting_continuity_centers=retained_centers,
+        continuity_maximum_empty_run_px=(
+            program.continuity_maximum_empty_run_px
+        ),
         required_seam_count=required_seam_count,
         minimum_seam_count=minimum_seam_count,
         required_seam_class=target_class,
@@ -1396,14 +1414,6 @@ def certify_compiled_cell_program_feasibility(
         or len(certificate.placements) != certificate.requested_count
     ):
         reasons.append("packing_certificate_witness_ledger_incomplete")
-    retained_centers = class_center_mask(
-        np.where(
-            np.asarray(program.erasure_region, dtype=bool),
-            0,
-            np.asarray(scene.source_nuclei),
-        ),
-        class_id=target_class,
-    )
     witness_centers = retained_centers.copy()
     for placement in certificate.placements:
         if placement.class_id == target_class:
