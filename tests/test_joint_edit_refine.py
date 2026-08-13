@@ -1784,6 +1784,35 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(certificate.requested_count, 3)
         self.assertEqual(certificate.placed_count, 3)
 
+    def test_scatter_packing_certificate_enforces_focus_separation(self):
+        shape = (20, 20)
+        centers = np.zeros(shape, dtype=bool)
+        centers[8, 4] = True
+        centers[8, 8] = True
+        centers[8, 12] = True
+        reference = ReferenceNucleusShape(
+            instance_id="unit-shape",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="test",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=3,
+            minimum_acceptable_count=3,
+            minimum_center_separation_px=5.0,
+        )
+
+        self.assertFalse(certificate.passed)
+        self.assertEqual(certificate.placed_count, 2)
+        self.assertEqual(certificate.minimum_center_separation_px, 5.0)
+
     def test_typed_seam_does_not_exclude_other_compatible_classes(self):
         shape = (32, 32)
         region = np.zeros(shape, dtype=bool)

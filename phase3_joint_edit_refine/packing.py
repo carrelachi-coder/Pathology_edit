@@ -18,7 +18,7 @@ from scipy import ndimage
 
 from .cell_layouts import ReferenceNucleusShape
 
-PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v17"
+PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v18"
 MAX_PACKING_REFERENCE_SHAPES_PER_CLASS = 3
 MINIMUM_LOCAL_MEDIAN_AREA_RATIO = 0.60
 MAXIMUM_LOCAL_MEDIAN_AREA_RATIO = 1.67
@@ -40,6 +40,7 @@ class PackingCertificate:
     nominal_requested_count: int
     requested_count: int
     minimum_safe_count: int
+    minimum_center_separation_px: float
     finite_count_fallback_used: bool
     placed_count: int
     passed: bool
@@ -66,6 +67,7 @@ class PackingCertificate:
             "nominal_requested_count": self.nominal_requested_count,
             "requested_count": self.requested_count,
             "minimum_safe_count": self.minimum_safe_count,
+            "minimum_center_separation_px": self.minimum_center_separation_px,
             "finite_count_fallback_used": self.finite_count_fallback_used,
             "placed_count": self.placed_count,
             "passed": self.passed,
@@ -124,6 +126,7 @@ def certify_complete_footprint_packing(
     minimum_seam_count: int | None = None,
     required_seam_class: int | None = None,
     minimum_acceptable_count: int | None = None,
+    minimum_center_separation_px: float = 0.0,
     allow_finite_count_fallback: bool = True,
     allow_shape_capacity_fallback: bool = True,
 ) -> PackingCertificate:
@@ -229,6 +232,7 @@ def certify_complete_footprint_packing(
                 reference_offsets=reference_offsets,
                 placements=placements,
                 required_seam=True,
+                minimum_center_separation_px=minimum_center_separation_px,
             )
 
     placed_seam = sum(item.required_seam for item in placements)
@@ -266,6 +270,7 @@ def certify_complete_footprint_packing(
             reference_offsets=reference_offsets,
             placements=placements,
             required_seam=False,
+            minimum_center_separation_px=minimum_center_separation_px,
         )
 
     reasons = []
@@ -280,6 +285,9 @@ def certify_complete_footprint_packing(
         nominal_requested_count=requested,
         requested_count=requested,
         minimum_safe_count=requested,
+        minimum_center_separation_px=max(
+            0.0, float(minimum_center_separation_px)
+        ),
         finite_count_fallback_used=False,
         placed_count=len(placements),
         passed=not reasons,
@@ -319,6 +327,7 @@ def certify_complete_footprint_packing(
             minimum_seam_count=placed_seam,
             required_seam_class=required_seam_class,
             minimum_acceptable_count=minimum_acceptable_count,
+            minimum_center_separation_px=minimum_center_separation_px,
             allow_finite_count_fallback=allow_finite_count_fallback,
             allow_shape_capacity_fallback=allow_shape_capacity_fallback,
         )
@@ -360,6 +369,7 @@ def certify_complete_footprint_packing(
                 minimum_seam_count=minimum_seam_count,
                 required_seam_class=required_seam_class,
                 minimum_acceptable_count=minimum_acceptable_count,
+                minimum_center_separation_px=minimum_center_separation_px,
                 allow_finite_count_fallback=allow_finite_count_fallback,
                 allow_shape_capacity_fallback=False,
             )
@@ -404,6 +414,7 @@ def certify_complete_footprint_packing(
             minimum_seam_count=minimum_seam_count,
             required_seam_class=required_seam_class,
             minimum_acceptable_count=minimum_safe_count,
+            minimum_center_separation_px=minimum_center_separation_px,
             allow_finite_count_fallback=False,
             allow_shape_capacity_fallback=allow_shape_capacity_fallback,
         )
@@ -431,6 +442,7 @@ def _pack_into_zone(
     reference_offsets: dict[int, int],
     placements: list[PackingPlacement],
     required_seam: bool,
+    minimum_center_separation_px: float,
 ) -> None:
     remaining_by_class = {
         int(class_id): max(0, int(count))
@@ -493,6 +505,7 @@ def _pack_into_zone(
             reference_offsets=reference_offsets,
             placements=placements,
             required_seam=required_seam,
+            minimum_center_separation_px=minimum_center_separation_px,
         )
         if accepted:
             placed_here += 1
@@ -517,6 +530,7 @@ def _pack_into_zone(
             reference_offsets=reference_offsets,
             placements=placements,
             required_seam=required_seam,
+            minimum_center_separation_px=minimum_center_separation_px,
         )
 
 
@@ -534,6 +548,7 @@ def _pack_dynamic_tail(
     reference_offsets: dict[int, int],
     placements: list[PackingPlacement],
     required_seam: bool,
+    minimum_center_separation_px: float,
 ) -> None:
     """Finish or disprove a shortfall with current-occupancy fit maps."""
 
@@ -582,6 +597,7 @@ def _pack_dynamic_tail(
                 reference_offsets=reference_offsets,
                 placements=placements,
                 required_seam=required_seam,
+                minimum_center_separation_px=minimum_center_separation_px,
             ):
                 placed += 1
                 accepted = True
@@ -607,7 +623,17 @@ def _place_at_center(
     reference_offsets: dict[int, int],
     placements: list[PackingPlacement],
     required_seam: bool,
+    minimum_center_separation_px: float,
 ) -> bool:
+    minimum_separation_sq = max(
+        0.0, float(minimum_center_separation_px)
+    ) ** 2
+    if minimum_separation_sq > 0.0 and any(
+        (row - item.row) ** 2 + (col - item.col) ** 2
+        <= minimum_separation_sq
+        for item in placements
+    ):
+        return False
     alternatives = tuple(
         sorted(
             remaining_by_class,

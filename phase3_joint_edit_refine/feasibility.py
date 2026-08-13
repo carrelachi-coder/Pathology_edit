@@ -1346,6 +1346,12 @@ def certify_compiled_cell_program_feasibility(
         minimum_seam_count=minimum_seam_count,
         required_seam_class=target_class,
         minimum_acceptable_count=minimum_acceptable_add_count,
+        minimum_center_separation_px=(
+            2.25 * float(program.nominal_nucleus_diameter_px)
+            if contract.primitive_id
+            == "peritumoral-neoplastic-scatter-increase-v1"
+            else 0.0
+        ),
         # Exactly one bounded fallback is allowed across the two feasibility
         # stages. A broad candidate core may fit the nominal count while the
         # final E/P/V/C compiler exposes the true lower capacity; in that case
