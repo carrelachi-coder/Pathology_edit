@@ -15,6 +15,30 @@ from .execution_aliases import tissue_tool_primitive_id
 from .schema import JointMechanismSkill, JointPrimitiveSkill, JointProfileContract
 
 
+def _instruction_has_explicit_local_selection(instruction: str) -> bool:
+    """Recognize an explicit bounded-region request without inferring an ROI."""
+
+    normalized = " ".join(instruction.casefold().split())
+    return any(
+        token in normalized
+        for token in (
+            "local",
+            "roi",
+            "selected region",
+            "selected area",
+            "specified region",
+            "specified area",
+            "marked region",
+            "marked area",
+            "局部",
+            "圈定",
+            "选定区域",
+            "所选区域",
+            "选区",
+        )
+    )
+
+
 @dataclass(frozen=True)
 class CellObservationProfile:
     profile_id: str
@@ -652,15 +676,7 @@ class JointSkillRepository:
                 raise JointContractError(
                     "local invasive clearance requires a user-supplied local_clearance_roi"
                 )
-            if not any(
-                token in case.instruction.casefold()
-                for token in (
-                    "local",
-                    "roi",
-                    "\u5c40\u90e8",
-                    "\u5708\u5b9a",
-                )
-            ):
+            if not _instruction_has_explicit_local_selection(case.instruction):
                 raise JointContractError(
                     "local invasive clearance must be explicit in the user instruction"
                 )
