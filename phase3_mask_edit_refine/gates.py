@@ -1259,9 +1259,25 @@ def _check_boundary_naturalness(context: GateContext) -> GateCheck:
         float(item["boundary_compactness"]) * int(item["area_px"])
         for item in component_metrics
     ) / max(area, 1)
+    component_boundary_turnover = (
+        context.plan.tool_program.parameter_ranges.get(
+            "tissue_geometry_mode"
+        )
+        == "component_boundary_turnover"
+    )
+    # Compactness of the *changed band* is not a roughness measure for a
+    # closed component-boundary turnover. Even a perfectly smooth thin
+    # annulus has compactness proportional to component radius / band width,
+    # so it can exceed every fixed bound as the component grows. The separate
+    # parallel-boundary gate audits the biologically relevant depth variation
+    # of this geometry. Rectangle-like raster fills remain invalid here.
+    compactness_applicable = not component_boundary_turnover
     passed = (
         not rectangle_like
-        and maximum_component_compactness <= max_compactness
+        and (
+            not compactness_applicable
+            or maximum_component_compactness <= max_compactness
+        )
     )
     return _result(
         "boundary_naturalness",
@@ -1280,6 +1296,7 @@ def _check_boundary_naturalness(context: GateContext) -> GateCheck:
                 area_weighted_component_compactness
             ),
             "maximum_allowed_component_compactness": max_compactness,
+            "change_band_compactness_applicable": compactness_applicable,
             "component_metrics": component_metrics,
             "rectangle_like": rectangle_like,
         },
