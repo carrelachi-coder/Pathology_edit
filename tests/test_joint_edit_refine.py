@@ -1546,6 +1546,48 @@ class JointSkillTests(unittest.TestCase):
             float(np.sqrt(np.max(np.sum(distances**2, axis=2)))), 40.0
         )
 
+    def test_local_abundance_does_not_inherit_peritumoral_group_spacing(self):
+        canvas = np.zeros((32, 32), dtype=np.uint8)
+        legal = np.zeros_like(canvas, dtype=bool)
+        legal[3:-3, 3:-3] = True
+        reference = ReferenceNucleusShape(
+            "ref", 1, np.ones((1, 1), dtype=bool), "test", 1
+        )
+        common = {
+            "base": canvas,
+            "references": (reference,),
+            "class_id": 1,
+            "legal_zone": legal,
+            "valid_footprint_region": legal,
+            "halo": legal,
+            "score": legal.astype(float),
+            "requested_count": 12,
+            "layout_program": "small_cluster",
+            "cluster_size_range": (1, 1),
+            "nominal_nucleus_diameter_px": 8.0,
+            "orientation_mask": np.zeros_like(legal),
+            "continuity_region": np.zeros_like(legal),
+            "continuity_anchor_mask": np.zeros_like(legal),
+            "continuity_maximum_empty_run_px": 0,
+            "continuity_minimum_anchor_coverage_fraction": 0.0,
+            "continuity_preferred_count": 0,
+            "minimum_effect_span_px": 0,
+            "minimum_effect_foci": 0,
+            "seed": 1,
+        }
+
+        _target, local_placed, _trace = _place_layout(
+            **common,
+            enforce_small_cluster_group_separation=False,
+        )
+        _target, peritumoral_placed, _trace = _place_layout(
+            **common,
+            enforce_small_cluster_group_separation=True,
+        )
+
+        self.assertEqual(local_placed, 12)
+        self.assertLess(peritumoral_placed, local_placed)
+
     def test_every_mechanism_has_a_unique_registered_postcondition_gate(self):
         repository = JointSkillRepository()
         registry = JointGateRegistry()

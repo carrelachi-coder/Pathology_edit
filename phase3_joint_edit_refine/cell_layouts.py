@@ -28,7 +28,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v4"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v5"
 
 
 class SpatialRanker(Protocol):
@@ -422,6 +422,10 @@ def generate_cell_layouts(
             enforce_single_scatter_separation=(
                 bundle.primitive.primitive_id != "cellularity-increase-v1"
             ),
+            enforce_small_cluster_group_separation=(
+                bundle.primitive.primitive_id
+                == "peritumoral-small-cluster-increase-v1"
+            ),
             seed=seed + variant * 104729,
         )
         halo_score = (
@@ -465,6 +469,10 @@ def generate_cell_layouts(
             ),
             enforce_single_scatter_separation=(
                 bundle.primitive.primitive_id != "cellularity-increase-v1"
+            ),
+            enforce_small_cluster_group_separation=(
+                bundle.primitive.primitive_id
+                == "peritumoral-small-cluster-increase-v1"
             ),
             seed=seed + variant * 104729 + 8191,
         )
@@ -913,6 +921,7 @@ def _build_multiclass_addition_results(
                     else 0
                 ),
                 enforce_single_scatter_separation=False,
+                enforce_small_cluster_group_separation=False,
                 seed=seed + variant * 104729 + offset * 8191,
             )
             placements.extend(current)
@@ -1334,6 +1343,7 @@ def _place_layout(
     minimum_effect_foci,
     seed,
     enforce_single_scatter_separation=True,
+    enforce_small_cluster_group_separation=True,
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
@@ -1451,11 +1461,15 @@ def _place_layout(
                 # final instance graph; ordinary non-overlap is insufficient
                 # because two complete nuclei can still form one local focus.
                 continue
-            if layout_program == "small_cluster" and any(
+            if (
+                layout_program == "small_cluster"
+                and enforce_small_cluster_group_separation
+                and any(
                 (cy - int(item["center_xy"][1])) ** 2
                 + (cx - int(item["center_xy"][0])) ** 2
                 <= (2.25 * float(nominal_nucleus_diameter_px)) ** 2
                 for item in placement_trace[:group_start]
+                )
             ):
                 # The gate rebuilds foci from the final raster and accepted
                 # centers, deliberately ignoring planner cluster IDs. Keep
