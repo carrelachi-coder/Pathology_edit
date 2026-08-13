@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -17,6 +16,25 @@ from phase3_mask_edit_refine.models import EditPlan
 
 from .clarification import PlannerClarificationRequired
 from .feasibility import classify_tumor_stroma_boundary
+from .llm_audit_tokens import (
+    CELL_ABSTAIN_TOKEN,
+    CELL_SELECTION_TOKEN,
+    CRITIC_ABSTAIN_SUMMARY_TOKEN,
+    CRITIC_SUMMARY_TOKEN,
+    CRITIC_VETO_TOKEN,
+    JOINT_ABSTAIN_TOKEN,
+    JOINT_ANCHOR_TOKEN,
+    JOINT_EXPECTATION_TOKEN,
+    JOINT_OBSERVATION_TOKEN,
+    SEMANTIC_ABSTAIN_TOKEN,
+    SEMANTIC_CLARIFICATION_TOKEN,
+    SEMANTIC_OBSERVATION_TOKEN,
+    SEMANTIC_SELECTION_TOKEN,
+    require_exact_tokens,
+    require_optional_token,
+    require_token,
+    require_token_subset,
+)
 from .models import (
     CellEditPlan,
     CouplingPlan,
@@ -30,6 +48,7 @@ from .nuclei import load_nuclei_mask
 from .planner import (
     JOINT_PLAN_SCHEMA_VERSION,
     LOCAL_POPULATION_PRIMITIVES,
+    CellPlanSelectionHandle,
     CertifiedCellPlanCandidate,
     JointInterpretationOption,
     validate_cell_plan_candidate,
@@ -39,6 +58,10 @@ from .planner_inputs import (
     validate_mask_planner_image_paths,
 )
 from .planner_policy import PREFERENCE_METRIC_CATALOG
+from .portfolio_authority import (
+    build_cell_portfolio_authority_binding,
+    canonical_metadata_sha256,
+)
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
@@ -54,50 +77,23 @@ def _expected_cell_authority_binding_sha256(
         raise JointContractError(
             "cell portfolio lacks compiler-owned authority binding"
         )
-    expected_budget = (
-        case.cell_count_extent_budget.__dict__
-        if case.cell_count_extent_budget is not None
-        else None
-    )
     source_tissue = np.ascontiguousarray(
         load_id_mask(case.source_tissue_mask_uri)
     )
     source_nuclei = np.ascontiguousarray(
         load_nuclei_mask(case.source_nuclei_mask_uri)
     )
-    source_digests = {
-        key: value
-        for key, value in sorted(case.provenance.items())
-        if key.endswith(("sha256", "digest"))
-    }
-    if (
-        binding.get("case_id") != case.case_id
-        or binding.get("primitive_id") != case.primitive_id
-        or binding.get("mechanism_id") != bundle.mechanism.mechanism_id
-        or binding.get("pathology_domain_id") != case.pathology_domain_id
-        or binding.get("annotation_profile_id") != case.annotation_profile_id
-        or binding.get("cell_observation_profile_id")
-        != case.cell_observation_profile_id
-        or binding.get("cell_population_profile_id")
-        != case.cell_population_profile_id
-        or binding.get("cell_count_extent_budget") != expected_budget
-        or binding.get("source_asset_digests") != source_digests
-        or binding.get("source_tissue_array_sha256")
-        != hashlib.sha256(source_tissue.tobytes()).hexdigest()
-        or binding.get("source_nuclei_array_sha256")
-        != hashlib.sha256(source_nuclei.tobytes()).hexdigest()
-    ):
+    expected = build_cell_portfolio_authority_binding(
+        case=case,
+        source_tissue=source_tissue,
+        source_nuclei=source_nuclei,
+        joint_bundle=bundle,
+    )
+    if dict(binding) != expected:
         raise JointContractError(
-            "cell portfolio authority is detached from the current case, mechanism, or budget"
+            "cell portfolio authority is detached from current runtime inputs or skills"
         )
-    return hashlib.sha256(
-        json.dumps(
-            binding,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
+    return canonical_metadata_sha256(expected)
 
 
 def _mask_planner_case_metadata(case: JointCaseContext) -> dict[str, Any]:
@@ -190,6 +186,11 @@ class OpenAIMultimodalJointPlanner:
                 json_schema=MECHANISM_SELECTION_SCHEMA,
             )
             if raw.get("clarification_required") is True:
+                require_optional_token(
+                    raw.get("clarification_reason"),
+                    expected=SEMANTIC_CLARIFICATION_TOKEN,
+                    field="clarification_reason",
+                )
                 primitive_ids = _strings(
                     raw.get("clarification_primitive_ids"),
                     "clarification_primitive_ids",
@@ -206,13 +207,18 @@ class OpenAIMultimodalJointPlanner:
                         "joint Planner returned an invalid clarification option set"
                     )
                 raise PlannerClarificationRequired(
-                    _required_string(raw, "clarification_reason"),
+                    SEMANTIC_CLARIFICATION_TOKEN,
                     primitive_ids=primitive_ids,
                 )
             if raw.get("abstain") is True:
+                require_optional_token(
+                    raw.get("abstain_reason"),
+                    expected=SEMANTIC_ABSTAIN_TOKEN,
+                    field="abstain_reason",
+                )
                 raise JointContractError(
                     "joint mechanism Planner abstained: "
-                    + str(raw.get("abstain_reason") or "insufficient mask-graph evidence")
+                    + SEMANTIC_ABSTAIN_TOKEN
                 )
             try:
                 if _required_string(raw, "decision_id") != "select_primitive_mechanism_pair":
@@ -235,11 +241,15 @@ class OpenAIMultimodalJointPlanner:
                         "skill policy forbids primitive-mechanism selection"
                     )
                 confidence = _unit(raw, "confidence")
-                explanation = _required_string(
-                    raw, "interpretation_explanation"
+                explanation = require_token(
+                    raw.get("interpretation_explanation"),
+                    expected=SEMANTIC_SELECTION_TOKEN,
+                    field="interpretation_explanation",
                 )
-                observations = _strings(
-                    raw.get("supporting_observations"), "supporting_observations"
+                observations = require_exact_tokens(
+                    raw.get("supporting_observations"),
+                    expected=(SEMANTIC_OBSERVATION_TOKEN,),
+                    field="supporting_observations",
                 )
                 capability_metric_ids = _strings(
                     raw.get("supporting_capability_metric_ids"),
@@ -254,13 +264,10 @@ class OpenAIMultimodalJointPlanner:
                         "joint Planner cited unmeasured capability metrics: "
                         + ", ".join(sorted(unknown_metrics))
                     )
-                contraindications = _strings(
+                require_exact_tokens(
                     raw.get("observed_contraindications", []),
-                    "observed_contraindications",
-                    allow_empty=True,
-                )
-                _reject_unannotated_pathology_claims(
-                    (explanation, *observations, *contraindications)
+                    expected=(),
+                    field="observed_contraindications",
                 )
                 # Confidence, prose observations, and self-reported
                 # contraindications are audit-only LLM outputs. They never
@@ -380,9 +387,13 @@ class OpenAIMultimodalJointPlanner:
                 json_schema=JOINT_PLAN_JSON_SCHEMA,
             )
             if raw.get("abstain") is True:
+                require_optional_token(
+                    raw.get("abstain_reason"),
+                    expected=JOINT_ABSTAIN_TOKEN,
+                    field="abstain_reason",
+                )
                 raise JointContractError(
-                    "joint edit Planner abstained: "
-                    + str(raw.get("abstain_reason") or "insufficient representability")
+                    "joint edit Planner abstained: " + JOINT_ABSTAIN_TOKEN
                 )
             try:
                 plan = self._parse_plan(
@@ -480,9 +491,13 @@ class OpenAIMultimodalJointPlanner:
                 json_schema=CELL_PLAN_SELECTION_SCHEMA,
             )
             if raw.get("abstain") is True:
+                require_optional_token(
+                    raw.get("abstain_reason"),
+                    expected=CELL_ABSTAIN_TOKEN,
+                    field="abstain_reason",
+                )
                 raise JointContractError(
-                    "cell-plan Planner abstained: "
-                    + str(raw.get("abstain_reason") or "no acceptable candidate")
+                    "cell-plan Planner abstained: " + CELL_ABSTAIN_TOKEN
                 )
             try:
                 decision = _required_string(raw, "decision_id")
@@ -523,12 +538,18 @@ class OpenAIMultimodalJointPlanner:
                         + ", ".join(sorted(missing_metrics))
                     )
                 validate_cell_plan_candidate(selected)
-                _reject_unannotated_pathology_claims(
-                    (_optional_string(raw.get("selection_explanation")),)
+                require_token(
+                    raw.get("selection_explanation"),
+                    expected=CELL_SELECTION_TOKEN,
+                    field="selection_explanation",
                 )
             except JointContractError as exc:
                 errors.append(f"attempt {attempt}: {exc}")
                 continue
+            selection_handle = CellPlanSelectionHandle.from_candidate(
+                selected,
+                selected_tool_program_id=program_id,
+            )
             return selected.plan, {
                 "provider": self.name,
                 "stage": "certified_cell_plan_selection",
@@ -538,6 +559,8 @@ class OpenAIMultimodalJointPlanner:
                 "compiler_certificate_sha256": (
                     selected.compiler_certificate_sha256
                 ),
+                "executable_contract_id": selected.executable_contract_id,
+                "selection_handle": selection_handle.to_metadata(),
                 "portfolio_candidate_count": len(portfolio),
                 "ranking_mode": (
                     "rank_surviving_candidates"
@@ -682,6 +705,20 @@ class OpenAIMultimodalJointPlanner:
         if not isinstance(raw_cell_plan, Mapping):
             raise JointContractError("cell_plan is required")
         raw_cell_plan = dict(raw_cell_plan)
+        require_token(
+            raw_cell_plan.get("expected_morphology"),
+            expected=JOINT_EXPECTATION_TOKEN,
+            field="cell_plan.expected_morphology",
+        )
+        raw_cell_plan["expected_morphology"] = "; ".join(
+            mechanism.render.required_for(case.primitive_id)
+        )
+        if raw_cell_plan.get("spatial_anchor_observation") is not None:
+            require_token(
+                raw_cell_plan.get("spatial_anchor_observation"),
+                expected=JOINT_ANCHOR_TOKEN,
+                field="cell_plan.spatial_anchor_observation",
+            )
         mandatory_protected = tuple(
             item.instance_id for item in scene.cells.instances if item.touches_border
         )
@@ -944,32 +981,28 @@ class OpenAIMultimodalJointPlanner:
             case_id=case.case_id,
             normalized_intent=case.compiled_normalized_intent(),
             selected_mechanism_id=mechanism.mechanism_id,
-            supporting_observations=_strings(
-                raw.get("supporting_observations"), "supporting_observations"
+            supporting_observations=require_exact_tokens(
+                raw.get("supporting_observations"),
+                expected=(JOINT_OBSERVATION_TOKEN,),
+                field="supporting_observations",
             ),
             supporting_rule_ids=supporting_rules,
             representability_confidence=_unit(raw, "representability_confidence"),
             tissue_plan=tissue_plan,
             cell_plan=cell_plan,
             coupling_plan=coupling,
-            uncertainties=_strings(
-                raw.get("uncertainties", []), "uncertainties", allow_empty=True
+            uncertainties=require_token_subset(
+                raw.get("uncertainties", []),
+                allowed=frozenset({"mask_annotation_limits_apply"}),
+                field="uncertainties",
             ),
-            escalation_reason=_optional_string(raw.get("escalation_reason")),
+            escalation_reason=require_optional_token(
+                raw.get("escalation_reason"),
+                expected="requires_human_semantic_review",
+                field="escalation_reason",
+            ),
             structural_unit_ids=structural_unit_ids,
             supporting_preference_rule_ids=preference_ids,
-        )
-        _reject_unannotated_pathology_claims(
-            (
-                *plan.supporting_observations,
-                plan.cell_plan.expected_morphology,
-                *plan.uncertainties,
-                *(
-                    (plan.escalation_reason,)
-                    if plan.escalation_reason is not None
-                    else ()
-                ),
-            )
         )
         return plan
 
@@ -1063,10 +1096,10 @@ class OpenAIMultimodalJointCritic:
             rule_ids = _strings(item.get("supporting_rule_ids"), "supporting_rule_ids")
             if set(rule_ids) - set(bundle.active_rule_ids):
                 raise JointContractError("joint critic cited unknown rules")
-            veto_reasons = _strings(
+            veto_reasons = require_token_subset(
                 item.get("veto_reasons", []),
-                "veto_reasons",
-                allow_empty=True,
+                allowed=frozenset({CRITIC_VETO_TOKEN}),
+                field="veto_reasons",
             )
             critic_text.extend(veto_reasons)
             rankings.append(
@@ -1079,8 +1112,13 @@ class OpenAIMultimodalJointCritic:
                 )
             )
         summary = _required_string(raw, "summary")
-        critic_text.append(summary)
-        _reject_unannotated_pathology_claims(tuple(critic_text))
+        require_token_subset(
+            [summary],
+            allowed=frozenset(
+                {CRITIC_SUMMARY_TOKEN, CRITIC_ABSTAIN_SUMMARY_TOKEN}
+            ),
+            field="summary",
+        )
         return JointCriticResult(
             rankings=tuple(rankings),
             abstain=_required_bool(raw, "abstain"),
@@ -1109,9 +1147,15 @@ MECHANISM_SELECTION_SCHEMA = {
     ],
     "properties": {
         "abstain": {"type": "boolean"},
-        "abstain_reason": {"type": ["string", "null"]},
+        "abstain_reason": {
+            "type": ["string", "null"],
+            "enum": [SEMANTIC_ABSTAIN_TOKEN, None],
+        },
         "clarification_required": {"type": "boolean"},
-        "clarification_reason": {"type": ["string", "null"]},
+        "clarification_reason": {
+            "type": ["string", "null"],
+            "enum": [SEMANTIC_CLARIFICATION_TOKEN, None],
+        },
         "clarification_primitive_ids": {
             "type": "array",
             "items": {"type": "string"},
@@ -1123,10 +1167,20 @@ MECHANISM_SELECTION_SCHEMA = {
             "type": ["string", "null"],
             "enum": ["select_primitive_mechanism_pair", None],
         },
-        "interpretation_explanation": {"type": ["string", "null"]},
-        "supporting_observations": {"type": "array", "items": {"type": "string"}},
+        "interpretation_explanation": {
+            "type": ["string", "null"],
+            "enum": [SEMANTIC_SELECTION_TOKEN, None],
+        },
+        "supporting_observations": {
+            "type": "array",
+            "items": {"type": "string", "enum": [SEMANTIC_OBSERVATION_TOKEN]},
+        },
         "supporting_capability_metric_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "observed_contraindications": {"type": "array", "items": {"type": "string"}},
+        "observed_contraindications": {
+            "type": "array",
+            "maxItems": 0,
+            "items": {"type": "string"},
+        },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
 }
@@ -1146,7 +1200,10 @@ CELL_PLAN_SELECTION_SCHEMA = {
     ],
     "properties": {
         "abstain": {"type": "boolean"},
-        "abstain_reason": {"type": ["string", "null"]},
+        "abstain_reason": {
+            "type": ["string", "null"],
+            "enum": [CELL_ABSTAIN_TOKEN, None],
+        },
         "decision_id": {
             "type": ["string", "null"],
             "enum": ["select_certified_cell_plan_candidate", None],
@@ -1159,7 +1216,10 @@ CELL_PLAN_SELECTION_SCHEMA = {
             "uniqueItems": True,
             "items": {"type": "string"},
         },
-        "selection_explanation": {"type": ["string", "null"]},
+        "selection_explanation": {
+            "type": ["string", "null"],
+            "enum": [CELL_SELECTION_TOKEN, None],
+        },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
 }
@@ -1186,7 +1246,10 @@ JOINT_PLAN_JSON_SCHEMA = {
     ],
     "properties": {
         "abstain": {"type": "boolean"},
-        "abstain_reason": {"type": ["string", "null"]},
+        "abstain_reason": {
+            "type": ["string", "null"],
+            "enum": [JOINT_ABSTAIN_TOKEN, None],
+        },
         "selected_mechanism_id": {"type": ["string", "null"]},
         "decision_ids": {
             "type": "array",
@@ -1202,7 +1265,10 @@ JOINT_PLAN_JSON_SCHEMA = {
                 ]
             }
         },
-        "supporting_observations": {"type": "array", "items": {"type": "string"}},
+        "supporting_observations": {
+            "type": "array",
+            "items": {"type": "string", "enum": [JOINT_OBSERVATION_TOKEN]},
+        },
         "supporting_rule_ids": {"type": "array", "items": {"type": "string"}},
         "supporting_preference_rule_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
         "representability_confidence": {"type": "number", "minimum": 0, "maximum": 1},
@@ -1253,7 +1319,10 @@ JOINT_PLAN_JSON_SCHEMA = {
                     "type": "string",
                     "enum": ["not_applicable", "interface"],
                 },
-                "spatial_anchor_observation": {"type": ["string", "null"]},
+                "spatial_anchor_observation": {
+                    "type": ["string", "null"],
+                    "enum": [JOINT_ANCHOR_TOKEN, None],
+                },
                 "baseline_mode": {
                     "type": "string",
                     "enum": [
@@ -1278,7 +1347,10 @@ JOINT_PLAN_JSON_SCHEMA = {
                     "minItems": 1,
                     "items": {"type": "string"},
                 },
-                "expected_morphology": {"type": "string"},
+                "expected_morphology": {
+                    "type": "string",
+                    "enum": [JOINT_EXPECTATION_TOKEN],
+                },
             },
         },
         "coupling_plan": {
@@ -1293,8 +1365,17 @@ JOINT_PLAN_JSON_SCHEMA = {
                 }
             },
         },
-        "uncertainties": {"type": "array", "items": {"type": "string"}},
-        "escalation_reason": {"type": ["string", "null"]},
+        "uncertainties": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["mask_annotation_limits_apply"],
+            },
+        },
+        "escalation_reason": {
+            "type": ["string", "null"],
+            "enum": ["requires_human_semantic_review", None],
+        },
     },
 }
 
@@ -1323,12 +1404,18 @@ JOINT_CRITIC_JSON_SCHEMA = {
                         "type": "array",
                         "items": {"type": "string"},
                     },
-                    "veto_reasons": {"type": "array", "items": {"type": "string"}},
+                    "veto_reasons": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": [CRITIC_VETO_TOKEN]},
+                    },
                 },
             },
         },
         "abstain": {"type": "boolean"},
-        "summary": {"type": "string"},
+        "summary": {
+            "type": "string",
+            "enum": [CRITIC_SUMMARY_TOKEN, CRITIC_ABSTAIN_SUMMARY_TOKEN],
+        },
     },
 }
 
@@ -1372,32 +1459,6 @@ def _reject_prohibited_geometry_payload(payload: Mapping[str, Any]) -> None:
                 walk(child, f"{path}[{index}]")
 
     walk(payload, "plan")
-
-
-def _reject_unannotated_pathology_claims(values: Sequence[str]) -> None:
-    """Prevent free-form Planner text from creating pathology authority."""
-
-    prohibited_claims = {
-        "fibrosis",
-        "fibrotic tumor bed",
-        "tumor bed",
-        "desmoplasia",
-        "histologic invasive front",
-        "molecular subtype",
-        "histologic subtype",
-        "retraction artifact",
-        "vascular embolus",
-    }
-    for value in values:
-        lowered = str(value).casefold()
-        matches = sorted(
-            claim for claim in prohibited_claims if claim in lowered
-        )
-        if matches:
-            raise JointContractError(
-                "joint Planner asserted an unannotated pathology claim: "
-                + ", ".join(matches)
-            )
 
 
 def _optional_string(value: Any) -> str | None:

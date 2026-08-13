@@ -70,6 +70,7 @@ from .nuclei import load_nuclei_mask
 from .packing import certify_complete_footprint_packing
 from .planner import (
     CellPlanCandidateVeto,
+    CellPlanSelectionHandle,
     CertifiedCellPlanPortfolio,
     HeuristicJointPlanner,
     JointInterpretationOption,
@@ -77,6 +78,11 @@ from .planner import (
     _issue_cell_plan_portfolio,
 )
 from .planner_inputs import MaskPlannerArtifactRegistry
+from .portfolio_authority import (
+    build_cell_portfolio_authority_binding,
+    build_tissue_portfolio_authority_binding,
+    canonical_metadata_sha256,
+)
 from .scene import build_joint_scene_analysis
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
@@ -128,6 +134,55 @@ class _CertifiedCellExecutionChoice:
 class _CertifiedCellExecutionPortfolio:
     choices: tuple[_CertifiedCellExecutionChoice, ...]
     certificates: CertifiedCellPlanPortfolio
+
+
+def _select_cell_execution_choice(
+    *,
+    portfolio: _CertifiedCellExecutionPortfolio,
+    plan: Any,
+    planner_usage: Mapping[str, Any],
+) -> _CertifiedCellExecutionChoice:
+    """Resolve the exact certificate handle, never a value-equal plan."""
+
+    handle = CellPlanSelectionHandle.from_metadata(
+        planner_usage.get("selection_handle")
+    )
+    legacy_bindings = {
+        "selected_candidate_id": handle.candidate_id,
+        "selected_tool_program_id": handle.selected_tool_program_id,
+        "compiler_certificate_sha256": handle.compiler_certificate_sha256,
+        "executable_contract_id": handle.executable_contract_id,
+    }
+    if any(
+        key in planner_usage and planner_usage.get(key) != expected
+        for key, expected in legacy_bindings.items()
+    ):
+        raise JointContractError(
+            "cell Planner usage is detached from the typed selection handle"
+        )
+    selected = next(
+        (
+            item
+            for item in portfolio.choices
+            if item.certificate.candidate_id == handle.candidate_id
+        ),
+        None,
+    )
+    if selected is None:
+        raise JointContractError(
+            "cell Planner selected an unknown or vetoed certificate ID"
+        )
+    handle.validate_candidate(selected.certificate, plan=plan)
+    if (
+        handle.selected_tool_program_id
+        != selected.executable_contract.execution_program_id
+        or handle.executable_contract_id
+        != selected.executable_contract.contract_id
+    ):
+        raise JointContractError(
+            "cell Planner selection is detached from the executable contract"
+        )
+    return selected
 
 
 class JointPathologyEditWorkflow:
@@ -744,6 +799,8 @@ class JointPathologyEditWorkflow:
                                 joint_bundle=bundle,
                                 image_paths=planner_images,
                                 nuclei_preflight=nuclei_preflight,
+                                joint_case=case,
+                                allocation=allocation,
                                 execution_feedback=execution_feedback,
                                 artifact_registry=planner_artifacts,
                                 candidate_portfolio=(
@@ -2326,18 +2383,11 @@ class JointPathologyEditWorkflow:
             candidate_portfolio=cell_portfolio.certificates,
         )
         usage["joint_planner"] = joint_usage
-        selected_cell_choice = next(
-            (
-                item
-                for item in cell_portfolio.choices
-                if item.certificate.plan == plan
-            ),
-            None,
+        selected_cell_choice = _select_cell_execution_choice(
+            portfolio=cell_portfolio,
+            plan=plan,
+            planner_usage=joint_usage,
         )
-        if selected_cell_choice is None:
-            raise JointContractError(
-                "cell Planner result is detached from the pre-LLM portfolio"
-            )
         audit.write_inputs(
             case=case,
             scene_metadata=scene.to_metadata(),
@@ -3378,14 +3428,7 @@ def _deterministic_feedback_signature(
 
 
 def _canonical_metadata_sha256(value: Any) -> str:
-    return hashlib.sha256(
-        json.dumps(
-            value,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
+    return canonical_metadata_sha256(value)
 
 
 def _tissue_portfolio_authority_binding(
@@ -3400,42 +3443,15 @@ def _tissue_portfolio_authority_binding(
 ) -> dict[str, Any]:
     """Bind a compiler portfolio to exact case, skills, budget and preflight."""
 
-    source = np.ascontiguousarray(np.asarray(source_tissue))
-    source_digest = hashlib.sha256(source.tobytes()).hexdigest()
-    preflight_digest = hashlib.sha256(
-        json.dumps(
-            nuclei_preflight.to_metadata(),
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
-    return {
-        "case_id": case.case_id,
-        "primitive_id": case.primitive_id,
-        "mechanism_id": bundle.mechanism.mechanism_id,
-        "pathology_domain_id": case.pathology_domain_id,
-        "annotation_profile_id": case.annotation_profile_id,
-        "cell_observation_profile_id": case.cell_observation_profile_id,
-        "cell_population_profile_id": case.cell_population_profile_id,
-        "source_asset_digests": {
-            key: value
-            for key, value in sorted(case.provenance.items())
-            if key.endswith(("sha256", "digest"))
-        },
-        "source_tissue_array_sha256": source_digest,
-        "tissue_case": tissue_case.to_metadata(),
-        "joint_area_budget": (
-            case.joint_area_budget.__dict__
-            if case.joint_area_budget is not None
-            else None
-        ),
-        "allocation": allocation.to_metadata(),
-        "nuclei_preflight_sha256": preflight_digest,
-        "active_rule_ids": list(bundle.active_rule_ids),
-        "mechanism_version": bundle.mechanism.version,
-        "tissue_skill_bundle": tissue_bundle.to_metadata(),
-    }
+    return build_tissue_portfolio_authority_binding(
+        joint_case=case,
+        tissue_case=tissue_case,
+        source_tissue=source_tissue,
+        joint_bundle=bundle,
+        tissue_bundle=tissue_bundle,
+        allocation=allocation,
+        nuclei_preflight=nuclei_preflight,
+    )
 
 
 def _cell_portfolio_authority_binding(
@@ -3445,35 +3461,12 @@ def _cell_portfolio_authority_binding(
     source_nuclei,
     bundle,
 ) -> dict[str, Any]:
-    tissue = np.ascontiguousarray(np.asarray(source_tissue))
-    nuclei = np.ascontiguousarray(np.asarray(source_nuclei))
-    return {
-        "case_id": case.case_id,
-        "primitive_id": case.primitive_id,
-        "mechanism_id": bundle.mechanism.mechanism_id,
-        "pathology_domain_id": case.pathology_domain_id,
-        "annotation_profile_id": case.annotation_profile_id,
-        "cell_observation_profile_id": case.cell_observation_profile_id,
-        "cell_population_profile_id": case.cell_population_profile_id,
-        "source_asset_digests": {
-            key: value
-            for key, value in sorted(case.provenance.items())
-            if key.endswith(("sha256", "digest"))
-        },
-        "source_tissue_array_sha256": hashlib.sha256(
-            tissue.tobytes()
-        ).hexdigest(),
-        "source_nuclei_array_sha256": hashlib.sha256(
-            nuclei.tobytes()
-        ).hexdigest(),
-        "cell_count_extent_budget": (
-            case.cell_count_extent_budget.__dict__
-            if case.cell_count_extent_budget is not None
-            else None
-        ),
-        "active_rule_ids": list(bundle.active_rule_ids),
-        "mechanism_version": bundle.mechanism.version,
-    }
+    return build_cell_portfolio_authority_binding(
+        case=case,
+        source_tissue=source_tissue,
+        source_nuclei=source_nuclei,
+        joint_bundle=bundle,
+    )
 
 
 def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext:

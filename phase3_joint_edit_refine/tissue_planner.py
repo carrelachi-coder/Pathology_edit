@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
@@ -31,12 +30,22 @@ from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
 from .feasibility import JointNucleiPreflight
+from .llm_audit_tokens import (
+    TISSUE_ABSTAIN_TOKEN,
+    TISSUE_SELECTION_TOKEN,
+    require_optional_token,
+    require_token,
+)
 from .models import JointContractError
 from .planner_inputs import (
     MaskPlannerArtifactRegistry,
     validate_mask_planner_image_paths,
 )
 from .planner_policy import PREFERENCE_METRIC_CATALOG
+from .portfolio_authority import (
+    build_tissue_portfolio_authority_binding,
+    canonical_metadata_sha256,
+)
 from .skills.repository import JointSkillBundle
 from .tissue_tools import (
     JOINT_TOOL_FAMILY_TO_EXECUTOR,
@@ -48,7 +57,10 @@ from .tissue_tools import (
 def _expected_tissue_authority_binding_sha256(
     *,
     case: CaseContext,
+    joint_case: Any,
     joint_bundle: JointSkillBundle,
+    tissue_bundle: ActiveKnowledgeBundle,
+    allocation: Any,
     nuclei_preflight: JointNucleiPreflight,
     candidate_portfolio: Any,
 ) -> str:
@@ -57,75 +69,25 @@ def _expected_tissue_authority_binding_sha256(
         raise RefineContractError(
             "tissue portfolio lacks its compiler-owned authority binding"
         )
-    source_tissue = np.ascontiguousarray(load_id_mask(case.source_mask_uri))
-    source_tissue_sha = hashlib.sha256(source_tissue.tobytes()).hexdigest()
-    source_digests = binding.get("source_asset_digests")
-    declared_source_digests = {
-        key: value
-        for key, value in sorted(case.provenance.items())
-        if key.endswith(("sha256", "digest"))
-    }
-    if (
-        binding.get("case_id") != case.case_id
-        or binding.get("primitive_id") != case.primitive_id
-        or binding.get("mechanism_id")
-        != joint_bundle.mechanism.mechanism_id
-        or binding.get("pathology_domain_id")
-        != joint_bundle.mechanism.pathology_domain_id
-        or binding.get("annotation_profile_id")
-        != joint_bundle.annotation_profile.annotation_profile_id
-        or binding.get("tissue_case") != case.to_metadata()
-        or binding.get("source_tissue_array_sha256") != source_tissue_sha
-        or not isinstance(source_digests, Mapping)
-        or any(
-            declared_source_digests.get(key) != value
-            for key, value in source_digests.items()
-        )
-        or binding.get("nuclei_preflight_sha256")
-        != hashlib.sha256(
-            json.dumps(
-                nuclei_preflight.to_metadata(),
-                sort_keys=True,
-                separators=(",", ":"),
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()
-    ):
+    if joint_case is None or allocation is None:
         raise RefineContractError(
-            "tissue portfolio authority is detached from the current case, mechanism, or nuclei preflight"
+            "online tissue Planner requires current joint case and allocation authority"
         )
-    return hashlib.sha256(
-        json.dumps(
-            binding,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
+    expected = build_tissue_portfolio_authority_binding(
+        joint_case=joint_case,
+        tissue_case=case,
+        source_tissue=load_id_mask(case.source_mask_uri),
+        joint_bundle=joint_bundle,
+        tissue_bundle=tissue_bundle,
+        allocation=allocation,
+        nuclei_preflight=nuclei_preflight,
+    )
+    if dict(binding) != expected:
+        raise RefineContractError(
+            "tissue portfolio authority is detached from current runtime inputs or skills"
+        )
+    return canonical_metadata_sha256(expected)
 
-
-def _reject_unannotated_selection_claims(values: Sequence[Any]) -> None:
-    prohibited = {
-        "fibrosis",
-        "fibrotic tumor bed",
-        "tumor bed",
-        "desmoplasia",
-        "histologic invasive front",
-        "molecular subtype",
-        "histologic subtype",
-        "retraction artifact",
-        "vascular embolus",
-    }
-    for value in values:
-        if value is None:
-            continue
-        lowered = str(value).casefold()
-        matches = sorted(item for item in prohibited if item in lowered)
-        if matches:
-            raise RefineContractError(
-                "tissue Planner asserted an unannotated pathology claim: "
-                + ", ".join(matches)
-            )
 
 JOINT_TISSUE_DECISION_SCHEMA = {
     "type": "object",
@@ -142,7 +104,10 @@ JOINT_TISSUE_DECISION_SCHEMA = {
     ],
     "properties": {
         "abstain": {"type": "boolean"},
-        "abstain_reason": {"type": ["string", "null"]},
+        "abstain_reason": {
+            "type": ["string", "null"],
+            "enum": [TISSUE_ABSTAIN_TOKEN, None],
+        },
         "decision_id": {
             "type": ["string", "null"],
             "enum": ["select_certified_tissue_plan_candidate", None],
@@ -155,7 +120,10 @@ JOINT_TISSUE_DECISION_SCHEMA = {
             "minItems": 1,
             "uniqueItems": True,
         },
-        "selection_explanation": {"type": ["string", "null"]},
+        "selection_explanation": {
+            "type": ["string", "null"],
+            "enum": [TISSUE_SELECTION_TOKEN, None],
+        },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
 }
@@ -268,6 +236,8 @@ class OpenAIJointAwareTissuePlanner:
         joint_bundle: JointSkillBundle,
         image_paths: Sequence[str | Path],
         nuclei_preflight: JointNucleiPreflight | None = None,
+        joint_case: Any | None = None,
+        allocation: Any | None = None,
         execution_feedback: Mapping[str, Any] | None = None,
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
         candidate_portfolio: Sequence[Any] = (),
@@ -294,7 +264,10 @@ class OpenAIJointAwareTissuePlanner:
             )
         expected_binding = _expected_tissue_authority_binding_sha256(
             case=case,
+            joint_case=joint_case,
             joint_bundle=joint_bundle,
+            tissue_bundle=bundle,
+            allocation=allocation,
             nuclei_preflight=nuclei_preflight,
             candidate_portfolio=portfolio_object,
         )
@@ -394,9 +367,14 @@ class OpenAIJointAwareTissuePlanner:
                 json_schema=JOINT_TISSUE_DECISION_SCHEMA,
             )
             if raw.get("abstain") is True:
+                require_optional_token(
+                    raw.get("abstain_reason"),
+                    expected=TISSUE_ABSTAIN_TOKEN,
+                    field="abstain_reason",
+                )
                 raise RefineContractError(
                     "joint-aware tissue Planner abstained: "
-                    + str(raw.get("abstain_reason") or "insufficient evidence")
+                    + TISSUE_ABSTAIN_TOKEN
                 )
             try:
                 if raw.get("decision_id") != "select_certified_tissue_plan_candidate":
@@ -487,8 +465,10 @@ class OpenAIJointAwareTissuePlanner:
                     raise RefineContractError(
                         "joint tissue Planner modified the parser-owned intent"
                     )
-                _reject_unannotated_selection_claims(
-                    (raw.get("selection_explanation"),)
+                require_token(
+                    raw.get("selection_explanation"),
+                    expected=TISSUE_SELECTION_TOKEN,
+                    field="selection_explanation",
                 )
                 validate_edit_plan(
                     plan,
@@ -600,11 +580,19 @@ class MultiInterfaceResearchTissuePlanner:
         joint_bundle: JointSkillBundle,
         image_paths: Sequence[str | Path],
         nuclei_preflight: JointNucleiPreflight | None = None,
+        joint_case: Any | None = None,
+        allocation: Any | None = None,
         execution_feedback: Mapping[str, Any] | None = None,
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
         candidate_portfolio: Sequence[Any] = (),
     ) -> tuple[EditPlan, dict[str, Any]]:
-        del image_paths, artifact_registry, candidate_portfolio
+        del (
+            image_paths,
+            artifact_registry,
+            candidate_portfolio,
+            joint_case,
+            allocation,
+        )
         mechanism_contract = joint_bundle.mechanism.tissue_program.primitive_label_contracts.get(case.primitive_id)
         if mechanism_contract is None:
             raise RefineContractError("joint mechanism has no primitive label contract")

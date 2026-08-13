@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -67,6 +67,44 @@ def _candidate_raster_sha256(candidate: Any) -> str:
         digest.update(value.tobytes())
     digest.update(str(candidate.tool_name).encode("utf-8"))
     return digest.hexdigest()
+
+
+def _structural_event_risk_count(topology: Mapping[str, Any]) -> float:
+    """Count observed topology events, never policy flags or absent events."""
+
+    pairs = (
+        ("source_components_before", "source_components_after"),
+        ("target_components_before", "target_components_after"),
+        ("source_holes_before", "source_holes_after"),
+        ("target_holes_before", "target_holes_after"),
+    )
+    total = 0.0
+    for before_key, after_key in pairs:
+        before = topology.get(before_key)
+        after = topology.get(after_key)
+        if isinstance(before, (int, float)) and isinstance(after, (int, float)):
+            total += abs(float(after) - float(before))
+    if topology.get("passed") is False:
+        total += 1.0
+    return total
+
+
+def _gate_structural_event_risk_count(report: Any) -> float:
+    topology = next(
+        (
+            item.metrics
+            for item in report.checks
+            if item.check_id == "edited_label_topology"
+        ),
+        None,
+    )
+    if not isinstance(topology, Mapping):
+        raise JointContractError(
+            "tissue gate report omits measured topology metrics"
+        )
+    return _structural_event_risk_count(
+        {**topology, "passed": bool(report.passed)}
+    )
 
 
 def _narrow_plan_to_executor(plan: EditPlan, *, executor: str) -> EditPlan:
@@ -602,6 +640,12 @@ class CandidateFeasibilityCompiler:
                 # multiple families without separate raster certificates would
                 # make the LLM choice ambiguous.
                 family, executor, candidate, report = executable_artifacts[0]
+                metrics = {
+                    **metrics,
+                    "structural_risk_count": (
+                        _gate_structural_event_risk_count(report)
+                    ),
+                }
                 execution_raster_sha = _candidate_raster_sha256(candidate)
                 report_sha = _canonical_sha256(report.to_metadata())
                 actual_change = np.asarray(candidate.change_region, dtype=bool)
@@ -724,17 +768,7 @@ def _measured_tissue_candidate_metrics(
     ]
     projection_merge_count = max(0, len(target_components) - 1)
     topology = replay_audit.get("whole_mask_topology", {})
-    structural_risk_count = float(
-        sum(
-            1
-            for key, value in topology.items()
-            if key != "passed"
-            and (
-                value is False
-                or (isinstance(value, (int, float)) and "violation" in key and value > 0)
-            )
-        )
-    )
+    structural_risk_count = _structural_event_risk_count(topology)
     compiled_resolved = float(compiler_audit.get("resolved_pixels", 0))
     return {
         "depth_span_ratio": maximum_depth / max(1.0, total_contact),

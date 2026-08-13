@@ -25,6 +25,9 @@ from phase3_joint_edit_refine.agents import (
 )
 from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
 from phase3_joint_edit_refine.budget import JointFeasibilitySolver
+from phase3_joint_edit_refine.candidate_feasibility import (
+    _structural_event_risk_count,
+)
 from phase3_joint_edit_refine.cell_layouts import (
     ReferenceNucleusShape,
     _place_layout,
@@ -78,6 +81,7 @@ from phase3_joint_edit_refine.models import (
 from phase3_joint_edit_refine.nuclei import iter_instances
 from phase3_joint_edit_refine.packing import certify_complete_footprint_packing
 from phase3_joint_edit_refine.planner import (
+    CellPlanSelectionHandle,
     HeuristicJointPlanner,
     JointInterpretationOption,
     _structural_units_for_components,
@@ -130,10 +134,13 @@ from phase3_joint_edit_refine.workflow import (
     JointWorkflowConfig,
     _as_tissue_case,
     _candidate_preserving_closure_pixels,
+    _CertifiedCellExecutionChoice,
+    _CertifiedCellExecutionPortfolio,
     _joint_area_feedback_candidate_ids,
     _maximum_safe_below_target_joint_pixels,
     _minimum_safe_above_target_joint_pixels,
     _provisional_union_requires_rebalance,
+    _select_cell_execution_choice,
 )
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import HeuristicInterfacePlanner
@@ -245,8 +252,8 @@ class JointSkillTests(unittest.TestCase):
             "primitive_id": option.primitive_id,
             "mechanism_id": mechanism.mechanism_id,
             "decision_id": "select_primitive_mechanism_pair",
-            "interpretation_explanation": "mask certificate ranking",
-            "supporting_observations": ["mask graph support"],
+            "interpretation_explanation": "certified_semantic_option_selected",
+            "supporting_observations": ["certified_capability_metrics"],
             "supporting_capability_metric_ids": ["semantic_priority"],
             "observed_contraindications": [],
             "confidence": 0.8,
@@ -978,7 +985,13 @@ class JointSkillTests(unittest.TestCase):
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=root / "result")
             self.assertEqual(result.status, "abstained")
-            self.assertIn("unannotated pathology claim", result.abstain_reasons[0])
+            feedback_path = next(
+                (root / "result" / case.case_id).glob(
+                    "execution_feedback_pass_*.json"
+                )
+            )
+            feedback = json.loads(feedback_path.read_text())
+            self.assertIn("neutral audit token", feedback["errors"][0])
 
         case = _breast_case_stub()
         bundle = JointSkillRepository().compose(
@@ -989,23 +1002,160 @@ class JointSkillTests(unittest.TestCase):
         )
 
         class ClaimingCriticClient:
+            def __init__(self, value):
+                self.value = value
+
             def call(self, **_kwargs):
                 return {
                     "rankings": [],
                     "abstain": True,
-                    "summary": "fibrosis and desmoplasia are present",
+                    "summary": self.value,
                 }, {"model": "fixture"}
 
-        with self.assertRaisesRegex(
-            JointContractError, "unannotated pathology claim"
-        ):
-            OpenAIMultimodalJointCritic(ClaimingCriticClient()).review(
-                case=case,
-                bundle=bundle,
-                candidates=(),
-                gate_reports=(),
-                image_paths=(),
-            )
+        variants = (
+            "desmoplastic reaction is present",
+            "the invasive front is histologically evident",
+            "fibrotic stroma marks a treatment bed",
+            "this is luminal A disease",
+            "lymphovascular invasion is present",
+            "residual cancer burden is low",
+        )
+        for value in variants:
+            with self.subTest(value=value), self.assertRaisesRegex(
+                JointContractError, "free text"
+            ):
+                OpenAIMultimodalJointCritic(
+                    ClaimingCriticClient(value)
+                ).review(
+                    case=case,
+                    bundle=bundle,
+                    candidates=(),
+                    gate_reports=(),
+                    image_paths=(),
+                )
+
+        class ClaimingVetoClient:
+            def __init__(self, value):
+                self.value = value
+
+            def call(self, **_kwargs):
+                return {
+                    "rankings": [
+                        {
+                            "candidate_id": "joint:fixture",
+                            "score": 0.0,
+                            "confidence": 0.8,
+                            "supporting_rule_ids": list(
+                                bundle.active_rule_ids
+                            ),
+                            "veto_reasons": [self.value],
+                        }
+                    ],
+                    "abstain": True,
+                    "summary": "certified_mask_condition_abstained",
+                }, {"model": "fixture"}
+
+        for value in variants:
+            with self.subTest(veto=value), self.assertRaisesRegex(
+                JointContractError, "free text"
+            ):
+                OpenAIMultimodalJointCritic(
+                    ClaimingVetoClient(value)
+                ).review(
+                    case=case,
+                    bundle=bundle,
+                    candidates=(),
+                    gate_reports=(
+                        JointGateReport("joint:fixture", True, ()),
+                    ),
+                    image_paths=(),
+                )
+
+    def test_semantic_and_cell_selection_text_use_closed_audit_tokens(self):
+        case = _breast_case_stub()
+        mechanism = JointSkillRepository().mechanisms[
+            "breast-annotation-anchored-boundary-growth"
+        ]
+        option = JointInterpretationOption(
+            primitive_id="cohesive-boundary-expansion-v1",
+            semantic_fit="direct",
+            semantic_priority=0,
+            semantic_rationale="fixture",
+            mechanism=mechanism,
+            feasibility={
+                "aggregate_tissue_capacity_pixels": 100,
+                "meaningful_tissue_floor_pixels": 10,
+                "feasible_interface_count": 1,
+            },
+        )
+        variants = (
+            "desmoplastic reaction is present",
+            "the invasive front is histologically evident",
+            "fibrotic stroma marks a treatment bed",
+            "this is luminal A disease",
+            "lymphovascular invasion is present",
+            "residual cancer burden is low",
+        )
+
+        class SemanticClient:
+            def __init__(self, value):
+                self.value = value
+
+            def call(self, **_kwargs):
+                return {
+                    "abstain": False,
+                    "abstain_reason": None,
+                    "clarification_required": False,
+                    "clarification_reason": None,
+                    "clarification_primitive_ids": [],
+                    "primitive_id": option.primitive_id,
+                    "mechanism_id": mechanism.mechanism_id,
+                    "decision_id": "select_primitive_mechanism_pair",
+                    "interpretation_explanation": self.value,
+                    "supporting_observations": [
+                        "certified_capability_metrics"
+                    ],
+                    "supporting_capability_metric_ids": [
+                        "semantic_priority"
+                    ],
+                    "observed_contraindications": [],
+                    "confidence": 0.8,
+                }, {}
+
+        for value in variants:
+            for field in (
+                "interpretation_explanation",
+                "supporting_observations",
+            ):
+                client = SemanticClient(value)
+                if field == "supporting_observations":
+                    original_call = client.call
+
+                    def replace_observation(
+                        *,
+                        _original_call=original_call,
+                        _value=value,
+                        **kwargs,
+                    ):
+                        response, usage = _original_call(**kwargs)
+                        response["interpretation_explanation"] = (
+                            "certified_semantic_option_selected"
+                        )
+                        response["supporting_observations"] = [_value]
+                        return response, usage
+
+                    client.call = replace_observation
+                with self.subTest(field=field, value=value), self.assertRaisesRegex(
+                    JointContractError, "neutral audit token"
+                ):
+                    OpenAIMultimodalJointPlanner(
+                        client=client, max_contract_attempts=1
+                    ).select_interpretation(
+                        case=case,
+                        scene=SimpleNamespace(to_metadata=dict),
+                        options=(option,),
+                        image_paths=(),
+                    )
 
     def test_multimodal_plan_schema_requires_unique_structural_units(self):
         structural_units = JOINT_PLAN_JSON_SCHEMA["properties"][
@@ -2849,7 +2999,7 @@ class _RecordingJointCriticClient:
         return {
             "rankings": [],
             "abstain": True,
-            "summary": "fixture abstain",
+            "summary": "certified_mask_condition_abstained",
         }, {"model": "fixture"}
 
 
@@ -2875,7 +3025,7 @@ class _CertifiedTissueSelectionClient:
             "selected_candidate_id": candidate["candidate_id"],
             "selected_tool_family": candidate["allowed_tool_families"][0],
             "supporting_preference_rule_ids": [preferences[0]],
-            "selection_explanation": "Ranked one compiler-certified mask candidate.",
+            "selection_explanation": "certified_tissue_candidate_selected",
             "confidence": 0.83,
         }
         if self.mutation is not None:
@@ -2902,7 +3052,7 @@ class _CertifiedCellSelectionClient:
                 "allowed_tool_program_ids"
             ][0],
             "supporting_preference_rule_ids": [preferences[0]],
-            "selection_explanation": "selected measured packing certificate",
+            "selection_explanation": "certified_cell_candidate_selected",
             "confidence": 0.8,
         }
         if self.mutation is not None:
@@ -3034,7 +3184,7 @@ class JointWorkflowTests(unittest.TestCase):
                     "select_certified_interface_anchor_ids",
                     "select_allowed_tool_program",
                 ],
-                "supporting_observations": ["certified mask graph"],
+                "supporting_observations": ["certified_mask_graph_inputs"],
                 "supporting_rule_ids": list(bundle.active_rule_ids),
                 "supporting_preference_rule_ids": list(
                     bundle.mechanism.planner_policy.selection_preferences
@@ -3056,7 +3206,7 @@ class JointWorkflowTests(unittest.TestCase):
                     "mechanism_program_id": cell.mechanism_program_id,
                     "mechanism_quota_role": cell.mechanism_quota_role,
                     "supporting_rule_ids": list(cell.supporting_rule_ids),
-                    "expected_morphology": "synthetic mask-compatible layout",
+                    "expected_morphology": "compiler_owned_render_expectations",
                 },
                 "coupling_plan": {
                     "compatibility_rule_ids": list(
@@ -3078,6 +3228,46 @@ class JointWorkflowTests(unittest.TestCase):
                 parsed.supporting_preference_rule_ids,
                 tuple(raw["supporting_preference_rule_ids"]),
             )
+            free_text_variants = (
+                "desmoplastic reaction is present",
+                "the invasive front is histologically evident",
+                "fibrotic stroma marks a treatment bed",
+                "this is luminal A disease",
+                "lymphovascular invasion is present",
+                "residual cancer burden is low",
+            )
+            for value in free_text_variants:
+                for field, payload in (
+                    ("supporting_observations", [value]),
+                    ("uncertainties", [value]),
+                    ("escalation_reason", value),
+                ):
+                    with self.subTest(field=field, value=value), self.assertRaises(
+                        JointContractError
+                    ):
+                        parser._parse_plan(
+                            raw={**raw, field: payload},
+                            case=case,
+                            scene=scene,
+                            bundle=bundle,
+                            tissue_plan=heuristic.tissue_plan,
+                        )
+                with self.subTest(
+                    field="expected_morphology", value=value
+                ), self.assertRaises(JointContractError):
+                    parser._parse_plan(
+                        raw={
+                            **raw,
+                            "cell_plan": {
+                                **raw["cell_plan"],
+                                "expected_morphology": value,
+                            },
+                        },
+                        case=case,
+                        scene=scene,
+                        bundle=bundle,
+                        tissue_plan=heuristic.tissue_plan,
+                    )
             adversaries = {
                 "vetoed interface": {
                     **raw,
@@ -3305,6 +3495,8 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_bundle=prepared_object.bundle,
                     image_paths=(),
                     nuclei_preflight=prepared_object.nuclei_preflight,
+                    joint_case=prepared_object.case,
+                    allocation=prepared_object.allocation,
                     candidate_portfolio=forged_portfolio,
                 )
 
@@ -3328,6 +3520,8 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_bundle=prepared_object.bundle,
                     image_paths=(),
                     nuclei_preflight=prepared_object.nuclei_preflight,
+                    joint_case=prepared_object.case,
+                    allocation=prepared_object.allocation,
                     candidate_portfolio=object_portfolio,
                 )
             tissue_path.write_bytes(original_source)
@@ -3359,8 +3553,83 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_bundle=prepared_object.bundle,
                     image_paths=(),
                     nuclei_preflight=prepared_object.nuclei_preflight,
+                    joint_case=prepared_object.case,
+                    allocation=prepared_object.allocation,
                     candidate_portfolio=object_portfolio,
                 )
+
+            stale_tissue_authorities = (
+                (
+                    replace(
+                        prepared_object.bundle,
+                        mechanism=replace(
+                            prepared_object.bundle.mechanism,
+                            version=(
+                                prepared_object.bundle.mechanism.version
+                                + "-mutated"
+                            ),
+                        ),
+                    ),
+                    prepared_object.tissue_bundle,
+                    prepared_object.case,
+                ),
+                (
+                    replace(
+                        prepared_object.bundle,
+                        active_rule_ids=(
+                            prepared_object.bundle.active_rule_ids
+                            + ("rule:mutated",)
+                        ),
+                    ),
+                    prepared_object.tissue_bundle,
+                    prepared_object.case,
+                ),
+                (
+                    prepared_object.bundle,
+                    replace(
+                        prepared_object.tissue_bundle,
+                        warnings=(
+                            prepared_object.tissue_bundle.warnings
+                            + ("mutated",)
+                        ),
+                    ),
+                    prepared_object.case,
+                ),
+                (
+                    prepared_object.bundle,
+                    prepared_object.tissue_bundle,
+                    replace(
+                        prepared_object.case,
+                        provenance={
+                            key: value
+                            for key, value in prepared_object.case.provenance.items()
+                            if key != "original_label_map_digest"
+                        },
+                    ),
+                ),
+            )
+            for stale_bundle, stale_tissue_bundle, stale_joint_case in (
+                stale_tissue_authorities
+            ):
+                stale_client = _CertifiedTissueSelectionClient()
+                with self.assertRaisesRegex(
+                    (JointContractError, RefineContractError), "detached"
+                ):
+                    OpenAIJointAwareTissuePlanner(
+                        client=stale_client,
+                        max_contract_attempts=1,
+                    ).create_joint_tissue_plan(
+                        case=tissue_case,
+                        scene=tissue_scene,
+                        bundle=stale_tissue_bundle,
+                        joint_bundle=stale_bundle,
+                        image_paths=(),
+                        nuclei_preflight=prepared_object.nuclei_preflight,
+                        joint_case=stale_joint_case,
+                        allocation=prepared_object.allocation,
+                        candidate_portfolio=object_portfolio,
+                    )
+                self.assertFalse(stale_client.calls)
 
             # Every exposed candidate/tool pair must remain executable when it
             # is the LLM selection, including the second survivor that exposed
@@ -3495,26 +3764,34 @@ class JointWorkflowTests(unittest.TestCase):
                         image_paths=(),
                         candidate_portfolio=choices.certificates,
                     )
-            claiming_client = _CertifiedCellSelectionClient(
-                lambda value: {
-                    **value,
-                    "selection_explanation": "select the fibrotic tumor bed",
-                }
-            )
-            with self.assertRaisesRegex(
-                JointContractError, "unannotated pathology claim"
+            for value in (
+                "desmoplastic reaction is present",
+                "the invasive front is histologically evident",
+                "fibrotic stroma marks a treatment bed",
+                "this is luminal A disease",
+                "lymphovascular invasion is present",
+                "residual cancer burden is low",
             ):
-                OpenAIMultimodalJointPlanner(
-                    client=claiming_client,
-                    max_contract_attempts=1,
-                ).create_plan(
-                    case=case,
-                    scene=scene,
-                    bundle=bundle,
-                    tissue_plan=None,
-                    image_paths=(),
-                    candidate_portfolio=choices.certificates,
+                claiming_client = _CertifiedCellSelectionClient(
+                    lambda response, value=value: {
+                        **response,
+                        "selection_explanation": value,
+                    }
                 )
+                with self.subTest(value=value), self.assertRaisesRegex(
+                    JointContractError, "neutral audit token"
+                ):
+                    OpenAIMultimodalJointPlanner(
+                        client=claiming_client,
+                        max_contract_attempts=1,
+                    ).create_plan(
+                        case=case,
+                        scene=scene,
+                        bundle=bundle,
+                        tissue_plan=None,
+                        image_paths=(),
+                        candidate_portfolio=choices.certificates,
+                    )
             detached = replace(
                 candidate,
                 compiler_certificate_sha256="0" * 64,
@@ -3592,6 +3869,131 @@ class JointWorkflowTests(unittest.TestCase):
                     image_paths=(),
                     candidate_portfolio=choices.certificates,
                 )
+
+            missing_source_digest = replace(
+                case,
+                provenance={
+                    key: value
+                    for key, value in case.provenance.items()
+                    if key != "original_instance_mask_digest"
+                },
+            )
+            missing_digest_client = _CertifiedCellSelectionClient()
+            with self.assertRaisesRegex(JointContractError, "detached"):
+                OpenAIMultimodalJointPlanner(
+                    client=missing_digest_client,
+                    max_contract_attempts=1,
+                ).create_plan(
+                    case=missing_source_digest,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                    candidate_portfolio=choices.certificates,
+                )
+            self.assertFalse(missing_digest_client.calls)
+
+            stale_bundles = (
+                replace(
+                    bundle,
+                    mechanism=replace(
+                        bundle.mechanism,
+                        version=bundle.mechanism.version + "-mutated",
+                    ),
+                ),
+                replace(
+                    bundle,
+                    active_rule_ids=bundle.active_rule_ids + ("rule:mutated",),
+                ),
+            )
+            for stale_bundle in stale_bundles:
+                stale_client = _CertifiedCellSelectionClient()
+                with self.assertRaisesRegex(JointContractError, "detached"):
+                    OpenAIMultimodalJointPlanner(
+                        client=stale_client,
+                        max_contract_attempts=1,
+                    ).create_plan(
+                        case=case,
+                        scene=scene,
+                        bundle=stale_bundle,
+                        tissue_plan=None,
+                        image_paths=(),
+                        candidate_portfolio=choices.certificates,
+                    )
+                self.assertFalse(stale_client.calls)
+
+    def test_cell_selection_handle_distinguishes_value_equal_plans(self):
+        plan = SimpleNamespace(to_metadata=lambda: {"plan": "same"})
+        first_certificate = SimpleNamespace(
+            candidate_id="cell-plan:first",
+            compiler_certificate_sha256="a" * 64,
+            allowed_tool_program_ids=("program:first",),
+            executable_contract_id="contract:first",
+            authority_binding_sha256="1" * 64,
+            plan=plan,
+        )
+        second_certificate = SimpleNamespace(
+            candidate_id="cell-plan:second",
+            compiler_certificate_sha256="b" * 64,
+            allowed_tool_program_ids=("program:second",),
+            executable_contract_id="contract:second",
+            authority_binding_sha256="2" * 64,
+            plan=plan,
+        )
+        first_contract = SimpleNamespace(
+            execution_program_id="program:first", contract_id="contract:first"
+        )
+        second_contract = SimpleNamespace(
+            execution_program_id="program:second", contract_id="contract:second"
+        )
+        portfolio = _CertifiedCellExecutionPortfolio(
+            choices=(
+                _CertifiedCellExecutionChoice(
+                    first_certificate, first_contract, SimpleNamespace()
+                ),
+                _CertifiedCellExecutionChoice(
+                    second_certificate, second_contract, SimpleNamespace()
+                ),
+            ),
+            certificates=SimpleNamespace(),
+        )
+        handle = CellPlanSelectionHandle.from_candidate(
+            second_certificate,
+            selected_tool_program_id="program:second",
+        )
+        selected = _select_cell_execution_choice(
+            portfolio=portfolio,
+            plan=plan,
+            planner_usage={"selection_handle": handle.to_metadata()},
+        )
+        self.assertIs(selected.certificate, second_certificate)
+
+    def test_structural_risk_counts_events_not_false_policy_flags(self):
+        no_event = {
+            "passed": True,
+            "source_components_before": 1,
+            "source_components_after": 1,
+            "target_components_before": 1,
+            "target_components_after": 1,
+            "source_holes_before": 0,
+            "source_holes_after": 0,
+            "target_holes_before": 0,
+            "target_holes_after": 0,
+            "allow_source_component_split": False,
+            "allow_target_hole_resolution": False,
+            "target_merge": False,
+        }
+        one_event = {**no_event, "source_components_after": 2}
+        two_events = {**one_event, "target_holes_after": 1}
+        self.assertEqual(_structural_event_risk_count(no_event), 0.0)
+        self.assertLess(
+            _structural_event_risk_count(no_event),
+            _structural_event_risk_count(one_event),
+        )
+        self.assertLess(
+            _structural_event_risk_count(one_event),
+            _structural_event_risk_count(two_events),
+        )
 
     def test_online_tissue_planner_rejects_forged_candidate_tool_and_preference(self):
         mutations = {

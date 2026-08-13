@@ -186,6 +186,88 @@ class CertifiedCellPlanCandidate:
 
 
 @dataclass(frozen=True)
+class CellPlanSelectionHandle:
+    """Exact compiler certificate selected by the Planner."""
+
+    candidate_id: str
+    compiler_certificate_sha256: str
+    selected_tool_program_id: str
+    executable_contract_id: str
+    plan_sha256: str
+    authority_binding_sha256: str
+
+    @classmethod
+    def from_metadata(cls, value: Any) -> CellPlanSelectionHandle:
+        if not isinstance(value, Mapping):
+            raise JointContractError(
+                "cell Planner omitted the typed certificate selection handle"
+            )
+        required = (
+            "candidate_id",
+            "compiler_certificate_sha256",
+            "selected_tool_program_id",
+            "executable_contract_id",
+            "plan_sha256",
+            "authority_binding_sha256",
+        )
+        if set(value) != set(required) or not all(
+            isinstance(value.get(key), str) and value[key]
+            for key in required
+        ):
+            raise JointContractError("cell selection handle is malformed")
+        return cls(**{key: str(value[key]) for key in required})
+
+    @classmethod
+    def from_candidate(
+        cls,
+        candidate: CertifiedCellPlanCandidate,
+        *,
+        selected_tool_program_id: str,
+    ) -> CellPlanSelectionHandle:
+        return cls(
+            candidate_id=candidate.candidate_id,
+            compiler_certificate_sha256=(
+                candidate.compiler_certificate_sha256
+            ),
+            selected_tool_program_id=selected_tool_program_id,
+            executable_contract_id=candidate.executable_contract_id,
+            plan_sha256=hashlib.sha256(
+                json.dumps(
+                    candidate.plan.to_metadata(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
+            authority_binding_sha256=candidate.authority_binding_sha256,
+        )
+
+    def to_metadata(self) -> dict[str, str]:
+        return {
+            "candidate_id": self.candidate_id,
+            "compiler_certificate_sha256": self.compiler_certificate_sha256,
+            "selected_tool_program_id": self.selected_tool_program_id,
+            "executable_contract_id": self.executable_contract_id,
+            "plan_sha256": self.plan_sha256,
+            "authority_binding_sha256": self.authority_binding_sha256,
+        }
+
+    def validate_candidate(
+        self,
+        candidate: CertifiedCellPlanCandidate,
+        *,
+        plan: JointEditPlan,
+    ) -> None:
+        expected = self.from_candidate(
+            candidate,
+            selected_tool_program_id=self.selected_tool_program_id,
+        )
+        if self != expected or plan != candidate.plan:
+            raise JointContractError(
+                "cell selection handle is detached from the exact compiler certificate"
+            )
+
+
+@dataclass(frozen=True)
 class CellPlanCandidateVeto:
     """Audited, non-selectable cell-plan variant rejected before the LLM."""
 
@@ -454,11 +536,17 @@ class HeuristicJointPlanner:
         del image_paths, artifact_registry
         if candidate_portfolio:
             selected = next(iter(candidate_portfolio))
+            tool_program_id = selected.allowed_tool_program_ids[0]
             return selected.plan, {
                 "provider": self.name,
                 "supports_pathology_vision": False,
                 "planning_mode": "first_pre_llm_certified_cell_candidate",
                 "selected_candidate_id": selected.candidate_id,
+                "selected_tool_program_id": tool_program_id,
+                "selection_handle": CellPlanSelectionHandle.from_candidate(
+                    selected,
+                    selected_tool_program_id=tool_program_id,
+                ).to_metadata(),
                 "portfolio_candidate_count": len(tuple(candidate_portfolio)),
                 "input_tokens": 0,
                 "output_tokens": 0,
