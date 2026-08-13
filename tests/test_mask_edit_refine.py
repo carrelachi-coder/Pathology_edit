@@ -243,9 +243,10 @@ class FailClosedGateTests(unittest.TestCase):
             {},
         )
 
-        def run_with(maximum: float):
+        def run_with(maximum: float, *, geometry_mode: str = "free_region"):
             ranges = dict(base_plan.tool_program.parameter_ranges)
             ranges["max_boundary_compactness"] = maximum
+            ranges["tissue_geometry_mode"] = geometry_mode
             plan = replace(
                 base_plan,
                 tool_program=replace(
@@ -273,6 +274,15 @@ class FailClosedGateTests(unittest.TestCase):
                 "maximum_allowed_component_compactness"
             ],
             55.0,
+        )
+
+        interface_front = run_with(4.0, geometry_mode="interface_front")
+        self.assertTrue(interface_front.passed, interface_front.metrics)
+        self.assertFalse(
+            interface_front.metrics["change_band_compactness_applicable"]
+        )
+        self.assertTrue(
+            interface_front.metrics["boundary_attached_geometry"]
         )
 
     def test_case152_style_short_deep_notch_is_rejected(self):

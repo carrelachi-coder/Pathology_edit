@@ -1259,19 +1259,25 @@ def _check_boundary_naturalness(context: GateContext) -> GateCheck:
         float(item["boundary_compactness"]) * int(item["area_px"])
         for item in component_metrics
     ) / max(area, 1)
-    component_boundary_turnover = (
+    geometry_mode = str(
         context.plan.tool_program.parameter_ranges.get(
-            "tissue_geometry_mode"
+            "tissue_geometry_mode", ""
         )
-        == "component_boundary_turnover"
     )
-    # Compactness of the *changed band* is not a roughness measure for a
-    # closed component-boundary turnover. Even a perfectly smooth thin
-    # annulus has compactness proportional to component radius / band width,
-    # so it can exceed every fixed bound as the component grows. The separate
-    # parallel-boundary gate audits the biologically relevant depth variation
-    # of this geometry. Rectangle-like raster fills remain invalid here.
-    compactness_applicable = not component_boundary_turnover
+    boundary_attached_geometry = geometry_mode in {
+        "interface_front",
+        "component_boundary_turnover",
+        "residual_fragmentation",
+        "annotation_anchored_narrow_connected_extension",
+    }
+    # Compactness of a *boundary-attached band* is not a roughness measure.
+    # Even a perfectly smooth thin ribbon or annulus has compactness that grows
+    # with interface length / band width, so a fixed threshold rejects the
+    # long legal fronts needed to satisfy an area budget.  Depth-span,
+    # parallel-boundary, component-topology and execution-fidelity gates audit
+    # the biologically relevant geometry instead.  Rectangle-like raster fills
+    # remain invalid here for every geometry mode.
+    compactness_applicable = not boundary_attached_geometry
     passed = (
         not rectangle_like
         and (
@@ -1297,6 +1303,8 @@ def _check_boundary_naturalness(context: GateContext) -> GateCheck:
             ),
             "maximum_allowed_component_compactness": max_compactness,
             "change_band_compactness_applicable": compactness_applicable,
+            "tissue_geometry_mode": geometry_mode,
+            "boundary_attached_geometry": boundary_attached_geometry,
             "component_metrics": component_metrics,
             "rectangle_like": rectangle_like,
         },
