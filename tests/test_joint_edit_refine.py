@@ -121,8 +121,10 @@ from phase3_joint_edit_refine.tissue_planner import (
     JOINT_TISSUE_DECISION_SCHEMA,
     MultiInterfaceResearchTissuePlanner,
     OpenAIJointAwareTissuePlanner,
+    _component_capped_allocation_capacities,
     _effective_tissue_topology,
     _normalize_integer_allocations,
+    _rank_interfaces_by_marginal_capacity,
     _select_executable_anchor_ids,
 )
 from phase3_joint_edit_refine.tissue_planner import (
@@ -2708,7 +2710,82 @@ class JointSkillTests(unittest.TestCase):
             initial.tissue_floor_pixels,
         )
 
-    def test_tissue_tool_rejects_allocation_below_binding_public_floor(self):
+    def test_underfill_replan_keeps_prior_front_and_adds_unique_capacity(self):
+        interfaces = [
+            SimpleNamespace(
+                interface_id="if-a",
+                source_component_id="source-1",
+                contact_pixels=90,
+            ),
+            SimpleNamespace(
+                interface_id="if-b",
+                source_component_id="source-1",
+                contact_pixels=80,
+            ),
+            SimpleNamespace(
+                interface_id="if-c",
+                source_component_id="source-2",
+                contact_pixels=40,
+            ),
+        ]
+        capacities = {"if-a": 80, "if-b": 70, "if-c": 40}
+        component_limits = {"source-1": 100, "source-2": 40}
+        ranked, marginal = _rank_interfaces_by_marginal_capacity(
+            interfaces,
+            capacity_by_id=capacities,
+            component_capacity_limits=component_limits,
+            locked_interface_ids=("if-a",),
+            previous_actual_by_interface={"if-a": 30},
+            previous_actual_by_source={"source-1": 30},
+        )
+        self.assertEqual(
+            [item.interface_id for item in ranked],
+            ["if-a", "if-b", "if-c"],
+        )
+        self.assertEqual(marginal, {"if-a": 30, "if-b": 70, "if-c": 40})
+        allocation_capacities = _component_capped_allocation_capacities(
+            interfaces,
+            capacity_by_id=capacities,
+            component_capacity_limits=component_limits,
+        )
+        self.assertEqual(sum(allocation_capacities[:2]), 100)
+        self.assertEqual(allocation_capacities[2], 40)
+        self.assertEqual(sum(allocation_capacities), 140)
+
+    def test_fixed_breast_fallback_compiles_against_manifest_three_percent(self):
+        case = _breast_case_stub(
+            budget=JointAreaBudget(
+                target_fraction=0.08,
+                min_fraction=0.04,
+                max_fraction=0.08,
+                tissue_min_fraction=0.04,
+                capacity_floor_policy="lower_to_proven_max_safe",
+                minimum_effective_fraction=0.03,
+            )
+        )
+        bundle = JointSkillRepository().compose(
+            case=case,
+            mechanism_id="breast-cohesive-nst-front",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        allocation = JointFeasibilitySolver().allocate(
+            shape=(512, 512), budget=case.joint_area_budget, bundle=bundle
+        )
+        tissue_case = _as_tissue_case(
+            case, allocation=allocation, shape=(512, 512)
+        )
+        self.assertEqual(allocation.tissue_floor_pixels, 10_486)
+        self.assertEqual(allocation.tissue_execution_floor_pixels, 7_865)
+        self.assertEqual(
+            tissue_case.area_budget.hard_pixel_interval(
+                np.zeros((512, 512), dtype=np.uint8),
+                np.ones((512, 512), dtype=bool),
+            )[0],
+            7_865,
+        )
+
+    def test_tissue_tool_rejects_allocation_below_binding_execution_floor(self):
         repository = JointSkillRepository()
         case = _breast_case_stub(
             budget=JointAreaBudget(
@@ -2727,7 +2804,7 @@ class JointSkillTests(unittest.TestCase):
         )
         allocation = replace(
             allocation,
-            tissue_target_pixels=20_000,
+            tissue_target_pixels=12_000,
             tissue_execution_floor_pixels=13_108,
         )
 

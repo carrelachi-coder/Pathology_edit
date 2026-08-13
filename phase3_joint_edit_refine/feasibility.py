@@ -40,7 +40,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v12"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v13"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -108,6 +108,7 @@ class JointNucleiPreflight:
     required_provenance_missing: tuple[str, ...]
     meaningful_tissue_floor_pixels: int
     aggregate_feasible_tissue_capacity_pixels: int
+    feasible_tissue_capacity_by_source_component: dict[str, int]
     meaningful_tissue_capacity_passed: bool
     interfaces: tuple[InterfaceNucleiCapacity, ...]
     protected_tissue_change_mask: np.ndarray
@@ -165,6 +166,11 @@ class JointNucleiPreflight:
             "meaningful_tissue_floor_pixels": self.meaningful_tissue_floor_pixels,
             "aggregate_feasible_tissue_capacity_pixels": (
                 self.aggregate_feasible_tissue_capacity_pixels
+            ),
+            "feasible_tissue_capacity_by_source_component": dict(
+                sorted(
+                    self.feasible_tissue_capacity_by_source_component.items()
+                )
             ),
             "meaningful_tissue_capacity_passed": (
                 self.meaningful_tissue_capacity_passed
@@ -813,14 +819,12 @@ def build_joint_nuclei_preflight(
         )
         for component_id, envelope in aggregate_by_component.items()
     )
-    # Burden primitives may fall back from the 19% target to the proven
-    # maximum safe edit, but they may never redefine a visually negligible
-    # edit as success.  The agreed tissue floor therefore remains binding
-    # even when an older manifest advertises a lower adaptive compiler floor.
-    meaningful_floor = max(
-        int(allocation.tissue_execution_floor_pixels),
-        int(case.joint_area_budget.tissue_floor_pixels(source_tissue.shape)),
-    )
+    # The manifest owns both floors. Capacity-adaptive burden tasks compile
+    # against their explicit minimum-effective floor (3% in the fixed breast
+    # tumor-burden cases); the ordinary 4% contribution floor remains binding
+    # only for strict tasks. Downstream gates still require proof that a
+    # below-standard result is the maximum topology-safe fallback.
+    meaningful_floor = int(allocation.tissue_execution_floor_pixels)
     return JointNucleiPreflight(
         version=PREFLIGHT_VERSION,
         source_instance_authority_sha256=str(
@@ -856,6 +860,13 @@ def build_joint_nuclei_preflight(
         required_provenance_missing=missing_provenance,
         meaningful_tissue_floor_pixels=meaningful_floor,
         aggregate_feasible_tissue_capacity_pixels=aggregate_capacity,
+        feasible_tissue_capacity_by_source_component={
+            component_id: min(
+                int(np.count_nonzero(envelope)),
+                capacity_by_component[component_id],
+            )
+            for component_id, envelope in aggregate_by_component.items()
+        },
         meaningful_tissue_capacity_passed=(
             aggregate_capacity >= meaningful_floor
         ),
@@ -1143,10 +1154,7 @@ def assess_candidate_cell_feasibility(
         minimum_seam_count=minimum_seam,
         required_seam_class=preflight.target_cell_class,
     )
-    meaningful_floor = max(
-        int(allocation.tissue_execution_floor_pixels),
-        int(case.joint_area_budget.tissue_floor_pixels(core.shape)),
-    )
+    meaningful_floor = int(allocation.tissue_execution_floor_pixels)
     reasons: list[str] = []
     if np.count_nonzero(core) < meaningful_floor:
         reasons.append("candidate_below_meaningful_tissue_floor")

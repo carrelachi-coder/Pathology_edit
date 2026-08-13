@@ -24,6 +24,7 @@ from phase3_mask_edit_refine.candidates import (
     generate_candidates,
 )
 from phase3_mask_edit_refine.execution import (
+    TopologySafeAreaUnderfillError,
     _prepare_compiler_work,
     compile_edit_plan,
 )
@@ -934,8 +935,22 @@ class CandidateAndSceneTests(unittest.TestCase):
             ),
             area_budget=budget,
         )
-        with self.assertRaisesRegex(RefineContractError, "hard minimum"):
+        with self.assertRaises(TopologySafeAreaUnderfillError) as raised:
             compile_edit_plan(raw, source_mask=mask, schema=self.schema, scene=scene)
+        feedback = raised.exception.feedback
+        self.assertEqual(feedback["stage"], "tissue_area_underfill")
+        self.assertEqual(
+            feedback["policy_floor_pixels"], int(np.ceil(mask.size * 0.12))
+        )
+        self.assertGreater(feedback["deficit_to_floor_pixels"], 0)
+        self.assertTrue(feedback["interface_contributions"])
+        self.assertIn(
+            feedback["required_action"],
+            {
+                "expand_interface_set_and_redistribute",
+                "redistribute_across_alternate_interfaces",
+            },
+        )
 
     def test_adjacent_addressable_anchors_compile_as_one_continuous_arc(self):
         mask = _glas_circle_mask()

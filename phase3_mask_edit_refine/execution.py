@@ -29,6 +29,19 @@ from phase3_mask_edit_refine.topology import (
 EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v5"
 
 
+class TopologySafeAreaUnderfillError(RefineContractError):
+    """Carry a machine-readable failed area probe back to the Planner.
+
+    The message remains suitable for existing audit logs, while ``feedback``
+    prevents the joint candidate compiler from reducing an underfill to an
+    opaque string and forgetting which interfaces actually contributed.
+    """
+
+    def __init__(self, message: str, *, feedback: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.feedback = dict(feedback)
+
+
 @dataclass(frozen=True)
 class _CompilerWork:
     planned: PlannedInterface
@@ -945,10 +958,64 @@ def _resolve_topology_safe_area(
     # bound.
     floor_result = attempt(hard_min_pixels)
     if not floor_result[-1]:
-        raise RefineContractError(
+        realized_pixels = int(floor_result[-2])
+        topology_passed = bool(floor_result[3]["passed"])
+        safe_realized_pixels = realized_pixels if topology_passed else 0
+        interface_contributions = [
+            {
+                "interface_id": work.planned.interface_id,
+                "source_component_id": work.planned.source_component_id,
+                "target_component_id": work.planned.target_component_id,
+                "anchor_segment_ids": list(
+                    work.planned.execution_contract.anchor_segment_ids
+                ),
+                "requested_allocation_pixels": int(allocation),
+                "actual_contribution_pixels": int(np.count_nonzero(selected)),
+                "legal_capacity_pixels": int(work.item_capacity_px),
+                "source_deletion_limit_pixels": int(
+                    work.source_deletion_limit_px
+                ),
+            }
+            for work, allocation, selected in zip(
+                works, floor_result[0], floor_result[1]
+            )
+        ]
+        checker_id = (
+            "whole_mask_topology_safe_area_capacity"
+            if topology_passed
+            else "whole_mask_topology_audit"
+        )
+        message = (
             "no whole-mask topology-safe edit reaches the task hard minimum: "
-            f"minimum={hard_min_pixels}, realized={int(floor_result[-2])}, "
+            f"minimum={hard_min_pixels}, realized={realized_pixels}, "
             f"topology={floor_result[3]}, desired_probe_topology={first[3]}"
+        )
+        raise TopologySafeAreaUnderfillError(
+            message,
+            feedback={
+                "stage": "tissue_area_underfill",
+                "checker_id": checker_id,
+                "requested_pixels": int(desired_pixels),
+                "policy_floor_pixels": int(hard_min_pixels),
+                "realized_pixels": realized_pixels,
+                "topology_safe_realized_pixels": safe_realized_pixels,
+                "deficit_to_target_pixels": max(
+                    0, int(desired_pixels) - safe_realized_pixels
+                ),
+                "deficit_to_floor_pixels": max(
+                    0, int(hard_min_pixels) - safe_realized_pixels
+                ),
+                "topology_passed": topology_passed,
+                "topology": floor_result[3],
+                "desired_probe_realized_pixels": first_realized,
+                "desired_probe_topology": first[3],
+                "interface_contributions": interface_contributions,
+                "required_action": (
+                    "expand_interface_set_and_redistribute"
+                    if topology_passed
+                    else "redistribute_across_alternate_interfaces"
+                ),
+            },
         )
     low = hard_min_pixels
     high = upper + 1

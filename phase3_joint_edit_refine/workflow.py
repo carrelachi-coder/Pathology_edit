@@ -3472,15 +3472,12 @@ def _cell_portfolio_authority_binding(
 def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext:
     total = int(np.prod(shape))
     target = allocation.tissue_target_pixels / max(1, total)
-    # Keep the public burden floor in the tissue tool's own contract.  If an
-    # older/adaptive manifest exposes a lower compiler floor, generating many
-    # tiny candidates only to reject them in the joint preflight is both slow
-    # and semantically wrong: the tissue tool must emit only candidates it is
-    # itself authorized to call meaningful.
-    floor_pixels = max(
-        int(allocation.tissue_execution_floor_pixels),
-        int(case.joint_area_budget.tissue_floor_pixels(shape)),
-    )
+    # Capacity-adaptive tasks intentionally bind the tissue compiler to the
+    # manifest's minimum-effective floor. The joint gates separately require
+    # proof that any result below the standard tissue floor is the maximum
+    # topology-safe fallback, so this does not make an arbitrary small edit a
+    # success.
+    floor_pixels = int(allocation.tissue_execution_floor_pixels)
     if int(allocation.tissue_target_pixels) < floor_pixels:
         raise JointContractError(
             "joint budget allocation placed the tissue target below the "

@@ -567,11 +567,169 @@ class OpenAIJointAwareTissuePlanner:
         # model's self-reported confidence.
 
 
+def _source_component_capacity_limits(
+    interfaces: Sequence[Any],
+    *,
+    capacity_by_id: Mapping[str, int],
+    nuclei_preflight: JointNucleiPreflight | None,
+) -> dict[str, int]:
+    """Return one certified capacity per source component, never per edge."""
+
+    by_source: dict[str, list[Any]] = {}
+    for item in interfaces:
+        by_source.setdefault(item.source_component_id, []).append(item)
+    certified = (
+        nuclei_preflight.feasible_tissue_capacity_by_source_component
+        if nuclei_preflight is not None
+        else {}
+    )
+    limits: dict[str, int] = {}
+    for component_id, items in by_source.items():
+        raw_sum = sum(capacity_by_id[item.interface_id] for item in items)
+        if component_id in certified:
+            limits[component_id] = min(
+                raw_sum, int(certified[component_id])
+            )
+            continue
+        reports = [
+            nuclei_preflight.interface(item.interface_id)
+            for item in items
+        ] if nuclei_preflight is not None else []
+        reported_limits = [
+            int(report.source_component_capacity_pixels)
+            for report in reports
+            if report is not None
+        ]
+        limits[component_id] = min(
+            raw_sum,
+            min(reported_limits) if reported_limits else raw_sum,
+        )
+    return limits
+
+
+def _rank_interfaces_by_marginal_capacity(
+    interfaces: Sequence[Any],
+    *,
+    capacity_by_id: Mapping[str, int],
+    component_capacity_limits: Mapping[str, int],
+    locked_interface_ids: Sequence[str] = (),
+    failed_interface_ids: set[str] | frozenset[str] = frozenset(),
+    previous_actual_by_interface: Mapping[str, int] | None = None,
+    previous_actual_by_source: Mapping[str, int] | None = None,
+) -> tuple[list[Any], dict[str, int]]:
+    """Bounded greedy order using source-component-capped marginal capacity."""
+
+    by_id = {item.interface_id: item for item in interfaces}
+    ordered: list[Any] = []
+    credited: dict[str, int] = {}
+    used_by_source: dict[str, int] = {}
+    actual_by_interface = dict(previous_actual_by_interface or {})
+    for interface_id in dict.fromkeys(str(value) for value in locked_interface_ids):
+        item = by_id.get(interface_id)
+        if item is None:
+            continue
+        component_id = item.source_component_id
+        remaining = max(
+            0,
+            int(component_capacity_limits.get(component_id, 0))
+            - used_by_source.get(component_id, 0),
+        )
+        credit = min(
+            int(capacity_by_id.get(interface_id, 0)),
+            max(0, int(actual_by_interface.get(interface_id, remaining))),
+            remaining,
+        )
+        credited[interface_id] = credit
+        used_by_source[component_id] = (
+            used_by_source.get(component_id, 0) + credit
+        )
+        ordered.append(item)
+    for component_id, actual in dict(previous_actual_by_source or {}).items():
+        used_by_source[str(component_id)] = min(
+            int(component_capacity_limits.get(str(component_id), 0)),
+            max(used_by_source.get(str(component_id), 0), int(actual)),
+        )
+
+    remaining_items = [
+        item for item in interfaces if item.interface_id not in credited
+    ]
+    while remaining_items:
+        def marginal(item: Any) -> int:
+            component_id = item.source_component_id
+            return min(
+                int(capacity_by_id.get(item.interface_id, 0)),
+                max(
+                    0,
+                    int(component_capacity_limits.get(component_id, 0))
+                    - used_by_source.get(component_id, 0),
+                ),
+            )
+
+        item = min(
+            remaining_items,
+            key=lambda candidate: (
+                candidate.interface_id in failed_interface_ids,
+                marginal(candidate) <= 0,
+                -marginal(candidate),
+                -int(capacity_by_id.get(candidate.interface_id, 0)),
+                -candidate.contact_pixels,
+                candidate.interface_id,
+            ),
+        )
+        credit = marginal(item)
+        credited[item.interface_id] = credit
+        used_by_source[item.source_component_id] = (
+            used_by_source.get(item.source_component_id, 0) + credit
+        )
+        ordered.append(item)
+        remaining_items.remove(item)
+    return ordered, credited
+
+
+def _component_capped_allocation_capacities(
+    interfaces: Sequence[Any],
+    *,
+    capacity_by_id: Mapping[str, int],
+    component_capacity_limits: Mapping[str, int],
+) -> list[int]:
+    """Distribute each source component's unique capacity across its fronts."""
+
+    credits = [0 for _ in interfaces]
+    indices_by_source: dict[str, list[int]] = {}
+    for index, item in enumerate(interfaces):
+        indices_by_source.setdefault(item.source_component_id, []).append(index)
+    for component_id, indices in indices_by_source.items():
+        raw = np.asarray(
+            [capacity_by_id[interfaces[index].interface_id] for index in indices],
+            dtype=float,
+        )
+        total = min(
+            int(raw.sum()), int(component_capacity_limits[component_id])
+        )
+        if total <= 0 or float(raw.sum()) <= 0:
+            continue
+        exact = raw * (total / float(raw.sum()))
+        allocated = np.floor(exact).astype(int)
+        remainder = total - int(allocated.sum())
+        order = sorted(
+            range(len(indices)),
+            key=lambda local: (
+                -(exact[local] - allocated[local]),
+                interfaces[indices[local]].interface_id,
+            ),
+        )
+        for local in order[:remainder]:
+            allocated[local] += 1
+        for local, index in enumerate(indices):
+            credits[index] = int(allocated[local])
+    return credits
+
+
 @dataclass(frozen=True)
 class MultiInterfaceResearchTissuePlanner:
     """Use all needed legal source components; no H&E authority is claimed."""
 
-    name: str = "multi_interface_research_tissue_planner_v2"
+    name: str = "multi_interface_research_tissue_planner_v3"
 
     def create_joint_tissue_plan(
         self,
@@ -638,14 +796,19 @@ class MultiInterfaceResearchTissuePlanner:
         feedback = dict(execution_feedback or {})
         retry_index = max(0, int(feedback.get("retry_index", 0)))
         failed_interface_ids = set(feedback.get("failed_interface_ids", ()))
+        locked_interface_ids = tuple(
+            str(value) for value in feedback.get("selected_interface_ids", ())
+        )
         preferred_anchor_ids = tuple(
             str(value) for value in feedback.get("preferred_anchor_ids", ())
         )
+        feedback_stage = str(feedback.get("stage", ""))
+        area_underfill_replan = feedback_stage == "tissue_area_underfill"
         topology = _effective_tissue_topology(
             joint_bundle,
             primitive_id=case.primitive_id,
             retry_index=retry_index,
-            feedback_stage=feedback.get("stage"),
+            feedback_stage=feedback_stage,
         )
         component_turnover = (
             topology["geometry_mode"] == "component_boundary_turnover"
@@ -667,11 +830,23 @@ class MultiInterfaceResearchTissuePlanner:
                 if nuclei_preflight is not None
                 else None
             )
-            capacity_by_id[item.interface_id] = int(
-                preflight_item.editable_tissue_capacity_pixels
-                if preflight_item is not None
-                else 0
-            )
+            if preflight_item is not None:
+                capacity = int(
+                    preflight_item.editable_tissue_capacity_pixels
+                )
+            else:
+                interface_mask = scene.interface_masks[item.interface_id]
+                source_component = scene.component_masks[
+                    item.source_component_id
+                ]
+                distance = ndimage.distance_transform_edt(~interface_mask)
+                depth_cap = max(1, min(128, int(item.contact_pixels)))
+                capacity = int(
+                    np.count_nonzero(
+                        source_component & (distance <= depth_cap)
+                    )
+                )
+            capacity_by_id[item.interface_id] = capacity
         if component_turnover:
             # Rasterization can split one biological component boundary into
             # several directed segments. Independent quotas on those segments
@@ -695,14 +870,28 @@ class MultiInterfaceResearchTissuePlanner:
                 )
                 for _, items in sorted(by_component_pair.items())
             ]
+        component_capacity_limits = _source_component_capacity_limits(
+            legal,
+            capacity_by_id=capacity_by_id,
+            nuclei_preflight=nuclei_preflight,
+        )
         labels = sorted({item.source_label for item in legal})
         source_label = max(
             labels,
             key=lambda label: (
-                sum(
-                    capacity_by_id[item.interface_id]
+                any(
+                    item.interface_id in locked_interface_ids
                     for item in legal
                     if item.source_label == label
+                ),
+                sum(
+                    capacity
+                    for component_id, capacity in component_capacity_limits.items()
+                    if any(
+                        item.source_component_id == component_id
+                        and item.source_label == label
+                        for item in legal
+                    )
                 ),
                 sum(
                     item.contact_pixels
@@ -712,14 +901,23 @@ class MultiInterfaceResearchTissuePlanner:
                 label,
             ),
         )
-        ranked = sorted(
-            (item for item in legal if item.source_label == source_label),
-            key=lambda item: (
-                item.interface_id in failed_interface_ids,
-                -capacity_by_id[item.interface_id],
-                -item.contact_pixels,
-                item.interface_id,
-            ),
+        source_legal = [
+            item for item in legal if item.source_label == source_label
+        ]
+        ranked, marginal_capacity_by_id = (
+            _rank_interfaces_by_marginal_capacity(
+                source_legal,
+                capacity_by_id=capacity_by_id,
+                component_capacity_limits=component_capacity_limits,
+                locked_interface_ids=locked_interface_ids,
+                failed_interface_ids=failed_interface_ids,
+                previous_actual_by_interface=feedback.get(
+                    "interface_actual_contribution_pixels", {}
+                ),
+                previous_actual_by_source=feedback.get(
+                    "actual_contribution_by_source_component", {}
+                ),
+            )
         )
         if residual_fragmentation and ranked:
             # Fragmentation is defined within one pre-existing invasive-tumor
@@ -727,9 +925,8 @@ class MultiInterfaceResearchTissuePlanner:
             # island-count gate without actually fragmenting anything.
             capacity_by_source: dict[str, int] = {}
             for item in ranked:
-                capacity_by_source[item.source_component_id] = (
-                    capacity_by_source.get(item.source_component_id, 0)
-                    + capacity_by_id[item.interface_id]
+                capacity_by_source[item.source_component_id] = int(
+                    component_capacity_limits[item.source_component_id]
                 )
             selected_source_component_id = max(
                 capacity_by_source,
@@ -758,41 +955,26 @@ class MultiInterfaceResearchTissuePlanner:
         selected = []
         capacities = []
         cumulative = 0
-        # A planning/compilation failure means the raw preflight capacities
-        # did not survive the shared topology compiler.  Adding only two more
-        # interfaces per retry can still stop at another optimistic capacity
-        # threshold and report a sub-maximal fallback.  On that specific
-        # feedback stage, expose every legal, cell-feasible interface to the
-        # compiler; its disjoint pixel ownership, source-retention ceiling and
-        # whole-mask topology audit then determine the actual maximum.  Gate or
-        # cell-feasibility retries retain the gradual diversification policy.
+        # An area-underfill retry must expose every legal, cell-feasible front
+        # to the compiler. Its disjoint pixel ownership, source-retention cap,
+        # and whole-mask topology audit then decide the global safe fallback.
+        # Other retries retain gradual diversification.
         extra_after_capacity = (
             len(ranked)
-            if component_turnover
+            if component_turnover or area_underfill_replan
             else min(8, retry_index * 4)
         )
         capacity_reached_at: int | None = None
         for item in ranked[:32]:
-            preflight_item = (
-                nuclei_preflight.interface(item.interface_id)
-                if nuclei_preflight is not None
-                else None
-            )
-            if preflight_item is not None:
-                capacity = int(preflight_item.editable_tissue_capacity_pixels)
-            else:
-                interface_mask = scene.interface_masks[item.interface_id]
-                source_component = scene.component_masks[item.source_component_id]
-                distance = ndimage.distance_transform_edt(~interface_mask)
-                depth_cap = max(1, min(128, int(item.contact_pixels)))
-                capacity = int(
-                    np.count_nonzero(source_component & (distance <= depth_cap))
-                )
+            capacity = capacity_by_id[item.interface_id]
             if capacity <= 0:
                 continue
             selected.append(item)
             capacities.append(capacity)
-            cumulative += capacity
+            capacity_credit = int(
+                marginal_capacity_by_id.get(item.interface_id, 0)
+            )
+            cumulative += capacity_credit
             # One long, cell-feasible interface is preferable to forcing a
             # small request through several disconnected fronts.  Additional
             # interfaces are selected only when their capacity is needed.
@@ -805,7 +987,12 @@ class MultiInterfaceResearchTissuePlanner:
                 break
         if not selected:
             raise RefineContractError("preflight left no executable tissue capacity")
-        total_capacity = max(1, sum(capacities))
+        allocation_capacities = _component_capped_allocation_capacities(
+            selected,
+            capacity_by_id=capacity_by_id,
+            component_capacity_limits=component_capacity_limits,
+        )
+        total_capacity = max(1, sum(allocation_capacities))
         if topology["allow_source_component_resolution"]:
             # Prefer completing whole biological compartments instead of
             # shaving the same proportion from every component. Proportional
@@ -838,12 +1025,22 @@ class MultiInterfaceResearchTissuePlanner:
             selected = retained_selected
             capacities = retained_capacities
         else:
+            planning_target_pixels = min(target_pixels, total_capacity)
             component_allocations = [
                 min(
                     capacity,
-                    max(1, round(target_pixels * capacity / total_capacity)),
+                    max(
+                        1,
+                        round(
+                            planning_target_pixels
+                            * allocation_capacity
+                            / total_capacity
+                        ),
+                    ),
                 )
-                for capacity in capacities
+                for capacity, allocation_capacity in zip(
+                    capacities, allocation_capacities
+                )
             ]
         # ``component_allocations`` are integer pixel requests.  In the
         # proportional branch, independent rounding can make their sum differ
@@ -910,6 +1107,7 @@ class MultiInterfaceResearchTissuePlanner:
                         front_contract.minimum_unselected_anchor_count
                     ),
                     preferred_anchor_ids=preferred_anchor_ids,
+                    expand_to_selection_limit=area_underfill_replan,
                 )
             if not anchor_ids:
                 raise RefineContractError(
@@ -1168,7 +1366,27 @@ class MultiInterfaceResearchTissuePlanner:
         return plan, {
             "provider": self.name,
             "selected_interface_count": len(planned),
-            "estimated_capacity_pixels": cumulative,
+            "selected_interface_ids": [
+                item.interface_id for item in selected
+            ],
+            "estimated_capacity_pixels": total_capacity,
+            "source_component_capped_capacity_pixels": total_capacity,
+            "selection_marginal_capacity_pixels": {
+                item.interface_id: int(
+                    marginal_capacity_by_id.get(item.interface_id, 0)
+                )
+                for item in selected
+            },
+            "source_component_capacity_limits": {
+                component_id: int(capacity)
+                for component_id, capacity in sorted(
+                    component_capacity_limits.items()
+                )
+                if any(
+                    item.source_component_id == component_id
+                    for item in selected
+                )
+            },
             "requested_pixels": target_pixels,
             "nuclei_preflight_version": (
                 nuclei_preflight.version if nuclei_preflight is not None else None
@@ -1196,6 +1414,7 @@ def _select_executable_anchor_ids(
     maximum_selected_anchor_fraction: float = 1.0,
     minimum_unselected_anchor_count: int = 0,
     preferred_anchor_ids: tuple[str, ...] = (),
+    expand_to_selection_limit: bool = False,
 ) -> tuple[str, ...]:
     """Choose the shortest broad anchor group with enough legal capacity.
 
@@ -1272,7 +1491,11 @@ def _select_executable_anchor_ids(
                 & (ndimage.distance_transform_edt(~union) <= group_depth)
             )
         )
-        if capacity >= required_pixels and contact >= preferred_minimum_span:
+        if (
+            not expand_to_selection_limit
+            and capacity >= required_pixels
+            and contact >= preferred_minimum_span
+        ):
             break
         selected_centroids = np.asarray([item[3] for item in selected], dtype=float)
         next_index = min(

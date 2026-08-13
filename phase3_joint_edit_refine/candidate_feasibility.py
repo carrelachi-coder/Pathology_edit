@@ -14,7 +14,10 @@ from scipy import ndimage
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import validate_edit_plan
 from phase3_mask_edit_refine.candidates import generate_candidates
-from phase3_mask_edit_refine.execution import compile_edit_plan_with_witness
+from phase3_mask_edit_refine.execution import (
+    TopologySafeAreaUnderfillError,
+    compile_edit_plan_with_witness,
+)
 from phase3_mask_edit_refine.gates import GateContext, GateRegistry
 from phase3_mask_edit_refine.models import CaseContext, EditPlan
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
@@ -30,7 +33,7 @@ from .tissue_planner import MultiInterfaceResearchTissuePlanner
 from .tissue_tools import compile_tissue_tool_program
 
 CANDIDATE_FEASIBILITY_COMPILER_VERSION = (
-    "joint-candidate-feasibility-compiler-v2"
+    "joint-candidate-feasibility-compiler-v3"
 )
 _COMPILER_CAPABILITY_ISSUER = object()
 _ISSUED_TISSUE_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
@@ -67,6 +70,231 @@ def _candidate_raster_sha256(candidate: Any) -> str:
         digest.update(value.tobytes())
     digest.update(str(candidate.tool_name).encode("utf-8"))
     return digest.hexdigest()
+
+
+def _tissue_area_underfill_feedback(
+    *,
+    error: TopologySafeAreaUnderfillError,
+    raw_plan: EditPlan,
+    nuclei_preflight: JointNucleiPreflight,
+    retry_index: int,
+    error_message: str,
+    preferred_anchor_ids: tuple[str, ...],
+) -> dict[str, Any]:
+    """Join an exact failed raster probe to the remaining preflight capacity."""
+
+    feedback = dict(error.feedback)
+    topology_passed = bool(feedback.get("topology_passed", False))
+    contributions = tuple(
+        item
+        for item in feedback.get("interface_contributions", ())
+        if isinstance(item, Mapping)
+    )
+    selected_interface_ids = tuple(
+        dict.fromkeys(
+            [
+                str(item.get("interface_id"))
+                for item in contributions
+                if item.get("interface_id")
+            ]
+            + [item.interface_id for item in raw_plan.candidate_interfaces]
+        )
+    )
+    selected_anchor_ids = tuple(
+        dict.fromkeys(
+            anchor_id
+            for item in contributions
+            for anchor_id in item.get("anchor_segment_ids", ())
+        )
+    )
+    actual_by_interface = {
+        str(item["interface_id"]): (
+            int(item.get("actual_contribution_pixels", 0))
+            if topology_passed
+            else 0
+        )
+        for item in contributions
+        if item.get("interface_id")
+    }
+    actual_by_source: dict[str, int] = {}
+    for item in contributions:
+        component_id = str(item.get("source_component_id", ""))
+        if not component_id:
+            continue
+        actual_by_source[component_id] = actual_by_source.get(
+            component_id, 0
+        ) + (
+            int(item.get("actual_contribution_pixels", 0))
+            if topology_passed
+            else 0
+        )
+
+    feasible_reports = tuple(
+        item for item in nuclei_preflight.interfaces if item.feasible
+    )
+    reports_by_source: dict[str, list[Any]] = {}
+    for item in feasible_reports:
+        reports_by_source.setdefault(item.source_component_id, []).append(item)
+    certified_by_source = dict(
+        nuclei_preflight.feasible_tissue_capacity_by_source_component
+    )
+    source_capacity_evidence: dict[str, dict[str, int]] = {}
+    for component_id, reports in sorted(reports_by_source.items()):
+        certified = int(
+            certified_by_source.get(
+                component_id,
+                min(
+                    min(
+                        report.source_component_capacity_pixels
+                        for report in reports
+                    ),
+                    sum(
+                        report.editable_tissue_capacity_pixels
+                        for report in reports
+                    ),
+                ),
+            )
+        )
+        realized = min(certified, actual_by_source.get(component_id, 0))
+        source_capacity_evidence[component_id] = {
+            "certified_unique_capacity_pixels": certified,
+            "previous_safe_contribution_pixels": realized,
+            "remaining_unique_capacity_upper_bound_pixels": max(
+                0, certified - realized
+            ),
+        }
+
+    selected_set = set(selected_interface_ids)
+    remaining = []
+    for item in feasible_reports:
+        if item.interface_id in selected_set:
+            continue
+        component_evidence = source_capacity_evidence[
+            item.source_component_id
+        ]
+        remaining.append(
+            {
+                "interface_id": item.interface_id,
+                "source_component_id": item.source_component_id,
+                "target_component_id": item.target_component_id,
+                "editable_tissue_capacity_pixels": int(
+                    item.editable_tissue_capacity_pixels
+                ),
+                "marginal_unique_capacity_upper_bound_pixels": min(
+                    int(item.editable_tissue_capacity_pixels),
+                    component_evidence[
+                        "remaining_unique_capacity_upper_bound_pixels"
+                    ],
+                ),
+                "cell_feasible_anchor_segment_ids": list(
+                    item.cell_feasible_anchor_segment_ids
+                ),
+            }
+        )
+    remaining.sort(
+        key=lambda item: (
+            -item["marginal_unique_capacity_upper_bound_pixels"],
+            -item["editable_tissue_capacity_pixels"],
+            item["interface_id"],
+        )
+    )
+    feedback.update(
+        {
+            "retry_index": int(retry_index),
+            "errors": [error_message],
+            "failed_interface_ids": [],
+            "selected_interface_ids": list(selected_interface_ids),
+            "selected_anchor_ids": list(selected_anchor_ids),
+            "preferred_anchor_ids": list(
+                dict.fromkeys(preferred_anchor_ids + selected_anchor_ids)
+            ),
+            "interface_actual_contribution_pixels": actual_by_interface,
+            "actual_contribution_by_source_component": actual_by_source,
+            "remaining_feasible_interface_ids": [
+                item["interface_id"] for item in remaining
+            ],
+            "remaining_feasible_interfaces": remaining,
+            "source_component_capacity_evidence": source_capacity_evidence,
+            "previous_plan_sha256": _canonical_sha256(
+                raw_plan.to_metadata()
+            ),
+            "replay_semantics": "replace_complete_plan_and_replay_from_source",
+        }
+    )
+    return feedback
+
+
+def _selected_interface_set_underfill_error(
+    *,
+    compiled_plan: EditPlan,
+    compiler_audit: Mapping[str, Any],
+    replay_parts: tuple[Any, ...],
+) -> TopologySafeAreaUnderfillError:
+    """Require one expanded replan before accepting a selected-set fallback."""
+
+    resolved = compiled_plan.resolved_area
+    if resolved is None:
+        raise JointContractError(
+            "selected-set underfill feedback requires a compiled area contract"
+        )
+    audit_by_interface = {
+        str(item.get("interface_id")): item
+        for item in compiler_audit.get("interfaces", ())
+        if isinstance(item, Mapping) and item.get("interface_id")
+    }
+    contributions = []
+    for part in replay_parts:
+        planned = part.planned
+        audit = audit_by_interface.get(planned.interface_id, {})
+        actual = int(np.count_nonzero(part.change_region))
+        contributions.append(
+            {
+                "interface_id": planned.interface_id,
+                "source_component_id": planned.source_component_id,
+                "target_component_id": planned.target_component_id,
+                "anchor_segment_ids": list(
+                    planned.execution_contract.anchor_segment_ids
+                ),
+                "requested_allocation_pixels": int(
+                    audit.get("allocated_pixels", actual)
+                ),
+                "actual_contribution_pixels": actual,
+                "legal_capacity_pixels": int(part.legal_capacity_px),
+                "source_deletion_limit_pixels": int(
+                    part.source_deletion_limit_px
+                ),
+            }
+        )
+    message = (
+        "selected interface set cannot yet be certified as the global "
+        "maximum-safe fallback: "
+        f"desired={resolved.desired_pixels}, realized={resolved.resolved_pixels}, "
+        f"minimum={resolved.hard_min_pixels}"
+    )
+    topology = dict(compiler_audit.get("whole_mask_topology", {}))
+    return TopologySafeAreaUnderfillError(
+        message,
+        feedback={
+            "stage": "tissue_area_underfill",
+            "checker_id": "selected_interface_set_capacity_exhausted",
+            "requested_pixels": int(resolved.desired_pixels),
+            "policy_floor_pixels": int(resolved.hard_min_pixels),
+            "realized_pixels": int(resolved.resolved_pixels),
+            "topology_safe_realized_pixels": int(resolved.resolved_pixels),
+            "deficit_to_target_pixels": max(
+                0, int(resolved.desired_pixels - resolved.resolved_pixels)
+            ),
+            "deficit_to_floor_pixels": max(
+                0, int(resolved.hard_min_pixels - resolved.resolved_pixels)
+            ),
+            "topology_passed": bool(topology.get("passed", True)),
+            "topology": topology,
+            "desired_probe_realized_pixels": int(resolved.resolved_pixels),
+            "desired_probe_topology": topology,
+            "interface_contributions": contributions,
+            "required_action": "expand_interface_set_and_redistribute",
+        },
+    )
 
 
 def _structural_event_risk_count(topology: Mapping[str, Any]) -> float:
@@ -550,6 +778,7 @@ class CandidateFeasibilityCompiler:
         }
         errors: list[str] = []
         for attempt in range(1, self.maximum_attempts + 1):
+            raw_plan: EditPlan | None = None
             try:
                 raw_plan, planner_usage = planner.create_joint_tissue_plan(
                     case=tissue_case,
@@ -572,6 +801,22 @@ class CandidateFeasibilityCompiler:
                     schema=schema,
                     scene=tissue_scene,
                 )
+                if (
+                    compiled.resolved_area is not None
+                    and compiled.resolved_area.used_fallback
+                    and feedback.get("stage") != "tissue_area_underfill"
+                ):
+                    # A maximum over one selected interface set is not yet a
+                    # global maximum over the frozen preflight portfolio.
+                    # Force one complete deterministic replan that preserves
+                    # the safe fronts, adds the remaining legal fronts, opens
+                    # the largest permitted anchor sectors, and replays from
+                    # the original source mask.
+                    raise _selected_interface_set_underfill_error(
+                        compiled_plan=compiled,
+                        compiler_audit=audit,
+                        replay_parts=parts,
+                    )
                 metrics = _measured_tissue_candidate_metrics(
                     compiled_plan=compiled,
                     compiler_audit=audit,
@@ -686,14 +931,43 @@ class CandidateFeasibilityCompiler:
                     tissue_gate_report_sha256=report_sha,
                     _issuer=_COMPILER_CAPABILITY_ISSUER,
                 )
+            except TopologySafeAreaUnderfillError as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                errors.append(error)
+                if raw_plan is None:
+                    feedback = {
+                        "retry_index": attempt,
+                        "stage": "tissue_area_underfill",
+                        "errors": [error],
+                        "failed_interface_ids": [],
+                        "preferred_anchor_ids": list(preferred_anchor_ids),
+                    }
+                else:
+                    feedback = _tissue_area_underfill_feedback(
+                        error=exc,
+                        raw_plan=raw_plan,
+                        nuclei_preflight=nuclei_preflight,
+                        retry_index=attempt,
+                        error_message=error,
+                        preferred_anchor_ids=preferred_anchor_ids,
+                    )
             except Exception as exc:  # noqa: BLE001 - fail closed and audit any compiler failure
                 error = f"{type(exc).__name__}: {exc}"
                 errors.append(error)
+                attempted_interface_ids = (
+                    [
+                        item.interface_id
+                        for item in raw_plan.candidate_interfaces
+                    ]
+                    if raw_plan is not None
+                    else []
+                )
                 feedback = {
                     "retry_index": attempt,
                     "stage": "planning_or_compilation",
                     "errors": [error],
-                    "failed_interface_ids": [],
+                    "failed_interface_ids": attempted_interface_ids,
+                    "attempted_interface_ids": attempted_interface_ids,
                     "preferred_anchor_ids": list(preferred_anchor_ids),
                 }
         raise JointContractError(
