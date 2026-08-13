@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
@@ -26,6 +27,7 @@ from phase3_mask_edit_refine.candidates import (
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
     _prepare_compiler_work,
+    _rebalance_fragmentation_residual_islands,
     compile_edit_plan,
 )
 from phase3_mask_edit_refine.gates import (
@@ -967,6 +969,52 @@ class CandidateAndSceneTests(unittest.TestCase):
                 "redistribute_across_alternate_interfaces",
             },
         )
+
+    def test_fragmentation_cleanup_fills_micro_island_at_constant_area(self):
+        shape = (32, 44)
+        source = np.zeros(shape, dtype=bool)
+        source[5:27, 5:39] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:27, 19:22] = True
+        change[5:8, 18] = True
+        # One raster source pixel surrounded by the otherwise complete
+        # corridor must not count as a biological third residual focus.
+        change[15, 20] = False
+        priority = np.zeros(shape, dtype=float)
+        priority[5:8, 18] = 100.0
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=source,
+            priority=priority,
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+
+        cleaned, audit = _rebalance_fragmentation_residual_islands(
+            (change,),
+            works=(work,),
+            source_region=source,
+            target_region=target,
+            minimum_residual_components=2,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=4,
+            residual_area_floor_fraction=0.3,
+        )
+
+        self.assertTrue(audit["applied"], audit)
+        self.assertEqual(audit["pixels_added"], 1)
+        self.assertEqual(audit["pixels_reclaimed"], 1)
+        self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+        labels, count = ndimage.label(
+            source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = np.bincount(labels.ravel())[1:]
+        self.assertEqual(count, 2)
+        self.assertGreaterEqual(int(sizes.min()), 96)
 
     def test_adjacent_addressable_anchors_compile_as_one_continuous_arc(self):
         mask = _glas_circle_mask()

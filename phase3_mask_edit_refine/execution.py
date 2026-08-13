@@ -404,6 +404,7 @@ def replay_compiled_edit_plan(
         works,
         allocations=allocations,
         desired_pixels=resolved,
+        source_region=source_region,
         target_region=target_region,
         scene=scene,
         seed=0,
@@ -873,6 +874,7 @@ def _resolve_topology_safe_area(
             works,
             allocations=allocations,
             desired_pixels=total,
+            source_region=source_region,
             target_region=target_region,
             scene=scene,
             seed=0,
@@ -881,6 +883,13 @@ def _resolve_topology_safe_area(
             ),
             allow_target_hole_resolution=allow_target_hole_resolution,
             allow_source_component_split=allow_source_component_split,
+            minimum_residual_components=minimum_residual_components,
+            maximum_residual_components=maximum_residual_components,
+            minimum_residual_component_area_px=(
+                minimum_residual_component_area_px
+            ),
+            minimum_residual_spacing_px=minimum_residual_spacing_px,
+            residual_area_floor_fraction=residual_area_floor_fraction,
             minimum_changed_component_area_px=(
                 minimum_changed_component_area_px
             ),
@@ -1214,6 +1223,7 @@ def _simulate_topology_safe_execution(
     *,
     allocations: tuple[int, ...],
     desired_pixels: int,
+    source_region: np.ndarray,
     target_region: np.ndarray,
     scene: SceneAnalysis,
     seed: int,
@@ -1227,16 +1237,6 @@ def _simulate_topology_safe_execution(
     residual_area_floor_fraction: float = 0.0,
     minimum_changed_component_area_px: int = 16,
 ) -> tuple[tuple[np.ndarray, ...], tuple[dict[str, Any], ...]]:
-    # Whole-mask residual constraints are audited after all fronts have been
-    # jointly simulated. Accept them here so the shared topology-policy object
-    # can be passed intact without duplicating partial per-front semantics.
-    del (
-        minimum_residual_components,
-        maximum_residual_components,
-        minimum_residual_component_area_px,
-        minimum_residual_spacing_px,
-        residual_area_floor_fraction,
-    )
     source_states = {
         work.planned.source_component_id: np.array(
             scene.component_masks[work.planned.source_component_id], copy=True
@@ -1348,6 +1348,34 @@ def _simulate_topology_safe_execution(
         if progress <= 0:
             break
 
+    if allow_source_component_split:
+        selected_by_work, cleanup = _rebalance_fragmentation_residual_islands(
+            tuple(selected_by_work),
+            works=works,
+            source_region=source_region,
+            target_region=target_region,
+            minimum_residual_components=minimum_residual_components,
+            maximum_residual_components=maximum_residual_components,
+            minimum_residual_component_area_px=(
+                minimum_residual_component_area_px
+            ),
+            minimum_residual_spacing_px=minimum_residual_spacing_px,
+            residual_area_floor_fraction=residual_area_floor_fraction,
+        )
+        selected_by_work = list(selected_by_work)
+        if cleanup["applied"]:
+            audit_lists[cleanup["assigned_work_index"]].append(
+                {
+                    "fragmentation_residual_island_pixels_added": cleanup[
+                        "pixels_added"
+                    ],
+                    "fragmentation_noncritical_edge_pixels_reclaimed": cleanup[
+                        "pixels_reclaimed"
+                    ],
+                    "fragmentation_residual_cleanup_calls": 1,
+                }
+            )
+
     # Multiple addressable anchor chunks may seed the same biological front.
     # Near an exact area cutoff, a low-priority chunk used to receive only a
     # handful of pixels (case 534 produced a 4 px satellite).  Consolidate
@@ -1428,6 +1456,142 @@ def _simulate_topology_safe_execution(
         totals["call_count"] = len(calls)
         summarized.append(totals)
     return tuple(selected_by_work), tuple(summarized)
+
+
+def _rebalance_fragmentation_residual_islands(
+    selected_by_work: tuple[np.ndarray, ...],
+    *,
+    works: tuple[_CompilerWork, ...],
+    source_region: np.ndarray,
+    target_region: np.ndarray,
+    minimum_residual_components: int,
+    maximum_residual_components: int,
+    minimum_residual_component_area_px: int,
+    minimum_residual_spacing_px: int,
+    residual_area_floor_fraction: float,
+) -> tuple[tuple[np.ndarray, ...], dict[str, Any]]:
+    """Remove raster micro-islands without changing the resolved area.
+
+    A generic priority front can complete a legal stromal corridor while
+    leaving one or two source pixels surrounded by that corridor.  Those
+    pixels are neither a biological residual focus nor evidence that the
+    requested split is impossible, but the strict residual topology gate must
+    still reject them.  This cleanup is therefore deliberately transactional:
+    it fills every sub-minimum residual island, reclaims the same number of
+    pixels from noncritical change edges, and commits only if the unchanged
+    authoritative topology audit passes after every reclaimed pixel.
+    """
+
+    unchanged = {
+        "applied": False,
+        "pixels_added": 0,
+        "pixels_reclaimed": 0,
+        "assigned_work_index": 0,
+    }
+    if not selected_by_work or minimum_residual_component_area_px <= 1:
+        return selected_by_work, unchanged
+
+    selected_source = np.logical_or.reduce(
+        tuple(work.source_component for work in works)
+    )
+    combined = np.logical_or.reduce(selected_by_work)
+    residual = selected_source & ~combined
+    labels, count = ndimage.label(
+        residual, structure=np.ones((3, 3), dtype=bool)
+    )
+    sizes = np.bincount(labels.ravel())[1:]
+    tiny_ids = tuple(
+        index + 1
+        for index, size in enumerate(sizes.tolist())
+        if 0 < int(size) < int(minimum_residual_component_area_px)
+    )
+    if not tiny_ids:
+        return selected_by_work, unchanged
+    tiny = np.isin(labels, tiny_ids)
+    reclaimed = int(np.count_nonzero(tiny))
+    # Large accidental islands are a genuinely different topology and must
+    # remain an abstention.  This bounded repair addresses raster caps only.
+    if reclaimed <= 0 or reclaimed > 64:
+        return selected_by_work, unchanged
+
+    updated = [np.array(item, copy=True) for item in selected_by_work]
+    assigned_indices: list[int] = []
+    for row, col in np.argwhere(tiny):
+        assigned = next(
+            (
+                index
+                for index, work in enumerate(works)
+                if work.source_component[row, col]
+                and work.legal_source[row, col]
+            ),
+            None,
+        )
+        if assigned is None:
+            return selected_by_work, unchanged
+        updated[assigned][row, col] = True
+        assigned_indices.append(assigned)
+
+    filled_audit = _whole_mask_topology_audit(
+        source_region=source_region,
+        target_region=target_region,
+        selected_by_work=tuple(updated),
+        works=works,
+        allow_source_component_split=True,
+        minimum_residual_components=minimum_residual_components,
+        maximum_residual_components=maximum_residual_components,
+        minimum_residual_component_area_px=minimum_residual_component_area_px,
+        minimum_residual_spacing_px=minimum_residual_spacing_px,
+        residual_area_floor_fraction=residual_area_floor_fraction,
+    )
+    if not filled_audit["passed"]:
+        return selected_by_work, unchanged
+
+    candidates: list[tuple[float, int, int, int]] = []
+    for index, (work, selected) in enumerate(zip(works, updated)):
+        removable = selected & ~tiny
+        for row, col in np.argwhere(removable):
+            candidates.append(
+                (float(work.priority[row, col]), index, int(row), int(col))
+            )
+    candidates.sort(reverse=True)
+    maximum_trials = min(4096, max(512, reclaimed * 64))
+    removed = 0
+    trials = 0
+    for _priority, index, row, col in candidates:
+        if removed >= reclaimed or trials >= maximum_trials:
+            break
+        trials += 1
+        updated[index][row, col] = False
+        audit = _whole_mask_topology_audit(
+            source_region=source_region,
+            target_region=target_region,
+            selected_by_work=tuple(updated),
+            works=works,
+            allow_source_component_split=True,
+            minimum_residual_components=minimum_residual_components,
+            maximum_residual_components=maximum_residual_components,
+            minimum_residual_component_area_px=(
+                minimum_residual_component_area_px
+            ),
+            minimum_residual_spacing_px=minimum_residual_spacing_px,
+            residual_area_floor_fraction=residual_area_floor_fraction,
+        )
+        if audit["passed"]:
+            removed += 1
+        else:
+            updated[index][row, col] = True
+    if removed != reclaimed:
+        return selected_by_work, unchanged
+    if sum(int(np.count_nonzero(item)) for item in updated) != sum(
+        int(np.count_nonzero(item)) for item in selected_by_work
+    ):
+        return selected_by_work, unchanged
+    return tuple(updated), {
+        "applied": True,
+        "pixels_added": reclaimed,
+        "pixels_reclaimed": removed,
+        "assigned_work_index": min(assigned_indices),
+    }
 
 
 def _binding_constraint(
