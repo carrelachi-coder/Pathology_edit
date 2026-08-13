@@ -42,7 +42,41 @@
       "invalid ProbNet provenance when generation is required"
     ],
     "claim_boundary": "Unified fine ID 2 authorizes operational Stroma geometry, not fibrosis or tumor-bed identity.",
-    "probnet_execution_contract": "ProbNet supplies spatial probability fields and cell-type posterior scores. Skill quotas and source-zone density own counts. Nuclear contours are reused first from complete same-patch instances and use a calibrated same-class instance library only when local references are insufficient; ProbNet does not draw arbitrary nucleus contours."
+    "probnet_execution_contract": "ProbNet supplies spatial probability fields and cell-type posterior scores. Skill quotas and source-zone density own counts. Nuclear contours are reused first from complete same-patch instances and use a calibrated same-class instance library only when local references are insufficient; ProbNet does not draw arbitrary nucleus contours.",
+    "planner_selection_contract": {
+      "tissue": {
+        "decision_id": "select_certified_tissue_plan_candidate",
+        "selectable_fields": [
+          "selected_candidate_id",
+          "selected_tool_family",
+          "supporting_preference_rule_ids"
+        ]
+      },
+      "cell": {
+        "decision_id": "select_certified_cell_plan_candidate",
+        "selectable_fields": [
+          "selected_candidate_id",
+          "selected_tool_program_id",
+          "supporting_preference_rule_ids"
+        ]
+      },
+      "compiler_owned_fields": [
+        "interfaces",
+        "components",
+        "anchors",
+        "zones",
+        "annuli",
+        "layouts",
+        "parameter_values",
+        "parameter_ranges",
+        "area",
+        "depth",
+        "geometry",
+        "cell_counts",
+        "coordinates",
+        "pixels"
+      ]
+    }
   },
   "capabilities": [
     {
@@ -59,7 +93,7 @@
       ],
       "tissue_action": "operational Stroma 2 to invasive Tumor 1 through a certified external boundary",
       "nuclei_action": "remove complete incompatible source instances and regenerate complete class-1 neoplastic instances with a boundary-aligned seam",
-      "planner_role": "Use the parsed scenario and skill bounds to rank certified external boundary segments by capacity, shallow depth, protected-label clearance, and target-population seam quality; select tool family and permitted parameter range, or request clarification/abstain.",
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate.",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
@@ -90,7 +124,7 @@
       ],
       "tissue_action": "a shallow, connected, multi-lobed operational Stroma 2 to invasive Tumor 1 expansion from a certified external boundary",
       "nuclei_action": "whole-instance turnover followed by source-calibrated class-1 regeneration",
-      "planner_role": "Choose among certified external boundary anchors, preferring broad shallow displacement with adequate packing and seam capacity; the LLM cannot diagnose an invasive front or specify pixels.",
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate.",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
@@ -122,7 +156,7 @@
       ],
       "tissue_action": "a narrow tapered fine-1 extension attached to a certified external Tumor 1/Stroma 2 boundary",
       "nuclei_action": "whole-instance turnover and Mature ProbNet class-1 regeneration with a boundary-aligned seam contract",
-      "planner_role": "Rank certified anchors for directional depth, narrow-cord packing, seam margin, and isolation from protected labels; select only a skill-authorized tapered tool program.",
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate.",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
@@ -154,7 +188,7 @@
       ],
       "tissue_action": "preserve tissue labels",
       "nuclei_action": "add complete class-1 single nuclei in the certified external Stroma-side annulus; Frozen ProbNet ranks legal centers",
-      "planner_role": "Choose a certified external annulus and a skill-bounded scatter layout according to packing capacity, source-shape availability, spatial extent, and protected-label distance.",
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate.",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
@@ -185,7 +219,7 @@
       ],
       "tissue_action": "preserve tissue labels in the cell-only representation",
       "nuclei_action": "add multiple spatially separated foci containing one to four complete class-1 nuclei in the certified external annulus",
-      "planner_role": "Select a certified annulus and small-cluster layout only when deterministic packing can satisfy focus count, one-to-four cardinality, no bridge, and distance constraints.",
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate.",
       "execution_scope": "cell_only",
       "support_status": "conditionally_supported",
       "production_status": "shadow_only",
@@ -228,7 +262,7 @@
         "invasive footprint expansion",
         "molecular subtype"
       ],
-      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "invasive-tumor-footprint-decrease-v1",
@@ -259,7 +293,7 @@
         "RCB",
         "clinical benefit"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "neoplastic-cell-abundance-decrease-v1",
@@ -288,7 +322,7 @@
         "pCR",
         "RCB"
       ],
-      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "residual-tumor-fragmentation-v1",
@@ -317,7 +351,7 @@
         "RCB",
         "whole-lesion response"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "stroma-increase-v1",
@@ -345,7 +379,7 @@
         "pCR",
         "RCB"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "local-invasive-clearance-v1",
@@ -373,7 +407,7 @@
         "whole-lesion clearance",
         "clinical benefit"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "necrosis-appearance-v1",
@@ -401,7 +435,7 @@
         "treatment response unless post-treatment was explicit",
         "non-nuclear debris as a mask guarantee"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "necrosis-resolution-v1",
@@ -428,7 +462,7 @@
         "treatment failure",
         "restored viability outside the edited support"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "generic-immune-infiltrate-increase-v1",
@@ -457,7 +491,7 @@
         "treatment response",
         "prognosis"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "generic-immune-infiltrate-decrease-v1",
@@ -485,7 +519,7 @@
         "treatment response",
         "prognosis"
       ],
-      "planner_role": "Interpret the parsed scenario, rank only deterministic feasible interfaces or components, and select a skill-authorized tool program and parameter range using capacity and preservation certificates; the LLM does not select pixels or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "cell-type-abundance-increase-v1",
@@ -511,7 +545,7 @@
         "plasma-cell or macrophage identity with CellViT-5",
         "immune activation state"
       ],
-      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "cell-type-abundance-decrease-v1",
@@ -537,7 +571,7 @@
         "plasma-cell or macrophage-specific depletion with CellViT-5",
         "treatment effect"
       ],
-      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "cellularity-increase-v1",
@@ -565,7 +599,7 @@
         "immune activation",
         "treatment effect"
       ],
-      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate."
     },
     {
       "primitive_id": "cellularity-decrease-v1",
@@ -593,7 +627,7 @@
         "treatment response",
         "random cell-cluster disappearance"
       ],
-      "planner_role": "Interpret the parsed population intent, choose a mask-defined component or certified interface zone, and select a skill-authorized cell program using complete-instance capacity, source statistics, and protected-label clearance; the LLM does not place nuclei or infer unannotated histology."
+      "planner_role": "The LLM ranks compiler-certified immutable cell candidates and selects only a candidate ID, an allowed cell tool program ID, and supporting skill preference IDs. The selected certificate already binds every interface, component, zone, annulus, layout, cell count, coordinate, pixel footprint, parameter value and range; the LLM cannot alter the certificate."
     }
   ],
   "closed_or_render_only": [

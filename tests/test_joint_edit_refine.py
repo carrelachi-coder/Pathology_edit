@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tempfile
 import unittest
 from dataclasses import replace
@@ -15,6 +16,7 @@ from PIL import Image
 
 from inpaint_cells.instance_authority import array_sha256
 from phase3_joint_edit_refine.agents import (
+    CELL_PLAN_SELECTION_SCHEMA,
     JOINT_PLAN_JSON_SCHEMA,
     OpenAIMultimodalJointCritic,
     OpenAIMultimodalJointPlanner,
@@ -341,8 +343,6 @@ class JointSkillTests(unittest.TestCase):
             ]["enum"]
             if value is not None
         )
-        from phase3_joint_edit_refine.agents import CELL_PLAN_SELECTION_SCHEMA
-
         cell_decision = next(
             value
             for value in CELL_PLAN_SELECTION_SCHEMA["properties"][
@@ -871,12 +871,129 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(pairs, expected)
         self.assertEqual(len(entries), len(pairs))
         self.assertEqual(matrix["production_status"], "shadow_only")
+        selection_contract = matrix["profile_policy"][
+            "planner_selection_contract"
+        ]
+        tissue_decision = next(
+            value
+            for value in JOINT_TISSUE_DECISION_SCHEMA["properties"][
+                "decision_id"
+            ]["enum"]
+            if value is not None
+        )
+        cell_decision = next(
+            value
+            for value in CELL_PLAN_SELECTION_SCHEMA["properties"][
+                "decision_id"
+            ]["enum"]
+            if value is not None
+        )
+        self.assertEqual(
+            selection_contract["tissue"],
+            {
+                "decision_id": tissue_decision,
+                "selectable_fields": [
+                    "selected_candidate_id",
+                    "selected_tool_family",
+                    "supporting_preference_rule_ids",
+                ],
+            },
+        )
+        self.assertEqual(
+            selection_contract["cell"],
+            {
+                "decision_id": cell_decision,
+                "selectable_fields": [
+                    "selected_candidate_id",
+                    "selected_tool_program_id",
+                    "supporting_preference_rule_ids",
+                ],
+            },
+        )
+        for stage, schema in (
+            ("tissue", JOINT_TISSUE_DECISION_SCHEMA),
+            ("cell", CELL_PLAN_SELECTION_SCHEMA),
+        ):
+            with self.subTest(stage=stage):
+                self.assertIn(
+                    selection_contract[stage]["decision_id"],
+                    PLANNER_DECISIONS,
+                )
+                self.assertTrue(
+                    set(selection_contract[stage]["selectable_fields"])
+                    .issubset(schema["properties"])
+                )
         for item in entries:
             self.assertTrue(item["simple_instructions"])
             self.assertTrue(item["tissue_action"])
             self.assertTrue(item["nuclei_action"])
             self.assertTrue(item["required_conditions"])
             self.assertEqual(item["production_status"], "shadow_only")
+
+    def test_breast_matrix_planner_roles_cannot_expand_llm_spatial_authority(self):
+        matrix_path = (
+            Path(__file__).parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+            / "breast_bcss_capability_matrix_v1.json"
+        )
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+        compiler_owned = set(
+            matrix["profile_policy"]["planner_selection_contract"][
+                "compiler_owned_fields"
+            ]
+        )
+        self.assertEqual(
+            compiler_owned,
+            {
+                "interfaces",
+                "components",
+                "anchors",
+                "zones",
+                "annuli",
+                "layouts",
+                "parameter_values",
+                "parameter_ranges",
+                "area",
+                "depth",
+                "geometry",
+                "cell_counts",
+                "coordinates",
+                "pixels",
+            },
+        )
+        tissue_role = (
+            "The LLM ranks compiler-certified immutable tissue candidates and "
+            "selects only a candidate ID, an allowed tool family, and supporting "
+            "skill preference IDs. The selected certificate already binds every "
+            "interface, component, anchor, parameter value and range, area, depth, "
+            "and geometry; the LLM cannot alter the certificate."
+        )
+        cell_role = (
+            "The LLM ranks compiler-certified immutable cell candidates and selects "
+            "only a candidate ID, an allowed cell tool program ID, and supporting "
+            "skill preference IDs. The selected certificate already binds every "
+            "interface, component, zone, annulus, layout, cell count, coordinate, "
+            "pixel footprint, parameter value and range; the LLM cannot alter the "
+            "certificate."
+        )
+        forbidden_selection = re.compile(
+            r"\b(?:choose|select|specify|modify|set|construct)\w*\s+"
+            r"(?:(?:a|an|the|any|permitted|allowed)\s+)?"
+            r"(?:interface|component|anchor|zone|annulus|layout|parameter|range|"
+            r"area|depth|geometry|count|coordinate|pixel)s?\b",
+            flags=re.IGNORECASE,
+        )
+        for item in matrix["capabilities"]:
+            role = item["planner_role"]
+            expected = (
+                cell_role
+                if item["execution_scope"] == "cell_only"
+                else tissue_role
+            )
+            with self.subTest(primitive=item["primitive_id"]):
+                self.assertEqual(role, expected)
+                self.assertIsNone(forbidden_selection.search(role))
 
     def test_breast_capability_matrix_instructions_parse_to_declared_primitive(self):
         matrix_path = (
