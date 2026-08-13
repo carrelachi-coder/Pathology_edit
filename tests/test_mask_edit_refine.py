@@ -823,6 +823,12 @@ class CandidateAndSceneTests(unittest.TestCase):
             if item.check_id == "execution_contract_fidelity"
         )
         self.assertTrue(fidelity.passed, fidelity.metrics)
+        self.assertTrue(
+            all(
+                "anchor_endpoint_tolerance_pixels" in metrics
+                for metrics in fidelity.metrics["interfaces"].values()
+            )
+        )
         labels, count = ndimage.label(
             candidates[0].change_region,
             structure=np.ones((3, 3), dtype=bool),

@@ -566,7 +566,23 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
         touched_interface = interface & ndimage.binary_dilation(
             assigned, structure=np.ones((3, 3), dtype=bool)
         )
-        off_anchor_contact = int(np.count_nonzero(touched_interface & ~anchor))
+        # ``touched_interface`` is measured after a one-pixel dilation of the
+        # realized front. At the two endpoints of a selected raster anchor,
+        # that dilation necessarily reaches the immediately adjacent
+        # interface pixel even when every changed pixel is compiler-owned.
+        # Treat only that one-pixel endpoint cap as part of the selected
+        # contact domain; contacts farther along the unselected interface stay
+        # hard off-anchor violations.
+        anchor_contact_domain = interface & ndimage.binary_dilation(
+            anchor,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        raw_off_anchor = touched_interface & ~anchor
+        off_anchor = touched_interface & ~anchor_contact_domain
+        off_anchor_contact = int(np.count_nonzero(off_anchor))
+        endpoint_tolerance_pixels = int(
+            np.count_nonzero(raw_off_anchor & anchor_contact_domain)
+        )
         off_anchor_fraction = off_anchor_contact / max(
             int(np.count_nonzero(touched_interface)), 1
         )
@@ -638,6 +654,7 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
             "requested_minimum_anchor_coverage_fraction": execution.min_anchor_coverage_fraction,
             "effective_minimum_anchor_coverage_fraction": effective_min_coverage,
             "off_anchor_contact_pixels": off_anchor_contact,
+            "anchor_endpoint_tolerance_pixels": endpoint_tolerance_pixels,
             "off_anchor_contact_fraction": off_anchor_fraction,
             "requested_maximum_off_anchor_contact_fraction": execution.max_off_anchor_contact_fraction,
             "effective_maximum_off_anchor_contact_fraction": effective_max_off_anchor,
