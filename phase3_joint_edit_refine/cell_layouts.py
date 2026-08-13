@@ -28,7 +28,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v9"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v10"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -490,8 +490,6 @@ def generate_cell_layouts(
         )
         if bundle.primitive.primitive_id in _INDEPENDENT_FOCUS_PRIMITIVES
         and packing_certificate.get("passed") is True
-        and packing_certificate.get("capacity_optimized_shape_fallback_used")
-        is True
         else ()
     )
     certified_focus_witness_centers = (

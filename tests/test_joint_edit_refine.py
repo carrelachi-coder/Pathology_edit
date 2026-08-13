@@ -1608,6 +1608,28 @@ class JointSkillTests(unittest.TestCase):
                 minimum_span_px=126,
             )
         )
+        # Witness execution is a property of a passing independent-focus
+        # certificate, not only of the optional smallest-shape fallback. A
+        # nominal mixed-shape certificate owns equally exact legal centers.
+        nominal_certificate = {
+            "passed": True,
+            "capacity_optimized_shape_fallback_used": False,
+            "placements": [
+                {"row": 44, "col": 375, "class_id": 1},
+                {"row": 200, "col": 310, "class_id": 1},
+            ],
+        }
+        nominal_centers = tuple(
+            (item["row"], item["col"])
+            for item in nominal_certificate["placements"]
+            if nominal_certificate["passed"]
+        )
+        self.assertTrue(
+            _centers_satisfy_minimum_span(
+                nominal_centers,
+                minimum_span_px=126,
+            )
+        )
 
     def test_layout_tries_another_eligible_shape_at_same_center(self):
         legal = np.zeros((24, 24), dtype=bool)
