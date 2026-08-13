@@ -35,6 +35,7 @@ from phase3_joint_edit_refine.cell_layouts import (
     _place_layout,
     build_reference_shape_library,
     certificate_aligned_cluster_size_range,
+    certificate_aligned_references,
     independent_focus_minimum_center_separation_px,
 )
 from phase3_joint_edit_refine.cell_programs import (
@@ -1938,6 +1939,46 @@ class JointSkillTests(unittest.TestCase):
                 nominal_nucleus_diameter_px=diameter,
             ),
             (1, 4),
+        )
+
+    def test_capacity_optimized_certificate_binds_execution_shape_family(self):
+        references = tuple(
+            ReferenceNucleusShape(
+                instance_id=name,
+                class_id=1,
+                mask=np.ones(shape, dtype=bool),
+                source="test",
+                area_px=int(np.prod(shape)),
+            )
+            for name, shape in (("small", (2, 2)), ("large", (5, 5)))
+        )
+
+        aligned = certificate_aligned_references(
+            references,
+            {
+                "passed": True,
+                "capacity_optimized_shape_fallback_used": True,
+                "placements": [
+                    {"reference_instance_id": "small"},
+                    {"reference_instance_id": "small"},
+                ],
+            },
+        )
+
+        self.assertEqual(
+            tuple(item.instance_id for item in aligned),
+            ("small",),
+        )
+        self.assertEqual(
+            certificate_aligned_references(
+                references,
+                {
+                    "passed": True,
+                    "capacity_optimized_shape_fallback_used": False,
+                    "placements": [{"reference_instance_id": "small"}],
+                },
+            ),
+            references,
         )
 
     def test_typed_seam_does_not_exclude_other_compatible_classes(self):

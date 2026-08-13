@@ -30,6 +30,7 @@ from .models import (
     JointGateReport,
 )
 from .nuclei import iter_instances
+from .reference_shapes import REFERENCE_SHAPE_AUTHORITY_VERSION
 from .scene import JointSceneAnalysis
 from .seam import (
     anchor_coverage_fraction,
@@ -1753,7 +1754,7 @@ def _reference_shape_integrity(c):
         locality == "calibrated_dataset_instance_library"
         and isinstance(shape_authority, dict)
         and shape_authority.get("version")
-        == "calibrated-reference-shapes-v1"
+        == REFERENCE_SHAPE_AUTHORITY_VERSION
         and len(str(shape_authority.get("authority_sha256", ""))) == 64
         and all(
             str(instance_id).startswith("library:")

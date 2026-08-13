@@ -28,7 +28,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v6"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v7"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -88,6 +88,40 @@ def certificate_aligned_cluster_size_range(
     ):
         return (1, 1)
     return (minimum, maximum)
+
+
+def certificate_aligned_references(
+    references: tuple[ReferenceNucleusShape, ...],
+    packing_certificate: dict[str, Any],
+) -> tuple[ReferenceNucleusShape, ...]:
+    """Use exactly the shape family that proves a capacity fallback.
+
+    The exact packer may safely recover a lower count by retrying with the
+    smallest eligible complete shape. Cycling the full reference family again
+    during execution invalidates that proof and can place fewer nuclei than
+    the certificate's safe minimum. Nominal certificates retain the complete
+    morphology family.
+    """
+
+    if not (
+        packing_certificate.get("passed") is True
+        and packing_certificate.get("capacity_optimized_shape_fallback_used")
+        is True
+    ):
+        return references
+    witness_ids = {
+        str(item.get("reference_instance_id"))
+        for item in packing_certificate.get("placements", ())
+        if isinstance(item, dict) and item.get("reference_instance_id")
+    }
+    aligned = tuple(
+        item for item in references if item.instance_id in witness_ids
+    )
+    if not aligned:
+        raise JointContractError(
+            "capacity-optimized packing witnesses are absent from execution references"
+        )
+    return aligned
 
 
 class SpatialRanker(Protocol):
@@ -414,6 +448,10 @@ def generate_cell_layouts(
         1, int(np.count_nonzero(add_zone) / max(1.0, average_area * 2.0))
     )
     packing_certificate = executable_contract.packing_certificate or {}
+    references = certificate_aligned_references(
+        references,
+        packing_certificate,
+    )
     certified_requested_count = int(
         packing_certificate.get("requested_count", 0)
         if packing_certificate.get("passed") is True
