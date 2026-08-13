@@ -8,10 +8,45 @@ labels; compiler-owned rules and metrics retain all decision authority.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .models import JointContractError
+
+_PROVIDER_USAGE_RESERVED_KEYS = frozenset(
+    {
+        "provider",
+        "provider_usage",
+        "stage",
+        "contract_attempt",
+        "escalated",
+        "selection",
+        "selected_candidate_id",
+        "selected_tool_program_id",
+        "selected_tool_family",
+        "compiler_certificate_sha256",
+        "executable_contract_id",
+        "selection_handle",
+        "portfolio_candidate_count",
+        "ranking_mode",
+        "compiler",
+        "supporting_preference_rule_ids",
+    }
+)
+
+
+def isolate_provider_usage(value: object) -> dict[str, object]:
+    """Keep untrusted provider telemetry outside the authority namespace."""
+
+    if not isinstance(value, Mapping):
+        raise JointContractError("LLM provider usage must be an object")
+    collisions = _PROVIDER_USAGE_RESERVED_KEYS.intersection(value)
+    if collisions:
+        raise JointContractError(
+            "LLM provider usage attempted to overwrite reserved authority fields: "
+            + ", ".join(sorted(collisions))
+        )
+    return {str(key): child for key, child in value.items()}
 
 SEMANTIC_SELECTION_TOKEN = "certified_semantic_option_selected"
 SEMANTIC_OBSERVATION_TOKEN = "certified_capability_metrics"

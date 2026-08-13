@@ -33,6 +33,7 @@ from .feasibility import JointNucleiPreflight
 from .llm_audit_tokens import (
     TISSUE_ABSTAIN_TOKEN,
     TISSUE_SELECTION_TOKEN,
+    isolate_provider_usage,
     require_optional_token,
     require_token,
 )
@@ -366,6 +367,7 @@ class OpenAIJointAwareTissuePlanner:
                 schema_name="joint_aware_tissue_plan",
                 json_schema=JOINT_TISSUE_DECISION_SCHEMA,
             )
+            provider_usage = isolate_provider_usage(usage)
             if raw.get("abstain") is True:
                 require_optional_token(
                     raw.get("abstain_reason"),
@@ -500,7 +502,7 @@ class OpenAIJointAwareTissuePlanner:
                 "selected_candidate_id": candidate_id,
                 "selected_tool_family": selected_family,
                 "supporting_preference_rule_ids": list(preference_ids),
-                **usage,
+                "provider_usage": provider_usage,
             }
         raise RefineContractError(
             "joint-aware tissue Planner exhausted contract attempts: "

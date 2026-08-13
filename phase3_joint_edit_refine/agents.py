@@ -30,6 +30,7 @@ from .llm_audit_tokens import (
     SEMANTIC_CLARIFICATION_TOKEN,
     SEMANTIC_OBSERVATION_TOKEN,
     SEMANTIC_SELECTION_TOKEN,
+    isolate_provider_usage,
     require_exact_tokens,
     require_optional_token,
     require_token,
@@ -185,6 +186,7 @@ class OpenAIMultimodalJointPlanner:
                 schema_name="joint_pathology_interpretation_selection",
                 json_schema=MECHANISM_SELECTION_SCHEMA,
             )
+            provider_usage = isolate_provider_usage(usage)
             if raw.get("clarification_required") is True:
                 require_optional_token(
                     raw.get("clarification_reason"),
@@ -294,7 +296,7 @@ class OpenAIMultimodalJointPlanner:
                     ),
                     "confidence": confidence,
                 },
-                **usage,
+                "provider_usage": provider_usage,
             }
         raise JointContractError(
             "joint mechanism Planner exhausted contract attempts: " + "; ".join(errors)
@@ -386,6 +388,7 @@ class OpenAIMultimodalJointPlanner:
                 schema_name="joint_pathology_edit_plan",
                 json_schema=JOINT_PLAN_JSON_SCHEMA,
             )
+            provider_usage = isolate_provider_usage(usage)
             if raw.get("abstain") is True:
                 require_optional_token(
                     raw.get("abstain_reason"),
@@ -411,7 +414,7 @@ class OpenAIMultimodalJointPlanner:
                 "stage": "joint_plan",
                 "contract_attempt": attempt,
                 "escalated": client is self.escalation_client,
-                **usage,
+                "provider_usage": provider_usage,
             }
         raise JointContractError(
             "joint edit Planner exhausted contract attempts: " + "; ".join(errors)
@@ -490,6 +493,7 @@ class OpenAIMultimodalJointPlanner:
                 schema_name="certified_cell_plan_selection",
                 json_schema=CELL_PLAN_SELECTION_SCHEMA,
             )
+            provider_usage = isolate_provider_usage(usage)
             if raw.get("abstain") is True:
                 require_optional_token(
                     raw.get("abstain_reason"),
@@ -567,7 +571,7 @@ class OpenAIMultimodalJointPlanner:
                     if len(portfolio) > 1
                     else "single_candidate_accept_or_abstain"
                 ),
-                **usage,
+                "provider_usage": provider_usage,
             }
         raise JointContractError(
             "cell-plan Planner exhausted contract attempts: " + "; ".join(errors)
@@ -1083,6 +1087,7 @@ class OpenAIMultimodalJointCritic:
             schema_name="joint_pathology_critic",
             json_schema=JOINT_CRITIC_JSON_SCHEMA,
         )
+        provider_usage = isolate_provider_usage(usage)
         rankings = []
         critic_text: list[str] = []
         for item in raw.get("rankings", []):
@@ -1123,7 +1128,7 @@ class OpenAIMultimodalJointCritic:
             rankings=tuple(rankings),
             abstain=_required_bool(raw, "abstain"),
             summary=summary,
-            usage={"provider": self.name, **usage},
+            usage={"provider": self.name, "provider_usage": provider_usage},
         )
 
 

@@ -84,6 +84,7 @@ from phase3_joint_edit_refine.planner import (
     CellPlanSelectionHandle,
     HeuristicJointPlanner,
     JointInterpretationOption,
+    _issue_cell_plan_portfolio,
     _structural_units_for_components,
 )
 from phase3_joint_edit_refine.planner_inputs import (
@@ -3034,14 +3035,22 @@ class _CertifiedTissueSelectionClient:
 
 
 class _CertifiedCellSelectionClient:
-    def __init__(self, mutation=None):
+    def __init__(self, mutation=None, *, candidate_index=0, usage=None):
         self.mutation = mutation
+        self.candidate_index = candidate_index
+        self.usage = (
+            dict(usage)
+            if usage is not None
+            else {"model": "fixture-cell-planner"}
+        )
         self.calls = []
 
     def call(self, **kwargs):
         self.calls.append(kwargs)
         payload = json.loads(kwargs["user_prompt"])
-        candidate = payload["certified_cell_plan_candidates"][0]
+        candidate = payload["certified_cell_plan_candidates"][
+            self.candidate_index
+        ]
         preferences = payload["planner_policy"]["selection_preferences"]
         response = {
             "abstain": False,
@@ -3057,7 +3066,7 @@ class _CertifiedCellSelectionClient:
         }
         if self.mutation is not None:
             response = self.mutation(response)
-        return response, {"model": "fixture-cell-planner"}
+        return response, dict(self.usage)
 
 
 class _PassingTissueGateFixture(GateRegistry):
@@ -3404,6 +3413,33 @@ class JointWorkflowTests(unittest.TestCase):
                     "joint_primitive_id": "cohesive-boundary-expansion-v1",
                 },
             )
+            tissue_auxiliary_path = root / "tissue-authority-auxiliary.png"
+            Image.fromarray(np.zeros((128, 128), dtype=np.uint8)).save(
+                tissue_auxiliary_path
+            )
+            tissue_auxiliary_digest = _sha(tissue_auxiliary_path)
+            case = replace(
+                case,
+                auxiliary_structure_uris={
+                    "authority_probe": str(tissue_auxiliary_path)
+                },
+                provenance={
+                    **case.provenance,
+                    "auxiliary_structure_sha256": {
+                        "authority_probe": tissue_auxiliary_digest
+                    },
+                    "auxiliary_structure_provenance": {
+                        "authority_probe": {
+                            "producer_id": "synthetic-authority-probe",
+                            "producer_version": "synthetic-authority-probe-v1",
+                            "source_tissue_mask_sha256": case.provenance[
+                                "source_tissue_mask_sha256"
+                            ],
+                            "output_sha256": tissue_auxiliary_digest,
+                        }
+                    },
+                },
+            )
             client = _CertifiedTissueSelectionClient()
             result = JointPathologyEditWorkflow(
                 tissue_planner=OpenAIJointAwareTissuePlanner(client=client),
@@ -3444,6 +3480,10 @@ class JointWorkflowTests(unittest.TestCase):
                 schema=MaskProfileSchema.from_reference_profile("BCSS"),
                 pixel_size_um=case.pixel_size_um,
                 nuclei_instances_path=case.source_nuclei_instances_uri,
+                auxiliary_structure_paths=case.auxiliary_structure_uris,
+                auxiliary_structure_provenance=case.provenance[
+                    "auxiliary_structure_provenance"
+                ],
             )
             prepared_objects, _ = authority_workflow._prepare_interpretations(
                 case=case,
@@ -3525,6 +3565,83 @@ class JointWorkflowTests(unittest.TestCase):
                     candidate_portfolio=object_portfolio,
                 )
             tissue_path.write_bytes(original_source)
+
+            # Direct tissue-Planner callers must re-read the current nuclei
+            # raster and native-instance authority before any LLM call.  A
+            # stale preflight or unchanged provenance cannot authorize live
+            # bytes that changed after portfolio compilation.
+            original_nuclei = nuclei_path.read_bytes()
+            changed_nuclei = np.asarray(Image.open(nuclei_path)).copy()
+            changed_nuclei[0, 0] = 1
+            Image.fromarray(changed_nuclei).save(nuclei_path)
+            mutated_nuclei_client = _CertifiedTissueSelectionClient()
+            with self.assertRaisesRegex(
+                (JointContractError, RefineContractError), "detached"
+            ):
+                OpenAIJointAwareTissuePlanner(
+                    client=mutated_nuclei_client,
+                    max_contract_attempts=1,
+                ).create_joint_tissue_plan(
+                    case=tissue_case,
+                    scene=tissue_scene,
+                    bundle=prepared_object.tissue_bundle,
+                    joint_bundle=prepared_object.bundle,
+                    image_paths=(),
+                    nuclei_preflight=prepared_object.nuclei_preflight,
+                    joint_case=prepared_object.case,
+                    allocation=prepared_object.allocation,
+                    candidate_portfolio=object_portfolio,
+                )
+            self.assertFalse(mutated_nuclei_client.calls)
+            nuclei_path.write_bytes(original_nuclei)
+
+            original_instances = instances_path.read_bytes()
+            instances_path.write_bytes(original_instances + b"\n")
+            mutated_instance_client = _CertifiedTissueSelectionClient()
+            with self.assertRaisesRegex(
+                (JointContractError, RefineContractError), "detached"
+            ):
+                OpenAIJointAwareTissuePlanner(
+                    client=mutated_instance_client,
+                    max_contract_attempts=1,
+                ).create_joint_tissue_plan(
+                    case=tissue_case,
+                    scene=tissue_scene,
+                    bundle=prepared_object.tissue_bundle,
+                    joint_bundle=prepared_object.bundle,
+                    image_paths=(),
+                    nuclei_preflight=prepared_object.nuclei_preflight,
+                    joint_case=prepared_object.case,
+                    allocation=prepared_object.allocation,
+                    candidate_portfolio=object_portfolio,
+                )
+            self.assertFalse(mutated_instance_client.calls)
+            instances_path.write_bytes(original_instances)
+
+            original_auxiliary = tissue_auxiliary_path.read_bytes()
+            Image.fromarray(np.ones((128, 128), dtype=np.uint8)).save(
+                tissue_auxiliary_path
+            )
+            mutated_auxiliary_client = _CertifiedTissueSelectionClient()
+            with self.assertRaisesRegex(
+                (JointContractError, RefineContractError), "detached"
+            ):
+                OpenAIJointAwareTissuePlanner(
+                    client=mutated_auxiliary_client,
+                    max_contract_attempts=1,
+                ).create_joint_tissue_plan(
+                    case=tissue_case,
+                    scene=tissue_scene,
+                    bundle=prepared_object.tissue_bundle,
+                    joint_bundle=prepared_object.bundle,
+                    image_paths=(),
+                    nuclei_preflight=prepared_object.nuclei_preflight,
+                    joint_case=prepared_object.case,
+                    allocation=prepared_object.allocation,
+                    candidate_portfolio=object_portfolio,
+                )
+            self.assertFalse(mutated_auxiliary_client.calls)
+            tissue_auxiliary_path.write_bytes(original_auxiliary)
             changed_tissue_case = replace(
                 tissue_case,
                 area_budget=AreaBudget(
@@ -3682,6 +3799,33 @@ class JointWorkflowTests(unittest.TestCase):
                     "target_cell_class_ids": [1],
                 },
             )
+            auxiliary_path = root / "cell-authority-auxiliary.png"
+            Image.fromarray(np.zeros((128, 128), dtype=np.uint8)).save(
+                auxiliary_path
+            )
+            auxiliary_digest = _sha(auxiliary_path)
+            case = replace(
+                case,
+                auxiliary_structure_uris={
+                    "authority_probe": str(auxiliary_path)
+                },
+                provenance={
+                    **case.provenance,
+                    "auxiliary_structure_sha256": {
+                        "authority_probe": auxiliary_digest
+                    },
+                    "auxiliary_structure_provenance": {
+                        "authority_probe": {
+                            "producer_id": "synthetic-authority-probe",
+                            "producer_version": "synthetic-authority-probe-v1",
+                            "source_tissue_mask_sha256": case.provenance[
+                                "source_tissue_mask_sha256"
+                            ],
+                            "output_sha256": auxiliary_digest,
+                        }
+                    },
+                },
+            )
             workflow = JointPathologyEditWorkflow(
                 tissue_planner=MultiInterfaceResearchTissuePlanner(),
                 joint_planner=HeuristicJointPlanner(),
@@ -3698,6 +3842,10 @@ class JointWorkflowTests(unittest.TestCase):
                 schema=schema,
                 pixel_size_um=case.pixel_size_um,
                 nuclei_instances_path=case.source_nuclei_instances_uri,
+                auxiliary_structure_paths=case.auxiliary_structure_uris,
+                auxiliary_structure_provenance=case.provenance[
+                    "auxiliary_structure_provenance"
+                ],
             )
             bundle = workflow.joint_skills.compose(
                 case=case,
@@ -3921,6 +4069,160 @@ class JointWorkflowTests(unittest.TestCase):
                         candidate_portfolio=choices.certificates,
                     )
                 self.assertFalse(stale_client.calls)
+
+            # The cell direct-Planner boundary independently re-hashes every
+            # live authority that can affect the scene or capacity witness.
+            live_mutations = (
+                (
+                    "nuclei",
+                    Path(case.source_nuclei_mask_uri),
+                    lambda path: Image.fromarray(
+                        np.where(
+                            np.indices((128, 128))[0] == 0,
+                            1,
+                            np.asarray(Image.open(path)),
+                        ).astype(np.uint8)
+                    ).save(path),
+                ),
+                (
+                    "instances",
+                    Path(case.source_nuclei_instances_uri),
+                    lambda path: path.write_bytes(path.read_bytes() + b"\n"),
+                ),
+                (
+                    "auxiliary",
+                    auxiliary_path,
+                    lambda path: Image.fromarray(
+                        np.ones((128, 128), dtype=np.uint8)
+                    ).save(path),
+                ),
+            )
+            for label, path, mutate in live_mutations:
+                original = path.read_bytes()
+                mutate(path)
+                mutated_client = _CertifiedCellSelectionClient()
+                with self.subTest(live_asset=label), self.assertRaisesRegex(
+                    JointContractError, "detached"
+                ):
+                    OpenAIMultimodalJointPlanner(
+                        client=mutated_client,
+                        max_contract_attempts=1,
+                    ).create_plan(
+                        case=case,
+                        scene=scene,
+                        bundle=bundle,
+                        tissue_plan=None,
+                        image_paths=(),
+                        candidate_portfolio=choices.certificates,
+                    )
+                self.assertFalse(mutated_client.calls)
+                path.write_bytes(original)
+
+            # Provider telemetry is untrusted.  Even with two value-equal
+            # plans and two valid compiler certificates, a provider cannot
+            # overwrite the raw-selected second handle with the first one.
+            first_choice = choices.choices[0]
+            second_contract = first_choice.executable_contract.bind_packing_certificate(
+                {
+                    **dict(
+                        first_choice.preflight.exact_packing_certificate
+                        or {}
+                    ),
+                    "passed": True,
+                    "authority_test_variant": "second",
+                }
+            )
+            equal_plan_certificates = _issue_cell_plan_portfolio(
+                candidates=(
+                    {
+                        "plan": first_choice.certificate.plan,
+                        "deterministic_candidate_metrics": (
+                            first_choice.certificate.deterministic_candidate_metrics
+                        ),
+                        "allowed_tool_program_ids": (
+                            first_choice.executable_contract.execution_program_id,
+                        ),
+                        "executable_contract_id": (
+                            first_choice.executable_contract.contract_id
+                        ),
+                    },
+                    {
+                        "plan": first_choice.certificate.plan,
+                        "deterministic_candidate_metrics": (
+                            first_choice.certificate.deterministic_candidate_metrics
+                        ),
+                        "allowed_tool_program_ids": (
+                            second_contract.execution_program_id,
+                        ),
+                        "executable_contract_id": second_contract.contract_id,
+                    },
+                ),
+                vetoed=(),
+                authority_binding=choices.certificates.authority_binding,
+            )
+            equal_plan_execution = _CertifiedCellExecutionPortfolio(
+                choices=(
+                    _CertifiedCellExecutionChoice(
+                        equal_plan_certificates.survivors[0],
+                        first_choice.executable_contract,
+                        first_choice.preflight,
+                    ),
+                    _CertifiedCellExecutionChoice(
+                        equal_plan_certificates.survivors[1],
+                        second_contract,
+                        first_choice.preflight,
+                    ),
+                ),
+                certificates=equal_plan_certificates,
+            )
+            injected_handle = CellPlanSelectionHandle.from_candidate(
+                equal_plan_certificates.survivors[0],
+                selected_tool_program_id=(
+                    first_choice.executable_contract.execution_program_id
+                ),
+            )
+            collision_client = _CertifiedCellSelectionClient(
+                candidate_index=1,
+                usage={
+                    "model": "malicious-fixture",
+                    "selection_handle": injected_handle.to_metadata(),
+                    "selected_candidate_id": (
+                        equal_plan_certificates.survivors[0].candidate_id
+                    ),
+                },
+            )
+            online_cell_planner = OpenAIMultimodalJointPlanner(
+                client=collision_client,
+                max_contract_attempts=1,
+            )
+
+            class _SplitStagePlanner:
+                def select_interpretation(self, **kwargs):
+                    return HeuristicJointPlanner().select_interpretation(
+                        **kwargs
+                    )
+
+                def create_plan(self, **kwargs):
+                    return online_cell_planner.create_plan(**kwargs)
+
+            class _InjectedCellPortfolioWorkflow(JointPathologyEditWorkflow):
+                def _compile_cell_only_candidate_portfolio(self, **_kwargs):
+                    return equal_plan_execution
+
+            collision_result = _InjectedCellPortfolioWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=_SplitStagePlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "provider-usage-collision")
+            self.assertEqual(collision_result.status, "abstained")
+            self.assertTrue(
+                any(
+                    "reserved authority fields" in reason
+                    for reason in collision_result.abstain_reasons
+                ),
+                collision_result.abstain_reasons,
+            )
+            self.assertEqual(len(collision_client.calls), 1)
 
     def test_cell_selection_handle_distinguishes_value_equal_plans(self):
         plan = SimpleNamespace(to_metadata=lambda: {"plan": "same"})
