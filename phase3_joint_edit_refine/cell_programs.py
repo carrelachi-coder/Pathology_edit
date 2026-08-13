@@ -17,8 +17,20 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v13"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v14"
 DEPLETION_FIELD_AREA_RASTER_TOLERANCE = 0.05
+
+
+def _instance_center_is_in_region(item, region: np.ndarray) -> bool:
+    """Return whether an instance's audited center belongs to a receiving ROI."""
+
+    x, y = item.centroid_xy
+    row, col = round(y), round(x)
+    return bool(
+        0 <= row < region.shape[0]
+        and 0 <= col < region.shape[1]
+        and region[row, col]
+    )
 
 
 def depletion_field_area_cell_squares(
@@ -414,11 +426,11 @@ class CellToolProgramCompiler:
 
         prohibited = tuple(bundle.annotation_profile.prohibit_cell_placement_fine_ids)
         valid = ~np.isin(target_tissue, prohibited)
+        receiving_region = np.ones_like(valid, dtype=bool)
         receiving_auxiliary = (
             bundle.mechanism.representability.receiving_auxiliary_structures
         )
         if receiving_auxiliary:
-            receiving_region = np.ones_like(valid, dtype=bool)
             for structure_id in receiving_auxiliary:
                 structure = scene.auxiliary_structure_masks.get(structure_id)
                 if structure is None:
@@ -537,6 +549,7 @@ class CellToolProgramCompiler:
                     or item.touches_border
                     or item.completeness_status != "complete"
                     or item.quality_flags
+                    or not _instance_center_is_in_region(item, receiving_region)
                     or not np.any(component & tissue_change)
                 ):
                     continue
@@ -630,6 +643,7 @@ class CellToolProgramCompiler:
                     or item.touches_border
                     or item.completeness_status != "complete"
                     or item.quality_flags
+                    or not _instance_center_is_in_region(item, receiving_region)
                 ):
                     continue
                 component = np.asarray(

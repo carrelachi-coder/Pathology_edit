@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from phase3_joint_edit_refine.cell_programs import _instance_center_is_in_region
 from phase3_joint_edit_refine.feasibility import (
     augment_tissue_scene_with_nuclei_preflight,
 )
@@ -69,3 +70,14 @@ def test_receiving_auxiliary_must_be_present():
             auxiliary_structure_masks={},
             receiving_auxiliary_structure_ids=("roi",),
         )
+
+
+def test_receiving_roi_filters_whole_instance_erasure_by_audited_center():
+    roi = np.zeros((24, 24), dtype=bool)
+    roi[8:16, 8:16] = True
+
+    inside = SimpleNamespace(centroid_xy=(15.4, 8.4))
+    outside = SimpleNamespace(centroid_xy=(16.0, 8.4))
+
+    assert _instance_center_is_in_region(inside, roi)
+    assert not _instance_center_is_in_region(outside, roi)

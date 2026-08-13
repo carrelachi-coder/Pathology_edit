@@ -5285,7 +5285,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v13"
+                program["compiler_version"], "joint-cell-tool-compiler-v14"
             )
             self.assertEqual(
                 program["policies"]["P"],
