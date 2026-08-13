@@ -138,7 +138,12 @@ from phase3_joint_edit_refine.workflow import (
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import HeuristicInterfacePlanner
 from phase3_mask_edit_refine.gates import GateRegistry, _check_edited_label_topology
-from phase3_mask_edit_refine.models import CandidateMask, GateReport
+from phase3_mask_edit_refine.models import (
+    AreaBudget,
+    CandidateMask,
+    GateReport,
+    RefineContractError,
+)
 from phase3_mask_edit_refine.scene import build_scene_analysis
 
 
@@ -494,6 +499,100 @@ class JointSkillTests(unittest.TestCase):
                     (paths[1],), case=other_case, artifact_registry=registry
                 )
 
+    def test_mask_panel_writer_rejects_symlinks_before_mutating_sentinel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
+            tissue = np.load(case.source_tissue_mask_uri)
+            nuclei = np.asarray(Image.open(case.source_nuclei_mask_uri))
+            sentinel = root / "sentinel.png"
+            sentinel.write_bytes(b"sentinel-source-bytes")
+            before = sentinel.read_bytes()
+            case_root = root / "source-attack"
+            panel_root = case_root / "planner_panels"
+            panel_root.mkdir(parents=True)
+            target = panel_root / "planner_01_tissue_mask.png"
+            target.symlink_to(sentinel)
+            with self.assertRaisesRegex(JointContractError, "target symlink"):
+                MaskPlannerArtifactRegistry.issue(
+                    case=case,
+                    pipeline_owned_root=case_root,
+                    source_tissue=tissue,
+                    source_nuclei=nuclei,
+                    schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                    pixel_size_um=case.pixel_size_um,
+                )
+            self.assertEqual(sentinel.read_bytes(), before)
+
+            clean_root = root / "candidate-attack"
+            registry = MaskPlannerArtifactRegistry.issue(
+                case=case,
+                pipeline_owned_root=clean_root,
+                source_tissue=tissue,
+                source_nuclei=nuclei,
+                schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                pixel_size_um=case.pixel_size_um,
+            )
+            board_sentinel = root / "board-sentinel.png"
+            board_sentinel.write_bytes(b"sentinel-board-bytes")
+            board_before = board_sentinel.read_bytes()
+            board_target = clean_root / "joint_condition_mask_review.png"
+            board_target.symlink_to(board_sentinel)
+            candidate = SimpleNamespace(
+                candidate_id="joint:fixture",
+                target_tissue_mask=tissue.copy(),
+                target_nuclei_mask=nuclei.copy(),
+                tissue_change=np.zeros_like(tissue, dtype=bool),
+                cell_change=np.zeros_like(tissue, dtype=bool),
+                joint_change=np.zeros_like(tissue, dtype=bool),
+            )
+            with self.assertRaisesRegex(JointContractError, "target symlink"):
+                registry.write_candidate_board(candidates=(candidate,))
+            self.assertEqual(board_sentinel.read_bytes(), board_before)
+
+            hardlink_root = root / "hardlink-attack"
+            hardlink_sentinel = root / "hardlink-sentinel.png"
+            hardlink_sentinel.write_bytes(b"sentinel-hardlink-bytes")
+            hardlink_before = hardlink_sentinel.read_bytes()
+            hardlink_panel_root = hardlink_root / "planner_panels"
+            hardlink_panel_root.mkdir(parents=True)
+            hardlink_target = (
+                hardlink_panel_root / "planner_01_tissue_mask.png"
+            )
+            hardlink_target.hardlink_to(hardlink_sentinel)
+            with self.assertRaisesRegex(
+                JointContractError, "multiply-linked target"
+            ):
+                MaskPlannerArtifactRegistry.issue(
+                    case=case,
+                    pipeline_owned_root=hardlink_root,
+                    source_tissue=tissue,
+                    source_nuclei=nuclei,
+                    schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                    pixel_size_um=case.pixel_size_um,
+                )
+            self.assertEqual(hardlink_sentinel.read_bytes(), hardlink_before)
+
+            parent_root = root / "parent-symlink-attack"
+            parent_root.mkdir()
+            external_parent = root / "external-planner-panels"
+            external_parent.mkdir()
+            (parent_root / "planner_panels").symlink_to(
+                external_parent, target_is_directory=True
+            )
+            with self.assertRaisesRegex(
+                JointContractError, "parent chain contains a symlink"
+            ):
+                MaskPlannerArtifactRegistry.issue(
+                    case=case,
+                    pipeline_owned_root=parent_root,
+                    source_tissue=tissue,
+                    source_nuclei=nuclei,
+                    schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                    pixel_size_um=case.pixel_size_um,
+                )
+            self.assertEqual(list(external_parent.iterdir()), [])
+
     def test_narrow_cord_compiler_rejects_organic_v2(self):
         program = compile_tissue_tool_program(
             primitive_id="infiltrative-nest-cord-extension-v1",
@@ -846,6 +945,67 @@ class JointSkillTests(unittest.TestCase):
                     image_paths=(disguised,),
                     artifact_registry=None,
                 )
+
+    def test_planner_and_critic_free_text_cannot_assert_unannotated_pathology(self):
+        tissue_client = _CertifiedTissueSelectionClient(
+            lambda value: {
+                **value,
+                "selection_explanation": "best fibrotic tumor bed margin",
+            }
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = _as_breast_growth_case(_write_synthetic_case(root))
+            case = replace(
+                case,
+                case_id="claim-filter-tissue",
+                instruction="cohesive-boundary-expansion-v1",
+                primitive_id="cohesive-boundary-expansion-v1",
+                provenance={
+                    **case.provenance,
+                    "joint_mechanism_id": (
+                        "breast-annotation-anchored-boundary-growth"
+                    ),
+                    "joint_primitive_id": "cohesive-boundary-expansion-v1",
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=OpenAIJointAwareTissuePlanner(
+                    client=tissue_client,
+                    max_contract_attempts=1,
+                ),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "result")
+            self.assertEqual(result.status, "abstained")
+            self.assertIn("unannotated pathology claim", result.abstain_reasons[0])
+
+        case = _breast_case_stub()
+        bundle = JointSkillRepository().compose(
+            case=case,
+            mechanism_id="breast-annotation-anchored-boundary-growth",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+
+        class ClaimingCriticClient:
+            def call(self, **_kwargs):
+                return {
+                    "rankings": [],
+                    "abstain": True,
+                    "summary": "fibrosis and desmoplasia are present",
+                }, {"model": "fixture"}
+
+        with self.assertRaisesRegex(
+            JointContractError, "unannotated pathology claim"
+        ):
+            OpenAIMultimodalJointCritic(ClaimingCriticClient()).review(
+                case=case,
+                bundle=bundle,
+                candidates=(),
+                gate_reports=(),
+                image_paths=(),
+            )
 
     def test_multimodal_plan_schema_requires_unique_structural_units(self):
         structural_units = JOINT_PLAN_JSON_SCHEMA["properties"][
@@ -2694,14 +2854,17 @@ class _RecordingJointCriticClient:
 
 
 class _CertifiedTissueSelectionClient:
-    def __init__(self, mutation=None):
+    def __init__(self, mutation=None, *, candidate_index=0):
         self.mutation = mutation
+        self.candidate_index = candidate_index
         self.calls = []
 
     def call(self, **kwargs):
         self.calls.append(kwargs)
         payload = json.loads(kwargs["user_prompt"])
-        candidate = payload["certified_tissue_plan_candidates"][0]
+        candidate = payload["certified_tissue_plan_candidates"][
+            self.candidate_index
+        ]
         preferences = payload["joint_mechanism_contract"]["planner_policy"][
             "selection_preferences"
         ]
@@ -2780,11 +2943,21 @@ class _RetryThenPassingTissueGate(GateRegistry):
     def run(self, context):
         self.calls += 1
         report = super().run(context)
+        runtime_bound = bool(
+            context.candidate.tool_trace.get("joint_tissue_tool_program")
+        )
+        if runtime_bound:
+            runtime_calls = getattr(self, "runtime_calls", 0) + 1
+            self.runtime_calls = runtime_calls
+            # One early replay plus the 12-variant fallback make the first
+            # runtime execution batch. Pre-LLM compiler executions lack this
+            # runtime trace binding and remain honestly certified.
+            passed = runtime_calls > 13
+        else:
+            passed = report.passed
         return GateReport(
             report.candidate_id,
-            # One compiler witness plus the 12-variant fallback portfolio
-            # constitute one planning pass.
-            self.calls > 13,
+            passed,
             report.checks,
         )
 
@@ -2996,11 +3169,13 @@ class JointWorkflowTests(unittest.TestCase):
             instances_path = Path(case.source_nuclei_instances_uri)
             rows, cols = np.ogrid[:128, :128]
             tissue = np.full((128, 128), 2, dtype=np.uint8)
-            # One sufficiently long external boundary is intentionally split
-            # into multiple geodesic anchors.  The portfolio must expose those
-            # independently executable spatial choices to the LLM instead of
-            # pre-selecting a single anchor behind its back.
-            tumor = (rows - 64) ** 2 + (cols - 64) ** 2 <= 30**2
+            # Two independently executable invasive-tumor components provide
+            # two real interface/anchor choices. Every advertised survivor is
+            # later selected and executed in the regression below.
+            tumor = (
+                ((rows - 38) ** 2 + (cols - 38) ** 2 <= 25**2)
+                | ((rows - 90) ** 2 + (cols - 90) ** 2 <= 25**2)
+            )
             tissue[tumor] = 1
             np.save(tissue_path, tissue, allow_pickle=False)
             nuclei = np.asarray(Image.open(nuclei_path)).copy()
@@ -3021,10 +3196,10 @@ class JointWorkflowTests(unittest.TestCase):
                 primitive_id="cohesive-boundary-expansion-v1",
                 instruction="cohesive-boundary-expansion-v1",
                 joint_area_budget=JointAreaBudget(
-                    target_fraction=0.12,
-                    min_fraction=0.10,
-                    max_fraction=0.14,
-                    tissue_min_fraction=0.10,
+                    target_fraction=0.08,
+                    min_fraction=0.06,
+                    max_fraction=0.10,
+                    tissue_min_fraction=0.06,
                 ),
                 provenance={
                     **case.provenance,
@@ -3067,6 +3242,152 @@ class JointWorkflowTests(unittest.TestCase):
                 self.assertTrue(candidate["tool_program_sha256"])
                 self.assertFalse(candidate["veto_reasons"])
                 self.assertTrue(candidate["deterministic_candidate_metrics"])
+
+            authority_workflow = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            )
+            authority_scene = build_joint_scene_analysis(
+                tissue,
+                nuclei,
+                schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                pixel_size_um=case.pixel_size_um,
+                nuclei_instances_path=case.source_nuclei_instances_uri,
+            )
+            prepared_objects, _ = authority_workflow._prepare_interpretations(
+                case=case,
+                source_tissue=tissue,
+                schema=MaskProfileSchema.from_reference_profile("BCSS"),
+                scene=authority_scene,
+            )
+            prepared_object = next(iter(prepared_objects.values()))
+            object_portfolio = prepared_object.tissue_feasibility_portfolio
+            forged = replace(
+                object_portfolio.survivors[0],
+                deterministic_candidate_metrics={
+                    **object_portfolio.survivors[
+                        0
+                    ].deterministic_candidate_metrics,
+                    "protected_distance_px": 999999.0,
+                },
+            )
+            forged_portfolio = replace(
+                object_portfolio,
+                survivors=(forged,),
+            )
+            tissue_case = _as_tissue_case(
+                prepared_object.case,
+                allocation=prepared_object.allocation,
+                shape=tissue.shape,
+            )
+            tissue_scene = augment_tissue_scene_with_nuclei_preflight(
+                authority_scene.tissue,
+                prepared_object.nuclei_preflight,
+                auxiliary_structure_masks=(
+                    authority_scene.auxiliary_structure_masks
+                ),
+                required_auxiliary_structure_ids=(
+                    prepared_object.bundle.mechanism.representability.protected_auxiliary_structures
+                ),
+            )
+            with self.assertRaisesRegex(
+                (JointContractError, RefineContractError),
+                "compiler-issued capability",
+            ):
+                OpenAIJointAwareTissuePlanner(
+                    client=_CertifiedTissueSelectionClient(),
+                    max_contract_attempts=1,
+                ).create_joint_tissue_plan(
+                    case=tissue_case,
+                    scene=tissue_scene,
+                    bundle=prepared_object.tissue_bundle,
+                    joint_bundle=prepared_object.bundle,
+                    image_paths=(),
+                    nuclei_preflight=prepared_object.nuclei_preflight,
+                    candidate_portfolio=forged_portfolio,
+                )
+
+            # A valid portfolio is bound to the exact source raster and
+            # nuclei-preflight witness. Reusing it after source mutation or
+            # with a different tissue budget must fail before the LLM call.
+            original_source = tissue_path.read_bytes()
+            changed_source = tissue.copy()
+            changed_source[0, 0] = 1
+            np.save(tissue_path, changed_source, allow_pickle=False)
+            with self.assertRaisesRegex(
+                (JointContractError, RefineContractError), "detached"
+            ):
+                OpenAIJointAwareTissuePlanner(
+                    client=_CertifiedTissueSelectionClient(),
+                    max_contract_attempts=1,
+                ).create_joint_tissue_plan(
+                    case=tissue_case,
+                    scene=tissue_scene,
+                    bundle=prepared_object.tissue_bundle,
+                    joint_bundle=prepared_object.bundle,
+                    image_paths=(),
+                    nuclei_preflight=prepared_object.nuclei_preflight,
+                    candidate_portfolio=object_portfolio,
+                )
+            tissue_path.write_bytes(original_source)
+            changed_tissue_case = replace(
+                tissue_case,
+                area_budget=AreaBudget(
+                    target_fraction=tissue_case.area_budget.target_fraction,
+                    min_fraction=max(
+                        0.0, tissue_case.area_budget.min_fraction - 0.001
+                    ),
+                    max_fraction=tissue_case.area_budget.max_fraction,
+                    basis=tissue_case.area_budget.basis,
+                    relative_tolerance=(
+                        tissue_case.area_budget.relative_tolerance
+                    ),
+                    fallback_policy=tissue_case.area_budget.fallback_policy,
+                ),
+            )
+            with self.assertRaisesRegex(
+                (JointContractError, RefineContractError), "detached"
+            ):
+                OpenAIJointAwareTissuePlanner(
+                    client=_CertifiedTissueSelectionClient(),
+                    max_contract_attempts=1,
+                ).create_joint_tissue_plan(
+                    case=changed_tissue_case,
+                    scene=tissue_scene,
+                    bundle=prepared_object.tissue_bundle,
+                    joint_bundle=prepared_object.bundle,
+                    image_paths=(),
+                    nuclei_preflight=prepared_object.nuclei_preflight,
+                    candidate_portfolio=object_portfolio,
+                )
+
+            # Every exposed candidate/tool pair must remain executable when it
+            # is the LLM selection, including the second survivor that exposed
+            # the prior false-certificate bug.
+            for index, candidate in enumerate(candidates):
+                for family in candidate["allowed_tool_families"]:
+                    with self.subTest(index=index, family=family):
+                        replay_client = _CertifiedTissueSelectionClient(
+                            candidate_index=index,
+                        )
+                        replay = JointPathologyEditWorkflow(
+                            tissue_planner=OpenAIJointAwareTissuePlanner(
+                                client=replay_client
+                            ),
+                            joint_planner=HeuristicJointPlanner(),
+                            critic=_ApprovingJointCritic(),
+                        ).run(
+                            case,
+                            output_root=(
+                                root / f"survivor-{index}-{family}"
+                            ),
+                        )
+                        self.assertEqual(
+                            replay.status,
+                            "selected_research",
+                            replay.abstain_reasons,
+                        )
 
     def test_cell_candidate_certificate_rejects_detached_sha(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3174,12 +3495,36 @@ class JointWorkflowTests(unittest.TestCase):
                         image_paths=(),
                         candidate_portfolio=choices.certificates,
                     )
+            claiming_client = _CertifiedCellSelectionClient(
+                lambda value: {
+                    **value,
+                    "selection_explanation": "select the fibrotic tumor bed",
+                }
+            )
+            with self.assertRaisesRegex(
+                JointContractError, "unannotated pathology claim"
+            ):
+                OpenAIMultimodalJointPlanner(
+                    client=claiming_client,
+                    max_contract_attempts=1,
+                ).create_plan(
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                    candidate_portfolio=choices.certificates,
+                )
             detached = replace(
                 candidate,
                 compiler_certificate_sha256="0" * 64,
             )
+            detached_portfolio = replace(
+                choices.certificates,
+                survivors=(detached,),
+            )
             with self.assertRaisesRegex(
-                JointContractError, "certificate SHA"
+                JointContractError, "compiler-issued capability"
             ):
                 OpenAIMultimodalJointPlanner(
                     client=client,
@@ -3190,7 +3535,62 @@ class JointWorkflowTests(unittest.TestCase):
                     bundle=bundle,
                     tissue_plan=None,
                     image_paths=(),
-                    candidate_portfolio=(detached,),
+                    candidate_portfolio=detached_portfolio,
+                )
+
+            # Public callers cannot self-sign a new certificate or portfolio,
+            # even if they reproduce the ordinary hash algorithm after
+            # modifying a metric.
+            forged_metric_candidate = replace(
+                candidate,
+                deterministic_candidate_metrics={
+                    **candidate.deterministic_candidate_metrics,
+                    "protected_distance_px": 999999.0,
+                },
+            )
+            forged_portfolio = replace(
+                choices.certificates,
+                survivors=(forged_metric_candidate,),
+            )
+            with self.assertRaisesRegex(
+                JointContractError, "compiler-issued capability"
+            ):
+                OpenAIMultimodalJointPlanner(
+                    client=client,
+                    max_contract_attempts=1,
+                ).create_plan(
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                    candidate_portfolio=forged_portfolio,
+                )
+
+            changed_budget = replace(
+                case,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    10,
+                    10,
+                    12,
+                    96,
+                    0,
+                    128,
+                    minimum_effect_span_px=72,
+                    minimum_effect_foci=2,
+                ),
+            )
+            with self.assertRaisesRegex(JointContractError, "detached"):
+                OpenAIMultimodalJointPlanner(
+                    client=client,
+                    max_contract_attempts=1,
+                ).create_plan(
+                    case=changed_budget,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                    candidate_portfolio=choices.certificates,
                 )
 
     def test_online_tissue_planner_rejects_forged_candidate_tool_and_preference(self):

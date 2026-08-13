@@ -42,6 +42,7 @@ from .workflow import (
     _as_tissue_case,
     _derive_infiltration_budget,
     _derive_local_population_budget,
+    _tissue_portfolio_authority_binding,
 )
 
 EXECUTION_QUALIFICATION_SCHEMA = "g2-v2-read-only-execution-qualification-v1"
@@ -279,7 +280,7 @@ def _qualify_case(
             "failure_reasons": sorted(set(failures)),
             "metrics": metrics,
         }
-    except Exception as exc:  # fail closed, preserving one record per pair
+    except Exception as exc:  # noqa: BLE001 - preserve one fail-closed record per pair
         return {
             **base,
             "status": "execution_requalification_required",
@@ -354,7 +355,9 @@ def _qualify_tissue_case(
             shape=source_tissue.shape,
         )
         try:
-            witness = CandidateFeasibilityCompiler().compile_tissue_witness(
+            witness = CandidateFeasibilityCompiler(
+                gates=GateRegistry()
+            ).compile_tissue_witness(
                 tissue_case=tissue_case,
                 source_tissue=source_tissue,
                 schema=schema,
@@ -362,11 +365,20 @@ def _qualify_tissue_case(
                 tissue_bundle=tissue_bundle,
                 joint_bundle=bundle,
                 nuclei_preflight=preflight,
+                authority_binding=_tissue_portfolio_authority_binding(
+                    case=case,
+                    tissue_case=tissue_case,
+                    source_tissue=source_tissue,
+                    bundle=bundle,
+                    tissue_bundle=tissue_bundle,
+                    allocation=allocation,
+                    nuclei_preflight=preflight,
+                ),
             ).to_metadata()
-        except Exception as exc:  # qualification is fail closed
+        except Exception as exc:  # noqa: BLE001 - qualification is fail closed
             failures.append("whole_mask_topology_witness_not_executable")
             witness = {
-                "schema_version": "joint-candidate-feasibility-compiler-v1",
+                "schema_version": "joint-candidate-feasibility-compiler-v2",
                 "errors": [f"{type(exc).__name__}: {exc}"],
                 "persisted_target_mask": False,
             }

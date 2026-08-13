@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -351,10 +354,56 @@ class MaskPlannerArtifactRegistry:
         producer_id: str,
         candidate_portfolio_digest: str | None = None,
     ) -> str:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        parent = self._prepare_authoritative_parent(path.parent)
+        target = parent / path.name
+        if target.is_symlink():
+            raise JointContractError(
+                "mask Planner writer refuses an existing target symlink"
+            )
+        if target.exists():
+            target_stat = target.lstat()
+            if not stat.S_ISREG(target_stat.st_mode):
+                raise JointContractError(
+                    "mask Planner writer refuses a non-regular target"
+                )
+            if target_stat.st_nlink != 1:
+                raise JointContractError(
+                    "mask Planner writer refuses a multiply-linked target"
+                )
         value = np.ascontiguousarray(np.asarray(rgb, dtype=np.uint8))
-        Image.fromarray(value).save(path)
-        canonical = self._canonical_pipeline_file(path)
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=parent
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(file_descriptor, "wb") as stream:
+                Image.fromarray(value).save(stream, format="PNG")
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary_stat = temporary.lstat()
+            if (
+                not stat.S_ISREG(temporary_stat.st_mode)
+                or temporary_stat.st_nlink != 1
+            ):
+                raise JointContractError(
+                    "mask Planner temporary artifact lost exclusive-file authority"
+                )
+            with Image.open(temporary) as opened:
+                encoded_rgb = np.asarray(opened.convert("RGB"))
+            if (
+                encoded_rgb.shape != value.shape
+                or not np.array_equal(encoded_rgb, value)
+            ):
+                raise JointContractError(
+                    "mask Planner temporary artifact failed encode verification"
+                )
+            # Atomic replacement changes the directory entry itself; it never
+            # follows a target symlink or mutates a multiply-linked inode.
+            os.replace(temporary, target)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        canonical = self._canonical_pipeline_file(target)
         expected_sha = _rgb_sha256(value)
         record = MaskPlannerArtifactRecord(
             artifact_kind=artifact_kind,
@@ -380,6 +429,33 @@ class MaskPlannerArtifactRegistry:
         self._records[str(canonical)] = record
         self._expected_rgb[str(canonical)] = immutable
         return str(canonical)
+
+    def _prepare_authoritative_parent(self, parent: Path) -> Path:
+        """Create a writer directory without following child symlinks."""
+
+        requested = parent.absolute()
+        try:
+            relative = requested.relative_to(self.pipeline_owned_root)
+        except ValueError as exc:
+            raise JointContractError(
+                "mask Planner writer target is outside the pipeline-owned root"
+            ) from exc
+        cursor = self.pipeline_owned_root
+        for part in relative.parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise JointContractError(
+                    "mask Planner writer parent chain contains a symlink"
+                )
+            if cursor.exists():
+                current_stat = cursor.lstat()
+                if not stat.S_ISDIR(current_stat.st_mode):
+                    raise JointContractError(
+                        "mask Planner writer parent is not a directory"
+                    )
+            else:
+                cursor.mkdir()
+        return cursor.resolve(strict=True)
 
     def _authority_payload(
         self,

@@ -26,6 +26,8 @@ from .skills.repository import JointSkillBundle
 from .skills.schema import JointMechanismSkill
 
 JOINT_PLAN_SCHEMA_VERSION = "joint-pathology-edit-plan-v2"
+_CELL_PORTFOLIO_ISSUER = object()
+_ISSUED_CELL_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
 
 LOCAL_POPULATION_PRIMITIVES = frozenset(
     {
@@ -159,8 +161,14 @@ class CertifiedCellPlanCandidate:
     allowed_tool_program_ids: tuple[str, ...]
     compiler_certificate_sha256: str
     executable_contract_id: str
+    authority_binding_sha256: str
+    _issuer: object | None = None
 
     def to_metadata(self) -> dict[str, Any]:
+        if self._issuer is not _CELL_PORTFOLIO_ISSUER:
+            raise JointContractError(
+                "cell portfolio was not issued by the workflow compiler"
+            )
         return {
             "candidate_id": self.candidate_id,
             "interface_ids": list(self.plan.cell_plan.interface_ids),
@@ -172,6 +180,7 @@ class CertifiedCellPlanCandidate:
             ),
             "compiler_certificate_sha256": self.compiler_certificate_sha256,
             "executable_contract_id": self.executable_contract_id,
+            "authority_binding_sha256": self.authority_binding_sha256,
             "veto_reasons": [],
         }
 
@@ -207,6 +216,9 @@ class CertifiedCellPlanPortfolio:
 
     survivors: tuple[CertifiedCellPlanCandidate, ...]
     vetoed: tuple[CellPlanCandidateVeto, ...]
+    authority_binding: dict[str, Any]
+    authority_binding_sha256: str
+    _issuer: object | None = None
 
     def __iter__(self):
         return iter(self.survivors)
@@ -225,7 +237,35 @@ class CertifiedCellPlanPortfolio:
             "vetoed_candidates": [
                 item.to_metadata() for item in self.vetoed
             ],
+            "authority_binding_sha256": self.authority_binding_sha256,
         }
+
+    def validate_authority(self, *, expected_binding_sha256: str) -> None:
+        issued = _ISSUED_CELL_PORTFOLIOS.get(id(self))
+        observed = tuple(
+            (id(item), item.compiler_certificate_sha256)
+            for item in self.survivors
+        )
+        binding_sha = hashlib.sha256(
+            json.dumps(
+                self.authority_binding,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            self._issuer is not _CELL_PORTFOLIO_ISSUER
+            or issued is None
+            or issued != observed
+            or binding_sha != self.authority_binding_sha256
+            or binding_sha != expected_binding_sha256
+        ):
+            raise JointContractError(
+                "cell portfolio is not the compiler-issued capability for this case/budget"
+            )
+        for item in self.survivors:
+            validate_cell_plan_candidate(item)
 
 
 def certify_cell_plan_candidate(
@@ -234,7 +274,13 @@ def certify_cell_plan_candidate(
     deterministic_candidate_metrics: Mapping[str, float],
     allowed_tool_program_ids: Sequence[str],
     executable_contract_id: str,
+    authority_binding_sha256: str,
+    _issuer: object | None = None,
 ) -> CertifiedCellPlanCandidate:
+    if _issuer is not _CELL_PORTFOLIO_ISSUER:
+        raise JointContractError(
+            "cell certificates can only be issued by the workflow compiler"
+        )
     payload = {
         "plan": plan.to_metadata(),
         "deterministic_candidate_metrics": dict(
@@ -242,6 +288,7 @@ def certify_cell_plan_candidate(
         ),
         "allowed_tool_program_ids": list(allowed_tool_program_ids),
         "executable_contract_id": executable_contract_id,
+        "authority_binding_sha256": authority_binding_sha256,
     }
     certificate_sha = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
@@ -255,10 +302,16 @@ def certify_cell_plan_candidate(
         allowed_tool_program_ids=tuple(allowed_tool_program_ids),
         compiler_certificate_sha256=certificate_sha,
         executable_contract_id=executable_contract_id,
+        authority_binding_sha256=authority_binding_sha256,
+        _issuer=_CELL_PORTFOLIO_ISSUER,
     )
 
 
 def validate_cell_plan_candidate(candidate: CertifiedCellPlanCandidate) -> None:
+    if candidate._issuer is not _CELL_PORTFOLIO_ISSUER:
+        raise JointContractError(
+            "cell candidate was not issued by the workflow compiler"
+        )
     expected = certify_cell_plan_candidate(
         plan=candidate.plan,
         deterministic_candidate_metrics=(
@@ -266,6 +319,8 @@ def validate_cell_plan_candidate(candidate: CertifiedCellPlanCandidate) -> None:
         ),
         allowed_tool_program_ids=candidate.allowed_tool_program_ids,
         executable_contract_id=candidate.executable_contract_id,
+        authority_binding_sha256=candidate.authority_binding_sha256,
+        _issuer=_CELL_PORTFOLIO_ISSUER,
     )
     if (
         expected.candidate_id != candidate.candidate_id
@@ -273,6 +328,43 @@ def validate_cell_plan_candidate(candidate: CertifiedCellPlanCandidate) -> None:
         != candidate.compiler_certificate_sha256
     ):
         raise JointContractError("cell candidate certificate SHA is detached")
+
+
+def _issue_cell_plan_portfolio(
+    *,
+    candidates: Sequence[dict[str, Any]],
+    vetoed: Sequence[CellPlanCandidateVeto],
+    authority_binding: Mapping[str, Any],
+) -> CertifiedCellPlanPortfolio:
+    binding = dict(authority_binding)
+    binding_sha = hashlib.sha256(
+        json.dumps(
+            binding,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    survivors = tuple(
+        certify_cell_plan_candidate(
+            **payload,
+            authority_binding_sha256=binding_sha,
+            _issuer=_CELL_PORTFOLIO_ISSUER,
+        )
+        for payload in candidates
+    )
+    portfolio = CertifiedCellPlanPortfolio(
+        survivors=survivors,
+        vetoed=tuple(vetoed),
+        authority_binding=binding,
+        authority_binding_sha256=binding_sha,
+        _issuer=_CELL_PORTFOLIO_ISSUER,
+    )
+    _ISSUED_CELL_PORTFOLIOS[id(portfolio)] = tuple(
+        (id(item), item.compiler_certificate_sha256)
+        for item in survivors
+    )
+    return portfolio
 
 
 @dataclass(frozen=True)

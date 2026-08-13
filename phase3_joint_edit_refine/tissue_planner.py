@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
@@ -16,6 +17,7 @@ from phase3_mask_edit_refine.agents import (
     OpenAIResponsesJSONClient,
     validate_edit_plan,
 )
+from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.models import (
     CaseContext,
     DepthProfile,
@@ -29,6 +31,7 @@ from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
 from .feasibility import JointNucleiPreflight
+from .models import JointContractError
 from .planner_inputs import (
     MaskPlannerArtifactRegistry,
     validate_mask_planner_image_paths,
@@ -40,6 +43,89 @@ from .tissue_tools import (
     compile_tissue_tool_program,
     validate_tissue_plan_tool_binding,
 )
+
+
+def _expected_tissue_authority_binding_sha256(
+    *,
+    case: CaseContext,
+    joint_bundle: JointSkillBundle,
+    nuclei_preflight: JointNucleiPreflight,
+    candidate_portfolio: Any,
+) -> str:
+    binding = getattr(candidate_portfolio, "authority_binding", None)
+    if not isinstance(binding, Mapping):
+        raise RefineContractError(
+            "tissue portfolio lacks its compiler-owned authority binding"
+        )
+    source_tissue = np.ascontiguousarray(load_id_mask(case.source_mask_uri))
+    source_tissue_sha = hashlib.sha256(source_tissue.tobytes()).hexdigest()
+    source_digests = binding.get("source_asset_digests")
+    declared_source_digests = {
+        key: value
+        for key, value in sorted(case.provenance.items())
+        if key.endswith(("sha256", "digest"))
+    }
+    if (
+        binding.get("case_id") != case.case_id
+        or binding.get("primitive_id") != case.primitive_id
+        or binding.get("mechanism_id")
+        != joint_bundle.mechanism.mechanism_id
+        or binding.get("pathology_domain_id")
+        != joint_bundle.mechanism.pathology_domain_id
+        or binding.get("annotation_profile_id")
+        != joint_bundle.annotation_profile.annotation_profile_id
+        or binding.get("tissue_case") != case.to_metadata()
+        or binding.get("source_tissue_array_sha256") != source_tissue_sha
+        or not isinstance(source_digests, Mapping)
+        or any(
+            declared_source_digests.get(key) != value
+            for key, value in source_digests.items()
+        )
+        or binding.get("nuclei_preflight_sha256")
+        != hashlib.sha256(
+            json.dumps(
+                nuclei_preflight.to_metadata(),
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+    ):
+        raise RefineContractError(
+            "tissue portfolio authority is detached from the current case, mechanism, or nuclei preflight"
+        )
+    return hashlib.sha256(
+        json.dumps(
+            binding,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _reject_unannotated_selection_claims(values: Sequence[Any]) -> None:
+    prohibited = {
+        "fibrosis",
+        "fibrotic tumor bed",
+        "tumor bed",
+        "desmoplasia",
+        "histologic invasive front",
+        "molecular subtype",
+        "histologic subtype",
+        "retraction artifact",
+        "vascular embolus",
+    }
+    for value in values:
+        if value is None:
+            continue
+        lowered = str(value).casefold()
+        matches = sorted(item for item in prohibited if item in lowered)
+        if matches:
+            raise RefineContractError(
+                "tissue Planner asserted an unannotated pathology claim: "
+                + ", ".join(matches)
+            )
 
 JOINT_TISSUE_DECISION_SCHEMA = {
     "type": "object",
@@ -193,7 +279,8 @@ class OpenAIJointAwareTissuePlanner:
             raise RefineContractError(
                 "joint-aware tissue Planner requires nuclei preflight"
             )
-        portfolio = tuple(candidate_portfolio)
+        portfolio_object = candidate_portfolio
+        portfolio = tuple(portfolio_object)
         vetoed_portfolio = tuple(
             getattr(candidate_portfolio, "vetoed", ())
         )
@@ -201,6 +288,19 @@ class OpenAIJointAwareTissuePlanner:
             raise RefineContractError(
                 "online tissue Planner requires a pre-LLM compiler portfolio"
             )
+        if not hasattr(portfolio_object, "validate_authority"):
+            raise RefineContractError(
+                "online tissue Planner requires a compiler-issued portfolio capability"
+            )
+        expected_binding = _expected_tissue_authority_binding_sha256(
+            case=case,
+            joint_bundle=joint_bundle,
+            nuclei_preflight=nuclei_preflight,
+            candidate_portfolio=portfolio_object,
+        )
+        portfolio_object.validate_authority(
+            expected_binding_sha256=expected_binding
+        )
         candidates_by_id = {item.candidate_id: item for item in portfolio}
         if len(candidates_by_id) != len(portfolio):
             raise RefineContractError("tissue portfolio candidate IDs are not unique")
@@ -215,7 +315,12 @@ class OpenAIJointAwareTissuePlanner:
         portfolio_metadata = []
         for item in portfolio:
             item.validate_identity()
-            if item.allowed_tool_families != compiled_tools.allowed_joint_families:
+            if (
+                not item.allowed_tool_families
+                or not set(item.allowed_tool_families).issubset(
+                    compiled_tools.allowed_joint_families
+                )
+            ):
                 raise RefineContractError(
                     "tissue candidate tool families are detached from the current mechanism"
                 )
@@ -313,7 +418,7 @@ class OpenAIJointAwareTissuePlanner:
                 compiled_plan = selected_witness.compiled_plan
                 candidate_metrics = selected_witness.deterministic_candidate_metrics
                 selected_family = raw.get("selected_tool_family")
-                if selected_family not in compiled_tools.allowed_joint_families:
+                if selected_family not in selected_witness.allowed_tool_families:
                     raise RefineContractError(
                         "LLM selected a tissue tool family outside the compiled mechanism program"
                     )
@@ -362,6 +467,18 @@ class OpenAIJointAwareTissuePlanner:
                                     "selection_explanation"
                                 ),
                                 "confidence_audit_only": raw.get("confidence"),
+                                "compiler_certificate_sha256": (
+                                    selected_witness.compiler_certificate_sha256
+                                ),
+                                "authority_binding_sha256": (
+                                    selected_witness.authority_binding_sha256
+                                ),
+                                "execution_raster_sha256": (
+                                    selected_witness.execution_raster_sha256
+                                ),
+                                "tissue_gate_report_sha256": (
+                                    selected_witness.tissue_gate_report_sha256
+                                ),
                             },
                         },
                     ),
@@ -370,6 +487,9 @@ class OpenAIJointAwareTissuePlanner:
                     raise RefineContractError(
                         "joint tissue Planner modified the parser-owned intent"
                     )
+                _reject_unannotated_selection_claims(
+                    (raw.get("selection_explanation"),)
+                )
                 validate_edit_plan(
                     plan,
                     case=case,
@@ -383,7 +503,7 @@ class OpenAIJointAwareTissuePlanner:
                     nuclei_preflight=nuclei_preflight,
                     scene=scene,
                 )
-            except (TypeError, ValueError) as exc:
+            except (JointContractError, RefineContractError, TypeError, ValueError) as exc:
                 errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
                 continue
             return plan, {

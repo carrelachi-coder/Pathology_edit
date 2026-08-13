@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from phase3_mask_edit_refine.agents import OpenAIResponsesJSONClient
+from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.models import EditPlan
 
 from .clarification import PlannerClarificationRequired
@@ -22,6 +26,7 @@ from .models import (
     JointCriticResult,
     JointEditPlan,
 )
+from .nuclei import load_nuclei_mask
 from .planner import (
     JOINT_PLAN_SCHEMA_VERSION,
     LOCAL_POPULATION_PRIMITIVES,
@@ -36,6 +41,63 @@ from .planner_inputs import (
 from .planner_policy import PREFERENCE_METRIC_CATALOG
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
+
+
+def _expected_cell_authority_binding_sha256(
+    *,
+    case: JointCaseContext,
+    bundle: JointSkillBundle,
+    portfolio: Any,
+) -> str:
+    binding = getattr(portfolio, "authority_binding", None)
+    if not isinstance(binding, Mapping):
+        raise JointContractError(
+            "cell portfolio lacks compiler-owned authority binding"
+        )
+    expected_budget = (
+        case.cell_count_extent_budget.__dict__
+        if case.cell_count_extent_budget is not None
+        else None
+    )
+    source_tissue = np.ascontiguousarray(
+        load_id_mask(case.source_tissue_mask_uri)
+    )
+    source_nuclei = np.ascontiguousarray(
+        load_nuclei_mask(case.source_nuclei_mask_uri)
+    )
+    source_digests = {
+        key: value
+        for key, value in sorted(case.provenance.items())
+        if key.endswith(("sha256", "digest"))
+    }
+    if (
+        binding.get("case_id") != case.case_id
+        or binding.get("primitive_id") != case.primitive_id
+        or binding.get("mechanism_id") != bundle.mechanism.mechanism_id
+        or binding.get("pathology_domain_id") != case.pathology_domain_id
+        or binding.get("annotation_profile_id") != case.annotation_profile_id
+        or binding.get("cell_observation_profile_id")
+        != case.cell_observation_profile_id
+        or binding.get("cell_population_profile_id")
+        != case.cell_population_profile_id
+        or binding.get("cell_count_extent_budget") != expected_budget
+        or binding.get("source_asset_digests") != source_digests
+        or binding.get("source_tissue_array_sha256")
+        != hashlib.sha256(source_tissue.tobytes()).hexdigest()
+        or binding.get("source_nuclei_array_sha256")
+        != hashlib.sha256(source_nuclei.tobytes()).hexdigest()
+    ):
+        raise JointContractError(
+            "cell portfolio authority is detached from the current case, mechanism, or budget"
+        )
+    return hashlib.sha256(
+        json.dumps(
+            binding,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _mask_planner_case_metadata(case: JointCaseContext) -> dict[str, Any]:
@@ -362,6 +424,18 @@ class OpenAIMultimodalJointPlanner:
             raise JointContractError(
                 "cell-only LLM planning requires a pre-LLM certified portfolio"
             )
+        if not hasattr(portfolio_object, "validate_authority"):
+            raise JointContractError(
+                "cell-only LLM planning requires a compiler-issued portfolio capability"
+            )
+        expected_binding = _expected_cell_authority_binding_sha256(
+            case=case,
+            bundle=bundle,
+            portfolio=portfolio_object,
+        )
+        portfolio_object.validate_authority(
+            expected_binding_sha256=expected_binding
+        )
         for item in portfolio:
             validate_cell_plan_candidate(item)
             if item.plan.selected_mechanism_id != bundle.mechanism.mechanism_id:
@@ -449,6 +523,9 @@ class OpenAIMultimodalJointPlanner:
                         + ", ".join(sorted(missing_metrics))
                     )
                 validate_cell_plan_candidate(selected)
+                _reject_unannotated_pathology_claims(
+                    (_optional_string(raw.get("selection_explanation")),)
+                )
             except JointContractError as exc:
                 errors.append(f"attempt {attempt}: {exc}")
                 continue
@@ -974,6 +1051,7 @@ class OpenAIMultimodalJointCritic:
             json_schema=JOINT_CRITIC_JSON_SCHEMA,
         )
         rankings = []
+        critic_text: list[str] = []
         for item in raw.get("rankings", []):
             if not isinstance(item, Mapping):
                 raise JointContractError("joint critic ranking must be an object")
@@ -985,21 +1063,28 @@ class OpenAIMultimodalJointCritic:
             rule_ids = _strings(item.get("supporting_rule_ids"), "supporting_rule_ids")
             if set(rule_ids) - set(bundle.active_rule_ids):
                 raise JointContractError("joint critic cited unknown rules")
+            veto_reasons = _strings(
+                item.get("veto_reasons", []),
+                "veto_reasons",
+                allow_empty=True,
+            )
+            critic_text.extend(veto_reasons)
             rankings.append(
                 JointCriticRanking(
                     candidate_id=candidate_id,
                     score=_unit(item, "score"),
                     confidence=_unit(item, "confidence"),
                     supporting_rule_ids=rule_ids,
-                    veto_reasons=_strings(
-                        item.get("veto_reasons", []), "veto_reasons", allow_empty=True
-                    ),
+                    veto_reasons=veto_reasons,
                 )
             )
+        summary = _required_string(raw, "summary")
+        critic_text.append(summary)
+        _reject_unannotated_pathology_claims(tuple(critic_text))
         return JointCriticResult(
             rankings=tuple(rankings),
             abstain=_required_bool(raw, "abstain"),
-            summary=_required_string(raw, "summary"),
+            summary=summary,
             usage={"provider": self.name, **usage},
         )
 

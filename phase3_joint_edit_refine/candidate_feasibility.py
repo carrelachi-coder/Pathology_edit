@@ -13,7 +13,9 @@ from scipy import ndimage
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import validate_edit_plan
+from phase3_mask_edit_refine.candidates import generate_candidates
 from phase3_mask_edit_refine.execution import compile_edit_plan_with_witness
+from phase3_mask_edit_refine.gates import GateContext, GateRegistry
 from phase3_mask_edit_refine.models import CaseContext, EditPlan
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
@@ -28,13 +30,61 @@ from .tissue_planner import MultiInterfaceResearchTissuePlanner
 from .tissue_tools import compile_tissue_tool_program
 
 CANDIDATE_FEASIBILITY_COMPILER_VERSION = (
-    "joint-candidate-feasibility-compiler-v1"
+    "joint-candidate-feasibility-compiler-v2"
 )
+_COMPILER_CAPABILITY_ISSUER = object()
+_ISSUED_TISSUE_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
+
+
+def _canonical_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _gate_semantics_sha256(report: Any) -> str:
+    metadata = report.to_metadata()
+    return _canonical_sha256(
+        {
+            "passed": bool(metadata["passed"]),
+            "checks": metadata["checks"],
+        }
+    )
+
+
+def _candidate_raster_sha256(candidate: Any) -> str:
+    digest = hashlib.sha256()
+    for name in ("target_mask", "change_region"):
+        value = np.ascontiguousarray(np.asarray(getattr(candidate, name)))
+        digest.update(name.encode("ascii"))
+        digest.update(str(value.dtype).encode("ascii"))
+        digest.update(json.dumps(value.shape).encode("ascii"))
+        digest.update(value.tobytes())
+    digest.update(str(candidate.tool_name).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _narrow_plan_to_executor(plan: EditPlan, *, executor: str) -> EditPlan:
+    from dataclasses import replace
+
+    return replace(
+        plan,
+        tool_program=replace(
+            plan.tool_program,
+            allowed_tools=(executor,),
+            candidate_count=max(1, plan.tool_program.candidate_count),
+        ),
+    )
 
 
 @dataclass(frozen=True)
 class TissueExecutionWitness:
-    """One in-memory whole-mask topology witness; no target is persisted."""
+    """Compiler-issued candidate/tool artifact that passed tissue hard gates."""
 
     compiled_plan: EditPlan
     attempt: int
@@ -48,17 +98,34 @@ class TissueExecutionWitness:
     allowed_tool_families: tuple[str, ...]
     compiler_certificate_sha256: str
     tool_program_sha256: str
+    selected_tool_family: str
+    selected_concrete_executor: str
+    execution_candidate: Any
+    tissue_gate_report: Any
+    authority_binding_sha256: str
+    execution_raster_sha256: str
+    tissue_gate_report_sha256: str
+    _issuer: object | None = None
 
     @property
     def candidate_id(self) -> str:
         return "tissue-plan:" + self.compiler_certificate_sha256[:20]
 
     def validate_identity(self) -> None:
+        if self._issuer is not _COMPILER_CAPABILITY_ISSUER:
+            raise JointContractError(
+                "tissue candidate was not issued by the execution compiler"
+            )
         payload = {
             "plan": self.compiled_plan.to_metadata(),
             "change_region_sha256": self.change_region_sha256,
             "metrics": self.deterministic_candidate_metrics,
             "tool_program_sha256": self.tool_program_sha256,
+            "selected_tool_family": self.selected_tool_family,
+            "selected_concrete_executor": self.selected_concrete_executor,
+            "authority_binding_sha256": self.authority_binding_sha256,
+            "execution_raster_sha256": self.execution_raster_sha256,
+            "tissue_gate_report_sha256": self.tissue_gate_report_sha256,
         }
         expected = hashlib.sha256(
             json.dumps(
@@ -69,6 +136,55 @@ class TissueExecutionWitness:
             raise JointContractError(
                 "tissue candidate compiler certificate SHA is detached"
             )
+        if (
+            not bool(self.tissue_gate_report.passed)
+            or _candidate_raster_sha256(self.execution_candidate)
+            != self.execution_raster_sha256
+            or _canonical_sha256(self.tissue_gate_report.to_metadata())
+            != self.tissue_gate_report_sha256
+        ):
+            raise JointContractError(
+                "tissue candidate execution artifact is detached from its compiler certificate"
+            )
+
+    def validate_reexecution(
+        self,
+        *,
+        candidates: tuple[Any, ...],
+        gate_reports: tuple[Any, ...],
+    ) -> str:
+        """Require runtime execution to reproduce the pre-LLM certified raster.
+
+        The Planner selects an immutable candidate/tool pair, not merely a
+        compilable plan. Runtime may deterministically replay that pair, but it
+        must reproduce the exact target/change raster and hard-gate report that
+        the feasibility compiler certified before the LLM saw the portfolio.
+        """
+
+        self.validate_identity()
+        for candidate in candidates:
+            if _candidate_raster_sha256(candidate) != self.execution_raster_sha256:
+                continue
+            report = next(
+                (
+                    item
+                    for item in gate_reports
+                    if item.candidate_id == candidate.candidate_id
+                ),
+                None,
+            )
+            if report is None or not report.passed:
+                continue
+            if _gate_semantics_sha256(report) != _gate_semantics_sha256(
+                self.tissue_gate_report
+            ):
+                raise JointContractError(
+                    "runtime tissue gate report differs from the pre-LLM certificate"
+                )
+            return str(candidate.candidate_id)
+        raise JointContractError(
+            "runtime tissue execution did not reproduce the selected certified raster"
+        )
 
     def to_metadata(self) -> dict[str, Any]:
         self.validate_identity()
@@ -95,8 +211,14 @@ class TissueExecutionWitness:
                 self.deterministic_candidate_metrics
             ),
             "allowed_tool_families": list(self.allowed_tool_families),
+            "selected_tool_family": self.selected_tool_family,
+            "selected_concrete_executor": self.selected_concrete_executor,
             "compiler_certificate_sha256": self.compiler_certificate_sha256,
             "tool_program_sha256": self.tool_program_sha256,
+            "authority_binding_sha256": self.authority_binding_sha256,
+            "execution_raster_sha256": self.execution_raster_sha256,
+            "tissue_gate_report_sha256": self.tissue_gate_report_sha256,
+            "hard_gate_passed": bool(self.tissue_gate_report.passed),
             "veto_reasons": [],
             "persisted_target_mask": False,
         }
@@ -125,6 +247,9 @@ class TissueCandidateVeto:
 class TissueCandidatePortfolio:
     survivors: tuple[TissueExecutionWitness, ...]
     vetoed: tuple[TissueCandidateVeto, ...]
+    authority_binding: dict[str, Any]
+    authority_binding_sha256: str
+    _issuer: object | None = None
 
     def __iter__(self) -> Iterator[TissueExecutionWitness]:
         return iter(self.survivors)
@@ -135,23 +260,54 @@ class TissueCandidatePortfolio:
     def __getitem__(self, index: int) -> TissueExecutionWitness:
         return self.survivors[index]
 
+    def validate_authority(self, *, expected_binding_sha256: str) -> None:
+        issued = _ISSUED_TISSUE_PORTFOLIOS.get(id(self))
+        observed = tuple(
+            (id(item), item.compiler_certificate_sha256)
+            for item in self.survivors
+        )
+        if (
+            self._issuer is not _COMPILER_CAPABILITY_ISSUER
+            or issued is None
+            or issued != observed
+            or _canonical_sha256(self.authority_binding)
+            != self.authority_binding_sha256
+            or self.authority_binding_sha256 != expected_binding_sha256
+        ):
+            raise JointContractError(
+                "tissue portfolio is not the compiler-issued capability for this case/preflight/budget"
+            )
+        for item in self.survivors:
+            item.validate_identity()
+
     def to_metadata(self) -> dict[str, Any]:
+        if self._issuer is not _COMPILER_CAPABILITY_ISSUER:
+            raise JointContractError(
+                "tissue portfolio was not issued by the execution compiler"
+            )
         return {
             "schema_version": CANDIDATE_FEASIBILITY_COMPILER_VERSION,
             "surviving_candidates": [
                 item.to_metadata() for item in self.survivors
             ],
             "vetoed_candidates": [item.to_metadata() for item in self.vetoed],
+            "authority_binding_sha256": self.authority_binding_sha256,
         }
 
 
 class CandidateFeasibilityCompiler:
     """Use the execution solver itself as the source-only capacity authority."""
 
-    def __init__(self, *, maximum_attempts: int = 3) -> None:
+    def __init__(
+        self,
+        *,
+        maximum_attempts: int = 3,
+        gates: GateRegistry | None = None,
+    ) -> None:
         if maximum_attempts <= 0:
             raise ValueError("candidate feasibility attempts must be positive")
         self.maximum_attempts = maximum_attempts
+        self.gates = gates or GateRegistry()
 
     def compile_tissue_witness(
         self,
@@ -163,6 +319,7 @@ class CandidateFeasibilityCompiler:
         tissue_bundle: ActiveKnowledgeBundle,
         joint_bundle: JointSkillBundle,
         nuclei_preflight: JointNucleiPreflight,
+        authority_binding: dict[str, Any],
     ) -> TissueExecutionWitness:
         return self.compile_tissue_portfolio(
             tissue_case=tissue_case,
@@ -173,6 +330,7 @@ class CandidateFeasibilityCompiler:
             joint_bundle=joint_bundle,
             nuclei_preflight=nuclei_preflight,
             maximum_candidates=1,
+            authority_binding=authority_binding,
         ).survivors[0]
 
     def compile_tissue_portfolio(
@@ -185,10 +343,13 @@ class CandidateFeasibilityCompiler:
         tissue_bundle: ActiveKnowledgeBundle,
         joint_bundle: JointSkillBundle,
         nuclei_preflight: JointNucleiPreflight,
+        authority_binding: dict[str, Any],
         maximum_candidates: int = 4,
+        revoked_candidate_ids: tuple[str, ...] = (),
     ) -> TissueCandidatePortfolio:
         """Compile immutable alternatives before any LLM candidate ranking."""
 
+        authority_binding_sha = _canonical_sha256(authority_binding)
         feasible = tuple(nuclei_preflight.feasible_interface_ids)
         if not feasible:
             raise JointContractError("tissue portfolio has no feasible interface")
@@ -246,6 +407,7 @@ class CandidateFeasibilityCompiler:
                     nuclei_preflight=nuclei_preflight,
                     initial_failed_interface_ids=deprioritized,
                     preferred_anchor_ids=preferred_anchor_ids,
+                    authority_binding_sha256=authority_binding_sha,
                 )
             except Exception as exc:  # noqa: BLE001 - every veto is audited
                 error = f"{type(exc).__name__}: {exc}"
@@ -278,6 +440,22 @@ class CandidateFeasibilityCompiler:
                     )
                 )
                 continue
+            if witness.candidate_id in set(revoked_candidate_ids):
+                error = "candidate was revoked by deterministic execution feedback"
+                vetoes.append(
+                    TissueCandidateVeto(
+                        candidate_id=witness.candidate_id,
+                        preferred_interface_ids=tuple(
+                            value
+                            for value in feasible
+                            if value not in deprioritized
+                        ),
+                        preferred_anchor_ids=preferred_anchor_ids,
+                        veto_reasons=(error,),
+                        certificate_sha256=witness.compiler_certificate_sha256,
+                    )
+                )
+                continue
             if witness.change_region_sha256 in seen_changes:
                 continue
             seen_changes.add(witness.change_region_sha256)
@@ -289,10 +467,18 @@ class CandidateFeasibilityCompiler:
                 "whole-mask topology portfolio has no executable survivor: "
                 + "; ".join(failures)
             )
-        return TissueCandidatePortfolio(
+        portfolio = TissueCandidatePortfolio(
             survivors=tuple(witnesses),
             vetoed=tuple(vetoes),
+            authority_binding=dict(authority_binding),
+            authority_binding_sha256=authority_binding_sha,
+            _issuer=_COMPILER_CAPABILITY_ISSUER,
         )
+        _ISSUED_TISSUE_PORTFOLIOS[id(portfolio)] = tuple(
+            (id(item), item.compiler_certificate_sha256)
+            for item in portfolio.survivors
+        )
+        return portfolio
 
     def _compile_one(
         self,
@@ -306,6 +492,7 @@ class CandidateFeasibilityCompiler:
         nuclei_preflight: JointNucleiPreflight,
         initial_failed_interface_ids: tuple[str, ...],
         preferred_anchor_ids: tuple[str, ...],
+        authority_binding_sha256: str,
     ) -> TissueExecutionWitness:
         tissue_scene = augment_tissue_scene_with_nuclei_preflight(
             scene.tissue,
@@ -347,12 +534,6 @@ class CandidateFeasibilityCompiler:
                     schema=schema,
                     scene=tissue_scene,
                 )
-                realized = np.logical_or.reduce(
-                    tuple(
-                        np.asarray(part.change_region, dtype=bool)
-                        for part in parts
-                    )
-                )
                 metrics = _measured_tissue_candidate_metrics(
                     compiled_plan=compiled,
                     compiler_audit=audit,
@@ -372,40 +553,94 @@ class CandidateFeasibilityCompiler:
                         tissue_bundle.edit_contract.allowed_tools
                     ),
                 )
+                executable_artifacts: list[tuple[str, str, Any, Any]] = []
+                for family, executor in zip(
+                    tools.allowed_joint_families,
+                    tools.allowed_concrete_executors,
+                ):
+                    family_plan = _narrow_plan_to_executor(
+                        compiled,
+                        executor=executor,
+                    )
+                    candidates = generate_candidates(
+                        source_tissue,
+                        schema=schema,
+                        scene=tissue_scene,
+                        plan=family_plan,
+                        bundle=tissue_bundle,
+                        seed=tissue_case.seed,
+                        compiled_replay_parts=parts,
+                        compiled_replay_audit=replay,
+                    )
+                    passing = []
+                    for candidate in candidates:
+                        report = self.gates.run(
+                            GateContext(
+                                case=tissue_case,
+                                source_mask=source_tissue,
+                                schema=schema,
+                                scene=tissue_scene,
+                                bundle=tissue_bundle,
+                                plan=family_plan,
+                                candidate=candidate,
+                            )
+                        )
+                        if report.passed:
+                            passing.append((candidate, report))
+                    if not passing:
+                        continue
+                    candidate, report = passing[0]
+                    executable_artifacts.append(
+                        (family, executor, candidate, report)
+                    )
+                if not executable_artifacts:
+                    raise JointContractError(
+                        "compiled tissue plan has no concrete executor that passes all tissue hard gates"
+                    )
+                # Each witness binds exactly one candidate/tool pair. The
+                # portfolio builder invokes this compiler per anchor; exposing
+                # multiple families without separate raster certificates would
+                # make the LLM choice ambiguous.
+                family, executor, candidate, report = executable_artifacts[0]
+                execution_raster_sha = _candidate_raster_sha256(candidate)
+                report_sha = _canonical_sha256(report.to_metadata())
+                actual_change = np.asarray(candidate.change_region, dtype=bool)
+                change_sha = hashlib.sha256(
+                    np.ascontiguousarray(actual_change.astype(np.uint8)).tobytes()
+                ).hexdigest()
                 certificate_payload = {
                     "plan": compiled.to_metadata(),
-                    "change_region_sha256": hashlib.sha256(
-                        np.ascontiguousarray(
-                            realized.astype(np.uint8)
-                        ).tobytes()
-                    ).hexdigest(),
+                    "change_region_sha256": change_sha,
                     "metrics": metrics,
                     "tool_program_sha256": tools.program_sha256,
+                    "selected_tool_family": family,
+                    "selected_concrete_executor": executor,
+                    "authority_binding_sha256": authority_binding_sha256,
+                    "execution_raster_sha256": execution_raster_sha,
+                    "tissue_gate_report_sha256": report_sha,
                 }
-                certificate_sha = hashlib.sha256(
-                    json.dumps(
-                        certificate_payload,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ).encode("utf-8")
-                ).hexdigest()
+                certificate_sha = _canonical_sha256(certificate_payload)
                 return TissueExecutionWitness(
                     compiled_plan=compiled,
                     attempt=attempt,
                     planner_usage=dict(planner_usage),
                     compiler_audit=dict(audit),
                     replay_audit=dict(replay),
-                    realized_tissue_pixels=int(np.count_nonzero(realized)),
-                    change_region_sha256=hashlib.sha256(
-                        np.ascontiguousarray(
-                            realized.astype(np.uint8)
-                        ).tobytes()
-                    ).hexdigest(),
+                    realized_tissue_pixels=int(np.count_nonzero(actual_change)),
+                    change_region_sha256=change_sha,
                     prior_errors=tuple(errors),
                     deterministic_candidate_metrics=metrics,
-                    allowed_tool_families=tools.allowed_joint_families,
+                    allowed_tool_families=(family,),
                     compiler_certificate_sha256=certificate_sha,
                     tool_program_sha256=tools.program_sha256,
+                    selected_tool_family=family,
+                    selected_concrete_executor=executor,
+                    execution_candidate=candidate,
+                    tissue_gate_report=report,
+                    authority_binding_sha256=authority_binding_sha256,
+                    execution_raster_sha256=execution_raster_sha,
+                    tissue_gate_report_sha256=report_sha,
+                    _issuer=_COMPILER_CAPABILITY_ISSUER,
                 )
             except Exception as exc:  # noqa: BLE001 - fail closed and audit any compiler failure
                 error = f"{type(exc).__name__}: {exc}"
