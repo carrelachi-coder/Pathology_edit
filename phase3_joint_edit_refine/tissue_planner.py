@@ -151,6 +151,30 @@ def _normalize_integer_allocations(
     return tuple(int(item) / total for item in allocations)
 
 
+def _component_turnover_profile_mode(
+    *,
+    preferred_mode: str,
+    allow_source_component_resolution: bool,
+    requested_allocation_px: int,
+    source_component_area_px: int,
+) -> str:
+    """Use an equal-depth front only when the source is actually resolved.
+
+    ``allow_source_component_resolution`` is a topology permission, not a
+    request to erase every selected component with a constant-width annulus.
+    A partial boundary turnover must retain the mechanism-owned organic depth
+    profile; otherwise a small necrosis-resolution budget becomes the exact
+    parallel ring rejected by the downstream artifact gate.
+    """
+
+    resolves_component = (
+        allow_source_component_resolution
+        and source_component_area_px > 0
+        and requested_allocation_px >= source_component_area_px
+    )
+    return "uniform_front" if resolves_component else preferred_mode
+
+
 def _effective_tissue_topology(
     joint_bundle: JointSkillBundle,
     *,
@@ -1173,10 +1197,17 @@ class MultiInterfaceResearchTissuePlanner:
                 peak = float(
                     np.clip(np.ceil(estimated_depth * 2.0), 2, depth_cap)
                 )
-            requested_mode = (
-                "uniform_front"
-                if topology["allow_source_component_resolution"]
-                else front_contract.profile_mode
+            requested_mode = _component_turnover_profile_mode(
+                preferred_mode=front_contract.profile_mode,
+                allow_source_component_resolution=bool(
+                    topology["allow_source_component_resolution"]
+                ),
+                requested_allocation_px=int(requested_allocation),
+                source_component_area_px=int(
+                    np.count_nonzero(
+                        scene.component_masks[interface.source_component_id]
+                    )
+                ),
             )
             if peak < 5 and requested_mode == "multi_lobe":
                 requested_mode = "tapered_lobe"
