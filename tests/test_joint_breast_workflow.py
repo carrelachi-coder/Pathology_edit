@@ -111,23 +111,11 @@ def _write_breast_case(
     if mechanism_id:
         provenance["joint_mechanism_id"] = mechanism_id
     if mechanism_id == "breast-post-treatment-residual-neoplastic-depletion":
-        provenance["cellularity_depletion_anchor"] = {
-            "type": "interface",
-            "interface_ids": [
-                "if:tumor:p01:0001->stroma:p01:0001:seg:0001"
-            ],
-            "anchor_ids": [
-                "if:tumor:p01:0001->stroma:p01:0001:seg:0001:anchor:0001"
-            ],
-            "observation": (
-                "The tumor-stroma margin provides a visible local anchor for "
-                "a graded residual-neoplastic-cell reduction."
-            ),
-            "confidence": 0.97,
-        }
         # Keep this test focused on workflow realization rather than on the
         # automatic source-calibrated count broker, which has independent
-        # coverage. The fixture owns a reachable gradient quota.
+        # coverage. The fixture owns a reachable gradient quota, while the
+        # deterministic cell portfolio must now discover and certify its own
+        # mask-graph interface/anchor instead of receiving one in provenance.
         cell_budget = {
             "target_delta_count": 12,
             "min_delta_count": 12,
@@ -251,6 +239,7 @@ def test_breast_residual_neoplastic_depletion_is_cell_only(tmp_path):
     result = _run(case, tmp_path)
 
     assert result.status == "selected_research", result.abstain_reasons
+    assert "cellularity_depletion_anchor" not in case.provenance
     source_tissue = np.load(case.source_tissue_mask_uri)
     source_nuclei = np.asarray(Image.open(case.source_nuclei_mask_uri))
     assert np.array_equal(result.condition.target_tissue_mask, source_tissue)

@@ -25,7 +25,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v7"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v8"
 
 POPULATION_DISPOSITIONS = frozenset(
     {
@@ -151,9 +151,24 @@ class ExecutableJointContract:
                 )
             requested = int(certificate.get("requested_count", 0))
             placements = certificate.get("placements") or []
-            if requested <= 0 or len(placements) != requested:
+            if (
+                self.cell_program.continuity_requires_new_target_cells
+                and requested <= 0
+            ):
+                raise JointContractError(
+                    "executable packing certificate has no positive target-population quota"
+                )
+            if requested > 0 and len(placements) != requested:
                 raise JointContractError(
                     "executable packing certificate has an incomplete witness ledger"
+                )
+            if (
+                requested > 0
+                and int(self.cell_program.target_delta_count or 0)
+                != requested
+            ):
+                raise JointContractError(
+                    "cell program count differs from its packing certificate"
                 )
 
     def to_metadata(self) -> dict[str, Any]:
@@ -219,9 +234,19 @@ class ExecutableJointContract:
         # cannot be part of the final certificate without creating a circular
         # hash dependency.
         payload.pop("contract_id", None)
+        resolved_count = int(payload.get("requested_count", 0))
+        if resolved_count <= 0:
+            raise JointContractError(
+                "packing certificate has no positive executable count"
+            )
+        resolved_program = replace(
+            self.cell_program,
+            target_delta_count=resolved_count,
+        )
         draft = replace(
             self,
             contract_id="pending",
+            cell_program=resolved_program,
             packing_certificate=payload,
         )
         metadata = draft.to_metadata()
@@ -710,6 +735,13 @@ class ExecutableJointContractCompiler:
         )
         source_assets = _provenance_digests(case.provenance)
         source_assets["provenance_sha256"] = _canonical_digest(case.provenance)
+        if scene.reference_shape_authority is not None:
+            source_assets["reference_shape_authority_sha256"] = (
+                scene.reference_shape_authority.authority_sha256
+            )
+            source_assets["reference_shape_statistics_sha256"] = (
+                scene.reference_shape_authority.statistics_sha256
+            )
         source_authority = build_scene_instance_authority(
             scene, source_nuclei
         )

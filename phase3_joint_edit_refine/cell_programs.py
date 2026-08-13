@@ -17,7 +17,7 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v11"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v12"
 
 
 @dataclass(frozen=True)
@@ -150,8 +150,23 @@ class CellToolProgramCompiler:
             target_tissue,
             bundle.annotation_profile.prohibit_generation_support_fine_ids,
         )
-        diameter = float(scene.population.nominal_nucleus_diameter_px or 8.0)
         effect_classes = set(cell.allowed_cell_classes)
+        source_diameter = float(
+            scene.population.nominal_nucleus_diameter_px or 8.0
+        )
+        calibrated_diameter = (
+            scene.reference_shape_authority.nominal_diameter_px(
+                tuple(sorted(effect_classes))
+            )
+            if primitive.scope == "cell_only"
+            and scene.reference_shape_authority is not None
+            else None
+        )
+        # Source watershed instances own counts, density and occupancy.  When
+        # native contours are absent, the digest-bound dataset library owns
+        # the reusable footprint size ruler instead of a possibly confluent
+        # semantic component.
+        diameter = float(calibrated_diameter or source_diameter)
         complete_areas = [
             float(item.area_px)
             for item in scene.cells.instances
@@ -164,9 +179,17 @@ class CellToolProgramCompiler:
             )
         ]
         effect_diameter = (
-            max(3.0, 2.0 * np.sqrt(float(np.median(complete_areas)) / np.pi))
-            if complete_areas
-            else diameter
+            diameter
+            if calibrated_diameter is not None
+            else (
+                max(
+                    3.0,
+                    2.0
+                    * np.sqrt(float(np.median(complete_areas)) / np.pi),
+                )
+                if complete_areas
+                else diameter
+            )
         )
         skill_minimum_effect_span_px = int(
             np.floor(
@@ -347,61 +370,6 @@ class CellToolProgramCompiler:
                 mechanism_region = center_region.copy()
                 population_target_region = center_region.copy()
 
-        if (
-            primitive.scope == "cell_only"
-            and cell.baseline_mode == "structured_add"
-            and cell.interface_ids
-        ):
-            # Interface distance constrains the complete nucleus, not only its
-            # center.  Without this inward footprint margin, a legal center at
-            # the inner or outer annulus edge could paste several pixels into
-            # Tumor or beyond the declared extent.  Use the largest complete
-            # same-patch shape authorized for this action; the exact executor
-            # still performs per-shape containment afterward.
-            half_extents = []
-            for instance in scene.cells.instances:
-                if (
-                    instance.class_id not in effect_classes
-                    or instance.completeness_status != "complete"
-                    or instance.touches_border
-                    or instance.quality_flags
-                ):
-                    continue
-                shape = np.asarray(
-                    scene.instance_masks[instance.instance_id], dtype=bool
-                )
-                rows, cols = np.nonzero(shape)
-                if rows.size:
-                    center_row = 0.5 * (rows.min() + rows.max())
-                    center_col = 0.5 * (cols.min() + cols.max())
-                    half_extents.append(
-                        int(
-                            np.ceil(
-                                np.sqrt(
-                                    np.max(
-                                        (rows - center_row) ** 2
-                                        + (cols - center_col) ** 2
-                                    )
-                                )
-                            )
-                        )
-                    )
-            if not half_extents:
-                raise JointContractError(
-                    "structured interface addition lacks a complete source shape"
-                )
-            footprint_margin_px = max(1, max(half_extents))
-            center_region = ndimage.binary_erosion(
-                center_region,
-                structure=np.ones(
-                    (2 * footprint_margin_px + 1,) * 2,
-                    dtype=bool,
-                ),
-                border_value=0,
-            )
-            mechanism_region = center_region.copy()
-            population_target_region = center_region.copy()
-
         prohibited = tuple(bundle.annotation_profile.prohibit_cell_placement_fine_ids)
         valid = ~np.isin(target_tissue, prohibited)
         receiving_auxiliary = (
@@ -448,6 +416,17 @@ class CellToolProgramCompiler:
                 if label in schema.readable_labels:
                     host_ids.update(schema.resolve_fine_ids(label))
             valid &= np.isin(target_tissue, tuple(sorted(host_ids)))
+        if (
+            primitive.scope == "cell_only"
+            and cell.layout_program_id != "localized_density_gradient"
+            and cell.interface_ids
+        ):
+            # Interface-local additions own one exact spatial extent: both
+            # accepted centers and every pixel of each calibrated reference
+            # footprint must remain inside the mechanism zone. Letting V span
+            # the entire compatible host allowed complete nuclei whose centers
+            # were legal to leak beyond the bounded peritumoral annulus.
+            valid &= mechanism_region
         center_region &= valid
         mechanism_region &= valid
         if (
@@ -709,7 +688,17 @@ class CellToolProgramCompiler:
                 "P": cell.placement_center_policy,
                 "V": cell.valid_footprint_policy,
                 "S": cell.probnet_context_policy,
-                "reference_shapes": ("complete-nonborder-nonmerged-same-class-first"),
+                "reference_shapes": (
+                    "native-same-patch-first-otherwise-digest-bound-"
+                    "dataset-calibrated-complete-shapes"
+                ),
+                "instance_authority": (
+                    "source-native-or-distance-watershed-for-count-density-"
+                    "occupancy-and-removal"
+                ),
+                "shape_containment": (
+                    "per-reference-footprint-exactly-certified-against-V"
+                ),
                 "counts": ("patch-adaptive-target-population-or-explicit-cell-budget"),
                 "continuity": (
                     "planner-anchor-x-actual-tissue-change-x-local-cell-scale"
@@ -1133,6 +1122,36 @@ class CellToolProgramCompiler:
         if not minimum_count <= resolved <= maximum_count:
             raise JointContractError(
                 "density field-derived removal count is outside its safety bounds"
+            )
+        radial_target_mismatches = []
+        for (name, items, target_fraction), quota in zip(
+            radial_bands, quotas
+        ):
+            source_count = len(items)
+            if source_count <= 0:
+                continue
+            realized_fraction = quota / source_count
+            tolerance = max(0.12, 1.0 / source_count)
+            if abs(realized_fraction - target_fraction) > tolerance:
+                radial_target_mismatches.append(
+                    {
+                        "band": name,
+                        "source_count": source_count,
+                        "quota": quota,
+                        "realized_fraction": realized_fraction,
+                        "target_fraction": target_fraction,
+                        "tolerance": tolerance,
+                    }
+                )
+        if radial_target_mismatches:
+            raise JointContractError(
+                "density field count budget cannot realize the skill-owned "
+                "radial removal targets: "
+                + "; ".join(
+                    f"{item['band']}={item['quota']}/{item['source_count']} "
+                    f"target={item['target_fraction']:.4f}"
+                    for item in radial_target_mismatches
+                )
             )
         if quotas[0] < contract.minimum_core_removals or sum(
             quotas[1:]
@@ -1722,6 +1741,33 @@ def _enforce_density_field_gradient_quotas(
                     trial,
                 )
             )
+        # The core may already be at its residual-safe capacity while rounded
+        # transition quotas remain one instance below the minimum effect. In
+        # that state a bounded transition increment is the only executable
+        # repair (for example 7,2,1,1,0 -> 7,2,1,2,0).
+        if sum(result) < minimum_count and sum(result) < maximum_count:
+            for index in range(1, len(result)):
+                if result[index] >= capacities[index]:
+                    continue
+                trial = list(result)
+                trial[index] += 1
+                errors = [
+                    abs(value / max(1, count) - target)
+                    for value, count, target in zip(
+                        trial, counts, target_fractions
+                    )
+                    if count
+                ]
+                candidates.append(
+                    (
+                        0 if aggregate_ordered(trial) else 1,
+                        0 if radial_ordered(trial) else 1,
+                        max(errors, default=0.0),
+                        sum(errors),
+                        index,
+                        trial,
+                    )
+                )
         if not candidates:
             break
         result = min(candidates)[-1]

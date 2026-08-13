@@ -1742,6 +1742,20 @@ def _reference_shape_integrity(c):
         )
     )
     locality = c.candidate.tool_trace.get("reference_shape_locality")
+    shape_authority = c.candidate.tool_trace.get(
+        "reference_shape_authority"
+    )
+    calibrated_authority_ok = bool(
+        locality == "calibrated_dataset_instance_library"
+        and isinstance(shape_authority, dict)
+        and shape_authority.get("version")
+        == "calibrated-reference-shapes-v1"
+        and len(str(shape_authority.get("authority_sha256", ""))) == 64
+        and all(
+            str(instance_id).startswith("library:")
+            for instance_id in eligible
+        )
+    )
     selected_component_id = (
         c.plan.cell_plan.core_zone.removeprefix("pop:component:")
         if c.plan.cell_plan.core_zone.startswith("pop:component:")
@@ -1750,6 +1764,7 @@ def _reference_shape_integrity(c):
     metadata = {item.instance_id: item for item in c.scene.cells.instances}
     component_local_ok = bool(
         selected_component_id is None
+        or calibrated_authority_ok
         or (
             locality == "selected_tissue_component"
             and all(
@@ -1786,6 +1801,12 @@ def _reference_shape_integrity(c):
             "reference_shape_locality": locality,
             "selected_component_id": selected_component_id,
             "component_local_reference_ok": component_local_ok,
+            "calibrated_shape_authority_ok": calibrated_authority_ok,
+            "reference_shape_authority_sha256": (
+                shape_authority.get("authority_sha256")
+                if isinstance(shape_authority, dict)
+                else None
+            ),
         },
     )
 
@@ -1962,6 +1983,9 @@ def _local_shape_distribution(c):
     explicit_reference_ids = set(
         c.candidate.tool_trace.get("reference_shape_ids", ())
     )
+    recorded_reference_areas = c.candidate.tool_trace.get(
+        "reference_shape_areas_by_class", {}
+    )
     explicit_references_by_class: dict[int, list[float]] = {}
     references_by_class: dict[int, list[float]] = {}
     fallback_references_by_class: dict[int, list[float]] = {}
@@ -1979,6 +2003,24 @@ def _local_shape_distribution(c):
             references_by_class.setdefault(item.class_id, []).append(
                 float(item.area_px)
             )
+    if isinstance(recorded_reference_areas, dict):
+        for raw_class_id, values in recorded_reference_areas.items():
+            try:
+                class_id = int(raw_class_id)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(values, (list, tuple)):
+                continue
+            areas = []
+            for value in values:
+                try:
+                    area = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if area > 0:
+                    areas.append(area)
+            if areas:
+                explicit_references_by_class[class_id] = areas
     class_metrics = {}
     class_checks = []
     for class_id, added_areas in sorted(added_by_class.items()):

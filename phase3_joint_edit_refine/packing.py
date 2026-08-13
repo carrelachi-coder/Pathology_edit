@@ -18,7 +18,7 @@ from scipy import ndimage
 
 from .cell_layouts import ReferenceNucleusShape
 
-PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v16"
+PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v17"
 MAX_PACKING_REFERENCE_SHAPES_PER_CLASS = 3
 MINIMUM_LOCAL_MEDIAN_AREA_RATIO = 0.60
 MAXIMUM_LOCAL_MEDIAN_AREA_RATIO = 1.67
@@ -123,6 +123,7 @@ def certify_complete_footprint_packing(
     required_seam_count: int = 0,
     minimum_seam_count: int | None = None,
     required_seam_class: int | None = None,
+    minimum_acceptable_count: int | None = None,
     allow_finite_count_fallback: bool = True,
     allow_shape_capacity_fallback: bool = True,
 ) -> PackingCertificate:
@@ -317,6 +318,7 @@ def certify_complete_footprint_packing(
             required_seam_count=placed_seam,
             minimum_seam_count=placed_seam,
             required_seam_class=required_seam_class,
+            minimum_acceptable_count=minimum_acceptable_count,
             allow_finite_count_fallback=allow_finite_count_fallback,
             allow_shape_capacity_fallback=allow_shape_capacity_fallback,
         )
@@ -357,6 +359,7 @@ def certify_complete_footprint_packing(
                 required_seam_count=required_seam_count,
                 minimum_seam_count=minimum_seam_count,
                 required_seam_class=required_seam_class,
+                minimum_acceptable_count=minimum_acceptable_count,
                 allow_finite_count_fallback=allow_finite_count_fallback,
                 allow_shape_capacity_fallback=False,
             )
@@ -368,11 +371,19 @@ def certify_complete_footprint_packing(
                     ),
                     capacity_optimized_shape_fallback_used=True,
                 )
-    minimum_safe_count = max(
-        seam_required,
-        1 if requested else 0,
-        int(np.ceil(0.80 * requested)),
-        int(np.ceil(requested - np.sqrt(requested))),
+    minimum_safe_count = (
+        max(
+            seam_required,
+            1 if requested else 0,
+            min(requested, max(0, int(minimum_acceptable_count))),
+        )
+        if minimum_acceptable_count is not None
+        else max(
+            seam_required,
+            1 if requested else 0,
+            int(np.ceil(0.80 * requested)),
+            int(np.ceil(requested - np.sqrt(requested))),
+        )
     )
     if (
         allow_finite_count_fallback
@@ -392,6 +403,7 @@ def certify_complete_footprint_packing(
             required_seam_count=required_seam_count,
             minimum_seam_count=minimum_seam_count,
             required_seam_class=required_seam_class,
+            minimum_acceptable_count=minimum_safe_count,
             allow_finite_count_fallback=False,
             allow_shape_capacity_fallback=allow_shape_capacity_fallback,
         )

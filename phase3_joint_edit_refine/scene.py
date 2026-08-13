@@ -30,7 +30,7 @@ from .nuclei import (
     normalize_nuclei_mask,
     touches_border,
 )
-
+from .reference_shapes import ReferenceShapeAuthority
 
 STRUCTURAL_COMPARTMENT_LABELS = frozenset(
     {"Tumor", "Stroma", "Normal epithelium", "Necrosis", "Other tissue"}
@@ -56,6 +56,7 @@ class JointSceneAnalysis:
     population_zone_masks: dict[str, np.ndarray]
     structural_hierarchy: dict[str, object]
     structural_unit_masks: dict[str, np.ndarray]
+    reference_shape_authority: ReferenceShapeAuthority | None = None
 
     def to_metadata(self) -> dict:
         return {
@@ -67,6 +68,11 @@ class JointSceneAnalysis:
                 for key, value in sorted(self.auxiliary_structure_masks.items())
             },
             "structural_hierarchy": self.structural_hierarchy,
+            "reference_shape_authority": (
+                self.reference_shape_authority.to_metadata()
+                if self.reference_shape_authority is not None
+                else None
+            ),
         }
 
 
@@ -79,6 +85,7 @@ def build_joint_scene_analysis(
     nuclei_instances_path: str | None = None,
     auxiliary_structure_paths: dict[str, str] | None = None,
     auxiliary_structure_provenance: dict[str, dict] | None = None,
+    reference_shape_authority: ReferenceShapeAuthority | None = None,
 ) -> JointSceneAnalysis:
     tissue = np.asarray(tissue_mask)
     nuclei = normalize_nuclei_mask(nuclei_mask)
@@ -140,7 +147,11 @@ def build_joint_scene_analysis(
                 centroid_xy=(cx, cy),
                 tissue_fine_id=int(tissue[row, col]),
                 touches_border=touches_border(component),
-                source=("instance_json" if native_instances is not None else "semantic_component"),
+                source=(
+                    "instance_json"
+                    if native_instances is not None
+                    else "semantic_distance_watershed"
+                ),
                 tissue_component_id=tissue_component_id,
                 nearest_interface_id=nearest_interface_id,
                 distance_to_interface_px=(
@@ -182,7 +193,11 @@ def build_joint_scene_analysis(
         instances=tuple(instances),
         class_counts=counts,
         mean_nearest_neighbor_px=mean_nnd,
-        observation_quality=("native_instance" if native_instances is not None else "semantic_fallback"),
+        observation_quality=(
+            "native_instance"
+            if native_instances is not None
+            else "semantic_distance_watershed"
+        ),
         warnings=tuple(warnings),
         edges=edges,
         interface_relation_count=sum(
@@ -220,6 +235,7 @@ def build_joint_scene_analysis(
         population_masks,
         hierarchy,
         structural_unit_masks,
+        reference_shape_authority,
     )
 
 

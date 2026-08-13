@@ -1229,6 +1229,11 @@ def certify_compiled_cell_program_feasibility(
     contract,
     scene: JointSceneAnalysis,
     preflight: JointNucleiPreflight,
+    authoritative_references_by_class: dict[
+        int, tuple[ReferenceNucleusShape, ...]
+    ]
+    | None = None,
+    minimum_acceptable_add_count: int | None = None,
 ) -> CandidateCellFeasibility:
     """Re-certify packing on the compiler's exact P/V/E/C masks.
 
@@ -1239,32 +1244,47 @@ def certify_compiled_cell_program_feasibility(
     two stages disagree.
     """
 
-    metadata = {item.instance_id: item for item in scene.cells.instances}
-    target_fine_ids = set(contract.target_host_fine_ids)
-    local_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
-    fallback_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
-    for instance_id in preflight.eligible_reference_ids:
-        item = metadata.get(instance_id)
-        if (
-            item is None
-            or item.class_id not in set(contract.allowed_new_cell_classes)
-        ):
-            continue
-        reference = _reference_from_scene(scene, instance_id, item.class_id)
-        if reference is not None:
-            fallback_references_by_class.setdefault(
-                item.class_id, []
-            ).append(reference)
-            if item.tissue_fine_id in target_fine_ids:
-                local_references_by_class.setdefault(
+    if authoritative_references_by_class is not None:
+        references_by_class = {
+            int(class_id): tuple(items)
+            for class_id, items in authoritative_references_by_class.items()
+            if items
+            and int(class_id) in set(contract.allowed_new_cell_classes)
+        }
+    else:
+        metadata = {item.instance_id: item for item in scene.cells.instances}
+        target_fine_ids = set(contract.target_host_fine_ids)
+        local_references_by_class: dict[
+            int, list[ReferenceNucleusShape]
+        ] = {}
+        fallback_references_by_class: dict[
+            int, list[ReferenceNucleusShape]
+        ] = {}
+        for instance_id in preflight.eligible_reference_ids:
+            item = metadata.get(instance_id)
+            if (
+                item is None
+                or item.class_id
+                not in set(contract.allowed_new_cell_classes)
+            ):
+                continue
+            reference = _reference_from_scene(
+                scene, instance_id, item.class_id
+            )
+            if reference is not None:
+                fallback_references_by_class.setdefault(
                     item.class_id, []
                 ).append(reference)
-    references_by_class = {
-        class_id: tuple(
-            local_references_by_class.get(class_id) or fallback_items
-        )
-        for class_id, fallback_items in fallback_references_by_class.items()
-    }
+                if item.tissue_fine_id in target_fine_ids:
+                    local_references_by_class.setdefault(
+                        item.class_id, []
+                    ).append(reference)
+        references_by_class = {
+            class_id: tuple(
+                local_references_by_class.get(class_id) or fallback_items
+            )
+            for class_id, fallback_items in fallback_references_by_class.items()
+        }
     program = contract.cell_program
     required_seam_count = 0
     minimum_seam_count = 0
@@ -1325,6 +1345,7 @@ def certify_compiled_cell_program_feasibility(
         required_seam_count=required_seam_count,
         minimum_seam_count=minimum_seam_count,
         required_seam_class=target_class,
+        minimum_acceptable_count=minimum_acceptable_add_count,
         # Exactly one bounded fallback is allowed across the two feasibility
         # stages. A broad candidate core may fit the nominal count while the
         # final E/P/V/C compiler exposes the true lower capacity; in that case
@@ -1359,6 +1380,16 @@ def certify_compiled_cell_program_feasibility(
     ]
     if not certificate.passed:
         reasons.extend(certificate.failure_reasons)
+    if (
+        program.continuity_requires_new_target_cells
+        and certificate.requested_count <= 0
+    ):
+        reasons.append("required_new_target_population_has_zero_quota")
+    if certificate.requested_count > 0 and (
+        certificate.placed_count != certificate.requested_count
+        or len(certificate.placements) != certificate.requested_count
+    ):
+        reasons.append("packing_certificate_witness_ledger_incomplete")
     retained_centers = class_center_mask(
         np.where(
             np.asarray(program.erasure_region, dtype=bool),

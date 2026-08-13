@@ -822,12 +822,19 @@ class JointAuditWriter:
         instance_masks: dict[str, np.ndarray],
         eligible_ids: tuple[str, ...] | list[str],
         rejected: dict[str, str],
+        reference_shape_authority: dict | None = None,
     ) -> str:
         """Visual proof that patch-censored source shapes were not reusable."""
 
         canvas = Image.open(source_image_path).convert("RGB")
         draw = ImageDraw.Draw(canvas)
         eligible = set(eligible_ids)
+        calibrated = {
+            instance_id
+            for instance_id in eligible
+            if str(instance_id).startswith("library:")
+        }
+        source_eligible = eligible - calibrated
         for instance_id in sorted(eligible.union(rejected)):
             component = instance_masks.get(instance_id)
             if component is None:
@@ -844,7 +851,10 @@ class JointAuditWriter:
         draw.rectangle((0, 0, min(canvas.width - 1, 360), 22), fill=(0, 0, 0))
         draw.text(
             (5, 5),
-            f"green=eligible {len(eligible)} | red=rejected {len(rejected)}",
+            (
+                f"green=source {len(source_eligible)} | "
+                f"library={len(calibrated)} | red={len(rejected)}"
+            ),
             fill=(255, 255, 255),
         )
         path = self.case_dir / "reference_shape_review.png"
@@ -854,6 +864,11 @@ class JointAuditWriter:
             "reference_shape_audit.json",
             {
                 "eligible_instance_ids": sorted(eligible),
+                "source_patch_eligible_instance_ids": sorted(
+                    source_eligible
+                ),
+                "calibrated_library_instance_ids": sorted(calibrated),
+                "reference_shape_authority": reference_shape_authority,
                 "rejected_instances": dict(sorted(rejected.items())),
                 "four_patch_edges_are_censoring_boundaries": True,
             },

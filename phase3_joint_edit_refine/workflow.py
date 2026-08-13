@@ -83,6 +83,7 @@ from .portfolio_authority import (
     build_tissue_portfolio_authority_binding,
     canonical_metadata_sha256,
 )
+from .reference_shapes import load_reference_shape_authority
 from .scene import build_joint_scene_analysis
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
@@ -265,6 +266,38 @@ class JointPathologyEditWorkflow:
             case.validate_local_inputs()
             _validate_digests(case)
             schema = self.mask_skills.annotation_schema(case.annotation_profile_id)
+            reference_shape_authority = None
+            if (
+                case.cell_count_extent_budget is not None
+                and self.cell_executor is not None
+                and hasattr(self.cell_executor, "config")
+            ):
+                resolved_classes = tuple(
+                    sorted(
+                        {
+                            int(value)
+                            for value in case.semantic_intent.get(
+                                "resolved_cell_class_ids", ()
+                            )
+                        }
+                    )
+                )
+                if not resolved_classes and (
+                    "neoplastic" in case.primitive_id
+                    or "peritumoral" in case.primitive_id
+                ):
+                    resolved_classes = (1,)
+                if not resolved_classes:
+                    resolved_classes = (1, 2, 3, 4, 5)
+                reference_shape_authority = (
+                    load_reference_shape_authority(
+                        self.cell_executor.config.instance_library,
+                        dataset_name=(
+                            self.cell_executor.config.dataset_name
+                        ),
+                        class_ids=resolved_classes,
+                    )
+                )
             scene = build_joint_scene_analysis(
                 source_tissue,
                 source_nuclei,
@@ -275,6 +308,7 @@ class JointPathologyEditWorkflow:
                 auxiliary_structure_provenance=case.provenance.get(
                     "auxiliary_structure_provenance", {}
                 ),
+                reference_shape_authority=reference_shape_authority,
             )
             audit.write_json("case_context.json", case.to_metadata())
             audit.write_json("joint_scene_graph.json", scene.to_metadata())
@@ -329,6 +363,41 @@ class JointPathologyEditWorkflow:
                         )
                     )
                 )
+            requested_mechanism = case.provenance.get("joint_mechanism_id")
+            requested_primitive = case.provenance.get("joint_primitive_id")
+            if isinstance(requested_mechanism, str) and isinstance(
+                requested_primitive, str
+            ):
+                requested_pair = (
+                    f"{requested_primitive}::{requested_mechanism}"
+                )
+                prepared_pairs = {
+                    (
+                        item.option.primitive_id,
+                        item.option.mechanism.mechanism_id,
+                    )
+                    for item in prepared.values()
+                }
+                if (
+                    (requested_primitive, requested_mechanism)
+                    not in prepared_pairs
+                ):
+                    matching_rejections = [
+                        reason
+                        for option_id, reason in interpretation_rejections.items()
+                        if option_id == requested_pair
+                        or option_id.endswith("::" + requested_pair)
+                    ]
+                    reason = (
+                        "; ".join(matching_rejections)
+                        if matching_rejections
+                        else "the bound pair is absent from the certified interpretation portfolio"
+                    )
+                    raise JointContractError(
+                        "explicit provenance-bound primitive/mechanism pair "
+                        "did not survive deterministic preflight: "
+                        f"{requested_pair}={reason}"
+                    )
             if case.semantic_intent.get("scenario") == "post_treatment_change":
                 scenario_order = (
                     "treatment_response",
@@ -2154,6 +2223,9 @@ class JointPathologyEditWorkflow:
                     rejected=layouts[0].trace.get(
                         "reference_shape_rejections", {}
                     ),
+                    reference_shape_authority=layouts[0].trace.get(
+                        "reference_shape_authority"
+                    ),
                 )
             for layout in layouts:
                 candidate_id = (
@@ -2507,6 +2579,9 @@ class JointPathologyEditWorkflow:
                 instance_masks=scene.instance_masks,
                 eligible_ids=layouts[0].trace.get("reference_shape_ids", ()),
                 rejected=layouts[0].trace.get("reference_shape_rejections", {}),
+                reference_shape_authority=layouts[0].trace.get(
+                    "reference_shape_authority"
+                ),
             )
         prohibited = set(bundle.annotation_profile.prohibit_generation_support_fine_ids)
         generation_allowed = ~np.isin(source_tissue, tuple(prohibited))
@@ -2762,6 +2837,31 @@ class JointPathologyEditWorkflow:
             reasons=(),
         )
         # Reuse the same exact packing verifier as the tissue-changing path.
+        # Packing and execution must allocate the same observed local class
+        # composition. Equal synthetic weights certified one frozen case at
+        # 7/7/6 while execution correctly requested 17/2/1, producing a false
+        # capacity pass.
+        local_class_counts = {
+            int(class_id): 0 for class_id in program.target_classes
+        }
+        placement_region = np.asarray(
+            program.placement_center_region, dtype=bool
+        )
+        for item in scene.cells.instances:
+            if item.class_id not in local_class_counts:
+                continue
+            x, y = item.centroid_xy
+            row, col = round(y), round(x)
+            if (
+                0 <= row < placement_region.shape[0]
+                and 0 <= col < placement_region.shape[1]
+                and placement_region[row, col]
+            ):
+                local_class_counts[item.class_id] += 1
+        if sum(local_class_counts.values()) <= 0:
+            local_class_counts = {
+                int(class_id): 1 for class_id in program.target_classes
+            }
         pseudo_preflight = type(
             "CellOnlyPackingAuthority",
             (),
@@ -2775,17 +2875,37 @@ class JointPathologyEditWorkflow:
                 ),
                 "target_cell_class": int(program.target_classes[0]),
                 "target_density_by_class": {
-                    int(class_id): 1.0
-                    for class_id in program.target_classes
+                    class_id: float(count)
+                    for class_id, count in local_class_counts.items()
                 },
             },
         )()
+        references_by_class = {}
+        for class_id in program.target_classes:
+            references, _rejected = build_reference_shape_library(
+                scene,
+                class_id=int(class_id),
+                allow_calibrated_fallback=True,
+            )
+            if references:
+                references_by_class[int(class_id)] = tuple(references)
+        minimum_acceptable_count = (
+            max(
+                int(budget.min_delta_count),
+                int(bundle.primitive.minimum_effect_delta_count),
+            )
+            if budget is not None
+            and "add" in bundle.mechanism.cell_program.actions
+            else None
+        )
         certified = certify_compiled_cell_program_feasibility(
             initial,
             candidate=tissue_candidate,
             contract=executable_contract,
             scene=scene,
             preflight=pseudo_preflight,
+            authoritative_references_by_class=references_by_class,
+            minimum_acceptable_add_count=minimum_acceptable_count,
         )
         if not certified.passed:
             raise JointContractError(
@@ -2831,9 +2951,20 @@ class JointPathologyEditWorkflow:
             zones.sort(
                 key=lambda item: (-item.nucleus_count, -item.area_px, item.zone_id)
             )
+            layout_program = bundle.mechanism.cell_program.layout_for(
+                case.primitive_id
+            )
+            requires_depletion_anchor = (
+                layout_program == "localized_density_gradient"
+            )
+            depletion = bundle.mechanism.cell_program.cellularity_depletion
+            anchor_records = {
+                item.anchor_segment_id: item
+                for item in scene.tissue.graph.anchor_segments
+            }
             for zone in zones[:4]:
                 provenance = {"joint_population_zone_id": zone.zone_id}
-                if case.primitive_id == "cellularity-decrease-v1":
+                if requires_depletion_anchor:
                     requested_anchor = case.provenance.get(
                         "cellularity_depletion_anchor"
                     )
@@ -2845,6 +2976,16 @@ class JointPathologyEditWorkflow:
                         raise JointContractError(
                             "cellularity decrease requires an explicit mask-graph depletion anchor"
                         )
+                    if isinstance(requested_anchor, Mapping):
+                        variants.append(
+                            {
+                                **provenance,
+                                "cellularity_depletion_anchor": dict(
+                                    requested_anchor
+                                ),
+                            }
+                        )
+                        continue
                     touching = [
                         interface
                         for interface in scene.tissue.graph.interfaces
@@ -2854,21 +2995,71 @@ class JointPathologyEditWorkflow:
                             interface.target_component_id,
                         }
                     ]
-                    for interface in touching[:4]:
+                    allowed_neighbors = set(
+                        depletion.allowed_neighbor_labels
+                        if depletion is not None
+                        else ()
+                    )
+                    eligible_touching = []
+                    for interface in touching:
+                        if interface.source_component_id == zone.tissue_component_id:
+                            neighbor = interface.target_label
+                        else:
+                            neighbor = interface.source_label
+                        if allowed_neighbors and neighbor not in allowed_neighbors:
+                            continue
+                        eligible_touching.append(interface)
+                    eligible_touching.sort(
+                        key=lambda item: (-item.contact_pixels, item.interface_id)
+                    )
+                    for interface in eligible_touching[:4]:
                         if not interface.anchor_segment_ids:
                             continue
-                        variants.append(
-                            {
-                                **provenance,
-                                "cellularity_depletion_anchor": {
-                                    "type": "interface",
-                                    "interface_ids": [interface.interface_id],
-                                    "anchor_ids": [interface.anchor_segment_ids[0]],
-                                    "observation": "deterministic component-interface adjacency",
-                                    "confidence": 1.0,
-                                },
-                            }
+                        ordered_anchor_ids = tuple(
+                            item.anchor_segment_id
+                            for item in sorted(
+                                (
+                                    anchor_records[anchor_id]
+                                    for anchor_id in interface.anchor_segment_ids
+                                    if anchor_id in anchor_records
+                                ),
+                                key=lambda item: (
+                                    -item.contact_pixels,
+                                    item.display_index,
+                                    item.anchor_segment_id,
+                                ),
+                            )
                         )
+                        if not ordered_anchor_ids:
+                            continue
+                        # Certify both a broad interface-owned density field
+                        # and the strongest local sub-arcs.  The portfolio
+                        # compiler, not the LLM, decides which groups have
+                        # enough complete class-1 instances after residual
+                        # floors and minimum-effect checks.
+                        anchor_groups = [ordered_anchor_ids]
+                        anchor_groups.extend(
+                            (anchor_id,)
+                            for anchor_id in ordered_anchor_ids[:3]
+                        )
+                        for anchor_ids in dict.fromkeys(anchor_groups):
+                            variants.append(
+                                {
+                                    **provenance,
+                                    "cellularity_depletion_anchor": {
+                                        "type": "interface",
+                                        "interface_ids": [
+                                            interface.interface_id
+                                        ],
+                                        "anchor_ids": list(anchor_ids),
+                                        "observation": (
+                                            "deterministic component-interface "
+                                            "adjacency"
+                                        ),
+                                        "confidence": 1.0,
+                                    },
+                                }
+                            )
                 else:
                     variants.append(provenance)
         else:
@@ -2976,6 +3167,8 @@ class JointPathologyEditWorkflow:
                     executable_contract=contract,
                 )
                 packing = preflight.exact_packing_certificate
+                if int(packing.get("requested_count", 0)) > 0:
+                    contract = contract.bind_packing_certificate(packing)
                 placements = packing.get("placements", ())
                 center_rows = [int(item["row"]) for item in placements]
                 center_cols = [int(item["col"]) for item in placements]
@@ -2989,8 +3182,19 @@ class JointPathologyEditWorkflow:
                     median_distance = float(
                         np.median(distance[center_rows, center_cols])
                     )
+                nominal_requested_count = int(
+                    packing.get(
+                        "nominal_requested_count",
+                        preflight.required_add_count,
+                    )
+                )
                 packing_margin = float(
-                    preflight.estimated_add_capacity - preflight.required_add_count
+                    preflight.estimated_add_capacity
+                    - nominal_requested_count
+                )
+                executable_packing_margin = float(
+                    preflight.estimated_add_capacity
+                    - preflight.required_add_count
                 )
                 placement_mask = np.zeros_like(source_tissue, dtype=bool)
                 if center_rows:
@@ -3048,6 +3252,9 @@ class JointPathologyEditWorkflow:
                 )
                 metrics = {
                     "certificate_capacity_margin": packing_margin,
+                    "executable_capacity_margin": (
+                        executable_packing_margin
+                    ),
                     "packing_seam_capacity_margin": float(
                         preflight.estimated_seam_capacity
                         - preflight.required_seam_count

@@ -38,6 +38,7 @@ from phase3_joint_edit_refine.cell_layouts import (
 from phase3_joint_edit_refine.cell_programs import (
     _cap_density_field_quotas,
     _depletion_band_edges,
+    _enforce_density_field_gradient_quotas,
 )
 from phase3_joint_edit_refine.critic import DeterministicJointResearchCritic
 from phase3_joint_edit_refine.feasibility import (
@@ -100,6 +101,9 @@ from phase3_joint_edit_refine.post_generation import (
 )
 from phase3_joint_edit_refine.profile_statistics import (
     build_annotation_profile_statistics,
+)
+from phase3_joint_edit_refine.reference_shapes import (
+    load_reference_shape_authority,
 )
 from phase3_joint_edit_refine.scene import build_joint_scene_analysis
 from phase3_joint_edit_refine.seam import (
@@ -1414,6 +1418,20 @@ class JointSkillTests(unittest.TestCase):
                     primitive.minimum_effect_span_cell_diameters, 6.0
                 )
 
+    def test_density_gradient_quota_can_fill_transition_shortfall(self):
+        repaired = _enforce_density_field_gradient_quotas(
+            quotas=[7, 2, 1, 1, 0],
+            source_counts=[13, 5, 2, 4, 1],
+            maximum_removals=[7, 2, 1, 2, 0],
+            target_fractions=[0.55, 0.42, 0.38, 0.34, 0.20],
+            minimum_count=12,
+            maximum_count=18,
+            minimum_core=2,
+            minimum_transition=2,
+        )
+
+        self.assertEqual(repaired, [7, 2, 1, 2, 0])
+
     def test_cluster_members_each_require_a_legal_center(self):
         shape = np.ones((3, 3), dtype=bool)
         legal = np.zeros((40, 40), dtype=bool)
@@ -1901,6 +1919,38 @@ class JointSkillTests(unittest.TestCase):
         self.assertFalse(strict_recheck.finite_count_fallback_used)
         self.assertEqual(strict_recheck.requested_count, 10)
         self.assertEqual(strict_recheck.placed_count, 9)
+
+    def test_packing_fallback_honors_manifest_minimum_count(self):
+        shape = (24, 24)
+        centers = np.zeros(shape, dtype=bool)
+        for index in range(12):
+            row = 3 + 5 * (index // 4)
+            col = 3 + 5 * (index % 4)
+            centers[row, col] = True
+        reference = ReferenceNucleusShape(
+            instance_id="unit-shape",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="test",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=18,
+            minimum_acceptable_count=12,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertTrue(certificate.finite_count_fallback_used)
+        self.assertEqual(certificate.nominal_requested_count, 18)
+        self.assertEqual(certificate.minimum_safe_count, 12)
+        self.assertEqual(certificate.requested_count, 12)
+        self.assertEqual(certificate.placed_count, 12)
 
     def test_finite_count_bound_uses_sampling_scale_not_fixed_ten_percent(self):
         shape = (36, 36)
@@ -3105,6 +3155,80 @@ class JointLedgerTests(unittest.TestCase):
         self.assertEqual(
             list(rejected.values()).count("patch_boundary_censored_shape"), 4
         )
+
+    def test_semantic_scene_uses_digest_bound_calibrated_shape_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bucket = root / "nuclei_instances" / "tissue_01_Tumor"
+            bucket.mkdir(parents=True)
+            (root / "statistics.json").write_text(
+                json.dumps(
+                    {
+                        "dataset": "BCSS",
+                        "statistics": {
+                            "1": {
+                                "name": "Tumor",
+                                "nuclei_types": {
+                                    "101": {
+                                        "stored_count": 3,
+                                        "mean_area": 9.0,
+                                    }
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            for index, size in enumerate((2, 3, 4), start=1):
+                mask = np.ones((size, size), dtype=bool)
+                np.savez(
+                    bucket / f"{index:06d}.npz",
+                    mask=mask,
+                    type=np.asarray(101),
+                    area=np.asarray(int(mask.sum())),
+                )
+            authority = load_reference_shape_authority(
+                root,
+                dataset_name="BCSS",
+                class_ids=(1,),
+            )
+            tissue = np.full((32, 32), 2, dtype=np.uint8)
+            nuclei = np.zeros_like(tissue)
+            nuclei[8:13, 8:13] = 1
+            scene = build_joint_scene_analysis(
+                tissue,
+                nuclei,
+                schema=MaskProfileSchema.from_reference_profile("GLaS"),
+                pixel_size_um=None,
+                reference_shape_authority=authority,
+            )
+
+            references, rejected = build_reference_shape_library(
+                scene,
+                class_id=1,
+                allow_calibrated_fallback=True,
+            )
+
+            self.assertEqual(
+                scene.cells.observation_quality,
+                "semantic_distance_watershed",
+            )
+            self.assertTrue(references)
+            self.assertTrue(
+                all(item.instance_id.startswith("library:BCSS:") for item in references)
+            )
+            self.assertTrue(
+                all(
+                    item.source == "calibrated_dataset_instance_library"
+                    for item in references
+                )
+            )
+            self.assertIn(
+                "semantic_shape_superseded_by_calibrated_library_authority",
+                set(rejected.values()),
+            )
+            self.assertEqual(len(authority.authority_sha256), 64)
 
     def test_semantic_fallback_splits_touching_same_class_nuclei(self):
         rows, cols = np.ogrid[:40, :40]
@@ -4900,7 +5024,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v11"
+                program["compiler_version"], "joint-cell-tool-compiler-v12"
             )
             self.assertEqual(
                 program["policies"]["P"],

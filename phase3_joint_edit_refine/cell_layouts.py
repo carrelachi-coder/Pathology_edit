@@ -18,6 +18,7 @@ from .cell_programs import CompiledCellToolProgram
 from .executable_contract import ExecutableJointContract
 from .models import JointContractError, JointEditPlan
 from .nuclei import normalize_nuclei_mask
+from .reference_shapes import ReferenceNucleusShape
 from .scene import JointSceneAnalysis
 from .seam import (
     anchor_coverage_fraction,
@@ -60,15 +61,6 @@ class CellLayoutResult:
     cell_candidate_id: str
     target_nuclei_mask: np.ndarray
     trace: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class ReferenceNucleusShape:
-    instance_id: str
-    class_id: int
-    mask: np.ndarray
-    source: str
-    area_px: int
 
 
 def generate_cell_layouts(
@@ -184,6 +176,9 @@ def generate_cell_layouts(
         current, rejected = build_reference_shape_library(
             scene,
             class_id=class_id,
+            allow_calibrated_fallback=(
+                bundle.primitive.scope == "cell_only"
+            ),
         )
         current = _prioritize_local_references(
             current,
@@ -344,13 +339,22 @@ def generate_cell_layouts(
                 replacement_count,
                 int(continuity_quota.maximum_count),
             )
+    executable_desired_count = replacement_count + reserve_count
     biological_replacement_count = replacement_count
     biological_reserve_count = reserve_count
-    biological_desired_count = replacement_count + reserve_count
+    biological_desired_count = executable_desired_count
+    if (
+        bundle.primitive.scope == "cell_only"
+        and compiled_program.biological_target_delta_count is not None
+    ):
+        biological_desired_count = int(
+            compiled_program.biological_target_delta_count
+        )
+        biological_reserve_count = biological_desired_count
     capacity_bound = max(
         1, int(np.count_nonzero(add_zone) / max(1.0, average_area * 2.0))
     )
-    requested_count = min(biological_desired_count, capacity_bound)
+    requested_count = min(executable_desired_count, capacity_bound)
     replacement_count = min(replacement_count, requested_count)
     reserve_count = min(reserve_count, max(0, requested_count - replacement_count))
 
@@ -398,6 +402,9 @@ def generate_cell_layouts(
             continuity_preferred_count=preferred_seam_count,
             minimum_effect_span_px=0,
             minimum_effect_foci=0,
+            enforce_single_scatter_separation=(
+                bundle.primitive.primitive_id != "cellularity-increase-v1"
+            ),
             seed=seed + variant * 104729,
         )
         halo_score = (
@@ -434,6 +441,9 @@ def generate_cell_layouts(
             continuity_preferred_count=0,
             minimum_effect_span_px=compiled_program.minimum_effect_span_px,
             minimum_effect_foci=compiled_program.minimum_effect_foci,
+            enforce_single_scatter_separation=(
+                bundle.primitive.primitive_id != "cellularity-increase-v1"
+            ),
             seed=seed + variant * 104729 + 8191,
         )
         placed = core_placed + halo_placed
@@ -483,6 +493,12 @@ def generate_cell_layouts(
                     "requested_count": requested_count,
                     "attempted_count": requested_count,
                     "placed_count": placed,
+                    "class_requested_counts": {
+                        str(target_class): requested_count
+                    },
+                    "class_placed_counts": {
+                        str(target_class): placed
+                    },
                     "placement_completion": (
                         1.0
                         if placed == 0 and biological_desired_count == 0
@@ -515,10 +531,26 @@ def generate_cell_layouts(
                     "reference_shape_sources": sorted(
                         {item.source for item in references}
                     ),
+                    "reference_shape_areas_by_class": {
+                        str(target_class): [
+                            int(item.area_px) for item in references
+                        ]
+                    },
+                    "reference_shape_authority": (
+                        scene.reference_shape_authority.to_metadata()
+                        if scene.reference_shape_authority is not None
+                        and any(
+                            item.source
+                            == "calibrated_dataset_instance_library"
+                            for item in references
+                        )
+                        else None
+                    ),
                     "reference_shape_rejections": rejected_references,
                     "reference_shape_integrity_certified": True,
                     "reference_shape_locality": _reference_shape_locality(
-                        plan.cell_plan.core_zone
+                        plan.cell_plan.core_zone,
+                        references=references,
                     ),
                     "reference_first": True,
                     "cross_domain_fallback": False,
@@ -778,7 +810,24 @@ def _build_multiclass_addition_results(
             local_counts[item.class_id] += 1
     if sum(local_counts.values()) == 0:
         local_counts = {class_id: 1 for class_id in references_by_class}
-    quotas = _largest_remainder_class_quotas(local_counts, desired)
+    certificate_counts = (
+        executable_contract.packing_certificate or {}
+    ).get("class_requested_counts", {})
+    quotas = (
+        {
+            int(class_id): int(count)
+            for class_id, count in certificate_counts.items()
+            if int(class_id) in references_by_class and int(count) > 0
+        }
+        if isinstance(certificate_counts, Mapping)
+        else {}
+    )
+    if sum(quotas.values()) != desired:
+        quotas = _largest_remainder_class_quotas(local_counts, desired)
+    effect_class = max(
+        quotas,
+        key=lambda class_id: (quotas[class_id], -class_id),
+    )
     results = []
     for variant in range(variants):
         target = np.asarray(base).copy()
@@ -831,8 +880,17 @@ def _build_multiclass_addition_results(
                 continuity_maximum_empty_run_px=0,
                 continuity_minimum_anchor_coverage_fraction=0.0,
                 continuity_preferred_count=0,
-                minimum_effect_span_px=0,
-                minimum_effect_foci=0,
+                minimum_effect_span_px=(
+                    compiled_program.minimum_effect_span_px
+                    if class_id == effect_class
+                    else 0
+                ),
+                minimum_effect_foci=(
+                    min(requested, compiled_program.minimum_effect_foci)
+                    if class_id == effect_class
+                    else 0
+                ),
+                enforce_single_scatter_separation=False,
                 seed=seed + variant * 104729 + offset * 8191,
             )
             placements.extend(current)
@@ -880,10 +938,41 @@ def _build_multiclass_addition_results(
                         for values in references_by_class.values()
                         for item in values
                     ),
+                    "reference_shape_sources": sorted(
+                        {
+                            item.source
+                            for values in references_by_class.values()
+                            for item in values
+                        }
+                    ),
+                    "reference_shape_areas_by_class": {
+                        str(class_id): [
+                            int(item.area_px) for item in values
+                        ]
+                        for class_id, values in sorted(
+                            references_by_class.items()
+                        )
+                    },
+                    "reference_shape_authority": (
+                        scene.reference_shape_authority.to_metadata()
+                        if scene.reference_shape_authority is not None
+                        and any(
+                            item.source
+                            == "calibrated_dataset_instance_library"
+                            for values in references_by_class.values()
+                            for item in values
+                        )
+                        else None
+                    ),
                     "reference_shape_rejections": rejected_references,
                     "reference_shape_integrity_certified": True,
                     "reference_shape_locality": _reference_shape_locality(
-                        plan.cell_plan.core_zone
+                        plan.cell_plan.core_zone,
+                        references=tuple(
+                            item
+                            for values in references_by_class.values()
+                            for item in values
+                        ),
                     ),
                     "reference_first": True,
                     "cross_domain_fallback": False,
@@ -1007,6 +1096,7 @@ def build_reference_shape_library(
     scene: JointSceneAnalysis,
     *,
     class_id: int,
+    allow_calibrated_fallback: bool = False,
 ) -> tuple[tuple[ReferenceNucleusShape, ...], dict[str, str]]:
     """Return complete source templates and an auditable rejection map.
 
@@ -1071,6 +1161,20 @@ def build_reference_shape_library(
             item.instance_id,
         )
     )
+    calibrated = (
+        scene.reference_shape_authority.shapes_by_class.get(class_id, ())
+        if allow_calibrated_fallback
+        and scene.reference_shape_authority is not None
+        else ()
+    )
+    if calibrated and scene.cells.observation_quality != "native_instance":
+        for item in accepted:
+            rejected[item.instance_id] = (
+                "semantic_shape_superseded_by_calibrated_library_authority"
+            )
+        return tuple(calibrated), rejected
+    if not accepted and calibrated:
+        return tuple(calibrated), rejected
     return tuple(accepted), rejected
 
 
@@ -1133,25 +1237,43 @@ def _prioritize_local_references(
     core_zone: str,
 ) -> tuple[ReferenceNucleusShape, ...]:
     metadata = {item.instance_id: item for item in scene.cells.instances}
+    calibrated = tuple(
+        item
+        for item in references
+        if item.source == "calibrated_dataset_instance_library"
+    )
+    same_patch = tuple(
+        item for item in references if item.instance_id in metadata
+    )
     if core_zone.startswith("pop:component:"):
         component_id = core_zone.removeprefix("pop:component:")
         # Local population primitives must learn morphology from the selected
         # tissue component.  Falling back to a distant same-class nucleus can
         # silently import a different size distribution into the edit.
-        return tuple(
+        local = tuple(
             item
-            for item in references
+            for item in same_patch
             if metadata[item.instance_id].tissue_component_id == component_id
         )
+        return local or calibrated
     local = tuple(
         item
-        for item in references
+        for item in same_patch
         if metadata[item.instance_id].nearest_interface_id in interface_ids
     )
-    return local if len(local) >= 5 else references
+    return local if len(local) >= 5 else (calibrated or same_patch)
 
 
-def _reference_shape_locality(core_zone: str) -> str:
+def _reference_shape_locality(
+    core_zone: str,
+    *,
+    references: tuple[ReferenceNucleusShape, ...] = (),
+) -> str:
+    if references and all(
+        item.source == "calibrated_dataset_instance_library"
+        for item in references
+    ):
+        return "calibrated_dataset_instance_library"
     return (
         "selected_tissue_component"
         if core_zone.startswith("pop:component:")
@@ -1189,6 +1311,7 @@ def _place_layout(
     minimum_effect_span_px,
     minimum_effect_foci,
     seed,
+    enforce_single_scatter_separation=True,
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
@@ -1292,15 +1415,31 @@ def _place_layout(
             reference = references[(placed + seed) % len(references)]
             shape = np.asarray(reference.mask, dtype=bool)
             cy, cx = ay + dy, ax + dx
-            if layout_program == "single" and any(
-                (cy - int(item["center_xy"][1])) ** 2
-                + (cx - int(item["center_xy"][0])) ** 2
-                <= (2.25 * float(nominal_nucleus_diameter_px)) ** 2
-                for item in placement_trace
+            if (
+                layout_program == "single"
+                and enforce_single_scatter_separation
+                and any(
+                    (cy - int(item["center_xy"][1])) ** 2
+                    + (cx - int(item["center_xy"][0])) ** 2
+                    <= (2.25 * float(nominal_nucleus_diameter_px)) ** 2
+                    for item in placement_trace
+                )
             ):
                 # A single-cell scatter program must remain separated in the
                 # final instance graph; ordinary non-overlap is insufficient
                 # because two complete nuclei can still form one local focus.
+                continue
+            if layout_program == "small_cluster" and any(
+                (cy - int(item["center_xy"][1])) ** 2
+                + (cx - int(item["center_xy"][0])) ** 2
+                <= (2.25 * float(nominal_nucleus_diameter_px)) ** 2
+                for item in placement_trace[:group_start]
+            ):
+                # The gate rebuilds foci from the final raster and accepted
+                # centers, deliberately ignoring planner cluster IDs. Keep
+                # separately committed groups disconnected under that exact
+                # graph rule so two legal clusters cannot merge into an
+                # over-cardinality focus after rasterization.
                 continue
             # Every member of a pair/cluster/cord owns its own accepted center.
             # The anchor being legal is not sufficient: template offsets can
