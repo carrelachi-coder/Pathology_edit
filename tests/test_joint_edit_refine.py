@@ -34,6 +34,8 @@ from phase3_joint_edit_refine.cell_layouts import (
     ReferenceNucleusShape,
     _place_layout,
     build_reference_shape_library,
+    certificate_aligned_cluster_size_range,
+    independent_focus_minimum_center_separation_px,
 )
 from phase3_joint_edit_refine.cell_programs import (
     _cap_density_field_quotas,
@@ -1896,6 +1898,47 @@ class JointSkillTests(unittest.TestCase):
         self.assertFalse(certificate.passed)
         self.assertEqual(certificate.placed_count, 2)
         self.assertEqual(certificate.minimum_center_separation_px, 5.0)
+
+    def test_small_cluster_preflight_and_executor_share_focus_separation(self):
+        diameter = 8.0
+        separation = independent_focus_minimum_center_separation_px(
+            "peritumoral-small-cluster-increase-v1",
+            diameter,
+        )
+        self.assertEqual(separation, 18.0)
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "neoplastic-cell-abundance-increase-v1",
+                diameter,
+            ),
+            0.0,
+        )
+        self.assertEqual(
+            certificate_aligned_cluster_size_range(
+                primitive_id="peritumoral-small-cluster-increase-v1",
+                configured_range=(1, 4),
+                packing_certificate={
+                    "passed": True,
+                    "requested_count": 8,
+                    "minimum_center_separation_px": separation,
+                },
+                nominal_nucleus_diameter_px=diameter,
+            ),
+            (1, 1),
+        )
+        self.assertEqual(
+            certificate_aligned_cluster_size_range(
+                primitive_id="peritumoral-small-cluster-increase-v1",
+                configured_range=(1, 4),
+                packing_certificate={
+                    "passed": False,
+                    "requested_count": 8,
+                    "minimum_center_separation_px": separation,
+                },
+                nominal_nucleus_diameter_px=diameter,
+            ),
+            (1, 4),
+        )
 
     def test_typed_seam_does_not_exclude_other_compatible_classes(self):
         shape = (32, 32)

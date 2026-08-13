@@ -28,7 +28,66 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v5"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v6"
+
+_INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
+    {
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+    }
+)
+
+
+def independent_focus_minimum_center_separation_px(
+    primitive_id: str,
+    nominal_nucleus_diameter_px: float,
+) -> float:
+    """Return the raster-focus separation that preflight must certify.
+
+    The postcondition gate reconstructs foci from accepted centers rather than
+    trusting planner or executor cluster IDs.  Peritumoral scatter and
+    small-cluster programs therefore need a certificate that cannot merge
+    separately committed foci under that graph rule.  For the small-cluster
+    primitive, treating every witness as an independently legal one-cell focus
+    is conservative but valid because its skill-owned cardinality range is
+    one to four cells per focus.
+    """
+
+    if primitive_id not in _INDEPENDENT_FOCUS_PRIMITIVES:
+        return 0.0
+    return 2.25 * max(0.0, float(nominal_nucleus_diameter_px))
+
+
+def certificate_aligned_cluster_size_range(
+    *,
+    primitive_id: str,
+    configured_range: tuple[int, int],
+    packing_certificate: dict[str, Any],
+    nominal_nucleus_diameter_px: float,
+) -> tuple[int, int]:
+    """Bind execution grouping to an independent-focus packing witness."""
+
+    minimum, maximum = (int(item) for item in configured_range)
+    required_separation = independent_focus_minimum_center_separation_px(
+        primitive_id,
+        nominal_nucleus_diameter_px,
+    )
+    certified_separation = float(
+        packing_certificate.get("minimum_center_separation_px", 0.0)
+    )
+    certificate_proves_independent_foci = bool(
+        packing_certificate.get("passed") is True
+        and int(packing_certificate.get("requested_count", 0)) > 0
+        and required_separation > 0.0
+        and certified_separation + 1e-6 >= required_separation
+    )
+    if (
+        primitive_id == "peritumoral-small-cluster-increase-v1"
+        and minimum <= 1 <= maximum
+        and certificate_proves_independent_foci
+    ):
+        return (1, 1)
+    return (minimum, maximum)
 
 
 class SpatialRanker(Protocol):
@@ -374,6 +433,14 @@ def generate_cell_layouts(
         requested_count = min(executable_desired_count, capacity_bound)
     replacement_count = min(replacement_count, requested_count)
     reserve_count = min(reserve_count, max(0, requested_count - replacement_count))
+    execution_cluster_size_range = certificate_aligned_cluster_size_range(
+        primitive_id=bundle.primitive.primitive_id,
+        configured_range=bundle.mechanism.cell_program.cluster_size_range,
+        packing_certificate=packing_certificate,
+        nominal_nucleus_diameter_px=(
+            compiled_program.nominal_nucleus_diameter_px
+        ),
+    )
 
     score = ranker.score(
         tissue_mask=target_tissue,
@@ -405,7 +472,7 @@ def generate_cell_layouts(
             score=score,
             requested_count=replacement_count,
             layout_program=plan.cell_plan.layout_program_id,
-            cluster_size_range=bundle.mechanism.cell_program.cluster_size_range,
+            cluster_size_range=execution_cluster_size_range,
             nominal_nucleus_diameter_px=compiled_program.nominal_nucleus_diameter_px,
             orientation_mask=orientation_mask,
             continuity_region=compiled_program.continuity_region,
@@ -452,7 +519,7 @@ def generate_cell_layouts(
             score=np.asarray(halo_score, dtype=float),
             requested_count=reserve_count,
             layout_program=plan.cell_plan.layout_program_id,
-            cluster_size_range=bundle.mechanism.cell_program.cluster_size_range,
+            cluster_size_range=execution_cluster_size_range,
             nominal_nucleus_diameter_px=compiled_program.nominal_nucleus_diameter_px,
             orientation_mask=orientation_mask,
             continuity_region=np.zeros_like(halo),
@@ -499,6 +566,12 @@ def generate_cell_layouts(
                     ),
                     "production_density_calibrated": False,
                     "layout_program_id": plan.cell_plan.layout_program_id,
+                    "configured_cluster_size_range": list(
+                        bundle.mechanism.cell_program.cluster_size_range
+                    ),
+                    "execution_cluster_size_range": list(
+                        execution_cluster_size_range
+                    ),
                     "compiled_cell_tool_program": (compiled_program.to_metadata()),
                     "executable_contract_id": executable_contract.contract_id,
                     "executable_contract_version": (executable_contract.schema_version),

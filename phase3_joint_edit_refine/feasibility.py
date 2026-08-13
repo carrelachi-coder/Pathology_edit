@@ -24,6 +24,7 @@ from .budget import JointBudgetAllocation
 from .cell_layouts import (
     ReferenceNucleusShape,
     build_reference_shape_library,
+    independent_focus_minimum_center_separation_px,
 )
 from .instance_authority import build_scene_instance_authority
 from .models import JointCaseContext, JointContractError, JointEditPlan
@@ -40,7 +41,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v13"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v14"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -1375,10 +1376,10 @@ def certify_compiled_cell_program_feasibility(
         required_seam_class=target_class,
         minimum_acceptable_count=minimum_acceptable_add_count,
         minimum_center_separation_px=(
-            2.25 * float(program.nominal_nucleus_diameter_px)
-            if contract.primitive_id
-            == "peritumoral-neoplastic-scatter-increase-v1"
-            else 0.0
+            independent_focus_minimum_center_separation_px(
+                contract.primitive_id,
+                program.nominal_nucleus_diameter_px,
+            )
         ),
         # Exactly one bounded fallback is allowed across the two feasibility
         # stages. A broad candidate core may fit the nominal count while the
