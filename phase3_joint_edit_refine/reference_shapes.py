@@ -18,9 +18,9 @@ import numpy as np
 from scipy import ndimage
 
 from .models import JointContractError
-from .nuclei import RAW_TO_INTERNAL
+from .nuclei import RAW_TO_INTERNAL, _semantic_instance_labels
 
-REFERENCE_SHAPE_AUTHORITY_VERSION = "calibrated-reference-shapes-v1"
+REFERENCE_SHAPE_AUTHORITY_VERSION = "calibrated-reference-shapes-v2"
 DEFAULT_REFERENCE_SHAPES_PER_CLASS = 9
 _PREFERRED_TISSUE_NAME_BY_CLASS = {
     1: "Tumor",
@@ -176,6 +176,14 @@ def load_reference_shape_authority(
                     mask, structure=np.ones((3, 3), dtype=np.uint8)
                 )[1]
                 != 1
+                # Pixel connectivity alone is not the executable instance
+                # contract.  A connected library footprint can contain two
+                # distance maxima and be split into multiple nuclei by the
+                # same semantic watershed that owns source/gate instance
+                # identity.  Such a footprint is not a reusable one-nucleus
+                # shape and would make one accepted placement materialize as
+                # two instances after rasterization.
+                or _semantic_instance_labels(mask)[1] != 1
             ):
                 continue
             relative = path.relative_to(root).as_posix()

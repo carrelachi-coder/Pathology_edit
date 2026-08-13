@@ -3534,6 +3534,61 @@ class JointLedgerTests(unittest.TestCase):
             )
             self.assertEqual(len(authority.authority_sha256), 64)
 
+    def test_calibrated_shape_must_remain_one_semantic_instance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bucket = root / "nuclei_instances" / "tissue_01_Tumor"
+            bucket.mkdir(parents=True)
+            (root / "statistics.json").write_text(
+                json.dumps(
+                    {
+                        "dataset": "BCSS",
+                        "statistics": {
+                            "1": {
+                                "name": "Tumor",
+                                "nuclei_types": {
+                                    "101": {
+                                        "stored_count": 2,
+                                        "mean_area": 25.0,
+                                    }
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            single = np.ones((5, 5), dtype=bool)
+            two_lobes = np.zeros((9, 17), dtype=bool)
+            yy, xx = np.ogrid[:9, :17]
+            two_lobes |= (yy - 4) ** 2 + (xx - 4) ** 2 <= 4**2
+            two_lobes |= (yy - 4) ** 2 + (xx - 12) ** 2 <= 4**2
+            two_lobes[4, 4:13] = True
+            for name, mask in (
+                ("000001.npz", single),
+                ("000002.npz", two_lobes),
+            ):
+                np.savez(
+                    bucket / name,
+                    mask=mask,
+                    type=np.asarray(101),
+                    area=np.asarray(int(mask.sum())),
+                )
+
+            authority = load_reference_shape_authority(
+                root,
+                dataset_name="BCSS",
+                class_ids=(1,),
+            )
+
+            selected = authority.shapes_by_class[1]
+            self.assertEqual(len(selected), 1)
+            self.assertIn("000001.npz", selected[0].instance_id)
+            self.assertNotIn(
+                "000002.npz",
+                " ".join(item.instance_id for item in selected),
+            )
+
     def test_semantic_fallback_splits_touching_same_class_nuclei(self):
         rows, cols = np.ogrid[:40, :40]
         nuclei = np.zeros((40, 40), dtype=np.uint8)
