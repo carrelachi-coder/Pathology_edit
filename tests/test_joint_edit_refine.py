@@ -32,6 +32,7 @@ from phase3_joint_edit_refine.candidate_feasibility import (
 )
 from phase3_joint_edit_refine.cell_layouts import (
     ReferenceNucleusShape,
+    _effect_first_anchors,
     _place_layout,
     build_reference_shape_library,
     certificate_aligned_cluster_size_range,
@@ -1549,6 +1550,75 @@ class JointSkillTests(unittest.TestCase):
         self.assertGreaterEqual(
             float(np.sqrt(np.max(np.sum(distances**2, axis=2)))), 40.0
         )
+
+    def test_effect_span_uses_exact_legal_center_diameter(self):
+        # From this ranked first point, two farthest-point sweeps reach only
+        # 46.62 px while the true legal-center diameter is 52.70 px.
+        anchors = np.asarray(
+            [
+                [8, 39],
+                [12, 26],
+                [18, 4],
+                [33, 3],
+                [34, 46],
+                [35, 11],
+                [46, 12],
+                [47, 48],
+            ],
+            dtype=int,
+        )
+
+        ordered = _effect_first_anchors(
+            anchors,
+            minimum_effect_span_px=50,
+            minimum_effect_foci=2,
+        )
+
+        self.assertGreaterEqual(
+            float(np.linalg.norm(ordered[0] - ordered[1])),
+            50.0,
+        )
+
+    def test_layout_tries_another_eligible_shape_at_same_center(self):
+        legal = np.zeros((24, 24), dtype=bool)
+        legal[12, 12] = True
+        valid = np.zeros_like(legal)
+        valid[11:14, 11:14] = True
+        references = (
+            ReferenceNucleusShape(
+                "small", 1, np.ones((1, 1), dtype=bool), "test", 1
+            ),
+            ReferenceNucleusShape(
+                "large", 1, np.ones((7, 7), dtype=bool), "test", 49
+            ),
+        )
+
+        _target, placed, trace = _place_layout(
+            base=np.zeros_like(legal, dtype=np.uint8),
+            references=references,
+            class_id=1,
+            legal_zone=legal,
+            valid_footprint_region=valid,
+            halo=legal,
+            score=legal.astype(float),
+            requested_count=1,
+            layout_program="single",
+            cluster_size_range=(1, 1),
+            nominal_nucleus_diameter_px=3.0,
+            orientation_mask=np.zeros_like(legal),
+            continuity_region=np.zeros_like(legal),
+            continuity_anchor_mask=np.zeros_like(legal),
+            continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
+            minimum_effect_span_px=0,
+            minimum_effect_foci=0,
+            enforce_single_scatter_separation=False,
+            seed=1,
+        )
+
+        self.assertEqual(placed, 1)
+        self.assertEqual(trace[0]["reference_instance_id"], "small")
 
     def test_local_abundance_does_not_inherit_peritumoral_group_spacing(self):
         canvas = np.zeros((32, 32), dtype=np.uint8)

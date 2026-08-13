@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import numpy as np
 from scipy import ndimage
-from scipy.spatial import cKDTree
+from scipy.spatial import ConvexHull, QhullError, cKDTree
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import CandidateMask
@@ -28,7 +28,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v7"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v8"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -1555,8 +1555,6 @@ def _place_layout(
         for dy, dx in offsets:
             if placed >= requested_count:
                 break
-            reference = references[(placed + seed) % len(references)]
-            shape = np.asarray(reference.mask, dtype=bool)
             cy, cx = ay + dy, ax + dx
             if (
                 layout_program == "single"
@@ -1599,42 +1597,18 @@ def _place_layout(
                 or not legal_zone[cy, cx]
             ):
                 continue
-            window = _placement_window(
-                shape,
+            fit = _first_fitting_reference(
+                references=references,
+                start_index=placed + seed,
                 center_y=cy,
                 center_x=cx,
                 canvas_shape=target.shape,
+                valid_footprint_region=valid_footprint_region,
+                occupied=occupied,
             )
-            if window is None:
+            if fit is None:
                 continue
-            y0, y1, x0, x1 = window
-            if (
-                y0 <= 0
-                or x0 <= 0
-                or y1 >= target.shape[0]
-                or x1 >= target.shape[1]
-            ):
-                continue
-            # P constrains the center. V, not P, constrains the full footprint;
-            # requiring the footprint to stay inside P caused the documented
-            # artificial cell-depleted strip at the new tissue seam.
-            if not np.all(valid_footprint_region[y0:y1, x0:x1][shape]):
-                continue
-            # Collision checking used to materialize and dilate a full 512x512
-            # canvas for every attempted nucleus.  A local, one-pixel padded
-            # window is exactly equivalent and keeps placement cost proportional
-            # to the reference nucleus footprint.
-            guard_y0, guard_y1 = max(0, y0 - 1), min(target.shape[0], y1 + 1)
-            guard_x0, guard_x1 = max(0, x0 - 1), min(target.shape[1], x1 + 1)
-            local_shape = np.zeros(
-                (guard_y1 - guard_y0, guard_x1 - guard_x0), dtype=bool
-            )
-            local_shape[
-                y0 - guard_y0 : y1 - guard_y0, x0 - guard_x0 : x1 - guard_x0
-            ] = shape
-            collision_guard = ndimage.binary_dilation(local_shape, iterations=1)
-            if np.any(collision_guard & occupied[guard_y0:guard_y1, guard_x0:guard_x1]):
-                continue
+            reference, shape, y0, y1, x0, x1 = fit
             target_view = target[y0:y1, x0:x1]
             target_view[shape] = class_id
             occupied[y0:y1, x0:x1] |= shape
@@ -1714,18 +1688,14 @@ def _effect_first_anchors(
     minimum_span_sq = float(max(0, minimum_effect_span_px) ** 2)
     chosen_indices = [0]
     if minimum_effect_span_px > 0 and required >= 2:
-        # The highest-ranked anchor need not have a sufficiently distant peer
-        # even when P contains a valid global span. Find a deterministic
-        # two-sweep endpoint pair first; retain rank order only to decide which
-        # endpoint is attempted first. The hard spatial contract therefore
-        # takes precedence over a small local ProbNet score difference.
-        from_ranked_first = np.sum((points - points[0]) ** 2, axis=1)
-        endpoint_a = int(np.argmax(from_ranked_first))
-        from_endpoint_a = np.sum(
-            (points - points[endpoint_a]) ** 2, axis=1
+        # A two-sweep farthest-point heuristic is not exact for a general 2-D
+        # legal center set and can miss a valid hard span by several pixels.
+        # The Euclidean diameter belongs to the convex hull; test that small
+        # vertex set exactly and retain rank order only for endpoint ordering.
+        endpoint_a, endpoint_b, diameter_sq = _exact_diameter_endpoint_pair(
+            points
         )
-        endpoint_b = int(np.argmax(from_endpoint_a))
-        if from_endpoint_a[endpoint_b] >= minimum_span_sq:
+        if diameter_sq >= minimum_span_sq:
             chosen_indices = sorted((endpoint_a, endpoint_b))
     available = np.ones(len(points), dtype=bool)
     available[np.asarray(chosen_indices, dtype=int)] = False
@@ -1754,6 +1724,90 @@ def _effect_first_anchors(
     chosen_set = set(chosen_indices)
     remainder = [index for index in range(len(points)) if index not in chosen_set]
     return points[np.asarray([*chosen_indices, *remainder], dtype=int)]
+
+
+def _exact_diameter_endpoint_pair(
+    points: np.ndarray,
+) -> tuple[int, int, float]:
+    """Return a deterministic exact Euclidean-diameter pair for 2-D points."""
+
+    value = np.asarray(points, dtype=float)
+    if len(value) < 2:
+        return 0, 0, 0.0
+    try:
+        candidate_indices = np.asarray(
+            ConvexHull(value).vertices,
+            dtype=int,
+        )
+    except QhullError:
+        # Collinear legal domains are common for narrow interfaces. Their
+        # diameter endpoints are the extrema along any varying coordinate.
+        ranges = np.ptp(value, axis=0)
+        axis = int(np.argmax(ranges))
+        candidate_indices = np.asarray(
+            [int(np.argmin(value[:, axis])), int(np.argmax(value[:, axis]))],
+            dtype=int,
+        )
+    candidates = value[candidate_indices]
+    deltas = candidates[:, None, :] - candidates[None, :, :]
+    distances_sq = np.sum(deltas**2, axis=2)
+    left, right = np.unravel_index(
+        int(np.argmax(distances_sq)),
+        distances_sq.shape,
+    )
+    return (
+        int(candidate_indices[left]),
+        int(candidate_indices[right]),
+        float(distances_sq[left, right]),
+    )
+
+
+def _first_fitting_reference(
+    *,
+    references: tuple[ReferenceNucleusShape, ...],
+    start_index: int,
+    center_y: int,
+    center_x: int,
+    canvas_shape: tuple[int, int],
+    valid_footprint_region: np.ndarray,
+    occupied: np.ndarray,
+) -> tuple[ReferenceNucleusShape, np.ndarray, int, int, int, int] | None:
+    """Choose the first authority-eligible complete shape fitting a center."""
+
+    for offset in range(len(references)):
+        reference = references[(int(start_index) + offset) % len(references)]
+        shape = np.asarray(reference.mask, dtype=bool)
+        window = _placement_window(
+            shape,
+            center_y=center_y,
+            center_x=center_x,
+            canvas_shape=canvas_shape,
+        )
+        if window is None:
+            continue
+        y0, y1, x0, x1 = window
+        if y0 <= 0 or x0 <= 0 or y1 >= canvas_shape[0] or x1 >= canvas_shape[1]:
+            continue
+        # P constrains the center. V, not P, constrains the full footprint.
+        if not np.all(valid_footprint_region[y0:y1, x0:x1][shape]):
+            continue
+        guard_y0, guard_y1 = max(0, y0 - 1), min(canvas_shape[0], y1 + 1)
+        guard_x0, guard_x1 = max(0, x0 - 1), min(canvas_shape[1], x1 + 1)
+        local_shape = np.zeros(
+            (guard_y1 - guard_y0, guard_x1 - guard_x0), dtype=bool
+        )
+        local_shape[
+            y0 - guard_y0 : y1 - guard_y0,
+            x0 - guard_x0 : x1 - guard_x0,
+        ] = shape
+        collision_guard = ndimage.binary_dilation(local_shape, iterations=1)
+        if np.any(
+            collision_guard
+            & occupied[guard_y0:guard_y1, guard_x0:guard_x1]
+        ):
+            continue
+        return reference, shape, y0, y1, x0, x1
+    return None
 
 
 def _continuity_first_anchors(
