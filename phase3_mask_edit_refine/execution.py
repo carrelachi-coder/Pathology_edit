@@ -27,7 +27,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v9"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v10"
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
@@ -846,15 +846,13 @@ def _residual_fragmentation_priority(
     maximum_dominant_residual_component_fraction: float,
     target_change_pixels: int = 0,
 ) -> np.ndarray:
-    """Prioritize an organic branching corridor, then shrink residual foci.
+    """Construct shrunken organic residual foci instead of drawing cut lines.
 
-    Straight PCA quantile bands satisfy topology but look like ruler cuts.  A
-    low-frequency, component-owned Voronoi partition instead creates a curved
-    Y-like stromal network whose width varies along the path.  Every core path
-    is ranked ahead of peripheral turnover; after the split is established,
-    remaining budget retreats along both sides of every corridor so the
-    residual foci become visibly smaller rather than retaining one large mass
-    with slots cut into it.  Final component count, balance, spacing and area
+    The generated object is the *remaining tumor*: several unequal, smoothly
+    irregular foci eroded from both their mutual cleavage boundaries and the
+    original tumor perimeter.  The converted complement therefore reads as a
+    localized breakup/retreat process, not as an equal-width curve painted
+    through an otherwise intact tumor.  Final count, balance, spacing and area
     remain authoritative in the whole-mask audit.
     """
 
@@ -903,44 +901,42 @@ def _residual_fragmentation_priority(
     warped_coordinates = normalized_coordinates + 0.18 * np.column_stack(
         (warp_major[rows, cols], warp_minor[rows, cols])
     )
-    # A centerline half-width of (spacing - 1) / 2 yields a pixel-center gap
-    # equal to the requested residual spacing, while reserving meaningful area
-    # for the subsequent focus-retreat phase.
-    corridor_radius = max(
-        1.0,
-        (max(1, minimum_residual_spacing_px) - 1.0) / 2.0,
-    )
-    source_boundary = source & ~ndimage.binary_erosion(source, structure=structure)
-    width_field = _normalized_organic_field(
-        smooth_noise(
+    focus_retreat_fields = tuple(
+        _low_frequency_organic_field(
             source.shape,
-            seed=_component_seed(source, salt=509),
-            amplitude=1.0,
-            correlation_px=correlation * 0.72,
-        ),
-        source,
+            support=source,
+            seed=_component_seed(source, salt=509 + focus_index * 71),
+            correlation_px=correlation * 0.78,
+        )
+        for focus_index in range(focus_count)
     )
-    retreat_noise = _low_frequency_organic_field(
-        source.shape,
-        support=source,
-        seed=_component_seed(source, salt=907),
-        correlation_px=correlation * 0.72,
-    )
-    core_progress = ndimage.distance_transform_edt(~source_boundary)
-    core_progress /= max(float(np.max(core_progress[source], initial=1.0)), 1.0)
+    source_depth = ndimage.distance_transform_edt(source)
     tie_break = np.asarray(default_priority, dtype=float)
     finite_tie = tie_break[legal & np.isfinite(tie_break)]
     tie_break /= max(float(np.max(finite_tie, initial=1.0)), 1.0)
     eligible = source & legal
     eligible_ids = np.flatnonzero(eligible)
     best_priority = None
-    best_corridor = None
+    best_cleavage_core = None
     best_score = None
     for rotation_index in range(12):
         rotation = 2.0 * np.pi * rotation_index / (12 * focus_count)
-        angles = rotation + 2.0 * np.pi * np.arange(focus_count) / focus_count
-        seed_radius = 0.92
-        seeds = seed_radius * np.column_stack((np.cos(angles), np.sin(angles)))
+        focus_indices = np.arange(focus_count)
+        angles = (
+            rotation
+            + 2.0 * np.pi * focus_indices / focus_count
+            + 0.10 * np.sin(1.7 * focus_indices + 0.5)
+        )
+        radii = 0.82 + 0.16 * np.sin(2.1 * focus_indices + 0.8)
+        seeds = radii[:, None] * np.column_stack(
+            (np.cos(angles), np.sin(angles))
+        )
+        # An off-centre partition junction produces unequal residual foci and
+        # reads as breakup originating from one regression zone, instead of a
+        # symmetric Y stamped through the component centre.
+        seeds += 0.10 * np.asarray(
+            [np.cos(rotation + 0.65), np.sin(rotation + 0.65)]
+        )
         costs = []
         for seed_coordinate in seeds:
             squared_distance = np.sum(
@@ -961,46 +957,39 @@ def _residual_fragmentation_priority(
         separator[:, 1:] |= horizontal
         separator[:, :-1] |= horizontal
         separator_distance = ndimage.distance_transform_edt(~separator)
-        local_radius = corridor_radius * (1.0 + 0.24 * width_field)
-        core_radius = min(corridor_radius, 1.35)
-        corridor = (separator_distance <= core_radius) & source & legal
-        spacing_band = (separator_distance <= local_radius) & source & legal
-        if not np.any(corridor):
+        cleavage_core = (separator_distance <= 1.0) & source & legal
+        if not np.any(cleavage_core):
             continue
-        # All core pixels precede focus shrink.  Within the core, progress
-        # smoothly from the existing stromal boundary into the branch network.
-        provisional_core_after = source & ~corridor
-        # Once the clefts traverse the tumor, shrink every provisional focus
-        # from *all* of its stromal interfaces: both the new cleft and the
-        # pre-existing external tumor boundary.  This makes residual foci
-        # genuinely smaller instead of merely widening a road-like Y inside an
-        # otherwise unchanged tumor mass.
-        retreat_distance = ndimage.distance_transform_edt(provisional_core_after)
-        organic_retreat = retreat_distance + (
-            0.18 + 0.015 * retreat_distance
-        ) * retreat_noise
-        approximate_priority = np.where(
-            corridor,
-            0.16 * separator_distance / max(core_radius, 1.0)
-            + 0.03 * core_progress,
-            1.0 + organic_retreat,
-        )
-        spacing_shell = spacing_band & ~corridor
-        shell_span = np.maximum(local_radius - core_radius, 0.5)
-        approximate_priority[spacing_shell] = (
-            0.30
-            + 0.55
-            * np.clip(
-                (separator_distance[spacing_shell] - core_radius)
-                / shell_span[spacing_shell],
-                0.0,
-                1.0,
-            )
-            + 0.04 * core_progress[spacing_shell]
+        # Rank erosion of each prospective residual focus, rather than rank a
+        # dilated separator.  Cleavage-facing and external-facing boundaries
+        # deliberately have different, smoothly varying depth scales: a
+        # stronger inter-focus retreat establishes real spacing, while only
+        # selected external sectors grow into broad regression bays.  The
+        # result is a set of smaller residual objects, not a line with a
+        # prescribed radius.
+        approximate_priority = np.full(source.shape, np.inf, dtype=float)
+        for focus_index in range(focus_count):
+            focus_zone = source & (partition == focus_index + 1)
+            if not np.any(focus_zone):
+                continue
+            field = focus_retreat_fields[focus_index]
+            organic_fraction = np.clip((field + 1.0) / 2.0, 0.0, 1.0)
+            cleavage_scale = 3.8 + 4.2 * organic_fraction
+            external_scale = 0.40 + 5.0 * organic_fraction**2
+            cleavage_priority = 0.28 + separator_distance / cleavage_scale
+            external_priority = 0.70 + source_depth / external_scale
+            focus_priority = np.minimum(cleavage_priority, external_priority)
+            approximate_priority[focus_zone] = focus_priority[focus_zone]
+        # The one-pixel cleavage skeleton is merely the topological seed.  It
+        # is consumed first, then the focus-boundary erosion above determines
+        # a strongly non-uniform breakup envelope.
+        approximate_priority[cleavage_core] = np.minimum(
+            approximate_priority[cleavage_core],
+            0.08 + 0.08 * separator_distance[cleavage_core],
         )
         approximate_priority += 1e-3 * tie_break
         selected_count = min(
-            max(int(target_change_pixels), int(np.count_nonzero(corridor))),
+            max(int(target_change_pixels), int(np.count_nonzero(cleavage_core))),
             len(eligible_ids),
         )
         approximate_change = np.zeros_like(source, dtype=bool)
@@ -1054,10 +1043,14 @@ def _residual_fragmentation_priority(
         fractions = [size / total for size in provisional_sizes]
         minimum_fraction = min(fractions, default=0.0)
         dominant_fraction = max(fractions, default=1.0)
+        observed_spacing = _minimum_component_spacing_px(
+            provisional_labels, provisional_count
+        )
         contract_valid = bool(
             focus_count <= provisional_count <= maximum_residual_components
             and provisional_sizes
             and min(provisional_sizes) >= minimum_residual_component_area_px
+            and observed_spacing + 1e-9 >= minimum_residual_spacing_px
             and minimum_fraction + 1e-9 >= minimum_residual_component_fraction
             and dominant_fraction <= maximum_dominant_residual_component_fraction + 1e-9
         )
@@ -1072,20 +1065,20 @@ def _residual_fragmentation_priority(
             min(provisional_count, maximum_residual_components),
             minimum_fraction,
             -dominant_fraction,
-            -int(np.count_nonzero(corridor)),
+            observed_spacing,
+            -int(np.count_nonzero(cleavage_core)),
             -rotation_index,
         )
         if best_score is None or score > best_score:
-            best_corridor = corridor
+            best_cleavage_core = cleavage_core
             best_priority = approximate_priority
             best_score = score
-    if best_corridor is None or best_priority is None:
+    if best_cleavage_core is None or best_priority is None:
         return np.asarray(default_priority, dtype=float)
-    corridor = best_corridor
-    # Fill tiny source remnants enclosed by the proposed corridor. They are
-    # raster artifacts of a diagonal cut, not residual foci, and leaving them
-    # would violate the same minimum-focus-area contract used by the gate.
-    provisional_after = source & ~corridor
+    cleavage_core = best_cleavage_core
+    # Fill tiny source remnants enclosed by the cleavage seed. They are raster
+    # artifacts, not biological residual foci.
+    provisional_after = source & ~cleavage_core
     provisional_labels, provisional_count = ndimage.label(
         provisional_after, structure=structure
     )
@@ -1094,11 +1087,10 @@ def _residual_fragmentation_priority(
         component = provisional_labels == index
         if int(np.count_nonzero(component)) < minimum_residual_component_area_px:
             tiny_remnants |= component
-    corridor |= tiny_remnants & legal
     if np.any(tiny_remnants & legal):
         best_priority = np.array(best_priority, copy=True)
         best_priority[tiny_remnants & legal] = np.minimum(
-            best_priority[tiny_remnants & legal], 0.25
+            best_priority[tiny_remnants & legal], 0.20
         )
     return np.asarray(best_priority, dtype=float)
 

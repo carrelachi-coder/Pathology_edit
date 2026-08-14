@@ -1453,7 +1453,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         ordinary = _check_component_topology(context)
         self.assertFalse(ordinary.passed)
 
-    def test_fragmentation_priority_builds_three_balanced_traversing_foci(self):
+    def test_fragmentation_priority_builds_three_shrunken_organic_foci(self):
         shape = (96, 120)
         source = np.zeros(shape, dtype=bool)
         source[12:84, 10:110] = True
@@ -1473,20 +1473,21 @@ class CandidateAndSceneTests(unittest.TestCase):
             target_change_pixels=target_pixels,
         )
 
-        corridor = source & (priority < 0.5)
+        cleavage_seed = source & (priority < 0.22)
         labels, count = ndimage.label(
-            source & ~corridor, structure=np.ones((3, 3), dtype=bool)
+            source & ~cleavage_seed, structure=np.ones((3, 3), dtype=bool)
         )
         sizes = np.bincount(labels.ravel())[1:]
         fractions = sizes / sizes.sum()
         self.assertEqual(count, 3)
         self.assertGreaterEqual(float(fractions.min()), 0.08)
         self.assertLessEqual(float(fractions.max()), 0.75)
-        self.assertGreaterEqual(
-            int(np.count_nonzero(corridor)), int(source.sum() * 0.08)
-        )
+        # The topological seed establishes the split, but most of the area
+        # budget must reshape the residual objects.  This prevents the old
+        # behavior where nearly every changed pixel formed one dilated line.
+        self.assertLess(int(np.count_nonzero(cleavage_seed)), target_pixels // 2)
         self.assertEqual(
-            ndimage.label(corridor, structure=np.ones((3, 3), dtype=bool))[1],
+            ndimage.label(cleavage_seed, structure=np.ones((3, 3), dtype=bool))[1],
             1,
         )
 
@@ -1503,16 +1504,23 @@ class CandidateAndSceneTests(unittest.TestCase):
             float(np.max(residual_sizes) / np.sum(residual_sizes)), 0.75
         )
         self.assertGreater(
-            int(np.count_nonzero(changed & ~corridor)),
-            int(source.sum() * 0.02),
+            int(np.count_nonzero(changed & ~cleavage_seed)),
+            int(np.count_nonzero(cleavage_seed)),
+        )
+        self.assertGreaterEqual(
+            _minimum_component_spacing_px(residual_labels, residual_count), 8.0
         )
         source_boundary = source & ~ndimage.binary_erosion(
             source, structure=np.ones((3, 3), dtype=bool)
         )
-        self.assertGreaterEqual(
-            int(np.count_nonzero(changed & source_boundary)),
-            int(np.count_nonzero(source_boundary) * 0.08),
-        )
+        changed_boundary_fraction = np.count_nonzero(
+            changed & source_boundary
+        ) / np.count_nonzero(source_boundary)
+        # A few broad external retreat bays should accompany the cleavage;
+        # eroding the entire perimeter would merely turn this into footprint
+        # decrease, while touching none would leave the old slot-cut look.
+        self.assertGreater(changed_boundary_fraction, 0.08)
+        self.assertLess(changed_boundary_fraction, 0.60)
 
     def test_fragmentation_organic_field_has_effective_dynamic_range(self):
         shape = (96, 120)
