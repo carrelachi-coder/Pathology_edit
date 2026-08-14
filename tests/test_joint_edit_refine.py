@@ -93,6 +93,7 @@ from phase3_joint_edit_refine.ledger import analyze_joint_change
 from phase3_joint_edit_refine.mature_probnet_adapter import (
     MatureProbNetCellExecutor,
     MatureProbNetConfig,
+    _architecture_placement_trace,
     _mature_nucleus_area_medians,
 )
 from phase3_joint_edit_refine.models import (
@@ -4580,6 +4581,29 @@ class JointSkillTests(unittest.TestCase):
             {"101": 626.5, "103": 260.0},
         )
 
+    def test_mature_architecture_replay_preserves_group_cardinality_trace(self):
+        ledger = ((18, 24, 1), (22, 29, 1))
+        contract = SimpleNamespace(
+            primitive_id="peritumoral-tumor-nest-formation-v1",
+            packing_certificate={
+                "placements": [
+                    {"row": row, "col": col, "class_id": class_id}
+                    for row, col, class_id in ledger
+                ]
+            },
+        )
+
+        placements = _architecture_placement_trace(
+            contract=contract,
+            accepted_center_ledger=ledger,
+        )
+
+        self.assertEqual(len(placements), 2)
+        self.assertEqual({item["cluster_size"] for item in placements}, {2})
+        self.assertTrue(
+            all(item["packing_witness_replayed"] for item in placements)
+        )
+
     def test_continuity_density_interval_compiles_to_an_exact_tool_target(self):
         nuclei = np.zeros((24, 24), dtype=np.uint8)
         nuclei[8, 5] = 1
@@ -6674,6 +6698,24 @@ class JointWorkflowTests(unittest.TestCase):
                             if check["check_id"]
                             == "interface_seam_continuity"
                         )["passed"]
+                    )
+                    realization = next(
+                        check
+                        for check in selected["checks"]
+                        if check["check_id"] == "mechanism_realization"
+                    )
+                    self.assertTrue(realization["passed"])
+                    self.assertGreaterEqual(
+                        realization["metrics"]["placement_count"],
+                        2,
+                    )
+                    self.assertTrue(
+                        all(
+                            size >= 2
+                            for size in realization["metrics"][
+                                "declared_cluster_sizes"
+                            ]
+                        )
                     )
 
     def test_breast_generic_immune_compartment_turnover_executes_both_directions(self):

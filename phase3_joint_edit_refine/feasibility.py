@@ -41,7 +41,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v15"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v16"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -727,7 +727,10 @@ def build_joint_nuclei_preflight(
             executable_envelope_pixels,
         )
         required_count = (
-            max(1, int(np.ceil(interface_target_pixels * target_density)))
+            max(
+                _minimum_architecture_group_count(case, joint_bundle),
+                int(np.ceil(interface_target_pixels * target_density)),
+            )
             if requires_add
             else 0
         )
@@ -1145,7 +1148,10 @@ def assess_candidate_cell_feasibility(
         # one complete, source-matched target nucleus; otherwise the tissue
         # candidate is rejected before ProbNet rather than crashing while the
         # immutable packing ledger is bound.
-        required_count = max(1, required_count)
+        required_count = max(
+            _minimum_architecture_group_count(case, joint_bundle),
+            required_count,
+        )
     adaptive_seam = compile_adaptive_seam(
         scene=scene,
         tissue_change=core,
@@ -1630,6 +1636,17 @@ def _target_interface_population_density(
         return 0.0, {}
     fallback = float(1.0 / max(1.0, reference_area_p95 * 3.0))
     return fallback, {target_classes[0]: fallback}
+
+
+def _minimum_architecture_group_count(case, bundle) -> int:
+    """Bind cord/nest feasibility to the declared biological group size."""
+
+    if case.primitive_id not in {
+        "invasive-cord-formation-v1",
+        "peritumoral-tumor-nest-formation-v1",
+    }:
+        return 1
+    return max(1, int(bundle.mechanism.cell_program.cluster_size_range[0]))
 
 
 def _whole_instance_closure_px(

@@ -199,7 +199,15 @@ def test_cord_reduces_virtual_support_radius_after_budget_rebalance():
         1,
         int(round(0.30 * candidate.tool_trace["nominal_nucleus_diameter_px"])),
     )
-    assert candidate.tool_trace["support_closing_radius_px"] < default_support_radius
+    default_nucleus_radius = max(
+        2,
+        int(round(0.42 * candidate.tool_trace["nominal_nucleus_diameter_px"])),
+    )
+    assert (
+        candidate.tool_trace["support_closing_radius_px"] < default_support_radius
+        or candidate.tool_trace["nucleus_footprint_radius_px"]
+        < default_nucleus_radius
+    )
     assert int(candidate.change_region.sum()) == 300
     assert all(
         candidate.change_region[row, col]

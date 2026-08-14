@@ -32,7 +32,7 @@ NEST_PRIMITIVE_ID = "peritumoral-tumor-nest-formation-v1"
 SPECIALIZED_ARCHITECTURE_PRIMITIVES = frozenset(
     {CORD_PRIMITIVE_ID, NEST_PRIMITIVE_ID}
 )
-ARCHITECTURE_EXECUTOR_VERSION = "breast-invasive-architecture-v2"
+ARCHITECTURE_EXECUTOR_VERSION = "breast-invasive-architecture-v3"
 
 
 def compile_joint_tissue_plan_with_witness(
@@ -178,45 +178,102 @@ def _cell_seeded_cord_candidate(
     target_pixels = _resolved_pixels(plan, source_tissue, legal)
     if target_pixels <= 0:
         return None
-
-    anchor_point = _anchor_point(anchor, legal)
-    if anchor_point is None:
-        return None
-    direction = _outward_direction(anchor_point, target_component)
-    maximum_depth = max(1.0, float(planned.allowed_edit_band_px[1]))
-    centers = _cord_centers(
-        anchor_point=anchor_point,
-        direction=direction,
-        legal=legal,
-        diameter=diameter,
-        maximum_depth=maximum_depth,
-        target_pixels=target_pixels,
-        seed=seed,
-        variant=variant,
+    tumor = np.isin(source_tissue, tuple(schema.resolve_fine_ids("Tumor")))
+    other_tumor = tumor & ~np.asarray(target_component, dtype=bool)
+    # The cord belongs to one parent front. A one-pixel buffer keeps the new
+    # support from merging a nearby independent Tumor component.
+    legal &= ~ndimage.binary_dilation(
+        other_tumor,
+        structure=np.ones((3, 3), dtype=bool),
+        iterations=1,
     )
-    if len(centers) < 5:
-        return None
-    derived = _cell_seeded_support(
-        centers=centers,
-        anchor_point=anchor_point,
+    maximum_depth = max(1.0, float(planned.allowed_edit_band_px[1]))
+    anchor_points = _ranked_cord_anchor_points(
+        anchor,
         legal=legal,
         target_component=target_component,
         diameter=diameter,
-        target_pixels=target_pixels,
+        maximum_depth=maximum_depth,
     )
-    if derived is None:
+    valid = []
+    for anchor_rank, anchor_point in enumerate(anchor_points):
+        direction = _outward_direction(anchor_point, target_component)
+        path_variant = int(variant + 13 * anchor_rank)
+        centers = _cord_centers(
+            anchor_point=anchor_point,
+            direction=direction,
+            legal=legal,
+            diameter=diameter,
+            maximum_depth=maximum_depth,
+            target_pixels=target_pixels,
+            seed=seed,
+            variant=path_variant,
+        )
+        if len(centers) < 5:
+            continue
+        derived = _cell_seeded_support(
+            centers=centers,
+            anchor_point=anchor_point,
+            legal=legal,
+            target_component=target_component,
+            diameter=diameter,
+            target_pixels=target_pixels,
+        )
+        if derived is None:
+            continue
+        (
+            support,
+            envelope,
+            centerline,
+            nucleus_radius,
+            support_radius,
+        ) = derived
+        support = _grow_connected_to_size(
+            support,
+            envelope=envelope,
+            target_pixels=target_pixels,
+            seed=seed + path_variant * 1009,
+        )
+        if support is None or _component_count(support) != 1:
+            continue
+        support = _repair_cord_residual_pockets(
+            support,
+            source_component=source_component,
+            target_component=target_component,
+            protected_path=centerline,
+            target_pixels=target_pixels,
+        )
+        if support is None or not _cord_topology_preserved(
+            source_tissue,
+            support=support,
+            source_ids=source_ids,
+            tumor_ids=tuple(schema.resolve_fine_ids("Tumor")),
+        ):
+            continue
+        valid.append(
+            (
+                _complete_instance_spill_pixels(support, joint_scene),
+                int(anchor_rank),
+                support,
+                centers,
+                anchor_point,
+                path_variant,
+                nucleus_radius,
+                support_radius,
+            )
+        )
+    if not valid:
         return None
-    support, envelope, nucleus_radius, support_radius = derived
-    support = _grow_connected_to_size(
+    (
+        spill_pixels,
+        anchor_rank,
         support,
-        envelope=envelope,
-        target_pixels=target_pixels,
-        seed=seed + variant * 1009,
-    )
-    if support is None or not _touches(support, target_component):
-        return None
-    if _component_count(support) != 1:
-        return None
+        centers,
+        anchor_point,
+        path_variant,
+        nucleus_radius,
+        support_radius,
+    ) = min(valid, key=lambda item: (item[0], item[1]))
     target = np.asarray(source_tissue).copy()
     target_id = _target_fine_id(plan, schema)
     target[support] = target_id
@@ -229,6 +286,9 @@ def _cell_seeded_cord_candidate(
         tool_trace={
             "seed": int(seed),
             "variant": int(variant),
+            "path_variant": int(path_variant),
+            "anchor_search_rank": int(anchor_rank),
+            "anchor_point_yx": [int(value) for value in anchor_point],
             "interface_id": planned.interface_id,
             "interface_ids": [item.interface_id for item in plan.candidate_interfaces],
             "source_component_id": planned.source_component_id,
@@ -242,15 +302,14 @@ def _cell_seeded_cord_candidate(
             "target_fine_id": int(target_id),
             "tool_adapter_version": ARCHITECTURE_EXECUTOR_VERSION,
             "execution_order": "cells_then_tumor_mask",
-            "tumor_mask_derivation": (
-                "cell_footprints_plus_cell_scale_closing"
-            ),
+            "tumor_mask_derivation": "cell_footprints_plus_cell_scale_closing",
             "cell_seed_centers_yx": [[int(y), int(x)] for y, x in centers],
             "nominal_nucleus_diameter_px": float(diameter),
             "nucleus_footprint_radius_px": int(nucleus_radius),
             "support_closing_radius_px": int(support_radius),
             "support_width_policy": "one_to_three_cells_variable",
             "path_policy": "slightly_curved_source_scaled_invasion_path",
+            "source_complete_instance_spill_estimate_px": int(spill_pixels),
             "changed_pixels": int(np.count_nonzero(support)),
         },
     )
@@ -308,10 +367,7 @@ def _detached_nest_candidate(
     coords = np.argwhere(center_domain)
     values = score[center_domain]
     order = np.argsort(-values)
-    center_y = center_x = None
-    nest = None
-    observed_gap = 0.0
-    observed_interface_distance = 0.0
+    best = None
     # The highest-scoring center can still produce a disconnected exact-area
     # raster when a thin protected nucleus corridor cuts through the island.
     # Search a small deterministic prefix of the same certified domain rather
@@ -336,15 +392,31 @@ def _detached_nest_candidate(
         candidate_gap = float(np.min(distance_to_tumor[candidate]))
         if candidate_gap + 1e-6 < minimum_gap:
             continue
-        center_y, center_x = candidate_y, candidate_x
-        nest = candidate
-        observed_gap = candidate_gap
-        observed_interface_distance = float(
-            np.min(distance_to_interface[candidate])
+        spill_pixels = _complete_instance_spill_pixels(candidate, joint_scene)
+        current = (
+            int(spill_pixels),
+            int(rank),
+            candidate_y,
+            candidate_x,
+            candidate,
+            candidate_gap,
+            float(np.min(distance_to_interface[candidate])),
         )
-        break
-    if nest is None or center_y is None or center_x is None:
+        if best is None or current[:2] < best[:2]:
+            best = current
+        if spill_pixels == 0:
+            break
+    if best is None:
         return None
+    (
+        source_spill_pixels,
+        selected_rank,
+        center_y,
+        center_x,
+        nest,
+        observed_gap,
+        observed_interface_distance,
+    ) = best
     target = np.asarray(source_tissue).copy()
     target_id = _target_fine_id(plan, schema)
     target[nest] = target_id
@@ -372,8 +444,12 @@ def _detached_nest_candidate(
             "execution_order": "tumor_island_then_cells",
             "island_geometry": "single_detached_irregular_harmonic_blob",
             "island_center_yx": [center_y, center_x],
+            "center_search_rank": int(selected_rank),
             "minimum_interface_distance_px": observed_interface_distance,
             "minimum_parent_tumor_gap_px": float(observed_gap),
+            "source_complete_instance_spill_estimate_px": int(
+                source_spill_pixels
+            ),
             "nominal_nucleus_diameter_px": float(diameter),
             "changed_pixels": int(np.count_nonzero(nest)),
         },
@@ -507,7 +583,186 @@ def _cell_seeded_support(
     if best is None:
         return None
     _, support, envelope, nucleus_radius, support_radius = best
-    return support, envelope, nucleus_radius, support_radius
+    return support, envelope, centerline, nucleus_radius, support_radius
+
+
+def _ranked_cord_anchor_points(
+    anchor,
+    *,
+    legal,
+    target_component,
+    diameter,
+    maximum_depth,
+    limit=12,
+):
+    """Prefer local fronts with an interior, unobstructed outward runway."""
+
+    candidates = np.argwhere(np.asarray(anchor, dtype=bool) & legal)
+    if not len(candidates):
+        candidates = np.argwhere(np.asarray(anchor, dtype=bool))
+    if not len(candidates):
+        return ()
+    height, width = legal.shape
+    step = max(3.0, 0.72 * float(diameter))
+    runway_samples = max(5, int(float(maximum_depth) // step))
+    scored = []
+    for raw in candidates:
+        point = _nearest_legal(
+            raw,
+            legal,
+            radius=max(2, int(round(0.35 * diameter))),
+        )
+        if point is None:
+            continue
+        direction = _outward_direction(point, target_component)
+        runway = 0.0
+        for index in range(1, runway_samples + 1):
+            distance = index * step
+            row, col = (
+                int(round(value))
+                for value in np.asarray(point, dtype=float)
+                + direction * distance
+            )
+            if not 0 <= row < height or not 0 <= col < width:
+                break
+            if not legal[row, col]:
+                break
+            runway = distance
+        row, col = point
+        border_clearance = min(row, col, height - 1 - row, width - 1 - col)
+        scored.append(
+            (
+                -float(runway),
+                -int(border_clearance),
+                int(row),
+                int(col),
+                point,
+            )
+        )
+    selected = []
+    minimum_spacing = max(4.0, 1.5 * float(diameter))
+    for *_score, point in sorted(scored):
+        if any(
+            np.linalg.norm(np.asarray(point) - np.asarray(existing))
+            < minimum_spacing
+            for existing in selected
+        ):
+            continue
+        selected.append(point)
+        if len(selected) >= int(limit):
+            break
+    return tuple(selected)
+
+
+def _repair_cord_residual_pockets(
+    support,
+    *,
+    source_component,
+    target_component,
+    protected_path,
+    target_pixels,
+):
+    """Fill tiny Stroma pockets and prune the same area from lateral edges."""
+
+    current = np.asarray(support, dtype=bool).copy()
+    residual = np.asarray(source_component, dtype=bool) & ~current
+    labeled, count = ndimage.label(
+        residual,
+        structure=np.ones((3, 3), dtype=bool),
+    )
+    if count > 1:
+        sizes = np.bincount(labeled.ravel())[1:]
+        primary = int(np.argmax(sizes)) + 1
+        pockets = residual & (labeled != primary)
+        pocket_sizes = [
+            int(size)
+            for index, size in enumerate(sizes, start=1)
+            if index != primary
+        ]
+        maximum_repair = max(16, int(round(0.02 * int(target_pixels))))
+        if any(size > maximum_repair for size in pocket_sizes):
+            return None
+        current |= pockets
+    excess = int(np.count_nonzero(current)) - int(target_pixels)
+    if excess < 0:
+        return None
+    protected = np.asarray(protected_path, dtype=bool) | (
+        current
+        & ndimage.binary_dilation(
+            np.asarray(target_component, dtype=bool),
+            structure=np.ones((3, 3), dtype=bool),
+            iterations=1,
+        )
+    )
+    distance_to_path = ndimage.distance_transform_edt(~protected_path)
+    while excess > 0:
+        boundary = current & ndimage.binary_dilation(
+            ~current,
+            structure=np.ones((3, 3), dtype=bool),
+            iterations=1,
+        )
+        removable = np.argwhere(boundary & ~protected)
+        if not len(removable):
+            return None
+        priorities = distance_to_path[removable[:, 0], removable[:, 1]]
+        order = np.argsort(-priorities, kind="stable")
+        removed = False
+        for index in order:
+            row, col = (int(value) for value in removable[index])
+            trial = current.copy()
+            trial[row, col] = False
+            if _component_count(trial) != 1:
+                continue
+            if not _touches(trial, target_component):
+                continue
+            current = trial
+            excess -= 1
+            removed = True
+            break
+        if not removed:
+            return None
+    if _component_count(np.asarray(source_component, dtype=bool) & ~current) != 1:
+        return None
+    return current
+
+
+def _cord_topology_preserved(
+    source_tissue,
+    *,
+    support,
+    source_ids,
+    tumor_ids,
+):
+    source = np.asarray(source_tissue)
+    source_region = np.isin(source, tuple(source_ids))
+    tumor = np.isin(source, tuple(tumor_ids))
+    target_tumor = tumor | np.asarray(support, dtype=bool)
+    return bool(
+        _component_count(source_region & ~support)
+        == _component_count(source_region)
+        and _component_count(target_tumor) == _component_count(tumor)
+        and _hole_count(target_tumor) == _hole_count(tumor)
+    )
+
+
+def _complete_instance_spill_pixels(change, scene):
+    """Count whole source-nucleus pixels forced outside the tissue change."""
+
+    region = np.asarray(change, dtype=bool)
+    spill = np.zeros_like(region)
+    for component in scene.instance_masks.values():
+        instance = np.asarray(component, dtype=bool)
+        if np.any(instance & region):
+            spill |= instance & ~region
+    return int(np.count_nonzero(spill))
+
+
+def _hole_count(mask):
+    holes = ndimage.binary_fill_holes(np.asarray(mask, dtype=bool)) & ~np.asarray(
+        mask,
+        dtype=bool,
+    )
+    return _component_count(holes)
 
 
 def _legal_polyline(points, *, legal, snap_radius):
@@ -613,9 +868,17 @@ def _anchor_point(anchor, legal):
 
 
 def _outward_direction(anchor_point, target_component):
-    target_coords = np.argwhere(target_component)
-    center = target_coords.mean(axis=0)
-    direction = np.asarray(anchor_point, dtype=float) - center
+    point = np.asarray(anchor_point, dtype=float)
+    radius = 24
+    row, col = (int(value) for value in anchor_point)
+    y0, y1 = max(0, row - radius), min(target_component.shape[0], row + radius + 1)
+    x0, x1 = max(0, col - radius), min(target_component.shape[1], col + radius + 1)
+    local = np.argwhere(np.asarray(target_component, dtype=bool)[y0:y1, x0:x1])
+    if len(local):
+        center = local.mean(axis=0) + np.asarray((y0, x0), dtype=float)
+    else:
+        center = np.argwhere(target_component).mean(axis=0)
+    direction = point - center
     norm = float(np.linalg.norm(direction))
     if norm <= 1e-6:
         return np.asarray((0.0, 1.0), dtype=float)

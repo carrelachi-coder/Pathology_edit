@@ -27,7 +27,7 @@ from .seam import (
     target_cell_class_for_tissue,
 )
 
-MATURE_EXECUTION_VERSION = "online-probnet-mature-v18"
+MATURE_EXECUTION_VERSION = "online-probnet-mature-v20"
 
 
 @dataclass(frozen=True)
@@ -603,6 +603,10 @@ class MatureProbNetCellExecutor:
                             {"row": row, "col": col, "class_id": class_id}
                             for row, col, class_id in accepted_center_ledger
                         ],
+                        "placements": _architecture_placement_trace(
+                            contract=contract,
+                            accepted_center_ledger=accepted_center_ledger,
+                        ),
                         "accepted_instance_area_ledger": (
                             accepted_instance_area_ledger
                         ),
@@ -831,6 +835,49 @@ def _compile_packing_witness(
         ),
         "placements": placements,
     }
+
+
+def _architecture_placement_trace(
+    *,
+    contract: ExecutableJointContract,
+    accepted_center_ledger: tuple[tuple[int, int, int], ...],
+) -> list[dict]:
+    """Expose mature replay as the same cord/nest group audited in research mode."""
+
+    if contract.primitive_id not in {
+        "invasive-cord-formation-v1",
+        "peritumoral-tumor-nest-formation-v1",
+    }:
+        return []
+    expected = {
+        (int(item["row"]), int(item["col"]), int(item["class_id"]))
+        for item in (contract.packing_certificate or {}).get("placements", ())
+    }
+    realized = {
+        (int(row), int(col), int(class_id))
+        for row, col, class_id in accepted_center_ledger
+    }
+    if not expected or realized != expected:
+        return []
+    group_size = len(accepted_center_ledger)
+    orientation = (
+        "cell_seeded_invasion_path"
+        if contract.primitive_id == "invasive-cord-formation-v1"
+        else "detached_island_population"
+    )
+    return [
+        {
+            "center_xy": [int(col), int(row)],
+            "cell_class": int(class_id),
+            "cluster_id": "certified-architecture-0001",
+            "planned_cluster_size": int(group_size),
+            "cluster_size": int(group_size),
+            "orientation_policy": orientation,
+            "packing_witness_replayed": True,
+            "execution_engine": MATURE_EXECUTION_VERSION,
+        }
+        for row, col, class_id in accepted_center_ledger
+    ]
 
 
 def _mature_nucleus_area_medians(certificate: dict) -> dict[str, float]:
