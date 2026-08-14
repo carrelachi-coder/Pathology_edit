@@ -4,7 +4,7 @@
   "supported_primitives": [
     "residual-tumor-fragmentation-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "summary": "Model scattered residual invasive breast carcinoma foci within the original invasive component after treatment without inventing a historical tumor bed.",
   "recognition_contract": {
@@ -12,7 +12,7 @@
       "explicit post-treatment residual-disease scenario",
       "one sufficiently large invasive Tumor fine-ID-1 component adjoining operational Stroma",
       "a source topology with an editable neck or corridor that can be opened from existing Stroma",
-      "capacity for two to six residual foci above the minimum island size"
+      "capacity for three to six area-meaningful residual foci above the minimum island size"
     ],
     "contraindications": [
       "no explicit post-treatment residual-disease context",
@@ -42,8 +42,8 @@
       "taper_fraction": 0.2,
       "lobe_count": 3,
       "noise_depth_ratio": 0.08,
-      "maximum_band_px": 192,
-      "maximum_depth_span_ratio": 1.4,
+      "maximum_band_px": 256,
+      "maximum_depth_span_ratio": 1.8,
       "maximum_boundary_compactness": 5.2,
       "directional_sector_required": false,
       "maximum_selected_anchor_fraction": 1.0,
@@ -162,18 +162,20 @@
   ],
   "render_contract": {
     "required_findings": [
-      "two to six separated viable residual invasive foci within the original component support",
+      "three to six separated, area-meaningful viable residual invasive foci within the original component support",
       "stromal corridors are compatible with local post-treatment residual morphology"
     ],
     "veto_findings": [
       "empty tumor bed",
       "new residual focus outside original support",
       "tiny artificial speckles",
+      "one dominant retained tumor mass with only trivial satellite foci",
+      "an external boundary notch without traversing stromal corridors",
       "DCIS or angioinvasion edited",
       "pCR or RCB claim"
     ],
     "mask_guarantees": [
-      "residual count, area and floor are deterministic",
+      "residual count, absolute and relative focus area, balance, spacing, converted fraction and floor are deterministic",
       "converted pixels are invasive ID 1 to operational Stroma ID 2 only",
       "complete class-1 instances are removed from converted corridors"
     ],

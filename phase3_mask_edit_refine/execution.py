@@ -440,6 +440,17 @@ def replay_compiled_edit_plan(
         residual_area_floor_fraction=float(
             topology_policy["residual_area_floor_fraction"]
         ),
+        maximum_residual_area_fraction=float(
+            topology_policy["maximum_residual_area_fraction"]
+        ),
+        minimum_residual_component_fraction=float(
+            topology_policy["minimum_residual_component_fraction"]
+        ),
+        maximum_dominant_residual_component_fraction=float(
+            topology_policy[
+                "maximum_dominant_residual_component_fraction"
+            ]
+        ),
     )
     if realized != resolved or not topology["passed"]:
         raise RefineContractError(
@@ -579,11 +590,25 @@ def _prepare_compiler_work(
                 source_component=np.asarray(source_component, dtype=bool),
                 legal_envelope=legal_envelope,
                 default_priority=required_scale,
+                minimum_residual_components=int(
+                    params.get("minimum_residual_components", 2)
+                ),
+                maximum_residual_components=int(
+                    params.get("maximum_residual_components", 6)
+                ),
                 minimum_residual_component_area_px=int(
                     params.get("minimum_residual_component_area_px", 1)
                 ),
                 minimum_residual_spacing_px=int(
                     params.get("minimum_residual_spacing_px", 0)
+                ),
+                minimum_residual_component_fraction=float(
+                    params.get("minimum_residual_component_fraction", 0.0)
+                ),
+                maximum_dominant_residual_component_fraction=float(
+                    params.get(
+                        "maximum_dominant_residual_component_fraction", 1.0
+                    )
                 ),
             )
         provisional.append(
@@ -633,18 +658,21 @@ def _residual_fragmentation_priority(
     source_component: np.ndarray,
     legal_envelope: np.ndarray,
     default_priority: np.ndarray,
+    minimum_residual_components: int,
+    maximum_residual_components: int,
     minimum_residual_component_area_px: int,
     minimum_residual_spacing_px: int,
+    minimum_residual_component_fraction: float,
+    maximum_dominant_residual_component_fraction: float,
 ) -> np.ndarray:
-    """Prioritize a source-owned neck corridor before peripheral turnover.
+    """Prioritize balanced, traversing corridors before peripheral turnover.
 
-    A generic distance-from-interface erosion peels an entire tumor perimeter
-    before it ever reaches an internal neck. Residual fragmentation instead
-    needs a narrow stromal corridor between robust interior lobes. This helper
-    discovers those lobes by deterministic erosion, constructs their Voronoi
-    separator, and assigns that separator the lowest execution cost. The
-    ordinary topology solver and whole-mask audit remain authoritative: a
-    convex source with no stable multi-lobe witness still fails closed.
+    Fragmentation must distribute residual mass among several meaningful foci.
+    A natural-neck-only heuristic can split off a tiny satellite while leaving
+    almost the whole tumor connected.  Build deterministic quantile partitions
+    along several source-owned axes, select the best legal separator set, and
+    give those interior corridors the lowest execution cost.  Final topology
+    and balance remain authoritative in the whole-mask audit.
     """
 
     source = np.asarray(source_component, dtype=bool)
@@ -652,65 +680,109 @@ def _residual_fragmentation_priority(
     if not np.any(source & legal):
         return np.asarray(default_priority, dtype=float)
     structure = np.ones((3, 3), dtype=bool)
-    distance = ndimage.distance_transform_edt(source)
-    max_iterations = max(1, int(np.floor(distance.max(initial=0.0))) - 1)
-    seed_labels = None
-    seed_count = 0
-    for iterations in range(1, max_iterations + 1):
-        eroded = distance > float(iterations)
-        labeled, count = ndimage.label(eroded, structure=structure)
-        sizes = sorted(
-            (
-                int(np.count_nonzero(labeled == index)),
-                index,
-            )
-            for index in range(1, count + 1)
-            if int(np.count_nonzero(labeled == index))
-            >= minimum_residual_component_area_px
-        )
-        if len(sizes) < 2:
-            continue
-        # Start from the two largest stable lobes. Additional residual foci
-        # may be introduced by a future mechanism-specific program, but using
-        # every erosion fragment as a seed creates tiny diagonal raster
-        # remnants rather than biologically meaningful residual foci.
-        retained = sorted(sizes, reverse=True)[:2]
-        seed_labels = np.zeros_like(labeled, dtype=np.int32)
-        for new_id, (_size, old_id) in enumerate(retained, start=1):
-            seed_labels[labeled == old_id] = new_id
-        seed_count = len(retained)
-        break
-    if seed_labels is None or seed_count < 2:
-        return np.asarray(default_priority, dtype=float)
-
-    seeds = seed_labels > 0
-    _distance_to_seed, nearest = ndimage.distance_transform_edt(
-        ~seeds,
-        return_indices=True,
+    focus_count = int(
+        np.clip(minimum_residual_components, 2, maximum_residual_components)
     )
-    partition = seed_labels[nearest[0], nearest[1]]
-    separator = np.zeros_like(source, dtype=bool)
-    for row_offset, col_offset in ((1, 0), (0, 1), (1, 1), (1, -1)):
-        shifted = np.roll(partition, (row_offset, col_offset), axis=(0, 1))
-        valid = source & (partition > 0) & (shifted > 0) & (partition != shifted)
-        if row_offset > 0:
-            valid[:row_offset, :] = False
-        if col_offset > 0:
-            valid[:, :col_offset] = False
-        elif col_offset < 0:
-            valid[:, col_offset:] = False
-        separator |= valid
-    if not np.any(separator & legal):
-        return np.asarray(default_priority, dtype=float)
+    coordinates = np.argwhere(source).astype(float)
+    centered = coordinates - coordinates.mean(axis=0, keepdims=True)
+    covariance = centered.T @ centered / max(len(coordinates) - 1, 1)
+    _values, vectors = np.linalg.eigh(covariance)
+    major = vectors[:, -1]
+    minor = vectors[:, 0]
+    raw_axes = (
+        major,
+        minor,
+        np.asarray((1.0, 0.0)),
+        np.asarray((0.0, 1.0)),
+        np.asarray((1.0, 1.0)),
+        np.asarray((1.0, -1.0)),
+    )
+    axes: list[np.ndarray] = []
+    for axis in raw_axes:
+        normalized = np.asarray(axis, dtype=float) / max(
+            float(np.linalg.norm(axis)), 1e-12
+        )
+        if any(abs(float(np.dot(normalized, seen))) > 0.995 for seen in axes):
+            continue
+        axes.append(normalized)
+
     corridor_radius = max(
         1,
         int(np.ceil(max(1, minimum_residual_spacing_px + 1) / 2.0)),
     )
-    corridor = ndimage.binary_dilation(
-        separator,
-        structure=structure,
-        iterations=corridor_radius,
-    ) & source & legal
+    best_corridor = None
+    best_score = None
+    for axis_index, axis in enumerate(axes):
+        projection = centered @ axis
+        boundaries = np.quantile(
+            projection,
+            np.arange(1, focus_count, dtype=float) / focus_count,
+        )
+        partition = np.zeros_like(source, dtype=np.int16)
+        partition_values = np.searchsorted(
+            boundaries, projection, side="right"
+        ) + 1
+        rows = coordinates[:, 0].astype(int)
+        cols = coordinates[:, 1].astype(int)
+        partition[rows, cols] = partition_values
+        separator = np.zeros_like(source, dtype=bool)
+        vertical = (
+            source[1:, :]
+            & source[:-1, :]
+            & (partition[1:, :] != partition[:-1, :])
+        )
+        horizontal = (
+            source[:, 1:]
+            & source[:, :-1]
+            & (partition[:, 1:] != partition[:, :-1])
+        )
+        separator[1:, :] |= vertical
+        separator[:-1, :] |= vertical
+        separator[:, 1:] |= horizontal
+        separator[:, :-1] |= horizontal
+        corridor = ndimage.binary_dilation(
+            separator,
+            structure=structure,
+            iterations=corridor_radius,
+        ) & source & legal
+        if not np.any(corridor):
+            continue
+        provisional_after = source & ~corridor
+        provisional_labels, provisional_count = ndimage.label(
+            provisional_after, structure=structure
+        )
+        provisional_sizes = sorted(
+            int(np.count_nonzero(provisional_labels == index))
+            for index in range(1, provisional_count + 1)
+        )
+        total = max(sum(provisional_sizes), 1)
+        fractions = [size / total for size in provisional_sizes]
+        minimum_fraction = min(fractions, default=0.0)
+        dominant_fraction = max(fractions, default=1.0)
+        contract_valid = bool(
+            focus_count <= provisional_count <= maximum_residual_components
+            and provisional_sizes
+            and min(provisional_sizes)
+            >= minimum_residual_component_area_px
+            and minimum_fraction + 1e-9
+            >= minimum_residual_component_fraction
+            and dominant_fraction
+            <= maximum_dominant_residual_component_fraction + 1e-9
+        )
+        score = (
+            int(contract_valid),
+            min(provisional_count, maximum_residual_components),
+            minimum_fraction,
+            -dominant_fraction,
+            int(np.count_nonzero(corridor)),
+            -axis_index,
+        )
+        if best_score is None or score > best_score:
+            best_corridor = corridor
+            best_score = score
+    if best_corridor is None:
+        return np.asarray(default_priority, dtype=float)
+    corridor = best_corridor
     # Fill tiny source remnants enclosed by the proposed corridor. They are
     # raster artifacts of a diagonal cut, not residual foci, and leaving them
     # would violate the same minimum-focus-area contract used by the gate.
@@ -832,6 +904,17 @@ def _topology_policy(plan: EditPlan) -> dict[str, Any]:
         "residual_area_floor_fraction": float(
             params.get("residual_area_floor_fraction", 0.0)
         ),
+        "maximum_residual_area_fraction": float(
+            params.get("maximum_residual_area_fraction", 1.0)
+        ),
+        "minimum_residual_component_fraction": float(
+            params.get("minimum_residual_component_fraction", 0.0)
+        ),
+        "maximum_dominant_residual_component_fraction": float(
+            params.get(
+                "maximum_dominant_residual_component_fraction", 1.0
+            )
+        ),
         "minimum_changed_component_area_px": max(
             1, int(params.get("min_component_area_px", 16))
         ),
@@ -856,6 +939,9 @@ def _resolve_topology_safe_area(
     minimum_residual_component_area_px: int = 1,
     minimum_residual_spacing_px: int = 0,
     residual_area_floor_fraction: float = 0.0,
+    maximum_residual_area_fraction: float = 1.0,
+    minimum_residual_component_fraction: float = 0.0,
+    maximum_dominant_residual_component_fraction: float = 1.0,
     minimum_changed_component_area_px: int = 16,
 ) -> tuple[
     tuple[int, ...],
@@ -890,6 +976,13 @@ def _resolve_topology_safe_area(
             ),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
+            maximum_residual_area_fraction=maximum_residual_area_fraction,
+            minimum_residual_component_fraction=(
+                minimum_residual_component_fraction
+            ),
+            maximum_dominant_residual_component_fraction=(
+                maximum_dominant_residual_component_fraction
+            ),
             minimum_changed_component_area_px=(
                 minimum_changed_component_area_px
             ),
@@ -912,6 +1005,13 @@ def _resolve_topology_safe_area(
             ),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
+            maximum_residual_area_fraction=maximum_residual_area_fraction,
+            minimum_residual_component_fraction=(
+                minimum_residual_component_fraction
+            ),
+            maximum_dominant_residual_component_fraction=(
+                maximum_dominant_residual_component_fraction
+            ),
         )
         valid = realized == total and bool(topology["passed"])
         attempts.append(
@@ -1064,6 +1164,9 @@ def _whole_mask_topology_audit(
     minimum_residual_component_area_px: int = 1,
     minimum_residual_spacing_px: int = 0,
     residual_area_floor_fraction: float = 0.0,
+    maximum_residual_area_fraction: float = 1.0,
+    minimum_residual_component_fraction: float = 0.0,
+    maximum_dominant_residual_component_fraction: float = 1.0,
 ) -> dict[str, Any]:
     change = np.logical_or.reduce(selected_by_work)
     source_after = source_region & ~change
@@ -1107,6 +1210,16 @@ def _whole_mask_topology_audit(
     source_area_before = int(np.count_nonzero(residual_source_before))
     source_area_after = int(np.count_nonzero(residual_source_after))
     residual_fraction = source_area_after / max(source_area_before, 1)
+    residual_total = max(sum(residual_sizes), 1)
+    residual_component_fractions = [
+        size / residual_total for size in residual_sizes
+    ]
+    minimum_observed_component_fraction = min(
+        residual_component_fractions, default=0.0
+    )
+    dominant_component_fraction = max(
+        residual_component_fractions, default=1.0
+    )
     residual_spacing_px = _minimum_component_spacing_px(
         source_labeled_after,
         source_components_after_selected,
@@ -1119,6 +1232,11 @@ def _whole_mask_topology_audit(
             and min(residual_sizes) >= minimum_residual_component_area_px
             and residual_spacing_px + 1e-9 >= minimum_residual_spacing_px
             and residual_fraction + 1e-9 >= residual_area_floor_fraction
+            and residual_fraction <= maximum_residual_area_fraction + 1e-9
+            and minimum_observed_component_fraction + 1e-9
+            >= minimum_residual_component_fraction
+            and dominant_component_fraction
+            <= maximum_dominant_residual_component_fraction + 1e-9
         )
     else:
         source_components_valid = (
@@ -1191,6 +1309,22 @@ def _whole_mask_topology_audit(
         "residual_component_sizes_px": residual_sizes,
         "residual_area_fraction": float(residual_fraction),
         "residual_area_floor_fraction": float(residual_area_floor_fraction),
+        "maximum_residual_area_fraction": float(
+            maximum_residual_area_fraction
+        ),
+        "residual_component_fractions": residual_component_fractions,
+        "minimum_observed_residual_component_fraction": float(
+            minimum_observed_component_fraction
+        ),
+        "minimum_required_residual_component_fraction": float(
+            minimum_residual_component_fraction
+        ),
+        "dominant_residual_component_fraction": float(
+            dominant_component_fraction
+        ),
+        "maximum_dominant_residual_component_fraction": float(
+            maximum_dominant_residual_component_fraction
+        ),
     }
 
 
@@ -1235,6 +1369,9 @@ def _simulate_topology_safe_execution(
     minimum_residual_component_area_px: int = 1,
     minimum_residual_spacing_px: int = 0,
     residual_area_floor_fraction: float = 0.0,
+    maximum_residual_area_fraction: float = 1.0,
+    minimum_residual_component_fraction: float = 0.0,
+    maximum_dominant_residual_component_fraction: float = 1.0,
     minimum_changed_component_area_px: int = 16,
 ) -> tuple[tuple[np.ndarray, ...], tuple[dict[str, Any], ...]]:
     source_states = {
@@ -1361,6 +1498,13 @@ def _simulate_topology_safe_execution(
             ),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
+            maximum_residual_area_fraction=maximum_residual_area_fraction,
+            minimum_residual_component_fraction=(
+                minimum_residual_component_fraction
+            ),
+            maximum_dominant_residual_component_fraction=(
+                maximum_dominant_residual_component_fraction
+            ),
         )
         selected_by_work = list(selected_by_work)
         if cleanup["applied"]:
@@ -1469,6 +1613,9 @@ def _rebalance_fragmentation_residual_islands(
     minimum_residual_component_area_px: int,
     minimum_residual_spacing_px: int,
     residual_area_floor_fraction: float,
+    maximum_residual_area_fraction: float = 1.0,
+    minimum_residual_component_fraction: float = 0.0,
+    maximum_dominant_residual_component_fraction: float = 1.0,
 ) -> tuple[tuple[np.ndarray, ...], dict[str, Any]]:
     """Remove raster micro-islands without changing the resolved area.
 
@@ -1496,7 +1643,7 @@ def _rebalance_fragmentation_residual_islands(
     )
     combined = np.logical_or.reduce(selected_by_work)
     residual = selected_source & ~combined
-    labels, count = ndimage.label(
+    labels, _count = ndimage.label(
         residual, structure=np.ones((3, 3), dtype=bool)
     )
     sizes = np.bincount(labels.ravel())[1:]
@@ -1542,6 +1689,13 @@ def _rebalance_fragmentation_residual_islands(
         minimum_residual_component_area_px=minimum_residual_component_area_px,
         minimum_residual_spacing_px=minimum_residual_spacing_px,
         residual_area_floor_fraction=residual_area_floor_fraction,
+        maximum_residual_area_fraction=maximum_residual_area_fraction,
+        minimum_residual_component_fraction=(
+            minimum_residual_component_fraction
+        ),
+        maximum_dominant_residual_component_fraction=(
+            maximum_dominant_residual_component_fraction
+        ),
     )
     if not filled_audit["passed"]:
         return selected_by_work, unchanged
@@ -1557,10 +1711,11 @@ def _rebalance_fragmentation_residual_islands(
     maximum_trials = min(4096, max(512, reclaimed * 64))
     removed = 0
     trials = 0
-    for _priority, index, row, col in candidates:
-        if removed >= reclaimed or trials >= maximum_trials:
+    for trials, (_priority, index, row, col) in enumerate(
+        candidates, start=1
+    ):
+        if removed >= reclaimed or trials > maximum_trials:
             break
-        trials += 1
         updated[index][row, col] = False
         audit = _whole_mask_topology_audit(
             source_region=source_region,
@@ -1575,6 +1730,13 @@ def _rebalance_fragmentation_residual_islands(
             ),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
+            maximum_residual_area_fraction=maximum_residual_area_fraction,
+            minimum_residual_component_fraction=(
+                minimum_residual_component_fraction
+            ),
+            maximum_dominant_residual_component_fraction=(
+                maximum_dominant_residual_component_fraction
+            ),
         )
         if audit["passed"]:
             removed += 1

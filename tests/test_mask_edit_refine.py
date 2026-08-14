@@ -28,6 +28,8 @@ from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
+    _residual_fragmentation_priority,
+    _whole_mask_topology_audit,
     compile_edit_plan,
 )
 from phase3_mask_edit_refine.gates import (
@@ -1015,6 +1017,68 @@ class CandidateAndSceneTests(unittest.TestCase):
         sizes = np.bincount(labels.ravel())[1:]
         self.assertEqual(count, 2)
         self.assertGreaterEqual(int(sizes.min()), 96)
+
+    def test_fragmentation_priority_builds_three_balanced_traversing_foci(self):
+        shape = (96, 120)
+        source = np.zeros(shape, dtype=bool)
+        source[12:84, 10:110] = True
+        default = ndimage.distance_transform_edt(source)
+
+        priority = _residual_fragmentation_priority(
+            source_component=source,
+            legal_envelope=source,
+            default_priority=default,
+            minimum_residual_components=3,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=8,
+            minimum_residual_component_fraction=0.08,
+            maximum_dominant_residual_component_fraction=0.75,
+        )
+
+        corridor = source & (priority < 0.5)
+        labels, count = ndimage.label(
+            source & ~corridor, structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = np.bincount(labels.ravel())[1:]
+        fractions = sizes / sizes.sum()
+        self.assertEqual(count, 3)
+        self.assertGreaterEqual(float(fractions.min()), 0.08)
+        self.assertLessEqual(float(fractions.max()), 0.75)
+        self.assertGreaterEqual(
+            int(np.count_nonzero(corridor)), int(source.sum() * 0.12)
+        )
+
+    def test_fragmentation_topology_rejects_two_or_imbalanced_foci(self):
+        shape = (60, 90)
+        source = np.zeros(shape, dtype=bool)
+        source[5:55, 5:85] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:55, 44:54] = True
+        work = SimpleNamespace(
+            source_component=source,
+            planned=SimpleNamespace(target_component_id="stroma:1"),
+        )
+
+        audit = _whole_mask_topology_audit(
+            source_region=source,
+            target_region=target,
+            selected_by_work=(change,),
+            works=(work,),
+            allow_source_component_split=True,
+            minimum_residual_components=3,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=8,
+            residual_area_floor_fraction=0.3,
+            maximum_residual_area_fraction=0.88,
+            minimum_residual_component_fraction=0.08,
+            maximum_dominant_residual_component_fraction=0.75,
+        )
+
+        self.assertFalse(audit["passed"])
+        self.assertEqual(audit["selected_source_components_after"], 2)
 
     def test_adjacent_addressable_anchors_compile_as_one_continuous_arc(self):
         mask = _glas_circle_mask()

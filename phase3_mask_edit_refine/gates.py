@@ -889,6 +889,26 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             "residual_area_floor_fraction", 0.0
         )
     )
+    maximum_residual_fraction = float(
+        context.plan.tool_program.parameter_ranges.get(
+            "maximum_residual_area_fraction", 1.0
+        )
+    )
+    minimum_changed_fraction = float(
+        context.plan.tool_program.parameter_ranges.get(
+            "min_source_component_changed_fraction", 0.0
+        )
+    )
+    minimum_residual_component_fraction = float(
+        context.plan.tool_program.parameter_ranges.get(
+            "minimum_residual_component_fraction", 0.0
+        )
+    )
+    maximum_dominant_residual_component_fraction = float(
+        context.plan.tool_program.parameter_ranges.get(
+            "maximum_dominant_residual_component_fraction", 1.0
+        )
+    )
     minimum_residual_spacing = max(
         0,
         int(
@@ -904,6 +924,16 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
     residual_fraction = int(np.count_nonzero(selected_source_after)) / max(
         int(np.count_nonzero(selected_source_before)), 1
     )
+    residual_total = max(sum(residual_sizes), 1)
+    residual_component_fractions = [
+        size / residual_total for size in residual_sizes
+    ]
+    minimum_observed_component_fraction = min(
+        residual_component_fractions, default=0.0
+    )
+    dominant_component_fraction = max(
+        residual_component_fractions, default=1.0
+    )
     source_split_contract_ok = bool(
         allow_source_split
         and minimum_residual_components <= selected_components_after
@@ -912,6 +942,15 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
         and min(residual_sizes) >= minimum_residual_area
         and residual_spacing_px + 1e-9 >= minimum_residual_spacing
         and residual_fraction + 1e-9 >= residual_floor
+        and residual_fraction <= maximum_residual_fraction + 1e-9
+        and 1.0 - residual_fraction + 1e-9 >= minimum_changed_fraction
+        and minimum_observed_component_fraction + 1e-9
+        >= minimum_residual_component_fraction
+        and dominant_component_fraction
+        <= maximum_dominant_residual_component_fraction + 1e-9
+    )
+    required_source_split_missing = bool(
+        allow_source_split and not source_split_contract_ok
     )
     invalid_source_component_resolution = bool(
         source_components_after < source_components_before
@@ -940,7 +979,7 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
     )
     passed = not any(
         (
-            source_split and not source_split_contract_ok,
+            required_source_split_missing,
             invalid_source_component_resolution,
             target_split_or_island,
             unallowed_target_merge,
@@ -981,6 +1020,22 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             ),
             "residual_area_fraction": residual_fraction,
             "residual_area_floor_fraction": residual_floor,
+            "maximum_residual_area_fraction": maximum_residual_fraction,
+            "minimum_changed_source_fraction": minimum_changed_fraction,
+            "residual_component_fractions": residual_component_fractions,
+            "minimum_observed_residual_component_fraction": (
+                minimum_observed_component_fraction
+            ),
+            "minimum_required_residual_component_fraction": (
+                minimum_residual_component_fraction
+            ),
+            "dominant_residual_component_fraction": (
+                dominant_component_fraction
+            ),
+            "maximum_dominant_residual_component_fraction": (
+                maximum_dominant_residual_component_fraction
+            ),
+            "required_source_split_missing": required_source_split_missing,
             "target_split_or_island": target_split_or_island,
             "target_merge": target_merge,
             "selected_target_component_ids": sorted(selected_target_component_ids),
@@ -1052,6 +1107,30 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
             )
         ),
     )
+    min_fraction = max(
+        0.0,
+        float(
+            context.plan.tool_program.parameter_ranges.get(
+                "min_source_component_changed_fraction", 0.0
+            )
+        ),
+    )
+    maximum_selected_source_components = max(
+        1,
+        int(
+            context.plan.tool_program.parameter_ranges.get(
+                "maximum_selected_source_components", 32
+            )
+        ),
+    )
+    minimum_dominant_change_fraction = max(
+        0.0,
+        float(
+            context.plan.tool_program.parameter_ranges.get(
+                "minimum_dominant_change_component_fraction", 0.0
+            )
+        ),
+    )
     min_remaining = max(
         0 if (allow_source_resolution or allow_source_split) else 64,
         int(
@@ -1081,6 +1160,34 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
         }
         if fraction > max_fraction or (changed > 0 and remaining < min_remaining):
             passed = False
+    selected_source = np.zeros_like(change, dtype=bool)
+    for component_id in component_ids:
+        component = context.scene.component_masks.get(component_id)
+        if component is not None:
+            selected_source |= np.asarray(component, dtype=bool)
+    selected_change = change & selected_source
+    selected_source_area = int(np.count_nonzero(selected_source))
+    selected_changed_area = int(np.count_nonzero(selected_change))
+    aggregate_changed_fraction = selected_changed_area / max(
+        selected_source_area, 1
+    )
+    labeled_change, change_component_count = ndimage.label(
+        selected_change, structure=np.ones((3, 3), dtype=bool)
+    )
+    change_component_sizes = [
+        int(np.count_nonzero(labeled_change == index))
+        for index in range(1, change_component_count + 1)
+    ]
+    dominant_change_fraction = max(change_component_sizes, default=0) / max(
+        selected_changed_area, 1
+    )
+    if (
+        len(component_ids) > maximum_selected_source_components
+        or aggregate_changed_fraction + 1e-9 < min_fraction
+        or dominant_change_fraction + 1e-9
+        < minimum_dominant_change_fraction
+    ):
+        passed = False
     return _result(
         "source_component_retention",
         passed and not missing,
@@ -1093,7 +1200,19 @@ def _check_source_component_retention(context: GateContext) -> GateCheck:
         metrics={
             "components": metrics,
             "max_changed_fraction": max_fraction,
+            "min_changed_fraction": min_fraction,
             "min_remaining_px": min_remaining,
+            "maximum_selected_source_components": (
+                maximum_selected_source_components
+            ),
+            "selected_source_component_count": len(component_ids),
+            "aggregate_changed_fraction": aggregate_changed_fraction,
+            "change_component_count": change_component_count,
+            "change_component_sizes_px": change_component_sizes,
+            "dominant_change_component_fraction": dominant_change_fraction,
+            "minimum_dominant_change_component_fraction": (
+                minimum_dominant_change_fraction
+            ),
             "missing_component_ids": missing,
         },
     )

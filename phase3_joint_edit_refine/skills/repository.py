@@ -88,11 +88,20 @@ class JointSkillBundle:
                 "allow_target_hole_resolution": (
                     self.primitive.allow_target_hole_resolution
                 ),
+                "minimum_source_component_changed_fraction": (
+                    self.primitive.minimum_source_component_changed_fraction
+                ),
                 "maximum_source_component_changed_fraction": (
                     self.primitive.maximum_source_component_changed_fraction
                 ),
                 "minimum_source_component_remaining_px": (
                     self.primitive.minimum_source_component_remaining_px
+                ),
+                "maximum_selected_source_components": (
+                    self.primitive.maximum_selected_source_components
+                ),
+                "minimum_dominant_change_component_fraction": (
+                    self.primitive.minimum_dominant_change_component_fraction
                 ),
                 "allow_source_component_split": (
                     self.primitive.allow_source_component_split
@@ -111,6 +120,15 @@ class JointSkillBundle:
                 ),
                 "residual_area_floor_fraction": (
                     self.primitive.residual_area_floor_fraction
+                ),
+                "maximum_residual_area_fraction": (
+                    self.primitive.maximum_residual_area_fraction
+                ),
+                "minimum_residual_component_fraction": (
+                    self.primitive.minimum_residual_component_fraction
+                ),
+                "maximum_dominant_residual_component_fraction": (
+                    self.primitive.maximum_dominant_residual_component_fraction
                 ),
             },
             "primitive_required_source_clearance_classes": list(

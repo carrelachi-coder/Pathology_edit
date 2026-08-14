@@ -198,11 +198,20 @@ def _effective_tissue_topology(
             primitive.allow_source_component_resolution
         ),
         "allow_target_hole_resolution": primitive.allow_target_hole_resolution,
+        "minimum_source_component_changed_fraction": (
+            primitive.minimum_source_component_changed_fraction
+        ),
         "maximum_source_component_changed_fraction": (
             primitive.maximum_source_component_changed_fraction
         ),
         "minimum_source_component_remaining_px": (
             primitive.minimum_source_component_remaining_px
+        ),
+        "maximum_selected_source_components": (
+            primitive.maximum_selected_source_components
+        ),
+        "minimum_dominant_change_component_fraction": (
+            primitive.minimum_dominant_change_component_fraction
         ),
         "allow_source_component_split": primitive.allow_source_component_split,
         "minimum_residual_components": primitive.minimum_residual_components,
@@ -212,6 +221,15 @@ def _effective_tissue_topology(
         ),
         "minimum_residual_spacing_px": primitive.minimum_residual_spacing_px,
         "residual_area_floor_fraction": primitive.residual_area_floor_fraction,
+        "maximum_residual_area_fraction": (
+            primitive.maximum_residual_area_fraction
+        ),
+        "minimum_residual_component_fraction": (
+            primitive.minimum_residual_component_fraction
+        ),
+        "maximum_dominant_residual_component_fraction": (
+            primitive.maximum_dominant_residual_component_fraction
+        ),
         "fallback_activated": False,
     }
     fallback = joint_bundle.mechanism.tissue_program.topology_fallback_for(
@@ -968,10 +986,12 @@ class MultiInterfaceResearchTissuePlanner:
                 ),
             )
         )
-        if residual_fragmentation and ranked:
-            # Fragmentation is defined within one pre-existing invasive-tumor
-            # component. Selecting unrelated components could satisfy an
-            # island-count gate without actually fragmenting anything.
+        if topology["maximum_selected_source_components"] == 1 and ranked:
+            # Coherent retreat and fragmentation are both defined within one
+            # pre-existing invasive-tumor component. Selecting unrelated
+            # components makes footprint regression look like scattered edge
+            # nibbles and can satisfy a fragmentation count without actually
+            # fragmenting one biological focus.
             capacity_by_source: dict[str, int] = {}
             for item in ranked:
                 capacity_by_source[item.source_component_id] = int(
@@ -1324,8 +1344,19 @@ class MultiInterfaceResearchTissuePlanner:
                     "max_source_component_changed_fraction": (
                         topology["maximum_source_component_changed_fraction"]
                     ),
+                    "min_source_component_changed_fraction": (
+                        topology["minimum_source_component_changed_fraction"]
+                    ),
                     "min_source_component_remaining_px": (
                         topology["minimum_source_component_remaining_px"]
+                    ),
+                    "maximum_selected_source_components": (
+                        topology["maximum_selected_source_components"]
+                    ),
+                    "minimum_dominant_change_component_fraction": (
+                        topology[
+                            "minimum_dominant_change_component_fraction"
+                        ]
                     ),
                     "allow_source_component_resolution": (
                         topology["allow_source_component_resolution"]
@@ -1350,6 +1381,17 @@ class MultiInterfaceResearchTissuePlanner:
                     ),
                     "residual_area_floor_fraction": (
                         topology["residual_area_floor_fraction"]
+                    ),
+                    "maximum_residual_area_fraction": (
+                        topology["maximum_residual_area_fraction"]
+                    ),
+                    "minimum_residual_component_fraction": (
+                        topology["minimum_residual_component_fraction"]
+                    ),
+                    "maximum_dominant_residual_component_fraction": (
+                        topology[
+                            "maximum_dominant_residual_component_fraction"
+                        ]
                     ),
                     "target_component_merge_policy": (
                         joint_bundle.mechanism.tissue_program.target_component_merge_policy

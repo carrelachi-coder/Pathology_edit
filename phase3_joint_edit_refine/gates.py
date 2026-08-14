@@ -173,6 +173,7 @@ class JointGateRegistry:
             "residual_fragmentation_topology": (
                 _residual_fragmentation_topology
             ),
+            "coherent_footprint_retreat": _coherent_footprint_retreat,
             "local_clearance_roi_binding": _local_clearance_roi_binding,
             "external_boundary_binding": _external_boundary_binding,
             "annotation_anchored_extension_geometry": (
@@ -2955,6 +2956,11 @@ def _mechanism_specific_postcondition(
             _residual_fragmentation_topology(c).passed
         )
 
+    if expected_mechanism_id == "breast-post-treatment-invasive-regression":
+        subchecks["coherent_footprint_retreat"] = (
+            _coherent_footprint_retreat(c).passed
+        )
+
     if expected_mechanism_id == "breast-local-invasive-clearance":
         subchecks["local_clearance_roi_binding"] = (
             _local_clearance_roi_binding(c).passed
@@ -3134,6 +3140,17 @@ def _residual_fragmentation_topology(c):
     residual_fraction = int(np.count_nonzero(after)) / max(
         int(np.count_nonzero(before)), 1
     )
+    changed_fraction = 1.0 - residual_fraction
+    residual_total = max(sum(sizes), 1)
+    residual_component_fractions = [
+        size / residual_total for size in sizes
+    ]
+    minimum_component_fraction = min(
+        residual_component_fractions, default=0.0
+    )
+    dominant_component_fraction = max(
+        residual_component_fractions, default=1.0
+    )
     holes_before = int(
         ndimage.label(
             ndimage.binary_fill_holes(before) & ~before,
@@ -3159,15 +3176,25 @@ def _residual_fragmentation_topology(c):
         and spacing_px + 1e-9 >= primitive.minimum_residual_spacing_px
         and residual_fraction + 1e-9
         >= primitive.residual_area_floor_fraction
+        and residual_fraction
+        <= primitive.maximum_residual_area_fraction + 1e-9
+        and changed_fraction + 1e-9
+        >= primitive.minimum_source_component_changed_fraction
+        and minimum_component_fraction + 1e-9
+        >= primitive.minimum_residual_component_fraction
+        and dominant_component_fraction
+        <= primitive.maximum_dominant_residual_component_fraction + 1e-9
+        and len(selected_components)
+        <= primitive.maximum_selected_source_components
         and holes_after <= holes_before
     )
     return _result(
         "residual_fragmentation_topology",
         passed,
         (
-            "residual focus count, size, floor and no-new-hole contract pass"
+            "residual focus count, mass balance, converted fraction and no-new-hole contract pass"
             if passed
-            else "residual fragmentation violates focus topology or residual floor"
+            else "residual fragmentation violates focus topology, balance or visible-conversion contract"
         ),
         metrics={
             "selected_source_component_ids": list(selected_components),
@@ -3183,12 +3210,134 @@ def _residual_fragmentation_topology(c):
             ),
             "observed_minimum_residual_spacing_px": spacing_px,
             "residual_fraction": residual_fraction,
+            "changed_source_fraction": changed_fraction,
+            "minimum_changed_source_fraction": (
+                primitive.minimum_source_component_changed_fraction
+            ),
             "residual_floor_fraction": primitive.residual_area_floor_fraction,
+            "maximum_residual_area_fraction": (
+                primitive.maximum_residual_area_fraction
+            ),
+            "residual_component_fractions": residual_component_fractions,
+            "minimum_observed_residual_component_fraction": (
+                minimum_component_fraction
+            ),
+            "minimum_required_residual_component_fraction": (
+                primitive.minimum_residual_component_fraction
+            ),
+            "dominant_residual_component_fraction": (
+                dominant_component_fraction
+            ),
+            "maximum_dominant_residual_component_fraction": (
+                primitive.maximum_dominant_residual_component_fraction
+            ),
+            "maximum_selected_source_components": (
+                primitive.maximum_selected_source_components
+            ),
             "holes_before": holes_before,
             "holes_after": holes_after,
             "changed_source_fine_ids": sorted(
                 int(value) for value in np.unique(source[change])
             ),
+        },
+    )
+
+
+def _coherent_footprint_retreat(c):
+    if c.case.primitive_id != "invasive-tumor-footprint-decrease-v1":
+        return _result(
+            "coherent_footprint_retreat",
+            True,
+            "coherent footprint retreat is not applicable",
+        )
+    source = np.asarray(c.source_tissue)
+    target = np.asarray(c.candidate.target_tissue_mask)
+    change = np.asarray(c.candidate.tissue_change, dtype=bool)
+    selected_components = tuple(
+        dict.fromkeys(
+            item.source_component_id
+            for item in c.plan.tissue_plan.candidate_interfaces
+        )
+    )
+    selected_source = np.zeros_like(change, dtype=bool)
+    for component_id in selected_components:
+        selected_source |= np.asarray(
+            c.scene.tissue.component_masks[component_id], dtype=bool
+        )
+    editable_ids = tuple(
+        c.bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
+            c.bundle.mechanism.mechanism_id, (1,)
+        )
+    )
+    before = selected_source & np.isin(source, editable_ids)
+    realized_change = change & before
+    structure = np.ones((3, 3), dtype=bool)
+    labeled, component_count = ndimage.label(
+        realized_change, structure=structure
+    )
+    sizes = [
+        int(np.count_nonzero(labeled == index))
+        for index in range(1, component_count + 1)
+    ]
+    changed_pixels = int(np.count_nonzero(realized_change))
+    changed_fraction = changed_pixels / max(
+        int(np.count_nonzero(before)), 1
+    )
+    dominant_change_fraction = max(sizes, default=0) / max(
+        changed_pixels, 1
+    )
+    target_ids = tuple(
+        c.bundle.annotation_profile.mechanism_editable_target_fine_ids.get(
+            c.bundle.mechanism.mechanism_id, (2,)
+        )
+    )
+    target_before = np.isin(source, target_ids)
+    target_contact = ndimage.binary_dilation(
+        target_before, structure=structure
+    )
+    boundary_attached = bool(
+        sizes
+        and all(
+            np.any((labeled == index) & target_contact)
+            for index in range(1, component_count + 1)
+        )
+    )
+    primitive = c.bundle.primitive
+    passed = bool(
+        changed_pixels > 0
+        and len(selected_components)
+        <= primitive.maximum_selected_source_components
+        and changed_fraction + 1e-9
+        >= primitive.minimum_source_component_changed_fraction
+        and dominant_change_fraction + 1e-9
+        >= primitive.minimum_dominant_change_component_fraction
+        and boundary_attached
+        and np.all(np.isin(target[realized_change], target_ids))
+    )
+    return _result(
+        "coherent_footprint_retreat",
+        passed,
+        (
+            "one invasive component has a visually meaningful coherent boundary retreat"
+            if passed
+            else "footprint decrease is too small, dispersed across components, or not boundary attached"
+        ),
+        metrics={
+            "selected_source_component_ids": list(selected_components),
+            "maximum_selected_source_components": (
+                primitive.maximum_selected_source_components
+            ),
+            "changed_source_fraction": changed_fraction,
+            "minimum_changed_source_fraction": (
+                primitive.minimum_source_component_changed_fraction
+            ),
+            "change_component_count": component_count,
+            "change_component_sizes_px": sizes,
+            "dominant_change_component_fraction": dominant_change_fraction,
+            "minimum_dominant_change_component_fraction": (
+                primitive.minimum_dominant_change_component_fraction
+            ),
+            "all_change_components_boundary_attached": boundary_attached,
         },
     )
 

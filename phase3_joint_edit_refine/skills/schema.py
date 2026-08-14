@@ -521,14 +521,20 @@ class JointPrimitiveSkill:
     tissue_geometry_mode: str
     allow_source_component_resolution: bool
     allow_target_hole_resolution: bool
+    minimum_source_component_changed_fraction: float
     maximum_source_component_changed_fraction: float
     minimum_source_component_remaining_px: int
+    maximum_selected_source_components: int
+    minimum_dominant_change_component_fraction: float
     allow_source_component_split: bool
     minimum_residual_components: int
     maximum_residual_components: int
     minimum_residual_component_area_px: int
     minimum_residual_spacing_px: int
     residual_area_floor_fraction: float
+    maximum_residual_area_fraction: float
+    minimum_residual_component_fraction: float
+    maximum_dominant_residual_component_fraction: float
     required_source_clearance_classes: tuple[int, ...]
     minimum_source_clearance_instances: int
     minimum_effect_delta_count: int
@@ -582,11 +588,20 @@ class JointPrimitiveSkill:
             raise JointContractError(
                 f"unknown primitive tissue geometry mode: {geometry_mode}"
             )
+        minimum_changed = float(
+            topology.get("minimum_source_component_changed_fraction", 0.0)
+        )
         maximum_changed = float(
             topology.get("maximum_source_component_changed_fraction", 0.55)
         )
         minimum_remaining = int(
             topology.get("minimum_source_component_remaining_px", 64)
+        )
+        maximum_selected_source_components = int(
+            topology.get("maximum_selected_source_components", 32)
+        )
+        minimum_dominant_change_component_fraction = float(
+            topology.get("minimum_dominant_change_component_fraction", 0.0)
         )
         minimum_residual_components = int(
             topology.get("minimum_residual_components", 1)
@@ -603,6 +618,17 @@ class JointPrimitiveSkill:
         residual_area_floor_fraction = float(
             topology.get("residual_area_floor_fraction", 0.0)
         )
+        maximum_residual_area_fraction = float(
+            topology.get("maximum_residual_area_fraction", 1.0)
+        )
+        minimum_residual_component_fraction = float(
+            topology.get("minimum_residual_component_fraction", 0.0)
+        )
+        maximum_dominant_residual_component_fraction = float(
+            topology.get(
+                "maximum_dominant_residual_component_fraction", 1.0
+            )
+        )
         minimum_clearance = int(
             payload.get("minimum_source_clearance_instances", 0)
         )
@@ -616,17 +642,29 @@ class JointPrimitiveSkill:
             effect.get("minimum_span_cell_diameters", 0.0)
         )
         minimum_effect_foci = int(effect.get("minimum_foci", 0))
-        if not 0.0 < maximum_changed <= 1.0:
+        if not 0.0 <= minimum_changed <= maximum_changed <= 1.0:
             raise JointContractError(
-                "maximum source-component changed fraction must lie in (0,1]"
+                "source-component changed fractions must satisfy "
+                "0 <= minimum <= maximum <= 1"
             )
         if (
             minimum_remaining < 0
+            or maximum_selected_source_components < 1
+            or not 0.0
+            <= minimum_dominant_change_component_fraction
+            <= 1.0
             or minimum_residual_components < 1
             or maximum_residual_components < minimum_residual_components
             or minimum_residual_component_area_px < 1
             or minimum_residual_spacing_px < 0
-            or not 0.0 <= residual_area_floor_fraction < 1.0
+            or not 0.0
+            <= residual_area_floor_fraction
+            <= maximum_residual_area_fraction
+            <= 1.0
+            or not 0.0 <= minimum_residual_component_fraction <= 1.0
+            or not 0.0
+            < maximum_dominant_residual_component_fraction
+            <= 1.0
             or minimum_clearance < 0
             or minimum_effect_delta < 0
             or minimum_effect_span < 0
@@ -657,8 +695,15 @@ class JointPrimitiveSkill:
             allow_target_hole_resolution=bool(
                 topology.get("allow_target_hole_resolution", False)
             ),
+            minimum_source_component_changed_fraction=minimum_changed,
             maximum_source_component_changed_fraction=maximum_changed,
             minimum_source_component_remaining_px=minimum_remaining,
+            maximum_selected_source_components=(
+                maximum_selected_source_components
+            ),
+            minimum_dominant_change_component_fraction=(
+                minimum_dominant_change_component_fraction
+            ),
             allow_source_component_split=bool(
                 topology.get("allow_source_component_split", False)
             ),
@@ -669,6 +714,13 @@ class JointPrimitiveSkill:
             ),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
+            maximum_residual_area_fraction=maximum_residual_area_fraction,
+            minimum_residual_component_fraction=(
+                minimum_residual_component_fraction
+            ),
+            maximum_dominant_residual_component_fraction=(
+                maximum_dominant_residual_component_fraction
+            ),
             required_source_clearance_classes=_ints(
                 payload, "required_source_clearance_classes"
             ),

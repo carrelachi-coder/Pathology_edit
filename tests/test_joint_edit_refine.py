@@ -898,6 +898,67 @@ class JointSkillTests(unittest.TestCase):
                     set(bundle.required_checker_ids).issubset(checker_ids)
                 )
 
+    def test_regression_and_fragmentation_bind_visible_effect_contracts(self):
+        repository = JointSkillRepository()
+        checker_ids = set(JointGateRegistry().available_checker_ids)
+        expected = {
+            "invasive-tumor-footprint-decrease-v1": (
+                "breast-post-treatment-invasive-regression",
+                0.08,
+                1,
+            ),
+            "residual-tumor-fragmentation-v1": (
+                "breast-residual-disease-fragmentation",
+                0.12,
+                1,
+            ),
+        }
+        for primitive_id, (mechanism_id, minimum_changed, maximum_sources) in (
+            expected.items()
+        ):
+            with self.subTest(primitive=primitive_id):
+                case = replace(
+                    _breast_case_stub(),
+                    primitive_id=primitive_id,
+                    joint_area_budget=JointAreaBudget(),
+                    semantic_intent={
+                        "treatment_context": "post_treatment",
+                        "scenario": (
+                            "residual_disease"
+                            if primitive_id
+                            == "residual-tumor-fragmentation-v1"
+                            else "treatment_response"
+                        ),
+                    },
+                )
+                bundle = repository.compose(
+                    case=case,
+                    mechanism_id=mechanism_id,
+                    available_checker_ids=checker_ids,
+                    production=False,
+                )
+                primitive = bundle.primitive
+                self.assertEqual(
+                    primitive.minimum_source_component_changed_fraction,
+                    minimum_changed,
+                )
+                self.assertEqual(
+                    primitive.maximum_selected_source_components,
+                    maximum_sources,
+                )
+                if primitive_id == "residual-tumor-fragmentation-v1":
+                    self.assertEqual(primitive.minimum_residual_components, 3)
+                    self.assertEqual(
+                        primitive.maximum_residual_area_fraction, 0.88
+                    )
+                    self.assertEqual(
+                        primitive.minimum_residual_component_fraction, 0.08
+                    )
+                    self.assertEqual(
+                        primitive.maximum_dominant_residual_component_fraction,
+                        0.75,
+                    )
+
     def test_breast_bcss_capability_matrix_matches_executable_skills(self):
         repository = JointSkillRepository()
         matrix_path = (
