@@ -20,13 +20,14 @@ from phase3_mask_edit_refine.models import (
     ResolvedAreaContract,
 )
 from phase3_mask_edit_refine.scene import SceneAnalysis
+from phase3_mask_edit_refine.tool_adapters import smooth_noise
 from phase3_mask_edit_refine.topology import (
     protected_narrow_necks,
     source_deletion_limit,
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v5"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v6"
 
 
 class TopologySafeAreaUnderfillError(RefineContractError):
@@ -91,12 +92,7 @@ def compile_edit_plan_with_witness(
     source_mask: np.ndarray,
     schema: MaskProfileSchema,
     scene: SceneAnalysis,
-) -> tuple[
-    EditPlan,
-    dict[str, Any],
-    tuple[CompiledReplayPart, ...],
-    dict[str, Any],
-]:
+) -> tuple[EditPlan, dict[str, Any], tuple[CompiledReplayPart, ...], dict[str, Any],]:
     """Resolve area, allocations, and depth with topology constraints up front.
 
     The desired area remains immutable.  For a ranged task whose fallback
@@ -178,7 +174,9 @@ def compile_edit_plan_with_witness(
         index for index, value in enumerate(realized_allocations.tolist()) if value > 0
     ]
     if not active_indices:
-        raise RefineContractError("execution solver produced no topology-safe edit pixels")
+        raise RefineContractError(
+            "execution solver produced no topology-safe edit pixels"
+        )
 
     binding_constraint = _binding_constraint(
         desired_pixels=desired_pixels,
@@ -217,12 +215,36 @@ def compile_edit_plan_with_witness(
 
         required_scale = work.priority[selected]
         resolved_peak = float(max(1.0, np.max(required_scale)))
+        if plan.primitive_id == "invasive-tumor-footprint-decrease-v1":
+            # The footprint-specific priority is an organic ranking score,
+            # not a physical depth.  Bind the compiled profile to both the
+            # ranking prefix (for exact replay) and the actual tapered-profile
+            # scale (for execution-fidelity depth checks).
+            requested_peak = max(requested.peak_depth_px, 1e-6)
+            unit_profile = replace(
+                requested,
+                peak_depth_px=1.0,
+                edge_depth_px=float(
+                    np.clip(requested.edge_depth_px / requested_peak, 0.0, 1.0)
+                ),
+                noise_amplitude_px=0.0,
+            )
+            unit_depth = compile_depth_profile_map(
+                work.anchor_masks,
+                profile=unit_profile,
+                shape=source_mask.shape,
+            )
+            physical_scale = ndimage.distance_transform_edt(
+                ~work.anchor_mask
+            ) / np.maximum(unit_depth, 1e-3)
+            resolved_peak = max(
+                resolved_peak,
+                float(np.max(physical_scale[selected], initial=1.0)),
+            )
         band_max = float(work.planned.allowed_edit_band_px[1])
         resolved_peak = min(band_max, resolved_peak * 1.001)
         edge_ratio = requested.edge_depth_px / max(requested.peak_depth_px, 1e-6)
-        noise_ratio = requested.noise_amplitude_px / max(
-            requested.peak_depth_px, 1e-6
-        )
+        noise_ratio = requested.noise_amplitude_px / max(requested.peak_depth_px, 1e-6)
         compiled_profile = replace(
             requested,
             peak_depth_px=resolved_peak,
@@ -249,9 +271,7 @@ def compile_edit_plan_with_witness(
                 / max(resolved_pixels, 1),
                 "allocated_pixels": allocated_pixels,
                 "legal_capacity_pixels": int(work.item_capacity_px),
-                "source_deletion_limit_pixels": int(
-                    work.source_deletion_limit_px
-                ),
+                "source_deletion_limit_pixels": int(work.source_deletion_limit_px),
                 "requested_peak_depth_px": requested.peak_depth_px,
                 "compiled_peak_depth_px": resolved_peak,
                 "edge_to_peak_ratio": edge_ratio,
@@ -269,9 +289,7 @@ def compile_edit_plan_with_witness(
         candidate_interfaces=tuple(compiled_interfaces),
         resolved_area=resolved_area,
     )
-    compiled_by_id = {
-        item.interface_id: item for item in compiled_interfaces
-    }
+    compiled_by_id = {item.interface_id: item for item in compiled_interfaces}
     witness_parts = tuple(
         CompiledReplayPart(
             planned=compiled_by_id[work.planned.interface_id],
@@ -283,9 +301,7 @@ def compile_edit_plan_with_witness(
             protected_source_necks=work.protected_source_necks,
             topology_audit=dict(grow_audit),
         )
-        for work, selected, grow_audit in zip(
-            works, selected_by_work, grow_audits
-        )
+        for work, selected, grow_audit in zip(works, selected_by_work, grow_audits)
         if work.planned.interface_id in compiled_by_id and np.any(selected)
     )
     witness_realized = sum(
@@ -302,21 +318,26 @@ def compile_edit_plan_with_witness(
         "whole_mask_topology": topology_audit,
         "reused_from_compiler": True,
     }
-    return compiled_plan, {
-        "compiler_version": EXECUTION_SOLVER_VERSION,
-        "desired_pixels": int(desired_pixels),
-        "hard_allowed_pixels": [int(hard_min_pixels), int(hard_max_pixels)],
-        "resolved_pixels": int(resolved_pixels),
-        "used_fallback": bool(resolved_area.used_fallback),
-        "fallback_policy": plan.area_budget.fallback_policy,
-        "binding_constraint": binding_constraint,
-        "whole_mask_topology": topology_audit,
-        "area_search": search_audit,
-        # Backward-compatible audit key used by existing evaluation scripts.
-        "target_pixels": int(resolved_pixels),
-        "interfaces": audit_interfaces,
-        "reusable_topology_witness": True,
-    }, witness_parts, replay_audit
+    return (
+        compiled_plan,
+        {
+            "compiler_version": EXECUTION_SOLVER_VERSION,
+            "desired_pixels": int(desired_pixels),
+            "hard_allowed_pixels": [int(hard_min_pixels), int(hard_max_pixels)],
+            "resolved_pixels": int(resolved_pixels),
+            "used_fallback": bool(resolved_area.used_fallback),
+            "fallback_policy": plan.area_budget.fallback_policy,
+            "binding_constraint": binding_constraint,
+            "whole_mask_topology": topology_audit,
+            "area_search": search_audit,
+            # Backward-compatible audit key used by existing evaluation scripts.
+            "target_pixels": int(resolved_pixels),
+            "interfaces": audit_interfaces,
+            "reusable_topology_witness": True,
+        },
+        witness_parts,
+        replay_audit,
+    )
 
 
 def replay_compiled_edit_plan(
@@ -425,18 +446,12 @@ def replay_compiled_edit_plan(
         allow_source_component_split=bool(
             topology_policy["allow_source_component_split"]
         ),
-        minimum_residual_components=int(
-            topology_policy["minimum_residual_components"]
-        ),
-        maximum_residual_components=int(
-            topology_policy["maximum_residual_components"]
-        ),
+        minimum_residual_components=int(topology_policy["minimum_residual_components"]),
+        maximum_residual_components=int(topology_policy["maximum_residual_components"]),
         minimum_residual_component_area_px=int(
             topology_policy["minimum_residual_component_area_px"]
         ),
-        minimum_residual_spacing_px=int(
-            topology_policy["minimum_residual_spacing_px"]
-        ),
+        minimum_residual_spacing_px=int(topology_policy["minimum_residual_spacing_px"]),
         residual_area_floor_fraction=float(
             topology_policy["residual_area_floor_fraction"]
         ),
@@ -447,9 +462,7 @@ def replay_compiled_edit_plan(
             topology_policy["minimum_residual_component_fraction"]
         ),
         maximum_dominant_residual_component_fraction=float(
-            topology_policy[
-                "maximum_dominant_residual_component_fraction"
-            ]
+            topology_policy["maximum_dominant_residual_component_fraction"]
         ),
     )
     if realized != resolved or not topology["passed"]:
@@ -501,7 +514,9 @@ def _prepare_compiler_work(
         len(group) != len(planned.execution_contract.anchor_segment_ids)
         for group, planned in zip(anchor_groups, plan.candidate_interfaces)
     ):
-        raise RefineContractError("execution solver cannot resolve all selected anchors")
+        raise RefineContractError(
+            "execution solver cannot resolve all selected anchors"
+        )
     anchor_unions = tuple(np.logical_or.reduce(group) for group in anchor_groups)
     params = plan.tool_program.parameter_ranges
     allow_source_resolution = bool(
@@ -547,14 +562,11 @@ def _prepare_compiler_work(
             ),
             None,
         )
-        selected_anchor_ids = set(
-            planned.execution_contract.anchor_segment_ids
-        )
+        selected_anchor_ids = set(planned.execution_contract.anchor_segment_ids)
         full_interface_selected = bool(
             residual_fragmentation
             and graph_interface is not None
-            and selected_anchor_ids
-            == set(graph_interface.anchor_segment_ids)
+            and selected_anchor_ids == set(graph_interface.anchor_segment_ids)
         )
         if full_interface_selected:
             # Joint nuclei preflight can sparsify the executable anchor masks
@@ -568,18 +580,14 @@ def _prepare_compiler_work(
         _, nearest_interface = ndimage.distance_transform_edt(
             ~interface, return_indices=True
         )
-        anchor_influence = anchor[
-            nearest_interface[0], nearest_interface[1]
-        ]
+        anchor_influence = anchor[nearest_interface[0], nearest_interface[1]]
         distance = ndimage.distance_transform_edt(~anchor)
         requested = planned.execution_contract.depth_profile
         peak = max(requested.peak_depth_px, 1e-6)
         unit_profile = replace(
             requested,
             peak_depth_px=1.0,
-            edge_depth_px=float(
-                np.clip(requested.edge_depth_px / peak, 0.0, 1.0)
-            ),
+            edge_depth_px=float(np.clip(requested.edge_depth_px / peak, 0.0, 1.0)),
             noise_amplitude_px=0.0,
         )
         unit_depth = compile_depth_profile_map(
@@ -597,23 +605,33 @@ def _prepare_compiler_work(
         )
         if not residual_fragmentation:
             legal_envelope &= required_scale <= band_max + 1e-6
-        if params.get("tissue_geometry_mode") == "annotation_anchored_narrow_connected_extension":
-            legal_envelope, required_scale = (
-                compile_directional_tapered_projection_field(
-                    legal_envelope,
-                    anchor_mask=anchor,
-                    parent_mask=scene.component_masks.get(
-                        planned.target_component_id,
-                        np.zeros_like(source_mask, dtype=bool),
-                    ),
-                    maximum_depth_px=band_max,
-                    maximum_width_px=float(
-                        params.get("directional_maximum_width_px", 24.0)
-                    ),
-                    tip_width_px=float(
-                        params.get("directional_tip_width_px", 2.0)
-                    ),
-                )
+        if (
+            params.get("tissue_geometry_mode")
+            == "annotation_anchored_narrow_connected_extension"
+        ):
+            (
+                legal_envelope,
+                required_scale,
+            ) = compile_directional_tapered_projection_field(
+                legal_envelope,
+                anchor_mask=anchor,
+                parent_mask=scene.component_masks.get(
+                    planned.target_component_id,
+                    np.zeros_like(source_mask, dtype=bool),
+                ),
+                maximum_depth_px=band_max,
+                maximum_width_px=float(
+                    params.get("directional_maximum_width_px", 24.0)
+                ),
+                tip_width_px=float(params.get("directional_tip_width_px", 2.0)),
+            )
+        if plan.primitive_id == "invasive-tumor-footprint-decrease-v1":
+            required_scale = _natural_external_retreat_priority(
+                source_component=np.asarray(source_component, dtype=bool),
+                legal_envelope=legal_envelope,
+                interface_mask=np.asarray(interface, dtype=bool),
+                anchor_mask=np.asarray(anchor, dtype=bool),
+                default_priority=required_scale,
             )
         deletion_limit = source_deletion_limit(
             int(np.count_nonzero(source_component)),
@@ -641,9 +659,7 @@ def _prepare_compiler_work(
                     params.get("minimum_residual_component_fraction", 0.0)
                 ),
                 maximum_dominant_residual_component_fraction=float(
-                    params.get(
-                        "maximum_dominant_residual_component_fraction", 1.0
-                    )
+                    params.get("maximum_dominant_residual_component_fraction", 1.0)
                 ),
                 target_change_pixels=max(
                     1,
@@ -695,6 +711,70 @@ def _prepare_compiler_work(
     return tuple(item for item in works if item.item_capacity_px > 0)
 
 
+def _component_seed(mask: np.ndarray, *, salt: int = 0) -> int:
+    """Return a stable, mask-owned seed without depending on case metadata."""
+
+    rows, cols = np.where(np.asarray(mask, dtype=bool))
+    if rows.size == 0:
+        return int(salt) & 0x7FFFFFFF
+    checksum = (
+        int(rows.size) * 1_000_003
+        + int(rows.sum(dtype=np.int64)) * 97
+        + int(cols.sum(dtype=np.int64)) * 193
+        + int(rows.min()) * 389
+        + int(cols.max()) * 769
+        + int(salt) * 15_485_863
+    )
+    return checksum & 0x7FFFFFFF
+
+
+def _natural_external_retreat_priority(
+    *,
+    source_component: np.ndarray,
+    legal_envelope: np.ndarray,
+    interface_mask: np.ndarray,
+    anchor_mask: np.ndarray,
+    default_priority: np.ndarray,
+) -> np.ndarray:
+    """Prefer a broad, shallow, organically varying external retreat front.
+
+    The generic tapered-anchor score can spend a large area budget in a few
+    deep lobes.  Although those lobes remain connected to pre-existing target
+    tissue, they can read visually as holes excavated inside tumor.  Footprint
+    regression is instead ranked by depth from the *whole selected directed
+    interface*.  Low-frequency variation prevents a constant-width offset,
+    while a small anchor-distance term keeps the retreat inside the Planner's
+    selected sector.  The topology grower still owns connectivity and holes.
+    """
+
+    source = np.asarray(source_component, dtype=bool)
+    legal = np.asarray(legal_envelope, dtype=bool)
+    if not np.any(source & legal):
+        return np.asarray(default_priority, dtype=float)
+    interface = np.asarray(interface_mask, dtype=bool)
+    anchor = np.asarray(anchor_mask, dtype=bool)
+    interface_depth = ndimage.distance_transform_edt(~interface)
+    anchor_depth = ndimage.distance_transform_edt(~anchor)
+    source_area = max(int(np.count_nonzero(source)), 1)
+    correlation = float(np.clip(np.sqrt(source_area) / 7.5, 24.0, 96.0))
+    organic = smooth_noise(
+        source.shape,
+        seed=_component_seed(source, salt=11),
+        amplitude=1.0,
+        correlation_px=correlation,
+    )
+    organic_scale = 2.5 + 0.10 * interface_depth
+    priority = interface_depth + organic_scale * organic + 0.018 * anchor_depth
+    # Preserve deterministic ordering where two raster pixels have identical
+    # depth/noise, without allowing the old tapered-lobe score to dominate.
+    legacy = np.asarray(default_priority, dtype=float)
+    finite_legacy = legacy[legal & np.isfinite(legacy)]
+    if finite_legacy.size:
+        legacy = legacy / max(float(np.max(finite_legacy)), 1.0)
+        priority += 1e-3 * legacy
+    return priority
+
+
 def _residual_fragmentation_priority(
     *,
     source_component: np.ndarray,
@@ -708,14 +788,16 @@ def _residual_fragmentation_priority(
     maximum_dominant_residual_component_fraction: float,
     target_change_pixels: int = 0,
 ) -> np.ndarray:
-    """Prioritize balanced, traversing corridors before peripheral turnover.
+    """Prioritize an organic branching corridor, then shrink residual foci.
 
-    Fragmentation must distribute residual mass among several meaningful foci.
-    A natural-neck-only heuristic can split off a tiny satellite while leaving
-    almost the whole tumor connected.  Build deterministic quantile partitions
-    along several source-owned axes, select the best legal separator set, and
-    give those interior corridors the lowest execution cost.  Final topology
-    and balance remain authoritative in the whole-mask audit.
+    Straight PCA quantile bands satisfy topology but look like ruler cuts.  A
+    low-frequency, component-owned Voronoi partition instead creates a curved
+    Y-like stromal network whose width varies along the path.  Every core path
+    is ranked ahead of peripheral turnover; after the split is established,
+    remaining budget retreats along both sides of every corridor so the
+    residual foci become visibly smaller rather than retaining one large mass
+    with slots cut into it.  Final component count, balance, spacing and area
+    remain authoritative in the whole-mask audit.
     """
 
     source = np.asarray(source_component, dtype=bool)
@@ -727,75 +809,108 @@ def _residual_fragmentation_priority(
         np.clip(minimum_residual_components, 2, maximum_residual_components)
     )
     coordinates = np.argwhere(source).astype(float)
-    centered = coordinates - coordinates.mean(axis=0, keepdims=True)
+    center = coordinates.mean(axis=0, keepdims=True)
+    centered = coordinates - center
     covariance = centered.T @ centered / max(len(coordinates) - 1, 1)
-    _values, vectors = np.linalg.eigh(covariance)
+    values, vectors = np.linalg.eigh(covariance)
     major = vectors[:, -1]
     minor = vectors[:, 0]
-    raw_axes = (
-        major,
-        minor,
-        np.asarray((1.0, 0.0)),
-        np.asarray((0.0, 1.0)),
-        np.asarray((1.0, 1.0)),
-        np.asarray((1.0, -1.0)),
-    )
-    axes: list[np.ndarray] = []
-    for axis in raw_axes:
-        normalized = np.asarray(axis, dtype=float) / max(
-            float(np.linalg.norm(axis)), 1e-12
+    major_scale = max(float(np.sqrt(max(values[-1], 1.0))), 1.0)
+    minor_scale = max(float(np.sqrt(max(values[0], 1.0))), major_scale * 0.24)
+    normalized_major = centered @ major / major_scale
+    normalized_minor = centered @ minor / minor_scale
+    normalized_coordinates = np.column_stack((normalized_major, normalized_minor))
+    rows = coordinates[:, 0].astype(int)
+    cols = coordinates[:, 1].astype(int)
+    source_area = max(int(np.count_nonzero(source)), 1)
+    correlation = float(np.clip(np.sqrt(source_area) / 7.0, 20.0, 88.0))
+    organic_fields = tuple(
+        smooth_noise(
+            source.shape,
+            seed=_component_seed(source, salt=101 + index * 17),
+            amplitude=1.0,
+            correlation_px=correlation,
         )
-        if any(abs(float(np.dot(normalized, seen))) > 0.995 for seen in axes):
-            continue
-        axes.append(normalized)
-
-    corridor_radius = max(
-        1,
-        int(np.ceil(max(1, minimum_residual_spacing_px + 1) / 2.0)),
+        for index in range(focus_count)
     )
+    # A centerline half-width of (spacing - 1) / 2 yields a pixel-center gap
+    # equal to the requested residual spacing, while reserving meaningful area
+    # for the subsequent focus-retreat phase.
+    corridor_radius = max(
+        1.0,
+        (max(1, minimum_residual_spacing_px) - 1.0) / 2.0,
+    )
+    source_boundary = source & ~ndimage.binary_erosion(source, structure=structure)
+    width_field = smooth_noise(
+        source.shape,
+        seed=_component_seed(source, salt=509),
+        amplitude=1.0,
+        correlation_px=correlation * 0.72,
+    )
+    retreat_noise = smooth_noise(
+        source.shape,
+        seed=_component_seed(source, salt=907),
+        amplitude=1.0,
+        correlation_px=correlation,
+    )
+    core_progress = ndimage.distance_transform_edt(~source_boundary)
+    core_progress /= max(float(np.max(core_progress[source], initial=1.0)), 1.0)
+    tie_break = np.asarray(default_priority, dtype=float)
+    finite_tie = tie_break[legal & np.isfinite(tie_break)]
+    tie_break /= max(float(np.max(finite_tie, initial=1.0)), 1.0)
+    eligible = source & legal
+    eligible_ids = np.flatnonzero(eligible)
+    best_priority = None
     best_corridor = None
     best_score = None
-    for axis_index, axis in enumerate(axes):
-        projection = centered @ axis
-        boundaries = np.quantile(
-            projection,
-            np.arange(1, focus_count, dtype=float) / focus_count,
-        )
+    for rotation_index in range(12):
+        rotation = 2.0 * np.pi * rotation_index / (12 * focus_count)
+        angles = rotation + 2.0 * np.pi * np.arange(focus_count) / focus_count
+        seed_radius = 0.92
+        seeds = seed_radius * np.column_stack((np.cos(angles), np.sin(angles)))
+        costs = []
+        for focus_index, seed_coordinate in enumerate(seeds):
+            squared_distance = np.sum(
+                (normalized_coordinates - seed_coordinate) ** 2, axis=1
+            )
+            organic_bias = organic_fields[focus_index][rows, cols]
+            costs.append(squared_distance + 0.22 * organic_bias)
         partition = np.zeros_like(source, dtype=np.int16)
-        partition_values = np.searchsorted(
-            boundaries, projection, side="right"
-        ) + 1
-        rows = coordinates[:, 0].astype(int)
-        cols = coordinates[:, 1].astype(int)
-        partition[rows, cols] = partition_values
+        partition[rows, cols] = np.argmin(np.stack(costs), axis=0) + 1
         separator = np.zeros_like(source, dtype=bool)
         vertical = (
-            source[1:, :]
-            & source[:-1, :]
-            & (partition[1:, :] != partition[:-1, :])
+            source[1:, :] & source[:-1, :] & (partition[1:, :] != partition[:-1, :])
         )
         horizontal = (
-            source[:, 1:]
-            & source[:, :-1]
-            & (partition[:, 1:] != partition[:, :-1])
+            source[:, 1:] & source[:, :-1] & (partition[:, 1:] != partition[:, :-1])
         )
         separator[1:, :] |= vertical
         separator[:-1, :] |= vertical
         separator[:, 1:] |= horizontal
         separator[:, :-1] |= horizontal
-        corridor = ndimage.binary_dilation(
-            separator,
-            structure=structure,
-            iterations=corridor_radius,
-        ) & source & legal
+        separator_distance = ndimage.distance_transform_edt(~separator)
+        local_radius = corridor_radius * (1.0 + 0.10 * width_field)
+        corridor = (separator_distance <= local_radius) & source & legal
         if not np.any(corridor):
             continue
+        # All core pixels precede focus shrink.  Within the core, progress
+        # smoothly from the existing stromal boundary into the branch network.
         corridor_distance = ndimage.distance_transform_edt(~corridor)
-        tie_break = np.asarray(default_priority, dtype=float)
-        tie_break /= max(float(np.max(tie_break[legal], initial=1.0)), 1.0)
-        approximate_priority = corridor_distance + 1e-3 * tie_break
-        eligible = source & legal
-        eligible_ids = np.flatnonzero(eligible)
+        # Expand both sides of every branch after the split.  Ranking the
+        # whole source perimeter equally can erase the wedge whose outer arc
+        # is shortest; corridor-relative retreat instead shrinks every focus
+        # along its newly exposed stromal boundary while preserving balance.
+        retreat_distance = corridor_distance
+        organic_retreat = (
+            retreat_distance + (1.8 + 0.08 * retreat_distance) * retreat_noise
+        )
+        approximate_priority = np.where(
+            corridor,
+            0.18 * separator_distance / np.maximum(local_radius, 1.0)
+            + 0.04 * core_progress,
+            1.0 + organic_retreat,
+        )
+        approximate_priority += 1e-3 * tie_break
         approximate_change = np.zeros_like(source, dtype=bool)
         selected_count = min(
             max(int(target_change_pixels), int(np.count_nonzero(corridor))),
@@ -821,12 +936,9 @@ def _residual_fragmentation_priority(
         contract_valid = bool(
             focus_count <= provisional_count <= maximum_residual_components
             and provisional_sizes
-            and min(provisional_sizes)
-            >= minimum_residual_component_area_px
-            and minimum_fraction + 1e-9
-            >= minimum_residual_component_fraction
-            and dominant_fraction
-            <= maximum_dominant_residual_component_fraction + 1e-9
+            and min(provisional_sizes) >= minimum_residual_component_area_px
+            and minimum_fraction + 1e-9 >= minimum_residual_component_fraction
+            and dominant_fraction <= maximum_dominant_residual_component_fraction + 1e-9
         )
         subminimum_pixels = sum(
             size
@@ -840,12 +952,13 @@ def _residual_fragmentation_priority(
             minimum_fraction,
             -dominant_fraction,
             -int(np.count_nonzero(corridor)),
-            -axis_index,
+            -rotation_index,
         )
         if best_score is None or score > best_score:
             best_corridor = corridor
+            best_priority = approximate_priority
             best_score = score
-    if best_corridor is None:
+    if best_corridor is None or best_priority is None:
         return np.asarray(default_priority, dtype=float)
     corridor = best_corridor
     # Fill tiny source remnants enclosed by the proposed corridor. They are
@@ -861,10 +974,12 @@ def _residual_fragmentation_priority(
         if int(np.count_nonzero(component)) < minimum_residual_component_area_px:
             tiny_remnants |= component
     corridor |= tiny_remnants & legal
-    corridor_distance = ndimage.distance_transform_edt(~corridor)
-    tie_break = np.asarray(default_priority, dtype=float)
-    tie_break /= max(float(np.max(tie_break[legal], initial=1.0)), 1.0)
-    return corridor_distance + 1e-3 * tie_break
+    if np.any(tiny_remnants & legal):
+        best_priority = np.array(best_priority, copy=True)
+        best_priority[tiny_remnants & legal] = np.minimum(
+            best_priority[tiny_remnants & legal], 0.25
+        )
+    return np.asarray(best_priority, dtype=float)
 
 
 def _bounded_allocations(
@@ -911,9 +1026,7 @@ def _bounded_allocations(
         spare = np.zeros(len(works), dtype=int)
         for index, work in enumerate(works):
             group = work.planned.source_component_id
-            group_remaining = max(
-                0, work.source_deletion_limit_px - group_used[group]
-            )
+            group_remaining = max(0, work.source_deletion_limit_px - group_used[group])
             spare[index] = min(
                 int(capacities[index] - allocations[index]), group_remaining
             )
@@ -925,9 +1038,7 @@ def _bounded_allocations(
         proposal = np.floor(active_weights * remaining).astype(int)
         proposal = np.minimum(proposal, spare[active])
         if int(proposal.sum()) == 0:
-            chosen = int(
-                max(active.tolist(), key=lambda idx: (normalized[idx], -idx))
-            )
+            chosen = int(max(active.tolist(), key=lambda idx: (normalized[idx], -idx)))
             proposal[np.where(active == chosen)[0][0]] = 1
         for local, index in enumerate(active.tolist()):
             allocations[index] += int(proposal[local])
@@ -976,9 +1087,7 @@ def _topology_policy(plan: EditPlan) -> dict[str, Any]:
             params.get("minimum_residual_component_fraction", 0.0)
         ),
         "maximum_dominant_residual_component_fraction": float(
-            params.get(
-                "maximum_dominant_residual_component_fraction", 1.0
-            )
+            params.get("maximum_dominant_residual_component_fraction", 1.0)
         ),
         "minimum_changed_component_area_px": max(
             1, int(params.get("min_component_area_px", 16))
@@ -1018,9 +1127,7 @@ def _resolve_topology_safe_area(
     attempts: list[dict[str, Any]] = []
 
     def attempt(total: int):
-        allocations = _bounded_allocations(
-            works, target_pixels=total, weights=weights
-        )
+        allocations = _bounded_allocations(works, target_pixels=total, weights=weights)
         selected, audits = _simulate_topology_safe_execution(
             works,
             allocations=allocations,
@@ -1029,28 +1136,20 @@ def _resolve_topology_safe_area(
             target_region=target_region,
             scene=scene,
             seed=0,
-            allow_source_component_resolution=(
-                allow_source_component_resolution
-            ),
+            allow_source_component_resolution=(allow_source_component_resolution),
             allow_target_hole_resolution=allow_target_hole_resolution,
             allow_source_component_split=allow_source_component_split,
             minimum_residual_components=minimum_residual_components,
             maximum_residual_components=maximum_residual_components,
-            minimum_residual_component_area_px=(
-                minimum_residual_component_area_px
-            ),
+            minimum_residual_component_area_px=(minimum_residual_component_area_px),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
             maximum_residual_area_fraction=maximum_residual_area_fraction,
-            minimum_residual_component_fraction=(
-                minimum_residual_component_fraction
-            ),
+            minimum_residual_component_fraction=(minimum_residual_component_fraction),
             maximum_dominant_residual_component_fraction=(
                 maximum_dominant_residual_component_fraction
             ),
-            minimum_changed_component_area_px=(
-                minimum_changed_component_area_px
-            ),
+            minimum_changed_component_area_px=(minimum_changed_component_area_px),
         )
         realized = sum(int(np.count_nonzero(item)) for item in selected)
         topology = _whole_mask_topology_audit(
@@ -1058,22 +1157,16 @@ def _resolve_topology_safe_area(
             target_region=target_region,
             selected_by_work=selected,
             works=works,
-            allow_source_component_resolution=(
-                allow_source_component_resolution
-            ),
+            allow_source_component_resolution=(allow_source_component_resolution),
             allow_target_hole_resolution=allow_target_hole_resolution,
             allow_source_component_split=allow_source_component_split,
             minimum_residual_components=minimum_residual_components,
             maximum_residual_components=maximum_residual_components,
-            minimum_residual_component_area_px=(
-                minimum_residual_component_area_px
-            ),
+            minimum_residual_component_area_px=(minimum_residual_component_area_px),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
             maximum_residual_area_fraction=maximum_residual_area_fraction,
-            minimum_residual_component_fraction=(
-                minimum_residual_component_fraction
-            ),
+            minimum_residual_component_fraction=(minimum_residual_component_fraction),
             maximum_dominant_residual_component_fraction=(
                 maximum_dominant_residual_component_fraction
             ),
@@ -1101,9 +1194,7 @@ def _resolve_topology_safe_area(
     ):
         # The full desired request exhausted every reachable safe front. Its
         # realized prefix is therefore the maximum found by this solver.
-        realized_allocations = tuple(
-            int(np.count_nonzero(item)) for item in first[1]
-        )
+        realized_allocations = tuple(int(np.count_nonzero(item)) for item in first[1])
         return (
             realized_allocations,
             first[1],
@@ -1146,9 +1237,7 @@ def _resolve_topology_safe_area(
                 "requested_allocation_pixels": int(allocation),
                 "actual_contribution_pixels": int(np.count_nonzero(selected)),
                 "legal_capacity_pixels": int(work.item_capacity_px),
-                "source_deletion_limit_pixels": int(
-                    work.source_deletion_limit_px
-                ),
+                "source_deletion_limit_pixels": int(work.source_deletion_limit_px),
             }
             for work, allocation, selected in zip(
                 works, floor_result[0], floor_result[1]
@@ -1252,10 +1341,7 @@ def _whole_mask_topology_audit(
     source_holes_valid = (
         source_holes_after <= source_holes_before
         if allow_source_component_resolution
-        else (
-            source_holes_after == source_holes_before
-            or source_hole_change_allowed
-        )
+        else (source_holes_after == source_holes_before or source_hole_change_allowed)
     )
     residual_source_before = source_region
     residual_source_after = source_after
@@ -1276,22 +1362,17 @@ def _whole_mask_topology_audit(
     source_area_after = int(np.count_nonzero(residual_source_after))
     residual_fraction = source_area_after / max(source_area_before, 1)
     residual_total = max(sum(residual_sizes), 1)
-    residual_component_fractions = [
-        size / residual_total for size in residual_sizes
-    ]
-    minimum_observed_component_fraction = min(
-        residual_component_fractions, default=0.0
-    )
-    dominant_component_fraction = max(
-        residual_component_fractions, default=1.0
-    )
+    residual_component_fractions = [size / residual_total for size in residual_sizes]
+    minimum_observed_component_fraction = min(residual_component_fractions, default=0.0)
+    dominant_component_fraction = max(residual_component_fractions, default=1.0)
     residual_spacing_px = _minimum_component_spacing_px(
         source_labeled_after,
         source_components_after_selected,
     )
     if allow_source_component_split:
         source_components_valid = bool(
-            minimum_residual_components <= source_components_after_selected
+            minimum_residual_components
+            <= source_components_after_selected
             <= maximum_residual_components
             and residual_sizes
             and min(residual_sizes) >= minimum_residual_component_area_px
@@ -1321,10 +1402,8 @@ def _whole_mask_topology_audit(
             target_after, residual_source_after
         )
         target_holes_valid = bool(
-            target_holes_before
-            <= target_holes_after
-            and residual_target_holes_after
-            <= source_components_after_selected
+            target_holes_before <= target_holes_after
+            and residual_target_holes_after <= source_components_after_selected
         )
     else:
         residual_target_holes_after = 0
@@ -1343,18 +1422,14 @@ def _whole_mask_topology_audit(
         "passed": bool(passed),
         "source_components_before": source_components_before,
         "source_components_after": source_components_after,
-        "selected_source_components_after": int(
-            source_components_after_selected
-        ),
+        "selected_source_components_after": int(source_components_after_selected),
         "target_components_before": target_components_before,
         "target_components_after": target_components_after,
         "source_holes_before": source_holes_before,
         "source_holes_after": source_holes_after,
         "target_holes_before": target_holes_before,
         "target_holes_after": target_holes_after,
-        "fragmentation_residual_target_holes_after": int(
-            residual_target_holes_after
-        ),
+        "fragmentation_residual_target_holes_after": int(residual_target_holes_after),
         "selected_target_component_ids": sorted(
             {item.planned.target_component_id for item in works}
         ),
@@ -1362,28 +1437,18 @@ def _whole_mask_topology_audit(
         "source_hole_change_allowed_by_selected_target_merge": bool(
             source_hole_change_allowed
         ),
-        "allow_source_component_resolution": bool(
-            allow_source_component_resolution
-        ),
-        "allow_target_hole_resolution": bool(
-            allow_target_hole_resolution
-        ),
+        "allow_source_component_resolution": bool(allow_source_component_resolution),
+        "allow_target_hole_resolution": bool(allow_target_hole_resolution),
         "allow_source_component_split": bool(allow_source_component_split),
         "minimum_residual_components": int(minimum_residual_components),
         "maximum_residual_components": int(maximum_residual_components),
-        "minimum_residual_component_area_px": int(
-            minimum_residual_component_area_px
-        ),
+        "minimum_residual_component_area_px": int(minimum_residual_component_area_px),
         "minimum_residual_spacing_px": int(minimum_residual_spacing_px),
-        "observed_minimum_residual_spacing_px": float(
-            residual_spacing_px
-        ),
+        "observed_minimum_residual_spacing_px": float(residual_spacing_px),
         "residual_component_sizes_px": residual_sizes,
         "residual_area_fraction": float(residual_fraction),
         "residual_area_floor_fraction": float(residual_area_floor_fraction),
-        "maximum_residual_area_fraction": float(
-            maximum_residual_area_fraction
-        ),
+        "maximum_residual_area_fraction": float(maximum_residual_area_fraction),
         "residual_component_fractions": residual_component_fractions,
         "minimum_observed_residual_component_fraction": float(
             minimum_observed_component_fraction
@@ -1391,9 +1456,7 @@ def _whole_mask_topology_audit(
         "minimum_required_residual_component_fraction": float(
             minimum_residual_component_fraction
         ),
-        "dominant_residual_component_fraction": float(
-            dominant_component_fraction
-        ),
+        "dominant_residual_component_fraction": float(dominant_component_fraction),
         "maximum_dominant_residual_component_fraction": float(
             maximum_dominant_residual_component_fraction
         ),
@@ -1428,12 +1491,9 @@ def _hole_intersection_count(mask: np.ndarray, region: np.ndarray) -> int:
     """Count enclosed complement components that contain ``region`` pixels."""
 
     holes = ndimage.binary_fill_holes(mask) & ~mask
-    labels, count = ndimage.label(
-        holes, structure=np.ones((3, 3), dtype=bool)
-    )
+    labels, count = ndimage.label(holes, structure=np.ones((3, 3), dtype=bool))
     return sum(
-        bool(np.any(region & (labels == index)))
-        for index in range(1, count + 1)
+        bool(np.any(region & (labels == index))) for index in range(1, count + 1)
     )
 
 
@@ -1470,12 +1530,8 @@ def _simulate_topology_safe_execution(
     for work in works:
         selected_target |= scene.component_masks[work.planned.target_component_id]
     unselected_target = target_region & ~selected_target
-    deleted_by_source = {
-        component_id: 0 for component_id in source_states
-    }
-    selected_by_work = [
-        np.zeros_like(target_region, dtype=bool) for _ in works
-    ]
+    deleted_by_source = {component_id: 0 for component_id in source_states}
+    selected_by_work = [np.zeros_like(target_region, dtype=bool) for _ in works]
     audit_lists: list[list[dict[str, int]]] = [[] for _ in works]
 
     def grow(
@@ -1492,9 +1548,7 @@ def _simulate_topology_safe_execution(
         continued_frontier = ndimage.binary_dilation(
             selected_by_work[index], structure=np.ones((3, 3), dtype=bool)
         )
-        if continue_existing_front_only and not np.any(
-            selected_by_work[index]
-        ):
+        if continue_existing_front_only and not np.any(selected_by_work[index]):
             return 0
         frontier = (
             continued_frontier
@@ -1513,16 +1567,11 @@ def _simulate_topology_safe_execution(
             already_deleted_from_source=deleted_by_source[component_id],
             protected_source_necks=(
                 None
-                if (
-                    allow_source_component_resolution
-                    or allow_source_component_split
-                )
+                if (allow_source_component_resolution or allow_source_component_split)
                 else work.protected_source_necks
             ),
             seed=seed + index * 13007 + pass_index * 104729,
-            allow_source_component_resolution=(
-                allow_source_component_resolution
-            ),
+            allow_source_component_resolution=(allow_source_component_resolution),
             allow_target_hole_resolution=allow_target_hole_resolution,
             allow_source_component_split=allow_source_component_split,
         )
@@ -1548,7 +1597,10 @@ def _simulate_topology_safe_execution(
         order = sorted(
             range(len(works)),
             key=lambda index: (
-                -(works[index].item_capacity_px - int(np.count_nonzero(selected_by_work[index]))),
+                -(
+                    works[index].item_capacity_px
+                    - int(np.count_nonzero(selected_by_work[index]))
+                ),
                 index,
             ),
         )
@@ -1578,15 +1630,11 @@ def _simulate_topology_safe_execution(
             target_region=target_region,
             minimum_residual_components=minimum_residual_components,
             maximum_residual_components=maximum_residual_components,
-            minimum_residual_component_area_px=(
-                minimum_residual_component_area_px
-            ),
+            minimum_residual_component_area_px=(minimum_residual_component_area_px),
             minimum_residual_spacing_px=minimum_residual_spacing_px,
             residual_area_floor_fraction=residual_area_floor_fraction,
             maximum_residual_area_fraction=maximum_residual_area_fraction,
-            minimum_residual_component_fraction=(
-                minimum_residual_component_fraction
-            ),
+            minimum_residual_component_fraction=(minimum_residual_component_fraction),
             maximum_dominant_residual_component_fraction=(
                 maximum_dominant_residual_component_fraction
             ),
@@ -1672,10 +1720,8 @@ def _simulate_topology_safe_execution(
             component_id = work.planned.source_component_id
             request = min(
                 deficit,
-                work.item_capacity_px
-                - int(np.count_nonzero(selected_by_work[index])),
-                work.source_deletion_limit_px
-                - deleted_by_source[component_id],
+                work.item_capacity_px - int(np.count_nonzero(selected_by_work[index])),
+                work.source_deletion_limit_px - deleted_by_source[component_id],
             )
             obtained = grow(
                 index,
@@ -1747,15 +1793,13 @@ def _fragmentation_balance_bridge_reclaim(
         index
         for index, size in enumerate(sizes.tolist(), start=1)
         if int(size) >= minimum_residual_component_area_px
-        and int(size) / residual_total + 1e-9
-        < minimum_residual_component_fraction
+        and int(size) / residual_total + 1e-9 < minimum_residual_component_fraction
     ]
     stable_ids = [
         index
         for index, size in enumerate(sizes.tolist(), start=1)
         if int(size) >= minimum_residual_component_area_px
-        and int(size) / residual_total + 1e-9
-        >= minimum_residual_component_fraction
+        and int(size) / residual_total + 1e-9 >= minimum_residual_component_fraction
     ]
     if not balance_ids or not stable_ids:
         return result
@@ -1780,9 +1824,9 @@ def _fragmentation_balance_bridge_reclaim(
             flat_index = int(np.argmin(component_distance))
             if not np.isfinite(component_distance.ravel()[flat_index]):
                 continue
-            start = tuple(int(value) for value in np.unravel_index(
-                flat_index, labels.shape
-            ))
+            start = tuple(
+                int(value) for value in np.unravel_index(flat_index, labels.shape)
+            )
             end = (
                 int(nearest[0][start]),
                 int(nearest[1][start]),
@@ -1798,9 +1842,7 @@ def _fragmentation_balance_bridge_reclaim(
                 continue
             proposed = residual | result | candidate
             proposed_count = int(
-                ndimage.label(
-                    proposed, structure=np.ones((3, 3), dtype=bool)
-                )[1]
+                ndimage.label(proposed, structure=np.ones((3, 3), dtype=bool))[1]
             )
             if proposed_count >= current_count:
                 continue
@@ -1820,9 +1862,7 @@ def _fragmentation_balance_bridge_reclaim(
         result |= selected_bridge
         residual |= selected_bridge
         current_count = int(
-            ndimage.label(
-                residual, structure=np.ones((3, 3), dtype=bool)
-            )[1]
+            ndimage.label(residual, structure=np.ones((3, 3), dtype=bool))[1]
         )
         if int(np.count_nonzero(result)) > maximum_bridge_pixels:
             return np.zeros_like(result)
@@ -1876,29 +1916,21 @@ def _rebalance_fragmentation_residual_islands(
     combined = np.logical_or.reduce(selected_by_work)
     target_after = np.asarray(target_region, dtype=bool) | combined
     residual = selected_source & ~combined
-    labels, _count = ndimage.label(
-        residual, structure=np.ones((3, 3), dtype=bool)
-    )
+    labels, _count = ndimage.label(residual, structure=np.ones((3, 3), dtype=bool))
     sizes = np.bincount(labels.ravel())[1:]
     balance_bridge = _fragmentation_balance_bridge_reclaim(
         labels=labels,
         sizes=sizes,
         selected_source=selected_source,
         combined_change=combined,
-        minimum_residual_component_area_px=(
-            minimum_residual_component_area_px
-        ),
-        minimum_residual_component_fraction=(
-            minimum_residual_component_fraction
-        ),
+        minimum_residual_component_area_px=(minimum_residual_component_area_px),
+        minimum_residual_component_fraction=(minimum_residual_component_fraction),
     )
     if np.any(balance_bridge):
         combined = combined & ~balance_bridge
         target_after = np.asarray(target_region, dtype=bool) | combined
         residual = selected_source & ~combined
-        labels, _count = ndimage.label(
-            residual, structure=np.ones((3, 3), dtype=bool)
-        )
+        labels, _count = ndimage.label(residual, structure=np.ones((3, 3), dtype=bool))
         sizes = np.bincount(labels.ravel())[1:]
     cleanup_ids = []
     tiny_ids = []
@@ -1909,9 +1941,8 @@ def _rebalance_fragmentation_residual_islands(
         if size <= 0:
             continue
         below_absolute_floor = size < int(minimum_residual_component_area_px)
-        below_relative_floor = (
-            size / residual_total + 1e-9
-            < float(minimum_residual_component_fraction)
+        below_relative_floor = size / residual_total + 1e-9 < float(
+            minimum_residual_component_fraction
         )
         if below_relative_floor and not below_absolute_floor:
             # A meaningful but underweight focus must be merged through a
@@ -1923,9 +1954,10 @@ def _rebalance_fragmentation_residual_islands(
         if not below_absolute_floor:
             continue
         component = labels == index
-        surrounding_ring = ndimage.binary_dilation(
-            component, structure=np.ones((3, 3), dtype=bool)
-        ) & ~component
+        surrounding_ring = (
+            ndimage.binary_dilation(component, structure=np.ones((3, 3), dtype=bool))
+            & ~component
+        )
         # A sub-minimum cap is repairable when converting it extends the
         # already-connected target compartment.  Requiring every ring pixel
         # to be target was too strict at three-label junctions: a one-pixel
@@ -1977,8 +2009,7 @@ def _rebalance_fragmentation_residual_islands(
         target_after=target_after | focus_cleanup,
         minimum_residual_spacing_px=minimum_residual_spacing_px,
         maximum_added_pixels=(
-            maximum_focus_cleanup_pixels
-            - int(np.count_nonzero(focus_cleanup))
+            maximum_focus_cleanup_pixels - int(np.count_nonzero(focus_cleanup))
         ),
     )
     if spacing is None:
@@ -1987,9 +2018,8 @@ def _rebalance_fragmentation_residual_islands(
     reclaimed = int(np.count_nonzero(repair))
     bridge_pixels = int(np.count_nonzero(balance_bridge))
     if (
-        (reclaimed <= 0 and bridge_pixels <= 0)
-        or reclaimed > maximum_focus_cleanup_pixels
-    ):
+        reclaimed <= 0 and bridge_pixels <= 0
+    ) or reclaimed > maximum_focus_cleanup_pixels:
         return selected_by_work, unchanged
     if np.any(repair & ~owned_repair_domain):
         # A residual cap outside every compiler-owned envelope may be a
@@ -2005,11 +2035,7 @@ def _rebalance_fragmentation_residual_islands(
     assigned_indices: list[int] = []
     for row, col in np.argwhere(repair):
         assigned = next(
-            (
-                index
-                for index, work in enumerate(works)
-                if work.legal_source[row, col]
-            ),
+            (index for index, work in enumerate(works) if work.legal_source[row, col]),
             None,
         )
         if assigned is None:
@@ -2029,9 +2055,7 @@ def _rebalance_fragmentation_residual_islands(
         minimum_residual_spacing_px=minimum_residual_spacing_px,
         residual_area_floor_fraction=residual_area_floor_fraction,
         maximum_residual_area_fraction=maximum_residual_area_fraction,
-        minimum_residual_component_fraction=(
-            minimum_residual_component_fraction
-        ),
+        minimum_residual_component_fraction=(minimum_residual_component_fraction),
         maximum_dominant_residual_component_fraction=(
             maximum_dominant_residual_component_fraction
         ),
@@ -2091,9 +2115,7 @@ def _rebalance_fragmentation_residual_islands(
                     ),
                     minimum_residual_spacing_px=minimum_residual_spacing_px,
                     residual_area_floor_fraction=residual_area_floor_fraction,
-                    maximum_residual_area_fraction=(
-                        maximum_residual_area_fraction
-                    ),
+                    maximum_residual_area_fraction=(maximum_residual_area_fraction),
                     minimum_residual_component_fraction=(
                         minimum_residual_component_fraction
                     ),
@@ -2208,9 +2230,7 @@ def _rebalance_fragmentation_residual_islands(
                     ),
                     minimum_residual_spacing_px=minimum_residual_spacing_px,
                     residual_area_floor_fraction=residual_area_floor_fraction,
-                    maximum_residual_area_fraction=(
-                        maximum_residual_area_fraction
-                    ),
+                    maximum_residual_area_fraction=(maximum_residual_area_fraction),
                     minimum_residual_component_fraction=(
                         minimum_residual_component_fraction
                     ),
@@ -2274,43 +2294,27 @@ def _fragmentation_spacing_repair(
         current_target = np.asarray(target_after, dtype=bool) | repair
         residual = np.asarray(selected_source, dtype=bool) & ~current_target
         labels, count = ndimage.label(residual, structure=structure)
-        violating_options: list[
-            tuple[float, int, int, np.ndarray]
-        ] = []
-        target_frontier = ndimage.binary_dilation(
-            current_target, structure=structure
-        )
+        violating_options: list[tuple[float, int, int, np.ndarray]] = []
+        target_frontier = ndimage.binary_dilation(current_target, structure=structure)
         for left in range(1, count):
             left_component = labels == left
-            distance_to_left = ndimage.distance_transform_edt(
-                ~left_component
-            )
+            distance_to_left = ndimage.distance_transform_edt(~left_component)
             for right in range(left + 1, count + 1):
                 right_component = labels == right
-                gap = float(
-                    np.min(distance_to_left[right_component], initial=np.inf)
-                )
+                gap = float(np.min(distance_to_left[right_component], initial=np.inf))
                 if gap + 1e-9 >= required:
                     continue
-                distance_to_right = ndimage.distance_transform_edt(
-                    ~right_component
-                )
+                distance_to_right = ndimage.distance_transform_edt(~right_component)
                 left_edge = (
-                    left_component
-                    & target_frontier
-                    & (distance_to_right < required)
+                    left_component & target_frontier & (distance_to_right < required)
                 )
                 right_edge = (
-                    right_component
-                    & target_frontier
-                    & (distance_to_left < required)
+                    right_component & target_frontier & (distance_to_left < required)
                 )
                 for side, edge in enumerate((left_edge, right_edge)):
                     pixels = int(np.count_nonzero(edge))
                     if pixels > 0:
-                        violating_options.append(
-                            (gap, pixels, side, edge)
-                        )
+                        violating_options.append((gap, pixels, side, edge))
         if not violating_options:
             return repair
         _gap, _pixels, _side, chosen = min(

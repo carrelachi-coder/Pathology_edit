@@ -4,7 +4,7 @@
   "supported_primitives": [
     "residual-tumor-fragmentation-v1"
   ],
-  "version": "1.1.9-draft",
+  "version": "1.1.10-draft",
   "review_status": "draft",
   "summary": "Model scattered residual invasive breast carcinoma foci within the original invasive component after treatment without inventing a historical tumor bed.",
   "recognition_contract": {
@@ -163,6 +163,8 @@
   "render_contract": {
     "required_findings": [
       "three to eight separated, area-meaningful viable residual invasive foci within the original component support",
+      "stromal corridors form an organic branching network with curved, nonconstant-width boundaries",
+      "every residual focus shows peripheral retreat rather than preserving the original mass around narrow slots",
       "stromal corridors are compatible with local post-treatment residual morphology"
     ],
     "veto_findings": [
@@ -171,6 +173,7 @@
       "tiny artificial speckles",
       "one dominant retained tumor mass with only trivial satellite foci",
       "an external boundary notch without traversing stromal corridors",
+      "two or more ruler-straight constant-width slots through an otherwise retained tumor mass",
       "DCIS or angioinvasion edited",
       "pCR or RCB claim"
     ],

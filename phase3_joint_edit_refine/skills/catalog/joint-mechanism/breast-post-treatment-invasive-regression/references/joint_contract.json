@@ -4,7 +4,7 @@
   "supported_primitives": [
     "invasive-tumor-footprint-decrease-v1"
   ],
-  "version": "1.1.0-draft",
+  "version": "1.1.1-draft",
   "review_status": "draft",
   "summary": "Model a local post-treatment decrease of invasive breast carcinoma footprint with viable residual disease retained and no whole-lesion response claim.",
   "recognition_contract": {
@@ -163,11 +163,13 @@
     "required_findings": [
       "local invasive footprint and viable neoplastic population decrease in a morphology compatible with post-treatment response",
       "the footprint change uses one or a few broad, visually meaningful external retreat fronts on one invasive component rather than scattered boundary nibbles",
+      "the converted front remains broadly open to pre-existing operational Stroma and does not form a narrow-necked deep intratumoral excavation",
       "residual invasive carcinoma remains outside the edited retreat"
     ],
     "veto_findings": [
       "DCIS or angioinvasion altered",
       "converted region retains viable class-1 nuclei",
+      "a narrow stromal neck terminating in a bulbous intratumoral cavity",
       "pCR, RCB or patient-benefit claim"
     ],
     "mask_guarantees": [

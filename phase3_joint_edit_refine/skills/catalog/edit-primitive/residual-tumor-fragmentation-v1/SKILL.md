@@ -11,5 +11,8 @@ three to eight separated, area-meaningful residual foci, a visible converted
 corridor fraction, balanced residual mass, an absolute island-size floor, a
 2.5% relative focus floor, a residual-area floor and no new empty holes. The
 relative threshold is an engineering proxy; the absolute floor still rejects
-raster speckles. A large retained mass with tiny satellites or a local boundary
-notch is not fragmentation. It cannot invent a historical tumor bed.
+raster speckles. Corridors must curve and vary in width, then residual foci
+must undergo visible peripheral retreat; two ruler-straight slots cut through
+an otherwise unchanged mass are not fragmentation. A large retained mass with
+tiny satellites or a local boundary notch is not fragmentation. It cannot
+invent a historical tumor bed.

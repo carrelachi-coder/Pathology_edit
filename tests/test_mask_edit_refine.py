@@ -38,6 +38,7 @@ from phase3_mask_edit_refine.candidates import (
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
     _minimum_component_spacing_px,
+    _natural_external_retreat_priority,
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
     _residual_fragmentation_priority,
@@ -133,7 +134,9 @@ class DualAxisSkillTests(unittest.TestCase):
         self.assertIn("mixed non-carcinoma", " ".join(bundle.warnings).lower())
 
     def test_orca_rejects_stroma_target(self):
-        with self.assertRaisesRegex(RefineContractError, "cannot represent target label"):
+        with self.assertRaisesRegex(
+            RefineContractError, "cannot represent target label"
+        ):
             self.repository.compose(
                 pathology_domain_id="breast-invasive-carcinoma-v1",
                 annotation_profile_id="orca-semantic-v1",
@@ -217,7 +220,9 @@ class FailClosedGateTests(unittest.TestCase):
         self.gates = GateRegistry()
         self.schema = self.repository.annotation_schema("glas-gland-v1")
         self.mask = _glas_circle_mask()
-        self.scene = build_scene_analysis(self.mask, schema=self.schema, pixel_size_um=0.465)
+        self.scene = build_scene_analysis(
+            self.mask, schema=self.schema, pixel_size_um=0.465
+        )
 
     def _bundle(self, primitive: str):
         return self.repository.compose(
@@ -231,9 +236,7 @@ class FailClosedGateTests(unittest.TestCase):
     def test_boundary_naturalness_honors_typed_mechanism_bound(self):
         bundle = self._bundle("tumor-burden-increase-v1")
         interface = max(
-            self.scene.interfaces_for(
-                source_labels=("Stroma",), target_label="Tumor"
-            ),
+            self.scene.interfaces_for(source_labels=("Stroma",), target_label="Tumor"),
             key=lambda item: item.contact_pixels,
         )
         change = np.zeros_like(self.mask, dtype=bool)
@@ -267,9 +270,7 @@ class FailClosedGateTests(unittest.TestCase):
             ranges["tissue_geometry_mode"] = geometry_mode
             plan = replace(
                 base_plan,
-                tool_program=replace(
-                    base_plan.tool_program, parameter_ranges=ranges
-                ),
+                tool_program=replace(base_plan.tool_program, parameter_ranges=ranges),
             )
             return _check_boundary_naturalness(
                 GateContext(
@@ -288,20 +289,14 @@ class FailClosedGateTests(unittest.TestCase):
         self.assertFalse(strict.passed)
         self.assertTrue(mechanism_specific.passed)
         self.assertEqual(
-            mechanism_specific.metrics[
-                "maximum_allowed_component_compactness"
-            ],
+            mechanism_specific.metrics["maximum_allowed_component_compactness"],
             55.0,
         )
 
         interface_front = run_with(4.0, geometry_mode="interface_front")
         self.assertTrue(interface_front.passed, interface_front.metrics)
-        self.assertFalse(
-            interface_front.metrics["change_band_compactness_applicable"]
-        )
-        self.assertTrue(
-            interface_front.metrics["boundary_attached_geometry"]
-        )
+        self.assertFalse(interface_front.metrics["change_band_compactness_applicable"])
+        self.assertTrue(interface_front.metrics["boundary_attached_geometry"])
 
     def test_case152_style_short_deep_notch_is_rejected(self):
         bundle = self.repository.compose(
@@ -355,7 +350,9 @@ class FailClosedGateTests(unittest.TestCase):
                 candidate=candidate,
             )
         )
-        depth_check = next(item for item in report.checks if item.check_id == "depth_span_ratio")
+        depth_check = next(
+            item for item in report.checks if item.check_id == "depth_span_ratio"
+        )
         self.assertFalse(depth_check.passed)
         self.assertFalse(report.passed)
 
@@ -407,7 +404,9 @@ class FailClosedGateTests(unittest.TestCase):
                 candidate=candidate,
             )
         )
-        transition = next(item for item in report.checks if item.check_id == "label_transition")
+        transition = next(
+            item for item in report.checks if item.check_id == "label_transition"
+        )
         self.assertFalse(transition.passed)
         self.assertFalse(report.passed)
 
@@ -487,7 +486,8 @@ class FailClosedGateTests(unittest.TestCase):
             )
         )
         background = next(
-            item for item in report.checks
+            item
+            for item in report.checks
             if item.check_id == "background_seed_protection"
         )
         self.assertFalse(background.passed)
@@ -564,7 +564,8 @@ class FailClosedGateTests(unittest.TestCase):
             )
         )
         retention = next(
-            item for item in report.checks
+            item
+            for item in report.checks
             if item.check_id == "source_component_retention"
         )
         self.assertFalse(retention.passed)
@@ -700,7 +701,9 @@ class CandidateAndSceneTests(unittest.TestCase):
             )
         )
         parallel = next(
-            item for item in report.checks if item.check_id == "parallel_boundary_artifact"
+            item
+            for item in report.checks
+            if item.check_id == "parallel_boundary_artifact"
         )
         self.assertFalse(parallel.passed, parallel.metrics)
         interface_metrics = next(iter(parallel.metrics["interfaces"].values()))
@@ -796,7 +799,8 @@ class CandidateAndSceneTests(unittest.TestCase):
             )
         )
         fidelity = next(
-            item for item in report.checks
+            item
+            for item in report.checks
             if item.check_id == "execution_contract_fidelity"
         )
         self.assertFalse(fidelity.passed)
@@ -827,11 +831,15 @@ class CandidateAndSceneTests(unittest.TestCase):
             raw.candidate_interfaces[0].execution_contract.anchor_segment_ids,
         )
         self.assertEqual(
-            compiled.candidate_interfaces[0].execution_contract.area_allocation_fraction,
+            compiled.candidate_interfaces[
+                0
+            ].execution_contract.area_allocation_fraction,
             1.0,
         )
         self.assertLessEqual(
-            compiled.candidate_interfaces[0].execution_contract.depth_profile.peak_depth_px,
+            compiled.candidate_interfaces[
+                0
+            ].execution_contract.depth_profile.peak_depth_px,
             64.0,
         )
         self.assertEqual(audit["target_pixels"], round(mask.size * 0.03))
@@ -855,7 +863,8 @@ class CandidateAndSceneTests(unittest.TestCase):
             )
         )
         fidelity = next(
-            item for item in report.checks
+            item
+            for item in report.checks
             if item.check_id == "execution_contract_fidelity"
         )
         self.assertTrue(fidelity.passed, fidelity.metrics)
@@ -924,7 +933,9 @@ class CandidateAndSceneTests(unittest.TestCase):
             compiled.resolved_area.resolved_pixels,
             compiled.resolved_area.hard_min_pixels,
         )
-        self.assertEqual(audit["resolved_pixels"], compiled.resolved_area.resolved_pixels)
+        self.assertEqual(
+            audit["resolved_pixels"], compiled.resolved_area.resolved_pixels
+        )
         candidates = generate_candidates(
             mask,
             schema=self.schema,
@@ -1354,9 +1365,7 @@ class CandidateAndSceneTests(unittest.TestCase):
             source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
         )
         self.assertEqual(count, 3)
-        self.assertGreaterEqual(
-            _minimum_component_spacing_px(labels, count), 8
-        )
+        self.assertGreaterEqual(_minimum_component_spacing_px(labels, count), 8)
 
     def test_fragmentation_cleanup_merges_subrelative_focus(self):
         shape = (160, 400)
@@ -1398,9 +1407,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(audit["tiny_pixels_added"], 0)
         self.assertEqual(audit["balance_pixels_added"], 0)
         self.assertGreater(audit["balance_bridge_pixels_reclaimed"], 0)
-        self.assertGreater(
-            audit["balance_bridge_replacement_pixels_added"], 0
-        )
+        self.assertGreater(audit["balance_bridge_replacement_pixels_added"], 0)
         self.assertEqual(audit["pixels_added"], audit["pixels_reclaimed"])
         labels, count = ndimage.label(
             source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
@@ -1434,9 +1441,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         fragmentation = _check_component_topology(context)
         self.assertTrue(fragmentation.passed, fragmentation.metrics)
         self.assertEqual(
-            fragmentation.metrics[
-                "fragmentation_target_connected_repair_pixels"
-            ],
+            fragmentation.metrics["fragmentation_target_connected_repair_pixels"],
             1,
         )
 
@@ -1451,6 +1456,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         source = np.zeros(shape, dtype=bool)
         source[12:84, 10:110] = True
         default = ndimage.distance_transform_edt(source)
+        target_pixels = round(int(source.sum()) * 0.18)
 
         priority = _residual_fragmentation_priority(
             source_component=source,
@@ -1462,6 +1468,7 @@ class CandidateAndSceneTests(unittest.TestCase):
             minimum_residual_spacing_px=8,
             minimum_residual_component_fraction=0.08,
             maximum_dominant_residual_component_fraction=0.75,
+            target_change_pixels=target_pixels,
         )
 
         corridor = source & (priority < 0.5)
@@ -1476,6 +1483,56 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertGreaterEqual(
             int(np.count_nonzero(corridor)), int(source.sum() * 0.12)
         )
+        self.assertEqual(
+            ndimage.label(corridor, structure=np.ones((3, 3), dtype=bool))[1],
+            1,
+        )
+
+        eligible_ids = np.flatnonzero(source)
+        order = np.argsort(priority.ravel()[eligible_ids], kind="stable")
+        changed = np.zeros_like(source)
+        changed.ravel()[eligible_ids[order[:target_pixels]]] = True
+        residual_labels, residual_count = ndimage.label(
+            source & ~changed, structure=np.ones((3, 3), dtype=bool)
+        )
+        residual_sizes = np.bincount(residual_labels.ravel())[1:]
+        self.assertEqual(residual_count, 3)
+        self.assertLessEqual(
+            float(np.max(residual_sizes) / np.sum(residual_sizes)), 0.75
+        )
+        self.assertGreater(
+            int(np.count_nonzero(changed & ~corridor)),
+            int(source.sum() * 0.02),
+        )
+
+    def test_footprint_priority_prefers_broad_shallow_external_retreat(self):
+        shape = (160, 220)
+        source = np.zeros(shape, dtype=bool)
+        source[20:140, 20:200] = True
+        interface = np.zeros(shape, dtype=bool)
+        interface[20:140, 20] = True
+        default = ndimage.distance_transform_edt(~interface)
+
+        priority = _natural_external_retreat_priority(
+            source_component=source,
+            legal_envelope=source,
+            interface_mask=interface,
+            anchor_mask=interface,
+            default_priority=default,
+        )
+        eligible_ids = np.flatnonzero(source)
+        order = np.argsort(priority.ravel()[eligible_ids], kind="stable")
+        changed = np.zeros_like(source)
+        target_pixels = round(int(source.sum()) * 0.15)
+        changed.ravel()[eligible_ids[order[:target_pixels]]] = True
+        rows, cols = np.where(changed)
+
+        self.assertEqual(
+            ndimage.label(changed, structure=np.ones((3, 3), dtype=bool))[1],
+            1,
+        )
+        self.assertGreaterEqual(int(rows.max() - rows.min() + 1), 110)
+        self.assertLessEqual(float(np.percentile(cols - 20, 95)), 32.0)
 
     def test_fragmentation_topology_rejects_two_or_imbalanced_foci(self):
         shape = (60, 90)
@@ -1515,7 +1572,9 @@ class CandidateAndSceneTests(unittest.TestCase):
             scene.interfaces_for(source_labels=("Stroma",), target_label="Tumor"),
             key=lambda item: item.contact_pixels,
         )
-        anchors = tuple(scene.anchor_masks[item] for item in interface.anchor_segment_ids)
+        anchors = tuple(
+            scene.anchor_masks[item] for item in interface.anchor_segment_ids
+        )
         union = np.logical_or.reduce(anchors)
         profile = DepthProfile(
             mode="tapered_lobe",
@@ -1541,7 +1600,9 @@ class CandidateAndSceneTests(unittest.TestCase):
             scene.interfaces_for(source_labels=("Stroma",), target_label="Tumor"),
             key=lambda item: item.contact_pixels,
         )
-        anchors = tuple(scene.anchor_masks[item] for item in interface.anchor_segment_ids)
+        anchors = tuple(
+            scene.anchor_masks[item] for item in interface.anchor_segment_ids
+        )
         self.assertGreaterEqual(len(anchors), 2)
         self.assertLessEqual(len(anchors), 8)
         self.assertTrue(
@@ -1589,8 +1650,8 @@ class CandidateAndSceneTests(unittest.TestCase):
         rows = np.indices(mask.shape)[0]
         sparse_anchor_masks = dict(scene.anchor_masks)
         for anchor_id in interface.anchor_segment_ids:
-            sparse_anchor_masks[anchor_id] = (
-                scene.anchor_masks[anchor_id] & (rows % 4 == 0)
+            sparse_anchor_masks[anchor_id] = scene.anchor_masks[anchor_id] & (
+                rows % 4 == 0
             )
         sparse_scene = replace(scene, anchor_masks=sparse_anchor_masks)
 
@@ -1600,13 +1661,10 @@ class CandidateAndSceneTests(unittest.TestCase):
             source_region=mask == 12,
             scene=sparse_scene,
         )
-        full_legal = np.logical_or.reduce(
-            [item.legal_source for item in full_works]
-        )
+        full_legal = np.logical_or.reduce([item.legal_source for item in full_works])
         interface_mask = scene.interface_masks[interface.interface_id]
-        expected = (
-            scene.component_masks[interface.source_component_id]
-            & (ndimage.distance_transform_edt(~interface_mask) <= 48.0)
+        expected = scene.component_masks[interface.source_component_id] & (
+            ndimage.distance_transform_edt(~interface_mask) <= 48.0
         )
         self.assertFalse(np.any(expected & ~full_legal))
 
@@ -1745,9 +1803,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         single_union = np.logical_or.reduce(
             [item.legal_source for item in single_works]
         )
-        multi_union = np.logical_or.reduce(
-            [item.legal_source for item in multi_works]
-        )
+        multi_union = np.logical_or.reduce([item.legal_source for item in multi_works])
         self.assertFalse(np.any(single_union & ~multi_union))
         self.assertGreaterEqual(
             int(np.count_nonzero(multi_union)),
@@ -1765,10 +1821,16 @@ class CandidateAndSceneTests(unittest.TestCase):
         )
         self.assertEqual(len({item.target_component_id for item in interfaces}), 2)
         selected = []
-        for target_component_id in sorted({item.target_component_id for item in interfaces}):
+        for target_component_id in sorted(
+            {item.target_component_id for item in interfaces}
+        ):
             selected.append(
                 max(
-                    [item for item in interfaces if item.target_component_id == target_component_id],
+                    [
+                        item
+                        for item in interfaces
+                        if item.target_component_id == target_component_id
+                    ],
                     key=lambda item: item.contact_pixels,
                 )
             )
@@ -1809,7 +1871,9 @@ class CandidateAndSceneTests(unittest.TestCase):
             change,
             {
                 "interface_ids": [item.interface_id for item in selected],
-                "source_component_ids": sorted({item.source_component_id for item in selected}),
+                "source_component_ids": sorted(
+                    {item.source_component_id for item in selected}
+                ),
                 "target_component_ids": [item.target_component_id for item in selected],
                 "target_fine_ids": [12],
             },
@@ -1827,7 +1891,9 @@ class CandidateAndSceneTests(unittest.TestCase):
             )
         )
         selected_topology = next(
-            item for item in selected_report.checks if item.check_id == "edited_label_topology"
+            item
+            for item in selected_report.checks
+            if item.check_id == "edited_label_topology"
         )
         self.assertTrue(selected_topology.metrics["target_merge"])
         self.assertTrue(selected_topology.passed, selected_topology.metrics)
@@ -1845,7 +1911,9 @@ class CandidateAndSceneTests(unittest.TestCase):
             )
         )
         unselected_topology = next(
-            item for item in unselected_report.checks if item.check_id == "edited_label_topology"
+            item
+            for item in unselected_report.checks
+            if item.check_id == "edited_label_topology"
         )
         self.assertFalse(unselected_topology.passed)
         self.assertTrue(unselected_topology.metrics["unallowed_target_merge"])
@@ -1936,7 +2004,13 @@ class WorkflowTests(unittest.TestCase):
             result = workflow.run(case, output_root=root / "artifacts")
             self.assertEqual(result.status, "selected_research", result.abstain_reasons)
             self.assertIsNotNone(result.target_mask)
-            self.assertTrue(all(report.passed for report in result.gate_reports if report.candidate_id == result.selected_candidate_id))
+            self.assertTrue(
+                all(
+                    report.passed
+                    for report in result.gate_reports
+                    if report.candidate_id == result.selected_candidate_id
+                )
+            )
             self.assertTrue(Path(result.artifact_paths["selection"]).is_file())
             self.assertTrue(Path(result.artifact_paths["active_skills"]).is_file())
 
@@ -2026,9 +2100,7 @@ class AgentContractTests(unittest.TestCase):
         self.assertEqual(usage["schema_attempt_count"], 2)
         self.assertEqual(usage["input_tokens"], 30)
         self.assertEqual(usage["output_tokens"], 7)
-        self.assertEqual(
-            usage["schema_attempts"][0]["status"], "rejected_by_contract"
-        )
+        self.assertEqual(usage["schema_attempts"][0]["status"], "rejected_by_contract")
         self.assertIn("previous response was rejected", client.prompts[1])
 
     def test_escalation_budget_allows_at_most_one_upgrade_per_case(self):
