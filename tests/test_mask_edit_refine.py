@@ -18,6 +18,9 @@ from scipy import ndimage
 from phase3_joint_edit_refine.candidate_feasibility import (
     _is_subcomponent_raster_tail,
 )
+from phase3_joint_edit_refine.workflow import (
+    _retain_fragmentation_whole_instance_closure,
+)
 from phase3_mask_edit_refine.agents import (
     HeuristicInterfacePlanner,
     OpenAIMultimodalPlanner,
@@ -1158,6 +1161,35 @@ class CandidateAndSceneTests(unittest.TestCase):
                     resolved_area=replace(resolved, resolved_pixels=35111),
                     tool_program=plan.tool_program,
                 )
+            )
+        )
+
+    def test_fragmentation_retains_hard_safe_whole_instance_closure(self):
+        self.assertTrue(
+            _retain_fragmentation_whole_instance_closure(
+                primitive_id="residual-tumor-fragmentation-v1",
+                fallback_policy="max_feasible_below_target",
+                predicted_pixels=(40930,),
+                desired_max_pixels=38168,
+                hard_max_pixels=47186,
+            )
+        )
+        self.assertFalse(
+            _retain_fragmentation_whole_instance_closure(
+                primitive_id="invasive-tumor-footprint-decrease-v1",
+                fallback_policy="max_feasible_below_target",
+                predicted_pixels=(40930,),
+                desired_max_pixels=38168,
+                hard_max_pixels=47186,
+            )
+        )
+        self.assertFalse(
+            _retain_fragmentation_whole_instance_closure(
+                primitive_id="residual-tumor-fragmentation-v1",
+                fallback_policy="max_feasible_below_target",
+                predicted_pixels=(48000,),
+                desired_max_pixels=38168,
+                hard_max_pixels=47186,
             )
         )
 

@@ -1132,6 +1132,18 @@ class JointPathologyEditWorkflow:
                     predicted,
                     maximum_pixels=desired_max,
                 )
+                _, joint_hard_max = case.joint_area_budget.hard_interval_pixels(
+                    source_tissue.shape
+                )
+                retain_fragmentation_closure = (
+                    _retain_fragmentation_whole_instance_closure(
+                        primitive_id=case.primitive_id,
+                        fallback_policy=case.joint_area_budget.fallback_policy,
+                        predicted_pixels=predicted,
+                        desired_max_pixels=desired_max,
+                        hard_max_pixels=joint_hard_max,
+                    )
+                )
                 # Candidate-local exact packing supplies a complete source-
                 # instance erasure E and a concrete target-footprint witness
                 # F.  ``predicted`` is therefore the executable T ∪ E ∪ F,
@@ -1143,6 +1155,7 @@ class JointPathologyEditWorkflow:
                     and budget_rebalance_count
                     < maximum_planning_attempts - 1
                     and predicted_above
+                    and not retain_fragmentation_closure
                 ):
                     feedback_reports = [
                         cell_feasibility_by_tissue_id[item.candidate_id]
@@ -3488,6 +3501,33 @@ def _provisional_union_requires_rebalance(
 
     values = [max(0, int(value)) for value in predicted_pixels]
     return bool(values and min(values) > int(maximum_pixels))
+
+
+def _retain_fragmentation_whole_instance_closure(
+    *,
+    primitive_id: str,
+    fallback_policy: str,
+    predicted_pixels,
+    desired_max_pixels: int,
+    hard_max_pixels: int,
+) -> bool:
+    """Execute a valid fragmentation closure before shrinking its corridor.
+
+    Whole-instance cell removal can move an otherwise valid fragmentation
+    candidate slightly above the desired joint interval.  Shrinking the tissue
+    corridor first can destroy the only seam that supports replacement-cell
+    packing.  When the exact predicted closure remains inside the declared
+    hard maximum, execute it and let the existing post-execution minimum-safe
+    fallback certify the raster instead of pre-emptively collapsing the seam.
+    """
+
+    values = [max(0, int(value)) for value in predicted_pixels]
+    return bool(
+        primitive_id == "residual-tumor-fragmentation-v1"
+        and fallback_policy == "max_feasible_below_target"
+        and values
+        and int(desired_max_pixels) < min(values) <= int(hard_max_pixels)
+    )
 
 
 def _minimum_safe_above_target_joint_pixels(
