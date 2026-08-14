@@ -558,6 +558,9 @@ def _prepare_compiler_work(
         )
         required_scale = distance / np.maximum(unit_depth, 1e-3)
         band_min, band_max = planned.allowed_edit_band_px
+        residual_fragmentation = (
+            params.get("tissue_geometry_mode") == "residual_fragmentation"
+        )
         legal_envelope = (
             source_component
             & source_region
@@ -565,8 +568,9 @@ def _prepare_compiler_work(
             & anchor_influence
             & (distance >= max(0.0, band_min))
             & (distance <= band_max)
-            & (required_scale <= band_max + 1e-6)
         )
+        if not residual_fragmentation:
+            legal_envelope &= required_scale <= band_max + 1e-6
         if params.get("tissue_geometry_mode") == "annotation_anchored_narrow_connected_extension":
             legal_envelope, required_scale = (
                 compile_directional_tapered_projection_field(
@@ -590,7 +594,7 @@ def _prepare_compiler_work(
             maximum_changed_fraction=maximum_changed_fraction,
             minimum_remaining_pixels=minimum_remaining,
         )
-        if params.get("tissue_geometry_mode") == "residual_fragmentation":
+        if residual_fragmentation:
             required_scale = _residual_fragmentation_priority(
                 source_component=np.asarray(source_component, dtype=bool),
                 legal_envelope=legal_envelope,
