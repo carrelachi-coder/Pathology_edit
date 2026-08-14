@@ -20,6 +20,9 @@ from phase3_joint_edit_refine.candidate_feasibility import (
     _is_subcomponent_raster_tail,
     _tissue_portfolio_allows_anchor_diversification,
 )
+from phase3_joint_edit_refine.tissue_planner import (
+    _tissue_geometry_candidate_count,
+)
 from phase3_joint_edit_refine.workflow import (
     _retain_visible_regression_whole_instance_closure,
 )
@@ -594,6 +597,12 @@ class CandidateAndSceneTests(unittest.TestCase):
             _tissue_portfolio_allows_anchor_diversification(
                 "invasive-tumor-footprint-decrease-v1"
             )
+        )
+        self.assertEqual(
+            _tissue_geometry_candidate_count(residual_fragmentation=True), 1
+        )
+        self.assertEqual(
+            _tissue_geometry_candidate_count(residual_fragmentation=False), 4
         )
 
     def test_candidate_schedule_produces_distinct_masks(self):

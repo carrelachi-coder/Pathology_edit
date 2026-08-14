@@ -1448,12 +1448,13 @@ class MultiInterfaceResearchTissuePlanner:
                         front_contract.minimum_unselected_anchor_count
                     ),
                 },
-                # Four independently parameterized tissue fronts are enough
-                # because the joint stage realizes three cell layouts per
-                # passing tissue candidate, preserving the 12-pair joint
-                # portfolio without paying for eight tissue masks that can
-                # never survive ``maximum_tissue_candidates=4``.
-                candidate_count=4,
+                # Ordinary primitives retain four tissue variants. Residual
+                # fragmentation already performs its multi-axis geometry
+                # search inside the executor, so it emits one tissue witness;
+                # the joint stage still realizes three mature cell layouts.
+                candidate_count=_tissue_geometry_candidate_count(
+                    residual_fragmentation=residual_fragmentation
+                ),
             ),
             hard_invariants=tuple(sorted(set(bundle.edit_contract.required_check_ids))),
             uncertainties=("current Codex session supplied the mechanism; this deterministic adapter only compiled certified mask geometry",),
@@ -1649,3 +1650,15 @@ def _directional_sector_selection_limit(
             total_anchor_count - minimum_unselected_anchor_count,
         ),
     )
+
+
+def _tissue_geometry_candidate_count(*, residual_fragmentation: bool) -> int:
+    """Return independent outer tissue variants after mechanism search."""
+
+    # The fragmentation executor already scores PCA major/minor, cardinal and
+    # diagonal traversing axes inside each candidate and retains the best legal
+    # corridor set.  Additional outer depth-profile variants repeat that
+    # expensive whole-mask topology solve and, on large tumors, preferentially
+    # leave raster microfoci.  One best tissue witness still produces three
+    # independent mature cell-layout candidates at the joint stage.
+    return 1 if residual_fragmentation else 4
