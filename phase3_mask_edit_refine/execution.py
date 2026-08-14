@@ -27,7 +27,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v10"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v11"
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
@@ -916,6 +916,22 @@ def _residual_fragmentation_priority(
     tie_break /= max(float(np.max(finite_tie, initial=1.0)), 1.0)
     eligible = source & legal
     eligible_ids = np.flatnonzero(eligible)
+    # Pixels excluded by the compiler envelope are immutable.  Guard a narrow
+    # source bridge around them so an otherwise legal retreat cannot encircle
+    # a one-pixel annotation spur and manufacture dozens of false residual
+    # foci.  This preserves the envelope authority; the guard removes legal
+    # choices instead of granting cleanup permission outside it.
+    immutable_source = source & ~legal
+    immutable_guard = np.zeros_like(source, dtype=bool)
+    if np.any(immutable_source):
+        immutable_guard = (
+            ndimage.binary_dilation(
+                immutable_source,
+                structure=structure,
+                iterations=max(1, min(4, int(np.ceil(minimum_residual_spacing_px / 2)))),
+            )
+            & eligible
+        )
     best_priority = None
     best_cleavage_core = None
     best_score = None
@@ -934,7 +950,7 @@ def _residual_fragmentation_priority(
         # An off-centre partition junction produces unequal residual foci and
         # reads as breakup originating from one regression zone, instead of a
         # symmetric Y stamped through the component centre.
-        seeds += 0.10 * np.asarray(
+        seeds += 0.28 * np.asarray(
             [np.cos(rotation + 0.65), np.sin(rotation + 0.65)]
         )
         costs = []
@@ -943,8 +959,22 @@ def _residual_fragmentation_priority(
                 (warped_coordinates - seed_coordinate) ** 2, axis=1
             )
             costs.append(squared_distance)
+        stacked_costs = np.stack(costs)
         partition = np.zeros_like(source, dtype=np.int16)
-        partition[rows, cols] = np.argmin(np.stack(costs), axis=0) + 1
+        partition[rows, cols] = np.argmin(stacked_costs, axis=0) + 1
+        # Locate the point where the prospective foci meet.  A broad,
+        # off-centre regression basin here makes fragmentation originate from
+        # one local breakdown zone; the outward transitions can then taper
+        # instead of reading as three equal-width roads.
+        origin_index = int(np.argmin(np.ptp(stacked_costs, axis=0)))
+        origin_row, origin_col = coordinates[origin_index]
+        grid_rows, grid_cols = np.indices(source.shape)
+        origin_distance = np.hypot(
+            grid_rows - origin_row,
+            grid_cols - origin_col,
+        )
+        origin_radius = max(12.0, np.sqrt(source_area) * 0.22)
+        origin_influence = np.exp(-(origin_distance / origin_radius) ** 2)
         separator = np.zeros_like(source, dtype=bool)
         vertical = (
             source[1:, :] & source[:-1, :] & (partition[1:, :] != partition[:-1, :])
@@ -974,7 +1004,13 @@ def _residual_fragmentation_priority(
                 continue
             field = focus_retreat_fields[focus_index]
             organic_fraction = np.clip((field + 1.0) / 2.0, 0.0, 1.0)
-            cleavage_scale = 3.8 + 4.2 * organic_fraction
+            cleavage_scale = (
+                5.2
+                + 3.5 * organic_fraction
+                + 10.0
+                * origin_influence
+                * (0.55 + 0.45 * organic_fraction)
+            )
             external_scale = 0.40 + 5.0 * organic_fraction**2
             cleavage_priority = 0.28 + separator_distance / cleavage_scale
             external_priority = 0.70 + source_depth / external_scale
@@ -987,6 +1023,14 @@ def _residual_fragmentation_priority(
             approximate_priority[cleavage_core],
             0.08 + 0.08 * separator_distance[cleavage_core],
         )
+        if np.any(immutable_guard):
+            finite_priority = approximate_priority[
+                eligible & np.isfinite(approximate_priority)
+            ]
+            guard_floor = float(np.max(finite_priority, initial=1.0)) + 1.0
+            approximate_priority[immutable_guard] = (
+                guard_floor + tie_break[immutable_guard]
+            )
         approximate_priority += 1e-3 * tie_break
         selected_count = min(
             max(int(target_change_pixels), int(np.count_nonzero(cleavage_core))),

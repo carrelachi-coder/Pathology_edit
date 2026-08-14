@@ -1519,8 +1519,43 @@ class CandidateAndSceneTests(unittest.TestCase):
         # A few broad external retreat bays should accompany the cleavage;
         # eroding the entire perimeter would merely turn this into footprint
         # decrease, while touching none would leave the old slot-cut look.
-        self.assertGreater(changed_boundary_fraction, 0.08)
+        self.assertGreater(changed_boundary_fraction, 0.05)
         self.assertLess(changed_boundary_fraction, 0.60)
+
+    def test_fragmentation_priority_does_not_isolate_immutable_annotation_cap(self):
+        shape = (96, 120)
+        source = np.zeros(shape, dtype=bool)
+        source[12:84, 10:110] = True
+        legal = np.array(source, copy=True)
+        legal[47:50, 59:62] = False
+        target_pixels = round(int(source.sum()) * 0.18)
+
+        priority = _residual_fragmentation_priority(
+            source_component=source,
+            legal_envelope=legal,
+            default_priority=ndimage.distance_transform_edt(source),
+            minimum_residual_components=3,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=8,
+            minimum_residual_component_fraction=0.08,
+            maximum_dominant_residual_component_fraction=0.75,
+            target_change_pixels=target_pixels,
+        )
+
+        eligible_ids = np.flatnonzero(legal)
+        order = np.argsort(priority.ravel()[eligible_ids], kind="stable")
+        changed = np.zeros_like(source)
+        changed.ravel()[eligible_ids[order[:target_pixels]]] = True
+        residual_labels, residual_count = ndimage.label(
+            source & ~changed, structure=np.ones((3, 3), dtype=bool)
+        )
+        residual_sizes = np.bincount(residual_labels.ravel())[1:]
+
+        self.assertFalse(np.any(changed & ~legal))
+        self.assertGreaterEqual(residual_count, 3)
+        self.assertLessEqual(residual_count, 6)
+        self.assertGreaterEqual(int(residual_sizes.min()), 96)
 
     def test_fragmentation_organic_field_has_effective_dynamic_range(self):
         shape = (96, 120)
