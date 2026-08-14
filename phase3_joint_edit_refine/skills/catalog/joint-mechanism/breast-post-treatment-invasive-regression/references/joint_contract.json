@@ -162,7 +162,7 @@
   "render_contract": {
     "required_findings": [
       "local invasive footprint and viable neoplastic population decrease in a morphology compatible with post-treatment response",
-      "the footprint change is a coherent, visually meaningful retreat of one invasive component rather than scattered boundary nibbles",
+      "the footprint change uses one or a few broad, visually meaningful external retreat fronts on one invasive component rather than scattered boundary nibbles",
       "residual invasive carcinoma remains outside the edited retreat"
     ],
     "veto_findings": [

@@ -3318,9 +3318,9 @@ def _coherent_footprint_retreat(c):
         "coherent_footprint_retreat",
         passed,
         (
-            "one invasive component has a visually meaningful coherent boundary retreat"
+            "one invasive component has one or a few broad, visually meaningful boundary retreats"
             if passed
-            else "footprint decrease is too small, dispersed across components, or not boundary attached"
+            else "footprint decrease is too small, dominated by scattered nibbles, dispersed across source components, or not boundary attached"
         ),
         metrics={
             "selected_source_component_ids": list(selected_components),

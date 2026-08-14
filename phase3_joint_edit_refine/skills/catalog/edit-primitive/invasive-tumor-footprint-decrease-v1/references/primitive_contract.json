@@ -19,7 +19,7 @@
     "maximum_source_component_changed_fraction": 0.65,
     "minimum_source_component_remaining_px": 256,
     "maximum_selected_source_components": 1,
-    "minimum_dominant_change_component_fraction": 0.6,
+    "minimum_dominant_change_component_fraction": 0.3,
     "residual_area_floor_fraction": 0.25
   },
   "required_source_clearance_classes": [1],
