@@ -1482,6 +1482,88 @@ class CandidateAndSceneTests(unittest.TestCase):
             scene.interface_masks[interface.interface_id],
         )
 
+    def test_fragmentation_full_interface_closes_preflight_anchor_sampling_gaps(self):
+        mask = _glas_circle_mask()
+        scene = build_scene_analysis(mask, schema=self.schema, pixel_size_um=0.465)
+        interface = max(
+            scene.interfaces_for(source_labels=("Tumor",), target_label="Stroma"),
+            key=lambda item: item.contact_pixels,
+        )
+        case = _case(primitive="residual-tumor-fragmentation-v1", area=0.10)
+        plan = _manual_plan(
+            case=case,
+            interface=interface,
+            source_label="Tumor",
+            target_label="Stroma",
+            area=0.10,
+            supporting_rules=_bundle_ids(self._bundle()),
+            band_max=48.0,
+        )
+        plan = replace(
+            plan,
+            tool_program=replace(
+                plan.tool_program,
+                parameter_ranges={
+                    **plan.tool_program.parameter_ranges,
+                    "tissue_geometry_mode": "residual_fragmentation",
+                    "minimum_residual_components": 3,
+                    "maximum_residual_components": 6,
+                    "minimum_residual_component_area_px": 32,
+                    "minimum_residual_spacing_px": 4,
+                },
+            ),
+        )
+        rows = np.indices(mask.shape)[0]
+        sparse_anchor_masks = dict(scene.anchor_masks)
+        for anchor_id in interface.anchor_segment_ids:
+            sparse_anchor_masks[anchor_id] = (
+                scene.anchor_masks[anchor_id] & (rows % 4 == 0)
+            )
+        sparse_scene = replace(scene, anchor_masks=sparse_anchor_masks)
+
+        full_works = _prepare_compiler_work(
+            plan,
+            source_mask=mask,
+            source_region=mask == 12,
+            scene=sparse_scene,
+        )
+        full_legal = np.logical_or.reduce(
+            [item.legal_source for item in full_works]
+        )
+        interface_mask = scene.interface_masks[interface.interface_id]
+        expected = (
+            scene.component_masks[interface.source_component_id]
+            & (ndimage.distance_transform_edt(~interface_mask) <= 48.0)
+        )
+        self.assertFalse(np.any(expected & ~full_legal))
+
+        kept_anchor = max(
+            interface.anchor_segment_ids,
+            key=lambda item: int(np.count_nonzero(sparse_anchor_masks[item])),
+        )
+        partial_plan = replace(
+            plan,
+            candidate_interfaces=(
+                replace(
+                    plan.candidate_interfaces[0],
+                    execution_contract=replace(
+                        plan.candidate_interfaces[0].execution_contract,
+                        anchor_segment_ids=(kept_anchor,),
+                    ),
+                ),
+            ),
+        )
+        partial_works = _prepare_compiler_work(
+            partial_plan,
+            source_mask=mask,
+            source_region=mask == 12,
+            scene=sparse_scene,
+        )
+        partial_legal = np.logical_or.reduce(
+            [item.legal_source for item in partial_works]
+        )
+        self.assertTrue(np.any(expected & ~partial_legal))
+
     def test_multi_interface_candidate_records_both_anchors(self):
         size = 160
         rows, cols = np.ogrid[:size, :size]

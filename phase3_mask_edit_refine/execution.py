@@ -536,6 +536,35 @@ def _prepare_compiler_work(
         source_component = scene.component_masks.get(planned.source_component_id)
         if interface is None or source_component is None:
             continue
+        residual_fragmentation = (
+            params.get("tissue_geometry_mode") == "residual_fragmentation"
+        )
+        graph_interface = next(
+            (
+                item
+                for item in scene.graph.interfaces
+                if item.interface_id == planned.interface_id
+            ),
+            None,
+        )
+        selected_anchor_ids = set(
+            planned.execution_contract.anchor_segment_ids
+        )
+        full_interface_selected = bool(
+            residual_fragmentation
+            and graph_interface is not None
+            and selected_anchor_ids
+            == set(graph_interface.anchor_segment_ids)
+        )
+        if full_interface_selected:
+            # Joint nuclei preflight can sparsify the executable anchor masks
+            # even though the Planner selected every addressable segment of
+            # this directed interface.  Fragmentation is a component-scale
+            # cut: treating those sampling gaps as prohibited leaves raster
+            # caps or prevents a corridor from traversing the tumor.  The
+            # immutable full interface is the correct anchor authority only
+            # when every segment was explicitly selected.
+            anchor = np.asarray(interface, dtype=bool)
         _, nearest_interface = ndimage.distance_transform_edt(
             ~interface, return_indices=True
         )
@@ -558,9 +587,6 @@ def _prepare_compiler_work(
         )
         required_scale = distance / np.maximum(unit_depth, 1e-3)
         band_min, band_max = planned.allowed_edit_band_px
-        residual_fragmentation = (
-            params.get("tissue_geometry_mode") == "residual_fragmentation"
-        )
         legal_envelope = (
             source_component
             & source_region
