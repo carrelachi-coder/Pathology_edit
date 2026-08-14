@@ -106,7 +106,7 @@ class JointAuditWriter:
         tissue_scene,
         tissue_plan,
         execution_batch,
-    ) -> str:
+    ) -> str | None:
         """Persist Planner anchors and every exploratory tissue result.
 
         This artifact is deliberately written before the workflow is allowed to
@@ -158,6 +158,14 @@ class JointAuditWriter:
                 }
             )
         self.write_json(f"tissue_candidates_pass_{pass_index}.json", records)
+
+        # An empty exploratory batch is valid fail-closed evidence.  The
+        # workflow still needs the empty manifest so Planner feedback can
+        # explain why another pass was requested, but there is no candidate
+        # from which to render a review board.  Do not turn that state into an
+        # unrelated ``min() arg is an empty sequence`` orchestration error.
+        if not execution_batch.all_candidates:
+            return None
 
         best = min(
             execution_batch.all_candidates,

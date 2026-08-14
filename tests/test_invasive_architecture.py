@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
+import phase3_joint_edit_refine.invasive_architecture as invasive_architecture
 from phase3_joint_edit_refine.invasive_architecture import (
     CORD_PRIMITIVE_ID,
     NEST_PRIMITIVE_ID,
@@ -169,3 +170,77 @@ def test_nest_is_one_irregular_detached_tumor_island_then_cells():
     after = ndimage.label(candidate.target_mask == 1, np.ones((3, 3)))[1]
     assert after == before + 1
     assert candidate.tool_trace["minimum_parent_tumor_gap_px"] >= 2.0
+
+
+def test_cord_reduces_virtual_support_radius_after_budget_rebalance():
+    schema, tissue, scene, interface = _fixture()
+    plan = _plan(
+        interface,
+        primitive_id=CORD_PRIMITIVE_ID,
+        tool_name="cell_seeded_cord",
+        geometry_mode="cell_seeded_invasive_cord",
+        pixels=300,
+    )
+
+    candidates = generate_joint_tissue_candidates(
+        tissue,
+        schema=schema,
+        tissue_scene=scene.tissue,
+        joint_scene=scene,
+        plan=plan,
+        bundle=None,
+        seed=3,
+        candidate_limit=1,
+    )
+
+    assert candidates
+    candidate = candidates[0]
+    default_support_radius = max(
+        1,
+        int(round(0.30 * candidate.tool_trace["nominal_nucleus_diameter_px"])),
+    )
+    assert candidate.tool_trace["support_closing_radius_px"] < default_support_radius
+    assert int(candidate.change_region.sum()) == 300
+    assert all(
+        candidate.change_region[row, col]
+        for row, col in candidate.tool_trace["cell_seed_centers_yx"]
+    )
+
+
+def test_nest_searches_past_one_invalid_exact_area_raster(monkeypatch):
+    schema, tissue, scene, interface = _fixture()
+    plan = _plan(
+        interface,
+        primitive_id=NEST_PRIMITIVE_ID,
+        tool_name="peritumoral_tumor_island",
+        geometry_mode="peritumoral_detached_tumor_island",
+        pixels=450,
+    )
+    original = invasive_architecture._irregular_island
+    attempts = 0
+
+    def reject_first(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return None
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        invasive_architecture,
+        "_irregular_island",
+        reject_first,
+    )
+    candidates = generate_joint_tissue_candidates(
+        tissue,
+        schema=schema,
+        tissue_scene=scene.tissue,
+        joint_scene=scene,
+        plan=plan,
+        bundle=None,
+        seed=3,
+        candidate_limit=1,
+    )
+
+    assert attempts >= 2
+    assert candidates

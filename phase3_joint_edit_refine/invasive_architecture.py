@@ -32,7 +32,7 @@ NEST_PRIMITIVE_ID = "peritumoral-tumor-nest-formation-v1"
 SPECIALIZED_ARCHITECTURE_PRIMITIVES = frozenset(
     {CORD_PRIMITIVE_ID, NEST_PRIMITIVE_ID}
 )
-ARCHITECTURE_EXECUTOR_VERSION = "breast-invasive-architecture-v1"
+ARCHITECTURE_EXECUTOR_VERSION = "breast-invasive-architecture-v2"
 
 
 def compile_joint_tissue_plan_with_witness(
@@ -196,26 +196,17 @@ def _cell_seeded_cord_candidate(
     )
     if len(centers) < 5:
         return None
-    footprints = np.zeros_like(legal)
-    nucleus_radius = max(2, int(round(0.42 * diameter)))
-    for row, col in centers:
-        _paint_disk(footprints, row, col, nucleus_radius)
-    footprints &= legal
-    support_radius = max(1, int(round(0.30 * diameter)))
-    support = ndimage.binary_dilation(footprints, iterations=support_radius) & legal
-    support = ndimage.binary_closing(
-        support, structure=np.ones((3, 3), dtype=bool), iterations=1
-    ) & legal
-    support = _component_nearest_point(support, anchor_point)
-    if not np.any(support):
-        return None
-    envelope = (
-        ndimage.binary_dilation(
-            footprints,
-            iterations=support_radius + max(3, int(round(0.45 * diameter))),
-        )
-        & legal
+    derived = _cell_seeded_support(
+        centers=centers,
+        anchor_point=anchor_point,
+        legal=legal,
+        target_component=target_component,
+        diameter=diameter,
+        target_pixels=target_pixels,
     )
+    if derived is None:
+        return None
+    support, envelope, nucleus_radius, support_radius = derived
     support = _grow_connected_to_size(
         support,
         envelope=envelope,
@@ -317,24 +308,42 @@ def _detached_nest_candidate(
     coords = np.argwhere(center_domain)
     values = score[center_domain]
     order = np.argsort(-values)
-    choice = coords[order[min(variant, len(order) - 1)]]
-    center_y, center_x = (int(value) for value in choice)
-    nest = _irregular_island(
-        legal=legal,
-        center_y=center_y,
-        center_x=center_x,
-        target_pixels=target_pixels,
-        phase=0.73 * (seed + 1) + 1.19 * variant,
-    )
-    if nest is None or _component_count(nest) != 1:
-        return None
-    if _touches(nest, tumor):
-        return None
-    observed_gap = float(np.min(distance_to_tumor[nest]))
-    observed_interface_distance = float(
-        np.min(distance_to_interface[nest])
-    )
-    if observed_gap + 1e-6 < minimum_gap:
+    center_y = center_x = None
+    nest = None
+    observed_gap = 0.0
+    observed_interface_distance = 0.0
+    # The highest-scoring center can still produce a disconnected exact-area
+    # raster when a thin protected nucleus corridor cuts through the island.
+    # Search a small deterministic prefix of the same certified domain rather
+    # than treating that one rasterization accident as proof that no nest fits.
+    search_count = min(len(order), 128)
+    rank_offset = (17 * int(variant)) % max(1, search_count)
+    for local_rank in range(search_count):
+        rank = (rank_offset + local_rank) % search_count
+        choice = coords[order[rank]]
+        candidate_y, candidate_x = (int(value) for value in choice)
+        candidate = _irregular_island(
+            legal=legal,
+            center_y=candidate_y,
+            center_x=candidate_x,
+            target_pixels=target_pixels,
+            phase=0.73 * (seed + 1) + 1.19 * variant,
+        )
+        if candidate is None or _component_count(candidate) != 1:
+            continue
+        if _touches(candidate, tumor):
+            continue
+        candidate_gap = float(np.min(distance_to_tumor[candidate]))
+        if candidate_gap + 1e-6 < minimum_gap:
+            continue
+        center_y, center_x = candidate_y, candidate_x
+        nest = candidate
+        observed_gap = candidate_gap
+        observed_interface_distance = float(
+            np.min(distance_to_interface[candidate])
+        )
+        break
+    if nest is None or center_y is None or center_x is None:
         return None
     target = np.asarray(source_tissue).copy()
     target_id = _target_fine_id(plan, schema)
@@ -412,6 +421,125 @@ def _cord_centers(
         if len(centers) >= requested:
             break
     return centers
+
+
+def _cell_seeded_support(
+    *,
+    centers,
+    anchor_point,
+    legal,
+    target_component,
+    diameter,
+    target_pixels,
+):
+    """Derive an exact-growable cord support from the proposed cell chain.
+
+    Source-derived nuclei can be large enough that a fixed footprint dilation
+    already exceeds a rebalanced tissue budget.  That used to discard an
+    otherwise valid invasion path.  We now preserve the cell centers and their
+    connected path while reducing only the virtual support radius, choosing the
+    largest cell-scale seed that fits before deterministic growth to the exact
+    target.  The later complete-footprint packing certificate remains the
+    authority for the real nuclei.
+    """
+
+    centerline = _legal_polyline(
+        (anchor_point, *centers),
+        legal=legal,
+        snap_radius=max(2, int(round(0.45 * diameter))),
+    )
+    if centerline is None:
+        return None
+    default_nucleus_radius = max(2, int(round(0.42 * diameter)))
+    default_support_radius = max(1, int(round(0.30 * diameter)))
+    envelope_extension = max(3, int(round(0.45 * diameter)))
+    best = None
+    for nucleus_radius in range(default_nucleus_radius, 1, -1):
+        footprints = np.asarray(centerline, dtype=bool).copy()
+        for row, col in centers:
+            _paint_disk(footprints, row, col, nucleus_radius)
+        footprints &= legal
+        for support_radius in range(default_support_radius, 0, -1):
+            support = (
+                ndimage.binary_dilation(
+                    footprints, iterations=support_radius
+                )
+                & legal
+            )
+            support = (
+                ndimage.binary_closing(
+                    support,
+                    structure=np.ones((3, 3), dtype=bool),
+                    iterations=1,
+                )
+                | centerline
+            ) & legal
+            support = _component_nearest_point(support, anchor_point)
+            support_pixels = int(np.count_nonzero(support))
+            if not 0 < support_pixels <= int(target_pixels):
+                continue
+            if any(not support[int(row), int(col)] for row, col in centers):
+                continue
+            if not _touches(support, target_component):
+                continue
+            envelope = (
+                ndimage.binary_dilation(
+                    footprints,
+                    iterations=support_radius + envelope_extension,
+                )
+                & legal
+            )
+            envelope = _component_nearest_point(
+                envelope | centerline,
+                anchor_point,
+            )
+            if int(np.count_nonzero(envelope)) < int(target_pixels):
+                continue
+            candidate = (
+                support_pixels,
+                support,
+                envelope,
+                nucleus_radius,
+                support_radius,
+            )
+            if best is None or candidate[0] > best[0]:
+                best = candidate
+    if best is None:
+        return None
+    _, support, envelope, nucleus_radius, support_radius = best
+    return support, envelope, nucleus_radius, support_radius
+
+
+def _legal_polyline(points, *, legal, snap_radius):
+    """Connect ordered cell centers without drawing across protected pixels."""
+
+    path = np.zeros_like(legal, dtype=bool)
+    resolved = []
+    for point in points:
+        snapped = _nearest_legal(point, legal, radius=snap_radius)
+        if snapped is None:
+            return None
+        resolved.append(snapped)
+    for left, right in zip(resolved, resolved[1:]):
+        distance = float(np.linalg.norm(np.asarray(right) - np.asarray(left)))
+        samples = max(2, int(np.ceil(distance * 1.5)) + 1)
+        for fraction in np.linspace(0.0, 1.0, samples):
+            proposed = (
+                (1.0 - fraction) * np.asarray(left, dtype=float)
+                + fraction * np.asarray(right, dtype=float)
+            )
+            snapped = _nearest_legal(proposed, legal, radius=snap_radius)
+            if snapped is None:
+                return None
+            path[snapped] = True
+    path[resolved[-1]] = True
+    # A snapped path may contain diagonal one-pixel gaps around protected
+    # obstacles; retain only a genuinely connected raster witness.
+    if _component_count(path) != 1:
+        path = ndimage.binary_dilation(path, iterations=1) & legal
+    if _component_count(path) != 1:
+        return None
+    return path
 
 
 def _irregular_island(*, legal, center_y, center_x, target_pixels, phase):
