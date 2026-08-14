@@ -27,7 +27,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v14"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v15"
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
@@ -603,28 +603,18 @@ def _prepare_compiler_work(
         residual_fragmentation = (
             params.get("tissue_geometry_mode") == "residual_fragmentation"
         )
-        graph_interface = next(
-            (
-                item
-                for item in scene.graph.interfaces
-                if item.interface_id == planned.interface_id
-            ),
-            None,
-        )
-        selected_anchor_ids = set(planned.execution_contract.anchor_segment_ids)
-        full_interface_selected = bool(
-            residual_fragmentation
-            and graph_interface is not None
-            and selected_anchor_ids == set(graph_interface.anchor_segment_ids)
-        )
-        if full_interface_selected:
-            # Joint nuclei preflight can sparsify the executable anchor masks
-            # even though the Planner selected every addressable segment of
-            # this directed interface.  Fragmentation is a component-scale
-            # cut: treating those sampling gaps as prohibited leaves raster
-            # caps or prevents a corridor from traversing the tumor.  The
-            # immutable full interface is the correct anchor authority only
-            # when every segment was explicitly selected.
+        if residual_fragmentation:
+            # Joint nuclei preflight deliberately sparsifies anchor segments
+            # to the locations that can support sampled seam cells.  Those
+            # segments are cell-execution evidence, not a tissue-geometry
+            # ownership boundary.  Fragmentation is a component-scale breakup
+            # anchored by the selected directed Tumor->Stroma interface; if
+            # its tissue envelope inherits the sparse cell anchors, the edge
+            # of a broad cleft leaves dozens of one-pixel residual caps that
+            # cannot be transactionally cleaned outside that artificial
+            # envelope.  Use the complete selected interface for tissue
+            # ownership while retaining the planned segment IDs for the
+            # independent cell program and its audits.
             anchor = np.asarray(interface, dtype=bool)
         _, nearest_interface = ndimage.distance_transform_edt(
             ~interface, return_indices=True

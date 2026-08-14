@@ -1918,7 +1918,10 @@ class CandidateAndSceneTests(unittest.TestCase):
         partial_legal = np.logical_or.reduce(
             [item.legal_source for item in partial_works]
         )
-        self.assertTrue(np.any(expected & ~partial_legal))
+        # Fragmentation is a component-scale tissue operation.  Sparse
+        # cell-feasibility anchors may govern where seam cells are sampled,
+        # but they must not carve holes in the tissue ownership envelope.
+        self.assertFalse(np.any(expected & ~partial_legal))
 
     def test_multi_interface_candidate_records_both_anchors(self):
         size = 160
