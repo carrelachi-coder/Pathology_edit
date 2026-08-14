@@ -1355,7 +1355,7 @@ def _scenario_primitive_specs(
             (
                 "peritumoral-tumor-nest-formation-v1",
                 "contextual",
-                "a certified peritumoral host band can support a small detached Tumor nest",
+                "a certified peritumoral host band can support a compact detached six-to-twelve-cell Tumor nest",
             ),
             (
                 "peritumoral-neoplastic-scatter-increase-v1",
@@ -1474,7 +1474,7 @@ def _tumor_tissue_extent_increase_specs(
         (
             "peritumoral-tumor-nest-formation-v1",
             "contextual",
-            "a certified peritumoral host band may instead support a small detached Tumor nest",
+            "a certified peritumoral host band may instead support a compact detached six-to-twelve-cell Tumor nest",
         ),
         (
             "malignant-gland-unit-expansion-v1",

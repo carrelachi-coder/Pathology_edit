@@ -969,6 +969,22 @@ def _cell_seeded_cord_geometry(c):
         4.0,
         float(trace.get("nominal_nucleus_diameter_px", 8.0)),
     )
+    minimum_realized_count = max(
+        6,
+        int(trace.get("minimum_realized_tumor_cell_count", 6)),
+    )
+    minimum_seed_count = max(
+        10,
+        int(trace.get("minimum_seed_center_count", 10)),
+    )
+    minimum_support_equivalent_nuclei = max(
+        8.0,
+        float(trace.get("minimum_support_equivalent_nuclei", 8.0)),
+    )
+    minimum_peak_width_cell_diameters = max(
+        1.5,
+        float(trace.get("minimum_peak_width_cell_diameters", 1.5)),
+    )
     centers = trace.get("cell_seed_centers_yx")
     valid_centers = []
     if isinstance(centers, list):
@@ -1029,6 +1045,17 @@ def _cell_seeded_cord_geometry(c):
         )
     else:
         directionality = 0.0
+    seeded_path_span_cell_diameters = 0.0
+    if len(valid_centers) >= 2:
+        seeded = np.asarray(valid_centers, dtype=float)
+        centered = seeded - seeded.mean(axis=0)
+        _, _, vectors = np.linalg.svd(centered, full_matrices=False)
+        seeded_path_span_cell_diameters = float(
+            np.ptp(seeded @ vectors[0]) / diameter
+        )
+    support_equivalent_nuclei = float(
+        np.count_nonzero(change) / (np.pi * (0.5 * diameter) ** 2)
+    )
     passed = bool(
         np.any(change)
         and _component_count(change) == 1
@@ -1036,13 +1063,17 @@ def _cell_seeded_cord_geometry(c):
         and trace.get("execution_order") == "cells_then_tumor_mask"
         and trace.get("tumor_mask_derivation")
         == "cell_footprints_plus_cell_scale_closing"
-        and len(valid_centers) >= 5
+        and len(valid_centers) >= minimum_seed_count
         and center_coverage >= 0.95
-        and len(realized_centers) >= 2
+        and len(realized_centers) >= minimum_realized_count
         and maximum_realized_path_distance <= diameter
-        and realized_path_span_fraction >= 0.55
+        and realized_path_span_fraction >= 0.60
+        and seeded_path_span_cell_diameters >= 4.0
+        and support_equivalent_nuclei >= minimum_support_equivalent_nuclei
         and widths.size
-        and float(np.max(widths)) <= 3.5 * diameter
+        and minimum_peak_width_cell_diameters * diameter
+        <= float(np.max(widths))
+        <= 3.5 * diameter
         and directionality >= 1.5
     )
     return _result(
@@ -1059,15 +1090,24 @@ def _cell_seeded_cord_geometry(c):
             "cell_seed_center_count": len(valid_centers),
             "cell_seed_center_coverage": float(center_coverage),
             "realized_tumor_cell_center_count": len(realized_centers),
+            "minimum_realized_tumor_cell_count": minimum_realized_count,
             "maximum_realized_center_to_seed_path_distance_px": (
                 maximum_realized_path_distance
             ),
             "realized_seed_path_span_fraction": realized_path_span_fraction,
+            "seeded_path_span_cell_diameters": seeded_path_span_cell_diameters,
+            "support_equivalent_nuclei": support_equivalent_nuclei,
+            "minimum_support_equivalent_nuclei": (
+                minimum_support_equivalent_nuclei
+            ),
             "change_component_count": _component_count(change),
             "attachment_component_count": _component_count(attachment),
             "maximum_width_px": float(np.max(widths)) if widths.size else 0.0,
             "maximum_width_cell_diameters": (
                 float(np.max(widths)) / diameter if widths.size else 0.0
+            ),
+            "minimum_peak_width_cell_diameters": (
+                minimum_peak_width_cell_diameters
             ),
             "directionality_ratio": directionality,
         },
@@ -1096,6 +1136,17 @@ def _peritumoral_tumor_island_geometry(c):
     compactness = float(
         np.count_nonzero(boundary) ** 2 / max(4.0 * np.pi * area, 1.0)
     )
+    diameter = max(
+        4.0,
+        float(trace.get("nominal_nucleus_diameter_px", 8.0)),
+    )
+    minimum_support_equivalent_nuclei = max(
+        10.0,
+        float(trace.get("minimum_support_equivalent_nuclei", 10.0)),
+    )
+    support_equivalent_nuclei = float(
+        area / (np.pi * (0.5 * diameter) ** 2)
+    )
     passed = bool(
         area > 0
         and _component_count(change) == 1
@@ -1110,6 +1161,7 @@ def _peritumoral_tumor_island_geometry(c):
         # continuous isoperimetric value 1.0. Keep the meaningful upper bound
         # and only correct the raster-scale lower bound.
         and 0.65 <= compactness <= 10.0
+        and support_equivalent_nuclei >= minimum_support_equivalent_nuclei
     )
     return _result(
         "peritumoral_tumor_island_geometry",
@@ -1128,6 +1180,10 @@ def _peritumoral_tumor_island_geometry(c):
             "parent_gap_px": gap,
             "boundary_compactness": compactness,
             "changed_pixels": area,
+            "support_equivalent_nuclei": support_equivalent_nuclei,
+            "minimum_support_equivalent_nuclei": (
+                minimum_support_equivalent_nuclei
+            ),
         },
     )
 

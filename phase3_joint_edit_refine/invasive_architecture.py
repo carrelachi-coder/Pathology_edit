@@ -32,7 +32,21 @@ NEST_PRIMITIVE_ID = "peritumoral-tumor-nest-formation-v1"
 SPECIALIZED_ARCHITECTURE_PRIMITIVES = frozenset(
     {CORD_PRIMITIVE_ID, NEST_PRIMITIVE_ID}
 )
-ARCHITECTURE_EXECUTOR_VERSION = "breast-invasive-architecture-v3"
+ARCHITECTURE_EXECUTOR_VERSION = "breast-invasive-architecture-v4"
+
+# Breast tumor-budding studies place isolated cells and clusters of at most
+# four or five cells on the budding side of the architecture spectrum.  These
+# executors deliberately require a larger, visually meaningful structure: a
+# nest must have enough ordinary Tumor support for at least a six-cell cohesive
+# group, while a cord must have enough support and longitudinal runway for a
+# six-cell invasive chain.  Areas are source-scaled by the observed neoplastic
+# nucleus diameter instead of hard-coding pixels.
+CORD_MINIMUM_CELL_COUNT = 6
+CORD_MINIMUM_SEED_COUNT = 10
+CORD_MINIMUM_SUPPORT_EQUIVALENT_NUCLEI = 8.0
+CORD_MINIMUM_PEAK_WIDTH_CELL_DIAMETERS = 1.5
+NEST_MINIMUM_CELL_COUNT = 6
+NEST_MINIMUM_SUPPORT_EQUIVALENT_NUCLEI = 10.0
 
 
 def compile_joint_tissue_plan_with_witness(
@@ -176,7 +190,10 @@ def _cell_seeded_cord_candidate(
     legal[:, [0, -1]] = False
     diameter = _nominal_neoplastic_diameter(joint_scene)
     target_pixels = _resolved_pixels(plan, source_tissue, legal)
-    if target_pixels <= 0:
+    if target_pixels < _minimum_support_pixels(
+        diameter,
+        CORD_MINIMUM_SUPPORT_EQUIVALENT_NUCLEI,
+    ):
         return None
     tumor = np.isin(source_tissue, tuple(schema.resolve_fine_ids("Tumor")))
     other_tumor = tumor & ~np.asarray(target_component, dtype=bool)
@@ -209,7 +226,7 @@ def _cell_seeded_cord_candidate(
             seed=seed,
             variant=path_variant,
         )
-        if len(centers) < 5:
+        if len(centers) < CORD_MINIMUM_SEED_COUNT:
             continue
         derived = _cell_seeded_support(
             centers=centers,
@@ -308,7 +325,15 @@ def _cell_seeded_cord_candidate(
             "nucleus_footprint_radius_px": int(nucleus_radius),
             "support_closing_radius_px": int(support_radius),
             "support_width_policy": "one_to_three_cells_variable",
-            "path_policy": "slightly_curved_source_scaled_invasion_path",
+            "path_policy": "extended_slightly_curved_source_scaled_invasion_path",
+            "minimum_realized_tumor_cell_count": CORD_MINIMUM_CELL_COUNT,
+            "minimum_seed_center_count": CORD_MINIMUM_SEED_COUNT,
+            "minimum_support_equivalent_nuclei": (
+                CORD_MINIMUM_SUPPORT_EQUIVALENT_NUCLEI
+            ),
+            "minimum_peak_width_cell_diameters": (
+                CORD_MINIMUM_PEAK_WIDTH_CELL_DIAMETERS
+            ),
             "source_complete_instance_spill_estimate_px": int(spill_pixels),
             "changed_pixels": int(np.count_nonzero(support)),
         },
@@ -340,8 +365,13 @@ def _detached_nest_candidate(
     legal[:, [0, -1]] = False
     diameter = _nominal_neoplastic_diameter(joint_scene)
     target_pixels = _resolved_pixels(plan, source_tissue, legal)
+    if target_pixels < _minimum_support_pixels(
+        diameter,
+        NEST_MINIMUM_SUPPORT_EQUIVALENT_NUCLEI,
+    ):
+        return None
     equivalent_radius = float(np.sqrt(target_pixels / np.pi))
-    # A nest is a small island, not a displaced bulk compartment.  Excessive
+    # A nest is a compact island, not a displaced bulk compartment. Excessive
     # area therefore fails closed instead of inflating the island.
     if equivalent_radius > 4.5 * diameter:
         return None
@@ -466,6 +496,10 @@ def _detached_nest_candidate(
                 source_spill_pixels
             ),
             "nominal_nucleus_diameter_px": float(diameter),
+            "minimum_tumor_cell_count": NEST_MINIMUM_CELL_COUNT,
+            "minimum_support_equivalent_nuclei": (
+                NEST_MINIMUM_SUPPORT_EQUIVALENT_NUCLEI
+            ),
             "changed_pixels": int(np.count_nonzero(nest)),
         },
     )
@@ -485,10 +519,16 @@ def _cord_centers(
     rng = np.random.default_rng(seed + 7919 * variant)
     step = max(3.0, 0.72 * diameter)
     estimated_support_per_cell = np.pi * (0.72 * diameter) ** 2 * 0.38
-    requested = int(np.clip(np.ceil(target_pixels / estimated_support_per_cell), 7, 34))
+    requested = int(
+        np.clip(
+            np.ceil(target_pixels / estimated_support_per_cell),
+            CORD_MINIMUM_SEED_COUNT,
+            40,
+        )
+    )
     nodes = int(np.ceil(requested / 1.6))
-    nodes = min(nodes, max(5, int(maximum_depth // step)))
-    if nodes < 5:
+    nodes = min(nodes, max(7, int(maximum_depth // step)))
+    if nodes < 7:
         return []
     tangent = np.asarray((-direction[1], direction[0]), dtype=float)
     sign = -1.0 if variant % 2 else 1.0
@@ -512,6 +552,11 @@ def _cord_centers(
         if len(centers) >= requested:
             break
     return centers
+
+
+def _minimum_support_pixels(diameter: float, equivalent_nuclei: float) -> int:
+    nucleus_disk_area = np.pi * (0.5 * max(1.0, float(diameter))) ** 2
+    return int(np.ceil(float(equivalent_nuclei) * nucleus_disk_area))
 
 
 def _cell_seeded_support(

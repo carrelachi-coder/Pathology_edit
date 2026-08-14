@@ -142,8 +142,8 @@ _PRIMITIVE_COPY: dict[str, tuple[str, str, str, str]] = {
     ),
     "peritumoral-tumor-nest-formation-v1": (
         "Form a detached peritumoral tumor nest",
-        "Create one small irregular Tumor island in certified nearby Stroma, separated from the parent Tumor, then fill it with tumor cells.",
-        "Exactly one small detached Tumor component is added near the invasive front.",
+        "Create one compact irregular Tumor island in certified nearby Stroma, separated from the parent Tumor, then fill it with six to twelve tumor cells.",
+        "Exactly one compact detached Tumor component with six to twelve tumor cells is added near the invasive front.",
         "Complete source-scaled neoplastic nuclei are regenerated inside the new island.",
     ),
     "peritumoral-neoplastic-scatter-increase-v1": (

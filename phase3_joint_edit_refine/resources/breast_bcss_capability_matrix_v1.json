@@ -155,7 +155,7 @@
         "Add a narrow connected tumor extension."
       ],
       "tissue_action": "derive a narrow variable-caliber fine-1 support from a source-scaled tumor-cell path attached to a certified external Tumor 1/Stroma 2 boundary",
-      "nuclei_action": "lay out a slightly irregular one-to-three-cell-wide class-1 cord before finalizing the Tumor support",
+      "nuclei_action": "lay out an extended, slightly irregular class-1 cord with at least six realized tumor cells before finalizing the Tumor support; keep most of the cord one to two cells wide and allow local proximal thickening to three cells",
       "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate.",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
@@ -163,7 +163,7 @@
       "required_conditions": [
         "certified external boundary",
         "directional space for a cell-seeded path",
-        "a local joint-area budget compatible with cell-scale cord support",
+        "a local joint-area budget compatible with a nontrivial extended cell-scale cord",
         "complete class-1 shape authority",
         "postcondition-compatible variable width, path continuity and elongation"
       ],
@@ -215,11 +215,11 @@
         "post_treatment_progression"
       ],
       "simple_instructions": [
-        "Add a small detached tumor nest near the invasive front.",
-        "Form a small tumor island in nearby stroma."
+        "Add a detached tumor nest near the invasive front.",
+        "Form a compact tumor island in nearby stroma."
       ],
-      "tissue_action": "create exactly one small irregular detached fine-1 island in a certified Stroma-side peritumoral band",
-      "nuclei_action": "fill the new island with complete source-scaled class-1 nuclei after the island is formed",
+      "tissue_action": "create exactly one compact irregular detached fine-1 island in a certified Stroma-side peritumoral band",
+      "nuclei_action": "fill the new island with six to twelve complete source-scaled class-1 nuclei after the island is formed",
       "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate.",
       "execution_scope": "tissue_and_cell",
       "support_status": "conditionally_supported",
@@ -227,7 +227,7 @@
       "required_conditions": [
         "certified external boundary and peritumoral Stroma band",
         "space for one detached island with a cell-scale parent gap",
-        "a local joint-area budget compatible with a small nest",
+        "a local joint-area budget compatible with a six-to-twelve-cell nest rather than a one-to-five-cell tumor bud",
         "complete class-1 shape authority"
       ],
       "forbidden_claims": [

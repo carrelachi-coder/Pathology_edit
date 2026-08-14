@@ -5,7 +5,10 @@ from scipy import ndimage
 
 import phase3_joint_edit_refine.invasive_architecture as invasive_architecture
 from phase3_joint_edit_refine.invasive_architecture import (
+    CORD_MINIMUM_CELL_COUNT,
+    CORD_MINIMUM_SEED_COUNT,
     CORD_PRIMITIVE_ID,
+    NEST_MINIMUM_CELL_COUNT,
     NEST_PRIMITIVE_ID,
     generate_joint_tissue_candidates,
 )
@@ -131,7 +134,13 @@ def test_cord_is_cells_then_connected_cell_scale_tumor_support():
     candidate = candidates[0]
     assert candidate.tool_name == "cell_seeded_cord"
     assert candidate.tool_trace["execution_order"] == "cells_then_tumor_mask"
-    assert len(candidate.tool_trace["cell_seed_centers_yx"]) >= 5
+    assert (
+        len(candidate.tool_trace["cell_seed_centers_yx"])
+        >= CORD_MINIMUM_SEED_COUNT
+    )
+    assert candidate.tool_trace["minimum_realized_tumor_cell_count"] == (
+        CORD_MINIMUM_CELL_COUNT
+    )
     assert int(candidate.change_region.sum()) == 650
     assert ndimage.label(candidate.change_region, np.ones((3, 3)))[1] == 1
     source_tumor = tissue == 1
@@ -145,7 +154,7 @@ def test_nest_is_one_irregular_detached_tumor_island_then_cells():
         primitive_id=NEST_PRIMITIVE_ID,
         tool_name="peritumoral_tumor_island",
         geometry_mode="peritumoral_detached_tumor_island",
-        pixels=450,
+        pixels=600,
     )
     candidates = generate_joint_tissue_candidates(
         tissue,
@@ -162,7 +171,11 @@ def test_nest_is_one_irregular_detached_tumor_island_then_cells():
     candidate = candidates[0]
     assert candidate.tool_name == "peritumoral_tumor_island"
     assert candidate.tool_trace["execution_order"] == "tumor_island_then_cells"
-    assert int(candidate.change_region.sum()) == 450
+    assert int(candidate.change_region.sum()) == 600
+    assert (
+        candidate.tool_trace["minimum_tumor_cell_count"]
+        == NEST_MINIMUM_CELL_COUNT
+    )
     assert ndimage.label(candidate.change_region, np.ones((3, 3)))[1] == 1
     source_tumor = tissue == 1
     assert not np.any(ndimage.binary_dilation(candidate.change_region) & source_tumor)
@@ -179,7 +192,7 @@ def test_cord_reduces_virtual_support_radius_after_budget_rebalance():
         primitive_id=CORD_PRIMITIVE_ID,
         tool_name="cell_seeded_cord",
         geometry_mode="cell_seeded_invasive_cord",
-        pixels=300,
+        pixels=450,
     )
 
     candidates = generate_joint_tissue_candidates(
@@ -208,7 +221,7 @@ def test_cord_reduces_virtual_support_radius_after_budget_rebalance():
         or candidate.tool_trace["nucleus_footprint_radius_px"]
         < default_nucleus_radius
     )
-    assert int(candidate.change_region.sum()) == 300
+    assert int(candidate.change_region.sum()) == 450
     assert all(
         candidate.change_region[row, col]
         for row, col in candidate.tool_trace["cell_seed_centers_yx"]
@@ -222,7 +235,7 @@ def test_nest_searches_past_one_invalid_exact_area_raster(monkeypatch):
         primitive_id=NEST_PRIMITIVE_ID,
         tool_name="peritumoral_tumor_island",
         geometry_mode="peritumoral_detached_tumor_island",
-        pixels=450,
+        pixels=600,
     )
     original = invasive_architecture._irregular_island
     attempts = 0
@@ -252,3 +265,40 @@ def test_nest_searches_past_one_invalid_exact_area_raster(monkeypatch):
 
     assert attempts >= 2
     assert candidates
+
+
+def test_trivial_cord_and_bud_sized_nest_fail_closed():
+    schema, tissue, scene, interface = _fixture()
+    configurations = (
+        (
+            CORD_PRIMITIVE_ID,
+            "cell_seeded_cord",
+            "cell_seeded_invasive_cord",
+            300,
+        ),
+        (
+            NEST_PRIMITIVE_ID,
+            "peritumoral_tumor_island",
+            "peritumoral_detached_tumor_island",
+            450,
+        ),
+    )
+    for primitive_id, tool_name, geometry_mode, pixels in configurations:
+        plan = _plan(
+            interface,
+            primitive_id=primitive_id,
+            tool_name=tool_name,
+            geometry_mode=geometry_mode,
+            pixels=pixels,
+        )
+        candidates = generate_joint_tissue_candidates(
+            tissue,
+            schema=schema,
+            tissue_scene=scene.tissue,
+            joint_scene=scene,
+            plan=plan,
+            bundle=None,
+            seed=3,
+            candidate_limit=4,
+        )
+        assert candidates == ()
