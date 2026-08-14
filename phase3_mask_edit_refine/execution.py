@@ -27,7 +27,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v11"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v14"
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
@@ -898,7 +898,7 @@ def _residual_fragmentation_priority(
     # noise independently to each Voronoi cost (the previous implementation)
     # was orders of magnitude too weak after Gaussian smoothing and therefore
     # left nearly straight separators.
-    warped_coordinates = normalized_coordinates + 0.18 * np.column_stack(
+    warped_coordinates = normalized_coordinates + 0.30 * np.column_stack(
         (warp_major[rows, cols], warp_minor[rows, cols])
     )
     focus_retreat_fields = tuple(
@@ -909,6 +909,16 @@ def _residual_fragmentation_priority(
             correlation_px=correlation * 0.78,
         )
         for focus_index in range(focus_count)
+    )
+    # Both sides of one cleft must agree on where the narrow necks and broad
+    # rupture bays occur.  Independent per-focus fields averaged each other
+    # visually: one side widened precisely where the other narrowed, leaving
+    # an almost constant total stromal span.
+    cleavage_texture_field = _low_frequency_organic_field(
+        source.shape,
+        support=source,
+        seed=_component_seed(source, salt=1709),
+        correlation_px=max(10.0, correlation * 0.34),
     )
     source_depth = ndimage.distance_transform_edt(source)
     tie_break = np.asarray(default_priority, dtype=float)
@@ -962,19 +972,6 @@ def _residual_fragmentation_priority(
         stacked_costs = np.stack(costs)
         partition = np.zeros_like(source, dtype=np.int16)
         partition[rows, cols] = np.argmin(stacked_costs, axis=0) + 1
-        # Locate the point where the prospective foci meet.  A broad,
-        # off-centre regression basin here makes fragmentation originate from
-        # one local breakdown zone; the outward transitions can then taper
-        # instead of reading as three equal-width roads.
-        origin_index = int(np.argmin(np.ptp(stacked_costs, axis=0)))
-        origin_row, origin_col = coordinates[origin_index]
-        grid_rows, grid_cols = np.indices(source.shape)
-        origin_distance = np.hypot(
-            grid_rows - origin_row,
-            grid_cols - origin_col,
-        )
-        origin_radius = max(12.0, np.sqrt(source_area) * 0.22)
-        origin_influence = np.exp(-(origin_distance / origin_radius) ** 2)
         separator = np.zeros_like(source, dtype=bool)
         vertical = (
             source[1:, :] & source[:-1, :] & (partition[1:, :] != partition[:-1, :])
@@ -986,7 +983,10 @@ def _residual_fragmentation_priority(
         separator[:-1, :] |= vertical
         separator[:, 1:] |= horizontal
         separator[:, :-1] |= horizontal
-        separator_distance = ndimage.distance_transform_edt(~separator)
+        separator_distance, nearest_separator = ndimage.distance_transform_edt(
+            ~separator,
+            return_indices=True,
+        )
         cleavage_core = (separator_distance <= 1.0) & source & legal
         if not np.any(cleavage_core):
             continue
@@ -1004,16 +1004,85 @@ def _residual_fragmentation_priority(
                 continue
             field = focus_retreat_fields[focus_index]
             organic_fraction = np.clip((field + 1.0) / 2.0, 0.0, 1.0)
-            cleavage_scale = (
-                5.2
-                + 3.5 * organic_fraction
-                + 10.0
-                * origin_influence
-                * (0.55 + 0.45 * organic_fraction)
+            texture_fraction = np.clip(
+                (cleavage_texture_field + 1.0) / 2.0,
+                0.0,
+                1.0,
+            )
+            thickness_fraction = np.clip(
+                0.20 * organic_fraction + 0.80 * texture_fraction,
+                0.0,
+                1.0,
+            )
+            # Extend the modulation at each separator point along its local
+            # normal.  Sampling an independent texture value at every pixel
+            # across the cleft made a nominally huge scale collapse after a
+            # few pixels because the field immediately changed again.  A
+            # seam-owned value produces an actual broad stromal span while
+            # retaining irregular variation along the crooked front.
+            cleavage_fraction = thickness_fraction[
+                nearest_separator[0], nearest_separator[1]
+            ]
+            # Convert a shared seam texture into an explicit local target
+            # half-width.  Quantile normalization makes the profile stable
+            # across differently shaped components, while the nonlinear tail
+            # reserves a few genuinely broad rupture bays.  Unlike the former
+            # near-binary gates, this continuous radius cannot leave blocky
+            # rectangular steps at width transitions.
+            supported_thickness = cleavage_fraction[
+                focus_zone
+                & legal
+                & (separator_distance <= max(4.0, minimum_residual_spacing_px))
+            ]
+            if supported_thickness.size:
+                low_width, high_width = np.quantile(
+                    supported_thickness, (0.10, 0.90)
+                )
+            else:
+                low_width, high_width = (0.10, 0.90)
+            width_fraction = np.clip(
+                (cleavage_fraction - float(low_width))
+                / max(float(high_width - low_width), 1e-6),
+                0.0,
+                1.0,
             )
             external_scale = 0.40 + 5.0 * organic_fraction**2
-            cleavage_priority = 0.28 + separator_distance / cleavage_scale
-            external_priority = 0.70 + source_depth / external_scale
+            maximum_cleavage_reach = float(
+                np.clip(np.sqrt(source_area) * 0.18, 30.0, 96.0)
+            )
+            minimum_half_gap = max(
+                2.0,
+                (minimum_residual_spacing_px + 2.0) / 2.0,
+            )
+            desired_half_width = minimum_half_gap + (
+                maximum_cleavage_reach - minimum_half_gap
+            ) * width_fraction**1.7
+            variable_cleavage_priority = np.where(
+                separator_distance <= maximum_cleavage_reach,
+                0.26 + 0.74 * separator_distance / desired_half_width,
+                np.inf,
+            )
+            # Preserve a minimum traversing gap everywhere, including the
+            # deliberately thin necks.  The remaining budget is then pulled
+            # aggressively into the broad and rupture bands above.
+            minimum_gap_priority = np.where(
+                separator_distance <= minimum_half_gap,
+                0.18
+                + 0.02 * separator_distance / max(minimum_half_gap, 1.0),
+                np.inf,
+            )
+            cleavage_priority = np.minimum(
+                variable_cleavage_priority,
+                minimum_gap_priority,
+            )
+            # Spend this high-visibility primitive's budget on the breakup
+            # fronts first.  Starting external retreat at the same priority
+            # used to sever natural boundary tongues into dozens of tiny
+            # pseudo-foci before the intended three-way cleavage completed.
+            # The external term remains available only as a late, shallow
+            # contour adjustment when a very large requested budget exhausts
+            # the bounded cleavage reach.
+            external_priority = 4.0 + source_depth / external_scale
             focus_priority = np.minimum(cleavage_priority, external_priority)
             approximate_priority[focus_zone] = focus_priority[focus_zone]
         # The one-pixel cleavage skeleton is merely the topological seed.  It
@@ -2084,6 +2153,16 @@ def _rebalance_fragmentation_residual_islands(
         minimum_residual_component_fraction=(minimum_residual_component_fraction),
     )
     if np.any(balance_bridge):
+        proposed_residual = residual | balance_bridge
+        if _hole_count(proposed_residual) > _hole_count(residual):
+            # A shortest raster bridge may join an underweight satellite by
+            # wrapping around converted stroma.  That technically reduces the
+            # component count but leaves a loop-shaped residual focus with an
+            # internal hole.  Reject that bridge and let the bounded
+            # target-connected satellite cleanup below erase the pseudo-focus
+            # instead.
+            balance_bridge = np.zeros_like(balance_bridge)
+    if np.any(balance_bridge):
         combined = combined & ~balance_bridge
         target_after = np.asarray(target_region, dtype=bool) | combined
         residual = selected_source & ~combined
@@ -2101,14 +2180,7 @@ def _rebalance_fragmentation_residual_islands(
         below_relative_floor = size / residual_total + 1e-9 < float(
             minimum_residual_component_fraction
         )
-        if below_relative_floor and not below_absolute_floor:
-            # A meaningful but underweight focus must be merged through a
-            # residual bridge above. Erasing it as target tissue can consume
-            # thousands of pixels and destroy the traversing corridor when
-            # the exact area is rebalanced.
-            balance_ids.append(index)
-            continue
-        if not below_absolute_floor:
+        if not (below_absolute_floor or below_relative_floor):
             continue
         component = labels == index
         surrounding_ring = (
@@ -2128,14 +2200,27 @@ def _rebalance_fragmentation_residual_islands(
             cleanup_ids.append(index)
             if below_absolute_floor:
                 tiny_ids.append(index)
+            elif below_relative_floor:
+                # Prefer the residual-bridge merge attempted above.  When no
+                # legal bridge can absorb a small satellite, treating it as a
+                # biological focus leaves otherwise executable cases with
+                # several 0.1--1% pseudo-foci.  Converting that target-adjacent
+                # satellite and transactionally returning the same area to
+                # the boundaries of the large residual foci is the bounded
+                # fallback.  The six-percent cleanup ceiling and final focus
+                # balance audit keep it from erasing a meaningful focus.
+                balance_ids.append(index)
+        elif below_relative_floor and not below_absolute_floor:
+            # A non-target-adjacent underweight focus cannot be converted by
+            # this target-growth primitive and the failed bridge must remain
+            # an abstention.
+            return selected_by_work, unchanged
     cleanup_ids = tuple(cleanup_ids)
     tiny_ids = tuple(tiny_ids)
     balance_ids = tuple(balance_ids)
     focus_cleanup = np.isin(labels, cleanup_ids)
     tiny = np.isin(labels, tiny_ids)
     balance = np.isin(labels, balance_ids)
-    if balance_ids:
-        return selected_by_work, unchanged
     tiny_pixels = int(np.count_nonzero(tiny))
     # Large accidental islands are a genuinely different topology and must
     # remain an abstention.  The 512-pixel cap is still far below a valid
@@ -2222,7 +2307,143 @@ def _rebalance_fragmentation_residual_islands(
 
     remaining_reclaim = reclaimed - bridge_pixels
     removed = 0
-    maximum_rounds = min(64, max(remaining_reclaim, 0) + 1)
+    if remaining_reclaim > 0 and bridge_pixels == 0:
+        # Fast transactional donor selection for large satellite cleanup.
+        # Expand the certified residual foci back into the changed region by
+        # Euclidean layers, but only on the safe side of a Voronoi margin that
+        # leaves the requested inter-focus spacing.  This is the same geometric
+        # operation as the iterative frontier loop below, evaluated in one
+        # candidate followed by one authoritative audit instead of thousands
+        # of repeated full-raster transforms.
+        combined_after_fill = np.logical_or.reduce(tuple(updated))
+        residual_after_fill = selected_source & ~combined_after_fill
+        residual_labels, residual_count = ndimage.label(
+            residual_after_fill,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        if residual_count > 0:
+            distances = np.stack(
+                [
+                    ndimage.distance_transform_edt(residual_labels != index)
+                    for index in range(1, residual_count + 1)
+                ]
+            )
+            nearest_distance = np.min(distances, axis=0)
+            nearest_focus = np.argmin(distances, axis=0) + 1
+            if residual_count > 1:
+                second_distance = np.partition(distances, 1, axis=0)[1]
+                spacing_margin = second_distance - nearest_distance
+            else:
+                spacing_margin = np.full_like(nearest_distance, np.inf)
+            fast_candidates = (
+                combined_after_fill
+                & ~repair
+                & (spacing_margin + 1e-9 >= minimum_residual_spacing_px)
+            )
+            candidate_ids = np.flatnonzero(fast_candidates)
+            if candidate_ids.size >= remaining_reclaim:
+                candidate_order = np.argsort(
+                    nearest_distance.ravel()[candidate_ids],
+                    kind="stable",
+                )
+                reclaim_ids = candidate_ids[
+                    candidate_order[:remaining_reclaim]
+                ]
+                reclaim_mask = np.zeros_like(selected_source, dtype=bool)
+                reclaim_mask.ravel()[reclaim_ids] = True
+                proposed = [np.array(item, copy=True) for item in updated]
+                for selected in proposed:
+                    selected[reclaim_mask] = False
+                def reclaim_audit(candidate: list[np.ndarray]) -> dict[str, Any]:
+                    return _whole_mask_topology_audit(
+                        source_region=source_region,
+                        target_region=target_region,
+                        selected_by_work=tuple(candidate),
+                        works=works,
+                        allow_source_component_split=True,
+                        minimum_residual_components=minimum_residual_components,
+                        maximum_residual_components=maximum_residual_components,
+                        minimum_residual_component_area_px=(
+                            minimum_residual_component_area_px
+                        ),
+                        minimum_residual_spacing_px=minimum_residual_spacing_px,
+                        residual_area_floor_fraction=residual_area_floor_fraction,
+                        maximum_residual_area_fraction=(
+                            maximum_residual_area_fraction
+                        ),
+                        minimum_residual_component_fraction=(
+                            minimum_residual_component_fraction
+                        ),
+                        maximum_dominant_residual_component_fraction=(
+                            maximum_dominant_residual_component_fraction
+                        ),
+                    )
+
+                fast_audit = reclaim_audit(proposed)
+                if fast_audit["passed"]:
+                    updated = proposed
+                    removed = remaining_reclaim
+                else:
+                    # Uniform dilation can close a concave focus around a
+                    # target pocket.  Try donating the same area to one focus
+                    # at a time; this keeps the other cleft walls fixed and
+                    # selects the passing option with the best final balance.
+                    focus_options: list[
+                        tuple[tuple[float, float, int], list[np.ndarray]]
+                    ] = []
+                    for focus_index in range(1, residual_count + 1):
+                        focus_candidates = fast_candidates & (
+                            nearest_focus == focus_index
+                        )
+                        focus_ids = np.flatnonzero(focus_candidates)
+                        if focus_ids.size < remaining_reclaim:
+                            continue
+                        focus_order = np.argsort(
+                            nearest_distance.ravel()[focus_ids],
+                            kind="stable",
+                        )
+                        focus_reclaim = np.zeros_like(
+                            selected_source, dtype=bool
+                        )
+                        focus_reclaim.ravel()[
+                            focus_ids[focus_order[:remaining_reclaim]]
+                        ] = True
+                        focus_proposed = [
+                            np.array(item, copy=True) for item in updated
+                        ]
+                        for selected in focus_proposed:
+                            selected[focus_reclaim] = False
+                        focus_audit = reclaim_audit(focus_proposed)
+                        if not focus_audit["passed"]:
+                            continue
+                        focus_options.append(
+                            (
+                                (
+                                    float(
+                                        focus_audit[
+                                            "dominant_residual_component_fraction"
+                                        ]
+                                    ),
+                                    -float(
+                                        focus_audit[
+                                            "minimum_observed_residual_component_fraction"
+                                        ]
+                                    ),
+                                    focus_index,
+                                ),
+                                focus_proposed,
+                            )
+                        )
+                    if focus_options:
+                        _score, updated = min(
+                            focus_options, key=lambda option: option[0]
+                        )
+                        removed = remaining_reclaim
+    maximum_rounds = (
+        0
+        if removed >= remaining_reclaim
+        else min(64, max(remaining_reclaim, 0) + 1)
+    )
     for _reclaim_round in range(maximum_rounds):
         combined_after_fill = np.logical_or.reduce(tuple(updated))
         residual_after_fill = selected_source & ~combined_after_fill
@@ -2253,7 +2474,13 @@ def _rebalance_fragmentation_residual_islands(
             remaining = remaining_reclaim - removed
             if remaining <= 0:
                 break
-            batch_size = min(512, remaining, len(candidates) - offset)
+            # A production residual satellite can contain several thousand
+            # pixels.  Auditing fixed 512-pixel donations forced a full set of
+            # connected-component and hole transforms after every thin edge
+            # layer and turned a bounded cleanup into minutes of repeated
+            # work.  The halving fallback below already finds a safe smaller
+            # prefix when a large batch would narrow a cleft too far.
+            batch_size = min(4096, remaining, len(candidates) - offset)
             accepted = False
             while batch_size >= 1:
                 batch = candidates[offset : offset + batch_size]

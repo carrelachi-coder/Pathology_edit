@@ -1196,6 +1196,17 @@ class JointSkillTests(unittest.TestCase):
                         primitive.maximum_dominant_residual_component_fraction,
                         0.75,
                     )
+                    self.assertEqual(primitive.minimum_residual_spacing_px, 16)
+                    self.assertEqual(
+                        bundle.mechanism.cell_program.seam.density_ratio_range,
+                        (0.2, 2.5),
+                    )
+                    self.assertTrue(
+                        any(
+                            "thin-to-thick-to-thin" in finding
+                            for finding in bundle.mechanism.render.veto_findings
+                        )
+                    )
 
     def test_breast_bcss_capability_matrix_matches_executable_skills(self):
         repository = JointSkillRepository()

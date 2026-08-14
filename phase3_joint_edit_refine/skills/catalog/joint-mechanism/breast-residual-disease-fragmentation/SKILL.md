@@ -11,7 +11,10 @@ component and must satisfy the skill-owned residual island contract. Mature
 target-population regeneration and its local-density audit remain required.
 At least a sparse ProbNet-ranked target population must realize the new stromal
 seam, without requiring one generated nucleus at every interface-anchor
-segment. The tissue program must use an
-organic branching corridor with nonconstant width and spend remaining turnover
-on peripheral retreat of every residual focus; straight parallel slots are a
-visual veto even when component-count gates pass.
+segment. The tissue program must construct the remaining tumor as several
+smaller, unequal residual foci. Converted stroma may connect those foci through
+crooked cleavage regions whose local width varies irregularly from narrow to
+broader to very broad. Even the narrow stretches must be cell-bearing rather
+than hairline gaps; a smooth thin-to-thick-to-thin taper, straight parallel
+slots, or a constant-width branching road is a visual veto even when
+component-count gates pass.

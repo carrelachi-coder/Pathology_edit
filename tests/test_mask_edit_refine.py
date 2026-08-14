@@ -1458,7 +1458,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         source = np.zeros(shape, dtype=bool)
         source[12:84, 10:110] = True
         default = ndimage.distance_transform_edt(source)
-        target_pixels = round(int(source.sum()) * 0.18)
+        target_pixels = round(int(source.sum()) * 0.28)
 
         priority = _residual_fragmentation_priority(
             source_component=source,
@@ -1467,13 +1467,13 @@ class CandidateAndSceneTests(unittest.TestCase):
             minimum_residual_components=3,
             maximum_residual_components=6,
             minimum_residual_component_area_px=96,
-            minimum_residual_spacing_px=8,
+            minimum_residual_spacing_px=16,
             minimum_residual_component_fraction=0.08,
             maximum_dominant_residual_component_fraction=0.75,
             target_change_pixels=target_pixels,
         )
 
-        cleavage_seed = source & (priority < 0.22)
+        cleavage_seed = source & (priority < 0.17)
         labels, count = ndimage.label(
             source & ~cleavage_seed, structure=np.ones((3, 3), dtype=bool)
         )
@@ -1508,7 +1508,7 @@ class CandidateAndSceneTests(unittest.TestCase):
             int(np.count_nonzero(cleavage_seed)),
         )
         self.assertGreaterEqual(
-            _minimum_component_spacing_px(residual_labels, residual_count), 8.0
+            _minimum_component_spacing_px(residual_labels, residual_count), 16.0
         )
         source_boundary = source & ~ndimage.binary_erosion(
             source, structure=np.ones((3, 3), dtype=bool)
@@ -1528,7 +1528,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         source[12:84, 10:110] = True
         legal = np.array(source, copy=True)
         legal[47:50, 59:62] = False
-        target_pixels = round(int(source.sum()) * 0.18)
+        target_pixels = round(int(source.sum()) * 0.28)
 
         priority = _residual_fragmentation_priority(
             source_component=source,
@@ -1537,7 +1537,7 @@ class CandidateAndSceneTests(unittest.TestCase):
             minimum_residual_components=3,
             maximum_residual_components=6,
             minimum_residual_component_area_px=96,
-            minimum_residual_spacing_px=8,
+            minimum_residual_spacing_px=16,
             minimum_residual_component_fraction=0.08,
             maximum_dominant_residual_component_fraction=0.75,
             target_change_pixels=target_pixels,
@@ -1556,6 +1556,101 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertGreaterEqual(residual_count, 3)
         self.assertLessEqual(residual_count, 6)
         self.assertGreaterEqual(int(residual_sizes.min()), 96)
+
+    def test_fragmentation_priority_exaggerates_local_breakup_width(self):
+        shape = (192, 240)
+        source = np.zeros(shape, dtype=bool)
+        source[16:176, 12:228] = True
+        target_pixels = round(int(source.sum()) * 0.28)
+
+        priority = _residual_fragmentation_priority(
+            source_component=source,
+            legal_envelope=source,
+            default_priority=ndimage.distance_transform_edt(source),
+            minimum_residual_components=3,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=192,
+            minimum_residual_spacing_px=16,
+            minimum_residual_component_fraction=0.08,
+            maximum_dominant_residual_component_fraction=0.75,
+            target_change_pixels=target_pixels,
+        )
+
+        eligible_ids = np.flatnonzero(source)
+        order = np.argsort(priority.ravel()[eligible_ids], kind="stable")
+        changed = np.zeros_like(source)
+        changed.ravel()[eligible_ids[order[:target_pixels]]] = True
+        local_radius = ndimage.distance_transform_edt(changed)[changed]
+
+        narrow_radius = float(np.percentile(local_radius, 25.0))
+        rupture_radius = float(np.percentile(local_radius, 99.0))
+        self.assertGreaterEqual(rupture_radius, 16.0)
+        self.assertGreaterEqual(rupture_radius, 5.0 * narrow_radius)
+        residual_labels, residual_count = ndimage.label(
+            source & ~changed, structure=np.ones((3, 3), dtype=bool)
+        )
+        self.assertGreaterEqual(
+            _minimum_component_spacing_px(residual_labels, residual_count),
+            16.0,
+        )
+
+    def test_fragmentation_cleanup_rejects_holey_balance_bridge_and_erases_satellite(
+        self,
+    ):
+        shape = (160, 400)
+        source = np.zeros(shape, dtype=bool)
+        source[5:155, 5:395] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:155, 80:100] = True
+        change[5:155, 250:270] = True
+        # This target-enclosed 160-pixel island clears the absolute raster
+        # floor but is far below the required relative residual-focus share.
+        change[60:80, 86:94] = False
+        priority = np.zeros(shape, dtype=float)
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=source,
+            priority=priority,
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+        holey_bridge = np.zeros(shape, dtype=bool)
+        holey_bridge[50, 252:262] = True
+        holey_bridge[59, 252:262] = True
+        holey_bridge[50:60, 252] = True
+        holey_bridge[50:60, 261] = True
+
+        with mock.patch(
+            "phase3_mask_edit_refine.execution._fragmentation_balance_bridge_reclaim",
+            return_value=holey_bridge,
+        ):
+            cleaned, audit = _rebalance_fragmentation_residual_islands(
+                (change,),
+                works=(work,),
+                source_region=source,
+                target_region=target,
+                minimum_residual_components=3,
+                maximum_residual_components=6,
+                minimum_residual_component_area_px=96,
+                minimum_residual_spacing_px=8,
+                residual_area_floor_fraction=0.3,
+                minimum_residual_component_fraction=0.025,
+                maximum_dominant_residual_component_fraction=0.75,
+            )
+
+        self.assertTrue(audit["applied"], audit)
+        self.assertEqual(audit["balance_bridge_pixels_reclaimed"], 0)
+        self.assertEqual(audit["balance_pixels_added"], 160)
+        self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+        labels, count = ndimage.label(
+            source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = np.bincount(labels.ravel())[1:]
+        self.assertEqual(count, 3)
+        self.assertGreaterEqual(float(np.min(sizes / sizes.sum())), 0.025)
 
     def test_fragmentation_organic_field_has_effective_dynamic_range(self):
         shape = (96, 120)

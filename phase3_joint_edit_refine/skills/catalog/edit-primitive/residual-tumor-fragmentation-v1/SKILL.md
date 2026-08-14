@@ -8,11 +8,13 @@ description: Convert one invasive-tumor component into a bounded set of nonempty
 Read `references/primitive_contract.json`. This primitive permits controlled
 source splitting only inside the pre-existing invasive component. It requires
 three to eight separated, area-meaningful residual foci, a visible converted
-corridor fraction, balanced residual mass, an absolute island-size floor, a
-2.5% relative focus floor, a residual-area floor and no new empty holes. The
+breakup fraction, balanced residual mass, a cell-bearing minimum cleft width,
+an absolute island-size floor, a 2.5% relative focus floor, a residual-area
+floor and no new empty holes. The
 relative threshold is an engineering proxy; the absolute floor still rejects
-raster speckles. Corridors must curve and vary in width, then residual foci
-must undergo visible peripheral retreat; two ruler-straight slots cut through
-an otherwise unchanged mass are not fragmentation. A large retained mass with
-tiny satellites or a local boundary notch is not fragmentation. It cannot
-invent a historical tumor bed.
+raster speckles. Cleavage regions must be crooked and contain strongly
+contrasting narrow, broad and very broad local spans. Even a narrow span must
+remain wide enough to host regenerated stromal cells; a smooth radius taper or
+constant-width branch is not sufficient. Residual foci must undergo visible
+retreat, and a large retained mass with tiny satellites or a local boundary
+notch is not fragmentation. It cannot invent a historical tumor bed.
