@@ -989,9 +989,13 @@ class CandidateAndSceneTests(unittest.TestCase):
         # must be excluded before the bounded audit loop rather than retried
         # as invalid one-pixel source islands.
         priority[5:155, 104:136] = 100.0
+        legal_source = np.array(source, copy=True)
+        # The cap sits one discrete pixel beyond the continuous band. It is
+        # still safe to fill because the selected corridor fully encloses it.
+        legal_source[50:59, 112:121] = False
         work = SimpleNamespace(
             source_component=source,
-            legal_source=source,
+            legal_source=legal_source,
             priority=priority,
             planned=SimpleNamespace(
                 source_component_id="tumor:1",

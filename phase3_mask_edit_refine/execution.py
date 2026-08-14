@@ -1686,11 +1686,20 @@ def _rebalance_fragmentation_residual_islands(
         residual, structure=np.ones((3, 3), dtype=bool)
     )
     sizes = np.bincount(labels.ravel())[1:]
-    tiny_ids = tuple(
-        index + 1
-        for index, size in enumerate(sizes.tolist())
-        if 0 < int(size) < int(minimum_residual_component_area_px)
-    )
+    tiny_ids = []
+    for index, size in enumerate(sizes.tolist(), start=1):
+        if not 0 < int(size) < int(minimum_residual_component_area_px):
+            continue
+        component = labels == index
+        surrounding_ring = ndimage.binary_dilation(
+            component, structure=np.ones((3, 3), dtype=bool)
+        ) & ~component
+        # Only a fully enclosed source cap is a raster artifact. A small focus
+        # that remains open to the exterior is biological topology and must
+        # continue to fail the residual-focus floor.
+        if np.any(surrounding_ring) and np.all(combined[surrounding_ring]):
+            tiny_ids.append(index)
+    tiny_ids = tuple(tiny_ids)
     if not tiny_ids:
         return selected_by_work, unchanged
     tiny = np.isin(labels, tiny_ids)
@@ -1710,7 +1719,6 @@ def _rebalance_fragmentation_residual_islands(
                 index
                 for index, work in enumerate(works)
                 if work.source_component[row, col]
-                and work.legal_source[row, col]
             ),
             None,
         )
