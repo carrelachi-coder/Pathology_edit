@@ -1681,6 +1681,7 @@ def _rebalance_fragmentation_residual_islands(
         tuple(work.source_component for work in works)
     )
     combined = np.logical_or.reduce(selected_by_work)
+    target_after = np.asarray(target_region, dtype=bool) | combined
     residual = selected_source & ~combined
     labels, _count = ndimage.label(
         residual, structure=np.ones((3, 3), dtype=bool)
@@ -1697,7 +1698,7 @@ def _rebalance_fragmentation_residual_islands(
         # Only a fully enclosed source cap is a raster artifact. A small focus
         # that remains open to the exterior is biological topology and must
         # continue to fail the residual-focus floor.
-        if np.any(surrounding_ring) and np.all(combined[surrounding_ring]):
+        if np.any(surrounding_ring) and np.all(target_after[surrounding_ring]):
             tiny_ids.append(index)
     tiny_ids = tuple(tiny_ids)
     if not tiny_ids:
