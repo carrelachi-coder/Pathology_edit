@@ -39,6 +39,18 @@ _COMPILER_CAPABILITY_ISSUER = object()
 _ISSUED_TISSUE_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
 
 
+def _tissue_portfolio_allows_anchor_diversification(
+    primitive_id: str,
+) -> bool:
+    """Return whether preferred anchors can change the compiled tissue plan."""
+
+    # Residual fragmentation deliberately binds the complete directed
+    # tumor-stroma interface.  Its tissue Planner ignores a preferred single
+    # anchor, so enumerating every anchor here only recompiles the identical
+    # full-interface plan before SHA-based deduplication.
+    return primitive_id != "residual-tumor-fragmentation-v1"
+
+
 def _canonical_sha256(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(
@@ -649,36 +661,39 @@ class CandidateFeasibilityCompiler:
         preference_orders: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
             ((), ()),
         ]
-        for preferred_interface in feasible:
-            preflight_item = nuclei_preflight.interface(preferred_interface)
-            anchor_ids = (
-                preflight_item.cell_feasible_anchor_segment_ids
-                if preflight_item is not None
-                else ()
-            )
-            if not anchor_ids:
-                preference_orders.append(
-                    (
-                        tuple(
-                            value
-                            for value in feasible
-                            if value != preferred_interface
-                        ),
-                        (),
-                    )
+        if _tissue_portfolio_allows_anchor_diversification(
+            tissue_case.primitive_id
+        ):
+            for preferred_interface in feasible:
+                preflight_item = nuclei_preflight.interface(preferred_interface)
+                anchor_ids = (
+                    preflight_item.cell_feasible_anchor_segment_ids
+                    if preflight_item is not None
+                    else ()
                 )
-                continue
-            for anchor_id in anchor_ids:
-                preference_orders.append(
-                    (
-                        tuple(
-                            value
-                            for value in feasible
-                            if value != preferred_interface
-                        ),
-                        (anchor_id,),
+                if not anchor_ids:
+                    preference_orders.append(
+                        (
+                            tuple(
+                                value
+                                for value in feasible
+                                if value != preferred_interface
+                            ),
+                            (),
+                        )
                     )
-                )
+                    continue
+                for anchor_id in anchor_ids:
+                    preference_orders.append(
+                        (
+                            tuple(
+                                value
+                                for value in feasible
+                                if value != preferred_interface
+                            ),
+                            (anchor_id,),
+                        )
+                    )
         for deprioritized, preferred_anchor_ids in preference_orders:
             try:
                 witness = self._compile_one(

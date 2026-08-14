@@ -18,6 +18,7 @@ from scipy import ndimage
 
 from phase3_joint_edit_refine.candidate_feasibility import (
     _is_subcomponent_raster_tail,
+    _tissue_portfolio_allows_anchor_diversification,
 )
 from phase3_joint_edit_refine.workflow import (
     _retain_visible_regression_whole_instance_closure,
@@ -581,6 +582,18 @@ class CandidateAndSceneTests(unittest.TestCase):
             primitive_id="tumor-burden-increase-v1",
             production=False,
             available_checker_ids=self.gates.available_checker_ids,
+        )
+
+    def test_fragmentation_portfolio_skips_ignored_anchor_preferences(self):
+        self.assertFalse(
+            _tissue_portfolio_allows_anchor_diversification(
+                "residual-tumor-fragmentation-v1"
+            )
+        )
+        self.assertTrue(
+            _tissue_portfolio_allows_anchor_diversification(
+                "invasive-tumor-footprint-decrease-v1"
+            )
         )
 
     def test_candidate_schedule_produces_distinct_masks(self):
