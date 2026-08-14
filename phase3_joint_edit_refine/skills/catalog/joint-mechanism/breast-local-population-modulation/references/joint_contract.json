@@ -189,11 +189,11 @@
       "local_population_density"
     ],
     "layout_program_by_primitive": {
-      "cell-type-abundance-increase-v1": "small_cluster",
+      "cell-type-abundance-increase-v1": "single",
       "cell-type-abundance-decrease-v1": "localized_density_gradient",
       "cellularity-increase-v1": "single",
       "cellularity-decrease-v1": "localized_density_gradient",
-      "neoplastic-cell-abundance-increase-v1": "small_cluster"
+      "neoplastic-cell-abundance-increase-v1": "single"
     }
   },
   "coupling_contract": {

@@ -604,7 +604,8 @@ def generate_cell_layouts(
             minimum_effect_span_px=0,
             minimum_effect_foci=0,
             enforce_single_scatter_separation=(
-                bundle.primitive.primitive_id != "cellularity-increase-v1"
+                bundle.primitive.primitive_id
+                == "peritumoral-neoplastic-scatter-increase-v1"
             ),
             enforce_small_cluster_group_separation=(
                 bundle.primitive.primitive_id
@@ -663,7 +664,8 @@ def generate_cell_layouts(
                 else compiled_program.minimum_effect_foci
             ),
             enforce_single_scatter_separation=(
-                bundle.primitive.primitive_id != "cellularity-increase-v1"
+                bundle.primitive.primitive_id
+                == "peritumoral-neoplastic-scatter-increase-v1"
             ),
             enforce_small_cluster_group_separation=(
                 bundle.primitive.primitive_id
@@ -1864,6 +1866,14 @@ def _place_layout(
             anchors = _certified_witness_first_anchors(
                 anchors,
                 certified_witness_centers=certified_witness_centers,
+                preserved_prefix_count=(
+                    max(
+                        int(minimum_effect_foci),
+                        2 if minimum_effect_span_px > 0 else 0,
+                    )
+                    if enforce_multisite_population
+                    else 0
+                ),
             )
     effective_cluster_range = cluster_size_range
     if minimum_effect_foci > 0 and requested_count > 0:
@@ -2341,8 +2351,9 @@ def _certified_witness_first_anchors(
     anchors: np.ndarray,
     *,
     certified_witness_centers,
+    preserved_prefix_count: int = 0,
 ) -> np.ndarray:
-    """Front-load exact packing witnesses without inventing new coordinates."""
+    """Front-load witnesses after any required effect-defining anchors."""
 
     points = np.asarray(anchors, dtype=int)
     if not len(points) or not certified_witness_centers:
@@ -2351,17 +2362,27 @@ def _certified_witness_first_anchors(
         (int(row), int(col)): index
         for index, (row, col) in enumerate(points)
     }
+    prefix_indices = list(
+        range(min(max(0, int(preserved_prefix_count)), len(points)))
+    )
+    prefix_set = set(prefix_indices)
     witness_indices = []
     for center in certified_witness_centers:
         key = tuple(int(value) for value in center)
         index = index_by_center.get(key)
-        if index is not None and index not in witness_indices:
+        if (
+            index is not None
+            and index not in prefix_set
+            and index not in witness_indices
+        ):
             witness_indices.append(index)
-    witness_set = set(witness_indices)
+    witness_set = prefix_set | set(witness_indices)
     remainder = [
         index for index in range(len(points)) if index not in witness_set
     ]
-    return points[np.asarray([*witness_indices, *remainder], dtype=int)]
+    return points[
+        np.asarray([*prefix_indices, *witness_indices, *remainder], dtype=int)
+    ]
 
 
 def _centers_satisfy_minimum_span(
