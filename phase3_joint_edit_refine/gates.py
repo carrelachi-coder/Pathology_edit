@@ -94,8 +94,10 @@ MECHANISM_POSTCONDITION_IDS = (
     "colorectal-local-population-modulation",
     "colorectal-tumor-budding-front",
     "lung-acinar-papillary-growth",
+    "lung-generic-immune-compartment-turnover",
     "lung-intratumoral-necrosis-turnover",
     "lung-lepidic-growth",
+    "lung-local-tumor-clearance",
     "lung-local-population-modulation",
     "lung-solid-squamous-growth",
     "lung-stas-airspace-spread",
@@ -104,11 +106,18 @@ MECHANISM_POSTCONDITION_IDS = (
     "melanoma-cohesive-nest-sheet",
     "melanoma-discohesive-junctional",
     "melanoma-intratumoral-necrosis-turnover",
+    "melanoma-local-tumor-clearance",
     "melanoma-local-population-modulation",
+    "melanoma-operational-tumor-retreat",
+    "melanoma-peritumoral-small-focus",
     "oral-scc-cohesive-nest-cord",
+    "oral-scc-annotation-anchored-cord-extension",
     "oral-scc-dispersed-invasive-front",
+    "oral-scc-local-carcinoma-clearance",
     "oral-scc-local-population-modulation",
+    "oral-scc-operational-tumor-retreat",
     "prostate-local-population-modulation",
+    "prostate-local-tumor-clearance",
     "prostate-pattern-3-growth",
     "prostate-pattern-4-growth",
     "prostate-pattern-5-growth",
@@ -185,6 +194,12 @@ class JointGateRegistry:
             "coherent_footprint_retreat": _coherent_footprint_retreat,
             "local_clearance_roi_binding": _local_clearance_roi_binding,
             "external_boundary_binding": _external_boundary_binding,
+            "native_gland_instance_annulus_binding": (
+                _native_gland_instance_annulus_binding
+            ),
+            "puma_epidermal_junction_binding": (
+                _puma_epidermal_junction_binding
+            ),
             "annotation_anchored_extension_geometry": (
                 _annotation_anchored_extension_geometry
             ),
@@ -423,10 +438,26 @@ def _external_boundary_binding(c):
         item.interface_id: item for item in c.scene.tissue.graph.interfaces
     }
     reports = {}
+    label_contract = c.bundle.mechanism.tissue_program.primitive_label_contracts.get(
+        c.case.primitive_id, {}
+    )
+    allowed_host_labels = tuple(
+        sorted(
+            (
+                set(label_contract.get("source_labels", ()))
+                | set(label_contract.get("target_labels", ()))
+            )
+            - {"Tumor"}
+        )
+    )
     for interface_id in interface_ids:
         interface = interfaces.get(interface_id)
         reports[interface_id] = (
-            classify_tumor_stroma_boundary(scene=c.scene, interface=interface)
+            classify_tumor_stroma_boundary(
+                scene=c.scene,
+                interface=interface,
+                allowed_host_labels=allowed_host_labels,
+            )
             if interface is not None
             else {"classification": "unknown", "external_tumor_stroma_boundary": False}
         )
@@ -438,11 +469,187 @@ def _external_boundary_binding(c):
         "external_boundary_binding",
         passed,
         (
-            "every selected interface is an external annotated Tumor--Stroma boundary"
+            "every selected interface is an external annotated Tumor--authorized-host boundary"
             if passed
-            else "a selected interface is internal, non-Tumor--Stroma, or unknown"
+            else "a selected interface is internal, outside the mechanism label contract, or unknown"
         ),
         metrics={"interfaces": reports},
+    )
+
+
+def _native_gland_instance_annulus_binding(c):
+    """Bind GLaS periglandular additions to one native gland exterior.
+
+    The semantic Tumor mask may join touching glands and its holes may be
+    lumina.  This gate therefore requires a digest-bound native instance map,
+    proves that every selected Tumor component overlaps exactly one native
+    instance component, and reconstructs the final added footprint against
+    that instance's exterior distance field.  Raw H&E is never consulted.
+    """
+
+    applicable = bool(
+        c.bundle.annotation_profile.annotation_profile_id == "glas-gland-v1"
+        and c.case.primitive_id
+        in {
+            "peritumoral-neoplastic-scatter-increase-v1",
+            "peritumoral-small-cluster-increase-v1",
+        }
+    )
+    if not applicable:
+        return _result(
+            "native_gland_instance_annulus_binding",
+            True,
+            "native GLaS gland-instance annulus is not applicable",
+            metrics={"applicable": False},
+        )
+    native = c.scene.auxiliary_structure_masks.get("native_gland_instance_map")
+    if native is None:
+        return _result(
+            "native_gland_instance_annulus_binding",
+            False,
+            "native GLaS gland-instance map is unavailable",
+            metrics={"applicable": True, "authority_present": False},
+        )
+    native = np.asarray(native, dtype=bool)
+    labels, _count = ndimage.label(
+        native, structure=np.ones((3, 3), dtype=bool)
+    )
+    interfaces = {
+        item.interface_id: item for item in c.scene.tissue.graph.interfaces
+    }
+    selected_interface_ids = tuple(c.plan.cell_plan.interface_ids)
+    selected_native_ids: set[int] = set()
+    component_bindings = {}
+    valid_bindings = True
+    for interface_id in selected_interface_ids:
+        interface = interfaces.get(interface_id)
+        if interface is None:
+            valid_bindings = False
+            component_bindings[interface_id] = {"reason": "unknown_interface"}
+            continue
+        tumor_component_id = (
+            interface.source_component_id
+            if interface.source_label == "Tumor"
+            else interface.target_component_id
+        )
+        component = c.scene.tissue.component_masks.get(tumor_component_id)
+        if component is None:
+            valid_bindings = False
+            component_bindings[interface_id] = {
+                "reason": "unknown_tumor_component"
+            }
+            continue
+        component = np.asarray(component, dtype=bool)
+        overlap_ids = {
+            int(value)
+            for value in np.unique(labels[component & native])
+            if int(value) > 0
+        }
+        overlap_fraction = float(
+            np.count_nonzero(component & native)
+        ) / max(1, int(np.count_nonzero(component)))
+        binding_ok = len(overlap_ids) == 1 and overlap_fraction >= 0.95
+        valid_bindings &= binding_ok
+        selected_native_ids.update(overlap_ids)
+        component_bindings[interface_id] = {
+            "tumor_component_id": tumor_component_id,
+            "native_instance_component_ids": sorted(overlap_ids),
+            "semantic_component_overlap_fraction": overlap_fraction,
+            "binding_ok": binding_ok,
+        }
+    selected_native = np.isin(labels, tuple(sorted(selected_native_ids)))
+    distance = ndimage.distance_transform_edt(~selected_native)
+    added = (c.candidate.target_nuclei_mask > 0) & (c.source_nuclei == 0)
+    maximum = max(1, int(c.bundle.mechanism.cell_program.halo_distance_px[1]))
+    violations = int(
+        np.count_nonzero(
+            added
+            & (
+                selected_native
+                | (distance <= 0)
+                | (distance > maximum)
+            )
+        )
+    )
+    passed = bool(
+        selected_interface_ids
+        and selected_native_ids
+        and valid_bindings
+        and np.any(added)
+        and violations == 0
+    )
+    return _result(
+        "native_gland_instance_annulus_binding",
+        passed,
+        (
+            "final added nuclei are bound to one native malignant-gland exterior annulus"
+            if passed
+            else "native gland instance, exterior annulus, or final added footprint is unbound"
+        ),
+        metrics={
+            "applicable": True,
+            "authority_present": True,
+            "selected_native_instance_component_ids": sorted(
+                selected_native_ids
+            ),
+            "component_bindings": component_bindings,
+            "maximum_outer_distance_px": maximum,
+            "added_nucleus_pixels": int(np.count_nonzero(added)),
+            "violation_pixels": violations,
+        },
+    )
+
+
+def _puma_epidermal_junction_binding(c):
+    """Keep synthetic PUMA junctional scatter near explicit epidermis."""
+
+    applicable = bool(
+        c.bundle.annotation_profile.annotation_profile_id == "puma-semantic-v1"
+        and c.case.primitive_id
+        == "peritumoral-neoplastic-scatter-increase-v1"
+    )
+    if not applicable:
+        return _result(
+            "puma_epidermal_junction_binding",
+            True,
+            "PUMA epidermal-junction binding is not applicable",
+            metrics={"applicable": False},
+        )
+    junction = c.scene.auxiliary_structure_masks.get(
+        "epidermis_or_junction_map"
+    )
+    if junction is None:
+        return _result(
+            "puma_epidermal_junction_binding",
+            False,
+            "PUMA junctional scatter lacks explicit epidermis authority",
+            metrics={"applicable": True, "authority_present": False},
+        )
+    junction = np.asarray(junction, dtype=bool)
+    source_class1 = c.source_nuclei == 1
+    target_class1 = np.asarray(c.candidate.target_nuclei_mask) == 1
+    added = target_class1 & ~source_class1
+    distance = ndimage.distance_transform_edt(~junction)
+    maximum = max(
+        1, int(c.bundle.mechanism.cell_program.halo_distance_px[1])
+    )
+    violations = added & (junction | (distance > maximum))
+    passed = bool(np.any(added) and not np.any(violations))
+    return _result(
+        "puma_epidermal_junction_binding",
+        passed,
+        (
+            "every added class-1 footprint remains in the explicit epidermal-junction band"
+            if passed
+            else "one or more added class-1 pixels leave the explicit epidermal-junction band"
+        ),
+        metrics={
+            "applicable": True,
+            "authority_present": True,
+            "maximum_junction_distance_px": maximum,
+            "added_class1_pixels": int(np.count_nonzero(added)),
+            "violation_pixels": int(np.count_nonzero(violations)),
+        },
     )
 
 
@@ -3112,17 +3319,17 @@ def _mechanism_specific_postcondition(
     if expected_mechanism_id.endswith("local-population-modulation"):
         subchecks["local_population_density"] = _local_population_density(c).passed
 
-    if expected_mechanism_id in {
-        "breast-annotation-anchored-boundary-growth",
-        "breast-infiltrative-nest-cord-extension",
-        "breast-peritumoral-neoplastic-scatter",
-        "breast-peritumoral-small-cluster",
+    if c.case.primitive_id in {
+        "cohesive-boundary-expansion-v1",
+        "infiltrative-nest-cord-extension-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
     }:
         subchecks["external_boundary_binding"] = _external_boundary_binding(c).passed
 
-    if expected_mechanism_id in {
-        "breast-peritumoral-neoplastic-scatter",
-        "breast-peritumoral-small-cluster",
+    if c.case.primitive_id in {
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
     }:
         subchecks["peritumoral_annulus"] = _peritumoral_annulus(c).passed
         subchecks["no_remote_neoplastic_focus"] = (
@@ -3132,19 +3339,47 @@ def _mechanism_specific_postcondition(
             _no_solid_neoplastic_bridge(c).passed
         )
 
-    if expected_mechanism_id == "breast-peritumoral-small-cluster":
+    if c.case.primitive_id == "peritumoral-small-cluster-increase-v1":
         subchecks["small_cluster_cardinality"] = (
             _small_cluster_cardinality(c).passed
         )
         subchecks["small_cluster_focus_compactness"] = (
             _small_cluster_focus_compactness(c).passed
         )
-    if expected_mechanism_id == "breast-peritumoral-neoplastic-scatter":
+    if c.case.primitive_id == "peritumoral-neoplastic-scatter-increase-v1":
         subchecks["peritumoral_scatter_separation"] = (
             _peritumoral_scatter_separation(c).passed
         )
 
-    if expected_mechanism_id == "breast-generic-immune-compartment-turnover":
+    if (
+        c.bundle.annotation_profile.annotation_profile_id == "glas-gland-v1"
+        and c.case.primitive_id
+        in {
+            "peritumoral-neoplastic-scatter-increase-v1",
+            "peritumoral-small-cluster-increase-v1",
+        }
+    ):
+        subchecks["native_gland_instance_annulus_binding"] = (
+            _native_gland_instance_annulus_binding(c).passed
+        )
+    if (
+        c.bundle.annotation_profile.annotation_profile_id == "puma-semantic-v1"
+        and c.case.primitive_id
+        == "peritumoral-neoplastic-scatter-increase-v1"
+    ):
+        subchecks["puma_epidermal_junction_binding"] = (
+            _puma_epidermal_junction_binding(c).passed
+        )
+
+    if c.case.primitive_id == "infiltrative-nest-cord-extension-v1":
+        subchecks["annotation_anchored_extension_geometry"] = (
+            _annotation_anchored_extension_geometry(c).passed
+        )
+
+    if expected_mechanism_id in {
+        "breast-generic-immune-compartment-turnover",
+        "lung-generic-immune-compartment-turnover",
+    }:
         source = np.asarray(c.source_tissue)
         target = np.asarray(c.candidate.target_tissue_mask)
         change = np.asarray(c.candidate.tissue_change, dtype=bool)
@@ -3225,7 +3460,13 @@ def _mechanism_specific_postcondition(
             _coherent_footprint_retreat(c).passed
         )
 
-    if expected_mechanism_id == "breast-local-invasive-clearance":
+    if expected_mechanism_id in {
+        "breast-local-invasive-clearance",
+        "lung-local-tumor-clearance",
+        "melanoma-local-tumor-clearance",
+        "oral-scc-local-carcinoma-clearance",
+        "prostate-local-tumor-clearance",
+    }:
         subchecks["local_clearance_roi_binding"] = (
             _local_clearance_roi_binding(c).passed
         )
@@ -3251,17 +3492,33 @@ def _mechanism_specific_postcondition(
             _architecture_progression_postcondition(c).passed
         )
 
-    if "treatment-associated" in expected_mechanism_id:
+    operational_retreat_mechanisms = {
+        "lung-treatment-associated-fibrotic-replacement",
+        "melanoma-operational-tumor-retreat",
+        "oral-scc-operational-tumor-retreat",
+        "prostate-treatment-associated-fibrotic-replacement",
+    }
+    if expected_mechanism_id in operational_retreat_mechanisms:
         subchecks["documented_treatment_context"] = bool(
             c.case.semantic_intent.get("treatment_context") == "post_treatment"
             and c.case.semantic_intent.get("scenario")
             in {
-                "direct_edit",
                 "treatment_response",
+                "disease_regression",
                 "residual_disease",
-                "post_treatment_change",
             }
         )
+        subchecks["profile_fine_transition_authority"] = (
+            _profile_fine_transition_authority(c).passed
+        )
+        if c.case.primitive_id == "residual-tumor-fragmentation-v1":
+            subchecks["residual_fragmentation_topology"] = (
+                _residual_fragmentation_topology(c).passed
+            )
+        if c.case.primitive_id == "invasive-tumor-footprint-decrease-v1":
+            subchecks["coherent_footprint_retreat"] = (
+                _coherent_footprint_retreat(c).passed
+            )
         if expected_mechanism_id == "prostate-treatment-associated-fibrotic-replacement":
             source = np.asarray(c.source_tissue)
             target = np.asarray(c.candidate.target_tissue_mask)

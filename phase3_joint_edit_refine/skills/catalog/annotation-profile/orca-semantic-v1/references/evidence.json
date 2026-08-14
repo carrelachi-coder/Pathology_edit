@@ -26,8 +26,12 @@
       "evidence_id": "orca-semantic-v1.execution",
       "authority_category": "engineering_proxy",
       "claim_scope": [
+        "mechanism_editable_source_fine_ids",
+        "mechanism_editable_target_fine_ids",
+        "protected_fine_ids",
+        "required_checker_ids",
         "required_provenance_fields",
-        "required_checker_ids"
+        "visual_veto_requirements"
       ],
       "source_ids": [
         "engineering-joint-contract-v2"

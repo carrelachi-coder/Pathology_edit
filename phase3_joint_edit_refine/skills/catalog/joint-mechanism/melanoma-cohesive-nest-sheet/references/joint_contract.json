@@ -2,21 +2,22 @@
   "mechanism_id": "melanoma-cohesive-nest-sheet",
   "pathology_domain_id": "melanoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1"
+    "tumor-burden-increase-v1",
+    "cohesive-boundary-expansion-v1"
   ],
   "version": "1.1.0-draft",
   "review_status": "draft",
-  "summary": "Expand a verified cohesive melanoma nest or sheet while preserving epidermis, vessels and necrosis and rebuilding a coherent neoplastic population.",
+  "summary": "Expand an existing annotation-defined Tumor component from a certified external mask boundary; subtype identity is not an execution claim.",
   "recognition_contract": {
     "required_observations": [
-      "verified cohesive neoplastic nest or sheet",
-      "legal dermal or junctional interface",
-      "source-matched neoplastic nuclei"
+      "explicit Tumor-label component",
+      "compiler-certified external receiving interface",
+      "source-matched complete neoplastic reference nuclei"
     ],
     "contraindications": [
-      "discohesive-only junctional spread",
-      "necrosis-only field",
-      "unresolved epidermal boundary"
+      "protected profile label in the edit band",
+      "remote island or component bridge",
+      "subtype or diagnostic-front claim inferred from H&E"
     ],
     "minimum_confidence": 0.8
   },
@@ -41,6 +42,14 @@
         "target_labels": [
           "Tumor"
         ]
+      },
+      "cohesive-boundary-expansion-v1": {
+        "source_labels": [
+          "Stroma"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
       }
     },
     "allowed_tools": [
@@ -50,7 +59,8 @@
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
-      "native_structure_preserved"
+      "native_structure_preserved",
+      "external_boundary_binding"
     ],
     "prohibited_structures": [
       "epidermis",
@@ -73,7 +83,8 @@
     "layout_programs": [
       "population_replacement",
       "dense_sheet",
-      "small_cluster"
+      "small_cluster",
+      "boundary_aligned"
     ],
     "core_policy": "replace_complete_instances_in_tissue_change",
     "halo_policy": "preserve_cells_outside_tissue_change",
@@ -94,7 +105,8 @@
       "cell_spatial_distribution"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "dense_sheet"
+      "tumor-burden-increase-v1": "dense_sheet",
+      "cohesive-boundary-expansion-v1": "boundary_aligned"
     }
   },
   "coupling_contract": {
@@ -114,7 +126,8 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "joint_provenance",
-    "mechanism_postcondition:melanoma-cohesive-nest-sheet"
+    "mechanism_postcondition:melanoma-cohesive-nest-sheet",
+    "external_boundary_binding"
   ],
   "render_contract": {
     "required_findings": [
@@ -144,5 +157,46 @@
     "epidermis overwrite",
     "satellite bridge",
     "necrosis conversion"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "tissue_gate_binding",
+      "whole_instance_changes",
+      "joint_provenance",
+      "external_boundary_binding"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

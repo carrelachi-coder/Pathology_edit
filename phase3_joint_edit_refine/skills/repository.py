@@ -157,6 +157,9 @@ class JointSkillBundle:
                 "allowed_decisions": list(
                     self.mechanism.planner_policy.allowed_decisions
                 ),
+                "requires_explicit_primitive_intent": (
+                    self.mechanism.planner_policy.requires_explicit_primitive_intent
+                ),
             },
             "required_auxiliary_structures": list(
                 self.mechanism.representability.required_auxiliary_structures
@@ -244,6 +247,8 @@ class JointSkillRepository:
         self.skill_evidence_status: dict[str, SkillEvidenceStatus] = {}
         self.mechanism_resource_status = self._validate_skill_packages()
         self._validate_execution_scope()
+        for mechanism in self.mechanisms.values():
+            validate_planner_policy(mechanism.planner_policy)
 
     def _validate_skill_packages(self) -> dict[str, dict]:
         """Validate progressive-disclosure packages and calibration state.
@@ -637,6 +642,8 @@ class JointSkillRepository:
         if (
             case.primitive_id == "stroma-increase-v1"
             and "treatment-associated" not in mechanism_id
+            and mechanism_id
+            not in {"melanoma-operational-tumor-retreat"}
         ):
             raise JointContractError(
                 "Tumor-to-Stroma replacement is not owned by a growth mechanism"
@@ -665,6 +672,26 @@ class JointSkillRepository:
             "breast-treatment-associated-stromal-replacement": {
                 "treatment_response"
             },
+            "prostate-treatment-associated-fibrotic-replacement": {
+                "treatment_response",
+                "disease_regression",
+                "residual_disease",
+            },
+            "lung-treatment-associated-fibrotic-replacement": {
+                "treatment_response",
+                "disease_regression",
+                "residual_disease",
+            },
+            "melanoma-operational-tumor-retreat": {
+                "treatment_response",
+                "disease_regression",
+                "residual_disease",
+            },
+            "oral-scc-operational-tumor-retreat": {
+                "treatment_response",
+                "disease_regression",
+                "residual_disease",
+            },
         }
         if mechanism_id in treatment_context_required and (
             case.semantic_intent.get("treatment_context")
@@ -689,10 +716,10 @@ class JointSkillRepository:
                 "pathology review and requires digest-bound "
                 "breast_cellularity_shadow_review_authority=approved_for_shadow_v1"
             )
-        if mechanism_id == "breast-local-invasive-clearance":
+        if case.primitive_id == "local-invasive-clearance-v1":
             if "local_clearance_roi" not in case.auxiliary_structure_uris:
                 raise JointContractError(
-                    "local invasive clearance requires a user-supplied local_clearance_roi"
+                    "local invasive clearance requires a digest-bound user-supplied local_clearance_roi"
                 )
             if not _instruction_has_explicit_local_selection(case.instruction):
                 raise JointContractError(
@@ -796,8 +823,6 @@ class JointSkillRepository:
                 "production joint execution requires calibrated, explicitly "
                 "production-authorized mechanism statistics"
             )
-        if mechanism.pathology_domain_id == "breast-invasive-carcinoma-v1":
-            validate_planner_policy(mechanism.planner_policy)
         required = set(mechanism.joint_gate_ids)
         required.update(mechanism.planner_policy.hard_constraint_checker_ids)
         required.update(primitive_contract.required_checker_ids)

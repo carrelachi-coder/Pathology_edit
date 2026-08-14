@@ -1,0 +1,2140 @@
+{
+  "api_used": false,
+  "capability_matrix": "phase3_joint_edit_refine/resources/non_breast_organ_annotation_capability_matrix_v1.json",
+  "capability_matrix_sha256": "e66fec6f1ba68f68b623c093e7ed0daaab701d834b2091e8ab7199899f595a2c",
+  "evaluation_count": 24,
+  "evaluations": [
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-local-population-modulation::cell-type-abundance-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase immune cells in the selected region.",
+      "mechanism_id": "colorectal-local-population-modulation",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "cell-type-abundance-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-local-population-modulation::cell-type-abundance-decrease-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Decrease immune cells in the selected region.",
+      "mechanism_id": "colorectal-local-population-modulation",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "cell-type-abundance-decrease-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-local-population-modulation::cellularity-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase local cellularity.",
+      "mechanism_id": "colorectal-local-population-modulation",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "cellularity-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-local-population-modulation::cellularity-decrease-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Decrease local cellularity.",
+      "mechanism_id": "colorectal-local-population-modulation",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "cellularity-decrease-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-local-population-modulation::neoplastic-cell-abundance-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase neoplastic cells.",
+      "mechanism_id": "colorectal-local-population-modulation",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "neoplastic-cell-abundance-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Decrease neoplastic cells.",
+      "mechanism_id": "colorectal-local-population-modulation",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-tumor-budding-front::peritumoral-neoplastic-scatter-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Add scattered tumor cells near the tumor boundary.",
+      "mechanism_id": "colorectal-tumor-budding-front",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+      "required_auxiliary_structures": [
+        "gland_or_lumen_support",
+        "native_gland_instance_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_count": 5,
+      "evaluation_id": "glas-gland-v1::colorectal-tumor-budding-front::peritumoral-small-cluster-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Add peritumoral small tumor-cell clusters.",
+      "mechanism_id": "colorectal-tumor-budding-front",
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "primitive_id": "peritumoral-small-cluster-increase-v1",
+      "required_auxiliary_structures": [
+        "gland_or_lumen_support",
+        "native_gland_instance_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_38_py512_px768.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_38_py512_px768.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_7_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_7_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/testB_15_py256_px256.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/testB_15_py256_px256.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "colorectal-tumor-budding-front",
+          "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "gland_or_lumen_support",
+            "native_gland_instance_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/nuclei_masks/train_18_py0_px1024.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/GlaS_PATCHES/tissue_masks/train_18_py0_px1024.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::cell-type-abundance-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase immune cells in the selected region.",
+      "mechanism_id": "prostate-local-population-modulation",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "cell-type-abundance-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::cell-type-abundance-decrease-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Decrease immune cells in the selected region.",
+      "mechanism_id": "prostate-local-population-modulation",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "cell-type-abundance-decrease-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cell-type-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::cellularity-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase local cellularity.",
+      "mechanism_id": "prostate-local-population-modulation",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "cellularity-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::cellularity-decrease-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Decrease local cellularity.",
+      "mechanism_id": "prostate-local-population-modulation",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "cellularity-decrease-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "cellularity-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::neoplastic-cell-abundance-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase neoplastic cells.",
+      "mechanism_id": "prostate-local-population-modulation",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "neoplastic-cell-abundance-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Decrease neoplastic cells.",
+      "mechanism_id": "prostate-local-population-modulation",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::peritumoral-neoplastic-scatter-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Add scattered tumor cells near the tumor boundary.",
+      "mechanism_id": "prostate-local-population-modulation",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-population-modulation",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-local-tumor-clearance::local-invasive-clearance-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Clear tumor in this local ROI.",
+      "mechanism_id": "prostate-local-tumor-clearance",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "local-invasive-clearance-v1",
+      "required_auxiliary_structures": [
+        "local_clearance_roi"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-tumor-clearance",
+          "joint_primitive_id": "local-invasive-clearance-v1",
+          "missing_required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-tumor-clearance",
+          "joint_primitive_id": "local-invasive-clearance-v1",
+          "missing_required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-tumor-clearance",
+          "joint_primitive_id": "local-invasive-clearance-v1",
+          "missing_required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-tumor-clearance",
+          "joint_primitive_id": "local-invasive-clearance-v1",
+          "missing_required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-local-tumor-clearance",
+          "joint_primitive_id": "local-invasive-clearance-v1",
+          "missing_required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-pattern-4-growth::tumor-burden-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase tumor burden.",
+      "mechanism_id": "prostate-pattern-4-growth",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "tumor-burden-increase-v1",
+      "required_auxiliary_structures": [
+        "native_pattern_and_lumen_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-pattern-4-growth::cohesive-boundary-expansion-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Expand the tumor boundary locally.",
+      "mechanism_id": "prostate-pattern-4-growth",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "required_auxiliary_structures": [
+        "native_pattern_and_lumen_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-4-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-pattern-5-growth::tumor-burden-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase tumor burden.",
+      "mechanism_id": "prostate-pattern-5-growth",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "tumor-burden-increase-v1",
+      "required_auxiliary_structures": [
+        "native_pattern_and_lumen_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "tumor-burden-increase-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-pattern-5-growth::cohesive-boundary-expansion-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Expand the tumor boundary locally.",
+      "mechanism_id": "prostate-pattern-5-growth",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "required_auxiliary_structures": [
+        "native_pattern_and_lumen_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-growth",
+          "joint_primitive_id": "cohesive-boundary-expansion-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-pattern-5-infiltrative-front::infiltrative-nest-cord-extension-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Add a narrow connected tumor cord.",
+      "mechanism_id": "prostate-pattern-5-infiltrative-front",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "infiltrative-nest-cord-extension-v1",
+      "required_auxiliary_structures": [
+        "native_pattern_and_lumen_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
+          "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
+          "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
+          "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
+          "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
+          "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
+          "missing_required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-treatment-associated-fibrotic-replacement::stroma-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Increase operational stroma after treatment.",
+      "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "stroma-increase-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "stroma-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "stroma-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "stroma-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "stroma-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "stroma-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-treatment-associated-fibrotic-replacement::invasive-tumor-footprint-decrease-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Decrease the tumor area.",
+      "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "invasive-tumor-footprint-decrease-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-treatment-associated-fibrotic-replacement::residual-tumor-fragmentation-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Fragment the residual tumor into controlled foci.",
+      "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "residual-tumor-fragmentation-v1",
+      "required_auxiliary_structures": [],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "residual-tumor-fragmentation-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "residual-tumor-fragmentation-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "residual-tumor-fragmentation-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "residual-tumor-fragmentation-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "joint_primitive_id": "residual-tumor-fragmentation-v1",
+          "missing_required_auxiliary_structures": [],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    }
+  ],
+  "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+  "production_status": "shadow_only",
+  "runtime_authority": {
+    "all_required_digests_bound": false,
+    "frozen_spatial_ranker_sha256": null,
+    "generator_checkpoint_sha256": null,
+    "instance_library_sha256": null,
+    "mature_probnet_checkpoint_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8"
+  },
+  "schema_version": "p1-glas-panda-meta-eval-selection-v1",
+  "selection_policy": {
+    "failed_rejected_abstained_case_replacement_allowed": false,
+    "fixed_cases_per_mechanism_primitive": 5,
+    "visualization_or_api_run_during_preparation": false
+  },
+  "source_manifest": "artifacts/joint_edit_refine_g2_pilot_20260805/g2_600_frozen_product_manifest.json",
+  "source_manifest_sha256": "e8af6f0de33c6c0d13ffc27a9ae1bf57999391ff118fb6e0744af7aab2e6c4d8",
+  "visual_acceptance_contract": {
+    "changed_region_requirement": "must meet the primitive-owned meaningful tissue floor or exact cell count/extent quota; visually negligible edits are failures",
+    "claim_boundary": "annotation-level synthetic counterfactual only; no diagnostic, prognostic, treatment-benefit, pCR, fibrosis, budding-grade, or H&E-derived execution claim",
+    "mechanism_congruence_requirement": "final tissue and nuclei effects must match the bound mask-level mechanism and executor postconditions",
+    "required_panels": [
+      "source_tissue",
+      "target_tissue",
+      "source_nuclei",
+      "target_nuclei",
+      "tissue_change_overlay",
+      "nuclei_change_overlay",
+      "complete_manifest"
+    ]
+  },
+  "visualization_run": false
+}

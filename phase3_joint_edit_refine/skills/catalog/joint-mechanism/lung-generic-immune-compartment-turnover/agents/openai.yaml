@@ -1,0 +1,4 @@
+interface:
+  display_name: "lung-generic-immune-compartment-turnover"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $lung-generic-immune-compartment-turnover only with certified mask candidates and required authority."

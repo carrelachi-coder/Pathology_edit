@@ -5,7 +5,13 @@
     "cell-type-abundance-increase-v1",
     "cell-type-abundance-decrease-v1",
     "cellularity-increase-v1",
-    "cellularity-decrease-v1"
+    "cellularity-decrease-v1",
+    "neoplastic-cell-abundance-increase-v1",
+    "neoplastic-cell-abundance-decrease-v1",
+    "generic-inflammatory-cell-abundance-increase-v1",
+    "generic-inflammatory-cell-abundance-decrease-v1",
+    "peritumoral-neoplastic-scatter-increase-v1",
+    "peritumoral-small-cluster-increase-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
@@ -97,6 +103,62 @@
           "Normal epithelium",
           "Immune infiltrate"
         ]
+      },
+      "neoplastic-cell-abundance-increase-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      },
+      "neoplastic-cell-abundance-decrease-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      },
+      "generic-inflammatory-cell-abundance-increase-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue"
+        ]
+      },
+      "generic-inflammatory-cell-abundance-decrease-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue"
+        ]
+      },
+      "peritumoral-neoplastic-scatter-increase-v1": {
+        "source_labels": [
+          "Stroma"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      },
+      "peritumoral-small-cluster-increase-v1": {
+        "source_labels": [
+          "Stroma"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
       }
     },
     "allowed_tools": [
@@ -180,13 +242,20 @@
       "nuclei_tissue_containment",
       "cell_quota",
       "cell_spatial_distribution",
-      "local_population_density"
+      "local_population_density",
+      "mechanism_realization"
     ],
     "layout_program_by_primitive": {
       "cell-type-abundance-increase-v1": "small_cluster",
       "cell-type-abundance-decrease-v1": "localized_density_gradient",
       "cellularity-increase-v1": "single",
-      "cellularity-decrease-v1": "localized_density_gradient"
+      "cellularity-decrease-v1": "localized_density_gradient",
+      "neoplastic-cell-abundance-increase-v1": "small_cluster",
+      "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient",
+      "generic-inflammatory-cell-abundance-increase-v1": "small_cluster",
+      "generic-inflammatory-cell-abundance-decrease-v1": "localized_density_gradient",
+      "peritumoral-neoplastic-scatter-increase-v1": "single",
+      "peritumoral-small-cluster-increase-v1": "small_cluster"
     }
   },
   "coupling_contract": {
@@ -194,7 +263,7 @@
       "lung.joint.local_population_host_compatibility",
       "lung.joint.airspace_airway_core_preservation"
     ],
-    "allow_neoplastic_in_non_tumor_tissue": false,
+    "allow_neoplastic_in_non_tumor_tissue": true,
     "joint_area_mode": "cell_count_extent",
     "tissue_floor_applies": false,
     "cell_only_target_fraction": 1,
@@ -234,5 +303,45 @@
     "raising cellularity by populating alveolar airspace",
     "removing a continuous lepidic septal row",
     "using cartilage as generic stroma"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "tissue_gate_binding",
+      "whole_instance_changes",
+      "joint_provenance"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

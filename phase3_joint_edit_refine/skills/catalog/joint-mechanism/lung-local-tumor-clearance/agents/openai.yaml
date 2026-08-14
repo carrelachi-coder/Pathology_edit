@@ -1,0 +1,4 @@
+interface:
+  display_name: "lung-local-tumor-clearance"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $lung-local-tumor-clearance only with certified mask candidates and required authority."

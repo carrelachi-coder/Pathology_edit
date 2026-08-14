@@ -1,0 +1,4 @@
+interface:
+  display_name: "oral-scc-local-carcinoma-clearance"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $oral-scc-local-carcinoma-clearance only with certified mask candidates and required authority."

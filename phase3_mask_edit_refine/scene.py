@@ -100,11 +100,20 @@ def build_scene_analysis(
                     or np.any(component_mask[:, -1])
                 )
                 component_masks[component_id] = component_mask
+                observed_fine_ids = tuple(
+                    int(value) for value in np.unique(arr[component_mask])
+                )
                 components.append(
                     SceneComponent(
                         component_id=component_id,
                         label=label,
-                        fine_ids=tuple(partition_ids),
+                        # Preserve the actual fine-label authority carried by
+                        # this component.  Recording every ID allowed by a
+                        # broad canonical partition (for example PANDA
+                        # Pattern 3/4/5 -> Tumor) falsely makes a pure fine-10
+                        # component look mixed and eliminates otherwise legal
+                        # pattern-specific retreat candidates.
+                        fine_ids=observed_fine_ids,
                         area_px=area,
                         bbox_xyxy=bbox,
                         touches_border=touches_border,

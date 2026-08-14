@@ -21,7 +21,9 @@
     "necrosis-resolution-v1",
     "stroma-increase-v1",
     "tumor-burden-increase-v1",
-    "residual-tumor-fragmentation-v1"
+    "residual-tumor-fragmentation-v1",
+    "generic-inflammatory-cell-abundance-increase-v1",
+    "generic-inflammatory-cell-abundance-decrease-v1"
   ],
   "closed_primitives": {
     "architecture-progression-v1": "Mask-side fine-label transition and native-pattern/lumen postconditions are implemented and tested; frozen-generator architecture response and pathology review are not yet validated.",
@@ -34,7 +36,6 @@
     "breast-cohesive-nst-front": "Breast execution no longer asks a general visual LLM to recognize a histologic invasive front. Use breast-annotation-anchored-boundary-growth or breast-infiltrative-nest-cord-extension.",
     "breast-discohesive-single-file": "Breast execution no longer asks a general visual LLM to diagnose single-file morphology. Use breast-peritumoral-neoplastic-scatter for the mask-executable cell-only representation.",
     "colorectal-gland-forming-front": "GLaS lacks explicit stromal authority and the attempted H&E/mask-derived gland-unit producer could not reliably distinguish lumen, mucin, necrosis and cleft. Keep tissue-level malignant-gland growth closed.",
-    "colorectal-tumor-budding-front": "Tumor budding requires a reliable invasive-front stromal context. GLaS supplies gland instances plus a heterogeneous non-gland complement, so H&E review alone cannot authorize stable budding execution.",
     "prostate-pattern-3-growth": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist."
   },
   "policy": "fail_closed",

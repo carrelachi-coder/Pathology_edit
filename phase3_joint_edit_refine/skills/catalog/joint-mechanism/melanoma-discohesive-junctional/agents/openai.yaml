@@ -1,4 +1,4 @@
 interface:
   display_name: "melanoma-discohesive-junctional"
-  short_description: "Plan and audit one atomic joint pathology mechanism"
-  default_prompt: "Use $melanoma-discohesive-junctional to plan a tissue-cell joint pathology edit."
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $melanoma-discohesive-junctional only to select compiler-certified mask candidates; never infer execution authority from H&E."

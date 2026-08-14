@@ -20,16 +20,29 @@
   "unavailable_mechanisms": [
     "breast-intratumoral-necrosis-turnover",
     "colorectal-gland-forming-front",
-    "colorectal-tumor-budding-front",
     "lung-intratumoral-necrosis-turnover",
     "melanoma-intratumoral-necrosis-turnover"
   ],
-  "conditional_mechanisms": [],
+  "conditional_mechanisms": [
+    "colorectal-tumor-budding-front"
+  ],
   "required_checker_ids": [
     "profile_provenance",
     "prohibited_cell_region",
     "prohibited_generation_support",
     "native_structure_preserved"
   ],
-  "supports_explicit_stroma": false
+  "supports_explicit_stroma": false,
+  "protected_fine_ids": [
+    0,
+    5
+  ],
+  "operational_stroma_fine_ids": [
+    2
+  ],
+  "operational_stroma_policy": "fine-2 is the transformed heterogeneous non-gland complement; it is legal only as a mask-defined host and never authorizes fibrosis, invasive-front, mucin, lumen, muscle, or pure-stroma claims",
+  "fibrosis_claim_authorized": false,
+  "mechanism_editable_source_fine_ids": {},
+  "mechanism_editable_target_fine_ids": {},
+  "visual_veto_requirements": []
 }

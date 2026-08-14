@@ -1,0 +1,18 @@
+{
+  "status": "uncalibrated",
+  "production_allowed": false,
+  "required_strata": [
+    "dataset_revision",
+    "patient_or_wsi",
+    "pixel_size",
+    "primitive",
+    "mechanism"
+  ],
+  "metrics": [
+    "final_mask_postcondition_pass_rate",
+    "meaningful_effect_floor_pass_rate",
+    "whole_instance_integrity",
+    "frozen_generator_condition_response"
+  ],
+  "note": "Shadow-only until profile-specific cohort calibration, frozen runtime validation, and independent pathology review are complete."
+}

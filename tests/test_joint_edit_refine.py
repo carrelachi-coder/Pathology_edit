@@ -177,6 +177,7 @@ from phase3_mask_edit_refine.models import (
     RefineContractError,
 )
 from phase3_mask_edit_refine.scene import build_scene_analysis
+from scripts.prepare_p1_meta_eval_selection import validate_selection
 
 
 def _sha(path: Path) -> str:
@@ -394,6 +395,140 @@ class JointSkillTests(unittest.TestCase):
                 self.assertTrue(policy.allowed_decisions)
                 self.assertTrue(policy.hard_constraint_checker_ids)
                 self.assertTrue(policy.selection_preferences)
+
+    def test_all_non_breast_planner_policies_are_mask_only_and_certified(self):
+        repository = JointSkillRepository()
+        required_decisions = {
+            "select_certified_tissue_plan_candidate",
+            "select_certified_cell_plan_candidate",
+            "request_clarification",
+            "abstain",
+        }
+        prohibited_entry_tokens = (
+            "h&e",
+            "visible morphology",
+            "inspect h&e",
+            "true stroma",
+        )
+        for mechanism in repository.mechanisms.values():
+            if mechanism.pathology_domain_id == "breast-invasive-carcinoma-v1":
+                continue
+            with self.subTest(mechanism=mechanism.mechanism_id):
+                policy = mechanism.planner_policy
+                self.assertIn(
+                    "source_he_for_execution",
+                    policy.prohibited_observation_sources,
+                )
+                self.assertIn(
+                    "unannotated_histology_inference",
+                    policy.prohibited_observation_sources,
+                )
+                self.assertNotIn(
+                    "source_he_for_execution",
+                    policy.allowed_observation_sources,
+                )
+                self.assertTrue(
+                    required_decisions.issubset(policy.allowed_decisions)
+                )
+                self.assertTrue(policy.hard_constraint_checker_ids)
+                self.assertTrue(policy.selection_preferences)
+                recognition = " ".join(
+                    mechanism.recognition.required_observations
+                ).casefold()
+                self.assertFalse(
+                    any(token in recognition for token in prohibited_entry_tokens),
+                    recognition,
+                )
+
+    def test_non_breast_capability_matrix_matches_catalog_source_of_truth(self):
+        repository = JointSkillRepository()
+        matrix_path = (
+            Path(__file__).parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+            / "non_breast_organ_annotation_capability_matrix_v1.json"
+        )
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+        self.assertEqual(matrix["production_status"], "shadow_only")
+        by_domain = {
+            item["pathology_domain_id"]: item
+            for item in matrix["profiles"]
+        }
+        expected_domains = {
+            item.pathology_domain_id
+            for item in repository.mechanisms.values()
+            if item.pathology_domain_id != "breast-invasive-carcinoma-v1"
+        }
+        self.assertEqual(set(by_domain), expected_domains)
+        for domain_id, profile in by_domain.items():
+            with self.subTest(domain=domain_id):
+                self.assertEqual(profile["production_status"], "shadow_only")
+                pairs = {
+                    (item["primitive_id"], item["mechanism_id"])
+                    for item in profile["capabilities"]
+                }
+                expected = {
+                    (primitive_id, mechanism.mechanism_id)
+                    for mechanism in repository.mechanisms.values()
+                    if mechanism.pathology_domain_id == domain_id
+                    for primitive_id in mechanism.supported_primitives
+                }
+                self.assertEqual(pairs, expected)
+                self.assertEqual(len(pairs), len(profile["capabilities"]))
+                for capability in profile["capabilities"]:
+                    self.assertEqual(
+                        capability["production_status"], "shadow_only"
+                    )
+                    self.assertTrue(capability["simple_instructions"])
+                    for instruction in capability["simple_instructions"]:
+                        parsed = RuleBasedSemanticParser().parse(instruction)
+                        self.assertEqual(
+                            parsed.primitive_id,
+                            capability["primitive_id"],
+                            (domain_id, instruction),
+                        )
+                selection = profile["planner_selection_contract"]
+                self.assertEqual(
+                    selection["tissue"]["decision_id"],
+                    "select_certified_tissue_plan_candidate",
+                )
+                self.assertEqual(
+                    selection["cell"]["decision_id"],
+                    "select_certified_cell_plan_candidate",
+                )
+
+    def test_p1_meta_eval_selection_is_fixed_and_fail_closed(self):
+        path = (
+            Path(__file__).parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+            / "p1_glas_panda_meta_eval_selection_v1.json"
+        )
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        validate_selection(payload)
+        self.assertFalse(payload["visualization_run"])
+        self.assertFalse(payload["api_used"])
+        self.assertTrue(
+            all(
+                len(evaluation["selected_cases"]) == 5
+                for evaluation in payload["evaluations"]
+            )
+        )
+
+        missing_mechanism = json.loads(json.dumps(payload))
+        missing_mechanism["evaluations"][0]["mechanism_id"] = ""
+        with self.assertRaisesRegex(ValueError, "lacks mechanism binding"):
+            validate_selection(missing_mechanism)
+
+        missing_authority = json.loads(json.dumps(payload))
+        evaluation = next(
+            item
+            for item in missing_authority["evaluations"]
+            if item["primitive_id"] == "local-invasive-clearance-v1"
+        )
+        evaluation["selected_cases"][0]["execution_allowed"] = True
+        with self.assertRaisesRegex(ValueError, "required auxiliary"):
+            validate_selection(missing_authority)
 
     def test_planner_decision_vocabulary_matches_schema_and_breast_skills(self):
         tissue_decision = next(
@@ -2907,8 +3042,8 @@ class JointSkillTests(unittest.TestCase):
 
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
-        self.assertEqual(len(repository.mechanisms), 39)
-        self.assertEqual(len(repository.primitives), 25)
+        self.assertEqual(len(repository.mechanisms), 48)
+        self.assertEqual(len(repository.primitives), 27)
         self.assertEqual(len(repository.annotation_profiles), 6)
         self.assertEqual(len(repository.cell_observation_profiles), 1)
         self.assertEqual(len(repository.cell_population_profiles), 6)
@@ -2923,6 +3058,19 @@ class JointSkillTests(unittest.TestCase):
                 "oral-squamous-cell-carcinoma-v1",
             },
         )
+
+    def test_scene_component_records_only_observed_panda_fine_ids(self):
+        mask = np.full((64, 64), 2, dtype=np.uint8)
+        mask[16:48, 16:48] = 10
+        scene = build_scene_analysis(
+            mask,
+            schema=MaskProfileSchema.from_reference_profile("PANDA"),
+        )
+        tumor_components = [
+            item for item in scene.graph.components if item.label == "Tumor"
+        ]
+        self.assertEqual(len(tumor_components), 1)
+        self.assertEqual(tumor_components[0].fine_ids, (10,))
 
     def test_growth_mechanisms_are_increase_only_and_do_not_own_replacement(self):
         repository = JointSkillRepository()
@@ -3037,6 +3185,8 @@ class JointSkillTests(unittest.TestCase):
                 "cellularity-increase-v1",
                 "generic-immune-infiltrate-decrease-v1",
                 "generic-immune-infiltrate-increase-v1",
+                "generic-inflammatory-cell-abundance-decrease-v1",
+                "generic-inflammatory-cell-abundance-increase-v1",
                 "cohesive-boundary-expansion-v1",
                 "infiltrative-nest-cord-extension-v1",
                 "invasive-front-expansion-v1",
@@ -3069,7 +3219,6 @@ class JointSkillTests(unittest.TestCase):
                 "breast-cohesive-nst-front",
                 "breast-discohesive-single-file",
                 "colorectal-gland-forming-front",
-                "colorectal-tumor-budding-front",
                 "prostate-pattern-3-growth",
             },
         )
@@ -3147,10 +3296,10 @@ class JointSkillTests(unittest.TestCase):
         )
         self.assertEqual(eligible, ())
 
-    def test_invasive_front_uses_joint_semantics_with_audited_tissue_adapter(self):
+    def test_lung_cord_uses_joint_semantics_with_audited_tissue_adapter(self):
         repository = JointSkillRepository()
         case = replace(
-            _case_stub(primitive="invasive-front-expansion-v1"),
+            _case_stub(primitive="infiltrative-nest-cord-extension-v1"),
             pathology_domain_id="lung-carcinoma-v1",
             annotation_profile_id="ignite-semantic-v1",
             cell_population_profile_id="lung-cellvit-source-first-v1",
@@ -3164,9 +3313,9 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(bundle.primitive.scope, "tissue_and_cell")
         self.assertEqual(
             bundle.mechanism.tissue_program.primitive_label_contracts[
-                "invasive-front-expansion-v1"
+                "infiltrative-nest-cord-extension-v1"
             ],
-            {"source_labels": ("Stroma", "Other tissue"), "target_labels": ("Tumor",)},
+            {"source_labels": ("Stroma",), "target_labels": ("Tumor",)},
         )
 
     def test_cross_domain_cell_population_is_rejected(self):
@@ -3242,7 +3391,10 @@ class JointSkillTests(unittest.TestCase):
         bundle = repository.compose(
             case=replace(
                 case,
-                semantic_intent={"treatment_context": "post_treatment"},
+                semantic_intent={
+                    "treatment_context": "post_treatment",
+                    "scenario": "treatment_response",
+                },
             ),
             mechanism_id="lung-treatment-associated-fibrotic-replacement",
             available_checker_ids=JointGateRegistry().available_checker_ids,
@@ -3563,12 +3715,12 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(route.mode, "inpaint")
         self.assertGreater(route.joint_fraction, 0)
 
-    def test_microinfiltration_is_cell_only_and_does_not_borrow_tissue_floor(self):
+    def test_melanoma_scatter_is_cell_only_and_does_not_borrow_tissue_floor(self):
         repository = JointSkillRepository()
         case = replace(
             _case_stub(
-                primitive="neoplastic-microinfiltration-increase-v1",
-                cell_budget=CellCountExtentBudget(3, 3, 4, 48, 4, 32),
+                primitive="peritumoral-neoplastic-scatter-increase-v1",
+                cell_budget=CellCountExtentBudget(8, 6, 10, 48, 4, 32),
             ),
             pathology_domain_id="melanoma-v1",
             annotation_profile_id="puma-semantic-v1",
@@ -6030,7 +6182,7 @@ class JointWorkflowTests(unittest.TestCase):
                 result.abstain_reasons[0],
             )
 
-    def test_glas_cell_only_budding_is_rejected_without_stromal_authority(self):
+    def test_glas_periglandular_scatter_requires_native_gland_instance_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = _write_synthetic_case(root)
@@ -6039,10 +6191,10 @@ class JointWorkflowTests(unittest.TestCase):
             case = replace(
                 source,
                 case_id="synthetic-budding",
-                instruction="increase tumor budding at the invasive front",
-                primitive_id="neoplastic-microinfiltration-increase-v1",
+                instruction="add scattered tumor cells near the gland boundary",
+                primitive_id="peritumoral-neoplastic-scatter-increase-v1",
                 joint_area_budget=None,
-                cell_count_extent_budget=CellCountExtentBudget(3, 3, 3, 48, 4, 32),
+                cell_count_extent_budget=CellCountExtentBudget(8, 6, 10, 48, 4, 32),
                 provenance=provenance,
             )
             result = JointPathologyEditWorkflow(
@@ -6052,8 +6204,1291 @@ class JointWorkflowTests(unittest.TestCase):
             ).run(case, output_root=root / "cell-only")
             self.assertEqual(result.status, "abstained")
             self.assertIn(
-                "reliable invasive-front stromal context",
+                "native_gland_instance_map",
                 result.abstain_reasons[0],
+            )
+
+    def test_glas_periglandular_primitives_execute_from_native_instance_authority(self):
+        for primitive, minimum_foci in (
+            ("peritumoral-neoplastic-scatter-increase-v1", 3),
+            ("peritumoral-small-cluster-increase-v1", 2),
+        ):
+            with (
+                self.subTest(primitive=primitive),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                source = _with_native_gland_instance_authority(
+                    _write_synthetic_case(root)
+                )
+                case = replace(
+                    source,
+                    case_id="glas-native-" + primitive,
+                    instruction=primitive,
+                    primitive_id=primitive,
+                    joint_area_budget=None,
+                    cell_count_extent_budget=CellCountExtentBudget(
+                        8,
+                        6,
+                        10,
+                        48,
+                        4,
+                        48,
+                        minimum_effect_span_px=20,
+                        minimum_effect_foci=minimum_foci,
+                    ),
+                    provenance={
+                        **source.provenance,
+                        "joint_mechanism_id": "colorectal-tumor-budding-front",
+                        "joint_primitive_id": primitive,
+                    },
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=HeuristicInterfacePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "glas-periglandular")
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
+                )
+                self.assertEqual(result.condition.ledger.tissue_pixels, 0)
+                self.assertGreaterEqual(
+                    result.condition.ledger.added_nucleus_pixels, 54
+                )
+                reports = json.loads(
+                    Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                selected = next(
+                    item
+                    for item in reports
+                    if item["candidate_id"] == result.selected_candidate_id
+                )
+                native_binding = next(
+                    check
+                    for check in selected["checks"]
+                    if check["check_id"] == "native_gland_instance_annulus_binding"
+                )
+                self.assertTrue(native_binding["passed"])
+
+    def test_panda_pattern4_pattern5_and_cord_execute_real_workflows(self):
+        fixtures = (
+            (
+                9,
+                "cohesive-boundary-expansion-v1",
+                "prostate-pattern-4-growth",
+                JointAreaBudget(0.08, 0.04, 0.12, 0.04),
+            ),
+            (
+                10,
+                "tumor-burden-increase-v1",
+                "prostate-pattern-5-growth",
+                JointAreaBudget(0.08, 0.04, 0.12, 0.04),
+            ),
+            (
+                10,
+                "infiltrative-nest-cord-extension-v1",
+                "prostate-pattern-5-infiltrative-front",
+                JointAreaBudget(0.025, 0.01, 0.04, 0.01),
+            ),
+        )
+        for fine_id, primitive, mechanism, budget in fixtures:
+            with (
+                self.subTest(primitive=primitive, mechanism=mechanism),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                case = _as_panda_case(
+                    _write_synthetic_case(root),
+                    fine_id=fine_id,
+                    mechanism_id=mechanism,
+                    primitive_id=primitive,
+                )
+                case = replace(
+                    case,
+                    case_id=f"panda-{fine_id}-{primitive}",
+                    joint_area_budget=budget,
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "panda-growth")
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
+                )
+                self.assertGreater(result.condition.ledger.tissue_pixels, 0)
+                if primitive == "infiltrative-nest-cord-extension-v1":
+                    reports = json.loads(
+                        Path(
+                            result.artifact_paths["joint_gate_reports.json"]
+                        ).read_text(encoding="utf-8")
+                    )
+                    selected = next(
+                        item
+                        for item in reports
+                        if item["candidate_id"] == result.selected_candidate_id
+                    )
+                    geometry = next(
+                        check
+                        for check in selected["checks"]
+                        if check["check_id"]
+                        == "annotation_anchored_extension_geometry"
+                    )
+                    self.assertTrue(geometry["passed"])
+
+    def test_panda_cord_four_percent_floor_conflict_fails_without_replan_stall(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = _as_panda_case(
+                _write_synthetic_case(root),
+                fine_id=10,
+                mechanism_id="prostate-pattern-5-infiltrative-front",
+                primitive_id="infiltrative-nest-cord-extension-v1",
+            )
+            case = replace(
+                case,
+                case_id="panda-cord-four-percent-floor",
+                joint_area_budget=JointAreaBudget(0.05, 0.04, 0.06, 0.04),
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "panda-cord-floor")
+            self.assertEqual(result.status, "abstained")
+            reason = " ".join(result.abstain_reasons)
+            self.assertNotIn("deterministic_replan_stalled", reason)
+            self.assertTrue(
+                "meaningful" in reason or "capacity" in reason or "safe" in reason,
+                reason,
+            )
+
+    def test_panda_pattern5_scatter_executes_in_certified_stromal_annulus(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive = "peritumoral-neoplastic-scatter-increase-v1"
+            case = _as_panda_case(
+                _write_synthetic_case(root),
+                fine_id=10,
+                mechanism_id="prostate-local-population-modulation",
+                primitive_id=primitive,
+            )
+            case = replace(
+                case,
+                case_id="panda-pattern5-scatter",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    8,
+                    6,
+                    10,
+                    48,
+                    4,
+                    48,
+                    minimum_effect_span_px=20,
+                    minimum_effect_foci=3,
+                ),
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "panda-scatter")
+            self.assertEqual(
+                result.status, "selected_research", result.abstain_reasons
+            )
+            self.assertEqual(result.condition.ledger.tissue_pixels, 0)
+            self.assertGreaterEqual(result.condition.ledger.added_nucleus_pixels, 54)
+
+    def test_p2_boundary_cord_scatter_and_small_focus_primitives_execute(self):
+        fixtures = (
+            (
+                "ignite-semantic-v1",
+                "lung-carcinoma-v1",
+                "lung-cellvit-source-first-v1",
+                2,
+                {"source_site": "lung", "specimen_type": "resection"},
+                "lung-solid-squamous-growth",
+                "cohesive-boundary-expansion-v1",
+                "growth",
+            ),
+            (
+                "ignite-semantic-v1",
+                "lung-carcinoma-v1",
+                "lung-cellvit-source-first-v1",
+                2,
+                {"source_site": "lung", "specimen_type": "resection"},
+                "lung-stromal-invasive-front",
+                "infiltrative-nest-cord-extension-v1",
+                "cord",
+            ),
+            (
+                "ignite-semantic-v1",
+                "lung-carcinoma-v1",
+                "lung-cellvit-source-first-v1",
+                2,
+                {"source_site": "lung", "specimen_type": "resection"},
+                "lung-local-population-modulation",
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "scatter",
+            ),
+            (
+                "ignite-semantic-v1",
+                "lung-carcinoma-v1",
+                "lung-cellvit-source-first-v1",
+                2,
+                {"source_site": "lung", "specimen_type": "resection"},
+                "lung-local-population-modulation",
+                "peritumoral-small-cluster-increase-v1",
+                "cluster",
+            ),
+            (
+                "puma-semantic-v1",
+                "melanoma-v1",
+                "melanoma-cellvit-source-first-v1",
+                2,
+                {"source_site": "skin", "primary_or_metastatic": "primary"},
+                "melanoma-cohesive-nest-sheet",
+                "cohesive-boundary-expansion-v1",
+                "growth",
+            ),
+            (
+                "puma-semantic-v1",
+                "melanoma-v1",
+                "melanoma-cellvit-source-first-v1",
+                2,
+                {"source_site": "skin", "primary_or_metastatic": "primary"},
+                "melanoma-peritumoral-small-focus",
+                "peritumoral-small-cluster-increase-v1",
+                "cluster",
+            ),
+            (
+                "orca-semantic-v1",
+                "oral-squamous-cell-carcinoma-v1",
+                "oral-scc-cellvit-source-first-v1",
+                7,
+                {},
+                "oral-scc-cohesive-nest-cord",
+                "cohesive-boundary-expansion-v1",
+                "growth",
+            ),
+            (
+                "orca-semantic-v1",
+                "oral-squamous-cell-carcinoma-v1",
+                "oral-scc-cellvit-source-first-v1",
+                7,
+                {},
+                "oral-scc-annotation-anchored-cord-extension",
+                "infiltrative-nest-cord-extension-v1",
+                "cord",
+            ),
+            (
+                "orca-semantic-v1",
+                "oral-squamous-cell-carcinoma-v1",
+                "oral-scc-cellvit-source-first-v1",
+                7,
+                {},
+                "oral-scc-dispersed-invasive-front",
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "scatter",
+            ),
+            (
+                "orca-semantic-v1",
+                "oral-squamous-cell-carcinoma-v1",
+                "oral-scc-cellvit-source-first-v1",
+                7,
+                {},
+                "oral-scc-dispersed-invasive-front",
+                "peritumoral-small-cluster-increase-v1",
+                "cluster",
+            ),
+        )
+        for (
+            profile_id,
+            domain_id,
+            population_id,
+            host_fine_id,
+            required_provenance,
+            mechanism_id,
+            primitive_id,
+            geometry_kind,
+        ) in fixtures:
+            with (
+                self.subTest(
+                    profile=profile_id,
+                    mechanism=mechanism_id,
+                    primitive=primitive_id,
+                ),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                case = _as_organ_profile_case(
+                    _write_synthetic_case(root),
+                    pathology_domain_id=domain_id,
+                    annotation_profile_id=profile_id,
+                    cell_population_profile_id=population_id,
+                    tumor_fine_id=1,
+                    host_fine_id=host_fine_id,
+                    mechanism_id=mechanism_id,
+                    primitive_id=primitive_id,
+                    required_provenance={
+                        "preprocessing_revision": "synthetic-p2-v1",
+                        **required_provenance,
+                    },
+                )
+                if profile_id == "orca-semantic-v1":
+                    tissue_path = Path(case.source_tissue_mask_uri)
+                    tissue = np.load(tissue_path, allow_pickle=False)
+                    tissue[:4, :] = 0
+                    np.save(tissue_path, tissue, allow_pickle=False)
+                    tissue_digest = _sha(tissue_path)
+                    case = replace(
+                        case,
+                        provenance={
+                            **case.provenance,
+                            "source_tissue_mask_sha256": tissue_digest,
+                            "original_label_map_digest": tissue_digest,
+                        },
+                    )
+                if geometry_kind == "growth":
+                    joint_budget = JointAreaBudget(0.08, 0.04, 0.12, 0.04)
+                    cell_budget = None
+                elif geometry_kind == "cord":
+                    joint_budget = JointAreaBudget(0.025, 0.01, 0.04, 0.01)
+                    cell_budget = None
+                else:
+                    joint_budget = None
+                    cell_budget = CellCountExtentBudget(
+                        8,
+                        6,
+                        10,
+                        48,
+                        4,
+                        48,
+                        minimum_effect_span_px=20,
+                        minimum_effect_foci=(
+                            3 if geometry_kind == "scatter" else 2
+                        ),
+                    )
+                case = replace(
+                    case,
+                    case_id=f"p2-{profile_id}-{primitive_id}",
+                    joint_area_budget=joint_budget,
+                    cell_count_extent_budget=cell_budget,
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=(
+                        MultiInterfaceResearchTissuePlanner()
+                        if joint_budget is not None
+                        else HeuristicInterfacePlanner()
+                    ),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "p2-geometry")
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
+                )
+                if joint_budget is None:
+                    self.assertEqual(result.condition.ledger.tissue_pixels, 0)
+                    self.assertGreaterEqual(
+                        result.condition.ledger.added_nucleus_pixels, 54
+                    )
+                else:
+                    self.assertGreater(result.condition.ledger.tissue_pixels, 0)
+                if profile_id == "orca-semantic-v1":
+                    source_tissue = np.load(
+                        case.source_tissue_mask_uri, allow_pickle=False
+                    )
+                    np.testing.assert_array_equal(
+                        result.condition.target_tissue_mask[source_tissue == 0],
+                        source_tissue[source_tissue == 0],
+                    )
+
+    def test_puma_scatter_binds_final_footprints_to_explicit_epidermis(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive_id = "peritumoral-neoplastic-scatter-increase-v1"
+            case = _as_organ_profile_case(
+                _write_synthetic_case(root),
+                pathology_domain_id="melanoma-v1",
+                annotation_profile_id="puma-semantic-v1",
+                cell_population_profile_id="melanoma-cellvit-source-first-v1",
+                tumor_fine_id=1,
+                host_fine_id=2,
+                mechanism_id="melanoma-discohesive-junctional",
+                primitive_id=primitive_id,
+                required_provenance={
+                    "preprocessing_revision": "synthetic-puma-v1",
+                    "source_site": "skin",
+                    "primary_or_metastatic": "primary",
+                },
+            )
+            tissue_path = Path(case.source_tissue_mask_uri)
+            tissue = np.load(tissue_path, allow_pickle=False)
+            tissue[28:34, 48:80] = 5
+            np.save(tissue_path, tissue, allow_pickle=False)
+            tissue_digest = _sha(tissue_path)
+            case = replace(
+                case,
+                case_id="puma-explicit-junction-scatter",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    8,
+                    6,
+                    10,
+                    48,
+                    4,
+                    48,
+                    minimum_effect_span_px=20,
+                    minimum_effect_foci=3,
+                ),
+                provenance={
+                    **case.provenance,
+                    "source_tissue_mask_sha256": tissue_digest,
+                    "original_label_map_digest": tissue_digest,
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "puma-junction")
+            self.assertEqual(
+                result.status, "selected_research", result.abstain_reasons
+            )
+            reports = json.loads(
+                Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            selected = next(
+                item
+                for item in reports
+                if item["candidate_id"] == result.selected_candidate_id
+            )
+            binding = next(
+                check
+                for check in selected["checks"]
+                if check["check_id"] == "puma_epidermal_junction_binding"
+            )
+            self.assertTrue(binding["passed"])
+            self.assertEqual(binding["metrics"]["violation_pixels"], 0)
+
+    def test_p2_lung_and_puma_necrosis_turnover_executes_both_directions(self):
+        fixtures = (
+            (
+                "lung-carcinoma-v1",
+                "ignite-semantic-v1",
+                "lung-cellvit-source-first-v1",
+                "lung-intratumoral-necrosis-turnover",
+                {"source_site": "lung", "specimen_type": "resection"},
+            ),
+            (
+                "melanoma-v1",
+                "puma-semantic-v1",
+                "melanoma-cellvit-source-first-v1",
+                "melanoma-intratumoral-necrosis-turnover",
+                {"source_site": "skin", "primary_or_metastatic": "primary"},
+            ),
+        )
+        for (
+            domain_id,
+            profile_id,
+            population_id,
+            mechanism_id,
+            required_provenance,
+        ) in fixtures:
+            for primitive_id in (
+                "necrosis-appearance-v1",
+                "necrosis-resolution-v1",
+            ):
+                with (
+                    self.subTest(profile=profile_id, primitive=primitive_id),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    root = Path(directory)
+                    source = _write_necrosis_case(root, primitive=primitive_id)
+                    case = replace(
+                        source,
+                        case_id=f"p2-{profile_id}-{primitive_id}",
+                        pathology_domain_id=domain_id,
+                        annotation_profile_id=profile_id,
+                        cell_population_profile_id=population_id,
+                        provenance={
+                            **source.provenance,
+                            **required_provenance,
+                            "preprocessing_revision": "synthetic-p2-necrosis-v1",
+                            "joint_mechanism_id": mechanism_id,
+                            "joint_primitive_id": primitive_id,
+                        },
+                    )
+                    result = JointPathologyEditWorkflow(
+                        tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                        joint_planner=HeuristicJointPlanner(),
+                        critic=_ApprovingJointCritic(),
+                    ).run(case, output_root=root / "p2-necrosis")
+                    self.assertEqual(
+                        result.status,
+                        "selected_research",
+                        result.abstain_reasons,
+                    )
+                    self.assertGreater(result.condition.ledger.tissue_pixels, 0)
+                    reports = json.loads(
+                        Path(
+                            result.artifact_paths["joint_gate_reports.json"]
+                        ).read_text(encoding="utf-8")
+                    )
+                    selected = next(
+                        item
+                        for item in reports
+                        if item["candidate_id"] == result.selected_candidate_id
+                    )
+                    turnover = next(
+                        check
+                        for check in selected["checks"]
+                        if check["check_id"] == "necrosis_cell_turnover"
+                    )
+                    self.assertTrue(turnover["passed"])
+
+    def test_p2_post_treatment_operational_retreat_executes_without_pathology_claims(self):
+        fixtures = (
+            (
+                "lung-carcinoma-v1",
+                "ignite-semantic-v1",
+                "lung-cellvit-source-first-v1",
+                2,
+                "lung-treatment-associated-fibrotic-replacement",
+                {"source_site": "lung", "specimen_type": "resection"},
+            ),
+            (
+                "melanoma-v1",
+                "puma-semantic-v1",
+                "melanoma-cellvit-source-first-v1",
+                2,
+                "melanoma-operational-tumor-retreat",
+                {"source_site": "skin", "primary_or_metastatic": "primary"},
+            ),
+            (
+                "oral-squamous-cell-carcinoma-v1",
+                "orca-semantic-v1",
+                "oral-scc-cellvit-source-first-v1",
+                7,
+                "oral-scc-operational-tumor-retreat",
+                {},
+            ),
+        )
+        for (
+            domain_id,
+            profile_id,
+            population_id,
+            host_fine_id,
+            mechanism_id,
+            required_provenance,
+        ) in fixtures:
+            with (
+                self.subTest(profile=profile_id),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                primitive_id = "invasive-tumor-footprint-decrease-v1"
+                source = _as_organ_profile_case(
+                    _write_synthetic_case(root),
+                    pathology_domain_id=domain_id,
+                    annotation_profile_id=profile_id,
+                    cell_population_profile_id=population_id,
+                    tumor_fine_id=1,
+                    host_fine_id=host_fine_id,
+                    mechanism_id=mechanism_id,
+                    primitive_id=primitive_id,
+                    required_provenance={
+                        "preprocessing_revision": "synthetic-p2-retreat-v1",
+                        **required_provenance,
+                    },
+                )
+                raw = source.to_metadata()
+                raw.update(
+                    case_id=f"p2-{profile_id}-retreat",
+                    instruction=(
+                        "Simulate a post-treatment response by decreasing tumor area."
+                    ),
+                    primitive_id=primitive_id,
+                    joint_area_budget={
+                        "target_fraction": 0.08,
+                        "min_fraction": 0.04,
+                        "max_fraction": 0.12,
+                        "tissue_min_fraction": 0.04,
+                        "relative_tolerance": 0.02,
+                        "fallback_policy": "max_feasible_below_target",
+                        "capacity_floor_policy": "strict",
+                        "minimum_effective_fraction": 0.04,
+                    },
+                    provenance={
+                        **raw["provenance"],
+                        "joint_mechanism_id": mechanism_id,
+                        "joint_primitive_id": primitive_id,
+                    },
+                )
+                case, intent = bind_semantic_intent(
+                    raw, RuleBasedSemanticParser()
+                )
+                self.assertEqual(intent.treatment_context, "post_treatment")
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "p2-retreat")
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
+                )
+                change = result.condition.tissue_change
+                source_tissue = np.load(
+                    case.source_tissue_mask_uri, allow_pickle=False
+                )
+                self.assertEqual(set(np.unique(source_tissue[change])), {1})
+                self.assertEqual(
+                    set(np.unique(result.condition.target_tissue_mask[change])),
+                    {host_fine_id},
+                )
+                manifest = json.loads(
+                    Path(result.artifact_paths["handoff_manifest"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                claim_text = " ".join(
+                    [
+                        *manifest["render_expectations"],
+                        *manifest["render_vetoes"],
+                    ]
+                ).casefold()
+                self.assertNotIn("major pathologic response", claim_text)
+                self.assertNotIn("complete response achieved", claim_text)
+
+    def test_lung_generic_immune_compartment_turnover_executes_both_directions(self):
+        for primitive_id in (
+            "generic-immune-infiltrate-increase-v1",
+            "generic-immune-infiltrate-decrease-v1",
+        ):
+            with (
+                self.subTest(primitive=primitive_id),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                source = _write_breast_immune_case(root, primitive=primitive_id)
+                case = replace(
+                    source,
+                    case_id="lung-" + primitive_id,
+                    pathology_domain_id="lung-carcinoma-v1",
+                    annotation_profile_id="ignite-semantic-v1",
+                    cell_population_profile_id="lung-cellvit-source-first-v1",
+                    provenance={
+                        **source.provenance,
+                        "preprocessing_revision": "synthetic-ignite-immune-v1",
+                        "source_site": "lung",
+                        "specimen_type": "resection",
+                        "joint_mechanism_id": (
+                            "lung-generic-immune-compartment-turnover"
+                        ),
+                        "joint_primitive_id": primitive_id,
+                    },
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "lung-immune")
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
+                )
+                reports = json.loads(
+                    Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                selected = next(
+                    item
+                    for item in reports
+                    if item["candidate_id"] == result.selected_candidate_id
+                )
+                mechanism = next(
+                    check
+                    for check in selected["checks"]
+                    if check["check_id"]
+                    == "mechanism_postcondition:lung-generic-immune-compartment-turnover"
+                )
+                self.assertTrue(mechanism["passed"])
+                self.assertTrue(
+                    mechanism["metrics"]["subcheck_results"][
+                        "stroma_immune_transition_only"
+                    ]
+                )
+
+    def test_p2_neoplastic_and_generic_inflammatory_abundance_additions_execute(self):
+        fixtures = (
+            (
+                "lung-carcinoma-v1",
+                "ignite-semantic-v1",
+                "lung-cellvit-source-first-v1",
+                2,
+                "lung-local-population-modulation",
+                {"source_site": "lung", "specimen_type": "resection"},
+            ),
+            (
+                "melanoma-v1",
+                "puma-semantic-v1",
+                "melanoma-cellvit-source-first-v1",
+                2,
+                "melanoma-local-population-modulation",
+                {"source_site": "skin", "primary_or_metastatic": "primary"},
+            ),
+            (
+                "oral-squamous-cell-carcinoma-v1",
+                "orca-semantic-v1",
+                "oral-scc-cellvit-source-first-v1",
+                7,
+                "oral-scc-local-population-modulation",
+                {},
+            ),
+        )
+        for (
+            domain_id,
+            profile_id,
+            population_id,
+            host_fine_id,
+            mechanism_id,
+            required_provenance,
+        ) in fixtures:
+            for primitive_id, target_class in (
+                ("neoplastic-cell-abundance-increase-v1", 1),
+                ("generic-inflammatory-cell-abundance-increase-v1", 2),
+            ):
+                with (
+                    self.subTest(profile=profile_id, primitive=primitive_id),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    root = Path(directory)
+                    source = _write_synthetic_case(
+                        root, size=256, tumor_radius=70
+                    )
+                    if target_class == 2:
+                        source = _make_stroma_multiclass(source)
+                    case = _as_organ_profile_case(
+                        source,
+                        pathology_domain_id=domain_id,
+                        annotation_profile_id=profile_id,
+                        cell_population_profile_id=population_id,
+                        tumor_fine_id=1,
+                        host_fine_id=host_fine_id,
+                        mechanism_id=mechanism_id,
+                        primitive_id=primitive_id,
+                        required_provenance={
+                            "preprocessing_revision": "synthetic-p2-population-v1",
+                            **required_provenance,
+                        },
+                    )
+                    case = replace(
+                        case,
+                        case_id=f"p2-{profile_id}-{primitive_id}",
+                        joint_area_budget=None,
+                        cell_count_extent_budget=CellCountExtentBudget(
+                            12,
+                            12,
+                            15,
+                            96,
+                            0,
+                            128,
+                            minimum_effect_span_px=66,
+                            minimum_effect_foci=2,
+                        ),
+                        provenance={
+                            **case.provenance,
+                            "target_cell_class_ids": [target_class],
+                        },
+                    )
+                    source_tissue = np.load(
+                        case.source_tissue_mask_uri, allow_pickle=False
+                    )
+                    source_nuclei = np.asarray(
+                        Image.open(case.source_nuclei_mask_uri)
+                    )
+                    result = JointPathologyEditWorkflow(
+                        tissue_planner=HeuristicInterfacePlanner(),
+                        joint_planner=HeuristicJointPlanner(),
+                        critic=_ApprovingJointCritic(),
+                    ).run(case, output_root=root / "p2-population")
+                    self.assertEqual(
+                        result.status,
+                        "selected_research",
+                        result.abstain_reasons,
+                    )
+                    np.testing.assert_array_equal(
+                        result.condition.target_tissue_mask, source_tissue
+                    )
+                    source_count = len(tuple(iter_instances(source_nuclei)))
+                    target_count = len(
+                        tuple(iter_instances(result.condition.target_nuclei_mask))
+                    )
+                    self.assertGreaterEqual(target_count - source_count, 12)
+                    self.assertLessEqual(target_count - source_count, 15)
+
+    def test_p2_local_clearance_is_digest_bound_and_roi_contained(self):
+        fixtures = (
+            (
+                "lung-carcinoma-v1",
+                "ignite-semantic-v1",
+                "lung-cellvit-source-first-v1",
+                2,
+                "lung-local-tumor-clearance",
+                {"source_site": "lung", "specimen_type": "resection"},
+            ),
+            (
+                "melanoma-v1",
+                "puma-semantic-v1",
+                "melanoma-cellvit-source-first-v1",
+                2,
+                "melanoma-local-tumor-clearance",
+                {"source_site": "skin", "primary_or_metastatic": "primary"},
+            ),
+            (
+                "oral-squamous-cell-carcinoma-v1",
+                "orca-semantic-v1",
+                "oral-scc-cellvit-source-first-v1",
+                7,
+                "oral-scc-local-carcinoma-clearance",
+                {},
+            ),
+        )
+        for (
+            domain_id,
+            profile_id,
+            population_id,
+            host_fine_id,
+            mechanism_id,
+            required_provenance,
+        ) in fixtures:
+            with (
+                self.subTest(profile=profile_id),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                primitive_id = "local-invasive-clearance-v1"
+                case = _as_organ_profile_case(
+                    _write_synthetic_case(root),
+                    pathology_domain_id=domain_id,
+                    annotation_profile_id=profile_id,
+                    cell_population_profile_id=population_id,
+                    tumor_fine_id=1,
+                    host_fine_id=host_fine_id,
+                    mechanism_id=mechanism_id,
+                    primitive_id=primitive_id,
+                    required_provenance={
+                        "preprocessing_revision": "synthetic-p2-clearance-v1",
+                        **required_provenance,
+                    },
+                )
+                roi = np.zeros((128, 128), dtype=np.uint8)
+                roi[30:99, 64:105] = 255
+                roi_path = root / "local_clearance_roi.png"
+                Image.fromarray(roi).save(roi_path)
+                roi_digest = _sha(roi_path)
+                tissue_digest = _sha(Path(case.source_tissue_mask_uri))
+                case = replace(
+                    case,
+                    case_id=f"p2-{profile_id}-local-clearance",
+                    instruction="Clear tumor in this local ROI.",
+                    joint_area_budget=JointAreaBudget(
+                        0.04, 0.02, 0.07, 0.02
+                    ),
+                    auxiliary_structure_uris={
+                        "local_clearance_roi": str(roi_path)
+                    },
+                    provenance={
+                        **case.provenance,
+                        "available_auxiliary_structures": [
+                            "local_clearance_roi"
+                        ],
+                        "auxiliary_structure_sha256": {
+                            "local_clearance_roi": roi_digest
+                        },
+                        "auxiliary_structure_provenance": {
+                            "local_clearance_roi": {
+                                "producer_id": "synthetic-user-roi",
+                                "producer_version": "v1",
+                                "observation_scope": "user_roi",
+                                "source_tissue_mask_sha256": tissue_digest,
+                                "output_sha256": roi_digest,
+                            }
+                        },
+                    },
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "p2-clearance")
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
+                )
+                changed = result.condition.tissue_change
+                self.assertTrue(np.any(changed))
+                self.assertFalse(np.any(changed & ~(roi > 0)))
+
+    def test_cross_organ_cord_without_receiving_interface_abstains_cleanly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive_id = "infiltrative-nest-cord-extension-v1"
+            case = _as_organ_profile_case(
+                _write_synthetic_case(root),
+                pathology_domain_id="lung-carcinoma-v1",
+                annotation_profile_id="ignite-semantic-v1",
+                cell_population_profile_id="lung-cellvit-source-first-v1",
+                tumor_fine_id=1,
+                host_fine_id=2,
+                mechanism_id="lung-stromal-invasive-front",
+                primitive_id=primitive_id,
+                required_provenance={
+                    "preprocessing_revision": "synthetic-cord-failure-v1",
+                    "source_site": "lung",
+                    "specimen_type": "resection",
+                },
+            )
+            tissue_path = Path(case.source_tissue_mask_uri)
+            tissue = np.load(tissue_path, allow_pickle=False)
+            tissue[tissue == 2] = 5
+            np.save(tissue_path, tissue, allow_pickle=False)
+            tissue_digest = _sha(tissue_path)
+            case = replace(
+                case,
+                case_id="lung-cord-no-receiving-interface",
+                joint_area_budget=JointAreaBudget(0.025, 0.01, 0.04, 0.01),
+                provenance={
+                    **case.provenance,
+                    "source_tissue_mask_sha256": tissue_digest,
+                    "original_label_map_digest": tissue_digest,
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "cord-no-candidate")
+            self.assertEqual(result.status, "abstained")
+            reason = " ".join(result.abstain_reasons)
+            self.assertIn("interface", reason.casefold())
+            self.assertNotIn("deterministic_replan_stalled", reason)
+
+    def test_cross_organ_scatter_and_cluster_without_legal_placement_fail_packing(self):
+        for primitive_id in (
+            "peritumoral-neoplastic-scatter-increase-v1",
+            "peritumoral-small-cluster-increase-v1",
+        ):
+            with (
+                self.subTest(primitive=primitive_id),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                case = _as_organ_profile_case(
+                    _write_synthetic_case(root),
+                    pathology_domain_id="oral-squamous-cell-carcinoma-v1",
+                    annotation_profile_id="orca-semantic-v1",
+                    cell_population_profile_id=(
+                        "oral-scc-cellvit-source-first-v1"
+                    ),
+                    tumor_fine_id=1,
+                    host_fine_id=7,
+                    mechanism_id="oral-scc-dispersed-invasive-front",
+                    primitive_id=primitive_id,
+                    required_provenance={
+                        "preprocessing_revision": "synthetic-packing-failure-v1"
+                    },
+                )
+                tissue = np.load(case.source_tissue_mask_uri, allow_pickle=False)
+                nuclei_path = Path(case.source_nuclei_mask_uri)
+                nuclei = np.asarray(Image.open(nuclei_path)).copy()
+                nuclei[tissue == 7] = 3
+                Image.fromarray(nuclei).save(nuclei_path)
+                nuclei_digest = _sha(nuclei_path)
+                provenance = {
+                    **case.provenance,
+                    "source_nuclei_mask_sha256": nuclei_digest,
+                    "original_instance_mask_digest": nuclei_digest,
+                }
+                provenance.pop("source_nuclei_instances_sha256", None)
+                case = replace(
+                    case,
+                    case_id="orca-no-placement-" + primitive_id,
+                    source_nuclei_instances_uri=None,
+                    joint_area_budget=None,
+                    cell_count_extent_budget=CellCountExtentBudget(
+                        8,
+                        6,
+                        10,
+                        48,
+                        4,
+                        48,
+                        minimum_effect_span_px=20,
+                        minimum_effect_foci=(
+                            3 if "scatter" in primitive_id else 2
+                        ),
+                    ),
+                    provenance=provenance,
+                )
+                result = JointPathologyEditWorkflow(
+                    tissue_planner=HeuristicInterfacePlanner(),
+                    joint_planner=HeuristicJointPlanner(),
+                    critic=_ApprovingJointCritic(),
+                ).run(case, output_root=root / "no-placement")
+                self.assertEqual(result.status, "abstained")
+                reason = " ".join(result.abstain_reasons)
+                self.assertIn(
+                    "exact_complete_footprint_packing_capacity_shortfall",
+                    reason,
+                )
+                self.assertNotIn("deterministic_replan_stalled", reason)
+
+    def test_cross_organ_abundance_decrease_unreachable_quota_abstains(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive_id = "neoplastic-cell-abundance-decrease-v1"
+            case = _as_panda_case(
+                _write_synthetic_case(root, size=256, tumor_radius=70),
+                fine_id=10,
+                mechanism_id="prostate-local-population-modulation",
+                primitive_id=primitive_id,
+            )
+            source_tissue = np.load(
+                case.source_tissue_mask_uri, allow_pickle=False
+            )
+            source_nuclei = np.asarray(Image.open(case.source_nuclei_mask_uri))
+            scene = build_joint_scene_analysis(
+                source_tissue,
+                source_nuclei,
+                schema=MaskProfileSchema.from_reference_profile("PANDA"),
+                pixel_size_um=case.pixel_size_um,
+                nuclei_instances_path=case.source_nuclei_instances_uri,
+            )
+            interface = next(
+                item
+                for item in scene.tissue.graph.interfaces
+                if {item.source_label, item.target_label} == {"Tumor", "Stroma"}
+            )
+            labels = {
+                item.component_id: item.label
+                for item in scene.tissue.graph.components
+            }
+            tumor_component_id = next(
+                component_id
+                for component_id in (
+                    interface.source_component_id,
+                    interface.target_component_id,
+                )
+                if labels[component_id] == "Tumor"
+            )
+            zone = next(
+                item
+                for item in scene.population.zones
+                if item.zone_kind == "component"
+                and item.tissue_component_id == tumor_component_id
+            )
+            case = replace(
+                case,
+                case_id="panda-unreachable-depletion-quota",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    12,
+                    12,
+                    15,
+                    96,
+                    0,
+                    128,
+                    minimum_effect_span_px=66,
+                ),
+                provenance={
+                    **case.provenance,
+                    "target_cell_class_ids": [1],
+                    "joint_population_zone_id": zone.zone_id,
+                    "cellularity_depletion_anchor": {
+                        "type": "interface",
+                        "interface_ids": [interface.interface_id],
+                        "anchor_ids": [interface.anchor_segment_ids[0]],
+                        "observation": "deterministic mask interface",
+                        "confidence": 1.0,
+                    },
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "unreachable-quota")
+            self.assertEqual(result.status, "abstained")
+            reason = " ".join(result.abstain_reasons)
+            self.assertIn("stronger-core gradient", reason)
+            self.assertNotIn("deterministic_replan_stalled", reason)
+
+    def test_cross_organ_necrosis_without_executor_survivor_abstains(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive_id = "necrosis-appearance-v1"
+            source = _write_necrosis_case(root, primitive=primitive_id)
+            nuclei_path = Path(source.source_nuclei_mask_uri)
+            nuclei = np.asarray(Image.open(nuclei_path)).copy()
+            nuclei[nuclei > 0] = 1
+            Image.fromarray(nuclei).save(nuclei_path)
+            instances_path = Path(source.source_nuclei_instances_uri)
+            payload = json.loads(instances_path.read_text(encoding="utf-8"))
+            for item in payload["nuc"].values():
+                item["type"] = 1
+            instances_path.write_text(json.dumps(payload), encoding="utf-8")
+            case = replace(
+                source,
+                case_id="lung-necrosis-no-executor-survivor",
+                pathology_domain_id="lung-carcinoma-v1",
+                annotation_profile_id="ignite-semantic-v1",
+                cell_population_profile_id="lung-cellvit-source-first-v1",
+                provenance={
+                    **source.provenance,
+                    "source_site": "lung",
+                    "specimen_type": "resection",
+                    "preprocessing_revision": "synthetic-no-executor-v1",
+                    "joint_mechanism_id": (
+                        "lung-intratumoral-necrosis-turnover"
+                    ),
+                    "joint_primitive_id": primitive_id,
+                    "source_nuclei_mask_sha256": _sha(nuclei_path),
+                    "source_nuclei_instances_sha256": _sha(instances_path),
+                    "original_instance_mask_digest": _sha(instances_path),
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "no-necrosis-executor")
+            self.assertEqual(result.status, "abstained")
+            reason = " ".join(result.abstain_reasons)
+            self.assertIn("no nuclei-safe executable interface", reason)
+            self.assertNotIn("deterministic_replan_stalled", reason)
+
+    def test_cross_organ_fragmentation_underfill_has_no_replan_stall(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive_id = "residual-tumor-fragmentation-v1"
+            mechanism_id = "prostate-treatment-associated-fibrotic-replacement"
+            source = _as_panda_case(
+                _write_synthetic_case(root),
+                fine_id=10,
+                mechanism_id=mechanism_id,
+                primitive_id=primitive_id,
+            )
+            raw = source.to_metadata()
+            raw.update(
+                case_id="panda-residual-packing-underfill",
+                instruction="Fragment the residual tumor after treatment.",
+                primitive_id=primitive_id,
+                joint_area_budget={
+                    "target_fraction": 0.18,
+                    "min_fraction": 0.12,
+                    "max_fraction": 0.25,
+                    "tissue_min_fraction": 0.12,
+                    "relative_tolerance": 0.02,
+                    "fallback_policy": "max_feasible_below_target",
+                    "capacity_floor_policy": "strict",
+                    "minimum_effective_fraction": 0.12,
+                },
+                provenance={
+                    **raw["provenance"],
+                    "joint_mechanism_id": mechanism_id,
+                    "joint_primitive_id": primitive_id,
+                },
+            )
+            case, _intent = bind_semantic_intent(
+                raw, RuleBasedSemanticParser()
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "fragmentation-underfill")
+            self.assertEqual(result.status, "abstained")
+            reason = " ".join(result.abstain_reasons)
+            self.assertIn("TopologySafeAreaUnderfillError", reason)
+            self.assertIn("minimum=1967, realized=1551", reason)
+            self.assertNotIn("deterministic_replan_stalled", reason)
+
+    def test_meta_eval_rejects_missing_mechanism_binding_and_required_roi(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            growth_root = root / "growth-input"
+            growth_root.mkdir()
+            growth = _as_organ_profile_case(
+                _write_synthetic_case(growth_root),
+                pathology_domain_id="lung-carcinoma-v1",
+                annotation_profile_id="ignite-semantic-v1",
+                cell_population_profile_id="lung-cellvit-source-first-v1",
+                tumor_fine_id=1,
+                host_fine_id=2,
+                mechanism_id="lung-solid-squamous-growth",
+                primitive_id="cohesive-boundary-expansion-v1",
+                required_provenance={
+                    "preprocessing_revision": "synthetic-eval-v1",
+                    "source_site": "lung",
+                    "specimen_type": "resection",
+                },
+            )
+            unbound_provenance = dict(growth.provenance)
+            unbound_provenance.pop("joint_mechanism_id", None)
+            growth = replace(
+                growth,
+                case_id="meta-eval-missing-mechanism",
+                joint_area_budget=JointAreaBudget(0.08, 0.04, 0.12, 0.04),
+                provenance=unbound_provenance,
+            )
+            workflow = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+                config=JointWorkflowConfig(
+                    require_evaluation_input_bindings=True
+                ),
+            )
+            result = workflow.run(growth, output_root=root / "missing-mechanism")
+            self.assertEqual(result.status, "abstained")
+            self.assertIn(
+                "explicit joint_mechanism_id binding",
+                " ".join(result.abstain_reasons),
+            )
+
+            clearance_root = root / "clearance-input"
+            clearance_root.mkdir()
+            clearance = _as_organ_profile_case(
+                _write_synthetic_case(clearance_root),
+                pathology_domain_id="lung-carcinoma-v1",
+                annotation_profile_id="ignite-semantic-v1",
+                cell_population_profile_id="lung-cellvit-source-first-v1",
+                tumor_fine_id=1,
+                host_fine_id=2,
+                mechanism_id="lung-local-tumor-clearance",
+                primitive_id="local-invasive-clearance-v1",
+                required_provenance={
+                    "preprocessing_revision": "synthetic-eval-v1",
+                    "source_site": "lung",
+                    "specimen_type": "resection",
+                },
+            )
+            clearance = replace(
+                clearance,
+                case_id="meta-eval-missing-roi",
+                instruction="Clear tumor in this local ROI.",
+                joint_area_budget=JointAreaBudget(0.04, 0.02, 0.07, 0.02),
+            )
+            result = workflow.run(
+                clearance, output_root=root / "missing-roi"
+            )
+            self.assertEqual(result.status, "abstained")
+            self.assertIn(
+                "lacks required auxiliary authority: local_clearance_roi",
+                " ".join(result.abstain_reasons),
             )
 
     def test_generic_glas_tumor_increase_does_not_fall_back_to_budding(self):
@@ -6569,11 +8004,15 @@ def _breast_case_stub(*, budget=None) -> JointCaseContext:
     )
 
 
-def _write_synthetic_case(root: Path) -> JointCaseContext:
-    size = 128
+def _write_synthetic_case(
+    root: Path, *, size: int = 128, tumor_radius: int = 30
+) -> JointCaseContext:
+    center = size // 2
     rows, cols = np.ogrid[:size, :size]
     tissue = np.full((size, size), 2, dtype=np.uint8)
-    tumor = (rows - 64) ** 2 + (cols - 64) ** 2 <= 30**2
+    tumor = (
+        (rows - center) ** 2 + (cols - center) ** 2 <= tumor_radius**2
+    )
     tissue[tumor] = 12
     nuclei = np.zeros_like(tissue)
     native_instances = {}
@@ -6604,7 +8043,9 @@ def _write_synthetic_case(root: Path) -> JointCaseContext:
     image[tumor] = (172, 88, 130)
     Image.fromarray(image).save(image_path)
     instances_path.write_text(json.dumps({"nuc": native_instances}), encoding="utf-8")
-    auxiliary = ((rows - 64) ** 2 + (cols - 64) ** 2 <= 2**2).astype(np.uint8)
+    auxiliary = (
+        (rows - center) ** 2 + (cols - center) ** 2 <= 2**2
+    ).astype(np.uint8)
     Image.fromarray(auxiliary).save(auxiliary_path)
     provenance = {
         "source_image_sha256": _sha(image_path),
@@ -6626,7 +8067,12 @@ def _write_synthetic_case(root: Path) -> JointCaseContext:
                         "unit_type": "synthetic_malignant_gland_unit",
                         "fine_id": 12,
                         "area_px": int(np.count_nonzero(tumor)),
-                        "bbox_xyxy": [34, 34, 95, 95],
+                        "bbox_xyxy": [
+                            center - tumor_radius,
+                            center - tumor_radius,
+                            center + tumor_radius + 1,
+                            center + tumor_radius + 1,
+                        ],
                         "component_sha256": hashlib.sha256(
                             np.packbits(
                                 tumor.astype(np.uint8), axis=None
@@ -6669,6 +8115,116 @@ def _write_synthetic_case(root: Path) -> JointCaseContext:
         seed=17,
         provenance=provenance,
         pixel_size_um=0.465,
+    )
+
+
+def _with_native_gland_instance_authority(
+    source: JointCaseContext,
+) -> JointCaseContext:
+    """Bind a synthetic native gland-instance raster for GLaS annulus tests."""
+
+    tissue = np.load(source.source_tissue_mask_uri, allow_pickle=False)
+    native = np.isin(tissue, (11, 12, 13)).astype(np.uint16)
+    path = Path(source.source_tissue_mask_uri).with_name(
+        "native_gland_instance_map.png"
+    )
+    Image.fromarray(native).save(path)
+    digest = _sha(path)
+    tissue_digest = _sha(Path(source.source_tissue_mask_uri))
+    provenance = dict(source.provenance)
+    provenance["available_auxiliary_structures"] = sorted(
+        {
+            *provenance.get("available_auxiliary_structures", []),
+            "native_gland_instance_map",
+        }
+    )
+    provenance["auxiliary_structure_sha256"] = {
+        **provenance.get("auxiliary_structure_sha256", {}),
+        "native_gland_instance_map": digest,
+    }
+    provenance["auxiliary_structure_provenance"] = {
+        **provenance.get("auxiliary_structure_provenance", {}),
+        "native_gland_instance_map": {
+            "producer_id": "synthetic-native-gland-instance-fixture",
+            "producer_version": "v1",
+            "observation_scope": "native_instance",
+            "source_tissue_mask_sha256": tissue_digest,
+            "output_sha256": digest,
+        },
+    }
+    return replace(
+        source,
+        auxiliary_structure_uris={
+            **source.auxiliary_structure_uris,
+            "native_gland_instance_map": str(path),
+        },
+        provenance=provenance,
+    )
+
+
+def _as_organ_profile_case(
+    source: JointCaseContext,
+    *,
+    pathology_domain_id: str,
+    annotation_profile_id: str,
+    cell_population_profile_id: str,
+    tumor_fine_id: int,
+    host_fine_id: int,
+    mechanism_id: str,
+    primitive_id: str,
+    required_provenance: dict[str, str],
+) -> JointCaseContext:
+    """Rebind the generic circular fixture to one non-Breast mask profile."""
+
+    tissue_path = Path(source.source_tissue_mask_uri)
+    tissue = np.load(tissue_path, allow_pickle=False)
+    tissue[tissue == 2] = host_fine_id
+    tissue[np.isin(tissue, (11, 12, 13))] = tumor_fine_id
+    np.save(tissue_path, tissue, allow_pickle=False)
+    tissue_digest = _sha(tissue_path)
+    provenance = {
+        **source.provenance,
+        **required_provenance,
+        "source_tissue_mask_sha256": tissue_digest,
+        "original_label_map_digest": tissue_digest,
+        "joint_mechanism_id": mechanism_id,
+        "joint_primitive_id": primitive_id,
+        "available_auxiliary_structures": [],
+    }
+    provenance.pop("auxiliary_structure_sha256", None)
+    provenance.pop("auxiliary_structure_provenance", None)
+    return replace(
+        source,
+        instruction=primitive_id,
+        primitive_id=primitive_id,
+        pathology_domain_id=pathology_domain_id,
+        annotation_profile_id=annotation_profile_id,
+        cell_population_profile_id=cell_population_profile_id,
+        auxiliary_structure_uris={},
+        provenance=provenance,
+    )
+
+
+def _as_panda_case(
+    source: JointCaseContext,
+    *,
+    fine_id: int,
+    mechanism_id: str,
+    primitive_id: str,
+) -> JointCaseContext:
+    return _as_organ_profile_case(
+        source,
+        pathology_domain_id="prostate-adenocarcinoma-v1",
+        annotation_profile_id="panda-gleason-v1",
+        cell_population_profile_id="prostate-cellvit-source-first-v1",
+        tumor_fine_id=fine_id,
+        host_fine_id=2,
+        mechanism_id=mechanism_id,
+        primitive_id=primitive_id,
+        required_provenance={
+            "preprocessing_revision": "synthetic-panda-v1",
+            "provider": "synthetic-fixture",
+        },
     )
 
 

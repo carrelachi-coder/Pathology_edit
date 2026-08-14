@@ -23,10 +23,11 @@
       "evidence_id": "lung-lepidic-growth.execution",
       "authority_category": "engineering_proxy",
       "claim_scope": [
-        "tissue_program",
         "cell_program",
         "coupling_contract",
-        "joint_gate_ids"
+        "joint_gate_ids",
+        "planner_policy",
+        "tissue_program"
       ],
       "source_ids": [
         "engineering-joint-contract-v2"

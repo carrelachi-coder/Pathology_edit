@@ -22,7 +22,10 @@
     "melanoma-discohesive-junctional",
     "breast-intratumoral-necrosis-turnover",
     "lung-intratumoral-necrosis-turnover",
-    "melanoma-intratumoral-necrosis-turnover"
+    "melanoma-intratumoral-necrosis-turnover",
+    "melanoma-operational-tumor-retreat",
+    "melanoma-local-tumor-clearance",
+    "melanoma-peritumoral-small-focus"
   ],
   "required_checker_ids": [
     "profile_provenance",
@@ -30,5 +33,36 @@
     "prohibited_generation_support",
     "native_structure_preserved"
   ],
-  "supports_explicit_stroma": true
+  "supports_explicit_stroma": true,
+  "protected_fine_ids": [
+    0
+  ],
+  "operational_stroma_fine_ids": [
+    2
+  ],
+  "mechanism_editable_source_fine_ids": {
+    "melanoma-cohesive-nest-sheet": [
+      2
+    ],
+    "melanoma-operational-tumor-retreat": [
+      1
+    ],
+    "melanoma-local-tumor-clearance": [
+      1
+    ]
+  },
+  "mechanism_editable_target_fine_ids": {
+    "melanoma-cohesive-nest-sheet": [
+      1
+    ],
+    "melanoma-operational-tumor-retreat": [
+      2
+    ],
+    "melanoma-local-tumor-clearance": [
+      2
+    ]
+  },
+  "operational_stroma_policy": "The configured label is an operational receiving class only and does not prove fibrosis, tumor bed, response or clinical benefit.",
+  "fibrosis_claim_authorized": false,
+  "visual_veto_requirements": []
 }

@@ -1,12 +1,12 @@
 ---
 name: colorectal-tumor-budding-front
-description: Plan and audit cell-level colorectal tumor budding without inventing detached tumor tissue. Use only when H&E supports isolated neoplastic cells or clusters of up to four cells at a verified invasive front.
+description: Plan and audit non-diagnostic periglandular class-1 scatter or one-to-four-cell synthetic foci using native malignant-gland exterior authority.
 ---
 
-# Colorectal tumor-budding joint editing
+# Colorectal periglandular dispersion
 
-1. Read `references/joint_contract.json` and require high-confidence H&E evidence.
-2. Keep the receiving stromal tissue label unchanged for the budding footprint.
-3. Generate single, pair, or 3–4 cell templates deterministically; use ProbNet only to rank legal placements.
-4. Preserve existing stromal cells, mucin, lumen, muscle, vessels, nerves, and background.
-5. Reject bulk fill, bridges between buds, remote cells, and unsupported cell identity.
+1. Read `references/joint_contract.json` and require digest-bound native gland-instance, outer-boundary, and annulus certificates.
+2. Keep the operational non-gland tissue label pixel-exact; it is not pure stroma and does not establish an invasive front.
+3. Use the scatter primitive for separated single cells and the small-cluster primitive for multiple compact one-to-four-cell foci. Frozen ProbNet may rank only compiler-certified centers.
+4. Exclude lumen/hole contours, zero, normal glands, other gland instances, and every unrequested nucleus.
+5. Reject bulk fill, solid bridges, remote cells, and diagnostic tumor-budding, ITBCC, prognostic, or invasive-front claims.

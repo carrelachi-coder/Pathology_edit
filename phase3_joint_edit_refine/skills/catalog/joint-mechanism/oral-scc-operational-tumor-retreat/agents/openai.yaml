@@ -1,0 +1,4 @@
+interface:
+  display_name: "oral-scc-operational-tumor-retreat"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $oral-scc-operational-tumor-retreat only with certified mask candidates and required authority."

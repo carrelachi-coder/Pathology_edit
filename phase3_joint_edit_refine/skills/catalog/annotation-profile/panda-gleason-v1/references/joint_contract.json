@@ -27,7 +27,8 @@
     "prostate-pattern-5-growth",
     "prostate-pattern-5-infiltrative-front",
     "prostate-treatment-associated-fibrotic-replacement",
-    "prostate-gleason-architecture-progression"
+    "prostate-gleason-architecture-progression",
+    "prostate-local-tumor-clearance"
   ],
   "mechanism_required_fine_ids": {
     "prostate-pattern-3-growth": [
@@ -43,6 +44,7 @@
       10
     ],
     "prostate-treatment-associated-fibrotic-replacement": [
+      9,
       10
     ],
     "prostate-gleason-architecture-progression": [
@@ -58,5 +60,52 @@
     "native_structure_preserved",
     "fine_pattern_preserved"
   ],
-  "supports_explicit_stroma": true
+  "supports_explicit_stroma": true,
+  "protected_fine_ids": [
+    0,
+    5,
+    8
+  ],
+  "operational_stroma_fine_ids": [
+    2
+  ],
+  "operational_stroma_policy": "The configured label is an operational receiving class only and does not prove fibrosis, tumor bed, response or clinical benefit.",
+  "fibrosis_claim_authorized": false,
+  "mechanism_editable_source_fine_ids": {
+    "prostate-pattern-4-growth": [
+      2
+    ],
+    "prostate-pattern-5-growth": [
+      2
+    ],
+    "prostate-pattern-5-infiltrative-front": [
+      2
+    ],
+    "prostate-treatment-associated-fibrotic-replacement": [
+      9,
+      10
+    ],
+    "prostate-local-tumor-clearance": [
+      9,
+      10
+    ]
+  },
+  "mechanism_editable_target_fine_ids": {
+    "prostate-pattern-4-growth": [
+      9
+    ],
+    "prostate-pattern-5-growth": [
+      10
+    ],
+    "prostate-pattern-5-infiltrative-front": [
+      10
+    ],
+    "prostate-treatment-associated-fibrotic-replacement": [
+      2
+    ],
+    "prostate-local-tumor-clearance": [
+      2
+    ]
+  },
+  "visual_veto_requirements": []
 }

@@ -331,6 +331,24 @@ class RuleBasedSemanticParser:
             (r"\b(increase|raise)\b.*\b(cellularity|cell density|nuclear density)\b|\bmake\b.*\btissue region more cellular\b", r"(提高|增加).*(细胞密度|细胞丰富度|细胞量)"),
         ),
         (
+            "generic-inflammatory-cell-abundance-decrease-v1",
+            "cell-type-abundance",
+            "decrease",
+            (
+                r"\b(decrease|reduce)\b.*\bgeneric inflammatory[- ]cell abundance\b",
+                r"(减少|降低).*(泛炎性细胞丰度)",
+            ),
+        ),
+        (
+            "generic-inflammatory-cell-abundance-increase-v1",
+            "cell-type-abundance",
+            "increase",
+            (
+                r"\b(increase|add)\b.*\bgeneric inflammatory[- ]cell abundance\b",
+                r"(增加|添加).*(泛炎性细胞丰度)",
+            ),
+        ),
+        (
             "neoplastic-cell-abundance-decrease-v1",
             "cell-type-abundance",
             "decrease",
@@ -431,6 +449,8 @@ class RuleBasedSemanticParser:
             ),
             None,
         )
+        if primitive_id.startswith("generic-inflammatory-cell-abundance-"):
+            cell_class = "immune"
         return SemanticEditIntent(
             instruction=text,
             instruction_mode="direct_edit",
@@ -615,6 +635,13 @@ class OpenAIClinicalScenarioParser:
                     )
                 cell_class = "neoplastic"
                 shared["explicit_cell_class"] = "neoplastic"
+            if primitive_id.startswith("generic-inflammatory-cell-abundance-"):
+                if cell_class not in {None, "immune"}:
+                    raise JointContractError(
+                        "generic inflammatory abundance cannot target a fine immune subtype"
+                    )
+                cell_class = "immune"
+                shared["explicit_cell_class"] = "immune"
             if primitive_id.startswith("cell-type-abundance-") and cell_class is None:
                 raise JointContractError(
                     "cell abundance instruction must identify the requested cell class"
@@ -915,6 +942,13 @@ def _compile_primitive_hypotheses(
         )
         or re.search(r"癌细胞浸润|肿瘤细胞浸润", instruction)
     )
+    explicit_peritumoral_scatter = bool(
+        re.search(
+            r"\b(peritumoral (?:tumou?r[- ]|cancer[- ])?cell scatter|scattered tumou?r cells?)\b",
+            lowered,
+        )
+        or re.search(r"癌周散在肿瘤细胞|肿瘤周围散在癌细胞", instruction)
+    )
     generic_tumor_increase = bool(
         primary_primitive_id
         in {
@@ -925,6 +959,7 @@ def _compile_primitive_hypotheses(
         and not explicit_burden
         and not explicit_microinfiltration
         and not ambiguous_infiltration
+        and not explicit_peritumoral_scatter
         and (
             re.search(r"\b(increase|expand|enlarge|raise|add)\b.*\b(tumou?r|cancer)\b", lowered)
             or re.search(r"(增加|提高|扩大|增多).*(肿瘤|癌)", instruction)
@@ -1095,6 +1130,10 @@ def _build_scenario_intent(
         )
     ):
         resolved_cell_class = "neoplastic"
+    if hypotheses[0].primitive_id.startswith(
+        "generic-inflammatory-cell-abundance-"
+    ):
+        resolved_cell_class = "immune"
     return SemanticEditIntent(
         instruction=instruction,
         instruction_mode=instruction_mode,
@@ -1492,7 +1531,7 @@ def _direct_scope_for_primitive(primitive_id: str) -> str:
         "generic-immune-infiltrate-decrease-v1",
     }:
         return "tissue_compartment"
-    if primitive_id.startswith(("cellularity-", "cell-type-abundance-", "neoplastic-cell-abundance-")) or primitive_id in {
+    if primitive_id.startswith(("cellularity-", "cell-type-abundance-", "neoplastic-cell-abundance-", "generic-inflammatory-cell-abundance-")) or primitive_id in {
         "neoplastic-microinfiltration-increase-v1",
         "peritumoral-neoplastic-scatter-increase-v1",
         "peritumoral-small-cluster-increase-v1",

@@ -233,54 +233,193 @@
     }
   },
   "mechanism_pathology_sources": {
-    "breast-annotation-anchored-boundary-growth": ["pathology-breast-cap-invasive-resection-v4.11.0.0", "pathology-breast-invasive-compartment-study-2010"],
-    "breast-infiltrative-nest-cord-extension": ["pathology-breast-invasive-compartment-study-2010"],
-    "breast-peritumoral-neoplastic-scatter": ["pathology-breast-invasive-compartment-study-2010", "pathology-breast-tumor-budding-review-2018"],
-    "breast-peritumoral-small-cluster": ["pathology-breast-tumor-budding-review-2018", "pathology-breast-tumor-budding-study-2021"],
-    "breast-cohesive-nst-front": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
-    "breast-discohesive-single-file": ["pathology-breast-ilc-single-file-2021"],
-    "breast-generic-immune-compartment-turnover": ["pathology-breast-tils-working-group-2014"],
-    "breast-intratumoral-necrosis-turnover": ["pathology-mechanism-internal-review-pending"],
-    "breast-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
-    "breast-local-invasive-clearance": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
-    "breast-post-treatment-invasive-regression": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
-    "breast-post-treatment-residual-neoplastic-depletion": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
-    "breast-residual-disease-fragmentation": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
-    "breast-treatment-associated-stromal-replacement": ["pathology-breast-cap-invasive-resection-v4.11.0.0"],
-    "colorectal-gland-forming-front": ["pathology-colorectal-cap-v2024"],
-    "colorectal-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
-    "colorectal-tumor-budding-front": ["pathology-colorectal-itbcc-2016"],
-    "lung-acinar-papillary-growth": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
-    "lung-intratumoral-necrosis-turnover": ["pathology-lung-cap-v2025"],
-    "lung-lepidic-growth": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
-    "lung-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
-    "lung-solid-squamous-growth": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
-    "lung-stas-airspace-spread": ["pathology-lung-cap-v2025", "pathology-lung-stas-2015"],
-    "lung-stromal-invasive-front": ["pathology-lung-cap-v2025", "pathology-lung-iaslc-2011"],
-    "lung-treatment-associated-fibrotic-replacement": ["pathology-lung-cap-v2025"],
-    "melanoma-cohesive-nest-sheet": ["pathology-melanoma-cap-v2025"],
-    "melanoma-discohesive-junctional": ["pathology-melanoma-cap-v2025"],
-    "melanoma-intratumoral-necrosis-turnover": ["pathology-mechanism-internal-review-pending"],
-    "melanoma-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
-    "oral-scc-cohesive-nest-cord": ["pathology-oral-cap-v2024"],
-    "oral-scc-dispersed-invasive-front": ["pathology-oral-cap-v2024"],
-    "oral-scc-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
-    "prostate-gleason-architecture-progression": ["pathology-prostate-isup-2014", "pathology-prostate-pattern5-2015"],
-    "prostate-local-population-modulation": ["pathology-mechanism-internal-review-pending"],
-    "prostate-pattern-3-growth": ["pathology-prostate-isup-2014"],
-    "prostate-pattern-4-growth": ["pathology-prostate-isup-2014"],
-    "prostate-pattern-5-growth": ["pathology-prostate-isup-2014", "pathology-prostate-pattern5-2015"],
-    "prostate-pattern-5-infiltrative-front": ["pathology-prostate-isup-2014", "pathology-prostate-pattern5-2015"],
-    "prostate-treatment-associated-fibrotic-replacement": ["pathology-prostate-cap-treatment-v2023", "pathology-prostate-treatment-morphology-1994"]
+    "breast-annotation-anchored-boundary-growth": [
+      "pathology-breast-cap-invasive-resection-v4.11.0.0",
+      "pathology-breast-invasive-compartment-study-2010"
+    ],
+    "breast-infiltrative-nest-cord-extension": [
+      "pathology-breast-invasive-compartment-study-2010"
+    ],
+    "breast-peritumoral-neoplastic-scatter": [
+      "pathology-breast-invasive-compartment-study-2010",
+      "pathology-breast-tumor-budding-review-2018"
+    ],
+    "breast-peritumoral-small-cluster": [
+      "pathology-breast-tumor-budding-review-2018",
+      "pathology-breast-tumor-budding-study-2021"
+    ],
+    "breast-cohesive-nst-front": [
+      "pathology-breast-cap-invasive-resection-v4.11.0.0"
+    ],
+    "breast-discohesive-single-file": [
+      "pathology-breast-ilc-single-file-2021"
+    ],
+    "breast-generic-immune-compartment-turnover": [
+      "pathology-breast-tils-working-group-2014"
+    ],
+    "breast-intratumoral-necrosis-turnover": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "breast-local-population-modulation": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "breast-local-invasive-clearance": [
+      "pathology-breast-cap-invasive-resection-v4.11.0.0"
+    ],
+    "breast-post-treatment-invasive-regression": [
+      "pathology-breast-cap-invasive-resection-v4.11.0.0"
+    ],
+    "breast-post-treatment-residual-neoplastic-depletion": [
+      "pathology-breast-cap-invasive-resection-v4.11.0.0"
+    ],
+    "breast-residual-disease-fragmentation": [
+      "pathology-breast-cap-invasive-resection-v4.11.0.0"
+    ],
+    "breast-treatment-associated-stromal-replacement": [
+      "pathology-breast-cap-invasive-resection-v4.11.0.0"
+    ],
+    "colorectal-gland-forming-front": [
+      "pathology-colorectal-cap-v2024"
+    ],
+    "colorectal-local-population-modulation": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "colorectal-tumor-budding-front": [
+      "pathology-colorectal-itbcc-2016"
+    ],
+    "lung-acinar-papillary-growth": [
+      "pathology-lung-cap-v2025",
+      "pathology-lung-iaslc-2011"
+    ],
+    "lung-intratumoral-necrosis-turnover": [
+      "pathology-lung-cap-v2025"
+    ],
+    "lung-lepidic-growth": [
+      "pathology-lung-cap-v2025",
+      "pathology-lung-iaslc-2011"
+    ],
+    "lung-local-population-modulation": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "lung-solid-squamous-growth": [
+      "pathology-lung-cap-v2025",
+      "pathology-lung-iaslc-2011"
+    ],
+    "lung-stas-airspace-spread": [
+      "pathology-lung-cap-v2025",
+      "pathology-lung-stas-2015"
+    ],
+    "lung-stromal-invasive-front": [
+      "pathology-lung-cap-v2025",
+      "pathology-lung-iaslc-2011"
+    ],
+    "lung-treatment-associated-fibrotic-replacement": [
+      "pathology-lung-cap-v2025"
+    ],
+    "melanoma-cohesive-nest-sheet": [
+      "pathology-melanoma-cap-v2025"
+    ],
+    "melanoma-discohesive-junctional": [
+      "pathology-melanoma-cap-v2025"
+    ],
+    "melanoma-intratumoral-necrosis-turnover": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "melanoma-local-population-modulation": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "oral-scc-cohesive-nest-cord": [
+      "pathology-oral-cap-v2024"
+    ],
+    "oral-scc-dispersed-invasive-front": [
+      "pathology-oral-cap-v2024"
+    ],
+    "oral-scc-local-population-modulation": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "prostate-gleason-architecture-progression": [
+      "pathology-prostate-isup-2014",
+      "pathology-prostate-pattern5-2015"
+    ],
+    "prostate-local-population-modulation": [
+      "pathology-mechanism-internal-review-pending"
+    ],
+    "prostate-pattern-3-growth": [
+      "pathology-prostate-isup-2014"
+    ],
+    "prostate-pattern-4-growth": [
+      "pathology-prostate-isup-2014"
+    ],
+    "prostate-pattern-5-growth": [
+      "pathology-prostate-isup-2014",
+      "pathology-prostate-pattern5-2015"
+    ],
+    "prostate-pattern-5-infiltrative-front": [
+      "pathology-prostate-isup-2014",
+      "pathology-prostate-pattern5-2015"
+    ],
+    "prostate-treatment-associated-fibrotic-replacement": [
+      "pathology-prostate-cap-treatment-v2023",
+      "pathology-prostate-treatment-morphology-1994"
+    ],
+    "lung-generic-immune-compartment-turnover": [
+      "pathology-lung-cap-v2025"
+    ],
+    "lung-local-tumor-clearance": [
+      "pathology-lung-cap-v2025"
+    ],
+    "melanoma-operational-tumor-retreat": [
+      "pathology-melanoma-cap-v2025"
+    ],
+    "melanoma-local-tumor-clearance": [
+      "pathology-melanoma-cap-v2025"
+    ],
+    "oral-scc-operational-tumor-retreat": [
+      "pathology-oral-cap-v2024"
+    ],
+    "oral-scc-local-carcinoma-clearance": [
+      "pathology-oral-cap-v2024"
+    ],
+    "prostate-local-tumor-clearance": [
+      "pathology-prostate-cap-treatment-v2023"
+    ],
+    "oral-scc-annotation-anchored-cord-extension": [
+      "pathology-oral-cap-v2024"
+    ],
+    "melanoma-peritumoral-small-focus": [
+      "pathology-melanoma-cap-v2025"
+    ]
   },
   "profile_dataset_sources": {
-    "bcss-semantic-v1": ["dataset-bcss-official-v1", "dataset-bcss-local-manifest-v1"],
-    "glas-gland-v1": ["dataset-glas-official-v1", "dataset-glas-local-manifest-v1"],
-    "ignite-semantic-v1": ["dataset-ignite-official-v1", "dataset-ignite-local-manifest-v1"],
-    "orca-semantic-v1": ["dataset-orca-official-v1", "dataset-orca-local-manifest-v1"],
-    "panda-gleason-v1": ["dataset-panda-official-v1", "dataset-panda-local-manifest-v1"],
-    "puma-semantic-v1": ["dataset-puma-official-v1", "dataset-puma-local-manifest-v1"]
+    "bcss-semantic-v1": [
+      "dataset-bcss-official-v1",
+      "dataset-bcss-local-manifest-v1"
+    ],
+    "glas-gland-v1": [
+      "dataset-glas-official-v1",
+      "dataset-glas-local-manifest-v1"
+    ],
+    "ignite-semantic-v1": [
+      "dataset-ignite-official-v1",
+      "dataset-ignite-local-manifest-v1"
+    ],
+    "orca-semantic-v1": [
+      "dataset-orca-official-v1",
+      "dataset-orca-local-manifest-v1"
+    ],
+    "panda-gleason-v1": [
+      "dataset-panda-official-v1",
+      "dataset-panda-local-manifest-v1"
+    ],
+    "puma-semantic-v1": [
+      "dataset-puma-official-v1",
+      "dataset-puma-local-manifest-v1"
+    ]
   },
-  "engineering_source_ids": ["engineering-joint-contract-v2"],
-  "model_representability_source_ids": ["representability-frozen-generator-v1"]
+  "engineering_source_ids": [
+    "engineering-joint-contract-v2"
+  ],
+  "model_representability_source_ids": [
+    "representability-frozen-generator-v1"
+  ]
 }

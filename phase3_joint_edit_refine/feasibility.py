@@ -480,6 +480,15 @@ def build_joint_nuclei_preflight(
         boundary_topology = classify_tumor_stroma_boundary(
             scene=scene,
             interface=interface,
+            allowed_host_labels=tuple(
+                sorted(
+                    (
+                        set(source_contract["source_labels"])
+                        | set(source_contract["target_labels"])
+                    )
+                    - {"Tumor"}
+                )
+            ),
         )
         # Capacity must use the same geometric upper bound as the downstream
         # depth/span gate.  The former 0.80*contact heuristic was only a shape
@@ -876,11 +885,24 @@ def build_joint_nuclei_preflight(
     )
 
 
-def classify_tumor_stroma_boundary(*, scene, interface) -> dict[str, Any]:
-    """Classify an annotated Tumor--Stroma interface without using H&E."""
+def classify_tumor_stroma_boundary(
+    *, scene, interface, allowed_host_labels: tuple[str, ...] = ("Stroma",)
+) -> dict[str, Any]:
+    """Classify an external Tumor/authorized-host boundary from masks only.
+
+    The historical name remains for artifact compatibility.  Profiles such as
+    ORCA encode the legal receiving compartment as ``Other tissue`` rather
+    than ``Stroma``; the active mechanism label contract supplies that closed
+    host set and no histologic subtype is inferred.
+    """
 
     labels = {interface.source_label, interface.target_label}
-    if labels != {"Tumor", "Stroma"}:
+    host_labels = labels - {"Tumor"}
+    if (
+        "Tumor" not in labels
+        or len(host_labels) != 1
+        or not host_labels.issubset(set(allowed_host_labels))
+    ):
         return {
             "classification": "not_tumor_stroma",
             "external_tumor_stroma_boundary": False,
@@ -891,9 +913,10 @@ def classify_tumor_stroma_boundary(*, scene, interface) -> dict[str, Any]:
         if interface.source_label == "Tumor"
         else interface.target_component_id
     )
+    host_label = next(iter(host_labels))
     stroma_component_id = (
         interface.source_component_id
-        if interface.source_label == "Stroma"
+        if interface.source_label == host_label
         else interface.target_component_id
     )
     tumor = np.asarray(scene.tissue.component_masks[tumor_component_id], dtype=bool)

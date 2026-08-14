@@ -2,21 +2,22 @@
   "mechanism_id": "colorectal-tumor-budding-front",
   "pathology_domain_id": "colorectal-adenocarcinoma-v1",
   "supported_primitives": [
-    "neoplastic-microinfiltration-increase-v1"
+    "peritumoral-neoplastic-scatter-increase-v1",
+    "peritumoral-small-cluster-increase-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
-  "summary": "Add isolated neoplastic cells or one-to-four-cell buds in a verified stromal invasion halo without creating tumor-mask islands.",
+  "summary": "Add non-diagnostic periglandular class-1 scatter or multiple one-to-four-cell synthetic foci inside a native malignant-gland exterior annulus without changing tissue labels.",
   "recognition_contract": {
     "required_observations": [
-      "verified colorectal invasive front",
-      "single neoplastic cells or clusters no larger than four cells",
-      "true adjacent stroma rather than lumen, mucin, debris, muscle, vessel, or nerve"
+      "native malignant-gland instance map and its exterior boundary",
+      "compiler-certified operational non-gland receiving annulus excluding every lumen and hole contour",
+      "complete class-1 references with sufficient exact packing capacity"
     ],
     "contraindications": [
-      "bulk gland-forming front",
+      "missing or digest-detached native gland-instance authority",
       "uncertain inflammatory cells",
-      "remote stroma without a tumor interface"
+      "remote operational non-gland tissue without the selected gland interface"
     ],
     "minimum_confidence": 0.9
   },
@@ -25,21 +26,33 @@
     "required_cell_classes": [
       1
     ],
-    "required_auxiliary_structures": [],
-    "allow_semantic_instance_fallback": true,
+    "required_auxiliary_structures": [
+      "native_gland_instance_map",
+      "gland_or_lumen_support"
+    ],
+    "protected_auxiliary_structures": [
+      "gland_or_lumen_support"
+    ],
+    "allow_semantic_instance_fallback": false,
     "failure_action": "abstain_case"
   },
   "tissue_program": {
-    "mode": "preserve_receiving_stroma_for_cellular_buds",
+    "mode": "preserve_tissue_native_gland_exterior_annulus",
     "primitive_label_contracts": {
-      "neoplastic-microinfiltration-increase-v1": {
+      "peritumoral-neoplastic-scatter-increase-v1": {
         "source_labels": [
-          "Stroma",
-          "Other tissue"
+          "Stroma"
         ],
         "target_labels": [
-          "Stroma",
-          "Other tissue"
+          "Stroma"
+        ]
+      },
+      "peritumoral-small-cluster-increase-v1": {
+        "source_labels": [
+          "Stroma"
+        ],
+        "target_labels": [
+          "Stroma"
         ]
       }
     },
@@ -48,7 +61,9 @@
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
-      "native_structure_preserved"
+      "native_structure_preserved",
+      "external_boundary_binding",
+      "native_gland_instance_annulus_binding"
     ],
     "prohibited_structures": [
       "normal_crypt",
@@ -75,7 +90,7 @@
       "small_cluster"
     ],
     "core_policy": "retain_source_population",
-    "halo_policy": "add_buds_in_verified_stromal_interface_halo",
+    "halo_policy": "add_complete_class1_in_native_gland_exterior_annulus",
     "halo_distance_px": [
       4,
       48
@@ -91,17 +106,26 @@
       "nuclei_tissue_containment",
       "cell_quota",
       "cell_spatial_distribution",
-      "mechanism_realization"
+      "mechanism_realization",
+      "external_boundary_binding",
+      "native_gland_instance_annulus_binding",
+      "peritumoral_annulus",
+      "peritumoral_scatter_separation",
+      "small_cluster_cardinality",
+      "small_cluster_focus_compactness",
+      "no_remote_neoplastic_focus",
+      "no_solid_neoplastic_bridge"
     ],
     "layout_program_by_primitive": {
-      "neoplastic-microinfiltration-increase-v1": "small_cluster"
+      "peritumoral-neoplastic-scatter-increase-v1": "single",
+      "peritumoral-small-cluster-increase-v1": "small_cluster"
     }
   },
   "coupling_contract": {
     "compatibility_rule_ids": [
-      "colorectal.joint.bud_size_one_to_four",
-      "colorectal.joint.no_tissue_island_for_budding",
-      "colorectal.joint.verified_stromal_halo"
+      "colorectal.joint.native_malignant_gland_exterior",
+      "colorectal.joint.operational_non_gland_annulus",
+      "colorectal.joint.no_diagnostic_budding_claim"
     ],
     "allow_neoplastic_in_non_tumor_tissue": true,
     "joint_area_mode": "joint_footprint",
@@ -110,16 +134,22 @@
     "render_support_policy_id": "joint_change_plus_bounded_cell_halo_v1"
   },
   "joint_gate_ids": [
-    "joint_area",
-    "tissue_floor",
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "joint_provenance",
+    "external_boundary_binding",
+    "native_gland_instance_annulus_binding",
+    "peritumoral_annulus",
+    "peritumoral_scatter_separation",
+    "small_cluster_cardinality",
+    "small_cluster_focus_compactness",
+    "no_remote_neoplastic_focus",
+    "no_solid_neoplastic_bridge",
     "mechanism_postcondition:colorectal-tumor-budding-front"
   ],
   "render_contract": {
     "required_findings": [
-      "isolated neoplastic cells or buds compatible with the source invasive front"
+      "synthetic periglandular scatter or one-to-four-cell foci remain inside the certified exterior annulus"
     ],
     "veto_findings": [
       "solid tumor bridge",
@@ -128,12 +158,13 @@
       "lost stromal context"
     ],
     "mask_guarantees": [
-      "one-to-four-cell target templates",
-      "no detached tissue tumor island"
+      "tissue mask remains pixel-exact",
+      "complete one-to-four-cell target templates",
+      "no detached tissue tumor island or solid class-1 bridge"
     ],
     "render_only_claims": [
-      "true histologic tumor budding",
-      "cytologic malignancy"
+      "diagnostic tumor budding, ITBCC count, score, or grade",
+      "invasive-front identity, prognosis, or cytologic diagnosis"
     ]
   },
   "evidence_citations": [
@@ -143,5 +174,49 @@
     "convex hull around multiple buds",
     "broad tumor fill into stroma",
     "bud placed in mucin or lumen"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "external_boundary_binding",
+      "native_gland_instance_annulus_binding",
+      "peritumoral_annulus",
+      "no_remote_neoplastic_focus",
+      "no_solid_neoplastic_bridge"
+    ],
+    "selection_preferences": [
+      "pref:annulus:maximize-separated-focus-capacity",
+      "pref:complete-shape:maximize-packing-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ],
+    "requires_explicit_primitive_intent": true
+  }
 }

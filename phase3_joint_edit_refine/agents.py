@@ -828,7 +828,12 @@ class OpenAIMultimodalJointPlanner:
                     "local population Planner selected a cell class incompatible with the bound tissue component"
                 )
             if (
-                case.primitive_id.startswith("cell-type-abundance-")
+                case.primitive_id.startswith(
+                    (
+                        "cell-type-abundance-",
+                        "generic-inflammatory-cell-abundance-",
+                    )
+                )
                 and len(cell_plan.allowed_cell_classes) != 1
             ):
                 raise JointContractError(

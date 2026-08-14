@@ -1,11 +1,8 @@
 ---
 name: lung-treatment-associated-fibrotic-replacement
-description: Replace a portion of viable tumor with explicitly labelled fibrotic/inflammatory stroma only in a documented post-treatment tumor bed.
+description: IGNITE post-treatment operational tumor retreat
 ---
 
-# lung-treatment-associated-fibrotic-replacement
+# IGNITE post-treatment operational tumor retreat
 
-Read `references/joint_contract.json` before planning. Pathology claims, dataset
-semantics, engineering proxies and model representability remain separate under
-the catalog evidence-governance policy. This research skill is fail-closed in
-production until statistics, generator capability and internal review are frozen.
+Require explicit post-treatment context and certified fine-1 to fine-2 candidates. Fine-2 does not prove fibrosis, tumor bed, major pathologic response, pCR, prognosis or benefit.

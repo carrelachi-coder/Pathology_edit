@@ -37,6 +37,8 @@ LOCAL_POPULATION_PRIMITIVES = frozenset(
         "cellularity-increase-v1",
         "neoplastic-cell-abundance-decrease-v1",
         "neoplastic-cell-abundance-increase-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-increase-v1",
     }
 )
 
@@ -117,6 +119,9 @@ class JointInterpretationOption:
                 ),
                 "allowed_decisions": list(
                     self.mechanism.planner_policy.allowed_decisions
+                ),
+                "requires_explicit_primitive_intent": (
+                    self.mechanism.planner_policy.requires_explicit_primitive_intent
                 ),
             },
             "feasibility": feasibility,
@@ -634,6 +639,7 @@ class HeuristicJointPlanner:
                         if classify_tumor_stroma_boundary(
                             scene=scene,
                             interface=item,
+                            allowed_host_labels=tuple(sorted(host)),
                         )["external_tumor_stroma_boundary"]
                     ]
                 interface_ids = tuple(item.interface_id for item in compatible[:3])
@@ -831,7 +837,11 @@ class HeuristicJointPlanner:
             )
         )
         abundance = case.primitive_id.startswith(
-            ("cell-type-abundance-", "neoplastic-cell-abundance-")
+            (
+                "cell-type-abundance-",
+                "neoplastic-cell-abundance-",
+                "generic-inflammatory-cell-abundance-",
+            )
         )
         if abundance and len(classes) != 1:
             raise JointContractError(

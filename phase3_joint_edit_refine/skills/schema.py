@@ -45,6 +45,7 @@ class PlannerPolicyContract:
     selection_preferences: tuple[str, ...]
     clarification_triggers: tuple[str, ...]
     allowed_decisions: tuple[str, ...]
+    requires_explicit_primitive_intent: bool
 
 
 @dataclass(frozen=True)
@@ -425,6 +426,11 @@ class JointMechanismSkill:
                     "select_allowed_tool_program",
                     "request_clarification",
                     "abstain",
+                ),
+                requires_explicit_primitive_intent=bool(
+                    planner_policy.get(
+                        "requires_explicit_primitive_intent", False
+                    )
                 ),
             ),
             representability=RepresentabilityContract(

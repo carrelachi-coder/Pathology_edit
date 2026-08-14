@@ -2,16 +2,16 @@
   "mechanism_id": "prostate-pattern-5-infiltrative-front",
   "pathology_domain_id": "prostate-adenocarcinoma-v1",
   "supported_primitives": [
-    "invasive-front-expansion-v1"
+    "infiltrative-nest-cord-extension-v1"
   ],
   "version": "1.0.0-research",
   "review_status": "draft",
-  "summary": "Advance a verified pattern-5-compatible infiltrative front as non-gland-forming cords or single-cell growth, with explicit PANDA fine-pattern authority.",
+  "summary": "Extend an explicit fine-10 Pattern-5 boundary with one narrow tapered annotation-anchored cord while protecting every other fine label and native lumen.",
   "recognition_contract": {
     "required_observations": [
-      "source region has verified Gleason pattern 5 authority",
-      "selected edge is an infiltrative tumor-stroma interface",
-      "non-gland-forming cord or single-cell morphology is visible"
+      "source region has explicit fine-10 Pattern-5 authority",
+      "selected edge is an external fine-10 Tumor-to-fine-2 Stroma interface",
+      "directional tapered cord geometry is certified by the deterministic program"
     ],
     "contraindications": [
       "cribriform or fused pattern 4 selected as pattern 5",
@@ -26,16 +26,19 @@
       1
     ],
     "required_auxiliary_structures": [
-      "native_pattern_map",
-      "gland_lumen_map"
+      "native_pattern_and_lumen_map"
+    ],
+    "protected_auxiliary_structures": [
+      "native_pattern_and_lumen_map"
     ],
     "allow_semantic_instance_fallback": false,
     "failure_action": "abstain_case"
   },
   "tissue_program": {
-    "mode": "pattern5_infiltrative_front_displacement",
+    "mode": "pattern5_annotation_anchored_narrow_connected_extension",
+    "target_component_merge_policy": "selected_only",
     "primitive_label_contracts": {
-      "invasive-front-expansion-v1": {
+      "infiltrative-nest-cord-extension-v1": {
         "source_labels": [
           "Stroma"
         ],
@@ -45,13 +48,13 @@
       }
     },
     "allowed_tools": [
-      "interface_band_sdf",
-      "topology_safe_morphology",
-      "organic_v2"
+      "directional_tapered_projection"
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
-      "native_structure_preserved"
+      "native_structure_preserved",
+      "external_boundary_binding",
+      "annotation_anchored_extension_geometry"
     ],
     "prohibited_structures": [
       "benign_gland",
@@ -59,7 +62,20 @@
       "cribriform_space",
       "vessel",
       "nerve"
-    ]
+    ],
+    "front_contract": {
+      "profile_mode": "tapered_lobe",
+      "edge_depth_ratio": 0.12,
+      "taper_fraction": 0.42,
+      "lobe_count": 1,
+      "noise_depth_ratio": 0.02,
+      "maximum_band_px": 64,
+      "maximum_depth_span_ratio": 4.0,
+      "maximum_boundary_compactness": 14.0,
+      "directional_sector_required": true,
+      "maximum_selected_anchor_fraction": 0.5,
+      "minimum_unselected_anchor_count": 1
+    }
   },
   "cell_program": {
     "actions": [
@@ -73,18 +89,17 @@
       5
     ],
     "layout_programs": [
-      "single",
-      "short_cord"
+      "boundary_aligned"
     ],
-    "core_policy": "replace_complete_instances_in_tissue_change",
-    "halo_policy": "regenerate_short_cord_or_single_cell_population",
+    "core_policy": "replace_complete_instances_in_narrow_tissue_extension",
+    "halo_policy": "no_cell_only_halo",
     "halo_distance_px": [
       0,
-      48
+      12
     ],
     "cluster_size_range": [
-      1,
-      20
+      2,
+      6
     ],
     "required_checker_ids": [
       "whole_instance_changes",
@@ -93,10 +108,30 @@
       "nuclei_tissue_containment",
       "cell_quota",
       "cell_spatial_distribution",
-      "mechanism_realization"
+      "mechanism_realization",
+      "local_population_density",
+      "interface_seam_continuity"
     ],
     "layout_program_by_primitive": {
-      "invasive-front-expansion-v1": "short_cord"
+      "infiltrative-nest-cord-extension-v1": "boundary_aligned"
+    },
+    "seam_contract": {
+      "mode": "adaptive_population_continuity",
+      "width_cell_diameters": [
+        1.0,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 2.0,
+      "density_ratio_range": [
+        0.45,
+        2.0
+      ],
+      "minimum_anchor_coverage_fraction": 0.5,
+      "requires_new_target_cells": true
     }
   },
   "coupling_contract": {
@@ -120,7 +155,7 @@
   ],
   "render_contract": {
     "required_findings": [
-      "non-gland-forming invasive population continuous with the selected front"
+      "one narrow fine-10 extension remains continuous with the selected annotation boundary"
     ],
     "veto_findings": [
       "new gland lumen",
@@ -133,7 +168,8 @@
     ],
     "render_only_claims": [
       "definitive Gleason grading",
-      "cytologic grade"
+      "cytologic grade",
+      "histologic invasive-front diagnosis"
     ]
   },
   "evidence_citations": [
@@ -144,5 +180,47 @@
     "turning pattern 4 cribriform into a solid fill",
     "bulk expansion without pattern-5 authority",
     "remote single cells"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "external_boundary_binding",
+      "annotation_anchored_extension_geometry",
+      "fine_pattern_preserved",
+      "whole_instance_changes"
+    ],
+    "selection_preferences": [
+      "pref:directional-anchor:maximize-length-depth-ratio",
+      "pref:projection:minimize-component-and-side-merge-count",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

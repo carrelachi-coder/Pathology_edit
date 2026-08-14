@@ -1,0 +1,234 @@
+{
+  "mechanism_id": "lung-generic-immune-compartment-turnover",
+  "pathology_domain_id": "lung-carcinoma-v1",
+  "supported_primitives": [
+    "generic-immune-infiltrate-increase-v1",
+    "generic-immune-infiltrate-decrease-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Turn over an existing annotation-defined Stroma/Immune-infiltrate interface with generic class-2/class-3 populations only.",
+  "recognition_contract": {
+    "required_observations": [
+      "explicit Immune-infiltrate label",
+      "existing Stroma/Immune-infiltrate interface",
+      "complete class-2 inflammatory and class-3 connective references"
+    ],
+    "contraindications": [
+      "remote de-novo Immune-infiltrate island",
+      "Tumor, Necrosis, Normal epithelium, Vessel, Other or zero in the edit band",
+      "immune subtype, PD-L1, TIL-score, response, prognosis or benefit claim"
+    ],
+    "minimum_confidence": 0.86
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      2,
+      3
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "existing_generic_immune_stroma_interface_turnover",
+    "target_component_merge_policy": "selected_only",
+    "front_contract": {
+      "profile_mode": "multi_lobe",
+      "edge_depth_ratio": 0.48,
+      "taper_fraction": 0.24,
+      "lobe_count": 3,
+      "noise_depth_ratio": 0.13,
+      "maximum_band_px": 128,
+      "maximum_depth_span_ratio": 1.1,
+      "maximum_boundary_compactness": 48.0,
+      "directional_sector_required": true,
+      "maximum_selected_anchor_fraction": 0.75,
+      "minimum_unselected_anchor_count": 1
+    },
+    "topology_fallback_by_primitive": {},
+    "primitive_label_contracts": {
+      "generic-immune-infiltrate-increase-v1": {
+        "source_labels": [
+          "Stroma"
+        ],
+        "target_labels": [
+          "Immune infiltrate"
+        ]
+      },
+      "generic-immune-infiltrate-decrease-v1": {
+        "source_labels": [
+          "Immune infiltrate"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "profile_fine_transition_authority"
+    ],
+    "prohibited_structures": [
+      "tumor",
+      "necrosis",
+      "normal_epithelium",
+      "vessel",
+      "other",
+      "zero"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      2,
+      3
+    ],
+    "layout_programs": [
+      "population_replacement"
+    ],
+    "core_policy": "increase removes complete class-3 connective instances in converted tissue and regenerates class-2 inflammatory nuclei; decrease removes complete class-2 instances and regenerates class-3 connective nuclei",
+    "halo_policy": "preserve every exterior instance except exact whole-instance closure",
+    "halo_distance_px": [
+      0,
+      24
+    ],
+    "cluster_size_range": [
+      1,
+      8
+    ],
+    "seam_contract": {
+      "mode": "turnover_transition",
+      "width_cell_diameters": [
+        0.75,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 2.5,
+      "density_ratio_range": [
+        0.4,
+        2.5
+      ],
+      "minimum_anchor_coverage_fraction": 0.4,
+      "requires_new_target_cells": true
+    },
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_population_density",
+      "interface_seam_continuity"
+    ],
+    "layout_program_by_primitive": {
+      "generic-immune-infiltrate-increase-v1": "population_replacement",
+      "generic-immune-infiltrate-decrease-v1": "population_replacement"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "ignite.immune.existing_stroma_immune_interface",
+      "ignite.immune.direction_specific_whole_instance_turnover",
+      "ignite.immune.no_subtype_or_outcome_claim"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "cell_footprint_spill_reserve_fraction": 0.006,
+    "render_support_policy_id": "joint_change_plus_bounded_cell_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "profile_fine_transition_authority",
+    "mechanism_postcondition:lung-generic-immune-compartment-turnover"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "only the existing IGNITE Stroma/Immune-infiltrate interface turns over",
+      "the direction-specific generic class-2/class-3 population is regenerated"
+    ],
+    "veto_findings": [
+      "remote Immune-infiltrate island",
+      "change to Tumor, Necrosis, Normal epithelium, Vessel, Other or zero",
+      "immune subtype, PD-L1, TIL-score, response, prognosis or benefit claim"
+    ],
+    "mask_guarantees": [
+      "fine-2/fine-4 tissue transition only",
+      "complete class-2/class-3 instance turnover only"
+    ],
+    "render_only_claims": [
+      "immune subtype",
+      "PD-L1",
+      "TIL score",
+      "response",
+      "prognosis",
+      "clinical benefit"
+    ]
+  },
+  "evidence_citations": [
+    "https://zenodo.org/records/17735903"
+  ],
+  "counterexamples": [
+    "creating a remote Immune-infiltrate island",
+    "calling generic class-2 nuclei a specific immune subtype",
+    "claiming PD-L1, TIL score, response, prognosis or benefit"
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "profile_fine_transition_authority",
+      "whole_instance_changes"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:protected-clearance:maximize-distance",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "the instruction permits multiple materially different executable primitives"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 ---
 name: lung-lepidic-growth
-description: Joint tissue–cell execution contract for lung lepidic growth; use only after the required H&E, label-profile, native-structure and nuclei observations are available.
+description: Joint tissue–cell execution contract for lung lepidic growth; use only after the required mask-profile, native-structure, nuclei, and certified-candidate observations are available.
 ---
 
 # Lung Lepidic Growth

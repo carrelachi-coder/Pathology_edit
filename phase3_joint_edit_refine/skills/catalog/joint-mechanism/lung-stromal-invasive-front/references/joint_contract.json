@@ -2,21 +2,21 @@
   "mechanism_id": "lung-stromal-invasive-front",
   "pathology_domain_id": "lung-carcinoma-v1",
   "supported_primitives": [
-    "invasive-front-expansion-v1"
+    "infiltrative-nest-cord-extension-v1"
   ],
   "version": "1.0.0-research",
   "review_status": "draft",
-  "summary": "Advance a verified invasive lung carcinoma front into true adjacent stroma; this is not lepidic growth and not STAS.",
+  "summary": "Create one annotation-anchored narrow connected Tumor extension with class-1 seam continuity; this is synthetic cord geometry only.",
   "recognition_contract": {
     "required_observations": [
-      "non-lepidic invasive morphology at the selected edge",
-      "true stromal receiving compartment",
-      "continuous primary tumor front"
+      "explicit Tumor-label component and exterior boundary",
+      "explicit Stroma receiving label",
+      "compiler-certified tapered projection capacity"
     ],
     "contraindications": [
-      "growth confined to intact alveolar septa",
-      "free clusters in airspace",
-      "post-treatment fibrotic tumor bed"
+      "protected structure in projection corridor",
+      "remote island or side merge",
+      "histologic invasive-front diagnosis requested"
     ],
     "minimum_confidence": 0.9
   },
@@ -30,12 +30,12 @@
     "failure_action": "abstain_case"
   },
   "tissue_program": {
-    "mode": "stromal_invasive_front_displacement",
+    "mode": "annotation_anchored_narrow_connected_extension",
+    "target_component_merge_policy": "selected_only",
     "primitive_label_contracts": {
-      "invasive-front-expansion-v1": {
+      "infiltrative-nest-cord-extension-v1": {
         "source_labels": [
-          "Stroma",
-          "Other tissue"
+          "Stroma"
         ],
         "target_labels": [
           "Tumor"
@@ -43,21 +43,37 @@
       }
     },
     "allowed_tools": [
-      "interface_band_sdf",
-      "topology_safe_morphology",
-      "organic_v2"
+      "directional_tapered_projection"
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
-      "native_structure_preserved"
+      "external_boundary_binding",
+      "annotation_anchored_extension_geometry",
+      "profile_fine_transition_authority"
     ],
     "prohibited_structures": [
-      "alveolar_airspace",
-      "bronchus",
-      "cartilage",
+      "benign_duct",
+      "benign_lobule",
+      "dcis_unit",
+      "angioinvasion",
       "vessel",
-      "pleura"
-    ]
+      "necrosis",
+      "immune_infiltrate",
+      "collapsed_zero"
+    ],
+    "front_contract": {
+      "profile_mode": "tapered_lobe",
+      "edge_depth_ratio": 0.12,
+      "taper_fraction": 0.42,
+      "lobe_count": 1,
+      "noise_depth_ratio": 0.02,
+      "maximum_band_px": 64,
+      "maximum_depth_span_ratio": 4.0,
+      "maximum_boundary_compactness": 14.0,
+      "directional_sector_required": true,
+      "maximum_selected_anchor_fraction": 0.5,
+      "minimum_unselected_anchor_count": 1
+    }
   },
   "cell_program": {
     "actions": [
@@ -67,22 +83,44 @@
     ],
     "allowed_cell_classes": [
       1,
+      2,
       3,
       5
     ],
     "layout_programs": [
       "boundary_aligned"
     ],
-    "core_policy": "replace_complete_instances_in_tissue_change",
-    "halo_policy": "regenerate_neoplastic_population_across_verified_front",
+    "layout_program_by_primitive": {
+      "infiltrative-nest-cord-extension-v1": "boundary_aligned"
+    },
+    "core_policy": "replace_complete_instances_in_narrow_tissue_extension",
+    "halo_policy": "no_cell_only_halo",
     "halo_distance_px": [
       0,
-      48
+      12
     ],
     "cluster_size_range": [
-      1,
-      20
+      2,
+      6
     ],
+    "seam_contract": {
+      "mode": "adaptive_population_continuity",
+      "width_cell_diameters": [
+        1.0,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 2.0,
+      "density_ratio_range": [
+        0.45,
+        2.0
+      ],
+      "minimum_anchor_coverage_fraction": 0.5,
+      "requires_new_target_cells": true
+    },
     "required_checker_ids": [
       "whole_instance_changes",
       "protected_nuclei_preserved",
@@ -90,22 +128,22 @@
       "nuclei_tissue_containment",
       "cell_quota",
       "cell_spatial_distribution",
+      "local_population_density",
+      "interface_seam_continuity",
       "mechanism_realization"
-    ],
-    "layout_program_by_primitive": {
-      "invasive-front-expansion-v1": "boundary_aligned"
-    }
+    ]
   },
   "coupling_contract": {
     "compatibility_rule_ids": [
-      "lung.invasion.true_stromal_interface",
-      "lung.invasion.no_airspace_spread"
+      "breast.mask.narrow_extension_connected",
+      "breast.mask.boundary_aligned_population_in_narrow_extension"
     ],
     "allow_neoplastic_in_non_tumor_tissue": false,
     "joint_area_mode": "joint_footprint",
     "tissue_floor_applies": true,
-    "cell_only_target_fraction": 0,
-    "render_support_policy_id": "joint_change_plus_bounded_context_v1"
+    "cell_only_target_fraction": 0.0,
+    "cell_footprint_spill_reserve_fraction": 0.004,
+    "render_support_policy_id": "joint_change_plus_bounded_cell_halo_v1"
   },
   "joint_gate_ids": [
     "joint_area",
@@ -113,6 +151,9 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "joint_provenance",
+    "external_boundary_binding",
+    "annotation_anchored_extension_geometry",
+    "profile_fine_transition_authority",
     "mechanism_postcondition:lung-stromal-invasive-front"
   ],
   "render_contract": {
@@ -141,5 +182,46 @@
     "calling STAS a stromal front",
     "filling an alveolar airspace",
     "remote tumor island"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "external_boundary_binding",
+      "annotation_anchored_extension_geometry",
+      "profile_fine_transition_authority",
+      "whole_instance_changes"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

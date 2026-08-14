@@ -1,0 +1,251 @@
+{
+  "mechanism_id": "melanoma-operational-tumor-retreat",
+  "pathology_domain_id": "melanoma-v1",
+  "supported_primitives": [
+    "invasive-tumor-footprint-decrease-v1",
+    "stroma-increase-v1",
+    "residual-tumor-fragmentation-v1"
+  ],
+  "version": "1.1.1-draft",
+  "review_status": "draft",
+  "summary": "Retreat annotation-defined Tumor into the profile's operational non-tumor receiving label under explicit post-treatment context.",
+  "recognition_contract": {
+    "required_observations": [
+      "explicit post-treatment semantic intent",
+      "annotation-defined Tumor component and receiving boundary",
+      "compiler-certified residual topology and cell capacity"
+    ],
+    "contraindications": [
+      "fibrosis, tumor-bed, pCR or clinical-benefit claim",
+      "protected profile label in the retreat support",
+      "treatment context absent"
+    ],
+    "minimum_confidence": 0.9
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "residual_preserving_invasive_front_retreat",
+    "target_component_merge_policy": "selected_only",
+    "front_contract": {
+      "profile_mode": "multi_lobe",
+      "edge_depth_ratio": 0.55,
+      "taper_fraction": 0.24,
+      "lobe_count": 3,
+      "noise_depth_ratio": 0.12,
+      "maximum_band_px": 220,
+      "maximum_depth_span_ratio": 1.35,
+      "maximum_boundary_compactness": 4.8,
+      "directional_sector_required": true,
+      "maximum_selected_anchor_fraction": 0.75,
+      "minimum_unselected_anchor_count": 1
+    },
+    "topology_fallback_by_primitive": {},
+    "primitive_label_contracts": {
+      "invasive-tumor-footprint-decrease-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      },
+      "stroma-increase-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      },
+      "residual-tumor-fragmentation-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology",
+      "organic_v2"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "profile_fine_transition_authority",
+      "residual_fragmentation_topology"
+    ],
+    "prohibited_structures": [
+      "zero",
+      "epidermis",
+      "vessel",
+      "necrosis"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "population_replacement",
+      "boundary_aligned"
+    ],
+    "core_policy": "remove every complete class-1 instance whose footprint enters the converted tissue and regenerate a source-matched non-neoplastic population",
+    "halo_policy": "preserve every exterior instance; only whole-instance closure may extend beyond tissue change",
+    "halo_distance_px": [
+      0,
+      32
+    ],
+    "cluster_size_range": [
+      1,
+      12
+    ],
+    "seam_contract": {
+      "mode": "turnover_transition",
+      "width_cell_diameters": [
+        0.75,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 2.5,
+      "density_ratio_range": [
+        0.4,
+        2.2
+      ],
+      "minimum_anchor_coverage_fraction": 0.4,
+      "requires_new_target_cells": true
+    },
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_population_density",
+      "interface_seam_continuity"
+    ],
+    "layout_program_by_primitive": {
+      "invasive-tumor-footprint-decrease-v1": "population_replacement",
+      "stroma-increase-v1": "population_replacement",
+      "residual-tumor-fragmentation-v1": "population_replacement"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "other_organ.retreat.explicit_post_treatment_context",
+      "other_organ.retreat.profile_fine_transition_authority",
+      "other_organ.retreat.complete_instance_turnover",
+      "other_organ.retreat.residual_topology"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "cell_footprint_spill_reserve_fraction": 0.006,
+    "render_support_policy_id": "joint_change_plus_bounded_cell_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "coherent_footprint_retreat",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "profile_fine_transition_authority",
+    "residual_fragmentation_topology",
+    "mechanism_postcondition:melanoma-operational-tumor-retreat"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "annotation-defined Tumor retreats only along a certified receiving boundary",
+      "residual Tumor and all unrequested profile labels remain stable"
+    ],
+    "veto_findings": [
+      "fibrosis, tumor-bed, pCR, response-percentage or clinical-benefit claim",
+      "edit of a protected or unrequested profile label",
+      "whole-lesion clearance unless separately authorized by a local ROI contract"
+    ],
+    "mask_guarantees": [
+      "changed tissue is Tumor to operational Stroma only",
+      "every changed nucleus is handled as a complete instance",
+      "residual topology and the requested area floor are reconstructed from final masks"
+    ],
+    "render_only_claims": [
+      "fibrosis",
+      "tumor bed",
+      "pCR",
+      "response percentage",
+      "clinical benefit"
+    ]
+  },
+  "evidence_citations": [
+    "https://puma.grand-challenge.org/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11837757/"
+  ],
+  "counterexamples": [
+    "inferring treatment context or receiving tissue identity from H&E",
+    "calling operational label turnover fibrosis, tumor bed or clinical response",
+    "accepting a final mask that violates residual topology or the requested floor"
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "profile_fine_transition_authority",
+      "whole_instance_changes",
+      "residual_fragmentation_topology"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:protected-clearance:maximize-distance",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "the instruction permits multiple materially different executable primitives"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
+}

@@ -109,6 +109,7 @@ class JointWorkflowConfig:
     require_mature_probnet_in_production: bool = True
     require_mature_probnet_for_target_population_regeneration: bool = False
     require_probnet_ranker_for_cell_addition: bool = False
+    require_evaluation_input_bindings: bool = False
     # One initial solve plus two feedback-directed alternatives.  Each pass
     # executes a fixed 12-candidate contract; a case that still lacks a safe
     # tissue--cell pair abstains instead of creating an unbounded search tail.
@@ -312,6 +313,33 @@ class JointPathologyEditWorkflow:
                 raise JointContractError(
                     "production joint execution requires a bound Semantic Parser intent"
                 )
+            if self.config.require_evaluation_input_bindings:
+                mechanism_id = case.provenance.get("joint_mechanism_id")
+                if not isinstance(mechanism_id, str) or mechanism_id in {
+                    "",
+                    "__abstain__",
+                }:
+                    raise JointContractError(
+                        "evaluation input requires an explicit joint_mechanism_id binding"
+                    )
+                if case.provenance.get("joint_primitive_id") != case.primitive_id:
+                    raise JointContractError(
+                        "evaluation input requires a matching joint_primitive_id binding"
+                    )
+                mechanism = self.joint_skills.mechanisms.get(mechanism_id)
+                if mechanism is None or case.primitive_id not in mechanism.supported_primitives:
+                    raise JointContractError(
+                        "evaluation input mechanism binding does not support the requested primitive"
+                    )
+                missing_auxiliary = sorted(
+                    set(mechanism.representability.required_auxiliary_structures)
+                    - set(case.auxiliary_structure_uris)
+                )
+                if missing_auxiliary:
+                    raise JointContractError(
+                        "evaluation input lacks required auxiliary authority: "
+                        + ", ".join(missing_auxiliary)
+                    )
             case.validate_local_inputs()
             _validate_digests(case)
             source_tissue = load_id_mask(case.source_tissue_mask_uri)
@@ -1916,6 +1944,19 @@ class JointPathologyEditWorkflow:
                 ) or "no joint mechanism supports this primitive"
                 continue
             for mechanism in mechanisms:
+                manifest_hint = case.semantic_intent.get(
+                    "manifest_primitive_hint"
+                )
+                if (
+                    mechanism.planner_policy.requires_explicit_primitive_intent
+                    and semantic_fit == "contextual"
+                    and manifest_hint != primitive_id
+                ):
+                    rejected[primitive_id] = (
+                        "no joint mechanism supports this primitive without "
+                        "an explicit primitive request"
+                    )
+                    continue
                 option_id = "::".join(
                     item
                     for item in (
@@ -2129,6 +2170,9 @@ class JointPathologyEditWorkflow:
                                     if classify_tumor_stroma_boundary(
                                         scene=scene,
                                         interface=interface,
+                                        allowed_host_labels=tuple(
+                                            sorted(receiving_labels)
+                                        ),
                                     )["external_tumor_stroma_boundary"]
                                 ]
                             interface_pairs = {
@@ -3043,6 +3087,8 @@ class JointPathologyEditWorkflow:
             "cellularity-increase-v1",
             "neoplastic-cell-abundance-decrease-v1",
             "neoplastic-cell-abundance-increase-v1",
+            "generic-inflammatory-cell-abundance-decrease-v1",
+            "generic-inflammatory-cell-abundance-increase-v1",
         }
         if local_population:
             component_labels = {
@@ -3195,6 +3241,7 @@ class JointPathologyEditWorkflow:
                     if classify_tumor_stroma_boundary(
                         scene=scene,
                         interface=item,
+                        allowed_host_labels=tuple(sorted(host)),
                     )["external_tumor_stroma_boundary"]
                 ]
             compatible.sort(key=lambda item: (-item.contact_pixels, item.interface_id))
@@ -3978,7 +4025,9 @@ def _derive_local_population_budget(
             "cell-only budget requires observation-profile class resolution"
         )
     class_ids = tuple(sorted({int(value) for value in resolved}))
-    abundance = primitive_id.startswith("cell-type-abundance-")
+    abundance = primitive_id.startswith(
+        ("cell-type-abundance-", "generic-inflammatory-cell-abundance-")
+    )
     if abundance and len(class_ids) != 1:
         raise JointContractError(
             "cell abundance budget requires exactly one observable class"

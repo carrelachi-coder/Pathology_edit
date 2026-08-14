@@ -1,0 +1,231 @@
+{
+  "mechanism_id": "lung-local-tumor-clearance",
+  "pathology_domain_id": "lung-carcinoma-v1",
+  "supported_primitives": [
+    "local-invasive-clearance-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Clear annotation-defined Tumor only inside a digest-bound user ROI into the profile's operational non-tumor receiving label.",
+  "recognition_contract": {
+    "required_observations": [
+      "explicit local-clearance request",
+      "digest-bound user local_clearance_roi",
+      "Tumor inside the ROI adjoining the operational receiving label"
+    ],
+    "contraindications": [
+      "missing, inferred, stale or digest-detached ROI",
+      "protected or unrequested profile label inside the requested change",
+      "whole-lesion, negative-margin, pCR or complete-response claim"
+    ],
+    "minimum_confidence": 0.95
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [
+      "local_clearance_roi"
+    ],
+    "receiving_auxiliary_structures": [
+      "local_clearance_roi"
+    ],
+    "protected_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "user_roi_bounded_local_invasive_clearance",
+    "target_component_merge_policy": "selected_only",
+    "front_contract": {
+      "profile_mode": "uniform_front",
+      "edge_depth_ratio": 1,
+      "taper_fraction": 0,
+      "lobe_count": 1,
+      "noise_depth_ratio": 0,
+      "maximum_band_px": 256,
+      "maximum_depth_span_ratio": 2,
+      "maximum_boundary_compactness": 6,
+      "directional_sector_required": false,
+      "maximum_selected_anchor_fraction": 1,
+      "minimum_unselected_anchor_count": 0
+    },
+    "topology_fallback_by_primitive": {},
+    "primitive_label_contracts": {
+      "local-invasive-clearance-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "interface_band_sdf",
+      "topology_safe_morphology"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "profile_fine_transition_authority",
+      "local_clearance_roi_binding"
+    ],
+    "prohibited_structures": [
+      "zero",
+      "necrosis",
+      "immune",
+      "normal_epithelium",
+      "vessel",
+      "other"
+    ]
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "population_replacement"
+    ],
+    "core_policy": "remove complete class-1 instances only where invasive tissue changes inside ROI",
+    "halo_policy": "preserve every exterior instance pixel-exactly",
+    "halo_distance_px": [
+      0,
+      24
+    ],
+    "cluster_size_range": [
+      1,
+      12
+    ],
+    "seam_contract": {
+      "mode": "turnover_transition",
+      "width_cell_diameters": [
+        0.75,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 2.5,
+      "density_ratio_range": [
+        0.35,
+        2.5
+      ],
+      "minimum_anchor_coverage_fraction": 0.35,
+      "requires_new_target_cells": true
+    },
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_clearance_roi_binding"
+    ],
+    "layout_program_by_primitive": {
+      "local-invasive-clearance-v1": "population_replacement"
+    }
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "other_organ.clearance.explicit_digest_bound_roi",
+      "other_organ.clearance.profile_tumor_to_receiver_only",
+      "other_organ.clearance.no_whole_lesion_claim"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0,
+    "cell_footprint_spill_reserve_fraction": 0.006,
+    "render_support_policy_id": "roi_bounded_joint_change_plus_context_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "profile_fine_transition_authority",
+    "local_clearance_roi_binding",
+    "mechanism_postcondition:lung-local-tumor-clearance"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "annotation-defined Tumor is absent only inside the declared local ROI",
+      "tissue and nuclei outside the ROI remain stable except complete-instance closure"
+    ],
+    "veto_findings": [
+      "edit outside the declared ROI",
+      "edit of a protected or unrequested profile label",
+      "negative-margin, pCR or complete-response claim"
+    ],
+    "mask_guarantees": [
+      "ROI-bounded Tumor to operational Stroma transition only",
+      "changed-instance centers and changed tissue are reconstructed against the digest-bound ROI"
+    ],
+    "render_only_claims": [
+      "negative margin",
+      "pCR",
+      "complete response",
+      "clinical benefit"
+    ]
+  },
+  "evidence_citations": [
+    "https://zenodo.org/records/17735903"
+  ],
+  "counterexamples": [
+    "auto-inferring a clearance ROI from H&E or the Tumor component",
+    "editing Tumor outside the digest-bound local ROI",
+    "calling local annotation turnover a negative margin, pCR or complete response"
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "local_clearance_roi_binding",
+      "profile_fine_transition_authority",
+      "whole_instance_changes"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:protected-clearance:maximize-distance",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "the instruction permits multiple materially different executable primitives"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
+}

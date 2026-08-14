@@ -11,7 +11,7 @@
     "required_observations": [
       "source and target fine Gleason labels are explicitly available",
       "native gland and lumen maps resolve the selected architectural unit",
-      "the requested progression is compatible with visible source architecture"
+      "the requested progression is compatible with auxiliary-map-certified source architecture"
     ],
     "contraindications": [
       "only a binary tumor label is available",
@@ -149,5 +149,45 @@
     "changing only nuclei density",
     "calling burden expansion Gleason progression",
     "filling lumina to force a solid mask"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "tissue_gate_binding",
+      "whole_instance_changes",
+      "joint_provenance"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

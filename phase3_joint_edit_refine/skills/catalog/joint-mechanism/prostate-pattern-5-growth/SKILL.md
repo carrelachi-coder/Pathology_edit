@@ -1,6 +1,6 @@
 ---
 name: prostate-pattern-5-growth
-description: Joint tissue–cell execution contract for prostate pattern 5 growth; use only after the required H&E, label-profile, native-structure and nuclei observations are available.
+description: Joint tissue–cell execution contract for prostate pattern 5 growth; use only after the required mask-profile, native-structure, nuclei, and certified-candidate observations are available.
 ---
 
 # Prostate Pattern 5 Growth

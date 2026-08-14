@@ -26,7 +26,9 @@
     "lung-treatment-associated-fibrotic-replacement",
     "breast-intratumoral-necrosis-turnover",
     "lung-intratumoral-necrosis-turnover",
-    "melanoma-intratumoral-necrosis-turnover"
+    "melanoma-intratumoral-necrosis-turnover",
+    "lung-generic-immune-compartment-turnover",
+    "lung-local-tumor-clearance"
   ],
   "required_checker_ids": [
     "profile_provenance",
@@ -34,5 +36,62 @@
     "prohibited_generation_support",
     "native_structure_preserved"
   ],
-  "supports_explicit_stroma": true
+  "supports_explicit_stroma": true,
+  "protected_fine_ids": [
+    0
+  ],
+  "operational_stroma_fine_ids": [
+    2
+  ],
+  "mechanism_editable_source_fine_ids": {
+    "lung-solid-squamous-growth": [
+      2
+    ],
+    "lung-stromal-invasive-front": [
+      2
+    ],
+    "lung-treatment-associated-fibrotic-replacement": [
+      1
+    ],
+    "lung-generic-immune-compartment-turnover": [
+      2,
+      4
+    ],
+    "lung-local-tumor-clearance": [
+      1
+    ],
+    "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [
+      2
+    ],
+    "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [
+      4
+    ]
+  },
+  "mechanism_editable_target_fine_ids": {
+    "lung-solid-squamous-growth": [
+      1
+    ],
+    "lung-stromal-invasive-front": [
+      1
+    ],
+    "lung-treatment-associated-fibrotic-replacement": [
+      2
+    ],
+    "lung-generic-immune-compartment-turnover": [
+      2,
+      4
+    ],
+    "lung-local-tumor-clearance": [
+      2
+    ],
+    "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [
+      4
+    ],
+    "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [
+      2
+    ]
+  },
+  "operational_stroma_policy": "The configured label is an operational receiving class only and does not prove fibrosis, tumor bed, response or clinical benefit.",
+  "fibrosis_claim_authorized": false,
+  "visual_veto_requirements": []
 }

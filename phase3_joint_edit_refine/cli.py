@@ -284,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.meta_eval
                 ),
                 require_probnet_ranker_for_cell_addition=args.meta_eval,
+                require_evaluation_input_bindings=args.meta_eval,
             ),
         )
         result = workflow.run(case, output_root=args.output_root)

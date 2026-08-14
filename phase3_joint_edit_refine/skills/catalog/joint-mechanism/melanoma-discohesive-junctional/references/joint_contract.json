@@ -2,14 +2,14 @@
   "mechanism_id": "melanoma-discohesive-junctional",
   "pathology_domain_id": "melanoma-v1",
   "supported_primitives": [
-    "neoplastic-microinfiltration-increase-v1"
+    "peritumoral-neoplastic-scatter-increase-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
   "summary": "Represent verified sparse junctional or discohesive spread with complete single cells or small clusters, without creating a false bulk tissue island.",
   "recognition_contract": {
     "required_observations": [
-      "verified epidermal/junctional relationship",
+      "explicit Epidermis-label junction relationship",
       "sparse source neoplastic cells or small clusters",
       "legal bounded halo"
     ],
@@ -34,14 +34,12 @@
   "tissue_program": {
     "mode": "preserve_tissue_for_cell_dominant_spread",
     "primitive_label_contracts": {
-      "neoplastic-microinfiltration-increase-v1": {
+      "peritumoral-neoplastic-scatter-increase-v1": {
         "source_labels": [
-          "Stroma",
-          "Other tissue"
+          "Stroma"
         ],
         "target_labels": [
-          "Stroma",
-          "Other tissue"
+          "Stroma"
         ]
       }
     },
@@ -50,7 +48,9 @@
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
-      "native_structure_preserved"
+      "native_structure_preserved",
+      "external_boundary_binding",
+      "peritumoral_annulus"
     ],
     "prohibited_structures": [
       "epidermis",
@@ -88,10 +88,12 @@
       "nuclei_overlap",
       "nuclei_tissue_containment",
       "cell_quota",
-      "cell_spatial_distribution"
+      "cell_spatial_distribution",
+      "mechanism_realization",
+      "puma_epidermal_junction_binding"
     ],
     "layout_program_by_primitive": {
-      "neoplastic-microinfiltration-increase-v1": "single"
+      "peritumoral-neoplastic-scatter-increase-v1": "single"
     }
   },
   "coupling_contract": {
@@ -100,9 +102,9 @@
       "melanoma-discohesive-junctional.protected_structure_coupling"
     ],
     "allow_neoplastic_in_non_tumor_tissue": true,
-    "joint_area_mode": "joint_footprint",
+    "joint_area_mode": "cell_count_extent",
     "tissue_floor_applies": false,
-    "cell_only_target_fraction": 0,
+    "cell_only_target_fraction": 1,
     "render_support_policy_id": "joint_change_plus_bounded_context_v1"
   },
   "joint_gate_ids": [
@@ -111,7 +113,9 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "joint_provenance",
-    "mechanism_postcondition:melanoma-discohesive-junctional"
+    "mechanism_postcondition:melanoma-discohesive-junctional",
+    "external_boundary_binding",
+    "peritumoral_annulus"
   ],
   "render_contract": {
     "required_findings": [
@@ -140,5 +144,47 @@
     "large tumor island",
     "epidermis loss",
     "random dermal scatter"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "tissue_gate_binding",
+      "whole_instance_changes",
+      "joint_provenance",
+      "external_boundary_binding",
+      "peritumoral_annulus"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

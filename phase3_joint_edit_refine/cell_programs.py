@@ -491,6 +491,25 @@ class CellToolProgramCompiler:
             )
             valid &= ~tumor & (outer_distance <= outer_maximum)
         if (
+            bundle.annotation_profile.annotation_profile_id == "puma-semantic-v1"
+            and primitive.primitive_id
+            == "peritumoral-neoplastic-scatter-increase-v1"
+        ):
+            junction = scene.auxiliary_structure_masks.get(
+                "epidermis_or_junction_map"
+            )
+            if junction is None:
+                raise JointContractError(
+                    "PUMA junctional scatter requires epidermis_or_junction_map"
+                )
+            junction = np.asarray(junction, dtype=bool)
+            junction_distance = ndimage.distance_transform_edt(~junction)
+            valid &= (
+                ~junction
+                & (junction_distance > 0)
+                & (junction_distance <= outer_maximum)
+            )
+        if (
             primitive.scope == "cell_only"
             and cell.layout_program_id != "localized_density_gradient"
             and cell.interface_ids

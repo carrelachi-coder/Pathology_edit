@@ -102,15 +102,9 @@ def validate_planner_policy(policy) -> None:
 
 
 def preference_metadata(policy) -> tuple[dict[str, str], ...]:
-    # The strict runtime validation is currently scoped to the revised Breast
-    # execution surface.  Other organ skills retain legacy prose preferences
-    # until their own refine cycle; exposing no metric binding is safer than
-    # pretending that prose has become a deterministic candidate metric.
-    if not policy.selection_preferences or any(
-        rule_id not in PREFERENCE_METRIC_CATALOG
-        for rule_id in policy.selection_preferences
-    ):
-        return ()
+    """Expose only the deterministic metrics bound by a validated skill policy."""
+
+    validate_planner_policy(policy)
     return tuple(
         {
             "preference_rule_id": rule_id,

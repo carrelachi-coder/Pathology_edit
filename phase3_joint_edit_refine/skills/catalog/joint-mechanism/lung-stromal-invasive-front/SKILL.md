@@ -1,11 +1,8 @@
 ---
 name: lung-stromal-invasive-front
-description: Advance a verified invasive lung carcinoma front into true adjacent stroma; this is not lepidic growth and not STAS.
+description: IGNITE annotation-anchored synthetic cord extension
 ---
 
-# lung-stromal-invasive-front
+# IGNITE annotation-anchored synthetic cord extension
 
-Read `references/joint_contract.json` before planning. Pathology claims, dataset
-semantics, engineering proxies and model representability remain separate under
-the catalog evidence-governance policy. This research skill is fail-closed in
-production until statistics, generator capability and internal review are frozen.
+Use one compiler-certified fine-1/fine-2 external boundary and the directional tapered executor. This is narrow connected mask geometry, not a histologic invasive-front diagnosis or subtype claim.

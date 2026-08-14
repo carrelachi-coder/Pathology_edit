@@ -1,0 +1,8 @@
+{
+  "mechanism_id": "oral-scc-operational-tumor-retreat",
+  "counterexamples": [
+    "inferring treatment context or receiving tissue identity from H&E",
+    "calling operational label turnover fibrosis, tumor bed or clinical response",
+    "accepting a final mask that violates residual topology or the requested floor"
+  ]
+}

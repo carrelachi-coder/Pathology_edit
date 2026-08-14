@@ -1,0 +1,1186 @@
+{
+  "production_status": "shadow_only",
+  "profiles": [
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "capabilities": [
+        {
+          "closed_reason": "GLaS lacks explicit stromal authority and the attempted H&E/mask-derived gland-unit producer could not reliably distinguish lumen, mucin, necrosis and cleft. Keep tissue-level malignant-gland growth closed.",
+          "mechanism_id": "colorectal-gland-forming-front",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "gland_or_lumen_support"
+          ],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-local-population-modulation",
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-local-population-modulation",
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-local-population-modulation",
+          "primitive_id": "cellularity-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-local-population-modulation",
+          "primitive_id": "cellularity-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-tumor-budding-front",
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_gland_instance_map",
+            "gland_or_lumen_support"
+          ],
+          "simple_instructions": [
+            "Add scattered tumor cells near the tumor boundary."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "colorectal-tumor-budding-front",
+          "primitive_id": "peritumoral-small-cluster-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_gland_instance_map",
+            "gland_or_lumen_support"
+          ],
+          "simple_instructions": [
+            "Add peritumoral small tumor-cell clusters."
+          ],
+          "status": "conditionally_supported"
+        }
+      ],
+      "pathology_domain_id": "colorectal-adenocarcinoma-v1",
+      "planner_selection_contract": {
+        "cell": {
+          "decision_id": "select_certified_cell_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_program_id",
+            "supporting_preference_rule_ids"
+          ]
+        },
+        "compiler_owned_fields": [
+          "interfaces",
+          "components",
+          "anchors",
+          "zones",
+          "annuli",
+          "layouts",
+          "parameter_values",
+          "parameter_ranges",
+          "area",
+          "depth",
+          "geometry",
+          "cell_counts",
+          "coordinates",
+          "pixels"
+        ],
+        "tissue": {
+          "decision_id": "select_certified_tissue_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_family",
+            "supporting_preference_rule_ids"
+          ]
+        }
+      },
+      "production_status": "shadow_only"
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "capabilities": [
+        {
+          "closed_reason": "Mask-side fine-label transition and native-pattern/lumen postconditions are implemented and tested; frozen-generator architecture response and pathology review are not yet validated.",
+          "mechanism_id": "prostate-gleason-architecture-progression",
+          "primitive_id": "architecture-progression-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_map",
+            "gland_lumen_map"
+          ],
+          "simple_instructions": [
+            "Progress the Gleason architectural pattern."
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-population-modulation",
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-population-modulation",
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-population-modulation",
+          "primitive_id": "cellularity-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-population-modulation",
+          "primitive_id": "cellularity-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-population-modulation",
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add scattered tumor cells near the tumor boundary."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-local-tumor-clearance",
+          "primitive_id": "local-invasive-clearance-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "simple_instructions": [
+            "Clear tumor in this local ROI."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist.",
+          "mechanism_id": "prostate-pattern-3-growth",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-pattern-4-growth",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-pattern-4-growth",
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "simple_instructions": [
+            "Expand the tumor boundary locally."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-pattern-5-growth",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-pattern-5-growth",
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "simple_instructions": [
+            "Expand the tumor boundary locally."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-pattern-5-infiltrative-front",
+          "primitive_id": "infiltrative-nest-cord-extension-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "simple_instructions": [
+            "Add a narrow connected tumor cord."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "primitive_id": "stroma-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase operational stroma after treatment."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease the tumor area."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Fragment the residual tumor into controlled foci."
+          ],
+          "status": "conditionally_supported"
+        }
+      ],
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "planner_selection_contract": {
+        "cell": {
+          "decision_id": "select_certified_cell_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_program_id",
+            "supporting_preference_rule_ids"
+          ]
+        },
+        "compiler_owned_fields": [
+          "interfaces",
+          "components",
+          "anchors",
+          "zones",
+          "annuli",
+          "layouts",
+          "parameter_values",
+          "parameter_ranges",
+          "area",
+          "depth",
+          "geometry",
+          "cell_counts",
+          "coordinates",
+          "pixels"
+        ],
+        "tissue": {
+          "decision_id": "select_certified_tissue_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_family",
+            "supporting_preference_rule_ids"
+          ]
+        }
+      },
+      "production_status": "shadow_only"
+    },
+    {
+      "annotation_profile_id": "ignite-semantic-v1",
+      "capabilities": [
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-acinar-papillary-growth",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "lumen_or_fibrovascular_core_map"
+          ],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-generic-immune-compartment-turnover",
+          "primitive_id": "generic-immune-infiltrate-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase the generic immune infiltrate."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-generic-immune-compartment-turnover",
+          "primitive_id": "generic-immune-infiltrate-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease the generic immune infiltrate."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-intratumoral-necrosis-turnover",
+          "primitive_id": "necrosis-appearance-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase tumor necrosis."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-intratumoral-necrosis-turnover",
+          "primitive_id": "necrosis-resolution-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Reduce tumor necrosis."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-lepidic-growth",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "alveolar_structure_map"
+          ],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "cellularity-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "cellularity-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase generic inflammatory-cell abundance in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease generic inflammatory-cell abundance in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add scattered tumor cells near the tumor boundary."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "primitive_id": "peritumoral-small-cluster-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add peritumoral small tumor-cell clusters."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-local-tumor-clearance",
+          "primitive_id": "local-invasive-clearance-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "simple_instructions": [
+            "Clear tumor in this local ROI."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-solid-squamous-growth",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-solid-squamous-growth",
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Expand the tumor boundary locally."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": "Void-aware complete-instance containment and separation are implemented and tested; digest-bound native airspace/alveolar inputs and frozen-generator STAS response are not yet validated.",
+          "mechanism_id": "lung-stas-airspace-spread",
+          "primitive_id": "structural-void-spread-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "alveolar_structure_map",
+            "airspace_void_map"
+          ],
+          "simple_instructions": [
+            "Simulate STAS-like airspace spread."
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-stromal-invasive-front",
+          "primitive_id": "infiltrative-nest-cord-extension-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add a narrow connected tumor cord."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
+          "primitive_id": "stroma-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase operational stroma after treatment."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease the tumor area."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Fragment the residual tumor into controlled foci."
+          ],
+          "status": "conditionally_supported"
+        }
+      ],
+      "pathology_domain_id": "lung-carcinoma-v1",
+      "planner_selection_contract": {
+        "cell": {
+          "decision_id": "select_certified_cell_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_program_id",
+            "supporting_preference_rule_ids"
+          ]
+        },
+        "compiler_owned_fields": [
+          "interfaces",
+          "components",
+          "anchors",
+          "zones",
+          "annuli",
+          "layouts",
+          "parameter_values",
+          "parameter_ranges",
+          "area",
+          "depth",
+          "geometry",
+          "cell_counts",
+          "coordinates",
+          "pixels"
+        ],
+        "tissue": {
+          "decision_id": "select_certified_tissue_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_family",
+            "supporting_preference_rule_ids"
+          ]
+        }
+      },
+      "production_status": "shadow_only"
+    },
+    {
+      "annotation_profile_id": "puma-semantic-v1",
+      "capabilities": [
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-cohesive-nest-sheet",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-cohesive-nest-sheet",
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Expand the tumor boundary locally."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-discohesive-junctional",
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "epidermis_or_junction_map"
+          ],
+          "simple_instructions": [
+            "Add scattered tumor cells near the tumor boundary."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
+          "primitive_id": "necrosis-appearance-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase tumor necrosis."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
+          "primitive_id": "necrosis-resolution-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Reduce tumor necrosis."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "cellularity-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "cellularity-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase generic inflammatory-cell abundance in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease generic inflammatory-cell abundance in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-local-tumor-clearance",
+          "primitive_id": "local-invasive-clearance-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "simple_instructions": [
+            "Clear tumor in this local ROI."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-operational-tumor-retreat",
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease the tumor area."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-operational-tumor-retreat",
+          "primitive_id": "stroma-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase operational stroma after treatment."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-operational-tumor-retreat",
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Fragment the residual tumor into controlled foci."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "melanoma-peritumoral-small-focus",
+          "primitive_id": "peritumoral-small-cluster-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add peritumoral small tumor-cell clusters."
+          ],
+          "status": "conditionally_supported"
+        }
+      ],
+      "pathology_domain_id": "melanoma-v1",
+      "planner_selection_contract": {
+        "cell": {
+          "decision_id": "select_certified_cell_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_program_id",
+            "supporting_preference_rule_ids"
+          ]
+        },
+        "compiler_owned_fields": [
+          "interfaces",
+          "components",
+          "anchors",
+          "zones",
+          "annuli",
+          "layouts",
+          "parameter_values",
+          "parameter_ranges",
+          "area",
+          "depth",
+          "geometry",
+          "cell_counts",
+          "coordinates",
+          "pixels"
+        ],
+        "tissue": {
+          "decision_id": "select_certified_tissue_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_family",
+            "supporting_preference_rule_ids"
+          ]
+        }
+      },
+      "production_status": "shadow_only"
+    },
+    {
+      "annotation_profile_id": "orca-semantic-v1",
+      "capabilities": [
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-annotation-anchored-cord-extension",
+          "primitive_id": "infiltrative-nest-cord-extension-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add a narrow connected tumor cord."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-cohesive-nest-cord",
+          "primitive_id": "tumor-burden-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase tumor burden."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-cohesive-nest-cord",
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Expand the tumor boundary locally."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-dispersed-invasive-front",
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add scattered tumor cells near the tumor boundary."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-dispersed-invasive-front",
+          "primitive_id": "peritumoral-small-cluster-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add peritumoral small tumor-cell clusters."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-carcinoma-clearance",
+          "primitive_id": "local-invasive-clearance-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "simple_instructions": [
+            "Clear tumor in this local ROI."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease immune cells in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "cellularity-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "cellularity-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease local cellularity."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease neoplastic cells."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Increase generic inflammatory-cell abundance in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease generic inflammatory-cell abundance in the selected region."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-operational-tumor-retreat",
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Decrease the tumor area."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "oral-scc-operational-tumor-retreat",
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Fragment the residual tumor into controlled foci."
+          ],
+          "status": "conditionally_supported"
+        }
+      ],
+      "pathology_domain_id": "oral-squamous-cell-carcinoma-v1",
+      "planner_selection_contract": {
+        "cell": {
+          "decision_id": "select_certified_cell_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_program_id",
+            "supporting_preference_rule_ids"
+          ]
+        },
+        "compiler_owned_fields": [
+          "interfaces",
+          "components",
+          "anchors",
+          "zones",
+          "annuli",
+          "layouts",
+          "parameter_values",
+          "parameter_ranges",
+          "area",
+          "depth",
+          "geometry",
+          "cell_counts",
+          "coordinates",
+          "pixels"
+        ],
+        "tissue": {
+          "decision_id": "select_certified_tissue_plan_candidate",
+          "selectable_fields": [
+            "selected_candidate_id",
+            "selected_tool_family",
+            "supporting_preference_rule_ids"
+          ]
+        }
+      },
+      "production_status": "shadow_only"
+    }
+  ],
+  "schema_version": "non-breast-organ-annotation-capability-matrix-v1"
+}

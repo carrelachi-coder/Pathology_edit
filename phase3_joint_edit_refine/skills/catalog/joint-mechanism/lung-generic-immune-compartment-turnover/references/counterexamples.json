@@ -1,0 +1,8 @@
+{
+  "mechanism_id": "lung-generic-immune-compartment-turnover",
+  "counterexamples": [
+    "creating a remote Immune-infiltrate island",
+    "calling generic class-2 nuclei a specific immune subtype",
+    "claiming PD-L1, TIL score, response, prognosis or benefit"
+  ]
+}

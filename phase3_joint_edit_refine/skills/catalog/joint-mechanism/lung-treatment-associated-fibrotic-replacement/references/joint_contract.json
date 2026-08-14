@@ -2,21 +2,23 @@
   "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
   "pathology_domain_id": "lung-carcinoma-v1",
   "supported_primitives": [
-    "stroma-increase-v1"
+    "stroma-increase-v1",
+    "invasive-tumor-footprint-decrease-v1",
+    "residual-tumor-fragmentation-v1"
   ],
   "version": "1.0.0-research",
   "review_status": "draft",
-  "summary": "Replace a portion of viable tumor with explicitly labelled fibrotic/inflammatory stroma only in a documented post-treatment tumor bed.",
+  "summary": "Retreat annotation-defined Tumor into the profile's operational non-tumor receiving label under explicit post-treatment context.",
   "recognition_contract": {
     "required_observations": [
-      "documented post-treatment scenario",
-      "treatment-bed morphology at the selected tumor-stroma interface",
-      "explicit stromal label authority"
+      "explicit post-treatment semantic intent",
+      "annotation-defined Tumor component and receiving boundary",
+      "compiler-certified residual topology and cell capacity"
     ],
     "contraindications": [
-      "untreated tumor growth scenario",
-      "lepidic or invasive-front expansion",
-      "stroma inferred from Other tissue"
+      "fibrosis, tumor-bed, pCR or clinical-benefit claim",
+      "protected profile label in the retreat support",
+      "treatment context absent"
     ],
     "minimum_confidence": 0.9
   },
@@ -39,6 +41,22 @@
         "target_labels": [
           "Stroma"
         ]
+      },
+      "invasive-tumor-footprint-decrease-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
+      },
+      "residual-tumor-fragmentation-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Stroma"
+        ]
       }
     },
     "allowed_tools": [
@@ -48,14 +66,12 @@
     ],
     "required_checker_ids": [
       "tissue_gate_binding",
-      "native_structure_preserved"
+      "profile_fine_transition_authority",
+      "residual_fragmentation_topology"
     ],
     "prohibited_structures": [
-      "bronchus",
-      "cartilage",
-      "vessel",
-      "pleura",
-      "alveolar_airspace"
+      "zero",
+      "protected_profile_label"
     ]
   },
   "cell_program": {
@@ -93,13 +109,17 @@
       "mechanism_realization"
     ],
     "layout_program_by_primitive": {
-      "stroma-increase-v1": "population_replacement"
+      "stroma-increase-v1": "population_replacement",
+      "invasive-tumor-footprint-decrease-v1": "population_replacement",
+      "residual-tumor-fragmentation-v1": "population_replacement"
     }
   },
   "coupling_contract": {
     "compatibility_rule_ids": [
-      "lung.treatment.documented_context",
-      "lung.treatment.explicit_stroma"
+      "other_organ.retreat.explicit_post_treatment_context",
+      "other_organ.retreat.profile_fine_transition_authority",
+      "other_organ.retreat.complete_instance_turnover",
+      "other_organ.retreat.residual_topology"
     ],
     "allow_neoplastic_in_non_tumor_tissue": false,
     "joint_area_mode": "joint_footprint",
@@ -113,32 +133,78 @@
     "cell_tissue_compatibility",
     "cell_zone_localization",
     "joint_provenance",
-    "mechanism_postcondition:lung-treatment-associated-fibrotic-replacement"
+    "mechanism_postcondition:lung-treatment-associated-fibrotic-replacement",
+    "residual_fragmentation_topology"
   ],
   "render_contract": {
     "required_findings": [
-      "fibrotic and inflammatory tumor-bed replacement compatible with the treatment context"
+      "annotation-defined Tumor retreats only along a certified receiving boundary",
+      "residual Tumor and all unrequested profile labels remain stable"
     ],
     "veto_findings": [
-      "untreated desmoplasia called treatment response",
-      "new viable tumor in replaced region",
-      "stroma inferred from airspace"
+      "fibrosis, tumor-bed, pCR, response-percentage or clinical-benefit claim",
+      "edit of a protected or unrequested profile label",
+      "whole-lesion clearance unless separately authorized by a local ROI contract"
     ],
     "mask_guarantees": [
-      "only complete nuclei are removed",
-      "Tumor to explicit Stroma is the only tissue transition"
+      "changed tissue is Tumor to operational Stroma only",
+      "every changed nucleus is handled as a complete instance",
+      "residual topology and the requested area floor are reconstructed from final masks"
     ],
     "render_only_claims": [
-      "specific therapy effect",
-      "degree of pathologic response"
+      "fibrosis",
+      "tumor bed",
+      "pCR",
+      "response percentage",
+      "clinical benefit"
     ]
   },
   "evidence_citations": [
-    "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf"
+    "https://zenodo.org/records/17735903"
   ],
   "counterexamples": [
-    "using this mechanism for tumor progression",
-    "converting alveolar airspace to stroma",
-    "isolated stromal hole inside viable tumor"
-  ]
+    "inferring treatment context or receiving tissue identity from H&E",
+    "calling operational label turnover fibrosis, tumor bed or clinical response",
+    "accepting a final mask that violates residual topology or the requested floor"
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "profile_fine_transition_authority",
+      "whole_instance_changes",
+      "residual_fragmentation_topology"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }

@@ -1,0 +1,8 @@
+{
+  "mechanism_id": "melanoma-peritumoral-small-focus",
+  "counterexamples": [
+    "calling generated small foci diagnostic microsatellites",
+    "placing a focus in epidermis, vessel, necrosis or zero",
+    "accepting a remote or primary-connected focus"
+  ]
+}

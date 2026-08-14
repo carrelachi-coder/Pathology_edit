@@ -9,12 +9,13 @@
       "evidence_id": "ignite-semantic-v1.dataset",
       "authority_category": "dataset_fact",
       "claim_scope": [
-        "prohibited_fine_ids",
+        "conditional_mechanisms",
+        "fibrosis_claim_authorized",
         "prohibit_cell_placement_fine_ids",
         "prohibit_generation_support_fine_ids",
-        "unavailable_mechanisms",
-        "conditional_mechanisms",
-        "supports_explicit_stroma"
+        "prohibited_fine_ids",
+        "supports_explicit_stroma",
+        "unavailable_mechanisms"
       ],
       "source_ids": [
         "dataset-ignite-official-v1",
@@ -26,8 +27,14 @@
       "evidence_id": "ignite-semantic-v1.execution",
       "authority_category": "engineering_proxy",
       "claim_scope": [
+        "mechanism_editable_source_fine_ids",
+        "mechanism_editable_target_fine_ids",
+        "operational_stroma_fine_ids",
+        "operational_stroma_policy",
+        "protected_fine_ids",
+        "required_checker_ids",
         "required_provenance_fields",
-        "required_checker_ids"
+        "visual_veto_requirements"
       ],
       "source_ids": [
         "engineering-joint-contract-v2"

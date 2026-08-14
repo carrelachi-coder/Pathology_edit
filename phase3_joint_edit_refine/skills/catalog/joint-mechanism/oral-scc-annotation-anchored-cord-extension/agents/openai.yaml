@@ -1,0 +1,4 @@
+interface:
+  display_name: "oral-scc-annotation-anchored-cord-extension"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $oral-scc-annotation-anchored-cord-extension only with certified mask candidates and required authority."

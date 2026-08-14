@@ -1,0 +1,4 @@
+interface:
+  display_name: "melanoma-peritumoral-small-focus"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $melanoma-peritumoral-small-focus only with certified mask candidates and required authority."

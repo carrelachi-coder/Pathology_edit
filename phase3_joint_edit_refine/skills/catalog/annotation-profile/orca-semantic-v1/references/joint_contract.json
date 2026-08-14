@@ -24,7 +24,10 @@
     "breast-cohesive-nst-front",
     "breast-discohesive-single-file",
     "oral-scc-cohesive-nest-cord",
-    "oral-scc-dispersed-invasive-front"
+    "oral-scc-dispersed-invasive-front",
+    "oral-scc-operational-tumor-retreat",
+    "oral-scc-local-carcinoma-clearance",
+    "oral-scc-annotation-anchored-cord-extension"
   ],
   "required_checker_ids": [
     "profile_provenance",
@@ -32,5 +35,37 @@
     "prohibited_generation_support",
     "orca_fragment_protection"
   ],
-  "supports_explicit_stroma": false
+  "supports_explicit_stroma": false,
+  "protected_fine_ids": [
+    0
+  ],
+  "mechanism_editable_source_fine_ids": {
+    "oral-scc-cohesive-nest-cord": [
+      7
+    ],
+    "oral-scc-operational-tumor-retreat": [
+      1
+    ],
+    "oral-scc-local-carcinoma-clearance": [
+      1
+    ],
+    "oral-scc-annotation-anchored-cord-extension": [
+      7
+    ]
+  },
+  "mechanism_editable_target_fine_ids": {
+    "oral-scc-cohesive-nest-cord": [
+      1
+    ],
+    "oral-scc-operational-tumor-retreat": [
+      7
+    ],
+    "oral-scc-local-carcinoma-clearance": [
+      7
+    ],
+    "oral-scc-annotation-anchored-cord-extension": [
+      1
+    ]
+  },
+  "visual_veto_requirements": []
 }

@@ -1,0 +1,227 @@
+{
+  "mechanism_id": "oral-scc-annotation-anchored-cord-extension",
+  "pathology_domain_id": "oral-squamous-cell-carcinoma-v1",
+  "supported_primitives": [
+    "infiltrative-nest-cord-extension-v1"
+  ],
+  "version": "1.0.0-draft",
+  "review_status": "draft",
+  "summary": "Create one narrow connected ORCA Carcinoma extension from a certified external Tumor/Other-tissue interface; no invasive-pattern claim.",
+  "recognition_contract": {
+    "required_observations": [
+      "explicit ORCA Tumor component and exterior boundary",
+      "Other-tissue receiving corridor with exact zero exclusion",
+      "compiler-certified tapered projection capacity"
+    ],
+    "contraindications": [
+      "fragmented non-tissue in the projection corridor",
+      "remote island or side merge",
+      "WPOI, budding grade or invasive-front diagnosis requested"
+    ],
+    "minimum_confidence": 0.9
+  },
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference",
+      "general_vlm_invasive_pattern_diagnosis"
+    ],
+    "hard_constraint_checker_ids": [
+      "external_boundary_binding",
+      "annotation_anchored_extension_geometry",
+      "orca_fragment_protection",
+      "whole_instance_changes"
+    ],
+    "selection_preferences": [
+      "pref:directional-anchor:maximize-length-depth-ratio",
+      "pref:class1-packing:maximize-capacity-margin",
+      "pref:projection:minimize-component-and-side-merge-count",
+      "pref:protected-clearance:maximize-distance"
+    ],
+    "clarification_triggers": [
+      "the instruction does not distinguish bulk boundary expansion from a narrow cord extension"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  },
+  "representability_contract": {
+    "status": "conditionally_supported",
+    "required_cell_classes": [
+      1,
+      3
+    ],
+    "required_auxiliary_structures": [],
+    "allow_semantic_instance_fallback": true,
+    "failure_action": "abstain_case"
+  },
+  "tissue_program": {
+    "mode": "orca_annotation_anchored_narrow_connected_extension",
+    "target_component_merge_policy": "selected_only",
+    "primitive_label_contracts": {
+      "infiltrative-nest-cord-extension-v1": {
+        "source_labels": [
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      }
+    },
+    "allowed_tools": [
+      "directional_tapered_projection"
+    ],
+    "required_checker_ids": [
+      "tissue_gate_binding",
+      "external_boundary_binding",
+      "annotation_anchored_extension_geometry",
+      "orca_fragment_protection"
+    ],
+    "prohibited_structures": [
+      "fragmented_non_tissue",
+      "surface_space"
+    ],
+    "front_contract": {
+      "profile_mode": "tapered_lobe",
+      "edge_depth_ratio": 0.12,
+      "taper_fraction": 0.42,
+      "lobe_count": 1,
+      "noise_depth_ratio": 0.02,
+      "maximum_band_px": 64,
+      "maximum_depth_span_ratio": 4.0,
+      "maximum_boundary_compactness": 14.0,
+      "directional_sector_required": true,
+      "maximum_selected_anchor_fraction": 0.5,
+      "minimum_unselected_anchor_count": 1
+    }
+  },
+  "cell_program": {
+    "actions": [
+      "retain",
+      "remove_whole",
+      "add"
+    ],
+    "allowed_cell_classes": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "layout_programs": [
+      "boundary_aligned"
+    ],
+    "layout_program_by_primitive": {
+      "infiltrative-nest-cord-extension-v1": "boundary_aligned"
+    },
+    "core_policy": "replace_complete_instances_in_narrow_tissue_extension",
+    "halo_policy": "no_cell_only_halo",
+    "halo_distance_px": [
+      0,
+      12
+    ],
+    "cluster_size_range": [
+      2,
+      6
+    ],
+    "seam_contract": {
+      "mode": "adaptive_population_continuity",
+      "width_cell_diameters": [
+        1.0,
+        1.5
+      ],
+      "reference_area_quantiles": [
+        0.25,
+        0.75
+      ],
+      "maximum_empty_run_cell_diameters": 2.0,
+      "density_ratio_range": [
+        0.45,
+        2.0
+      ],
+      "minimum_anchor_coverage_fraction": 0.5,
+      "requires_new_target_cells": true
+    },
+    "required_checker_ids": [
+      "whole_instance_changes",
+      "protected_nuclei_preserved",
+      "nuclei_overlap",
+      "nuclei_tissue_containment",
+      "cell_quota",
+      "cell_spatial_distribution",
+      "local_population_density",
+      "interface_seam_continuity",
+      "mechanism_realization"
+    ]
+  },
+  "coupling_contract": {
+    "compatibility_rule_ids": [
+      "orca.mask.narrow_extension_connected",
+      "orca.mask.boundary_aligned_population_in_narrow_extension",
+      "orca.mask.zero_preserved"
+    ],
+    "allow_neoplastic_in_non_tumor_tissue": false,
+    "joint_area_mode": "joint_footprint",
+    "tissue_floor_applies": true,
+    "cell_only_target_fraction": 0.0,
+    "cell_footprint_spill_reserve_fraction": 0.004,
+    "render_support_policy_id": "joint_change_plus_bounded_cell_halo_v1"
+  },
+  "joint_gate_ids": [
+    "joint_area",
+    "tissue_floor",
+    "cell_tissue_compatibility",
+    "cell_zone_localization",
+    "joint_provenance",
+    "external_boundary_binding",
+    "annotation_anchored_extension_geometry",
+    "orca_fragment_protection",
+    "mechanism_postcondition:oral-scc-annotation-anchored-cord-extension"
+  ],
+  "render_contract": {
+    "required_findings": [
+      "generator follows the narrow connected target condition"
+    ],
+    "veto_findings": [
+      "render becomes a broad sheet",
+      "render detaches the extension",
+      "drift outside generation support"
+    ],
+    "mask_guarantees": [
+      "narrow connected tissue extension",
+      "boundary-aligned class-1 population inside the narrow tissue extension",
+      "protected labels preserved"
+    ],
+    "render_only_claims": [
+      "specific invasive phenotype",
+      "dynamic invasion",
+      "EMT",
+      "prognosis"
+    ]
+  },
+  "evidence_citations": [
+    "https://sites.google.com/unibas.it/orca/home"
+  ],
+  "counterexamples": [
+    "detached fine-1 island",
+    "broad semicircular fill instead of one narrow extension",
+    "change to ORCA zero",
+    "diagnostic WPOI, budding, PNI, LVI or prognostic claim"
+  ]
+}

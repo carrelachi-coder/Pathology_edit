@@ -1,0 +1,8 @@
+{
+  "mechanism_id": "oral-scc-local-carcinoma-clearance",
+  "counterexamples": [
+    "auto-inferring a clearance ROI from H&E or the Tumor component",
+    "editing Tumor outside the digest-bound local ROI",
+    "calling local annotation turnover a negative margin, pCR or complete response"
+  ]
+}

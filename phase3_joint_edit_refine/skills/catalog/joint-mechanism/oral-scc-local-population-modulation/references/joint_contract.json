@@ -5,7 +5,11 @@
     "cell-type-abundance-increase-v1",
     "cell-type-abundance-decrease-v1",
     "cellularity-increase-v1",
-    "cellularity-decrease-v1"
+    "cellularity-decrease-v1",
+    "neoplastic-cell-abundance-increase-v1",
+    "neoplastic-cell-abundance-decrease-v1",
+    "generic-inflammatory-cell-abundance-increase-v1",
+    "generic-inflammatory-cell-abundance-decrease-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
@@ -18,7 +22,7 @@
     ],
     "contraindications": [
       "fragmented non-tissue used as a seed or host",
-      "Other tissue interpreted as stroma without H&E evidence",
+      "Other tissue interpreted as stroma without digest-bound mask-graph evidence",
       "keratinized center or surface space included",
       "target class unsupported"
     ],
@@ -71,6 +75,46 @@
         ],
         "target_labels": [
           "Tumor",
+          "Other tissue"
+        ]
+      },
+      "neoplastic-cell-abundance-increase-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      },
+      "neoplastic-cell-abundance-decrease-v1": {
+        "source_labels": [
+          "Tumor"
+        ],
+        "target_labels": [
+          "Tumor"
+        ]
+      },
+      "generic-inflammatory-cell-abundance-increase-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue"
+        ]
+      },
+      "generic-inflammatory-cell-abundance-decrease-v1": {
+        "source_labels": [
+          "Tumor",
+          "Stroma",
+          "Other tissue"
+        ],
+        "target_labels": [
+          "Tumor",
+          "Stroma",
           "Other tissue"
         ]
       }
@@ -159,7 +203,11 @@
       "cell-type-abundance-increase-v1": "small_cluster",
       "cell-type-abundance-decrease-v1": "localized_density_gradient",
       "cellularity-increase-v1": "single",
-      "cellularity-decrease-v1": "localized_density_gradient"
+      "cellularity-decrease-v1": "localized_density_gradient",
+      "neoplastic-cell-abundance-increase-v1": "small_cluster",
+      "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient",
+      "generic-inflammatory-cell-abundance-increase-v1": "small_cluster",
+      "generic-inflammatory-cell-abundance-decrease-v1": "localized_density_gradient"
     }
   },
   "coupling_contract": {
@@ -209,5 +257,45 @@
     "using ORCA background fragments as tumor cell seeds",
     "placing cells in a keratin center",
     "relabeling Other tissue as stroma by assumption"
-  ]
+  ],
+  "planner_policy": {
+    "allowed_observation_sources": [
+      "instruction",
+      "semantic_intent",
+      "tissue_mask",
+      "nuclei_mask",
+      "scene_graph",
+      "candidate_certificate",
+      "skill_rules",
+      "user_roi",
+      "auxiliary_masks"
+    ],
+    "prohibited_observation_sources": [
+      "source_he_for_execution",
+      "unannotated_histology_inference"
+    ],
+    "hard_constraint_checker_ids": [
+      "tissue_gate_binding",
+      "whole_instance_changes",
+      "joint_provenance"
+    ],
+    "selection_preferences": [
+      "pref:certificate:maximize-capacity-margin",
+      "pref:topology:minimize-structural-risk"
+    ],
+    "clarification_triggers": [
+      "different surviving primitive hypotheses encode different edit scopes",
+      "a requested diagnostic entity is representable only as a non-diagnostic synthetic downgrade",
+      "a treatment-specific mechanism lacks explicit treatment direction"
+    ],
+    "allowed_decisions": [
+      "select_primitive_mechanism_pair",
+      "select_certified_tissue_plan_candidate",
+      "select_certified_cell_plan_candidate",
+      "select_certified_interface_anchor_ids",
+      "select_allowed_tool_program",
+      "request_clarification",
+      "abstain"
+    ]
+  }
 }
