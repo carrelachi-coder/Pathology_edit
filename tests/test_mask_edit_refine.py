@@ -15,6 +15,9 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
+from phase3_joint_edit_refine.candidate_feasibility import (
+    _is_subcomponent_raster_tail,
+)
 from phase3_mask_edit_refine.agents import (
     HeuristicInterfacePlanner,
     OpenAIMultimodalPlanner,
@@ -26,7 +29,6 @@ from phase3_mask_edit_refine.candidates import (
 )
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
-    _fragmentation_exact_area_backfill,
     _minimum_component_spacing_px,
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
@@ -51,6 +53,7 @@ from phase3_mask_edit_refine.models import (
     InterfaceExecutionContract,
     PlannedInterface,
     RefineContractError,
+    ResolvedAreaContract,
     ToolProgram,
 )
 from phase3_mask_edit_refine.scene import build_scene_analysis
@@ -1130,58 +1133,33 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertFalse(np.any(cleaned[1] & ~legal_right))
         self.assertTrue(np.any(cleaned[1][50:59, 112:121]))
 
-    def test_fragmentation_exact_tail_backfill_is_owned_and_topology_safe(self):
-        shape = (80, 140)
-        source = np.zeros(shape, dtype=bool)
-        source[5:75, 5:135] = True
-        target = ~source
-        change = np.zeros(shape, dtype=bool)
-        change[5:75, 60:80] = True
-        work = SimpleNamespace(
-            source_component=source,
-            legal_source=source,
-            anchor_mask=target,
-            priority=np.zeros(shape, dtype=float),
-            planned=SimpleNamespace(
-                source_component_id="tumor:1",
-                target_component_id="stroma:1",
+    def test_subcomponent_raster_tail_does_not_force_global_replan(self):
+        resolved = ResolvedAreaContract(
+            desired_pixels=35127,
+            hard_min_pixels=23593,
+            hard_max_pixels=47186,
+            resolved_pixels=35121,
+            fallback_policy="max_feasible_below_target",
+            used_fallback=True,
+            binding_constraint="reachable_interface_capacity",
+            solver_version="fixture",
+        )
+        plan = SimpleNamespace(
+            resolved_area=resolved,
+            tool_program=SimpleNamespace(
+                parameter_ranges={"min_component_area_px": 16}
             ),
         )
 
-        filled, added = _fragmentation_exact_area_backfill(
-            (change,),
-            works=(work,),
-            source_region=source,
-            target_region=target,
-            requested_pixels=6,
-            minimum_residual_components=2,
-            maximum_residual_components=6,
-            minimum_residual_component_area_px=96,
-            minimum_residual_spacing_px=8,
-            residual_area_floor_fraction=0.3,
-            maximum_residual_area_fraction=0.88,
-            minimum_residual_component_fraction=0.025,
-            maximum_dominant_residual_component_fraction=0.75,
+        self.assertTrue(_is_subcomponent_raster_tail(plan))
+        self.assertFalse(
+            _is_subcomponent_raster_tail(
+                SimpleNamespace(
+                    resolved_area=replace(resolved, resolved_pixels=35111),
+                    tool_program=plan.tool_program,
+                )
+            )
         )
-
-        self.assertEqual(added, 6)
-        self.assertEqual(np.count_nonzero(filled[0]), np.count_nonzero(change) + 6)
-        audit = _whole_mask_topology_audit(
-            source_region=source,
-            target_region=target,
-            selected_by_work=filled,
-            works=(work,),
-            allow_source_component_split=True,
-            minimum_residual_components=2,
-            maximum_residual_components=6,
-            minimum_residual_component_area_px=96,
-            minimum_residual_spacing_px=8,
-            residual_area_floor_fraction=0.3,
-            maximum_residual_area_fraction=0.88,
-            minimum_residual_component_fraction=0.025,
-            maximum_dominant_residual_component_fraction=0.75,
-        )
-        self.assertTrue(audit["passed"], audit)
 
     def test_fragmentation_cleanup_widens_under_spaced_corridors(self):
         shape = (160, 300)

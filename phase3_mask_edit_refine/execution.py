@@ -1656,49 +1656,6 @@ def _simulate_topology_safe_execution(
         if progress <= 0:
             break
 
-    # A traversing corridor can leave a sub-component-sized raster tail when
-    # the simple-point grower exhausts its local queue a few pixels before the
-    # exact requested area.  Do not invoke the global fallback protocol for a
-    # tail that is too small to constitute a valid changed component.  Extend
-    # an already-established, compiler-owned front transactionally and accept
-    # each pixel only while the complete fragmentation topology still passes.
-    if allow_source_component_split:
-        deficit = desired_pixels - sum(
-            int(np.count_nonzero(item)) for item in selected_by_work
-        )
-        if 0 < deficit < minimum_component:
-            selected_by_work, added = _fragmentation_exact_area_backfill(
-                tuple(selected_by_work),
-                works=works,
-                source_region=source_region,
-                target_region=target_region,
-                requested_pixels=deficit,
-                minimum_residual_components=minimum_residual_components,
-                maximum_residual_components=maximum_residual_components,
-                minimum_residual_component_area_px=(
-                    minimum_residual_component_area_px
-                ),
-                minimum_residual_spacing_px=minimum_residual_spacing_px,
-                residual_area_floor_fraction=residual_area_floor_fraction,
-                maximum_residual_area_fraction=(
-                    maximum_residual_area_fraction
-                ),
-                minimum_residual_component_fraction=(
-                    minimum_residual_component_fraction
-                ),
-                maximum_dominant_residual_component_fraction=(
-                    maximum_dominant_residual_component_fraction
-                ),
-            )
-            selected_by_work = list(selected_by_work)
-            if added:
-                audit_lists[0].append(
-                    {
-                        "fragmentation_exact_tail_pixels_added": added,
-                        "fragmentation_exact_tail_repair_calls": 1,
-                    }
-                )
-
     summarized: list[dict[str, Any]] = []
     for calls in audit_lists:
         totals: dict[str, int] = {}
@@ -1708,78 +1665,6 @@ def _simulate_topology_safe_execution(
         totals["call_count"] = len(calls)
         summarized.append(totals)
     return tuple(selected_by_work), tuple(summarized)
-
-
-def _fragmentation_exact_area_backfill(
-    selected_by_work: tuple[np.ndarray, ...],
-    *,
-    works: tuple[_CompilerWork, ...],
-    source_region: np.ndarray,
-    target_region: np.ndarray,
-    requested_pixels: int,
-    minimum_residual_components: int,
-    maximum_residual_components: int,
-    minimum_residual_component_area_px: int,
-    minimum_residual_spacing_px: int,
-    residual_area_floor_fraction: float,
-    maximum_residual_area_fraction: float,
-    minimum_residual_component_fraction: float,
-    maximum_dominant_residual_component_fraction: float,
-) -> tuple[tuple[np.ndarray, ...], int]:
-    """Fill a tiny exact-area tail along existing owned fragmentation fronts."""
-
-    requested = max(0, int(requested_pixels))
-    if requested <= 0 or not selected_by_work:
-        return selected_by_work, 0
-    original = tuple(np.asarray(item, dtype=bool) for item in selected_by_work)
-    updated = [np.array(item, copy=True) for item in original]
-    structure = np.ones((3, 3), dtype=bool)
-    for _ in range(requested):
-        combined = np.logical_or.reduce(tuple(updated))
-        options: list[tuple[float, int, int, int]] = []
-        for index, (work, selected) in enumerate(zip(works, updated)):
-            established_front = work.anchor_mask | ndimage.binary_dilation(
-                selected, structure=structure
-            )
-            eligible = work.legal_source & ~combined & established_front
-            for row, col in np.argwhere(eligible):
-                options.append(
-                    (float(work.priority[row, col]), index, int(row), int(col))
-                )
-        options.sort()
-        accepted = False
-        for _priority, index, row, col in options[:8192]:
-            updated[index][row, col] = True
-            audit = _whole_mask_topology_audit(
-                source_region=source_region,
-                target_region=target_region,
-                selected_by_work=tuple(updated),
-                works=works,
-                allow_source_component_split=True,
-                minimum_residual_components=minimum_residual_components,
-                maximum_residual_components=maximum_residual_components,
-                minimum_residual_component_area_px=(
-                    minimum_residual_component_area_px
-                ),
-                minimum_residual_spacing_px=minimum_residual_spacing_px,
-                residual_area_floor_fraction=residual_area_floor_fraction,
-                maximum_residual_area_fraction=(
-                    maximum_residual_area_fraction
-                ),
-                minimum_residual_component_fraction=(
-                    minimum_residual_component_fraction
-                ),
-                maximum_dominant_residual_component_fraction=(
-                    maximum_dominant_residual_component_fraction
-                ),
-            )
-            if audit["passed"]:
-                accepted = True
-                break
-            updated[index][row, col] = False
-        if not accepted:
-            return selected_by_work, 0
-    return tuple(updated), requested
 
 
 def _rebalance_fragmentation_residual_islands(

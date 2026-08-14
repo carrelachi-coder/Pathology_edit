@@ -297,6 +297,24 @@ def _selected_interface_set_underfill_error(
     )
 
 
+def _is_subcomponent_raster_tail(compiled_plan: EditPlan) -> bool:
+    """Return whether fallback is smaller than one legal change component."""
+
+    resolved = compiled_plan.resolved_area
+    if resolved is None or not resolved.used_fallback:
+        return False
+    minimum_component = max(
+        1,
+        int(
+            compiled_plan.tool_program.parameter_ranges.get(
+                "min_component_area_px", 16
+            )
+        ),
+    )
+    deficit = int(resolved.desired_pixels - resolved.resolved_pixels)
+    return 0 < deficit < minimum_component
+
+
 def _structural_event_risk_count(topology: Mapping[str, Any]) -> float:
     """Count observed topology events, never policy flags or absent events."""
 
@@ -808,6 +826,7 @@ class CandidateFeasibilityCompiler:
                     compiled.resolved_area is not None
                     and compiled.resolved_area.used_fallback
                     and feedback.get("stage") != "tissue_area_underfill"
+                    and not _is_subcomponent_raster_tail(compiled)
                 ):
                     # A maximum over one selected interface set is not yet a
                     # global maximum over the frozen preflight portfolio.
