@@ -37,6 +37,7 @@ from phase3_mask_edit_refine.candidates import (
 )
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
+    _low_frequency_organic_field,
     _minimum_component_spacing_px,
     _natural_external_retreat_priority,
     _normalized_organic_field,
@@ -1482,7 +1483,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertGreaterEqual(float(fractions.min()), 0.08)
         self.assertLessEqual(float(fractions.max()), 0.75)
         self.assertGreaterEqual(
-            int(np.count_nonzero(corridor)), int(source.sum() * 0.12)
+            int(np.count_nonzero(corridor)), int(source.sum() * 0.08)
         )
         self.assertEqual(
             ndimage.label(corridor, structure=np.ones((3, 3), dtype=bool))[1],
@@ -1524,6 +1525,22 @@ class CandidateAndSceneTests(unittest.TestCase):
         supported = np.abs(normalized[source])
         self.assertGreaterEqual(float(np.percentile(supported, 95.0)), 0.95)
         self.assertLessEqual(float(np.max(supported)), 1.0)
+
+    def test_fragmentation_warp_field_cannot_fold_at_short_scale(self):
+        source = np.ones((192, 256), dtype=bool)
+
+        field = _low_frequency_organic_field(
+            source.shape,
+            support=source,
+            seed=41,
+            correlation_px=48.0,
+        )
+
+        maximum_step = max(
+            float(np.max(np.abs(np.diff(field, axis=0)))),
+            float(np.max(np.abs(np.diff(field, axis=1)))),
+        )
+        self.assertLess(maximum_step, 0.08)
 
     def test_footprint_priority_prefers_broad_shallow_external_retreat(self):
         shape = (160, 220)

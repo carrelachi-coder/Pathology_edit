@@ -27,7 +27,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v7"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v8"
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
@@ -50,6 +50,33 @@ def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndar
     if scale <= 1e-9:
         return np.zeros_like(values, dtype=float)
     return np.clip((values - center) / scale, -1.0, 1.0)
+
+
+def _low_frequency_organic_field(
+    shape: tuple[int, int],
+    *,
+    support: np.ndarray,
+    seed: int,
+    correlation_px: float,
+) -> np.ndarray:
+    """Return a normalized deformation field without topology-folding detail."""
+
+    raw = smooth_noise(
+        shape,
+        seed=seed,
+        amplitude=1.0,
+        correlation_px=correlation_px,
+    )
+    # The adapter intentionally mixes three spatial scales.  A second broad
+    # Gaussian removes the short-scale term before normalization; otherwise a
+    # normalized five-pixel ripple can fold a warped coordinate system and
+    # create hundreds of tiny Voronoi islands on production-size masks.
+    smoothed = ndimage.gaussian_filter(
+        raw,
+        sigma=max(4.0, float(correlation_px) * 0.42),
+        mode="reflect",
+    )
+    return _normalized_organic_field(smoothed, support)
 
 
 class TopologySafeAreaUnderfillError(RefineContractError):
@@ -854,23 +881,17 @@ def _residual_fragmentation_priority(
     cols = coordinates[:, 1].astype(int)
     source_area = max(int(np.count_nonzero(source)), 1)
     correlation = float(np.clip(np.sqrt(source_area) / 7.0, 20.0, 88.0))
-    warp_major = _normalized_organic_field(
-        smooth_noise(
-            source.shape,
-            seed=_component_seed(source, salt=101),
-            amplitude=1.0,
-            correlation_px=correlation,
-        ),
-        source,
+    warp_major = _low_frequency_organic_field(
+        source.shape,
+        support=source,
+        seed=_component_seed(source, salt=101),
+        correlation_px=correlation,
     )
-    warp_minor = _normalized_organic_field(
-        smooth_noise(
-            source.shape,
-            seed=_component_seed(source, salt=137),
-            amplitude=1.0,
-            correlation_px=correlation,
-        ),
-        source,
+    warp_minor = _low_frequency_organic_field(
+        source.shape,
+        support=source,
+        seed=_component_seed(source, salt=137),
+        correlation_px=correlation,
     )
     # Warp the component coordinate system before partitioning it.  A shared
     # smooth deformation preserves three coherent foci, while moving each
@@ -878,7 +899,7 @@ def _residual_fragmentation_priority(
     # noise independently to each Voronoi cost (the previous implementation)
     # was orders of magnitude too weak after Gaussian smoothing and therefore
     # left nearly straight separators.
-    warped_coordinates = normalized_coordinates + 0.30 * np.column_stack(
+    warped_coordinates = normalized_coordinates + 0.18 * np.column_stack(
         (warp_major[rows, cols], warp_minor[rows, cols])
     )
     # A centerline half-width of (spacing - 1) / 2 yields a pixel-center gap
@@ -898,14 +919,11 @@ def _residual_fragmentation_priority(
         ),
         source,
     )
-    retreat_noise = _normalized_organic_field(
-        smooth_noise(
-            source.shape,
-            seed=_component_seed(source, salt=907),
-            amplitude=1.0,
-            correlation_px=correlation * 0.58,
-        ),
-        source,
+    retreat_noise = _low_frequency_organic_field(
+        source.shape,
+        support=source,
+        seed=_component_seed(source, salt=907),
+        correlation_px=correlation * 0.72,
     )
     core_progress = ndimage.distance_transform_edt(~source_boundary)
     core_progress /= max(float(np.max(core_progress[source], initial=1.0)), 1.0)
@@ -957,9 +975,9 @@ def _residual_fragmentation_priority(
         # genuinely smaller instead of merely widening a road-like Y inside an
         # otherwise unchanged tumor mass.
         retreat_distance = ndimage.distance_transform_edt(provisional_core_after)
-        organic_retreat = (
-            retreat_distance + (0.72 + 0.045 * retreat_distance) * retreat_noise
-        )
+        organic_retreat = retreat_distance + (
+            0.18 + 0.015 * retreat_distance
+        ) * retreat_noise
         approximate_priority = np.where(
             corridor,
             0.16 * separator_distance / max(core_radius, 1.0)
