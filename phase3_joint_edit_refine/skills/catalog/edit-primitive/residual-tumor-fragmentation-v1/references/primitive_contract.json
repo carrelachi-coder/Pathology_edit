@@ -1,6 +1,6 @@
 {
   "primitive_id": "residual-tumor-fragmentation-v1",
-  "version": "1.1.6-draft",
+  "version": "1.1.7-draft",
   "review_status": "draft",
   "scope": "tissue_and_cell",
   "summary": "Create a bounded set of nonempty residual invasive-tumor foci within the source component without inventing a historical tumor bed.",

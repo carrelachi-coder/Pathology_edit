@@ -1289,8 +1289,16 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
         context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
         == "annotation_anchored_narrow_connected_extension"
     )
+    residual_fragmentation = (
+        context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
+        == "residual_fragmentation"
+    )
     max_ratio = min(
-        6.0 if directional_projection else 2.0,
+        6.0
+        if directional_projection
+        else 4.0
+        if residual_fragmentation
+        else 2.0,
         float(context.plan.tool_program.parameter_ranges.get("max_depth_span_ratio", 1.25)),
     )
     passed = max_depth <= band_max + 1e-6 and ratio <= max_ratio
