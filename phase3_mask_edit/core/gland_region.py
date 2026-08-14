@@ -15,7 +15,12 @@ SEMANTIC_CELL_DELETION_REGION_POLICY = "semantic_change_region"
 SEMANTIC_NUCLEI_GENERATION_REGION_POLICY = (
     "semantic_change_region_plus_complete_intersecting_instances"
 )
-GENERATION_CONTEXT_MAX_EXTRA_FRACTION = 0.25
+# Generator-only context is allowed to match the semantic edit area.  The old
+# 25% ceiling left only a roughly three-pixel collar around long, narrow edits
+# (for example an invasive cord), so Inpaint had no stromal texture domain in
+# which to blend the new structure.  A 100% ceiling remains bounded: the final
+# generation region can be at most twice the semantic edit area.
+GENERATION_CONTEXT_MAX_EXTRA_FRACTION = 1.0
 GENERATION_CONTEXT_MIN_EXTRA_PIXELS = 32
 
 
@@ -83,7 +88,7 @@ def bound_generation_context_region(
         bounded[keep[:, 0], keep[:, 1]] = True
 
     return bounded, {
-        "policy": "bounded_generation_context_v1",
+        "policy": "bounded_generation_context_v2",
         "max_extra_fraction": float(max_extra_fraction),
         "min_extra_pixels": int(min_extra_pixels),
         "semantic_pixels": semantic_pixels,

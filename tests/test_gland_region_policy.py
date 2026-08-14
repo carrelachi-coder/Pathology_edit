@@ -78,10 +78,29 @@ def test_generation_context_caps_large_connected_component_expansion():
 
     semantic_pixels = int(np.count_nonzero(semantic))
     assert metadata["capped"] is True
-    assert metadata["extra_budget_pixels"] == semantic_pixels // 4
-    assert int(np.count_nonzero(bounded)) == semantic_pixels + semantic_pixels // 4
+    assert metadata["policy"] == "bounded_generation_context_v2"
+    assert metadata["extra_budget_pixels"] == semantic_pixels
+    assert int(np.count_nonzero(bounded)) == semantic_pixels * 2
     assert np.all(bounded[semantic])
     assert not bounded[0, 0]
+
+
+def test_generation_context_keeps_a_stromal_collar_around_a_thin_edit():
+    semantic = np.zeros((128, 128), dtype=bool)
+    semantic[60:68, 28:100] = True
+    candidate = np.zeros_like(semantic)
+    candidate[44:84, 12:116] = True
+
+    bounded, metadata = bound_generation_context_region(semantic, candidate)
+
+    semantic_pixels = int(np.count_nonzero(semantic))
+    assert metadata["extra_budget_pixels"] == semantic_pixels
+    assert int(np.count_nonzero(bounded)) == semantic_pixels * 2
+    assert np.all(bounded[semantic])
+    # The retained nearest context must exist on both normal sides of the
+    # horizontal edit instead of spending the entire budget along its tips.
+    assert np.any(bounded[56:60, 40:88])
+    assert np.any(bounded[68:72, 40:88])
 
 
 def test_glas_large_union_preserves_the_complete_connected_component():
