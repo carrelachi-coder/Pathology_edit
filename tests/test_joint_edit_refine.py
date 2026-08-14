@@ -1206,6 +1206,11 @@ class JointSkillTests(unittest.TestCase):
                 self.assertTrue(
                     set(bundle.required_checker_ids).issubset(checker_ids)
                 )
+                if primitive_id == "peritumoral-tumor-nest-formation-v1":
+                    self.assertGreaterEqual(
+                        bundle.mechanism.tissue_program.front.maximum_band_px,
+                        144,
+                    )
 
     def test_regression_and_fragmentation_bind_visible_effect_contracts(self):
         repository = JointSkillRepository()

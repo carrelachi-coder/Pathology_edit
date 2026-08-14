@@ -2,7 +2,7 @@
   "mechanism_id": "breast-peritumoral-tumor-nest",
   "pathology_domain_id": "breast-invasive-carcinoma-v1",
   "supported_primitives": ["peritumoral-tumor-nest-formation-v1"],
-  "version": "1.1.0-draft",
+  "version": "1.2.0-draft",
   "review_status": "draft",
   "summary": "Create one compact irregular detached fine-1 Tumor island in a certified peritumoral operational-Stroma band, then fill it with six to twelve complete source-scaled neoplastic nuclei.",
   "recognition_contract": {
@@ -26,7 +26,7 @@
     "allowed_tools": ["peritumoral_tumor_island"],
     "required_checker_ids": ["tissue_gate_binding", "external_boundary_binding", "peritumoral_tumor_island_geometry", "profile_fine_transition_authority", "bcss_operational_stroma_authority"],
     "prohibited_structures": ["benign_duct", "benign_lobule", "dcis_unit", "angioinvasion", "vessel", "necrosis", "immune_infiltrate", "collapsed_zero"],
-    "front_contract": {"profile_mode": "multi_lobe", "edge_depth_ratio": 0.18, "taper_fraction": 0.0, "lobe_count": 1, "noise_depth_ratio": 0.06, "maximum_band_px": 96, "maximum_depth_span_ratio": 6.0, "maximum_boundary_compactness": 10.0, "directional_sector_required": false, "maximum_selected_anchor_fraction": 0.5, "minimum_unselected_anchor_count": 0, "directional_width_cell_diameters": 3.0, "directional_minimum_width_px": 8.0, "directional_maximum_width_px": 48.0, "directional_tip_width_px": 4.0, "directional_tip_width_cell_diameters": 0.5}
+    "front_contract": {"profile_mode": "multi_lobe", "edge_depth_ratio": 0.18, "taper_fraction": 0.0, "lobe_count": 1, "noise_depth_ratio": 0.06, "maximum_band_px": 144, "maximum_depth_span_ratio": 6.0, "maximum_boundary_compactness": 10.0, "directional_sector_required": false, "maximum_selected_anchor_fraction": 0.5, "minimum_unselected_anchor_count": 0, "directional_width_cell_diameters": 3.0, "directional_minimum_width_px": 8.0, "directional_maximum_width_px": 48.0, "directional_tip_width_px": 4.0, "directional_tip_width_cell_diameters": 0.5}
   },
   "cell_program": {
     "actions": ["retain", "remove_whole", "add"],

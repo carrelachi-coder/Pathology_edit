@@ -755,6 +755,12 @@ def build_joint_nuclei_preflight(
             references_by_class=references_by_class,
             requested_count=required_count,
             class_request_weights=target_density_by_class,
+            # Cord and nest identities have a discrete biological lower
+            # bound. A generic 80% finite-count fallback must not silently
+            # turn the certified six-cell minimum back into a five-cell bud.
+            allow_finite_count_fallback=(
+                _minimum_architecture_group_count(case, joint_bundle) <= 1
+            ),
         )
         add_capacity = packing.placed_count
         # Planner has not selected an anchor and no concrete tissue candidate
@@ -1232,6 +1238,9 @@ def assess_candidate_cell_feasibility(
         required_seam_count=required_seam,
         minimum_seam_count=minimum_seam,
         required_seam_class=preflight.target_cell_class,
+        allow_finite_count_fallback=(
+            _minimum_architecture_group_count(case, joint_bundle) <= 1
+        ),
     )
     meaningful_floor = int(allocation.tissue_execution_floor_pixels)
     reasons: list[str] = []
@@ -1409,6 +1418,10 @@ def certify_compiled_cell_program_feasibility(
             ),
         )
     prior_certificate = report.exact_packing_certificate or {}
+    architecture_group_required = contract.primitive_id in {
+        "invasive-cord-formation-v1",
+        "peritumoral-tumor-nest-formation-v1",
+    }
     prior_fallback_used = bool(
         prior_certificate.get("finite_count_fallback_used", False)
     )
@@ -1452,7 +1465,9 @@ def certify_compiled_cell_program_feasibility(
         # final E/P/V/C compiler exposes the true lower capacity; in that case
         # the final stage owns the fallback. If candidate assessment already
         # used it, the exact recheck cannot reduce the count again.
-        allow_finite_count_fallback=not prior_fallback_used,
+        allow_finite_count_fallback=(
+            not prior_fallback_used and not architecture_group_required
+        ),
     )
     if prior_fallback_used:
         certificate = replace(
