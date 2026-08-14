@@ -27,7 +27,7 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v8"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v9"
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
@@ -710,13 +710,14 @@ def _prepare_compiler_work(
                 maximum_dominant_residual_component_fraction=float(
                     params.get("maximum_dominant_residual_component_fraction", 1.0)
                 ),
-                target_change_pixels=max(
-                    1,
-                    round(
-                        target_change_pixels
-                        * planned.execution_contract.area_allocation_fraction
-                    ),
-                ),
+                # Rotation selection is component-scale geometry.  Binding it
+                # to a provisional per-interface allocation made a compiled
+                # multi-stroma plan choose a different partition on replay
+                # after its exact allocation fractions were recorded.  Use
+                # the immutable whole-edit budget for every view of the same
+                # source component; ownership still allocates pixels exactly
+                # after priorities are built.
+                target_change_pixels=max(1, target_change_pixels),
             )
         provisional.append(
             {
@@ -998,16 +999,49 @@ def _residual_fragmentation_priority(
             + 0.04 * core_progress[spacing_shell]
         )
         approximate_priority += 1e-3 * tie_break
-        approximate_change = np.zeros_like(source, dtype=bool)
         selected_count = min(
             max(int(target_change_pixels), int(np.count_nonzero(corridor))),
             len(eligible_ids),
         )
-        if selected_count > 0:
+        approximate_change = np.zeros_like(source, dtype=bool)
+        provisional_labels = np.zeros_like(source, dtype=np.int32)
+        provisional_count = 0
+        # Promote sub-resolution caps into the change prefix before the
+        # topology grower sees them.  With a naturally retreating external
+        # front, a jagged annotation can otherwise leave several one-pixel
+        # tumor caps between the cleft and original boundary.  Repairing them
+        # here displaces only the latest peripheral pixels and preserves the
+        # requested area, instead of handing a many-island witness to the
+        # downstream transactional cleanup.
+        for _cap_repair_pass in range(3):
+            approximate_change.fill(False)
             order = np.argsort(
                 approximate_priority.ravel()[eligible_ids], kind="stable"
             )
             approximate_change.ravel()[eligible_ids[order[:selected_count]]] = True
+            provisional_after = source & ~approximate_change
+            provisional_labels, provisional_count = ndimage.label(
+                provisional_after, structure=structure
+            )
+            provisional_sizes_array = np.bincount(provisional_labels.ravel())[1:]
+            cap_ids = tuple(
+                index
+                for index, size in enumerate(
+                    provisional_sizes_array.tolist(), start=1
+                )
+                if 0 < int(size) < minimum_residual_component_area_px
+            )
+            caps = np.isin(provisional_labels, cap_ids)
+            repairable_caps = caps & eligible
+            if not np.any(caps) or np.any(caps & ~eligible):
+                break
+            old_values = approximate_priority[repairable_caps]
+            approximate_priority[repairable_caps] = np.minimum(old_values, 0.20)
+            if np.all(approximate_priority[repairable_caps] == old_values):
+                break
+        approximate_change.fill(False)
+        order = np.argsort(approximate_priority.ravel()[eligible_ids], kind="stable")
+        approximate_change.ravel()[eligible_ids[order[:selected_count]]] = True
         provisional_after = source & ~approximate_change
         provisional_labels, provisional_count = ndimage.label(
             provisional_after, structure=structure
