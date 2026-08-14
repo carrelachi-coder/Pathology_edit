@@ -1786,6 +1786,16 @@ def _rebalance_fragmentation_residual_islands(
     reclaimed = int(np.count_nonzero(repair))
     if reclaimed <= 0 or reclaimed > maximum_focus_cleanup_pixels:
         return selected_by_work, unchanged
+    owned_repair_domain = np.logical_or.reduce(
+        tuple(work.legal_source for work in works)
+    )
+    if np.any(repair & ~owned_repair_domain):
+        # A residual cap outside every compiler-owned envelope may be a
+        # deliberately prohibited raster pocket. It is not legal cleanup
+        # capacity and must never be relabeled merely to satisfy a focus-area
+        # target. Leave the original witness untouched so the planner can
+        # choose another axis or accept a topology-safe bounded fallback.
+        return selected_by_work, unchanged
 
     updated = [np.array(item, copy=True) for item in selected_by_work]
     assigned_indices: list[int] = []
@@ -1796,14 +1806,7 @@ def _rebalance_fragmentation_residual_islands(
                 for index, work in enumerate(works)
                 if work.legal_source[row, col]
             ),
-            next(
-                (
-                    index
-                    for index, work in enumerate(works)
-                    if work.source_component[row, col]
-                ),
-                None,
-            ),
+            None,
         )
         if assigned is None:
             return selected_by_work, unchanged

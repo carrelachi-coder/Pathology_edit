@@ -999,9 +999,6 @@ class CandidateAndSceneTests(unittest.TestCase):
         # as invalid one-pixel source islands.
         priority[5:155, 104:136] = 100.0
         legal_source = np.array(source, copy=True)
-        # The cap sits one discrete pixel beyond the continuous band. It is
-        # still safe to fill because the selected corridor fully encloses it.
-        legal_source[50:59, 112:121] = False
         work = SimpleNamespace(
             source_component=source,
             legal_source=legal_source,
@@ -1056,7 +1053,6 @@ class CandidateAndSceneTests(unittest.TestCase):
         # a sub-minimum raster remnant rather than a valid residual focus.
         priority = np.zeros(shape, dtype=float)
         legal_source = np.array(source, copy=True)
-        legal_source[50:59, 112:121] = False
         work = SimpleNamespace(
             source_component=source,
             legal_source=legal_source,
@@ -1086,6 +1082,41 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(audit["spacing_pixels_added"], 0)
         self.assertEqual(audit["balance_pixels_added"], 0)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+
+    def test_fragmentation_cleanup_preserves_nonlegal_residual_cap(self):
+        shape = (160, 240)
+        source = np.zeros(shape, dtype=bool)
+        source[5:155, 5:235] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:155, 100:140] = True
+        change[50:59, 112:121] = False
+        legal_source = np.array(source, copy=True)
+        legal_source[50:59, 112:121] = False
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=legal_source,
+            priority=np.zeros(shape, dtype=float),
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+
+        cleaned, audit = _rebalance_fragmentation_residual_islands(
+            (change,),
+            works=(work,),
+            source_region=source,
+            target_region=target,
+            minimum_residual_components=2,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=4,
+            residual_area_floor_fraction=0.3,
+        )
+
+        self.assertFalse(audit["applied"], audit)
+        self.assertTrue(np.array_equal(cleaned[0], change))
 
     def test_fragmentation_cleanup_preserves_compiler_pixel_ownership(self):
         shape = (160, 240)
