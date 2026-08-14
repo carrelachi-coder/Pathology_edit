@@ -4,7 +4,7 @@
   "supported_primitives": [
     "residual-tumor-fragmentation-v1"
   ],
-  "version": "1.1.0-draft",
+  "version": "1.1.1-draft",
   "review_status": "draft",
   "summary": "Model scattered residual invasive breast carcinoma foci within the original invasive component after treatment without inventing a historical tumor bed.",
   "recognition_contract": {
@@ -12,7 +12,7 @@
       "explicit post-treatment residual-disease scenario",
       "one sufficiently large invasive Tumor fine-ID-1 component adjoining operational Stroma",
       "a source topology with an editable neck or corridor that can be opened from existing Stroma",
-      "capacity for three to six area-meaningful residual foci above the minimum island size"
+      "capacity for three to eight area-meaningful residual foci above the absolute and relative island floors"
     ],
     "contraindications": [
       "no explicit post-treatment residual-disease context",
@@ -42,8 +42,8 @@
       "taper_fraction": 0.2,
       "lobe_count": 3,
       "noise_depth_ratio": 0.08,
-      "maximum_band_px": 256,
-      "maximum_depth_span_ratio": 1.8,
+      "maximum_band_px": 384,
+      "maximum_depth_span_ratio": 2.4,
       "maximum_boundary_compactness": 5.2,
       "directional_sector_required": false,
       "maximum_selected_anchor_fraction": 1.0,
@@ -162,7 +162,7 @@
   ],
   "render_contract": {
     "required_findings": [
-      "three to six separated, area-meaningful viable residual invasive foci within the original component support",
+      "three to eight separated, area-meaningful viable residual invasive foci within the original component support",
       "stromal corridors are compatible with local post-treatment residual morphology"
     ],
     "veto_findings": [

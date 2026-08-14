@@ -973,18 +973,19 @@ class CandidateAndSceneTests(unittest.TestCase):
         )
 
     def test_fragmentation_cleanup_fills_micro_island_at_constant_area(self):
-        shape = (32, 44)
+        shape = (80, 120)
         source = np.zeros(shape, dtype=bool)
-        source[5:27, 5:39] = True
+        source[5:75, 5:115] = True
         target = ~source
         change = np.zeros(shape, dtype=bool)
-        change[5:27, 19:22] = True
-        change[5:8, 18] = True
-        # One raster source pixel surrounded by the otherwise complete
-        # corridor must not count as a biological third residual focus.
-        change[15, 20] = False
+        change[5:75, 50:66] = True
+        # An aggregate 81-pixel raster cap surrounded by the otherwise
+        # complete corridor must not count as a biological third residual
+        # focus. This exercises the production case where many sub-minimum
+        # caps collectively exceed the former 64-pixel cleanup ceiling.
+        change[25:34, 53:62] = False
         priority = np.zeros(shape, dtype=float)
-        priority[5:8, 18] = 100.0
+        priority[5:75, 50:52] = 100.0
         work = SimpleNamespace(
             source_component=source,
             legal_source=source,
@@ -1008,8 +1009,8 @@ class CandidateAndSceneTests(unittest.TestCase):
         )
 
         self.assertTrue(audit["applied"], audit)
-        self.assertEqual(audit["pixels_added"], 1)
-        self.assertEqual(audit["pixels_reclaimed"], 1)
+        self.assertEqual(audit["pixels_added"], 81)
+        self.assertEqual(audit["pixels_reclaimed"], 81)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
         labels, count = ndimage.label(
             source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)

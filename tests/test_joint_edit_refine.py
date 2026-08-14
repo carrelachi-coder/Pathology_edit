@@ -948,11 +948,12 @@ class JointSkillTests(unittest.TestCase):
                 )
                 if primitive_id == "residual-tumor-fragmentation-v1":
                     self.assertEqual(primitive.minimum_residual_components, 3)
+                    self.assertEqual(primitive.maximum_residual_components, 8)
                     self.assertEqual(
                         primitive.maximum_residual_area_fraction, 0.88
                     )
                     self.assertEqual(
-                        primitive.minimum_residual_component_fraction, 0.08
+                        primitive.minimum_residual_component_fraction, 0.025
                     )
                     self.assertEqual(
                         primitive.maximum_dominant_residual_component_fraction,

@@ -1657,8 +1657,10 @@ def _rebalance_fragmentation_residual_islands(
     tiny = np.isin(labels, tiny_ids)
     reclaimed = int(np.count_nonzero(tiny))
     # Large accidental islands are a genuinely different topology and must
-    # remain an abstention.  This bounded repair addresses raster caps only.
-    if reclaimed <= 0 or reclaimed > 64:
+    # remain an abstention.  The 512-pixel cap is still far below a valid
+    # residual focus in production-scale masks, but accommodates the aggregate
+    # one- and two-pixel caps produced along several long raster corridors.
+    if reclaimed <= 0 or reclaimed > 512:
         return selected_by_work, unchanged
 
     updated = [np.array(item, copy=True) for item in selected_by_work]
