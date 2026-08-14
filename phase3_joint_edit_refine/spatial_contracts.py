@@ -31,21 +31,35 @@ SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS = 2.25
 # almost full-patch diagonal layout on a 256 px crop.
 SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS = 4.0
 SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_PX = 128.0
+BREAST_SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS = 6.5
+BREAST_SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_PX = 192.0
 
 
 def small_cluster_maximum_hotspot_span_px(
     nominal_nucleus_diameter_px: float,
     minimum_effect_span_px: float = 0.0,
+    *,
+    compact_breast: bool = False,
 ) -> float:
     """Return the strict relative/absolute localized-hotspot ceiling."""
 
+    diameter_ceiling = (
+        BREAST_SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS
+        if compact_breast
+        else SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS
+    )
+    pixel_ceiling = (
+        BREAST_SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_PX
+        if compact_breast
+        else SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_PX
+    )
+
     return min(
         max(
-            SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS
-            * max(1.0, float(nominal_nucleus_diameter_px)),
+            diameter_ceiling * max(1.0, float(nominal_nucleus_diameter_px)),
             1.25 * max(0.0, float(minimum_effect_span_px)),
         ),
-        SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_PX,
+        pixel_ceiling,
     )
 
 

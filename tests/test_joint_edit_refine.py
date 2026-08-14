@@ -134,6 +134,7 @@ from phase3_joint_edit_refine.skills.execution_aliases import (
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
 from phase3_joint_edit_refine.spatial_contracts import (
     BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
+    small_cluster_maximum_hotspot_span_px,
 )
 from phase3_joint_edit_refine.tissue_execution import (
     _bind_and_validate_tissue_candidate_traces,
@@ -2589,7 +2590,14 @@ class JointSkillTests(unittest.TestCase):
             centers[:, None, :] - centers[None, :, :], axis=2
         )
         self.assertGreaterEqual(float(np.max(distances)), 20.0)
-        self.assertLessEqual(float(np.max(distances)), 32.0)
+        self.assertLessEqual(
+            float(np.max(distances)),
+            small_cluster_maximum_hotspot_span_px(
+                8.0,
+                20,
+                compact_breast=True,
+            ),
+        )
         self.assertEqual(
             {item["anchor_sampling_policy"] for item in trace},
             {"probnet_ranked_localized_front_segment"},
@@ -2609,6 +2617,23 @@ class JointSkillTests(unittest.TestCase):
 
         self.assertEqual(capacity, 2)
         self.assertEqual(span_margin, 0.0)
+
+        breast_capacity, breast_span_margin = (
+            _localized_focus_capacity_metrics(
+                center_rows=(20, 20, 20),
+                center_cols=(10, 35, 60),
+                nominal_nucleus_diameter_px=8.0,
+                minimum_effect_span_px=20,
+                required_focus_count=3,
+                minimum_anchor_separation_diameters=(
+                    BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
+                ),
+                strict_breast_small_cluster=True,
+            )
+        )
+
+        self.assertEqual(breast_capacity, 3)
+        self.assertEqual(breast_span_margin, 2.0)
 
     def test_capacity_optimized_certificate_preserves_diverse_execution_family(self):
         references = tuple(

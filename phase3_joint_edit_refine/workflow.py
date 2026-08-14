@@ -156,6 +156,7 @@ def _localized_focus_capacity_metrics(
     minimum_anchor_separation_diameters: float = (
         SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
     ),
+    strict_breast_small_cluster: bool = False,
 ) -> tuple[int, float]:
     """Score whether packing witnesses contain a localized focus window."""
 
@@ -166,6 +167,7 @@ def _localized_focus_capacity_metrics(
     maximum_span = small_cluster_maximum_hotspot_span_px(
         nominal,
         minimum_effect_span_px,
+        compact_breast=strict_breast_small_cluster,
     )
     minimum_between = (
         max(0.0, float(minimum_anchor_separation_diameters)) * nominal
@@ -3463,6 +3465,10 @@ class JointPathologyEditWorkflow:
                             if bundle.mechanism.mechanism_id
                             == "breast-peritumoral-small-cluster"
                             else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+                        ),
+                        strict_breast_small_cluster=(
+                            bundle.mechanism.mechanism_id
+                            == "breast-peritumoral-small-cluster"
                         ),
                     )
                 else:

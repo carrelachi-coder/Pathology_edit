@@ -42,7 +42,7 @@ from .spatial_contracts import (
     small_cluster_maximum_hotspot_span_px,
 )
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v15"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v16"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -1847,6 +1847,7 @@ def _place_layout(
                     if strict_breast_small_cluster
                     else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
                 ),
+                strict_breast_small_cluster=strict_breast_small_cluster,
             )
             anchor_sampling_policy = (
                 "probnet_ranked_localized_front_segment"
@@ -2012,6 +2013,7 @@ def _place_layout(
                         small_cluster_maximum_hotspot_span_px(
                             nominal_nucleus_diameter_px,
                             minimum_effect_span_px,
+                            compact_breast=strict_breast_small_cluster,
                         )
                     )
                     ** 2
@@ -2130,6 +2132,7 @@ def _localized_small_cluster_anchor_order(
     minimum_anchor_separation_diameters: float = (
         SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
     ),
+    strict_breast_small_cluster: bool = False,
 ) -> np.ndarray:
     """Front-load a compact multi-focus hotspot on one interface segment.
 
@@ -2154,6 +2157,7 @@ def _localized_small_cluster_anchor_order(
     maximum_span = small_cluster_maximum_hotspot_span_px(
         diameter,
         minimum_effect_span_px,
+        compact_breast=strict_breast_small_cluster,
     )
     minimum_span = max(0.0, float(minimum_effect_span_px))
     index_by_center = {

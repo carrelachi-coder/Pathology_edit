@@ -1126,6 +1126,7 @@ def _small_cluster_focus_compactness(c):
     maximum_hotspot_span_px = small_cluster_maximum_hotspot_span_px(
         nominal,
         minimum_hotspot_span_px,
+        compact_breast=strict_breast_cluster,
     )
     passed = bool(
         audit["ledger_matches_instances"]
