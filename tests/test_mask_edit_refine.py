@@ -37,6 +37,7 @@ from phase3_mask_edit_refine.gates import (
     GateContext,
     GateRegistry,
     _check_boundary_naturalness,
+    _check_component_topology,
 )
 from phase3_mask_edit_refine.models import (
     AreaBudget,
@@ -1174,6 +1175,43 @@ class CandidateAndSceneTests(unittest.TestCase):
         sizes = np.bincount(labels.ravel())[1:]
         self.assertEqual(count, 3)
         self.assertGreaterEqual(float(np.min(sizes / sizes.sum())), 0.08)
+
+    def test_fragmentation_component_gate_allows_target_connected_cap_repair(self):
+        source = np.ones((80, 120), dtype=np.int64)
+        source[:, :10] = 2
+        change = np.zeros_like(source, dtype=bool)
+        change[10:70, 30:50] = True
+        change[20, 10] = True
+        context = SimpleNamespace(
+            source_mask=source,
+            schema=self.schema,
+            plan=SimpleNamespace(
+                target_label="Stroma",
+                tool_program=SimpleNamespace(
+                    parameter_ranges={
+                        "max_changed_components": 6,
+                        "min_component_area_px": 16,
+                        "tissue_geometry_mode": "residual_fragmentation",
+                    }
+                ),
+            ),
+            candidate=SimpleNamespace(change_region=change),
+        )
+
+        fragmentation = _check_component_topology(context)
+        self.assertTrue(fragmentation.passed, fragmentation.metrics)
+        self.assertEqual(
+            fragmentation.metrics[
+                "fragmentation_target_connected_repair_pixels"
+            ],
+            1,
+        )
+
+        context.plan.tool_program.parameter_ranges[
+            "tissue_geometry_mode"
+        ] = "interface_front"
+        ordinary = _check_component_topology(context)
+        self.assertFalse(ordinary.passed)
 
     def test_fragmentation_priority_builds_three_balanced_traversing_foci(self):
         shape = (96, 120)

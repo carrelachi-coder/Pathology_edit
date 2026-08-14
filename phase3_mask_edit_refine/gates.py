@@ -729,8 +729,40 @@ def _check_component_topology(context: GateContext) -> GateCheck:
         32, max(1, int(params.get("max_changed_components", 2)))
     )
     min_area = max(16, int(params.get("min_component_area_px", 16)))
-    tiny = [size for size in sizes if size < min_area]
-    passed = 0 < count <= max_components and not tiny
+    tiny_ids = [
+        index
+        for index, size in enumerate(sizes, start=1)
+        if size < min_area
+    ]
+    tiny = [sizes[index - 1] for index in tiny_ids]
+    fragmentation_repair_pixels = 0
+    fragmentation_repair_valid = False
+    if (
+        tiny_ids
+        and params.get("tissue_geometry_mode") == "residual_fragmentation"
+    ):
+        target_ids = tuple(
+            context.schema.resolve_fine_ids(context.plan.target_label)
+        )
+        target_before = np.isin(context.source_mask, target_ids)
+        fragmentation_repair_valid = True
+        for index in tiny_ids:
+            component = labeled == index
+            fragmentation_repair_pixels += int(np.count_nonzero(component))
+            ring = ndimage.binary_dilation(
+                component, structure=np.ones((3, 3), dtype=bool)
+            ) & ~component
+            if not np.any(ring & target_before):
+                fragmentation_repair_valid = False
+                break
+        fragmentation_repair_valid = bool(
+            fragmentation_repair_valid
+            and fragmentation_repair_pixels <= 512
+        )
+    passed = bool(
+        0 < count <= max_components
+        and (not tiny or fragmentation_repair_valid)
+    )
     return _result(
         "component_topology",
         passed,
@@ -742,6 +774,12 @@ def _check_component_topology(context: GateContext) -> GateCheck:
             "component_sizes": sizes,
             "max_changed_components": max_components,
             "min_component_area_px": min_area,
+            "fragmentation_target_connected_repair_valid": (
+                fragmentation_repair_valid
+            ),
+            "fragmentation_target_connected_repair_pixels": (
+                fragmentation_repair_pixels
+            ),
         },
     )
 
