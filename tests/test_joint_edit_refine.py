@@ -7,6 +7,7 @@ import json
 import re
 import tempfile
 import unittest
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,6 +37,7 @@ from phase3_joint_edit_refine.cell_layouts import (
     _centers_satisfy_minimum_span,
     _certified_witness_first_anchors,
     _effect_first_anchors,
+    _multisite_population_anchor_order,
     _place_layout,
     _probnet_hard_core_anchor_order,
     _reference_shape_digest,
@@ -2120,6 +2122,50 @@ class JointSkillTests(unittest.TestCase):
         )
         self.assertFalse(any(item["reference_reused"] for item in trace))
 
+    def test_multisite_population_prefix_balances_four_local_hotspots(self):
+        site_centers = np.asarray(
+            ((20, 20), (20, 340), (340, 20), (340, 340)), dtype=int
+        )
+        points = []
+        for center_y, center_x in site_centers:
+            for offset_y in range(-42, 43, 14):
+                for offset_x in range(-42, 43, 14):
+                    points.append((center_y + offset_y, center_x + offset_x))
+        # Put one site's candidates first to mimic a strongly dominant ProbNet
+        # mode. The multisite prefix must still balance all four local sites.
+        points = np.asarray(points, dtype=int)
+
+        ordered, site_by_center, prefix_count = (
+            _multisite_population_anchor_order(
+                points,
+                requested_count=24,
+                required_site_count=4,
+                minimum_effect_span_px=256,
+                nominal_nucleus_diameter_px=12.0,
+            )
+        )
+
+        first = ordered[:24]
+        site_ids = [
+            site_by_center[(int(row), int(col))] for row, col in first
+        ]
+        counts = Counter(site_ids)
+        site_means = np.asarray(
+            [
+                np.mean(
+                    first[np.asarray(site_ids) == site_id], axis=0
+                )
+                for site_id in sorted(counts)
+            ]
+        )
+        distances = np.linalg.norm(
+            site_means[:, None, :] - site_means[None, :, :], axis=2
+        )
+
+        self.assertGreaterEqual(prefix_count, 24)
+        self.assertEqual(sorted(counts.values()), [6, 6, 6, 6])
+        self.assertGreaterEqual(float(np.max(distances)), 256.0)
+
     def test_scatter_uses_probnet_weighted_hard_core_not_regular_grid(self):
         rows, cols = np.mgrid[0:80, 0:80]
         anchors = np.column_stack((rows.ravel(), cols.ravel()))
@@ -2206,8 +2252,8 @@ class JointSkillTests(unittest.TestCase):
             halo=legal,
             score=score,
             requested_count=18,
-            layout_program="small_cluster",
-            cluster_size_range=(1, 4),
+            layout_program="single",
+            cluster_size_range=(1, 1),
             nominal_nucleus_diameter_px=8.0,
             orientation_mask=np.zeros(shape, dtype=bool),
             continuity_region=np.zeros(shape, dtype=bool),
@@ -2223,14 +2269,17 @@ class JointSkillTests(unittest.TestCase):
         )
 
         self.assertEqual(placed, 18)
-        groups = tuple(dict.fromkeys(item["cluster_id"] for item in trace))
-        self.assertEqual(len(groups), 5)
+        site_ids = [item["population_site_id"] for item in trace]
+        self.assertNotIn(None, site_ids)
+        groups = Counter(site_ids)
+        self.assertEqual(len(groups), 4)
         self.assertEqual(
-            sorted(
-                sum(item["cluster_id"] == group for item in trace)
-                for group in groups
-            ),
-            [3, 3, 4, 4, 4],
+            sorted(groups.values()),
+            [4, 4, 5, 5],
+        )
+        self.assertEqual(
+            {item["anchor_sampling_policy"] for item in trace},
+            {"probnet_ranked_balanced_multisite_hotspots"},
         )
         centers = np.asarray(
             [item["center_xy"] for item in trace], dtype=float

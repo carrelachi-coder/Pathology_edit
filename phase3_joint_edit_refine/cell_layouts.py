@@ -42,7 +42,7 @@ from .spatial_contracts import (
     small_cluster_maximum_hotspot_span_px,
 )
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v17"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v18"
 
 _REFERENCE_SAMPLING_POLICY = (
     "same_class_source_without_replacement_then_calibrated_library_or_"
@@ -705,6 +705,14 @@ def generate_cell_layouts(
             == "peritumoral-neoplastic-scatter-increase-v1"
             else {}
         )
+        multisite_population_metrics = (
+            _multisite_population_placement_metrics(placements)
+            if bundle.mechanism.mechanism_id
+            == "breast-local-population-modulation"
+            and bundle.primitive.primitive_id
+            == "neoplastic-cell-abundance-increase-v1"
+            else {}
+        )
         target_centers = class_center_mask(target, class_id=target_class)
         continuity_coverage = anchor_coverage_fraction(
             compiled_program.continuity_anchor_mask,
@@ -830,6 +838,7 @@ def generate_cell_layouts(
                     ),
                     "reference_first": True,
                     **scatter_metrics,
+                    **multisite_population_metrics,
                     "cross_domain_fallback": False,
                     "overlap_pixels": 0,
                     "partial_source_instance_edits": 0,
@@ -1772,6 +1781,8 @@ def _place_layout(
     order = np.argsort(-values)
     anchors = coords[order]
     anchor_sampling_policy = "probnet_ranked"
+    population_site_by_center: dict[tuple[int, int], int] = {}
+    population_site_prefix_count = 0
     planned_small_cluster_group_count = 0
     small_cluster_target_focus_count = (
         BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT
@@ -1885,22 +1896,41 @@ def _place_layout(
                 "probnet_ranked_localized_front_segment"
             )
         else:
-            anchors = _effect_first_anchors(
-                anchors,
-                minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
-                minimum_effect_foci=max(
-                    max(0, int(minimum_effect_foci)),
-                    planned_small_cluster_group_count,
-                ),
-            )
+            if enforce_multisite_population:
+                (
+                    anchors,
+                    population_site_by_center,
+                    population_site_prefix_count,
+                ) = _multisite_population_anchor_order(
+                    anchors,
+                    requested_count=requested_count,
+                    required_site_count=max(2, int(minimum_effect_foci)),
+                    minimum_effect_span_px=max(
+                        0, int(minimum_effect_span_px)
+                    ),
+                    nominal_nucleus_diameter_px=(
+                        nominal_nucleus_diameter_px
+                    ),
+                )
+                anchor_sampling_policy = (
+                    "probnet_ranked_balanced_multisite_hotspots"
+                )
+            else:
+                anchors = _effect_first_anchors(
+                    anchors,
+                    minimum_effect_span_px=max(
+                        0, int(minimum_effect_span_px)
+                    ),
+                    minimum_effect_foci=max(
+                        max(0, int(minimum_effect_foci)),
+                        planned_small_cluster_group_count,
+                    ),
+                )
             anchors = _certified_witness_first_anchors(
                 anchors,
                 certified_witness_centers=certified_witness_centers,
                 preserved_prefix_count=(
-                    max(
-                        int(minimum_effect_foci),
-                        2 if minimum_effect_span_px > 0 else 0,
-                    )
+                    population_site_prefix_count
                     if enforce_multisite_population
                     else 0
                 ),
@@ -2134,6 +2164,9 @@ def _place_layout(
                         else "template_intrinsic"
                     ),
                     "anchor_sampling_policy": anchor_sampling_policy,
+                    "population_site_id": population_site_by_center.get(
+                        (cy, cx)
+                    ),
                 }
             )
             group_reference_digests.add(reference_digest)
@@ -2339,6 +2372,122 @@ def _effect_first_anchors(
     chosen_set = set(chosen_indices)
     remainder = [index for index in range(len(points)) if index not in chosen_set]
     return points[np.asarray([*chosen_indices, *remainder], dtype=int)]
+
+
+def _multisite_population_anchor_order(
+    anchors: np.ndarray,
+    *,
+    requested_count: int,
+    required_site_count: int,
+    minimum_effect_span_px: int,
+    nominal_nucleus_diameter_px: float,
+) -> tuple[np.ndarray, dict[tuple[int, int], int], int]:
+    """Front-load balanced local abundance sites instead of one hotspot.
+
+    ProbNet rank remains the within-site preference.  Skill-owned farthest
+    anchors define several spatially distinct site centers, then collision-
+    plausible local anchors are interleaved across those sites.  The longer
+    balanced prefix is protected from packing-witness promotion so a handful
+    of distant witnesses cannot hide a single dominant central hotspot.
+    """
+
+    points = np.asarray(anchors, dtype=int)
+    count = min(max(0, int(requested_count)), len(points))
+    site_count = min(max(1, int(required_site_count)), count, len(points))
+    if count <= 0 or site_count <= 1:
+        return points, {}, 0
+
+    seeded = _effect_first_anchors(
+        points,
+        minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
+        minimum_effect_foci=site_count,
+    )
+    seeds = np.asarray(seeded[:site_count], dtype=int)
+    index_by_center = {
+        (int(row), int(col)): index
+        for index, (row, col) in enumerate(points)
+    }
+    seed_indices = [
+        index_by_center[(int(row), int(col))] for row, col in seeds
+    ]
+    distances = np.linalg.norm(
+        points[:, None, :].astype(float) - seeds[None, :, :].astype(float),
+        axis=2,
+    )
+    assignments = np.argmin(distances, axis=1)
+    attempts_per_site = max(
+        int(np.ceil(count / site_count)) + 4,
+        2 * int(np.ceil(count / site_count)),
+    )
+    local_radius = max(
+        3.5 * max(1.0, float(nominal_nucleus_diameter_px)),
+        min(
+            96.0,
+            float(max(0, minimum_effect_span_px))
+            / max(2.0, float(site_count - 1))
+            if minimum_effect_span_px > 0
+            else 0.0,
+        ),
+    )
+    minimum_local_separation = max(
+        2.0, 1.15 * float(nominal_nucleus_diameter_px)
+    )
+    queues: list[list[int]] = []
+    for site_id, seed_index in enumerate(seed_indices):
+        assigned = [
+            index
+            for index in range(len(points))
+            if int(assignments[index]) == site_id
+        ]
+        selected: list[int] = []
+        for radius_scale in (1.0, 1.5, 2.0, np.inf):
+            local = [
+                seed_index,
+                *(
+                    index
+                    for index in assigned
+                    if index != seed_index
+                    and (
+                        not np.isfinite(radius_scale)
+                        or float(distances[index, site_id])
+                        <= local_radius * radius_scale
+                    )
+                ),
+            ]
+            for index in local:
+                if index in selected:
+                    continue
+                if selected:
+                    deltas = (
+                        points[np.asarray(selected, dtype=int)].astype(float)
+                        - points[index].astype(float)
+                    )
+                    if np.any(
+                        np.sum(deltas**2, axis=1)
+                        <= minimum_local_separation**2
+                    ):
+                        continue
+                selected.append(index)
+                if len(selected) >= attempts_per_site:
+                    break
+            if len(selected) >= attempts_per_site:
+                break
+        queues.append(selected)
+
+    prefix: list[int] = []
+    for offset in range(max((len(queue) for queue in queues), default=0)):
+        for queue in queues:
+            if offset < len(queue):
+                prefix.append(queue[offset])
+    prefix = list(dict.fromkeys(prefix))
+    prefix_set = set(prefix)
+    remainder = [index for index in range(len(points)) if index not in prefix_set]
+    site_by_center = {
+        (int(row), int(col)): int(assignments[index])
+        for index, (row, col) in enumerate(points)
+    }
+    order = np.asarray([*prefix, *remainder], dtype=int)
+    return points[order], site_by_center, len(prefix)
 
 
 def _exact_diameter_endpoint_pair(
@@ -2655,6 +2804,69 @@ def _scatter_placement_metrics(
             float(np.std(nearest) / np.mean(nearest))
             if nearest and float(np.mean(nearest)) > 0.0
             else 0.0
+        ),
+    }
+
+
+def _multisite_population_placement_metrics(
+    placements: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Summarize actual cells per planned abundance site for hard gating."""
+
+    groups: dict[int, list[np.ndarray]] = {}
+    unassigned = 0
+    for item in placements:
+        site_id = item.get("population_site_id")
+        center = item.get("center_xy")
+        if (
+            not isinstance(site_id, int)
+            or not isinstance(center, (list, tuple))
+            or len(center) != 2
+        ):
+            unassigned += 1
+            continue
+        groups.setdefault(site_id, []).append(
+            np.asarray([float(center[1]), float(center[0])], dtype=float)
+        )
+    counts = {str(key): len(value) for key, value in sorted(groups.items())}
+    centroids = {
+        key: np.mean(np.asarray(value), axis=0)
+        for key, value in groups.items()
+    }
+    centroid_values = np.asarray(list(centroids.values()), dtype=float)
+    centroid_span = 0.0
+    minimum_centroid_distance = 0.0
+    if len(centroid_values) >= 2:
+        distances = np.linalg.norm(
+            centroid_values[:, None, :] - centroid_values[None, :, :],
+            axis=2,
+        )
+        centroid_span = float(np.max(distances))
+        distances[np.diag_indices_from(distances)] = np.inf
+        minimum_centroid_distance = float(np.min(distances))
+    radii = {}
+    for site_id, values in groups.items():
+        points = np.asarray(values, dtype=float)
+        radii[str(site_id)] = float(
+            np.max(np.linalg.norm(points - centroids[site_id], axis=1))
+        )
+    assigned_count = sum(counts.values())
+    return {
+        "population_site_count": len(groups),
+        "population_site_counts": counts,
+        "population_site_unassigned_count": unassigned,
+        "population_site_dominant_fraction": (
+            max(counts.values()) / assigned_count
+            if assigned_count and counts
+            else 1.0
+        ),
+        "population_site_centroid_span_px": centroid_span,
+        "population_site_minimum_centroid_distance_px": (
+            minimum_centroid_distance
+        ),
+        "population_site_radii_px": radii,
+        "population_site_maximum_radius_px": (
+            max(radii.values()) if radii else 0.0
         ),
     }
 

@@ -4344,11 +4344,69 @@ def _joint_area(c):
             budget.minimum_effect_foci if budget else 0,
             c.executable_contract.cell_program.minimum_effect_foci,
         )
+        multisite_population_required = bool(
+            c.plan.selected_mechanism_id
+            == "breast-local-population-modulation"
+            and c.case.primitive_id
+            == "neoplastic-cell-abundance-increase-v1"
+        )
+        trace = c.candidate.tool_trace
+        site_counts = trace.get("population_site_counts", {})
+        if not isinstance(site_counts, dict):
+            site_counts = {}
+        normalized_site_counts = {
+            str(key): int(value)
+            for key, value in site_counts.items()
+            if int(value) > 0
+        }
+        minimum_site_cell_count = max(
+            3,
+            int(trace.get("placed_count", 0))
+            // max(1, 2 * minimum_effect_foci),
+        )
+        minimum_site_separation_px = max(
+            32.0,
+            2.0
+            * float(
+                c.executable_contract.cell_program.nominal_nucleus_diameter_px
+            ),
+        )
+        maximum_site_radius_px = 96.0
+        multisite_population_ok = bool(
+            not multisite_population_required
+            or (
+                int(trace.get("population_site_count", 0))
+                >= minimum_effect_foci
+                and len(normalized_site_counts) >= minimum_effect_foci
+                and min(normalized_site_counts.values(), default=0)
+                >= minimum_site_cell_count
+                and int(trace.get("population_site_unassigned_count", -1)) == 0
+                and float(
+                    trace.get("population_site_dominant_fraction", 1.0)
+                )
+                <= 0.50
+                and float(
+                    trace.get("population_site_centroid_span_px", 0.0)
+                )
+                >= minimum_effect_span_px
+                and float(
+                    trace.get(
+                        "population_site_minimum_centroid_distance_px", 0.0
+                    )
+                )
+                >= minimum_site_separation_px
+                and float(
+                    trace.get("population_site_maximum_radius_px", np.inf)
+                )
+                <= maximum_site_radius_px
+            )
+        )
         passed = bool(
             budget
             and extent <= budget.maximum_extent_px
             and effect_span >= minimum_effect_span_px
             and effect_foci >= minimum_effect_foci
+            and multisite_population_ok
         )
         if passed:
             detail = "cell-only edit satisfies its count/extent/effect budget"
@@ -4358,6 +4416,11 @@ def _joint_area(c):
             detail = "cell-only change exceeds its declared extent budget"
         elif effect_span < minimum_effect_span_px:
             detail = "cell-only change is too spatially narrow to be meaningful"
+        elif not multisite_population_ok:
+            detail = (
+                "abundance increase collapsed into an imbalanced or "
+                "insufficiently separated set of local sites"
+            )
         else:
             detail = "cell-only change has too few independent effect foci"
         return _result(
@@ -4376,6 +4439,28 @@ def _joint_area(c):
                 ),
                 "observed_effect_foci": effect_foci,
                 "minimum_effect_foci": minimum_effect_foci if budget else None,
+                "multisite_population_required": multisite_population_required,
+                "multisite_population_passed": multisite_population_ok,
+                "population_site_counts": normalized_site_counts,
+                "minimum_site_cell_count": minimum_site_cell_count,
+                "population_site_unassigned_count": trace.get(
+                    "population_site_unassigned_count"
+                ),
+                "population_site_dominant_fraction": trace.get(
+                    "population_site_dominant_fraction"
+                ),
+                "maximum_population_site_dominant_fraction": 0.50,
+                "population_site_centroid_span_px": trace.get(
+                    "population_site_centroid_span_px"
+                ),
+                "population_site_minimum_centroid_distance_px": trace.get(
+                    "population_site_minimum_centroid_distance_px"
+                ),
+                "minimum_site_separation_px": minimum_site_separation_px,
+                "population_site_maximum_radius_px": trace.get(
+                    "population_site_maximum_radius_px"
+                ),
+                "maximum_site_radius_px": maximum_site_radius_px,
             },
         )
     budget = c.case.joint_area_budget
