@@ -1347,6 +1347,26 @@ class JointPathologyEditWorkflow:
                         "review_board": review_board,
                         "tissue_reports": tuple(tissue_reports),
                     }
+                    if _retain_visible_regression_whole_instance_closure(
+                        primitive_id=case.primitive_id,
+                        fallback_policy=(
+                            case.joint_area_budget.fallback_policy
+                        ),
+                        predicted_pixels=(provisional_min,),
+                        desired_max_pixels=desired_max,
+                        hard_max_pixels=hard_max,
+                    ):
+                        # This executed mature batch has already passed every
+                        # hard gate except the preferred joint interval, and
+                        # its smallest complete-instance closure remains
+                        # inside the declared hard range. Certify that batch
+                        # directly for the two visible-regression primitives;
+                        # shrinking and recompiling the tissue edit would
+                        # weaken the intended footprint or destroy a valid
+                        # fragmentation seam merely to chase a soft target.
+                        joint_area_feedback_count += 1
+                        if activate_rebalance_exhausted_area_fallback():
+                            break
 
                 area_feedback_ids = _joint_area_feedback_candidate_ids(
                     joint_reports
