@@ -2054,10 +2054,17 @@ def _added_instance_areas_by_class(
 
 def _recorded_instance_areas_by_class(tool_trace) -> dict[int, list[float]]:
     result: dict[int, list[float]] = {}
-    for item in tool_trace.get("accepted_instance_area_ledger") or ():
+    ledger = tool_trace.get("accepted_instance_area_ledger") or ()
+    if not ledger:
+        # The deterministic layout pastes complete authority masks and records
+        # the exact footprint area per accepted placement.  Re-watershedding
+        # the semantic delta can split/touch those shapes and is strictly less
+        # authoritative than this executor ledger.
+        ledger = tool_trace.get("placements") or ()
+    for item in ledger:
         if not isinstance(item, dict):
             continue
-        class_id = int(item.get("class_id", 0))
+        class_id = int(item.get("class_id", item.get("cell_class", 0)))
         area_px = float(item.get("area_px", 0))
         if class_id <= 0 or area_px <= 0:
             continue
@@ -2100,9 +2107,12 @@ def _local_shape_distribution(c):
     recorded_by_class = _recorded_instance_areas_by_class(
         c.candidate.tool_trace
     )
+    placed_count = int(c.candidate.tool_trace.get("placed_count", 0))
+    recorded_count = sum(len(items) for items in recorded_by_class.values())
+    placement_area_ledger_complete = recorded_count == placed_count
     added_by_class = (
         recorded_by_class
-        if mature
+        if placement_area_ledger_complete
         else _added_instance_areas_by_class(
             c.source_nuclei,
             c.candidate.target_nuclei_mask,
@@ -2180,7 +2190,7 @@ def _local_shape_distribution(c):
         # the stable contract.
         current_passed = (
             nearest_reference_passed
-            if mature
+            if placement_area_ledger_complete
             else ratio is not None and 0.60 <= ratio <= 1.67
         )
         class_checks.append(current_passed)
@@ -2205,7 +2215,7 @@ def _local_shape_distribution(c):
             "comparison_policy": (
                 "each_realized_complete_shape_matches_an_eligible_complete_"
                 "same_class_reference"
-                if mature
+                if placement_area_ledger_complete
                 else "semantic_raster_distribution_median"
             ),
             "passed": current_passed,
@@ -2228,9 +2238,6 @@ def _local_shape_distribution(c):
         and isinstance(uncalibrated, dict)
         and sum(int(value) for value in uncalibrated.values()) == 0
     )
-    placed_count = int(c.candidate.tool_trace.get("placed_count", 0))
-    recorded_count = sum(len(items) for items in recorded_by_class.values())
-    placement_area_ledger_complete = not mature or recorded_count == placed_count
     passed = bool(
         placed_count > 0
         and added_by_class
@@ -2250,8 +2257,8 @@ def _local_shape_distribution(c):
             "class_metrics": class_metrics,
             "mature_shape_sampling_certified": mature_certified,
             "measurement_source": (
-                "mature_accepted_instance_area_ledger"
-                if mature
+                "accepted_complete_instance_area_ledger"
+                if placement_area_ledger_complete
                 else "semantic_added_footprint_fallback"
             ),
             "recorded_instance_count": recorded_count,

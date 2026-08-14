@@ -2229,7 +2229,7 @@ class JointSkillTests(unittest.TestCase):
                 },
                 nominal_nucleus_diameter_px=diameter,
             ),
-            (2, 4),
+            (2, 2),
         )
         self.assertEqual(
             certificate_aligned_cluster_size_range(
@@ -2586,6 +2586,19 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(
             _recorded_instance_areas_by_class(trace),
             {1: [900.0, 1050.0], 2: [420.0]},
+        )
+
+    def test_deterministic_shape_measurement_uses_exact_placement_ledger(self):
+        trace = {
+            "placements": [
+                {"cell_class": 1, "area_px": 193},
+                {"cell_class": 1, "area_px": 527},
+            ]
+        }
+
+        self.assertEqual(
+            _recorded_instance_areas_by_class(trace),
+            {1: [193.0, 527.0]},
         )
 
     def test_shape_support_uses_nearest_complete_reference_not_mixture_median(self):

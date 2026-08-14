@@ -29,7 +29,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v11"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v12"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -88,7 +88,11 @@ def certificate_aligned_cluster_size_range(
         and certificate_proves_independent_foci
         and int(packing_certificate.get("requested_count", 0)) >= 4
     ):
-        return (2, maximum)
+        # The preflight witness certifies individual complete footprints, not
+        # an arbitrary 3/4-member template around every anchor.  Execute fixed
+        # two-cell foci so a valid even certificate cannot be consumed as
+        # 2+3+2 with one impossible singleton remainder.
+        return (2, 2)
     return (minimum, maximum)
 
 
@@ -1349,6 +1353,9 @@ def build_reference_shape_library(
         if not np.any(cropped) or int(np.count_nonzero(cropped)) != item.area_px:
             rejected[instance_id] = "incomplete_bbox_crop"
             continue
+        if _semantic_instance_labels(cropped)[1] != 1:
+            rejected[instance_id] = "semantic_multi_instance_shape"
+            continue
         accepted.append(
             ReferenceNucleusShape(
                 instance_id=instance_id,
@@ -1569,7 +1576,18 @@ def _prioritize_local_references(
         if metadata[item.instance_id].nearest_interface_id in interface_ids
     )
     if len(local) >= 5:
-        return _unique_reference_shapes((*local, *calibrated))
+        # Local same-class contours own normal execution priority, but exact
+        # preflight may have needed another complete same-patch contour for a
+        # tight capacity witness.  Keep that source family behind the local
+        # shapes so the certificate remains executable without promoting the
+        # dataset library ahead of native patch morphology.
+        local_ids = {item.instance_id for item in local}
+        remaining_same_patch = tuple(
+            item for item in same_patch if item.instance_id not in local_ids
+        )
+        return _unique_reference_shapes(
+            (*local, *remaining_same_patch, *calibrated)
+        )
     return _unique_reference_shapes((*same_patch, *calibrated))
 
 
@@ -2464,16 +2482,32 @@ def _layout_offsets(
             for index in range(cardinality)
         )
     if program == "small_cluster":
-        angles = np.linspace(0.0, 2.0 * np.pi, cardinality, endpoint=False)
-        return tuple(
-            (0, 0)
-            if index == 0
-            else (
-                round(spacing * np.sin(angle)),
-                round(spacing * np.cos(angle)),
-            )
-            for index, angle in enumerate(angles)
+        # A fixed left/right pair fails in a curved, narrow peritumoral
+        # annulus even when another tangential neighbor is legal.  Search a
+        # deterministic ring and retain legal partner centers.  A four-pixel
+        # floor preserves the executor's one-pixel collision clearance for
+        # the smallest 3x3 semantic nuclei used by contract fixtures.
+        cluster_spacing = max(4, spacing)
+        phase = (
+            (int(anchor_y) * 1009 + int(anchor_x) * 9176 + int(seed)) % 16
         )
+        ring = []
+        for index in range(16):
+            angle = 2.0 * np.pi * ((phase + index) % 16) / 16.0
+            offset = (
+                round(cluster_spacing * np.sin(angle)),
+                round(cluster_spacing * np.cos(angle)),
+            )
+            if offset == (0, 0) or offset in ring:
+                continue
+            row, col = anchor_y + offset[0], anchor_x + offset[1]
+            if (
+                0 <= row < legal_zone.shape[0]
+                and 0 <= col < legal_zone.shape[1]
+                and legal_zone[row, col]
+            ):
+                ring.append(offset)
+        return ((0, 0), *ring[: max(0, cardinality - 1)])
     if program == "dense_sheet":
         side = int(np.ceil(np.sqrt(cardinality)))
         origin = (side - 1) / 2.0
