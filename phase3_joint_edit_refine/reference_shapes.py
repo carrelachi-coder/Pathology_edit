@@ -20,8 +20,8 @@ from scipy import ndimage
 from .models import JointContractError
 from .nuclei import RAW_TO_INTERNAL, _semantic_instance_labels
 
-REFERENCE_SHAPE_AUTHORITY_VERSION = "calibrated-reference-shapes-v2"
-DEFAULT_REFERENCE_SHAPES_PER_CLASS = 9
+REFERENCE_SHAPE_AUTHORITY_VERSION = "calibrated-reference-shapes-v3"
+DEFAULT_REFERENCE_SHAPES_PER_CLASS = 24
 _PREFERRED_TISSUE_NAME_BY_CLASS = {
     1: "Tumor",
     2: "Immune infiltrate",
@@ -38,6 +38,8 @@ class ReferenceNucleusShape:
     mask: np.ndarray
     source: str
     area_px: int
+    parent_instance_id: str | None = None
+    scale_factor: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,8 @@ class ReferenceShapeAuthority:
                         "mask_shape": list(item.mask.shape),
                         "mask_sha256": _mask_sha256(item.mask),
                         "source": item.source,
+                        "parent_instance_id": item.parent_instance_id,
+                        "scale_factor": item.scale_factor,
                     }
                     for item in items
                 ]
@@ -199,12 +203,17 @@ def load_reference_shape_authority(
             )
         candidates.sort(key=lambda item: item[:4])
         selected = []
+        selected_mask_digests: set[str] = set()
         # Deterministic central shapes avoid a single giant semantic component
-        # becoming the universal containment margin while retaining genuine
-        # morphology around the dataset-calibrated size ruler.
-        for _, area, relative, mask_digest, mask in candidates[
-            : max(1, int(shapes_per_class))
-        ]:
+        # becoming the universal containment margin.  Library files are not
+        # assumed to be morphologically unique: some datasets contain several
+        # records with byte-identical masks.  Select unique contours around the
+        # calibrated size ruler so file-name diversity cannot masquerade as
+        # biological shape diversity.
+        for _, area, relative, mask_digest, mask in candidates:
+            if mask_digest in selected_mask_digests:
+                continue
+            selected_mask_digests.add(mask_digest)
             instance_id = (
                 f"library:{declared_dataset}:{relative}:{mask_digest[:12]}"
             )
@@ -225,6 +234,8 @@ def load_reference_shape_authority(
                     "mask_sha256": mask_digest,
                 }
             )
+            if len(selected) >= max(1, int(shapes_per_class)):
+                break
         if selected:
             selected_by_class[class_id] = tuple(selected)
 

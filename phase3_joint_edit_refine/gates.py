@@ -795,11 +795,16 @@ def audit_added_class1_foci(
         all(value == 1 for value in component_center_counts.values())
         and len(component_center_counts) == int(added_component_count)
     )
+    # A small cluster intentionally permits adjacent complete instances to
+    # become one 8-connected raster component.  Requiring one center per
+    # component here makes that valid 2--4-cell focus impossible.  The center-
+    # authoritative Voronoi recovery below proves one non-empty footprint per
+    # accepted center; scatter separately requires every reconstructed focus
+    # to have cardinality one.
     ledger_matches = bool(
         ledger_valid
         and len(centers) > 0
         and all_components_seeded
-        and one_center_per_raster_instance
     )
 
     # A deterministic Voronoi partition recovers one complete-instance
@@ -1701,6 +1706,60 @@ def _reference_shape_integrity(c):
         for item in placements
         if isinstance(item, dict)
     }
+    placement_digests = [
+        str(item.get("reference_shape_sha256"))
+        for item in placements
+        if isinstance(item, dict) and item.get("reference_shape_sha256")
+    ]
+    unique_selected_shape_count = len(set(placement_digests))
+    available_unique_shape_count = int(
+        c.candidate.tool_trace.get(
+            "reference_shape_unique_digest_count",
+            unique_selected_shape_count,
+        )
+    )
+    sampling_policy = c.candidate.tool_trace.get(
+        "reference_shape_sampling_policy"
+    )
+    deterministic_without_replacement = bool(
+        sampling_policy
+        == "same_class_source_without_replacement_then_"
+        "calibrated_library_without_replacement_then_certified_fallback"
+    )
+    required_unique_shape_count = min(
+        len(placements),
+        max(0, available_unique_shape_count),
+    )
+    reused_placement_count = sum(
+        bool(item.get("reference_reused"))
+        for item in placements
+        if isinstance(item, dict)
+    )
+    reuse_exhaustion_evidence_ok = all(
+        not bool(item.get("reference_reused"))
+        or bool(item.get("reference_reuse_after_exhaustive_fit_search"))
+        for item in placements
+        if isinstance(item, dict)
+    )
+    morphology_diversity_ok = bool(
+        not deterministic_without_replacement
+        or (
+            len(placement_digests) == len(placements)
+            and unique_selected_shape_count
+            >= len(placements) - reused_placement_count
+            and reuse_exhaustion_evidence_ok
+        )
+    )
+    resized_parent_bindings_ok = all(
+        not str(item.get("reference_source", "")).endswith("_resized")
+        or (
+            bool(item.get("reference_parent_instance_id"))
+            and item.get("reference_parent_instance_id") in eligible
+            and float(item.get("reference_scale_factor", 1.0)) != 1.0
+        )
+        for item in placements
+        if isinstance(item, dict)
+    )
     missing_bindings = sorted(
         str(value) for value in selected if not value or value not in eligible
     )
@@ -1752,13 +1811,20 @@ def _reference_shape_integrity(c):
         "reference_shape_authority"
     )
     calibrated_authority_ok = bool(
-        locality == "calibrated_dataset_instance_library"
+        locality
+        in {
+            "calibrated_dataset_instance_library",
+            "same_patch_then_calibrated_dataset_instance_library",
+        }
         and isinstance(shape_authority, dict)
         and shape_authority.get("version")
         == REFERENCE_SHAPE_AUTHORITY_VERSION
         and len(str(shape_authority.get("authority_sha256", ""))) == 64
         and all(
             str(instance_id).startswith("library:")
+            or ":scale-" in str(instance_id)
+            or str(instance_id)
+            in {item.instance_id for item in c.scene.cells.instances}
             for instance_id in eligible
         )
     )
@@ -1768,15 +1834,28 @@ def _reference_shape_integrity(c):
         else None
     )
     metadata = {item.instance_id: item for item in c.scene.cells.instances}
+    eligible_source_ids = {
+        instance_id for instance_id in eligible if instance_id in metadata
+    }
     component_local_ok = bool(
         selected_component_id is None
-        or calibrated_authority_ok
+        or (
+            locality == "calibrated_dataset_instance_library"
+            and calibrated_authority_ok
+        )
         or (
             locality == "selected_tissue_component"
             and all(
                 instance_id in metadata
                 and metadata[instance_id].tissue_component_id == selected_component_id
                 for instance_id in eligible
+            )
+        )
+        or (
+            locality == "same_patch_then_calibrated_dataset_instance_library"
+            and all(
+                metadata[instance_id].tissue_component_id == selected_component_id
+                for instance_id in eligible_source_ids
             )
         )
     )
@@ -1787,6 +1866,8 @@ def _reference_shape_integrity(c):
         and not rejected_selected
         and mature_policy_ok
         and component_local_ok
+        and morphology_diversity_ok
+        and resized_parent_bindings_ok
     )
     return _result(
         "reference_shape_integrity",
@@ -1808,6 +1889,14 @@ def _reference_shape_integrity(c):
             "selected_component_id": selected_component_id,
             "component_local_reference_ok": component_local_ok,
             "calibrated_shape_authority_ok": calibrated_authority_ok,
+            "reference_shape_sampling_policy": sampling_policy,
+            "available_unique_shape_count": available_unique_shape_count,
+            "required_unique_shape_count": required_unique_shape_count,
+            "selected_unique_shape_count": unique_selected_shape_count,
+            "reused_placement_count": reused_placement_count,
+            "reuse_exhaustion_evidence_ok": reuse_exhaustion_evidence_ok,
+            "morphology_diversity_ok": morphology_diversity_ok,
+            "resized_parent_bindings_ok": resized_parent_bindings_ok,
             "reference_shape_authority_sha256": (
                 shape_authority.get("authority_sha256")
                 if isinstance(shape_authority, dict)

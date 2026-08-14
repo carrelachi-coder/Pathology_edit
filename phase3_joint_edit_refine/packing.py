@@ -18,7 +18,7 @@ from scipy import ndimage, signal
 
 from .cell_layouts import ReferenceNucleusShape
 
-PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v19"
+PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v20"
 MAX_PACKING_REFERENCE_SHAPES_PER_CLASS = 3
 MINIMUM_LOCAL_MEDIAN_AREA_RATIO = 0.60
 MAXIMUM_LOCAL_MEDIAN_AREA_RATIO = 1.67
@@ -369,6 +369,60 @@ def certify_complete_footprint_packing(
         and set(reasons)
         == {"exact_complete_footprint_packing_capacity_shortfall"}
     ):
+        # Prefer the smallest *diverse* same-class family that can preserve
+        # the requested count.  A one-shape certificate remains the final
+        # fail-safe, but it should not be the first capacity recovery because
+        # the deterministic executor would otherwise clone one contour across
+        # every added nucleus.
+        diversity_widths = range(
+            min(
+                MAX_PACKING_REFERENCE_SHAPES_PER_CLASS,
+                max((len(items) for items in normalized_references.values()), default=0),
+            ),
+            1,
+            -1,
+        )
+        for diversity_width in diversity_widths:
+            capacity_references = {
+                class_id: tuple(
+                    sorted(
+                        items,
+                        key=lambda item: (item.area_px, item.instance_id),
+                    )[:diversity_width]
+                )
+                for class_id, items in normalized_references.items()
+            }
+            if not any(
+                len(items) >= diversity_width
+                for items in capacity_references.values()
+            ):
+                continue
+            safe = certify_complete_footprint_packing(
+                source_nuclei=source_nuclei,
+                erased_footprint=erased_footprint,
+                center_region=center_region,
+                valid_footprint_region=valid_footprint_region,
+                references_by_class=capacity_references,
+                requested_count=requested_count,
+                class_request_weights=class_request_weights,
+                continuity_region=continuity_region,
+                required_seam_count=required_seam_count,
+                minimum_seam_count=minimum_seam_count,
+                required_seam_class=required_seam_class,
+                minimum_acceptable_count=minimum_acceptable_count,
+                minimum_center_separation_px=minimum_center_separation_px,
+                continuity_anchor_mask=continuity_anchor_mask,
+                preexisting_continuity_centers=preexisting_continuity_centers,
+                continuity_maximum_empty_run_px=continuity_maximum_empty_run_px,
+                allow_finite_count_fallback=allow_finite_count_fallback,
+                allow_shape_capacity_fallback=False,
+            )
+            if safe.passed:
+                return replace(
+                    safe,
+                    class_reference_median_area_px=class_reference_median_area_px,
+                    capacity_optimized_shape_fallback_used=True,
+                )
         capacity_references = {
             class_id: (
                 min(

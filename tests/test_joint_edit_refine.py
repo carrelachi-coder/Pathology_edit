@@ -36,6 +36,9 @@ from phase3_joint_edit_refine.cell_layouts import (
     _certified_witness_first_anchors,
     _effect_first_anchors,
     _place_layout,
+    _probnet_hard_core_anchor_order,
+    _reference_sampling_order,
+    _unique_reference_shapes,
     build_reference_shape_library,
     certificate_aligned_cluster_size_range,
     certificate_aligned_references,
@@ -834,6 +837,30 @@ class JointSkillTests(unittest.TestCase):
             nominal_nucleus_diameter_px=4,
         )
         self.assertFalse(forged["ledger_matches_instances"])
+
+    def test_final_focus_audit_accepts_two_seeded_touching_cluster_members(self):
+        shape = (48, 48)
+        source = np.zeros(shape, dtype=bool)
+        target = source.copy()
+        # Two complete 3x3 instances touch diagonally and therefore form one
+        # 8-connected raster component, while retaining distinct executor
+        # centers and a legal two-cell focus.
+        target[18:21, 18:21] = True
+        target[21:24, 21:24] = True
+        audit = audit_added_class1_foci(
+            source_class1=source,
+            target_class1=target,
+            accepted_center_ledger=(
+                {"row": 19, "col": 19, "class_id": 1},
+                {"row": 22, "col": 22, "class_id": 1},
+            ),
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            nominal_nucleus_diameter_px=4,
+        )
+
+        self.assertTrue(audit["ledger_matches_instances"])
+        self.assertFalse(audit["one_center_per_raster_instance"])
+        self.assertEqual(audit["focus_sizes"], [2])
 
     def test_new_breast_primitives_bind_parser_mechanism_and_executor_contract(self):
         repository = JointSkillRepository()
@@ -1734,6 +1761,99 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(placed, 1)
         self.assertEqual(trace[0]["reference_instance_id"], "small")
 
+    def test_reference_sampling_is_source_first_unique_and_without_replacement(self):
+        duplicate = np.asarray([[1, 1], [1, 0]], dtype=bool)
+        distinct = np.asarray([[1, 0], [1, 1]], dtype=bool)
+        references = (
+            ReferenceNucleusShape("library-a", 1, duplicate, "calibrated_dataset_instance_library", 3),
+            ReferenceNucleusShape("source-a", 1, distinct, "semantic_distance_watershed", 3),
+            ReferenceNucleusShape("library-duplicate", 1, duplicate, "calibrated_dataset_instance_library", 3),
+        )
+
+        unique = _unique_reference_shapes(references)
+        ordered = _reference_sampling_order(
+            unique,
+            rng=np.random.default_rng(7),
+        )
+
+        self.assertEqual(len(unique), 2)
+        self.assertEqual(ordered[0].instance_id, "source-a")
+
+    def test_layout_exhausts_unique_shapes_before_capacity_reuse(self):
+        legal = np.zeros((48, 48), dtype=bool)
+        legal[5:-5, 5:-5] = True
+        references = tuple(
+            ReferenceNucleusShape(
+                instance_id=f"shape-{index}",
+                class_id=1,
+                mask=mask,
+                source="semantic_distance_watershed",
+                area_px=int(mask.sum()),
+            )
+            for index, mask in enumerate(
+                (
+                    np.ones((1, 1), dtype=bool),
+                    np.asarray([[1, 1], [1, 0]], dtype=bool),
+                    np.asarray([[0, 1], [1, 1]], dtype=bool),
+                )
+            )
+        )
+
+        _target, placed, trace = _place_layout(
+            base=np.zeros_like(legal, dtype=np.uint8),
+            references=references,
+            class_id=1,
+            legal_zone=legal,
+            valid_footprint_region=legal,
+            halo=legal,
+            score=legal.astype(float),
+            requested_count=3,
+            layout_program="single",
+            cluster_size_range=(1, 1),
+            nominal_nucleus_diameter_px=2.0,
+            orientation_mask=np.zeros_like(legal),
+            continuity_region=np.zeros_like(legal),
+            continuity_anchor_mask=np.zeros_like(legal),
+            continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
+            minimum_effect_span_px=0,
+            minimum_effect_foci=0,
+            enforce_single_scatter_separation=False,
+            seed=3,
+        )
+
+        self.assertEqual(placed, 3)
+        self.assertEqual(
+            len({item["reference_shape_sha256"] for item in trace}),
+            3,
+        )
+        self.assertFalse(any(item["reference_reused"] for item in trace))
+
+    def test_scatter_uses_probnet_weighted_hard_core_not_regular_grid(self):
+        rows, cols = np.mgrid[0:80, 0:80]
+        anchors = np.column_stack((rows.ravel(), cols.ravel()))
+        score = np.exp(-((rows - 30) ** 2 + (cols - 24) ** 2) / 800.0)
+
+        ordered = _probnet_hard_core_anchor_order(
+            anchors,
+            values=score.ravel(),
+            minimum_center_separation_px=12.0,
+            minimum_effect_span_px=36,
+            requested_count=6,
+            rng=np.random.default_rng(11),
+        )
+
+        selected = ordered[:6].astype(float)
+        distances = np.linalg.norm(
+            selected[:, None, :] - selected[None, :, :], axis=2
+        )
+        positive = distances[distances > 0]
+        self.assertGreater(float(positive.min()), 12.0)
+        self.assertGreaterEqual(float(positive.max()), 36.0)
+        nearest = np.min(np.where(distances > 0, distances, np.inf), axis=1)
+        self.assertGreater(float(np.ptp(nearest)), 1.0)
+
     def test_local_abundance_does_not_inherit_peritumoral_group_spacing(self):
         canvas = np.zeros((32, 32), dtype=np.uint8)
         legal = np.zeros_like(canvas, dtype=bool)
@@ -2109,7 +2229,7 @@ class JointSkillTests(unittest.TestCase):
                 },
                 nominal_nucleus_diameter_px=diameter,
             ),
-            (1, 1),
+            (2, 4),
         )
         self.assertEqual(
             certificate_aligned_cluster_size_range(
@@ -2125,7 +2245,7 @@ class JointSkillTests(unittest.TestCase):
             (1, 4),
         )
 
-    def test_capacity_optimized_certificate_binds_execution_shape_family(self):
+    def test_capacity_optimized_certificate_preserves_diverse_execution_family(self):
         references = tuple(
             ReferenceNucleusShape(
                 instance_id=name,
@@ -2151,7 +2271,7 @@ class JointSkillTests(unittest.TestCase):
 
         self.assertEqual(
             tuple(item.instance_id for item in aligned),
-            ("small",),
+            ("small", "large"),
         )
         self.assertEqual(
             certificate_aligned_references(
@@ -3745,17 +3865,19 @@ class JointLedgerTests(unittest.TestCase):
             )
             self.assertTrue(references)
             self.assertTrue(
-                all(item.instance_id.startswith("library:BCSS:") for item in references)
+                references[0].instance_id.startswith("nuc-c1-")
             )
             self.assertTrue(
-                all(
+                any(
                     item.source == "calibrated_dataset_instance_library"
                     for item in references
                 )
             )
-            self.assertIn(
-                "semantic_shape_superseded_by_calibrated_library_authority",
-                set(rejected.values()),
+            self.assertFalse(
+                any(
+                    value == "semantic_shape_superseded_by_calibrated_library_authority"
+                    for value in rejected.values()
+                )
             )
             self.assertEqual(len(authority.authority_sha256), 64)
 
@@ -3813,6 +3935,49 @@ class JointLedgerTests(unittest.TestCase):
                 "000002.npz",
                 " ".join(item.instance_id for item in selected),
             )
+
+    def test_calibrated_authority_deduplicates_identical_library_masks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bucket = root / "nuclei_instances" / "tissue_01_Tumor"
+            bucket.mkdir(parents=True)
+            (root / "statistics.json").write_text(
+                json.dumps(
+                    {
+                        "dataset": "BCSS",
+                        "statistics": {
+                            "1": {
+                                "name": "Tumor",
+                                "nuclei_types": {
+                                    "101": {"stored_count": 3, "mean_area": 9.0}
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            masks = (
+                np.ones((3, 3), dtype=bool),
+                np.ones((3, 3), dtype=bool),
+                np.pad(np.ones((2, 2), dtype=bool), ((0, 1), (0, 1))),
+            )
+            for index, mask in enumerate(masks, start=1):
+                np.savez(
+                    bucket / f"{index:06d}.npz",
+                    mask=mask,
+                    type=np.asarray(101),
+                    area=np.asarray(int(mask.sum())),
+                )
+
+            authority = load_reference_shape_authority(
+                root,
+                dataset_name="BCSS",
+                class_ids=(1,),
+                shapes_per_class=3,
+            )
+
+            self.assertEqual(len(authority.shapes_by_class[1]), 2)
 
     def test_semantic_fallback_splits_touching_same_class_nuclei(self):
         rows, cols = np.ogrid[:40, :40]

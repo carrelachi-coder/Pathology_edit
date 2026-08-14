@@ -833,6 +833,7 @@ class JointAuditWriter:
             instance_id
             for instance_id in eligible
             if str(instance_id).startswith("library:")
+            or ":scale-" in str(instance_id)
         }
         source_eligible = eligible - calibrated
         for instance_id in sorted(eligible.union(rejected)):

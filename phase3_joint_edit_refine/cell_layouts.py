@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -17,7 +18,7 @@ from .budget import JointBudgetAllocation
 from .cell_programs import CompiledCellToolProgram
 from .executable_contract import ExecutableJointContract
 from .models import JointContractError, JointEditPlan
-from .nuclei import normalize_nuclei_mask
+from .nuclei import _semantic_instance_labels, normalize_nuclei_mask
 from .reference_shapes import ReferenceNucleusShape
 from .scene import JointSceneAnalysis
 from .seam import (
@@ -28,7 +29,7 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v10"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v11"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -83,24 +84,39 @@ def certificate_aligned_cluster_size_range(
     )
     if (
         primitive_id == "peritumoral-small-cluster-increase-v1"
-        and minimum <= 1 <= maximum
+        and minimum <= 2 <= maximum
         and certificate_proves_independent_foci
+        and int(packing_certificate.get("requested_count", 0)) >= 4
     ):
-        return (1, 1)
+        return (2, maximum)
     return (minimum, maximum)
+
+
+def certificate_capacity_reference_ids(
+    packing_certificate: dict[str, Any],
+) -> tuple[str, ...]:
+    """Return the concrete fallback shapes that prove certified capacity."""
+
+    return tuple(
+        dict.fromkeys(
+            str(item.get("reference_instance_id"))
+            for item in packing_certificate.get("placements", ())
+            if isinstance(item, dict) and item.get("reference_instance_id")
+        )
+    )
 
 
 def certificate_aligned_references(
     references: tuple[ReferenceNucleusShape, ...],
     packing_certificate: dict[str, Any],
 ) -> tuple[ReferenceNucleusShape, ...]:
-    """Use exactly the shape family that proves a capacity fallback.
+    """Keep the complete eligible family and validate fallback bindings.
 
     The exact packer may safely recover a lower count by retrying with the
-    smallest eligible complete shape. Cycling the full reference family again
-    during execution invalidates that proof and can place fewer nuclei than
-    the certificate's safe minimum. Nominal certificates retain the complete
-    morphology family.
+    smallest eligible complete shape.  That witness is a guaranteed fallback,
+    not permission to clone the smallest contour for the final layout.  The
+    executor first tries all eligible same-class shapes and may replay the
+    bound witness shape only when a diverse attempt cannot complete.
     """
 
     if not (
@@ -109,19 +125,13 @@ def certificate_aligned_references(
         is True
     ):
         return references
-    witness_ids = {
-        str(item.get("reference_instance_id"))
-        for item in packing_certificate.get("placements", ())
-        if isinstance(item, dict) and item.get("reference_instance_id")
-    }
-    aligned = tuple(
-        item for item in references if item.instance_id in witness_ids
-    )
-    if not aligned:
+    witness_ids = set(certificate_capacity_reference_ids(packing_certificate))
+    available_ids = {item.instance_id for item in references}
+    if not witness_ids or not witness_ids.issubset(available_ids):
         raise JointContractError(
             "capacity-optimized packing witnesses are absent from execution references"
         )
-    return aligned
+    return references
 
 
 class SpatialRanker(Protocol):
@@ -469,6 +479,10 @@ def generate_cell_layouts(
         requested_count = certified_requested_count
     else:
         requested_count = min(executable_desired_count, capacity_bound)
+    references = _calibrated_reference_variants(
+        references,
+        minimum_count=requested_count,
+    )
     replacement_count = min(replacement_count, requested_count)
     reserve_count = min(reserve_count, max(0, requested_count - replacement_count))
     execution_cluster_size_range = certificate_aligned_cluster_size_range(
@@ -602,10 +616,24 @@ def generate_cell_layouts(
                 == "peritumoral-small-cluster-increase-v1"
             ),
             certified_witness_centers=certified_focus_witness_centers,
+            certified_fallback_reference_ids=(
+                certificate_capacity_reference_ids(packing_certificate)
+            ),
+            previously_used_reference_digests=(
+                item["reference_shape_sha256"]
+                for item in core_placements
+                if item.get("reference_shape_sha256")
+            ),
             seed=seed + variant * 104729 + 8191,
         )
         placed = core_placed + halo_placed
         placements = [*core_placements, *halo_placements]
+        scatter_metrics = (
+            _scatter_placement_metrics(placements)
+            if bundle.primitive.primitive_id
+            == "peritumoral-neoplastic-scatter-increase-v1"
+            else {}
+        )
         target_centers = class_center_mask(target, class_id=target_class)
         continuity_coverage = anchor_coverage_fraction(
             compiled_program.continuity_anchor_mask,
@@ -695,6 +723,14 @@ def generate_cell_layouts(
                     "reference_shape_sources": sorted(
                         {item.source for item in references}
                     ),
+                    "reference_shape_unique_digest_count": len(
+                        {_reference_shape_digest(item) for item in references}
+                    ),
+                    "reference_shape_sampling_policy": (
+                        "same_class_source_without_replacement_then_"
+                        "calibrated_library_without_replacement_then_"
+                        "certified_fallback"
+                    ),
                     "reference_shape_areas_by_class": {
                         str(target_class): [
                             int(item.area_px) for item in references
@@ -704,8 +740,9 @@ def generate_cell_layouts(
                         scene.reference_shape_authority.to_metadata()
                         if scene.reference_shape_authority is not None
                         and any(
-                            item.source
-                            == "calibrated_dataset_instance_library"
+                            item.source.startswith(
+                                "calibrated_dataset_instance_library"
+                            )
                             for item in references
                         )
                         else None
@@ -717,6 +754,7 @@ def generate_cell_layouts(
                         references=references,
                     ),
                     "reference_first": True,
+                    **scatter_metrics,
                     "cross_domain_fallback": False,
                     "overlap_pixels": 0,
                     "partial_source_instance_edits": 0,
@@ -1122,8 +1160,9 @@ def _build_multiclass_addition_results(
                         scene.reference_shape_authority.to_metadata()
                         if scene.reference_shape_authority is not None
                         and any(
-                            item.source
-                            == "calibrated_dataset_instance_library"
+                            item.source.startswith(
+                                "calibrated_dataset_instance_library"
+                            )
                             for values in references_by_class.values()
                             for item in values
                         )
@@ -1333,14 +1372,117 @@ def build_reference_shape_library(
         else ()
     )
     if calibrated and scene.cells.observation_quality != "native_instance":
-        for item in accepted:
-            rejected[item.instance_id] = (
-                "semantic_shape_superseded_by_calibrated_library_authority"
-            )
-        return tuple(calibrated), rejected
+        # A semantic watershed does not provide native object identity, but it
+        # does provide complete, same-patch, same-class contours.  Prefer those
+        # local morphologies once each, then use the digest-bound dataset
+        # library when the requested increment exceeds the patch supply.
+        return _unique_reference_shapes((*accepted, *calibrated)), rejected
     if not accepted and calibrated:
         return tuple(calibrated), rejected
-    return tuple(accepted), rejected
+    return _unique_reference_shapes(tuple(accepted)), rejected
+
+
+def _reference_shape_digest(reference: ReferenceNucleusShape) -> str:
+    shape = np.ascontiguousarray(np.asarray(reference.mask, dtype=np.uint8))
+    digest = hashlib.sha256()
+    digest.update(str(shape.shape).encode("ascii"))
+    digest.update(shape.tobytes(order="C"))
+    return digest.hexdigest()
+
+
+def _unique_reference_shapes(
+    references: tuple[ReferenceNucleusShape, ...],
+) -> tuple[ReferenceNucleusShape, ...]:
+    """Keep source order while collapsing byte-identical nucleus contours."""
+
+    seen: set[str] = set()
+    result = []
+    for item in references:
+        digest = _reference_shape_digest(item)
+        if digest in seen:
+            continue
+        seen.add(digest)
+        result.append(item)
+    return tuple(result)
+
+
+def _calibrated_reference_variants(
+    references: tuple[ReferenceNucleusShape, ...],
+    *,
+    minimum_count: int,
+) -> tuple[ReferenceNucleusShape, ...]:
+    """Add bounded same-class size variants only when unique contours run out.
+
+    Same-patch complete shapes retain priority.  Dataset-library contours are
+    deterministically resized around the patch/source median area, with small
+    bounded scale changes, only until the requested morphology supply is met.
+    Every variant is rechecked as one connected semantic instance.
+    """
+
+    unique = list(_unique_reference_shapes(references))
+    requested = max(0, int(minimum_count))
+    if len(unique) >= requested or not unique:
+        return tuple(unique)
+    target_area = float(np.median([item.area_px for item in unique]))
+    library = tuple(
+        item
+        for item in unique
+        if item.source == "calibrated_dataset_instance_library"
+    )
+    if not library:
+        return tuple(unique)
+    seen = {_reference_shape_digest(item) for item in unique}
+    # Mild scale variation preserves class morphology without inventing
+    # arbitrary deformations or changing aspect ratio.
+    for multiplier in (0.90, 1.10, 0.82, 1.18):
+        for item in library:
+            source_area = max(1, int(item.area_px))
+            desired_area = max(1.0, target_area * multiplier * multiplier)
+            scale = float(np.sqrt(desired_area / source_area))
+            new_height = max(1, round(item.mask.shape[0] * scale))
+            new_width = max(1, round(item.mask.shape[1] * scale))
+            # scipy nearest-neighbor zoom avoids a hard dependency on cv2 in
+            # the local contract test environment.
+            resized = ndimage.zoom(
+                np.asarray(item.mask, dtype=np.uint8),
+                zoom=(
+                    new_height / item.mask.shape[0],
+                    new_width / item.mask.shape[1],
+                ),
+                order=0,
+                prefilter=False,
+            ).astype(bool)
+            if not np.any(resized):
+                continue
+            rows, cols = np.nonzero(resized)
+            resized = np.ascontiguousarray(
+                resized[rows.min() : rows.max() + 1, cols.min() : cols.max() + 1],
+                dtype=bool,
+            )
+            if ndimage.label(resized, structure=np.ones((3, 3), dtype=bool))[1] != 1:
+                continue
+            if _semantic_instance_labels(resized)[1] != 1:
+                continue
+            variant = ReferenceNucleusShape(
+                instance_id=(
+                    f"{item.instance_id}:scale-{scale:.4f}:"
+                    f"{_reference_shape_digest(item)[:8]}"
+                ),
+                class_id=item.class_id,
+                mask=resized,
+                source="calibrated_dataset_instance_library_resized",
+                area_px=int(np.count_nonzero(resized)),
+                parent_instance_id=item.instance_id,
+                scale_factor=scale,
+            )
+            digest = _reference_shape_digest(variant)
+            if digest in seen:
+                continue
+            seen.add(digest)
+            unique.append(variant)
+            if len(unique) >= requested:
+                return tuple(unique)
+    return tuple(unique)
 
 
 def _class_density_from_scene(
@@ -1420,13 +1562,15 @@ def _prioritize_local_references(
             for item in same_patch
             if metadata[item.instance_id].tissue_component_id == component_id
         )
-        return local or calibrated
+        return _unique_reference_shapes((*local, *calibrated))
     local = tuple(
         item
         for item in same_patch
         if metadata[item.instance_id].nearest_interface_id in interface_ids
     )
-    return local if len(local) >= 5 else (calibrated or same_patch)
+    if len(local) >= 5:
+        return _unique_reference_shapes((*local, *calibrated))
+    return _unique_reference_shapes((*same_patch, *calibrated))
 
 
 def _reference_shape_locality(
@@ -1435,10 +1579,15 @@ def _reference_shape_locality(
     references: tuple[ReferenceNucleusShape, ...] = (),
 ) -> str:
     if references and all(
-        item.source == "calibrated_dataset_instance_library"
+        item.source.startswith("calibrated_dataset_instance_library")
         for item in references
     ):
         return "calibrated_dataset_instance_library"
+    if references and any(
+        item.source.startswith("calibrated_dataset_instance_library")
+        for item in references
+    ):
+        return "same_patch_then_calibrated_dataset_instance_library"
     return (
         "selected_tissue_component"
         if core_zone.startswith("pop:component:")
@@ -1479,10 +1628,16 @@ def _place_layout(
     enforce_single_scatter_separation=True,
     enforce_small_cluster_group_separation=True,
     certified_witness_centers=(),
+    certified_fallback_reference_ids=(),
+    previously_used_reference_digests=(),
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
     rng = np.random.default_rng(seed)
+    references = _reference_sampling_order(references, rng=rng)
+    used_reference_digests: set[str] = {
+        str(value) for value in previously_used_reference_digests
+    }
     # Rank only centers that can hold at least one complete local reference
     # shape before any new placement. Ordering every legal pixel let the
     # effect-span compiler choose distant endpoints that were already occupied;
@@ -1504,6 +1659,7 @@ def _place_layout(
     values = score[executable_centers] + jitter
     order = np.argsort(-values)
     anchors = coords[order]
+    anchor_sampling_policy = "probnet_ranked"
     if requested_count > 0 and len(coords):
         anchors = _continuity_first_anchors(
             coords=coords,
@@ -1526,15 +1682,50 @@ def _place_layout(
                 max(1, int(continuity_preferred_count)),
             ),
         )
-        anchors = _effect_first_anchors(
-            anchors,
-            minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
-            minimum_effect_foci=max(0, int(minimum_effect_foci)),
-        )
-        anchors = _certified_witness_first_anchors(
-            anchors,
-            certified_witness_centers=certified_witness_centers,
-        )
+        if (
+            layout_program == "single"
+            and enforce_single_scatter_separation
+            and certified_witness_centers
+        ):
+            anchors = _probnet_hard_core_anchor_order(
+                coords,
+                values=values,
+                minimum_center_separation_px=(
+                    2.25 * float(nominal_nucleus_diameter_px)
+                ),
+                minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
+                requested_count=requested_count,
+                rng=rng,
+            )
+            selected_scatter_centers = anchors[:requested_count]
+            hard_core_ok = _centers_satisfy_minimum_separation(
+                selected_scatter_centers,
+                minimum_separation_px=(
+                    2.25 * float(nominal_nucleus_diameter_px)
+                ),
+            )
+            span_ok = _centers_satisfy_minimum_span(
+                selected_scatter_centers,
+                minimum_span_px=minimum_effect_span_px,
+            )
+            if hard_core_ok and span_ok:
+                anchor_sampling_policy = "probnet_weighted_hard_core_without_replacement"
+            else:
+                anchors = _certified_witness_first_anchors(
+                    anchors,
+                    certified_witness_centers=certified_witness_centers,
+                )
+                anchor_sampling_policy = "certified_packing_witness_fallback"
+        else:
+            anchors = _effect_first_anchors(
+                anchors,
+                minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
+                minimum_effect_foci=max(0, int(minimum_effect_foci)),
+            )
+            anchors = _certified_witness_first_anchors(
+                anchors,
+                certified_witness_centers=certified_witness_centers,
+            )
     effective_cluster_range = cluster_size_range
     if minimum_effect_foci > 0 and requested_count > 0:
         # Reserve enough independent anchors to satisfy the skill-owned focus
@@ -1549,7 +1740,17 @@ def _place_layout(
     placement_trace: list[dict[str, Any]] = []
     seam_region = np.asarray(continuity_region, dtype=bool)
     anchor_index = 0
-    while placed < requested_count and anchor_index < len(anchors):
+    allow_reference_reuse = False
+    while placed < requested_count:
+        if anchor_index >= len(anchors):
+            if allow_reference_reuse:
+                break
+            # First exhaust every legal center while requiring an unused
+            # morphology.  Only then may the executor reuse a contour as the
+            # certified capacity fallback.
+            allow_reference_reuse = True
+            anchor_index = 0
+            continue
         ay, ax = (int(v) for v in anchors[anchor_index])
         anchor_index += 1
         remaining_count = requested_count - placed
@@ -1579,6 +1780,7 @@ def _place_layout(
                     offsets = offsets[:-shrink_by]
         group_start = len(placement_trace)
         group_footprints: list[tuple[int, int, int, int, np.ndarray]] = []
+        group_reference_digests: set[str] = set()
         group_id = f"cluster-{anchor_index:04d}"
         for dy, dx in offsets:
             if placed >= requested_count:
@@ -1633,10 +1835,15 @@ def _place_layout(
                 canvas_shape=target.shape,
                 valid_footprint_region=valid_footprint_region,
                 occupied=occupied,
+                used_reference_digests=(
+                    used_reference_digests | group_reference_digests
+                ),
+                allow_reference_reuse=allow_reference_reuse,
             )
             if fit is None:
                 continue
             reference, shape, y0, y1, x0, x1 = fit
+            reference_digest = _reference_shape_digest(reference)
             target_view = target[y0:y1, x0:x1]
             target_view[shape] = class_id
             occupied[y0:y1, x0:x1] |= shape
@@ -1653,6 +1860,20 @@ def _place_layout(
                     ),
                     "reference_instance_id": reference.instance_id,
                     "reference_source": reference.source,
+                    "reference_shape_sha256": reference_digest,
+                    "reference_parent_instance_id": (
+                        reference.parent_instance_id
+                    ),
+                    "reference_scale_factor": float(reference.scale_factor),
+                    "reference_reused": reference_digest
+                    in used_reference_digests | group_reference_digests,
+                    "reference_reuse_after_exhaustive_fit_search": bool(
+                        allow_reference_reuse
+                    ),
+                    "certified_capacity_fallback_shape": bool(
+                        reference.instance_id
+                        in set(certified_fallback_reference_ids)
+                    ),
                     "cluster_id": group_id,
                     "planned_cluster_size": min(len(offsets), requested_count),
                     "spacing_px": max(
@@ -1664,8 +1885,10 @@ def _place_layout(
                         if layout_program in {"short_cord", "boundary_aligned"}
                         else "template_intrinsic"
                     ),
+                    "anchor_sampling_policy": anchor_sampling_policy,
                 }
             )
+            group_reference_digests.add(reference_digest)
             placed += 1
         actual_cluster_size = len(placement_trace) - group_start
         if (
@@ -1682,6 +1905,7 @@ def _place_layout(
             del placement_trace[group_start:]
             placed -= actual_cluster_size
             continue
+        used_reference_digests.update(group_reference_digests)
         for item in placement_trace[group_start:]:
             item["cluster_size"] = actual_cluster_size
     return target, placed, placement_trace
@@ -1843,43 +2067,220 @@ def _first_fitting_reference(
     canvas_shape: tuple[int, int],
     valid_footprint_region: np.ndarray,
     occupied: np.ndarray,
+    used_reference_digests: set[str] | None = None,
+    allow_reference_reuse: bool = True,
 ) -> tuple[ReferenceNucleusShape, np.ndarray, int, int, int, int] | None:
-    """Choose the first authority-eligible complete shape fitting a center."""
+    """Choose an unused authority shape before reusing a fitting contour."""
 
-    for offset in range(len(references)):
-        reference = references[(int(start_index) + offset) % len(references)]
-        shape = np.asarray(reference.mask, dtype=bool)
-        window = _placement_window(
-            shape,
-            center_y=center_y,
-            center_x=center_x,
-            canvas_shape=canvas_shape,
-        )
-        if window is None:
-            continue
-        y0, y1, x0, x1 = window
-        if y0 <= 0 or x0 <= 0 or y1 >= canvas_shape[0] or x1 >= canvas_shape[1]:
-            continue
-        # P constrains the center. V, not P, constrains the full footprint.
-        if not np.all(valid_footprint_region[y0:y1, x0:x1][shape]):
-            continue
-        guard_y0, guard_y1 = max(0, y0 - 1), min(canvas_shape[0], y1 + 1)
-        guard_x0, guard_x1 = max(0, x0 - 1), min(canvas_shape[1], x1 + 1)
-        local_shape = np.zeros(
-            (guard_y1 - guard_y0, guard_x1 - guard_x0), dtype=bool
-        )
-        local_shape[
-            y0 - guard_y0 : y1 - guard_y0,
-            x0 - guard_x0 : x1 - guard_x0,
-        ] = shape
-        collision_guard = ndimage.binary_dilation(local_shape, iterations=1)
-        if np.any(
-            collision_guard
-            & occupied[guard_y0:guard_y1, guard_x0:guard_x1]
-        ):
-            continue
-        return reference, shape, y0, y1, x0, x1
+    used = used_reference_digests or set()
+    for allow_reuse in ((False, True) if allow_reference_reuse else (False,)):
+        for offset in range(len(references)):
+            # Preserve source-first ordering while unused morphologies remain.
+            # Once capacity forces reuse, rotate the fallback family so the
+            # same smallest contour does not become the universal clone.
+            reference_index = (
+                offset
+                if not allow_reuse
+                else (int(start_index) + offset) % len(references)
+            )
+            reference = references[reference_index]
+            reference_digest = _reference_shape_digest(reference)
+            if (reference_digest in used) != allow_reuse:
+                continue
+            shape = np.asarray(reference.mask, dtype=bool)
+            window = _placement_window(
+                shape,
+                center_y=center_y,
+                center_x=center_x,
+                canvas_shape=canvas_shape,
+            )
+            if window is None:
+                continue
+            y0, y1, x0, x1 = window
+            if y0 <= 0 or x0 <= 0 or y1 >= canvas_shape[0] or x1 >= canvas_shape[1]:
+                continue
+            # P constrains the center. V, not P, constrains the full footprint.
+            if not np.all(valid_footprint_region[y0:y1, x0:x1][shape]):
+                continue
+            guard_y0, guard_y1 = max(0, y0 - 1), min(canvas_shape[0], y1 + 1)
+            guard_x0, guard_x1 = max(0, x0 - 1), min(canvas_shape[1], x1 + 1)
+            local_shape = np.zeros(
+                (guard_y1 - guard_y0, guard_x1 - guard_x0), dtype=bool
+            )
+            local_shape[
+                y0 - guard_y0 : y1 - guard_y0,
+                x0 - guard_x0 : x1 - guard_x0,
+            ] = shape
+            collision_guard = ndimage.binary_dilation(local_shape, iterations=1)
+            if np.any(
+                collision_guard
+                & occupied[guard_y0:guard_y1, guard_x0:guard_x1]
+            ):
+                continue
+            return reference, shape, y0, y1, x0, x1
     return None
+
+
+def _reference_sampling_order(
+    references: tuple[ReferenceNucleusShape, ...],
+    *,
+    rng: np.random.Generator,
+) -> tuple[ReferenceNucleusShape, ...]:
+    """Sample source contours first, each morphology without replacement."""
+
+    groups = ([], [], [])
+    for item in _unique_reference_shapes(tuple(references)):
+        if item.source == "calibrated_dataset_instance_library_resized":
+            groups[2].append(item)
+        elif item.source == "calibrated_dataset_instance_library":
+            groups[1].append(item)
+        else:
+            groups[0].append(item)
+    ordered = []
+    for group in groups:
+        if not group:
+            continue
+        order = rng.permutation(len(group))
+        ordered.extend(group[int(index)] for index in order)
+    return tuple(ordered)
+
+
+def _probnet_hard_core_anchor_order(
+    anchors: np.ndarray,
+    *,
+    values: np.ndarray,
+    minimum_center_separation_px: float,
+    minimum_effect_span_px: int,
+    requested_count: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Return a weighted hard-core scatter prefix without lattice regularity.
+
+    ProbNet remains the spatial authority.  Gumbel ranking samples from its
+    relative mass without replacement; the hard-core test only rejects centers
+    that would merge two intended single-cell foci.  We retry bounded
+    deterministic Gumbel draws until the compiled span/focus contract passes.
+    Packing witnesses remain a fallback, not the normal visual layout.
+    """
+
+    points = np.asarray(anchors, dtype=int)
+    scores = np.asarray(values, dtype=float)
+    count = min(max(0, int(requested_count)), len(points))
+    if count <= 0 or not len(points):
+        return points
+    finite = np.asarray(scores, dtype=float)
+    finite_values = finite[np.isfinite(finite)]
+    if finite_values.size:
+        shifted = np.where(
+            np.isfinite(finite),
+            finite - float(np.min(finite_values)),
+            0.0,
+        )
+        positive = shifted[np.isfinite(shifted) & (shifted > 0)]
+        scale = float(np.median(positive)) if positive.size else 1.0
+        log_mass = np.log(
+            np.clip(
+                shifted / max(scale, 1e-12) + 1e-3,
+                1e-12,
+                None,
+            )
+        )
+    else:
+        log_mass = np.zeros(len(points), dtype=float)
+    minimum_sq = max(0.0, float(minimum_center_separation_px)) ** 2
+    best: list[int] = []
+    for _attempt in range(32):
+        priority = log_mass + rng.gumbel(size=len(points))
+        order = np.argsort(-priority, kind="stable")
+        selected: list[int] = []
+        for index in order:
+            point = points[int(index)]
+            if selected:
+                chosen = points[np.asarray(selected, dtype=int)]
+                distance_sq = np.sum((chosen - point) ** 2, axis=1)
+                if np.any(distance_sq <= minimum_sq):
+                    continue
+            selected.append(int(index))
+            if len(selected) >= count:
+                break
+        if len(selected) > len(best):
+            best = selected
+        chosen_points = points[np.asarray(selected, dtype=int)]
+        if len(selected) >= count and _centers_satisfy_minimum_span(
+            chosen_points,
+            minimum_span_px=minimum_effect_span_px,
+        ):
+            best = selected
+            break
+    selected_set = set(best)
+    remainder = [index for index in range(len(points)) if index not in selected_set]
+    return points[np.asarray([*best, *remainder], dtype=int)]
+
+
+def _centers_satisfy_minimum_separation(
+    centers: np.ndarray,
+    *,
+    minimum_separation_px: float,
+) -> bool:
+    """Verify the exact hard-core rule on a proposed scatter prefix."""
+
+    points = np.asarray(centers, dtype=float)
+    if not len(points):
+        return False
+    if len(points) == 1:
+        return True
+    distances = np.linalg.norm(
+        points[:, None, :] - points[None, :, :],
+        axis=2,
+    )
+    distances[np.diag_indices_from(distances)] = np.inf
+    return bool(
+        float(np.min(distances))
+        > max(0.0, float(minimum_separation_px))
+    )
+
+
+def _scatter_placement_metrics(
+    placements: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Expose auditable spacing dispersion for a final scatter layout."""
+
+    policies = sorted(
+        {
+            str(item.get("anchor_sampling_policy"))
+            for item in placements
+            if item.get("anchor_sampling_policy")
+        }
+    )
+    centers = np.asarray(
+        [
+            [float(item["center_xy"][1]), float(item["center_xy"][0])]
+            for item in placements
+            if isinstance(item.get("center_xy"), (list, tuple))
+            and len(item["center_xy"]) == 2
+        ],
+        dtype=float,
+    )
+    nearest: list[float] = []
+    if len(centers) >= 2:
+        distances = np.linalg.norm(
+            centers[:, None, :] - centers[None, :, :],
+            axis=2,
+        )
+        distances[np.diag_indices_from(distances)] = np.inf
+        nearest = [float(value) for value in np.min(distances, axis=1)]
+    return {
+        "scatter_anchor_sampling_policies": policies,
+        "scatter_nearest_neighbor_distances_px": nearest,
+        "scatter_nearest_neighbor_range_px": (
+            float(np.ptp(nearest)) if nearest else 0.0
+        ),
+        "scatter_nearest_neighbor_cv": (
+            float(np.std(nearest) / np.mean(nearest))
+            if nearest and float(np.mean(nearest)) > 0.0
+            else 0.0
+        ),
+    }
 
 
 def _continuity_first_anchors(
