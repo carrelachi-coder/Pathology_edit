@@ -27,7 +27,29 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v6"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v7"
+
+
+def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
+    """Robustly scale smooth noise to a useful, deterministic ``[-1, 1]`` field.
+
+    ``multi_scale_smooth_noise`` intentionally returns blurred white noise in
+    its native (small) amplitude.  Treating that output as unit-amplitude made
+    the previous fragmentation warp almost numerically inert, so its Voronoi
+    separators still looked like straight ruler cuts.  Normalize only over the
+    source component so the visual deformation is stable across crop sizes.
+    """
+
+    values = np.asarray(field, dtype=float)
+    region = np.asarray(support, dtype=bool)
+    supported = values[region & np.isfinite(values)]
+    if supported.size == 0:
+        return np.zeros_like(values, dtype=float)
+    center = float(np.median(supported))
+    scale = float(np.percentile(np.abs(supported - center), 95.0))
+    if scale <= 1e-9:
+        return np.zeros_like(values, dtype=float)
+    return np.clip((values - center) / scale, -1.0, 1.0)
 
 
 class TopologySafeAreaUnderfillError(RefineContractError):
@@ -832,14 +854,32 @@ def _residual_fragmentation_priority(
     cols = coordinates[:, 1].astype(int)
     source_area = max(int(np.count_nonzero(source)), 1)
     correlation = float(np.clip(np.sqrt(source_area) / 7.0, 20.0, 88.0))
-    organic_fields = tuple(
+    warp_major = _normalized_organic_field(
         smooth_noise(
             source.shape,
-            seed=_component_seed(source, salt=101 + index * 17),
+            seed=_component_seed(source, salt=101),
             amplitude=1.0,
             correlation_px=correlation,
-        )
-        for index in range(focus_count)
+        ),
+        source,
+    )
+    warp_minor = _normalized_organic_field(
+        smooth_noise(
+            source.shape,
+            seed=_component_seed(source, salt=137),
+            amplitude=1.0,
+            correlation_px=correlation,
+        ),
+        source,
+    )
+    # Warp the component coordinate system before partitioning it.  A shared
+    # smooth deformation preserves three coherent foci, while moving each
+    # separator by roughly a quarter of a component scale.  Adding tiny raw
+    # noise independently to each Voronoi cost (the previous implementation)
+    # was orders of magnitude too weak after Gaussian smoothing and therefore
+    # left nearly straight separators.
+    warped_coordinates = normalized_coordinates + 0.30 * np.column_stack(
+        (warp_major[rows, cols], warp_minor[rows, cols])
     )
     # A centerline half-width of (spacing - 1) / 2 yields a pixel-center gap
     # equal to the requested residual spacing, while reserving meaningful area
@@ -849,17 +889,23 @@ def _residual_fragmentation_priority(
         (max(1, minimum_residual_spacing_px) - 1.0) / 2.0,
     )
     source_boundary = source & ~ndimage.binary_erosion(source, structure=structure)
-    width_field = smooth_noise(
-        source.shape,
-        seed=_component_seed(source, salt=509),
-        amplitude=1.0,
-        correlation_px=correlation * 0.72,
+    width_field = _normalized_organic_field(
+        smooth_noise(
+            source.shape,
+            seed=_component_seed(source, salt=509),
+            amplitude=1.0,
+            correlation_px=correlation * 0.72,
+        ),
+        source,
     )
-    retreat_noise = smooth_noise(
-        source.shape,
-        seed=_component_seed(source, salt=907),
-        amplitude=1.0,
-        correlation_px=correlation,
+    retreat_noise = _normalized_organic_field(
+        smooth_noise(
+            source.shape,
+            seed=_component_seed(source, salt=907),
+            amplitude=1.0,
+            correlation_px=correlation * 0.58,
+        ),
+        source,
     )
     core_progress = ndimage.distance_transform_edt(~source_boundary)
     core_progress /= max(float(np.max(core_progress[source], initial=1.0)), 1.0)
@@ -877,12 +923,11 @@ def _residual_fragmentation_priority(
         seed_radius = 0.92
         seeds = seed_radius * np.column_stack((np.cos(angles), np.sin(angles)))
         costs = []
-        for focus_index, seed_coordinate in enumerate(seeds):
+        for seed_coordinate in seeds:
             squared_distance = np.sum(
-                (normalized_coordinates - seed_coordinate) ** 2, axis=1
+                (warped_coordinates - seed_coordinate) ** 2, axis=1
             )
-            organic_bias = organic_fields[focus_index][rows, cols]
-            costs.append(squared_distance + 0.22 * organic_bias)
+            costs.append(squared_distance)
         partition = np.zeros_like(source, dtype=np.int16)
         partition[rows, cols] = np.argmin(np.stack(costs), axis=0) + 1
         separator = np.zeros_like(source, dtype=bool)
@@ -897,26 +942,42 @@ def _residual_fragmentation_priority(
         separator[:, 1:] |= horizontal
         separator[:, :-1] |= horizontal
         separator_distance = ndimage.distance_transform_edt(~separator)
-        local_radius = corridor_radius * (1.0 + 0.10 * width_field)
-        corridor = (separator_distance <= local_radius) & source & legal
+        local_radius = corridor_radius * (1.0 + 0.24 * width_field)
+        core_radius = min(corridor_radius, 1.35)
+        corridor = (separator_distance <= core_radius) & source & legal
+        spacing_band = (separator_distance <= local_radius) & source & legal
         if not np.any(corridor):
             continue
         # All core pixels precede focus shrink.  Within the core, progress
         # smoothly from the existing stromal boundary into the branch network.
-        corridor_distance = ndimage.distance_transform_edt(~corridor)
-        # Expand both sides of every branch after the split.  Ranking the
-        # whole source perimeter equally can erase the wedge whose outer arc
-        # is shortest; corridor-relative retreat instead shrinks every focus
-        # along its newly exposed stromal boundary while preserving balance.
-        retreat_distance = corridor_distance
+        provisional_core_after = source & ~corridor
+        # Once the clefts traverse the tumor, shrink every provisional focus
+        # from *all* of its stromal interfaces: both the new cleft and the
+        # pre-existing external tumor boundary.  This makes residual foci
+        # genuinely smaller instead of merely widening a road-like Y inside an
+        # otherwise unchanged tumor mass.
+        retreat_distance = ndimage.distance_transform_edt(provisional_core_after)
         organic_retreat = (
-            retreat_distance + (1.8 + 0.08 * retreat_distance) * retreat_noise
+            retreat_distance + (0.72 + 0.045 * retreat_distance) * retreat_noise
         )
         approximate_priority = np.where(
             corridor,
-            0.18 * separator_distance / np.maximum(local_radius, 1.0)
-            + 0.04 * core_progress,
+            0.16 * separator_distance / max(core_radius, 1.0)
+            + 0.03 * core_progress,
             1.0 + organic_retreat,
+        )
+        spacing_shell = spacing_band & ~corridor
+        shell_span = np.maximum(local_radius - core_radius, 0.5)
+        approximate_priority[spacing_shell] = (
+            0.30
+            + 0.55
+            * np.clip(
+                (separator_distance[spacing_shell] - core_radius)
+                / shell_span[spacing_shell],
+                0.0,
+                1.0,
+            )
+            + 0.04 * core_progress[spacing_shell]
         )
         approximate_priority += 1e-3 * tie_break
         approximate_change = np.zeros_like(source, dtype=bool)

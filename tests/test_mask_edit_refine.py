@@ -39,6 +39,7 @@ from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
     _minimum_component_spacing_px,
     _natural_external_retreat_priority,
+    _normalized_organic_field,
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
     _residual_fragmentation_priority,
@@ -1504,6 +1505,25 @@ class CandidateAndSceneTests(unittest.TestCase):
             int(np.count_nonzero(changed & ~corridor)),
             int(source.sum() * 0.02),
         )
+        source_boundary = source & ~ndimage.binary_erosion(
+            source, structure=np.ones((3, 3), dtype=bool)
+        )
+        self.assertGreaterEqual(
+            int(np.count_nonzero(changed & source_boundary)),
+            int(np.count_nonzero(source_boundary) * 0.08),
+        )
+
+    def test_fragmentation_organic_field_has_effective_dynamic_range(self):
+        shape = (96, 120)
+        source = np.zeros(shape, dtype=bool)
+        source[12:84, 10:110] = True
+        raw = np.linspace(-0.002, 0.003, num=np.prod(shape)).reshape(shape)
+
+        normalized = _normalized_organic_field(raw, source)
+
+        supported = np.abs(normalized[source])
+        self.assertGreaterEqual(float(np.percentile(supported, 95.0)), 0.95)
+        self.assertLessEqual(float(np.max(supported)), 1.0)
 
     def test_footprint_priority_prefers_broad_shallow_external_retreat(self):
         shape = (160, 220)
