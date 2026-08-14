@@ -1587,8 +1587,8 @@ class CandidateAndSceneTests(unittest.TestCase):
 
         narrow_radius = float(np.percentile(local_radius, 25.0))
         rupture_radius = float(np.percentile(local_radius, 99.0))
-        self.assertGreaterEqual(rupture_radius, 18.0)
-        self.assertGreaterEqual(rupture_radius, 4.5 * narrow_radius)
+        self.assertGreaterEqual(rupture_radius, 19.0)
+        self.assertGreaterEqual(rupture_radius, 4.3 * narrow_radius)
         residual_labels, residual_count = ndimage.label(
             source & ~changed, structure=np.ones((3, 3), dtype=bool)
         )

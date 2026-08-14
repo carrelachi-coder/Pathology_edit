@@ -27,15 +27,17 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v16"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v17"
 
 
 # The narrowest traversing stromal interval must be a tissue compartment, not
 # a hairline separator.  Sixteen pixels is the conservative lower bound that
 # can contain a sampled BCSS nucleus plus perinuclear stroma at this working
 # resolution.  The value is a *half-width* from the partition seam, so two
-# opposing residual-tumor fronts leave roughly a 32-pixel minimum corridor.
-_FRAGMENTATION_CELL_BEARING_HALF_WIDTH_PX = 16.0
+# opposing residual-tumor fronts target roughly a 36-pixel corridor.  The
+# extra margin keeps diagonal, discretized fronts above the 28-pixel topology
+# contract instead of landing just below it (for example, 27.66 pixels).
+_FRAGMENTATION_CELL_BEARING_HALF_WIDTH_PX = 18.0
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
