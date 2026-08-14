@@ -4,7 +4,7 @@
   "supported_primitives": [
     "peritumoral-small-cluster-increase-v1"
   ],
-  "version": "1.1.0-draft",
+  "version": "1.2.0-draft",
   "review_status": "draft",
   "summary": "Add one localized invasive-front hotspot containing multiple tight synthetic neoplastic foci of two to four complete class-1 nuclei within a certified outer annulus adjacent to annotated invasive Tumor.",
   "recognition_contract": {
@@ -12,7 +12,7 @@
       "annotated invasive Tumor fine ID 1",
       "adjacent operational Stroma fine ID 2",
       "certified external boundary and receiving-side annulus",
-      "capacity for at least three nearby but distinct tight 2--4-cell foci"
+      "capacity for at least two nearby but distinct tight 2--4-cell foci inside one bounded hotspot"
     ],
     "contraindications": [
       "internal hole or cleft",

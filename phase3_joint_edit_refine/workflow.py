@@ -89,8 +89,9 @@ from .scene import build_joint_scene_analysis
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
 from .spatial_contracts import (
-    SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS,
+    SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+    small_cluster_maximum_hotspot_span_px,
 )
 from .tissue_execution import execute_gate_aware_tissue_candidates
 from .tissue_tools import (
@@ -154,9 +155,13 @@ def _localized_focus_capacity_metrics(
     centers = np.column_stack([center_rows, center_cols]).astype(float)
     if not len(centers):
         return 0, 0.0
-    maximum_span = (
-        SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS
-        * max(1.0, float(nominal_nucleus_diameter_px))
+    nominal = max(1.0, float(nominal_nucleus_diameter_px))
+    maximum_span = small_cluster_maximum_hotspot_span_px(
+        nominal,
+        minimum_effect_span_px,
+    )
+    minimum_between = (
+        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * nominal
     )
     pairwise = np.linalg.norm(
         centers[:, None, :] - centers[None, :, :], axis=2
@@ -164,8 +169,14 @@ def _localized_focus_capacity_metrics(
     capacity = 1
     for size in range(2, len(centers) + 1):
         if any(
-            float(np.max(pairwise[np.ix_(subset, subset)]))
-            <= maximum_span + 1e-6
+            (
+                float(np.max(pairwise[np.ix_(subset, subset)]))
+                <= maximum_span + 1e-6
+                and all(
+                    pairwise[left, right] > minimum_between
+                    for left, right in combinations(subset, 2)
+                )
+            )
             for subset in combinations(range(len(centers)), size)
         ):
             capacity = size
@@ -176,7 +187,14 @@ def _localized_focus_capacity_metrics(
     required = min(SMALL_CLUSTER_TARGET_FOCUS_COUNT, len(centers))
     for subset in combinations(range(len(centers)), required):
         span = float(np.max(pairwise[np.ix_(subset, subset)]))
-        if float(minimum_effect_span_px) <= span <= maximum_span:
+        separated = all(
+            pairwise[left, right] > minimum_between
+            for left, right in combinations(subset, 2)
+        )
+        if (
+            separated
+            and float(minimum_effect_span_px) <= span <= maximum_span
+        ):
             margins.append(
                 min(
                     span - float(minimum_effect_span_px),

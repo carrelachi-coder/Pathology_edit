@@ -41,12 +41,12 @@ from .seam import (
 from .skills.repository import JointSkillBundle
 from .spatial_contracts import (
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
-    SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
     SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
-    SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS,
     SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
     SMALL_CLUSTER_TARGET_FOCUS_COUNT,
     SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS,
+    small_cluster_maximum_focus_diameter_px,
+    small_cluster_maximum_hotspot_span_px,
 )
 from .tissue_tools import (
     JOINT_TOOL_FAMILY_TO_EXECUTOR,
@@ -730,14 +730,19 @@ def _small_cluster_focus_compactness(c):
         SMALL_CLUSTER_TARGET_FOCUS_COUNT,
         int(c.case.cell_count_extent_budget.minimum_effect_foci),
     )
-    maximum_focus_diameter_px = (
-        SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS * nominal
+    maximum_focus_diameter_px = small_cluster_maximum_focus_diameter_px(
+        nominal
     )
     minimum_inter_focus_distance_px = (
         SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * nominal
     )
-    maximum_hotspot_span_px = (
-        SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS * nominal
+    minimum_hotspot_span_px = max(
+        int(c.case.cell_count_extent_budget.minimum_effect_span_px),
+        int(c.executable_contract.cell_program.minimum_effect_span_px),
+    )
+    maximum_hotspot_span_px = small_cluster_maximum_hotspot_span_px(
+        nominal,
+        minimum_hotspot_span_px,
     )
     passed = bool(
         audit["ledger_matches_instances"]

@@ -1668,6 +1668,7 @@ class JointSkillTests(unittest.TestCase):
             continuity_preferred_count=0,
             minimum_effect_span_px=40,
             minimum_effect_foci=4,
+            enforce_small_cluster_group_separation=False,
             seed=1,
         )
         self.assertEqual(placed, 12)
@@ -2246,7 +2247,14 @@ class JointSkillTests(unittest.TestCase):
             "peritumoral-small-cluster-increase-v1",
             diameter,
         )
-        self.assertEqual(separation, 18.0)
+        self.assertEqual(separation, 12.8)
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "peritumoral-neoplastic-scatter-increase-v1",
+                diameter,
+            ),
+            18.0,
+        )
         self.assertEqual(
             independent_focus_minimum_center_separation_px(
                 "neoplastic-cell-abundance-increase-v1",
@@ -2281,7 +2289,7 @@ class JointSkillTests(unittest.TestCase):
             (1, 4),
         )
 
-    def test_small_cluster_forms_one_localized_three_focus_hotspot(self):
+    def test_small_cluster_forms_one_localized_two_focus_hotspot(self):
         shape = (100, 100)
         legal = np.zeros(shape, dtype=bool)
         legal[5:-5, 5:-5] = True
@@ -2313,8 +2321,8 @@ class JointSkillTests(unittest.TestCase):
             continuity_maximum_empty_run_px=0,
             continuity_minimum_anchor_coverage_fraction=0.0,
             continuity_preferred_count=0,
-            minimum_effect_span_px=40,
-            minimum_effect_foci=3,
+            minimum_effect_span_px=20,
+            minimum_effect_foci=2,
             seed=1,
         )
 
@@ -2325,7 +2333,7 @@ class JointSkillTests(unittest.TestCase):
                 sum(item["cluster_id"] == group_id for item in trace)
                 for group_id in group_ids
             ),
-            [2, 3, 3],
+            [4, 4],
         )
         centers = np.asarray(
             [item["center_xy"][::-1] for item in trace], dtype=float
@@ -2333,8 +2341,8 @@ class JointSkillTests(unittest.TestCase):
         distances = np.linalg.norm(
             centers[:, None, :] - centers[None, :, :], axis=2
         )
-        self.assertGreaterEqual(float(np.max(distances)), 40.0)
-        self.assertLessEqual(float(np.max(distances)), 60.0)
+        self.assertGreaterEqual(float(np.max(distances)), 20.0)
+        self.assertLessEqual(float(np.max(distances)), 32.0)
         self.assertEqual(
             {item["anchor_sampling_policy"] for item in trace},
             {"probnet_ranked_localized_front_segment"},
@@ -2343,13 +2351,13 @@ class JointSkillTests(unittest.TestCase):
     def test_small_cluster_planner_scores_localized_witness_capacity(self):
         capacity, span_margin = _localized_focus_capacity_metrics(
             center_rows=(20, 20, 20, 20),
-            center_cols=(10, 35, 60, 110),
+            center_cols=(10, 30, 60, 110),
             nominal_nucleus_diameter_px=8.0,
-            minimum_effect_span_px=40,
+            minimum_effect_span_px=20,
         )
 
-        self.assertEqual(capacity, 3)
-        self.assertEqual(span_margin, 10.0)
+        self.assertEqual(capacity, 2)
+        self.assertEqual(span_margin, 2.0)
 
     def test_capacity_optimized_certificate_preserves_diverse_execution_family(self):
         references = tuple(

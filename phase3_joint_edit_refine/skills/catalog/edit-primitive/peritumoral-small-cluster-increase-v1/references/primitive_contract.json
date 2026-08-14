@@ -1,6 +1,6 @@
 {
   "primitive_id": "peritumoral-small-cluster-increase-v1",
-  "version": "1.1.0-research",
+  "version": "1.2.0-research",
   "review_status": "draft",
   "scope": "cell_only",
   "summary": "Add one localized invasive-front hotspot containing multiple tight class-1 neoplastic foci of two to four nuclei inside a certified outer Tumor--Stroma annulus while preserving tissue labels.",
@@ -10,7 +10,7 @@
   "allowed_quota_roles": ["explicit_increment"],
   "host_tissue_labels": ["Stroma"],
   "target_cell_classes": [1],
-  "cell_effect_contract": {"minimum_delta_count": 6, "minimum_span_cell_diameters": 5.0, "minimum_foci": 3},
+  "cell_effect_contract": {"minimum_delta_count": 6, "minimum_span_cell_diameters": 2.5, "minimum_foci": 2},
   "required_checker_ids": [
     "primitive_semantics",
     "tool_program_binding",

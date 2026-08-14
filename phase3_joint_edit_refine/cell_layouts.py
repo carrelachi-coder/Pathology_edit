@@ -29,15 +29,16 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 from .spatial_contracts import (
+    SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
-    SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS,
     SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS,
     SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
     SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+    small_cluster_maximum_hotspot_span_px,
 )
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v13"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v14"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -64,9 +65,13 @@ def independent_focus_minimum_center_separation_px(
 
     if primitive_id not in _INDEPENDENT_FOCUS_PRIMITIVES:
         return 0.0
-    return (
-        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
-        * max(0.0, float(nominal_nucleus_diameter_px))
+    separation_diameters = (
+        SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS
+        if primitive_id == "peritumoral-neoplastic-scatter-increase-v1"
+        else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+    )
+    return separation_diameters * max(
+        0.0, float(nominal_nucleus_diameter_px)
     )
 
 
@@ -102,7 +107,8 @@ def certificate_aligned_cluster_size_range(
         # The certificate proves count and complete-shape capacity, while the
         # executor must still prove the stricter localized budding-like
         # topology. Exclude singleton groups and let the executor balance an
-        # eight-cell request as 3+3+2 instead of visually scattering 4 pairs.
+        # eight-cell request as two obvious 4-cell buds instead of scattering
+        # small groups around the full annulus.
         return (
             SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
             min(SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE, maximum),
@@ -1853,18 +1859,30 @@ def _place_layout(
             )
             if remaining_count < minimum_group_size:
                 break
-            offsets = offsets[: min(len(offsets), remaining_count, maximum_group_size)]
-            leftover = remaining_count - len(offsets)
+            group_target_size = min(
+                len(offsets), remaining_count, maximum_group_size
+            )
+            leftover = remaining_count - group_target_size
             if 0 < leftover < minimum_group_size:
                 shrink_by = minimum_group_size - leftover
-                if len(offsets) - shrink_by >= minimum_group_size:
-                    offsets = offsets[:-shrink_by]
+                if group_target_size - shrink_by >= minimum_group_size:
+                    group_target_size -= shrink_by
+            if not (
+                layout_program == "small_cluster"
+                and enforce_small_cluster_group_separation
+            ):
+                offsets = offsets[:group_target_size]
+        else:
+            group_target_size = min(len(offsets), remaining_count)
         group_start = len(placement_trace)
         group_footprints: list[tuple[int, int, int, int, np.ndarray]] = []
         group_reference_digests: set[str] = set()
         group_id = f"cluster-{anchor_index:04d}"
         for dy, dx in offsets:
-            if placed >= requested_count:
+            if (
+                placed >= requested_count
+                or len(placement_trace) - group_start >= group_target_size
+            ):
                 break
             cy, cx = ay + dy, ax + dx
             if (
@@ -1873,7 +1891,11 @@ def _place_layout(
                 and any(
                     (cy - int(item["center_xy"][1])) ** 2
                     + (cx - int(item["center_xy"][0])) ** 2
-                    <= (2.25 * float(nominal_nucleus_diameter_px)) ** 2
+                    <= (
+                        SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS
+                        * float(nominal_nucleus_diameter_px)
+                    )
+                    ** 2
                     for item in placement_trace
                 )
             ):
@@ -1887,7 +1909,11 @@ def _place_layout(
                 and any(
                 (cy - int(item["center_xy"][1])) ** 2
                 + (cx - int(item["center_xy"][0])) ** 2
-                <= (2.25 * float(nominal_nucleus_diameter_px)) ** 2
+                <= (
+                    SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+                    * float(nominal_nucleus_diameter_px)
+                )
+                ** 2
                 for item in placement_trace[:group_start]
                 )
             ):
@@ -1904,8 +1930,10 @@ def _place_layout(
                     (cy - int(item["center_xy"][1])) ** 2
                     + (cx - int(item["center_xy"][0])) ** 2
                     > (
-                        SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS
-                        * float(nominal_nucleus_diameter_px)
+                        small_cluster_maximum_hotspot_span_px(
+                            nominal_nucleus_diameter_px,
+                            minimum_effect_span_px,
+                        )
                     )
                     ** 2
                     for item in placement_trace
@@ -1974,7 +2002,7 @@ def _place_layout(
                         in set(certified_fallback_reference_ids)
                     ),
                     "cluster_id": group_id,
-                    "planned_cluster_size": min(len(offsets), requested_count),
+                    "planned_cluster_size": group_target_size,
                     "spacing_px": max(
                         2,
                         round(nominal_nucleus_diameter_px * 0.75),
@@ -2041,7 +2069,10 @@ def _localized_small_cluster_anchor_order(
     minimum_between = (
         SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * diameter
     )
-    maximum_span = SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS * diameter
+    maximum_span = small_cluster_maximum_hotspot_span_px(
+        diameter,
+        minimum_effect_span_px,
+    )
     minimum_span = max(0.0, float(minimum_effect_span_px))
     index_by_center = {
         tuple(int(value) for value in point): index
@@ -2718,7 +2749,11 @@ def _layout_offsets(
                 and legal_zone[row, col]
             ):
                 ring.append(offset)
-        return ((0, 0), *ring[: max(0, cardinality - 1)])
+        # Return the complete deterministic ring. The atomic group executor
+        # tries alternatives until it fills the planned 2--4-cell focus; it
+        # must not roll back merely because one of the first directions is
+        # blocked by the neighboring focus.
+        return ((0, 0), *ring)
     if program == "dense_sheet":
         side = int(np.ceil(np.sqrt(cardinality)))
         origin = (side - 1) / 2.0
