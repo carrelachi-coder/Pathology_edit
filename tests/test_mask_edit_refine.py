@@ -973,19 +973,22 @@ class CandidateAndSceneTests(unittest.TestCase):
         )
 
     def test_fragmentation_cleanup_fills_micro_island_at_constant_area(self):
-        shape = (80, 120)
+        shape = (160, 240)
         source = np.zeros(shape, dtype=bool)
-        source[5:75, 5:115] = True
+        source[5:155, 5:235] = True
         target = ~source
         change = np.zeros(shape, dtype=bool)
-        change[5:75, 50:66] = True
+        change[5:155, 100:140] = True
         # An aggregate 81-pixel raster cap surrounded by the otherwise
         # complete corridor must not count as a biological third residual
         # focus. This exercises the production case where many sub-minimum
         # caps collectively exceed the former 64-pixel cleanup ceiling.
-        change[25:34, 53:62] = False
+        change[50:59, 112:121] = False
         priority = np.zeros(shape, dtype=float)
-        priority[5:75, 50:52] = 100.0
+        # More than 4096 high-priority pixels lie inside the corridor. They
+        # must be excluded before the bounded audit loop rather than retried
+        # as invalid one-pixel source islands.
+        priority[5:155, 104:136] = 100.0
         work = SimpleNamespace(
             source_component=source,
             legal_source=source,

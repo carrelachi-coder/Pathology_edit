@@ -1702,9 +1702,17 @@ def _rebalance_fragmentation_residual_islands(
     if not filled_audit["passed"]:
         return selected_by_work, unchanged
 
+    combined_after_fill = np.logical_or.reduce(tuple(updated))
+    residual_after_fill = selected_source & ~combined_after_fill
+    residual_edge = ndimage.binary_dilation(
+        residual_after_fill, structure=np.ones((3, 3), dtype=bool)
+    )
     candidates: list[tuple[float, int, int, int]] = []
     for index, (work, selected) in enumerate(zip(works, updated)):
-        removable = selected & ~tiny
+        # Reclaim only along an existing residual-focus boundary. Removing an
+        # interior corridor pixel would immediately recreate the kind of
+        # isolated source cap that this transaction just eliminated.
+        removable = selected & ~tiny & residual_edge
         for row, col in np.argwhere(removable):
             candidates.append(
                 (float(work.priority[row, col]), index, int(row), int(col))
