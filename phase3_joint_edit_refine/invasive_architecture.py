@@ -350,10 +350,12 @@ def _detached_nest_candidate(
     distance_to_interface = ndimage.distance_transform_edt(~interface)
     minimum_gap = max(2.0, 0.65 * diameter)
     maximum_band = max(1.0, float(planned.allowed_edit_band_px[1]))
+    lobe_separation = min(1.05 * diameter, 1.8 * equivalent_radius)
+    major_radius = equivalent_radius + 0.5 * lobe_separation
     center_domain = (
         legal
-        & (distance_to_tumor >= minimum_gap + equivalent_radius)
-        & (distance_to_interface <= maximum_band - equivalent_radius)
+        & (distance_to_tumor >= minimum_gap + major_radius)
+        & (distance_to_interface <= maximum_band - major_radius)
     )
     clearance = ndimage.distance_transform_edt(legal)
     center_domain &= clearance >= max(2.0, 0.9 * equivalent_radius)
@@ -374,48 +376,58 @@ def _detached_nest_candidate(
     # than treating that one rasterization accident as proof that no nest fits.
     search_count = min(len(order), 128)
     rank_offset = (17 * int(variant)) % max(1, search_count)
+    base_phase = 0.73 * (seed + 1) + 1.19 * variant
     for local_rank in range(search_count):
         rank = (rank_offset + local_rank) % search_count
         choice = coords[order[rank]]
         candidate_y, candidate_x = (int(value) for value in choice)
-        candidate = _irregular_island(
-            legal=legal,
-            center_y=candidate_y,
-            center_x=candidate_x,
-            target_pixels=target_pixels,
-            phase=0.73 * (seed + 1) + 1.19 * variant,
-        )
-        if candidate is None or _component_count(candidate) != 1:
-            continue
-        if _touches(candidate, tumor):
-            continue
-        candidate_gap = float(np.min(distance_to_tumor[candidate]))
-        if candidate_gap + 1e-6 < minimum_gap:
-            continue
-        spill_pixels = _complete_instance_spill_pixels(candidate, joint_scene)
-        current = (
-            int(spill_pixels),
-            int(rank),
-            candidate_y,
-            candidate_x,
-            candidate,
-            candidate_gap,
-            float(np.min(distance_to_interface[candidate])),
-        )
-        if best is None or current[:2] < best[:2]:
-            best = current
-        if spill_pixels == 0:
+        for orientation_index in range(4):
+            candidate_phase = base_phase + orientation_index * np.pi / 4.0
+            candidate = _irregular_island(
+                legal=legal,
+                center_y=candidate_y,
+                center_x=candidate_x,
+                target_pixels=target_pixels,
+                phase=candidate_phase,
+                lobe_separation_px=lobe_separation,
+            )
+            if candidate is None or _component_count(candidate) != 1:
+                continue
+            if _touches(candidate, tumor):
+                continue
+            candidate_gap = float(np.min(distance_to_tumor[candidate]))
+            if candidate_gap + 1e-6 < minimum_gap:
+                continue
+            spill_pixels = _complete_instance_spill_pixels(candidate, joint_scene)
+            current = (
+                int(spill_pixels),
+                int(rank),
+                int(orientation_index),
+                candidate_y,
+                candidate_x,
+                candidate,
+                candidate_gap,
+                float(np.min(distance_to_interface[candidate])),
+                float(candidate_phase),
+            )
+            if best is None or current[:3] < best[:3]:
+                best = current
+            if spill_pixels == 0:
+                break
+        if best is not None and best[0] == 0:
             break
     if best is None:
         return None
     (
         source_spill_pixels,
         selected_rank,
+        selected_orientation_index,
         center_y,
         center_x,
         nest,
         observed_gap,
         observed_interface_distance,
+        selected_phase,
     ) = best
     target = np.asarray(source_tissue).copy()
     target_id = _target_fine_id(plan, schema)
@@ -444,7 +456,10 @@ def _detached_nest_candidate(
             "execution_order": "tumor_island_then_cells",
             "island_geometry": "single_detached_irregular_harmonic_blob",
             "island_center_yx": [center_y, center_x],
+            "island_lobe_separation_px": float(lobe_separation),
             "center_search_rank": int(selected_rank),
+            "orientation_search_index": int(selected_orientation_index),
+            "island_orientation_phase": float(selected_phase),
             "minimum_interface_distance_px": observed_interface_distance,
             "minimum_parent_tumor_gap_px": float(observed_gap),
             "source_complete_instance_spill_estimate_px": int(
@@ -797,13 +812,26 @@ def _legal_polyline(points, *, legal, snap_radius):
     return path
 
 
-def _irregular_island(*, legal, center_y, center_x, target_pixels, phase):
+def _irregular_island(
+    *,
+    legal,
+    center_y,
+    center_x,
+    target_pixels,
+    phase,
+    lobe_separation_px=0.0,
+):
     rows, cols = np.indices(legal.shape)
     dy = rows - center_y
     dx = cols - center_x
     theta = np.arctan2(dy, dx)
-    axis_ratio = 1.18
-    radial = np.sqrt((dy * axis_ratio) ** 2 + (dx / axis_ratio) ** 2)
+    half_separation = max(0.0, float(lobe_separation_px)) / 2.0
+    focus_y = half_separation * np.sin(float(phase))
+    focus_x = half_separation * np.cos(float(phase))
+    radial = np.minimum(
+        np.hypot(dy - focus_y, dx - focus_x),
+        np.hypot(dy + focus_y, dx + focus_x),
+    )
     modulation = (
         1.0
         + 0.13 * np.sin(3.0 * theta + phase)

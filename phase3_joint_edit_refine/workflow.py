@@ -73,7 +73,10 @@ from .gates import (
 )
 from .handoff import write_generation_handoff
 from .instance_authority import authority_trace, build_scene_instance_authority
-from .invasive_architecture import compile_joint_tissue_plan_with_witness
+from .invasive_architecture import (
+    SPECIALIZED_ARCHITECTURE_PRIMITIVES,
+    compile_joint_tissue_plan_with_witness,
+)
 from .ledger import build_joint_candidate
 from .mature_probnet_adapter import MatureProbNetCellExecutor
 from .models import (
@@ -1283,12 +1286,19 @@ class JointPathologyEditWorkflow:
                 # not an area heuristic.  It can safely rebalance an overfill
                 # before invoking ProbNet; executed masks remain authoritative
                 # for any later underfill correction.
+                # Cord/nest packing has a discrete minimum group size. Let one
+                # hard-range-safe paired execution establish the real union so
+                # the existing whole-instance fallback can retain that proof;
+                # shrinking tissue pre-execution can make the required group
+                # geometrically impossible and discard the only safe pair.
                 if (
                     planning_pass + 1 < maximum_planning_attempts
                     and budget_rebalance_count
                     < maximum_planning_attempts - 1
                     and predicted_above
                     and not retain_visible_regression_closure
+                    and case.primitive_id
+                    not in SPECIALIZED_ARCHITECTURE_PRIMITIVES
                 ):
                     feedback_reports = [
                         cell_feasibility_by_tissue_id[item.candidate_id]
