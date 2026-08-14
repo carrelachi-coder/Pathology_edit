@@ -515,6 +515,11 @@ def _prepare_compiler_work(
         0 if allow_source_resolution else 64,
         int(params.get("min_source_component_remaining_px", 64)),
     )
+    target_change_pixels = (
+        int(plan.resolved_area.resolved_pixels)
+        if plan.resolved_area is not None
+        else int(plan.area_budget.target_pixels(source_mask, source_region))
+    )
     # Build each interface's executable envelope independently before assigning
     # overlapping pixels to an owner.  The former nearest-anchor-first
     # partition could hand a pixel to an interface whose tapered profile could
@@ -610,6 +615,13 @@ def _prepare_compiler_work(
                         "maximum_dominant_residual_component_fraction", 1.0
                     )
                 ),
+                target_change_pixels=max(
+                    1,
+                    round(
+                        target_change_pixels
+                        * planned.execution_contract.area_allocation_fraction
+                    ),
+                ),
             )
         provisional.append(
             {
@@ -664,6 +676,7 @@ def _residual_fragmentation_priority(
     minimum_residual_spacing_px: int,
     minimum_residual_component_fraction: float,
     maximum_dominant_residual_component_fraction: float,
+    target_change_pixels: int = 0,
 ) -> np.ndarray:
     """Prioritize balanced, traversing corridors before peripheral turnover.
 
@@ -747,7 +760,23 @@ def _residual_fragmentation_priority(
         ) & source & legal
         if not np.any(corridor):
             continue
-        provisional_after = source & ~corridor
+        corridor_distance = ndimage.distance_transform_edt(~corridor)
+        tie_break = np.asarray(default_priority, dtype=float)
+        tie_break /= max(float(np.max(tie_break[legal], initial=1.0)), 1.0)
+        approximate_priority = corridor_distance + 1e-3 * tie_break
+        eligible = source & legal
+        eligible_ids = np.flatnonzero(eligible)
+        approximate_change = np.zeros_like(source, dtype=bool)
+        selected_count = min(
+            max(int(target_change_pixels), int(np.count_nonzero(corridor))),
+            len(eligible_ids),
+        )
+        if selected_count > 0:
+            order = np.argsort(
+                approximate_priority.ravel()[eligible_ids], kind="stable"
+            )
+            approximate_change.ravel()[eligible_ids[order[:selected_count]]] = True
+        provisional_after = source & ~approximate_change
         provisional_labels, provisional_count = ndimage.label(
             provisional_after, structure=structure
         )
@@ -769,12 +798,18 @@ def _residual_fragmentation_priority(
             and dominant_fraction
             <= maximum_dominant_residual_component_fraction + 1e-9
         )
+        subminimum_pixels = sum(
+            size
+            for size in provisional_sizes
+            if size < minimum_residual_component_area_px
+        )
         score = (
             int(contract_valid),
+            -subminimum_pixels,
             min(provisional_count, maximum_residual_components),
             minimum_fraction,
             -dominant_fraction,
-            int(np.count_nonzero(corridor)),
+            -int(np.count_nonzero(corridor)),
             -axis_index,
         )
         if best_score is None or score > best_score:
