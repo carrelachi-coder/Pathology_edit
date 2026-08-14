@@ -22,14 +22,31 @@ SEMANTIC_NUCLEI_GENERATION_REGION_POLICY = (
 # generation region can be at most twice the semantic edit area.
 GENERATION_CONTEXT_MAX_EXTRA_FRACTION = 1.0
 GENERATION_CONTEXT_MIN_EXTRA_PIXELS = 32
+PRIMITIVE_GENERATION_CONTEXT_MAX_EXTRA_FRACTIONS = {
+    # A cord is a long, thin cellular architecture embedded in stroma.  It
+    # needs more generator-only collagen context than a compact semantic edit
+    # so the Inpaint boundary does not trace the cellular support itself.
+    "invasive-cord-formation-v1": 1.5,
+}
+
+
+def generation_context_max_extra_fraction(primitive_id: str | None) -> float:
+    normalized = str(primitive_id or "").strip().lower()
+    return float(
+        PRIMITIVE_GENERATION_CONTEXT_MAX_EXTRA_FRACTIONS.get(
+            normalized,
+            GENERATION_CONTEXT_MAX_EXTRA_FRACTION,
+        )
+    )
 
 
 def bound_generation_context_region(
     semantic_change_region: np.ndarray,
     candidate_generation_region: np.ndarray,
     *,
-    max_extra_fraction: float = GENERATION_CONTEXT_MAX_EXTRA_FRACTION,
+    max_extra_fraction: float | None = None,
     min_extra_pixels: int = GENERATION_CONTEXT_MIN_EXTRA_PIXELS,
+    primitive_id: str | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Keep requested edits while bounding extra generator-only context.
 
@@ -40,6 +57,10 @@ def bound_generation_context_region(
 
     semantic = np.asarray(semantic_change_region, dtype=bool)
     candidate = np.asarray(candidate_generation_region, dtype=bool)
+    if max_extra_fraction is None:
+        max_extra_fraction = generation_context_max_extra_fraction(
+            primitive_id
+        )
     if semantic.shape != candidate.shape:
         raise ValueError("semantic and candidate generation regions must align")
     if max_extra_fraction < 0:
@@ -89,6 +110,7 @@ def bound_generation_context_region(
 
     return bounded, {
         "policy": "bounded_generation_context_v2",
+        "primitive_id": primitive_id,
         "max_extra_fraction": float(max_extra_fraction),
         "min_extra_pixels": int(min_extra_pixels),
         "semantic_pixels": semantic_pixels,

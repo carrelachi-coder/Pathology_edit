@@ -3,6 +3,7 @@ import numpy as np
 from phase3_mask_edit.core.gland_region import (
     bound_generation_context_region,
     expand_region_to_intersecting_components,
+    generation_context_max_extra_fraction,
     glas_gland_mask,
     glas_whole_gland_generation_region,
 )
@@ -101,6 +102,27 @@ def test_generation_context_keeps_a_stromal_collar_around_a_thin_edit():
     # horizontal edit instead of spending the entire budget along its tips.
     assert np.any(bounded[56:60, 40:88])
     assert np.any(bounded[68:72, 40:88])
+
+
+def test_cord_primitive_retains_a_larger_stromal_context_budget():
+    semantic = np.zeros((128, 128), dtype=bool)
+    semantic[60:68, 28:100] = True
+    candidate = np.ones_like(semantic)
+
+    bounded, metadata = bound_generation_context_region(
+        semantic,
+        candidate,
+        primitive_id="invasive-cord-formation-v1",
+    )
+
+    semantic_pixels = int(np.count_nonzero(semantic))
+    assert generation_context_max_extra_fraction(
+        "invasive-cord-formation-v1"
+    ) == 1.5
+    assert metadata["primitive_id"] == "invasive-cord-formation-v1"
+    assert metadata["max_extra_fraction"] == 1.5
+    assert metadata["extra_budget_pixels"] == semantic_pixels * 3 // 2
+    assert int(np.count_nonzero(bounded)) == semantic_pixels * 5 // 2
 
 
 def test_glas_large_union_preserves_the_complete_connected_component():

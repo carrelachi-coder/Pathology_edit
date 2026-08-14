@@ -1124,10 +1124,72 @@ class AgenticWorkflowTests(unittest.TestCase):
             semantic_pixels = int(np.count_nonzero(semantic))
             self.assertEqual(
                 int(np.count_nonzero(loaded["generation_change_region"])),
-                semantic_pixels + semantic_pixels // 4,
+                semantic_pixels * 2,
             )
             self.assertTrue(
                 loaded["generation_region_policy"]["capped"]
+            )
+
+    def test_cli_uses_wider_generation_context_for_cord_primitive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = root / "reference.png"
+            source_tissue = root / "source_tissue.png"
+            target_tissue = root / "target_tissue.png"
+            nuclei = root / "nuclei.png"
+            semantic_region = root / "semantic_region.png"
+            generation_region = root / "generation_region.png"
+
+            Image.new("RGB", (64, 64), "white").save(image)
+            source = np.ones((64, 64), dtype=np.uint8)
+            target = source.copy()
+            target[24:40, 24:40] = 2
+            semantic = source != target
+            Image.fromarray(source).save(source_tissue)
+            Image.fromarray(target).save(target_tissue)
+            Image.fromarray(np.zeros((64, 64), dtype=np.uint8)).save(nuclei)
+            Image.fromarray(semantic.astype(np.uint8) * 255).save(
+                semantic_region
+            )
+            Image.fromarray(np.full((64, 64), 255, dtype=np.uint8)).save(
+                generation_region
+            )
+
+            args = build_agentic_parser().parse_args(
+                [
+                    "--profile",
+                    "BCSS",
+                    "--reference-image",
+                    str(image),
+                    "--reference-tissue-mask",
+                    str(source_tissue),
+                    "--reference-nuclei-mask",
+                    str(nuclei),
+                    "--target-tissue-mask",
+                    str(target_tissue),
+                    "--target-nuclei-mask",
+                    str(nuclei),
+                    "--semantic-change-region",
+                    str(semantic_region),
+                    "--generation-change-region",
+                    str(generation_region),
+                    "--primitive-id",
+                    "invasive-cord-formation-v1",
+                    "--output",
+                    str(root / "output"),
+                ]
+            )
+
+            loaded = _load_and_validate_inputs(args)
+
+            semantic_pixels = int(np.count_nonzero(semantic))
+            self.assertEqual(
+                int(np.count_nonzero(loaded["generation_change_region"])),
+                semantic_pixels * 5 // 2,
+            )
+            self.assertEqual(
+                loaded["generation_region_policy"]["primitive_id"],
+                "invasive-cord-formation-v1",
             )
 
     def test_cli_preserves_glas_whole_component_generation_region(self):

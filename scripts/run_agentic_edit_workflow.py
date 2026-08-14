@@ -151,6 +151,14 @@ def build_parser() -> argparse.ArgumentParser:
             "semantic change region and may be a wider superset for GlaS or thin edits."
         ),
     )
+    parser.add_argument(
+        "--primitive-id",
+        help=(
+            "Optional edit primitive governing generator-context policy. "
+            "For example, invasive-cord-formation-v1 retains a wider "
+            "stromal collar than the generic bounded-context policy."
+        ),
+    )
     parser.add_argument("--output", required=True, type=Path)
 
     parser.add_argument("--pretrained-model-name-or-path", default=DEFAULT_PRETRAINED_MODEL)
@@ -1702,6 +1710,7 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
             bound_generation_context_region(
                 semantic_change_region,
                 generation_change_region,
+                primitive_id=args.primitive_id,
             )
         )
     return {
