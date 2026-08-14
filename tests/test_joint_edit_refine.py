@@ -32,11 +32,13 @@ from phase3_joint_edit_refine.candidate_feasibility import (
 )
 from phase3_joint_edit_refine.cell_layouts import (
     ReferenceNucleusShape,
+    _calibrated_reference_variants,
     _centers_satisfy_minimum_span,
     _certified_witness_first_anchors,
     _effect_first_anchors,
     _place_layout,
     _probnet_hard_core_anchor_order,
+    _reference_shape_digest,
     _reference_sampling_order,
     _unique_reference_shapes,
     build_reference_shape_library,
@@ -2007,6 +2009,65 @@ class JointSkillTests(unittest.TestCase):
 
         self.assertEqual(len(unique), 2)
         self.assertEqual(ordered[0].instance_id, "source-a")
+
+    def test_missing_calibrated_library_uses_bounded_unique_source_variants(self):
+        masks = (
+            np.asarray(
+                [[0, 1, 1, 0], [1, 1, 1, 1], [1, 1, 1, 0], [0, 1, 0, 0]],
+                dtype=bool,
+            ),
+            np.asarray(
+                [[0, 1, 0, 0], [1, 1, 1, 0], [1, 1, 1, 1], [0, 1, 1, 0]],
+                dtype=bool,
+            ),
+            np.asarray(
+                [[1, 1, 0, 0], [1, 1, 1, 0], [0, 1, 1, 1], [0, 0, 1, 0]],
+                dtype=bool,
+            ),
+            np.asarray(
+                [[0, 1, 1, 0], [1, 1, 1, 0], [0, 1, 1, 1], [0, 0, 1, 1]],
+                dtype=bool,
+            ),
+        )
+        references = tuple(
+            ReferenceNucleusShape(
+                instance_id=f"source-{index}",
+                class_id=1,
+                mask=mask,
+                source="semantic_distance_watershed",
+                area_px=int(mask.sum()),
+            )
+            for index, mask in enumerate(masks)
+        )
+
+        expanded = _calibrated_reference_variants(
+            references,
+            minimum_count=8,
+        )
+        ordered = _reference_sampling_order(
+            expanded,
+            rng=np.random.default_rng(9),
+        )
+
+        self.assertEqual(len(expanded), 8)
+        self.assertEqual(
+            len({_reference_shape_digest(item) for item in expanded}),
+            8,
+        )
+        self.assertTrue(
+            all(
+                item.source == "same_patch_complete_instance_resized"
+                and item.parent_instance_id in {ref.instance_id for ref in references}
+                and 0.82 <= item.scale_factor <= 1.18
+                for item in expanded[4:]
+            )
+        )
+        self.assertTrue(
+            all(
+                item.source == "semantic_distance_watershed"
+                for item in ordered[:4]
+            )
+        )
 
     def test_layout_exhausts_unique_shapes_before_capacity_reuse(self):
         legal = np.zeros((48, 48), dtype=bool)

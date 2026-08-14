@@ -42,7 +42,12 @@ from .spatial_contracts import (
     small_cluster_maximum_hotspot_span_px,
 )
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v16"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v17"
+
+_REFERENCE_SAMPLING_POLICY = (
+    "same_class_source_without_replacement_then_calibrated_library_or_"
+    "bounded_source_resize_without_replacement_then_certified_fallback"
+)
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -792,11 +797,15 @@ def generate_cell_layouts(
                     "reference_shape_unique_digest_count": len(
                         {_reference_shape_digest(item) for item in references}
                     ),
-                    "reference_shape_sampling_policy": (
-                        "same_class_source_without_replacement_then_"
-                        "calibrated_library_without_replacement_then_"
-                        "certified_fallback"
+                    "reference_shape_sampling_policy": _REFERENCE_SAMPLING_POLICY,
+                    "reference_shape_augmentation_policy": (
+                        "bounded_isotropic_resize_of_complete_parent_only"
                     ),
+                    "reference_shape_parent_ids": {
+                        item.instance_id: item.parent_instance_id
+                        for item in references
+                        if item.parent_instance_id is not None
+                    },
                     "reference_shape_areas_by_class": {
                         str(target_class): [
                             int(item.area_px) for item in references
@@ -1485,6 +1494,10 @@ def _calibrated_reference_variants(
     Same-patch complete shapes retain priority.  Dataset-library contours are
     deterministically resized around the patch/source median area, with small
     bounded scale changes, only until the requested morphology supply is met.
+    When a research runner has no calibrated library authority, complete
+    same-patch contours are instead resized isotropically by the same bounded
+    factors.  The parent contour and scale remain explicit in the trace; this
+    prevents silent contour reuse while avoiding invented deformations.
     Every variant is rechecked as one connected semantic instance.
     """
 
@@ -1498,16 +1511,33 @@ def _calibrated_reference_variants(
         for item in unique
         if item.source == "calibrated_dataset_instance_library"
     )
-    if not library:
+    same_patch = tuple(
+        item
+        for item in unique
+        if not item.source.startswith("calibrated_dataset_instance_library")
+        and item.parent_instance_id is None
+    )
+    variant_parents = library or same_patch
+    if not variant_parents:
         return tuple(unique)
+    variant_source = (
+        "calibrated_dataset_instance_library_resized"
+        if library
+        else "same_patch_complete_instance_resized"
+    )
     seen = {_reference_shape_digest(item) for item in unique}
     # Mild scale variation preserves class morphology without inventing
     # arbitrary deformations or changing aspect ratio.
     for multiplier in (0.90, 1.10, 0.82, 1.18):
-        for item in library:
+        for item in variant_parents:
             source_area = max(1, int(item.area_px))
-            desired_area = max(1.0, target_area * multiplier * multiplier)
-            scale = float(np.sqrt(desired_area / source_area))
+            if library:
+                desired_area = max(1.0, target_area * multiplier * multiplier)
+                scale = float(np.sqrt(desired_area / source_area))
+            else:
+                # A same-patch fallback preserves the observed parent size and
+                # only applies the declared mild isotropic perturbation.
+                scale = float(multiplier)
             new_height = max(1, round(item.mask.shape[0] * scale))
             new_width = max(1, round(item.mask.shape[1] * scale))
             # scipy nearest-neighbor zoom avoids a hard dependency on cv2 in
@@ -1539,7 +1569,7 @@ def _calibrated_reference_variants(
                 ),
                 class_id=item.class_id,
                 mask=resized,
-                source="calibrated_dataset_instance_library_resized",
+                source=variant_source,
                 area_px=int(np.count_nonzero(resized)),
                 parent_instance_id=item.instance_id,
                 scale_factor=scale,
@@ -2472,10 +2502,12 @@ def _reference_sampling_order(
 ) -> tuple[ReferenceNucleusShape, ...]:
     """Sample source contours first, each morphology without replacement."""
 
-    groups = ([], [], [])
+    groups = ([], [], [], [])
     for item in _unique_reference_shapes(tuple(references)):
-        if item.source == "calibrated_dataset_instance_library_resized":
+        if item.source == "same_patch_complete_instance_resized":
             groups[2].append(item)
+        elif item.source == "calibrated_dataset_instance_library_resized":
+            groups[3].append(item)
         elif item.source == "calibrated_dataset_instance_library":
             groups[1].append(item)
         else:

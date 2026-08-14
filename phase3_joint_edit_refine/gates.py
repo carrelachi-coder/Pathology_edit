@@ -2272,8 +2272,12 @@ def _reference_shape_integrity(c):
     )
     deterministic_without_replacement = bool(
         sampling_policy
-        == "same_class_source_without_replacement_then_"
-        "calibrated_library_without_replacement_then_certified_fallback"
+        in {
+            "same_class_source_without_replacement_then_"
+            "calibrated_library_without_replacement_then_certified_fallback",
+            "same_class_source_without_replacement_then_calibrated_library_or_"
+            "bounded_source_resize_without_replacement_then_certified_fallback",
+        }
     )
     required_unique_shape_count = min(
         len(placements),
@@ -2383,9 +2387,26 @@ def _reference_shape_integrity(c):
         else None
     )
     metadata = {item.instance_id: item for item in c.scene.cells.instances}
+    reference_parent_ids = c.candidate.tool_trace.get(
+        "reference_shape_parent_ids", {}
+    )
+    if not isinstance(reference_parent_ids, dict):
+        reference_parent_ids = {}
     eligible_source_ids = {
         instance_id for instance_id in eligible if instance_id in metadata
     }
+    component_local_eligible_ok = all(
+        (
+            instance_id in metadata
+            and metadata[instance_id].tissue_component_id == selected_component_id
+        )
+        or (
+            reference_parent_ids.get(instance_id) in metadata
+            and metadata[reference_parent_ids[instance_id]].tissue_component_id
+            == selected_component_id
+        )
+        for instance_id in eligible
+    )
     component_local_ok = bool(
         selected_component_id is None
         or (
@@ -2394,11 +2415,7 @@ def _reference_shape_integrity(c):
         )
         or (
             locality == "selected_tissue_component"
-            and all(
-                instance_id in metadata
-                and metadata[instance_id].tissue_component_id == selected_component_id
-                for instance_id in eligible
-            )
+            and component_local_eligible_ok
         )
         or (
             locality == "same_patch_then_calibrated_dataset_instance_library"
