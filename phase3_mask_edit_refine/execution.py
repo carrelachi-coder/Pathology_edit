@@ -1284,20 +1284,24 @@ def _whole_mask_topology_audit(
             else source_components_after == source_components_before
         )
     if allow_source_component_split:
-        # Each additional residual source focus is represented as one
-        # additional hole in the already-adjacent target compartment. This is
-        # the intended dual topology of a bounded fragmentation corridor, not
-        # an arbitrary target-ring artifact.
-        allowed_added_target_holes = max(
-            0,
-            source_components_after - source_components_before,
+        # Bind newly enclosed target holes to the residual foci themselves,
+        # rather than to the raw target-hole count.  At a three-label
+        # junction, extending Stroma can expose an unchanged third-tissue
+        # island that was previously connected to Tumor; that changes the raw
+        # hole count without creating an extra tumor focus or a target-ring
+        # artifact.  Every target hole that actually contains selected
+        # residual source must still map to one of the certified foci.
+        residual_target_holes_after = _hole_intersection_count(
+            target_after, residual_source_after
         )
         target_holes_valid = bool(
             target_holes_before
             <= target_holes_after
-            <= target_holes_before + allowed_added_target_holes
+            and residual_target_holes_after
+            <= source_components_after_selected
         )
     else:
+        residual_target_holes_after = 0
         target_holes_valid = (
             target_holes_after <= target_holes_before
             if allow_target_hole_resolution
@@ -1322,6 +1326,9 @@ def _whole_mask_topology_audit(
         "source_holes_after": source_holes_after,
         "target_holes_before": target_holes_before,
         "target_holes_after": target_holes_after,
+        "fragmentation_residual_target_holes_after": int(
+            residual_target_holes_after
+        ),
         "selected_target_component_ids": sorted(
             {item.planned.target_component_id for item in works}
         ),
@@ -1389,6 +1396,19 @@ def _minimum_component_spacing_px(
 def _hole_count(mask: np.ndarray) -> int:
     holes = ndimage.binary_fill_holes(mask) & ~mask
     return int(ndimage.label(holes, structure=np.ones((3, 3), dtype=bool))[1])
+
+
+def _hole_intersection_count(mask: np.ndarray, region: np.ndarray) -> int:
+    """Count enclosed complement components that contain ``region`` pixels."""
+
+    holes = ndimage.binary_fill_holes(mask) & ~mask
+    labels, count = ndimage.label(
+        holes, structure=np.ones((3, 3), dtype=bool)
+    )
+    return sum(
+        bool(np.any(region & (labels == index)))
+        for index in range(1, count + 1)
+    )
 
 
 def _simulate_topology_safe_execution(
@@ -1695,10 +1715,16 @@ def _rebalance_fragmentation_residual_islands(
         surrounding_ring = ndimage.binary_dilation(
             component, structure=np.ones((3, 3), dtype=bool)
         ) & ~component
-        # Only a fully enclosed source cap is a raster artifact. A small focus
-        # that remains open to the exterior is biological topology and must
-        # continue to fail the residual-focus floor.
-        if np.any(surrounding_ring) and np.all(target_after[surrounding_ring]):
+        # A sub-minimum cap is repairable when converting it extends the
+        # already-connected target compartment.  Requiring every ring pixel
+        # to be target was too strict at three-label junctions: a one-pixel
+        # tumor cap can be bounded by the new stromal corridor on one side and
+        # an unedited third tissue class on the other.  The cap is still not a
+        # biological residual focus, and filling it cannot create a target
+        # island as long as at least one 8-neighbour already belongs to the
+        # final target.  The transactional whole-mask audit below remains the
+        # authority for component counts, holes, spacing and residual balance.
+        if np.any(surrounding_ring) and np.any(target_after[surrounding_ring]):
             tiny_ids.append(index)
     tiny_ids = tuple(tiny_ids)
     if not tiny_ids:

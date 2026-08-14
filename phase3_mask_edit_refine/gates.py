@@ -961,13 +961,16 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
         and not allow_target_hole_resolution
     )
     target_hole_created = target_holes_after > target_holes_before
+    fragmentation_residual_target_holes_after = _hole_intersection_count(
+        target_after, selected_source_after
+    )
     intended_fragmentation_hole_change = bool(
         allow_source_split
         and source_split_contract_ok
         and target_holes_before
         <= target_holes_after
-        <= target_holes_before
-        + max(0, source_components_after - source_components_before)
+        and fragmentation_residual_target_holes_after
+        <= selected_components_after
     )
     source_hole_resolution_allowed = bool(
         allow_source_resolution
@@ -1060,6 +1063,9 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             "intended_fragmentation_hole_change": (
                 intended_fragmentation_hole_change
             ),
+            "fragmentation_residual_target_holes_after": (
+                fragmentation_residual_target_holes_after
+            ),
             # Backward-compatible keys retained for older audit consumers.
             "new_source_hole": source_holes_after > source_holes_before,
             "new_target_hole": target_holes_after > target_holes_before,
@@ -1082,6 +1088,17 @@ def _minimum_component_spacing_px(
                 float(np.min(distance[labeled == right], initial=np.inf)),
             )
     return minimum
+
+
+def _hole_intersection_count(mask: np.ndarray, region: np.ndarray) -> int:
+    holes = ndimage.binary_fill_holes(mask) & ~mask
+    labels, count = ndimage.label(
+        holes, structure=np.ones((3, 3), dtype=bool)
+    )
+    return sum(
+        bool(np.any(region & (labels == index)))
+        for index in range(1, count + 1)
+    )
 
 
 def _check_source_component_retention(context: GateContext) -> GateCheck:

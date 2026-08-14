@@ -1026,6 +1026,52 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(count, 2)
         self.assertGreaterEqual(int(sizes.min()), 96)
 
+    def test_fragmentation_cleanup_repairs_target_connected_junction_cap(self):
+        shape = (160, 240)
+        source = np.zeros(shape, dtype=bool)
+        source[5:155, 5:235] = True
+        # A third-class slit reaches the exterior, so it does not introduce a
+        # pre-existing source hole, and ends beside the future raster cap.
+        source[5:55, 111] = False
+        target = ~source
+        target[5:55, 111] = False
+        change = np.zeros(shape, dtype=bool)
+        change[5:155, 100:140] = True
+        change &= source
+        change[50:59, 112:121] = False
+        # Model a third-class tissue pixel beside the cap.  The cap is not
+        # fully surrounded by target, but it is target-connected and remains
+        # a sub-minimum raster remnant rather than a valid residual focus.
+        priority = np.zeros(shape, dtype=float)
+        legal_source = np.array(source, copy=True)
+        legal_source[50:59, 112:121] = False
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=legal_source,
+            priority=priority,
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+
+        cleaned, audit = _rebalance_fragmentation_residual_islands(
+            (change,),
+            works=(work,),
+            source_region=source,
+            target_region=target,
+            minimum_residual_components=2,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=4,
+            residual_area_floor_fraction=0.3,
+        )
+
+        self.assertTrue(audit["applied"], audit)
+        self.assertEqual(audit["pixels_added"], 81)
+        self.assertEqual(audit["pixels_reclaimed"], 81)
+        self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+
     def test_fragmentation_priority_builds_three_balanced_traversing_foci(self):
         shape = (96, 120)
         source = np.zeros(shape, dtype=bool)
