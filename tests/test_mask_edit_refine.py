@@ -19,7 +19,7 @@ from phase3_joint_edit_refine.candidate_feasibility import (
     _is_subcomponent_raster_tail,
 )
 from phase3_joint_edit_refine.workflow import (
-    _retain_fragmentation_whole_instance_closure,
+    _retain_visible_regression_whole_instance_closure,
 )
 from phase3_mask_edit_refine.agents import (
     HeuristicInterfacePlanner,
@@ -1166,7 +1166,7 @@ class CandidateAndSceneTests(unittest.TestCase):
 
     def test_fragmentation_retains_hard_safe_whole_instance_closure(self):
         self.assertTrue(
-            _retain_fragmentation_whole_instance_closure(
+            _retain_visible_regression_whole_instance_closure(
                 primitive_id="residual-tumor-fragmentation-v1",
                 fallback_policy="max_feasible_below_target",
                 predicted_pixels=(40930,),
@@ -1175,8 +1175,8 @@ class CandidateAndSceneTests(unittest.TestCase):
             )
         )
         self.assertFalse(
-            _retain_fragmentation_whole_instance_closure(
-                primitive_id="invasive-tumor-footprint-decrease-v1",
+            _retain_visible_regression_whole_instance_closure(
+                primitive_id="neoplastic-cell-abundance-decrease-v1",
                 fallback_policy="max_feasible_below_target",
                 predicted_pixels=(40930,),
                 desired_max_pixels=38168,
@@ -1184,12 +1184,21 @@ class CandidateAndSceneTests(unittest.TestCase):
             )
         )
         self.assertFalse(
-            _retain_fragmentation_whole_instance_closure(
+            _retain_visible_regression_whole_instance_closure(
                 primitive_id="residual-tumor-fragmentation-v1",
                 fallback_policy="max_feasible_below_target",
                 predicted_pixels=(48000,),
                 desired_max_pixels=38168,
                 hard_max_pixels=47186,
+            )
+        )
+        self.assertTrue(
+            _retain_visible_regression_whole_instance_closure(
+                primitive_id="invasive-tumor-footprint-decrease-v1",
+                fallback_policy="max_feasible_below_target",
+                predicted_pixels=(30809,),
+                desired_max_pixels=29989,
+                hard_max_pixels=36700,
             )
         )
 

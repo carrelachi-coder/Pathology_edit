@@ -1135,8 +1135,8 @@ class JointPathologyEditWorkflow:
                 _, joint_hard_max = case.joint_area_budget.hard_interval_pixels(
                     source_tissue.shape
                 )
-                retain_fragmentation_closure = (
-                    _retain_fragmentation_whole_instance_closure(
+                retain_visible_regression_closure = (
+                    _retain_visible_regression_whole_instance_closure(
                         primitive_id=case.primitive_id,
                         fallback_policy=case.joint_area_budget.fallback_policy,
                         predicted_pixels=predicted,
@@ -1155,7 +1155,7 @@ class JointPathologyEditWorkflow:
                     and budget_rebalance_count
                     < maximum_planning_attempts - 1
                     and predicted_above
-                    and not retain_fragmentation_closure
+                    and not retain_visible_regression_closure
                 ):
                     feedback_reports = [
                         cell_feasibility_by_tissue_id[item.candidate_id]
@@ -3503,7 +3503,7 @@ def _provisional_union_requires_rebalance(
     return bool(values and min(values) > int(maximum_pixels))
 
 
-def _retain_fragmentation_whole_instance_closure(
+def _retain_visible_regression_whole_instance_closure(
     *,
     primitive_id: str,
     fallback_policy: str,
@@ -3511,19 +3511,24 @@ def _retain_fragmentation_whole_instance_closure(
     desired_max_pixels: int,
     hard_max_pixels: int,
 ) -> bool:
-    """Execute a valid fragmentation closure before shrinking its corridor.
+    """Execute a valid visible-regression closure before shrinking its mask.
 
-    Whole-instance cell removal can move an otherwise valid fragmentation
-    candidate slightly above the desired joint interval.  Shrinking the tissue
-    corridor first can destroy the only seam that supports replacement-cell
+    Whole-instance cell removal can move an otherwise valid footprint or
+    fragmentation candidate slightly above the desired joint interval.
+    Shrinking the tissue edit first weakens a visible external retreat or can
+    destroy the only fragmentation seam that supports replacement-cell
     packing.  When the exact predicted closure remains inside the declared
     hard maximum, execute it and let the existing post-execution minimum-safe
-    fallback certify the raster instead of pre-emptively collapsing the seam.
+    fallback certify the raster instead of pre-emptively shrinking it.
     """
 
     values = [max(0, int(value)) for value in predicted_pixels]
     return bool(
-        primitive_id == "residual-tumor-fragmentation-v1"
+        primitive_id
+        in {
+            "invasive-tumor-footprint-decrease-v1",
+            "residual-tumor-fragmentation-v1",
+        }
         and fallback_policy == "max_feasible_below_target"
         and values
         and int(desired_max_pixels) < min(values) <= int(hard_max_pixels)
