@@ -763,15 +763,23 @@ def _natural_external_retreat_priority(
         amplitude=1.0,
         correlation_px=correlation,
     )
-    organic_scale = 2.5 + 0.10 * interface_depth
-    priority = interface_depth + organic_scale * organic + 0.018 * anchor_depth
-    # Preserve deterministic ordering where two raster pixels have identical
-    # depth/noise, without allowing the old tapered-lobe score to dominate.
+    organic_scale = 5.0 + 0.20 * interface_depth
     legacy = np.asarray(default_priority, dtype=float)
-    finite_legacy = legacy[legal & np.isfinite(legacy)]
-    if finite_legacy.size:
-        legacy = legacy / max(float(np.max(finite_legacy)), 1.0)
-        priority += 1e-3 * legacy
+    lateral_offset = np.sqrt(
+        np.maximum(anchor_depth * anchor_depth - interface_depth * interface_depth, 0.0)
+    )
+    # Whole-interface depth remains the dominant term, but the original
+    # Planner profile retains enough authority to taper both ends of the
+    # selected anchor sector before its Voronoi ownership boundary.  Without
+    # this term a shallow fill ends exactly on that boundary and becomes a
+    # conspicuous rectangle.  Lateral offset and stronger low-frequency noise
+    # remove the residual straight cutoff without reopening deep lobes.
+    priority = (
+        0.38 * interface_depth
+        + 0.62 * legacy
+        + 0.10 * lateral_offset
+        + organic_scale * organic
+    )
     return priority
 
 

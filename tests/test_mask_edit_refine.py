@@ -1534,6 +1534,56 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertGreaterEqual(int(rows.max() - rows.min() + 1), 110)
         self.assertLessEqual(float(np.percentile(cols - 20, 95)), 32.0)
 
+    def test_footprint_priority_tapers_selected_anchor_sector_ends(self):
+        shape = (160, 220)
+        source = np.zeros(shape, dtype=bool)
+        source[20:140, 20:200] = True
+        interface = np.zeros(shape, dtype=bool)
+        interface[20:140, 20] = True
+        anchor = np.zeros(shape, dtype=bool)
+        anchor[40:120, 20] = True
+        _, nearest_interface = ndimage.distance_transform_edt(
+            ~interface, return_indices=True
+        )
+        legal = source & anchor[nearest_interface[0], nearest_interface[1]]
+        unit_profile = DepthProfile(
+            mode="multi_lobe",
+            peak_depth_px=1.0,
+            edge_depth_px=0.55,
+            taper_fraction=0.24,
+            lobe_count=3,
+            noise_amplitude_px=0.0,
+            noise_correlation_px=24.0,
+        )
+        unit_depth = compile_depth_profile_map(
+            (anchor,), profile=unit_profile, shape=shape
+        )
+        default = ndimage.distance_transform_edt(~anchor) / np.maximum(
+            unit_depth, 1e-3
+        )
+
+        priority = _natural_external_retreat_priority(
+            source_component=source,
+            legal_envelope=legal,
+            interface_mask=interface,
+            anchor_mask=anchor,
+            default_priority=default,
+        )
+        eligible_ids = np.flatnonzero(legal)
+        order = np.argsort(priority.ravel()[eligible_ids], kind="stable")
+        changed = np.zeros_like(source)
+        target_pixels = round(int(source.sum()) * 0.15)
+        changed.ravel()[eligible_ids[order[:target_pixels]]] = True
+        row_widths = np.asarray(
+            [int(np.count_nonzero(changed[row])) for row in range(40, 120)]
+        )
+        endpoint_mean = float(
+            np.mean(np.concatenate((row_widths[:4], row_widths[-4:])))
+        )
+
+        self.assertLess(endpoint_mean, float(np.median(row_widths)) * 0.8)
+        self.assertGreaterEqual(int(np.ptp(row_widths)), 12)
+
     def test_fragmentation_topology_rejects_two_or_imbalanced_foci(self):
         shape = (60, 90)
         source = np.zeros(shape, dtype=bool)
