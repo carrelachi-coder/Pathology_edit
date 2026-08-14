@@ -25,7 +25,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v9"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v10"
 
 POPULATION_DISPOSITIONS = frozenset(
     {
@@ -36,6 +36,18 @@ POPULATION_DISPOSITIONS = frozenset(
         "remove_requested_cell_population",
     }
 )
+
+
+def _protected_population_may_cross_tissue_change(
+    *, tissue_geometry_mode: str
+) -> bool:
+    """Allow a frozen observed cell while fragmentation changes tissue below.
+
+    This does not authorize a new incompatible cell.  The instance must
+    already be protected and remains pixel-exact in the transition ledger.
+    """
+
+    return tissue_geometry_mode == "residual_fragmentation"
 
 
 @dataclass(frozen=True)
@@ -775,7 +787,14 @@ class ExecutableJointContractCompiler:
                     disposition = "remove_incompatible_population"
                 population_transition_ledger[item.instance_id] = disposition
             elif intersects_tissue_change and item.instance_id in protected:
-                if item.class_id not in set(allowed_classes):
+                if (
+                    item.class_id not in set(allowed_classes)
+                    and not _protected_population_may_cross_tissue_change(
+                        tissue_geometry_mode=(
+                            bundle.primitive.tissue_geometry_mode
+                        )
+                    )
+                ):
                     raise JointContractError(
                         "incompatible protected population intersects tissue change"
                     )
