@@ -41,8 +41,35 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v14"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v15"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
+
+
+def _protected_instance_is_tissue_exclusion(
+    *,
+    tissue_geometry_mode: str,
+    class_id: int,
+    required_clearance_classes: set[int],
+    target_compatible_classes: set[int],
+) -> bool:
+    """Return whether a frozen cell instance must also freeze tissue below it.
+
+    Residual fragmentation protects censored or irregular cell rasters as
+    observations, but its tissue program is still allowed to convert the
+    underlying invasive-tumor label to stroma.  Treating every such cell as a
+    tissue exclusion leaves a one- to four-pixel Tumor shell around it, which
+    appears to the topology solver as dozens of artificial residual foci.
+    Complete source-class instances remain removable through the ordinary
+    whole-instance path; this exception only separates a protected cell mask
+    from the independent tissue-label authority beneath it.
+    """
+
+    if tissue_geometry_mode == "residual_fragmentation":
+        return False
+    return bool(
+        class_id in required_clearance_classes
+        or class_id not in target_compatible_classes
+    )
 
 
 @dataclass(frozen=True)
@@ -326,9 +353,13 @@ def build_joint_nuclei_preflight(
             # with the target tissue and the primitive does not require that
             # class to be cleared. This distinction prevents border-shape
             # filtering from deleting a large, otherwise executable T region.
-            if (
-                item.class_id in required_clearance_classes
-                or item.class_id not in target_compatible_classes
+            if _protected_instance_is_tissue_exclusion(
+                tissue_geometry_mode=(
+                    joint_bundle.primitive.tissue_geometry_mode
+                ),
+                class_id=item.class_id,
+                required_clearance_classes=required_clearance_classes,
+                target_compatible_classes=target_compatible_classes,
             ):
                 tissue_exclusions.append(item.instance_id)
                 protected_mask |= component
