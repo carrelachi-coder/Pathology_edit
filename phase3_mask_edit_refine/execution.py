@@ -1575,6 +1575,9 @@ def _simulate_topology_safe_execution(
                     "fragmentation_spacing_pixels_added": cleanup[
                         "spacing_pixels_added"
                     ],
+                    "fragmentation_balance_pixels_added": cleanup[
+                        "balance_pixels_added"
+                    ],
                     "fragmentation_noncritical_edge_pixels_reclaimed": cleanup[
                         "pixels_reclaimed"
                     ],
@@ -1697,6 +1700,7 @@ def _rebalance_fragmentation_residual_islands(
         "pixels_reclaimed": 0,
         "tiny_pixels_added": 0,
         "spacing_pixels_added": 0,
+        "balance_pixels_added": 0,
         "assigned_work_index": 0,
     }
     if not selected_by_work or minimum_residual_component_area_px <= 1:
@@ -1712,9 +1716,20 @@ def _rebalance_fragmentation_residual_islands(
         residual, structure=np.ones((3, 3), dtype=bool)
     )
     sizes = np.bincount(labels.ravel())[1:]
+    cleanup_ids = []
     tiny_ids = []
+    balance_ids = []
+    residual_total = max(int(sizes.sum()), 1)
     for index, size in enumerate(sizes.tolist(), start=1):
-        if not 0 < int(size) < int(minimum_residual_component_area_px):
+        size = int(size)
+        if size <= 0:
+            continue
+        below_absolute_floor = size < int(minimum_residual_component_area_px)
+        below_relative_floor = (
+            size / residual_total + 1e-9
+            < float(minimum_residual_component_fraction)
+        )
+        if not (below_absolute_floor or below_relative_floor):
             continue
         component = labels == index
         surrounding_ring = ndimage.binary_dilation(
@@ -1730,9 +1745,17 @@ def _rebalance_fragmentation_residual_islands(
         # final target.  The transactional whole-mask audit below remains the
         # authority for component counts, holes, spacing and residual balance.
         if np.any(surrounding_ring) and np.any(target_after[surrounding_ring]):
-            tiny_ids.append(index)
+            cleanup_ids.append(index)
+            if below_absolute_floor:
+                tiny_ids.append(index)
+            else:
+                balance_ids.append(index)
+    cleanup_ids = tuple(cleanup_ids)
     tiny_ids = tuple(tiny_ids)
+    balance_ids = tuple(balance_ids)
+    focus_cleanup = np.isin(labels, cleanup_ids)
     tiny = np.isin(labels, tiny_ids)
+    balance = np.isin(labels, balance_ids)
     tiny_pixels = int(np.count_nonzero(tiny))
     # Large accidental islands are a genuinely different topology and must
     # remain an abstention.  The 512-pixel cap is still far below a valid
@@ -1740,18 +1763,28 @@ def _rebalance_fragmentation_residual_islands(
     # one- and two-pixel caps produced along several long raster corridors.
     if tiny_pixels > 512:
         return selected_by_work, unchanged
+    balance_pixels = int(np.count_nonzero(balance))
+    maximum_focus_cleanup_pixels = min(
+        32768,
+        max(4096, round(np.count_nonzero(selected_source) * 0.06)),
+    )
+    if int(np.count_nonzero(focus_cleanup)) > maximum_focus_cleanup_pixels:
+        return selected_by_work, unchanged
 
     spacing = _fragmentation_spacing_repair(
         selected_source=selected_source,
-        target_after=target_after | tiny,
+        target_after=target_after | focus_cleanup,
         minimum_residual_spacing_px=minimum_residual_spacing_px,
-        maximum_added_pixels=4096 - tiny_pixels,
+        maximum_added_pixels=(
+            maximum_focus_cleanup_pixels
+            - int(np.count_nonzero(focus_cleanup))
+        ),
     )
     if spacing is None:
         return selected_by_work, unchanged
-    repair = tiny | spacing
+    repair = focus_cleanup | spacing
     reclaimed = int(np.count_nonzero(repair))
-    if reclaimed <= 0 or reclaimed > 4096:
+    if reclaimed <= 0 or reclaimed > maximum_focus_cleanup_pixels:
         return selected_by_work, unchanged
 
     updated = [np.array(item, copy=True) for item in selected_by_work]
@@ -1817,40 +1850,60 @@ def _rebalance_fragmentation_residual_islands(
                     )
                 )
         candidates.sort(reverse=True)
-        maximum_trials = min(4096, max(512, reclaimed * 64))
+        maximum_trials = min(8192, max(512, reclaimed * 8))
         progress = 0
-        for trials, (_priority, index, row, col) in enumerate(
-            candidates, start=1
-        ):
-            if removed >= reclaimed or trials > maximum_trials:
+        offset = 0
+        while offset < min(len(candidates), maximum_trials):
+            remaining = reclaimed - removed
+            if remaining <= 0:
                 break
-            updated[index][row, col] = False
-            audit = _whole_mask_topology_audit(
-                source_region=source_region,
-                target_region=target_region,
-                selected_by_work=tuple(updated),
-                works=works,
-                allow_source_component_split=True,
-                minimum_residual_components=minimum_residual_components,
-                maximum_residual_components=maximum_residual_components,
-                minimum_residual_component_area_px=(
-                    minimum_residual_component_area_px
-                ),
-                minimum_residual_spacing_px=minimum_residual_spacing_px,
-                residual_area_floor_fraction=residual_area_floor_fraction,
-                maximum_residual_area_fraction=maximum_residual_area_fraction,
-                minimum_residual_component_fraction=(
-                    minimum_residual_component_fraction
-                ),
-                maximum_dominant_residual_component_fraction=(
-                    maximum_dominant_residual_component_fraction
-                ),
-            )
-            if audit["passed"]:
-                removed += 1
-                progress += 1
+            batch_size = min(512, remaining, len(candidates) - offset)
+            accepted = False
+            while batch_size >= 1:
+                batch = candidates[offset : offset + batch_size]
+                for _priority, index, row, col in batch:
+                    updated[index][row, col] = False
+                audit = _whole_mask_topology_audit(
+                    source_region=source_region,
+                    target_region=target_region,
+                    selected_by_work=tuple(updated),
+                    works=works,
+                    allow_source_component_split=True,
+                    minimum_residual_components=minimum_residual_components,
+                    maximum_residual_components=maximum_residual_components,
+                    minimum_residual_component_area_px=(
+                        minimum_residual_component_area_px
+                    ),
+                    minimum_residual_spacing_px=minimum_residual_spacing_px,
+                    residual_area_floor_fraction=residual_area_floor_fraction,
+                    maximum_residual_area_fraction=(
+                        maximum_residual_area_fraction
+                    ),
+                    minimum_residual_component_fraction=(
+                        minimum_residual_component_fraction
+                    ),
+                    maximum_dominant_residual_component_fraction=(
+                        maximum_dominant_residual_component_fraction
+                    ),
+                )
+                if audit["passed"]:
+                    removed += batch_size
+                    progress += batch_size
+                    offset += batch_size
+                    accepted = True
+                    break
+                for _priority, index, row, col in batch:
+                    updated[index][row, col] = True
+                batch_size //= 2
+            if not accepted:
+                offset += 1
             else:
-                updated[index][row, col] = True
+                # A successful batch changes the residual frontier. Rebuild
+                # candidates in the outer loop before donating another layer;
+                # continuing on the stale frontier needlessly probes interior
+                # corridor pixels and can turn a linear repair into thousands
+                # of full-raster audits.
+                break
         if removed >= reclaimed:
             break
         if progress <= 0:
@@ -1867,6 +1920,7 @@ def _rebalance_fragmentation_residual_islands(
         "pixels_reclaimed": removed,
         "tiny_pixels_added": tiny_pixels,
         "spacing_pixels_added": int(np.count_nonzero(spacing)),
+        "balance_pixels_added": balance_pixels,
         "assigned_work_index": min(assigned_indices),
     }
 

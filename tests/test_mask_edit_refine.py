@@ -1021,6 +1021,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(audit["pixels_reclaimed"], 81)
         self.assertEqual(audit["tiny_pixels_added"], 81)
         self.assertEqual(audit["spacing_pixels_added"], 0)
+        self.assertEqual(audit["balance_pixels_added"], 0)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
         labels, count = ndimage.label(
             source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
@@ -1075,6 +1076,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(audit["pixels_reclaimed"], 81)
         self.assertEqual(audit["tiny_pixels_added"], 81)
         self.assertEqual(audit["spacing_pixels_added"], 0)
+        self.assertEqual(audit["balance_pixels_added"], 0)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
 
     def test_fragmentation_cleanup_widens_under_spaced_corridors(self):
@@ -1115,6 +1117,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertTrue(audit["applied"], audit)
         self.assertEqual(audit["tiny_pixels_added"], 0)
         self.assertGreater(audit["spacing_pixels_added"], 0)
+        self.assertEqual(audit["balance_pixels_added"], 0)
         self.assertEqual(audit["pixels_added"], audit["pixels_reclaimed"])
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
         labels, count = ndimage.label(
@@ -1124,6 +1127,53 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertGreaterEqual(
             _minimum_component_spacing_px(labels, count), 8
         )
+
+    def test_fragmentation_cleanup_removes_subrelative_focus(self):
+        shape = (160, 400)
+        source = np.zeros(shape, dtype=bool)
+        source[5:155, 5:395] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:155, 5:30] = True
+        change[5:155, 80:90] = True
+        change[5:155, 100:110] = True
+        change[5:155, 250:260] = True
+        priority = np.zeros(shape, dtype=float)
+        priority[:, :35] = 100.0
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=source,
+            priority=priority,
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+
+        cleaned, audit = _rebalance_fragmentation_residual_islands(
+            (change,),
+            works=(work,),
+            source_region=source,
+            target_region=target,
+            minimum_residual_components=3,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=8,
+            residual_area_floor_fraction=0.3,
+            minimum_residual_component_fraction=0.08,
+            maximum_dominant_residual_component_fraction=0.75,
+        )
+
+        self.assertTrue(audit["applied"], audit)
+        self.assertEqual(audit["tiny_pixels_added"], 0)
+        self.assertGreater(audit["balance_pixels_added"], 0)
+        self.assertEqual(audit["pixels_added"], audit["pixels_reclaimed"])
+        labels, count = ndimage.label(
+            source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = np.bincount(labels.ravel())[1:]
+        self.assertEqual(count, 3)
+        self.assertGreaterEqual(float(np.min(sizes / sizes.sum())), 0.08)
 
     def test_fragmentation_priority_builds_three_balanced_traversing_foci(self):
         shape = (96, 120)
