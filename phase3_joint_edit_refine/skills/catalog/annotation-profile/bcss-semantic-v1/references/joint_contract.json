@@ -1,6 +1,6 @@
 {
   "annotation_profile_id": "bcss-semantic-v1",
-  "version": "1.1.0-draft",
+  "version": "1.2.0-draft",
   "review_status": "draft",
   "prohibited_fine_ids": [
     0
@@ -18,7 +18,9 @@
   "unavailable_mechanisms": [],
   "conditional_mechanisms": [
     "breast-annotation-anchored-boundary-growth",
+    "breast-cell-seeded-invasive-cord",
     "breast-infiltrative-nest-cord-extension",
+    "breast-peritumoral-tumor-nest",
     "breast-peritumoral-neoplastic-scatter",
     "breast-peritumoral-small-cluster",
     "breast-intratumoral-necrosis-turnover",
@@ -39,7 +41,9 @@
   "fibrosis_claim_authorized": false,
   "mechanism_editable_source_fine_ids": {
     "breast-annotation-anchored-boundary-growth": [2],
+    "breast-cell-seeded-invasive-cord": [2],
     "breast-infiltrative-nest-cord-extension": [2],
+    "breast-peritumoral-tumor-nest": [2],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [2],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [4],
     "breast-intratumoral-necrosis-turnover::necrosis-appearance-v1": [1],
@@ -51,7 +55,9 @@
   },
   "mechanism_editable_target_fine_ids": {
     "breast-annotation-anchored-boundary-growth": [1],
+    "breast-cell-seeded-invasive-cord": [1],
     "breast-infiltrative-nest-cord-extension": [1],
+    "breast-peritumoral-tumor-nest": [1],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [4],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [2],
     "breast-intratumoral-necrosis-turnover::necrosis-appearance-v1": [3],

@@ -3742,8 +3742,8 @@ class JointSkillTests(unittest.TestCase):
 
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
-        self.assertEqual(len(repository.mechanisms), 49)
-        self.assertEqual(len(repository.primitives), 27)
+        self.assertEqual(len(repository.mechanisms), 51)
+        self.assertEqual(len(repository.primitives), 29)
         self.assertEqual(len(repository.annotation_profiles), 6)
         self.assertEqual(len(repository.cell_observation_profiles), 1)
         self.assertEqual(len(repository.cell_population_profiles), 6)
@@ -3888,6 +3888,7 @@ class JointSkillTests(unittest.TestCase):
                 "generic-inflammatory-cell-abundance-decrease-v1",
                 "generic-inflammatory-cell-abundance-increase-v1",
                 "cohesive-boundary-expansion-v1",
+                "invasive-cord-formation-v1",
                 "infiltrative-nest-cord-extension-v1",
                 "invasive-front-expansion-v1",
                 "invasive-tumor-footprint-decrease-v1",
@@ -3899,6 +3900,7 @@ class JointSkillTests(unittest.TestCase):
                 "neoplastic-microinfiltration-increase-v1",
                 "peritumoral-neoplastic-scatter-increase-v1",
                 "peritumoral-small-cluster-increase-v1",
+                "peritumoral-tumor-nest-formation-v1",
                 "residual-tumor-fragmentation-v1",
                 "stroma-increase-v1",
                 "tumor-burden-increase-v1",

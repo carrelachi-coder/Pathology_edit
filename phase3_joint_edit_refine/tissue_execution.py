@@ -13,7 +13,6 @@ from typing import Any
 import numpy as np
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
-from phase3_mask_edit_refine.candidates import generate_candidates
 from phase3_mask_edit_refine.gates import GateContext, GateRegistry
 from phase3_mask_edit_refine.models import (
     CandidateMask,
@@ -36,6 +35,7 @@ from .feasibility import (
     certify_compiled_cell_program_feasibility,
 )
 from .instance_authority import build_scene_instance_authority
+from .invasive_architecture import generate_joint_tissue_candidates
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
@@ -127,10 +127,11 @@ def execute_gate_aware_tissue_candidates(
         raise JointContractError(
             "nuclei preflight density authority differs from the execution scene"
         )
-    baseline_candidates = generate_candidates(
+    baseline_candidates = generate_joint_tissue_candidates(
         source_tissue,
         schema=schema,
-        scene=tissue_scene,
+        tissue_scene=tissue_scene,
+        joint_scene=joint_scene,
         plan=tissue_plan,
         bundle=tissue_bundle,
         seed=seed,
@@ -165,10 +166,11 @@ def execute_gate_aware_tissue_candidates(
             "candidate_portfolio_policy"
         ] = "compiler_witness_early_accept"
         return baseline
-    all_candidates = generate_candidates(
+    all_candidates = generate_joint_tissue_candidates(
         source_tissue,
         schema=schema,
-        scene=tissue_scene,
+        tissue_scene=tissue_scene,
+        joint_scene=joint_scene,
         plan=tissue_plan,
         bundle=tissue_bundle,
         seed=seed,

@@ -89,7 +89,9 @@ BASE_REQUIRED_CHECKS = (
 
 MECHANISM_POSTCONDITION_IDS = (
     "breast-annotation-anchored-boundary-growth",
+    "breast-cell-seeded-invasive-cord",
     "breast-infiltrative-nest-cord-extension",
+    "breast-peritumoral-tumor-nest",
     "breast-peritumoral-neoplastic-scatter",
     "breast-peritumoral-small-cluster",
     "breast-cohesive-nst-front",
@@ -218,6 +220,10 @@ class JointGateRegistry:
             ),
             "annotation_anchored_extension_geometry": (
                 _annotation_anchored_extension_geometry
+            ),
+            "cell_seeded_cord_geometry": _cell_seeded_cord_geometry,
+            "peritumoral_tumor_island_geometry": (
+                _peritumoral_tumor_island_geometry
             ),
             "peritumoral_annulus": _peritumoral_annulus,
             "small_cluster_cardinality": _small_cluster_cardinality,
@@ -932,6 +938,198 @@ def _morphological_skeleton(mask):
     from skimage.morphology import skeletonize
 
     return np.asarray(skeletonize(np.asarray(mask, dtype=bool)), dtype=bool)
+
+
+def _component_count(mask):
+    return int(
+        ndimage.label(
+            np.asarray(mask, dtype=bool),
+            structure=np.ones((3, 3), dtype=bool),
+        )[1]
+    )
+
+
+def _cell_seeded_cord_geometry(c):
+    if c.case.primitive_id != "invasive-cord-formation-v1":
+        return _result(
+            "cell_seeded_cord_geometry",
+            True,
+            "cell-seeded cord geometry is not applicable",
+            metrics={"applicable": False},
+        )
+    change = np.asarray(c.candidate.tissue_change, dtype=bool)
+    trace = c.candidate.tool_trace.get("tissue_tool_trace", {})
+    tumor_ids = tuple(c.schema.resolve_fine_ids("Tumor"))
+    source_tumor = np.isin(c.source_tissue, tumor_ids)
+    attachment = change & ndimage.binary_dilation(source_tumor, iterations=1)
+    skeleton = _morphological_skeleton(change)
+    distance = ndimage.distance_transform_edt(change)
+    widths = 2.0 * distance[skeleton]
+    diameter = max(
+        4.0,
+        float(trace.get("nominal_nucleus_diameter_px", 8.0)),
+    )
+    centers = trace.get("cell_seed_centers_yx")
+    valid_centers = []
+    if isinstance(centers, list):
+        for item in centers:
+            if (
+                isinstance(item, list)
+                and len(item) == 2
+                and 0 <= int(item[0]) < change.shape[0]
+                and 0 <= int(item[1]) < change.shape[1]
+            ):
+                valid_centers.append((int(item[0]), int(item[1])))
+    center_coverage = (
+        sum(change[row, col] for row, col in valid_centers)
+        / max(1, len(valid_centers))
+    )
+    accepted = c.candidate.tool_trace.get("accepted_center_ledger")
+    realized_centers = []
+    if isinstance(accepted, list):
+        for item in accepted:
+            if (
+                isinstance(item, dict)
+                and int(item.get("class_id", -1)) == 1
+                and 0 <= int(item.get("row", -1)) < change.shape[0]
+                and 0 <= int(item.get("col", -1)) < change.shape[1]
+            ):
+                realized_centers.append(
+                    (int(item["row"]), int(item["col"]))
+                )
+    maximum_realized_path_distance = float("inf")
+    realized_path_span_fraction = 0.0
+    if valid_centers and realized_centers:
+        seeded = np.asarray(valid_centers, dtype=float)
+        realized = np.asarray(realized_centers, dtype=float)
+        maximum_realized_path_distance = float(
+            np.max(
+                np.min(
+                    np.linalg.norm(
+                        realized[:, None, :] - seeded[None, :, :], axis=2
+                    ),
+                    axis=1,
+                )
+            )
+        )
+        centered = seeded - seeded.mean(axis=0)
+        _, _, vectors = np.linalg.svd(centered, full_matrices=False)
+        axis = vectors[0]
+        seeded_projection = seeded @ axis
+        realized_projection = realized @ axis
+        realized_path_span_fraction = float(
+            np.ptp(realized_projection) / max(float(np.ptp(seeded_projection)), 1.0)
+        )
+    coords = np.argwhere(change).astype(float)
+    if len(coords) >= 3:
+        covariance = np.cov(coords, rowvar=False)
+        eigenvalues = np.sort(np.linalg.eigvalsh(covariance))
+        directionality = float(
+            np.sqrt(eigenvalues[-1] / max(eigenvalues[0], 1e-6))
+        )
+    else:
+        directionality = 0.0
+    passed = bool(
+        np.any(change)
+        and _component_count(change) == 1
+        and _component_count(attachment) == 1
+        and trace.get("execution_order") == "cells_then_tumor_mask"
+        and trace.get("tumor_mask_derivation")
+        == "cell_footprints_plus_cell_scale_closing"
+        and len(valid_centers) >= 5
+        and center_coverage >= 0.95
+        and len(realized_centers) >= 2
+        and maximum_realized_path_distance <= diameter
+        and realized_path_span_fraction >= 0.55
+        and widths.size
+        and float(np.max(widths)) <= 3.5 * diameter
+        and directionality >= 1.5
+    )
+    return _result(
+        "cell_seeded_cord_geometry",
+        passed,
+        (
+            "cord is a connected cell-seeded narrow path with cell-scale Tumor support"
+            if passed
+            else "cord is not a connected cell-seeded narrow architecture"
+        ),
+        metrics={
+            "applicable": True,
+            "execution_order": trace.get("execution_order"),
+            "cell_seed_center_count": len(valid_centers),
+            "cell_seed_center_coverage": float(center_coverage),
+            "realized_tumor_cell_center_count": len(realized_centers),
+            "maximum_realized_center_to_seed_path_distance_px": (
+                maximum_realized_path_distance
+            ),
+            "realized_seed_path_span_fraction": realized_path_span_fraction,
+            "change_component_count": _component_count(change),
+            "attachment_component_count": _component_count(attachment),
+            "maximum_width_px": float(np.max(widths)) if widths.size else 0.0,
+            "maximum_width_cell_diameters": (
+                float(np.max(widths)) / diameter if widths.size else 0.0
+            ),
+            "directionality_ratio": directionality,
+        },
+    )
+
+
+def _peritumoral_tumor_island_geometry(c):
+    if c.case.primitive_id != "peritumoral-tumor-nest-formation-v1":
+        return _result(
+            "peritumoral_tumor_island_geometry",
+            True,
+            "peritumoral Tumor-island geometry is not applicable",
+            metrics={"applicable": False},
+        )
+    change = np.asarray(c.candidate.tissue_change, dtype=bool)
+    trace = c.candidate.tool_trace.get("tissue_tool_trace", {})
+    tumor_ids = tuple(c.schema.resolve_fine_ids("Tumor"))
+    source_tumor = np.isin(c.source_tissue, tumor_ids)
+    target_tumor = np.isin(c.candidate.target_tissue_mask, tumor_ids)
+    source_components = _component_count(source_tumor)
+    target_components = _component_count(target_tumor)
+    distance_to_parent = ndimage.distance_transform_edt(~source_tumor)
+    gap = float(np.min(distance_to_parent[change])) if np.any(change) else 0.0
+    boundary = change & ~ndimage.binary_erosion(change)
+    area = int(np.count_nonzero(change))
+    compactness = float(
+        np.count_nonzero(boundary) ** 2 / max(4.0 * np.pi * area, 1.0)
+    )
+    passed = bool(
+        area > 0
+        and _component_count(change) == 1
+        and target_components == source_components + 1
+        and not np.any(ndimage.binary_dilation(change) & source_tumor)
+        and trace.get("execution_order") == "tumor_island_then_cells"
+        and trace.get("island_geometry")
+        == "single_detached_irregular_harmonic_blob"
+        and gap >= 2.0
+        # This perimeter proxy counts one-pixel morphological boundaries, so
+        # a small digital disk is typically about 0.8 rather than the
+        # continuous isoperimetric value 1.0. Keep the meaningful upper bound
+        # and only correct the raster-scale lower bound.
+        and 0.65 <= compactness <= 10.0
+    )
+    return _result(
+        "peritumoral_tumor_island_geometry",
+        passed,
+        (
+            "nest is one compact irregular detached Tumor island in the peritumoral band"
+            if passed
+            else "nest is missing, bridged, remote, non-compact, or changes the wrong component count"
+        ),
+        metrics={
+            "applicable": True,
+            "execution_order": trace.get("execution_order"),
+            "change_component_count": _component_count(change),
+            "source_tumor_component_count": source_components,
+            "target_tumor_component_count": target_components,
+            "parent_gap_px": gap,
+            "boundary_compactness": compactness,
+            "changed_pixels": area,
+        },
+    )
 
 
 def _projection_taper_metrics(change, *, attachment):
@@ -3647,7 +3845,9 @@ def _mechanism_specific_postcondition(
 
     if c.case.primitive_id in {
         "cohesive-boundary-expansion-v1",
+        "invasive-cord-formation-v1",
         "infiltrative-nest-cord-extension-v1",
+        "peritumoral-tumor-nest-formation-v1",
         "peritumoral-neoplastic-scatter-increase-v1",
         "peritumoral-small-cluster-increase-v1",
     }:
@@ -3671,6 +3871,14 @@ def _mechanism_specific_postcondition(
         )
         subchecks["small_cluster_focus_compactness"] = (
             _small_cluster_focus_compactness(c).passed
+        )
+    if expected_mechanism_id == "breast-cell-seeded-invasive-cord":
+        subchecks["cell_seeded_cord_geometry"] = (
+            _cell_seeded_cord_geometry(c).passed
+        )
+    if expected_mechanism_id == "breast-peritumoral-tumor-nest":
+        subchecks["peritumoral_tumor_island_geometry"] = (
+            _peritumoral_tumor_island_geometry(c).passed
         )
     if c.case.primitive_id == "peritumoral-neoplastic-scatter-increase-v1":
         subchecks["peritumoral_scatter_separation"] = (

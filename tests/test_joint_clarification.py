@@ -161,11 +161,16 @@ def test_new_breast_primitive_clarification_copy_and_roundtrip():
     )
     primitives = (
         "cohesive-boundary-expansion-v1",
-        "infiltrative-nest-cord-extension-v1",
+        "invasive-cord-formation-v1",
+        "peritumoral-tumor-nest-formation-v1",
         "peritumoral-neoplastic-scatter-increase-v1",
         "peritumoral-small-cluster-increase-v1",
     )
-    for pair in ((primitives[0], primitives[1]), (primitives[2], primitives[3])):
+    for pair in (
+        (primitives[0], primitives[1]),
+        (primitives[1], primitives[2]),
+        (primitives[3], primitives[4]),
+    ):
         options = tuple(_option(item, "breast-" + item, index) for index, item in enumerate(pair))
         request = build_primitive_clarification_request(
             case=case,

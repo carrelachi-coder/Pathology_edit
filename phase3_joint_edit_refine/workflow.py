@@ -17,7 +17,6 @@ from scipy import ndimage
 
 from phase3_mask_edit_refine.agents import Planner, validate_edit_plan
 from phase3_mask_edit_refine.evidence import load_id_mask, sha256_file
-from phase3_mask_edit_refine.execution import compile_edit_plan_with_witness
 from phase3_mask_edit_refine.gates import GateRegistry
 from phase3_mask_edit_refine.models import (
     AreaBudget,
@@ -74,6 +73,7 @@ from .gates import (
 )
 from .handoff import write_generation_handoff
 from .instance_authority import authority_trace, build_scene_instance_authority
+from .invasive_architecture import compile_joint_tissue_plan_with_witness
 from .ledger import build_joint_candidate
 from .mature_probnet_adapter import MatureProbNetCellExecutor
 from .models import (
@@ -1066,7 +1066,7 @@ class JointPathologyEditWorkflow:
                         compiler_usage,
                         compiled_replay_parts,
                         compiled_replay_audit,
-                    ) = compile_edit_plan_with_witness(
+                    ) = compile_joint_tissue_plan_with_witness(
                         raw_tissue_plan,
                         source_mask=source_tissue,
                         schema=schema,

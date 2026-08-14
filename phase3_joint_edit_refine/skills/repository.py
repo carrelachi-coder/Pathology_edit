@@ -91,6 +91,12 @@ class JointSkillBundle:
                 "minimum_source_component_changed_fraction": (
                     self.primitive.minimum_source_component_changed_fraction
                 ),
+                "allow_target_component_creation": (
+                    self.primitive.allow_target_component_creation
+                ),
+                "maximum_new_target_components": (
+                    self.primitive.maximum_new_target_components
+                ),
                 "maximum_source_component_changed_fraction": (
                     self.primitive.maximum_source_component_changed_fraction
                 ),
@@ -381,6 +387,115 @@ class JointSkillRepository:
                 "execution scope closes unknown mechanisms: "
                 + ", ".join(sorted(unknown_closed))
             )
+        semantic_intents = self.execution_scope.get("semantic_intents", {})
+        if not isinstance(semantic_intents, dict):
+            raise JointContractError("semantic intent scope must be a mapping")
+        for intent_id, intent_contract in semantic_intents.items():
+            if not isinstance(intent_id, str) or not isinstance(
+                intent_contract, dict
+            ):
+                raise JointContractError(
+                    "semantic intent scope contains an invalid contract"
+                )
+            legacy_alias = intent_contract.get("legacy_primitive_alias")
+            if legacy_alias not in closed:
+                raise JointContractError(
+                    f"{intent_id} legacy alias must be a closed catalog primitive"
+                )
+            candidate_primitives = set(
+                intent_contract.get("candidate_primitives", [])
+            )
+            if (
+                not candidate_primitives
+                or legacy_alias in candidate_primitives
+                or not candidate_primitives <= catalog
+            ):
+                raise JointContractError(
+                    f"{intent_id} must expand only to known concrete primitives"
+                )
+            profile_routes = intent_contract.get("profile_routes", {})
+            if not isinstance(profile_routes, dict) or set(profile_routes) != set(
+                self.annotation_profiles
+            ):
+                raise JointContractError(
+                    f"{intent_id} must declare one route for every annotation profile"
+                )
+            routed_primitives: set[str] = set()
+            for profile_id, route in profile_routes.items():
+                if not isinstance(route, dict):
+                    raise JointContractError(
+                        f"{intent_id}/{profile_id} route must be a mapping"
+                    )
+                executable_mechanisms = set(
+                    route.get("executable_mechanisms", [])
+                )
+                closed_structure_mechanisms = set(
+                    route.get("closed_structure_mechanisms", [])
+                )
+                routed_mechanisms = (
+                    executable_mechanisms | closed_structure_mechanisms
+                )
+                if (
+                    not routed_mechanisms
+                    or executable_mechanisms & closed_structure_mechanisms
+                    or not routed_mechanisms <= set(self.mechanisms)
+                ):
+                    raise JointContractError(
+                        f"{intent_id}/{profile_id} has an invalid mechanism route"
+                    )
+                for mechanism_id in routed_mechanisms:
+                    mechanism_primitives = set(
+                        self.mechanisms[mechanism_id].supported_primitives
+                    )
+                    concrete_overlap = (
+                        mechanism_primitives & candidate_primitives
+                    )
+                    if not concrete_overlap:
+                        raise JointContractError(
+                            f"{intent_id}/{profile_id}/{mechanism_id} has no "
+                            "concrete intent primitive"
+                        )
+                    routed_primitives.update(concrete_overlap)
+                    mechanism_is_closed = mechanism_id in closed_mechanisms
+                    if mechanism_id in executable_mechanisms and (
+                        mechanism_is_closed
+                        or not concrete_overlap & executable
+                    ):
+                        raise JointContractError(
+                            f"{intent_id}/{profile_id}/{mechanism_id} is not executable"
+                        )
+                    if mechanism_id in closed_structure_mechanisms and (
+                        not mechanism_is_closed
+                        or not concrete_overlap <= closed
+                    ):
+                        raise JointContractError(
+                            f"{intent_id}/{profile_id}/{mechanism_id} must be "
+                            "closed with its structure primitive"
+                        )
+            if routed_primitives != candidate_primitives:
+                raise JointContractError(
+                    f"{intent_id} profile routes do not cover every concrete primitive"
+                )
+            mechanisms_using_alias = sorted(
+                mechanism.mechanism_id
+                for mechanism in self.mechanisms.values()
+                if legacy_alias in mechanism.supported_primitives
+            )
+            if mechanisms_using_alias:
+                raise JointContractError(
+                    f"{intent_id} legacy alias remains executable through: "
+                    + ", ".join(mechanisms_using_alias)
+                )
+        extent_increase_primitives = {
+            "cohesive-boundary-expansion-v1",
+            "invasive-cord-formation-v1",
+            "peritumoral-tumor-nest-formation-v1",
+            "infiltrative-nest-cord-extension-v1",
+            "malignant-gland-unit-expansion-v1",
+            "separated-gland-unit-expansion-v1",
+            "septal-surface-coverage-increase-v1",
+            "acinar-papillary-unit-expansion-v1",
+        }
         for mechanism in self.mechanisms.values():
             burden_directions = {
                 primitive_id

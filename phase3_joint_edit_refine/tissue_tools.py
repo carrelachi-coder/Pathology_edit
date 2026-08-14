@@ -9,13 +9,15 @@ from typing import Any
 
 from .models import JointContractError
 
-TISSUE_TOOL_MAPPING_VERSION = "joint-tissue-tool-mapping-v1"
+TISSUE_TOOL_MAPPING_VERSION = "joint-tissue-tool-mapping-v2"
 
 JOINT_TOOL_FAMILY_TO_EXECUTOR = {
     "interface_band_sdf": "interface_sdf",
     "topology_safe_morphology": "connected_morphology",
     "organic_v2": "organic_v2",
     "directional_tapered_projection": "directional_tapered_projection",
+    "cell_seeded_cord": "cell_seeded_cord",
+    "peritumoral_tumor_island": "peritumoral_tumor_island",
 }
 
 

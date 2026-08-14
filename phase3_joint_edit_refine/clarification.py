@@ -134,6 +134,18 @@ _PRIMITIVE_COPY: dict[str, tuple[str, str, str, str]] = {
         "A narrow, single-parent tumor projection extends into operational Stroma.",
         "Complete neoplastic instances are regenerated within the connected projection under the target-population contract.",
     ),
+    "invasive-cord-formation-v1": (
+        "Form a narrow invasive tumor cord",
+        "Lay out a slightly irregular one-to-three-cell-wide tumor-cell path from a certified external boundary, then derive ordinary Tumor support from those cells.",
+        "A thin connected Tumor cord follows the cell arrangement rather than a pre-drawn protrusion.",
+        "Complete source-scaled neoplastic nuclei populate the path before cell-scale Tumor support is finalized.",
+    ),
+    "peritumoral-tumor-nest-formation-v1": (
+        "Form a detached peritumoral tumor nest",
+        "Create one small irregular Tumor island in certified nearby Stroma, separated from the parent Tumor, then fill it with tumor cells.",
+        "Exactly one small detached Tumor component is added near the invasive front.",
+        "Complete source-scaled neoplastic nuclei are regenerated inside the new island.",
+    ),
     "peritumoral-neoplastic-scatter-increase-v1": (
         "Add sparse peritumoral neoplastic cells",
         "Keep tissue labels unchanged and add separated complete neoplastic instances in a certified outer annulus.",

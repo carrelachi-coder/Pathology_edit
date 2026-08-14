@@ -460,6 +460,23 @@ def generate_cell_layouts(
         )
         if not np.any(halo):
             reserve_count = 0
+    architecture_packing = (
+        executable_contract.packing_certificate
+        if plan.cell_plan.layout_program_id in {"short_cord", "small_cluster"}
+        and executable_contract.primitive_id
+        in {
+            "invasive-cord-formation-v1",
+            "peritumoral-tumor-nest-formation-v1",
+        }
+        else None
+    )
+    if architecture_packing is not None:
+        # The specialized mask programs already made the complete target-cell
+        # footprint part of ordinary Tumor tissue. Execute the exact packing
+        # witness that certified that cord/nest architecture rather than
+        # recomputing an unrelated generic cluster.
+        replacement_count = int(architecture_packing["requested_count"])
+        reserve_count = 0
     source_density_requested_count = replacement_count
     continuity_quota = None
     preferred_seam_count = 0
@@ -612,43 +629,61 @@ def generate_cell_layouts(
     )
     results: list[CellLayoutResult] = []
     for variant in range(variants):
-        target, core_placed, core_placements = _place_layout(
-            base=base,
-            references=references,
-            class_id=target_class,
-            legal_zone=legal_core,
-            valid_footprint_region=valid_footprint,
-            halo=np.zeros_like(halo),
-            score=score,
-            requested_count=replacement_count,
-            layout_program=plan.cell_plan.layout_program_id,
-            cluster_size_range=execution_cluster_size_range,
-            nominal_nucleus_diameter_px=compiled_program.nominal_nucleus_diameter_px,
-            orientation_mask=orientation_mask,
-            continuity_region=compiled_program.continuity_region,
-            continuity_anchor_mask=compiled_program.continuity_anchor_mask,
-            continuity_maximum_empty_run_px=(
-                compiled_program.continuity_maximum_empty_run_px
-            ),
-            continuity_minimum_anchor_coverage_fraction=(
-                compiled_program.continuity_minimum_anchor_coverage_fraction
-            ),
-            continuity_preferred_count=preferred_seam_count,
-            minimum_effect_span_px=0,
-            minimum_effect_foci=0,
-            enforce_single_scatter_separation=enforce_single_focus_separation,
-            enforce_small_cluster_group_separation=(
-                bundle.primitive.primitive_id
-                == "peritumoral-small-cluster-increase-v1"
-            ),
-            strict_breast_small_cluster=(
-                bundle.mechanism.mechanism_id
-                == "breast-peritumoral-small-cluster"
-            ),
-            enforce_multisite_population=enforce_multisite_population,
-            certified_witness_centers=(),
-            seed=seed + variant * 104729,
-        )
+        if architecture_packing is not None:
+            target, core_placed, core_placements = (
+                _place_certified_architecture_group(
+                    base=base,
+                    references=references,
+                    class_id=target_class,
+                    legal_zone=legal_core,
+                    valid_footprint_region=valid_footprint,
+                    halo=np.zeros_like(halo),
+                    continuity_region=compiled_program.continuity_region,
+                    certificate=architecture_packing,
+                    primitive_id=executable_contract.primitive_id,
+                    nominal_nucleus_diameter_px=(
+                        compiled_program.nominal_nucleus_diameter_px
+                    ),
+                )
+            )
+        else:
+            target, core_placed, core_placements = _place_layout(
+                base=base,
+                references=references,
+                class_id=target_class,
+                legal_zone=legal_core,
+                valid_footprint_region=valid_footprint,
+                halo=np.zeros_like(halo),
+                score=score,
+                requested_count=replacement_count,
+                layout_program=plan.cell_plan.layout_program_id,
+                cluster_size_range=execution_cluster_size_range,
+                nominal_nucleus_diameter_px=compiled_program.nominal_nucleus_diameter_px,
+                orientation_mask=orientation_mask,
+                continuity_region=compiled_program.continuity_region,
+                continuity_anchor_mask=compiled_program.continuity_anchor_mask,
+                continuity_maximum_empty_run_px=(
+                    compiled_program.continuity_maximum_empty_run_px
+                ),
+                continuity_minimum_anchor_coverage_fraction=(
+                    compiled_program.continuity_minimum_anchor_coverage_fraction
+                ),
+                continuity_preferred_count=preferred_seam_count,
+                minimum_effect_span_px=0,
+                minimum_effect_foci=0,
+                enforce_single_scatter_separation=enforce_single_focus_separation,
+                enforce_small_cluster_group_separation=(
+                    bundle.primitive.primitive_id
+                    == "peritumoral-small-cluster-increase-v1"
+                ),
+                strict_breast_small_cluster=(
+                    bundle.mechanism.mechanism_id
+                    == "breast-peritumoral-small-cluster"
+                ),
+                enforce_multisite_population=enforce_multisite_population,
+                certified_witness_centers=(),
+                seed=seed + variant * 104729,
+            )
         halo_score = (
             ranker.score(
                 tissue_mask=target_tissue,
@@ -926,6 +961,104 @@ def generate_cell_layouts(
         item.trace["zero_cell_capacity_fallback_allowed"] = zero_cell_fallback_allowed
         certified.append(item)
     return tuple(certified)
+
+
+def _place_certified_architecture_group(
+    *,
+    base,
+    references,
+    class_id,
+    legal_zone,
+    valid_footprint_region,
+    halo,
+    continuity_region,
+    certificate,
+    primitive_id,
+    nominal_nucleus_diameter_px,
+):
+    """Replay the complete-footprint proof for one cord or nest group."""
+
+    target = np.asarray(base).copy()
+    occupied = target > 0
+    reference_by_id = {item.instance_id: item for item in references}
+    placements = tuple(certificate.get("placements") or ())
+    if (
+        certificate.get("passed") is not True
+        or len(placements) != int(certificate.get("requested_count", -1))
+        or not placements
+    ):
+        return target, 0, []
+    trace = []
+    seam = np.asarray(continuity_region, dtype=bool)
+    for item in placements:
+        reference = reference_by_id.get(str(item.get("reference_instance_id")))
+        row, col = int(item.get("row", -1)), int(item.get("col", -1))
+        if (
+            reference is None
+            or int(item.get("class_id", -1)) != class_id
+            or not (0 <= row < target.shape[0] and 0 <= col < target.shape[1])
+            or not legal_zone[row, col]
+        ):
+            return np.asarray(base).copy(), 0, []
+        shape = np.asarray(reference.mask, dtype=bool)
+        window = _placement_window(
+            shape,
+            center_y=row,
+            center_x=col,
+            canvas_shape=target.shape,
+        )
+        if window is None:
+            return np.asarray(base).copy(), 0, []
+        y0, y1, x0, x1 = window
+        if (
+            y0 <= 0
+            or x0 <= 0
+            or y1 >= target.shape[0]
+            or x1 >= target.shape[1]
+            or not np.all(valid_footprint_region[y0:y1, x0:x1][shape])
+        ):
+            return np.asarray(base).copy(), 0, []
+        guard_y0, guard_y1 = max(0, y0 - 1), min(target.shape[0], y1 + 1)
+        guard_x0, guard_x1 = max(0, x0 - 1), min(target.shape[1], x1 + 1)
+        local_shape = np.zeros(
+            (guard_y1 - guard_y0, guard_x1 - guard_x0), dtype=bool
+        )
+        local_shape[
+            y0 - guard_y0 : y1 - guard_y0,
+            x0 - guard_x0 : x1 - guard_x0,
+        ] = shape
+        if np.any(
+            ndimage.binary_dilation(local_shape, iterations=1)
+            & occupied[guard_y0:guard_y1, guard_x0:guard_x1]
+        ):
+            return np.asarray(base).copy(), 0, []
+        target[y0:y1, x0:x1][shape] = class_id
+        occupied[y0:y1, x0:x1][shape] = True
+        trace.append(
+            {
+                "center_xy": [col, row],
+                "cell_class": class_id,
+                "area_px": int(np.count_nonzero(shape)),
+                "in_cell_only_halo": bool(halo[row, col]),
+                "in_interface_seam": bool(seam[row, col]),
+                "in_interface_continuity_region": bool(seam[row, col]),
+                "reference_instance_id": reference.instance_id,
+                "reference_source": reference.source,
+                "cluster_id": "certified-architecture-0001",
+                "planned_cluster_size": len(placements),
+                "cluster_size": len(placements),
+                "spacing_px": max(
+                    2, round(float(nominal_nucleus_diameter_px) * 0.75)
+                ),
+                "orientation_policy": (
+                    "cell_seeded_invasion_path"
+                    if primitive_id == "invasive-cord-formation-v1"
+                    else "detached_island_population"
+                ),
+                "packing_witness_replayed": True,
+            }
+        )
+    return target, len(trace), trace
 
 
 def _build_selective_removal_results(

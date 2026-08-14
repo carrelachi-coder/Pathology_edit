@@ -384,6 +384,48 @@ def _check_interface_contact(context: GateContext) -> GateCheck:
         return _result("interface_contact", False, "selected interface does not exist")
     interface = np.logical_or.reduce(interface_masks)
     change = np.asarray(context.candidate.change_region, dtype=bool)
+    geometry_mode = context.plan.tool_program.parameter_ranges.get(
+        "tissue_geometry_mode"
+    )
+    if geometry_mode == "peritumoral_detached_tumor_island":
+        distances = ndimage.distance_transform_edt(~interface)[change]
+        touches = bool(np.any(ndimage.binary_dilation(change) & interface))
+        minimum = float(
+            context.candidate.tool_trace.get(
+                "minimum_interface_distance_px", 1.0
+            )
+        )
+        maximum = max(
+            float(item.allowed_edit_band_px[1])
+            for item in context.plan.candidate_interfaces
+        )
+        passed = bool(
+            distances.size
+            and not touches
+            and float(np.min(distances)) + 1e-6 >= minimum
+            and float(np.max(distances)) <= maximum + 1e-6
+        )
+        return _result(
+            "interface_contact",
+            passed,
+            (
+                "detached nest occupies the certified peritumoral interface band"
+                if passed
+                else "detached nest is absent, touches the parent, or leaves the certified band"
+            ),
+            metrics={
+                "detached_mode": True,
+                "touches_interface": touches,
+                "minimum_distance_px": (
+                    float(np.min(distances)) if distances.size else None
+                ),
+                "maximum_distance_px": (
+                    float(np.max(distances)) if distances.size else None
+                ),
+                "allowed_minimum_distance_px": minimum,
+                "allowed_maximum_distance_px": maximum,
+            },
+        )
     labeled, count = ndimage.label(change, structure=np.ones((3, 3), dtype=bool))
     touching_components = 0
     for component_id in range(1, count + 1):
@@ -416,6 +458,64 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
             metrics={
                 "planned_interface_ids": list(planned_ids),
                 "trace_interface_ids": list(trace_interface_ids),
+            },
+        )
+
+    geometry_mode = context.plan.tool_program.parameter_ranges.get(
+        "tissue_geometry_mode"
+    )
+    if geometry_mode in {
+        "cell_seeded_invasive_cord",
+        "peritumoral_detached_tumor_island",
+    }:
+        source_component = np.logical_or.reduce(
+            tuple(
+                context.scene.component_masks[item.source_component_id]
+                for item in planned
+            )
+        )
+        execution_order = context.candidate.tool_trace.get("execution_order")
+        expected_order = (
+            "cells_then_tumor_mask"
+            if geometry_mode == "cell_seeded_invasive_cord"
+            else "tumor_island_then_cells"
+        )
+        seed_centers = context.candidate.tool_trace.get("cell_seed_centers_yx")
+        source_owned = int(np.count_nonzero(change & ~source_component)) == 0
+        passed = bool(
+            np.any(change)
+            and source_owned
+            and execution_order == expected_order
+            and (
+                geometry_mode != "cell_seeded_invasive_cord"
+                or (
+                    isinstance(seed_centers, list)
+                    and len(seed_centers) >= 5
+                    and context.candidate.tool_trace.get(
+                        "tumor_mask_derivation"
+                    )
+                    == "cell_footprints_plus_cell_scale_closing"
+                )
+            )
+        )
+        return _result(
+            "execution_contract_fidelity",
+            passed,
+            (
+                "candidate realizes the specialized architecture execution order"
+                if passed
+                else "candidate is detached from the specialized architecture contract"
+            ),
+            metrics={
+                "geometry_mode": geometry_mode,
+                "expected_execution_order": expected_order,
+                "observed_execution_order": execution_order,
+                "seed_center_count": (
+                    len(seed_centers) if isinstance(seed_centers, list) else 0
+                ),
+                "outside_selected_source_pixels": int(
+                    np.count_nonzero(change & ~source_component)
+                ),
             },
         )
 
@@ -820,6 +920,26 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
     target_holes_after = _hole_count(target_after)
     source_split = source_components_after > source_components_before
     target_split_or_island = target_components_after > target_components_before
+    new_target_components = max(
+        0, target_components_after - target_components_before
+    )
+    allow_target_component_creation = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "allow_target_component_creation", False
+        )
+    )
+    maximum_new_target_components = max(
+        0,
+        int(
+            context.plan.tool_program.parameter_ranges.get(
+                "maximum_new_target_components", 0
+            )
+        ),
+    )
+    target_component_creation_ok = bool(
+        allow_target_component_creation
+        and 0 < new_target_components <= maximum_new_target_components
+    )
     target_merge = target_components_after < target_components_before
     selected_target_component_ids = {
         item.target_component_id for item in context.plan.candidate_interfaces
@@ -1014,15 +1134,25 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
         allow_source_resolution
         and source_holes_after <= source_holes_before
     )
+    detached_target_island = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "tissue_geometry_mode"
+        )
+        == "peritumoral_detached_tumor_island"
+        and target_component_creation_ok
+        and source_holes_after - source_holes_before
+        == new_target_components
+    )
     disallowed_source_hole_change = source_hole_changed and not (
         source_hole_resolution_allowed
         or (target_merge and not unallowed_target_merge)
+        or detached_target_island
     )
     passed = not any(
         (
             required_source_split_missing,
             invalid_source_component_resolution,
-            target_split_or_island,
+            target_split_or_island and not target_component_creation_ok,
             unallowed_target_merge,
             disallowed_source_hole_change,
             invalid_target_hole_resolution,
@@ -1078,6 +1208,10 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             ),
             "required_source_split_missing": required_source_split_missing,
             "target_split_or_island": target_split_or_island,
+            "new_target_components": new_target_components,
+            "allow_target_component_creation": allow_target_component_creation,
+            "maximum_new_target_components": maximum_new_target_components,
+            "target_component_creation_ok": target_component_creation_ok,
             "target_merge": target_merge,
             "selected_target_component_ids": sorted(selected_target_component_ids),
             "selected_target_before_component_indices": sorted(
@@ -1090,6 +1224,9 @@ def _check_edited_label_topology(context: GateContext) -> GateCheck:
             "source_hole_changed": source_hole_changed,
             "disallowed_source_hole_change": disallowed_source_hole_change,
             "source_hole_resolution_allowed": source_hole_resolution_allowed,
+            "source_hole_creation_matches_detached_target_island": (
+                detached_target_island
+            ),
             "target_hole_changed": target_hole_changed,
             "allow_source_component_resolution": allow_source_resolution,
             "allow_target_hole_resolution": allow_target_hole_resolution,
@@ -1340,10 +1477,32 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
     p95_depth = float(np.percentile(distances, 95))
     ratio = max_depth / span
     band_max = max(float(item.allowed_edit_band_px[1]) for item in planned)
-    directional_projection = (
+    if (
         context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
-        == "annotation_anchored_narrow_connected_extension"
-    )
+        == "peritumoral_detached_tumor_island"
+    ):
+        passed = max_depth <= band_max + 1e-6
+        return _result(
+            "depth_span_ratio",
+            passed,
+            (
+                "detached nest remains within the certified peritumoral band"
+                if passed
+                else "detached nest leaves the certified peritumoral band"
+            ),
+            metrics={
+                "max_depth_px": max_depth,
+                "p95_depth_px": p95_depth,
+                "allowed_band_max_px": band_max,
+                "detached_mode": True,
+            },
+        )
+    directional_projection = context.plan.tool_program.parameter_ranges.get(
+        "tissue_geometry_mode"
+    ) in {
+        "annotation_anchored_narrow_connected_extension",
+        "cell_seeded_invasive_cord",
+    }
     residual_fragmentation = (
         context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
         == "residual_fragmentation"

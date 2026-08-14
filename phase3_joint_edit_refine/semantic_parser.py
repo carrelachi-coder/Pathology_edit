@@ -25,6 +25,26 @@ from .models import JointCaseContext, JointContractError
 
 SEMANTIC_INTENT_SCHEMA_VERSION = "joint-semantic-intent-v3"
 
+# ``tumor-burden-increase-v1`` is retained only as a parser-facing legacy
+# intent token.  It is not an executable joint primitive: the deterministic
+# semantic compiler expands it into concrete, morphology-bearing primitives
+# before profile/mechanism feasibility is considered.
+TUMOR_BURDEN_INCREASE_INTENT_ID = "tumor-burden-increase"
+RETIRED_TUMOR_BURDEN_INCREASE_PRIMITIVE_ID = (
+    "tumor-burden-increase-v1"
+)
+
+TUMOR_TISSUE_EXTENT_INCREASE_PRIMITIVES = (
+    "cohesive-boundary-expansion-v1",
+    "invasive-cord-formation-v1",
+    "peritumoral-tumor-nest-formation-v1",
+    "infiltrative-nest-cord-extension-v1",
+    "malignant-gland-unit-expansion-v1",
+    "separated-gland-unit-expansion-v1",
+    "septal-surface-coverage-increase-v1",
+    "acinar-papillary-unit-expansion-v1",
+)
+
 INSTRUCTION_MODES = frozenset({"direct_edit", "clinical_scenario"})
 CLINICAL_SCENARIOS = frozenset(
     {
@@ -194,13 +214,23 @@ class RuleBasedSemanticParser:
             ),
         ),
         (
-            "infiltrative-nest-cord-extension-v1",
+            "invasive-cord-formation-v1",
             "neoplastic-cell-infiltration",
             "increase",
             (
                 r"\b(extend|increase|add)\b.*\b(tumou?r|cancer)\b.*\b(cord|trabecul\w*|narrow extension)\b",
                 r"\b(add|extend)\b.*\bnarrow connected (?:tumou?r|cancer) extension\b",
-                r"(\u589e\u52a0|\u5ef6\u957f|\u6dfb\u52a0).*(\u80bf\u7624|\u764c).*(\u7d22\u72b6|\u7a84\u6761|\u5c0f\u5de2)",
+                r"(\u589e\u52a0|\u5ef6\u957f|\u6dfb\u52a0).*(\u80bf\u7624|\u764c).*(\u7d22\u72b6|\u7a84\u6761)",
+            ),
+        ),
+        (
+            "peritumoral-tumor-nest-formation-v1",
+            "neoplastic-cell-infiltration",
+            "increase",
+            (
+                r"\b(add|create|increase|form)\b.*\b(?:detached |peritumoral )?(?:tumou?r |cancer )?(?:nest|island)s?\b",
+                r"\b(add|create|form)\b.*\bsmall detached tumou?r islands?\b",
+                r"(\u589e\u52a0|\u5f62\u6210|\u6dfb\u52a0).*(\u80bf\u7624|\u764c).*(\u5c0f\u5de2|\u5c0f\u5c9b|\u5de2\u72b6)",
             ),
         ),
         (
@@ -544,7 +574,8 @@ class OpenAIClinicalScenarioParser:
                         ],
                         "infiltration_without_scale": [
                             "peritumoral-neoplastic-scatter-increase-v1",
-                            "infiltrative-nest-cord-extension-v1"
+                            "invasive-cord-formation-v1",
+                            "peritumoral-tumor-nest-formation-v1"
                         ],
                         "never_merge": [
                             "structural-void-spread-v1 with stromal invasion",
@@ -981,16 +1012,31 @@ def _compile_primitive_hypotheses(
                 rationale="the legacy front wording can be realized as broad annotation-anchored boundary expansion",
             ),
             PrimitiveHypothesis(
+                primitive_id="invasive-cord-formation-v1",
+                semantic_fit="contextual",
+                priority=1,
+                rationale="the legacy front wording can instead denote a cell-seeded connected cord",
+            ),
+            PrimitiveHypothesis(
+                primitive_id="peritumoral-tumor-nest-formation-v1",
+                semantic_fit="contextual",
+                priority=2,
+                rationale="the user may intend a detached peritumoral Tumor nest rather than a connected front",
+            ),
+        )
+    if primary_primitive_id == "invasive-cord-formation-v1":
+        return (
+            PrimitiveHypothesis(
+                primitive_id="invasive-cord-formation-v1",
+                semantic_fit="direct",
+                priority=0,
+                rationale="the instruction directly requests a cell-seeded connected tumor cord",
+            ),
+            PrimitiveHypothesis(
                 primitive_id="infiltrative-nest-cord-extension-v1",
                 semantic_fit="contextual",
                 priority=1,
-                rationale="the legacy front wording can instead denote a narrow connected cord-like extension",
-            ),
-            PrimitiveHypothesis(
-                primitive_id="peritumoral-small-cluster-increase-v1",
-                semantic_fit="contextual",
-                priority=2,
-                rationale="the user may intend small peritumoral clusters; this requires a non-diagnostic mask representation",
+                rationale="the same wording may refer to the retained annotation-anchored tapered extension contract",
             ),
         )
     if generic_tumor_increase:
@@ -1029,10 +1075,16 @@ def _compile_primitive_hypotheses(
                 rationale="infiltration can denote sparse neoplastic cells in a preserved host compartment",
             ),
             PrimitiveHypothesis(
-                primitive_id="infiltrative-nest-cord-extension-v1",
+                primitive_id="invasive-cord-formation-v1",
                 semantic_fit="contextual",
                 priority=1,
-                rationale="the same wording can denote a narrow tissue-displacing extension when mask capacity supports it",
+                rationale="the same wording can denote a cell-seeded connected cord when mask capacity supports it",
+            ),
+            PrimitiveHypothesis(
+                primitive_id="peritumoral-tumor-nest-formation-v1",
+                semantic_fit="contextual",
+                priority=2,
+                rationale="the same wording can denote a detached Tumor nest in the peritumoral host compartment",
             ),
         )
     return (
@@ -1296,9 +1348,14 @@ def _scenario_primitive_specs(
     if scenario == "invasion_progression":
         return (
             (
-                "infiltrative-nest-cord-extension-v1",
+                "invasive-cord-formation-v1",
                 "direct",
-                "a certified external boundary can support a narrow connected tissue extension",
+                "a certified external boundary can support a cell-seeded connected cord",
+            ),
+            (
+                "peritumoral-tumor-nest-formation-v1",
+                "contextual",
+                "a certified peritumoral host band can support a small detached Tumor nest",
             ),
             (
                 "peritumoral-neoplastic-scatter-increase-v1",
@@ -1383,6 +1440,63 @@ def _scenario_primitive_specs(
             ),
         )
     raise JointContractError("clinical scenario has no executable primitive lattice")
+
+
+def _explicit_tumor_burden_language(instruction: str) -> bool:
+    lowered = instruction.casefold()
+    return bool(
+        re.search(
+            r"\b(tumou?r|cancer)\s+(burden|area|volume|footprint|extent)\b",
+            lowered,
+        )
+        or re.search(r"肿瘤(负荷|面积|体积|范围)", instruction)
+        or re.search(r"\boccupy more tissue\b", lowered)
+    )
+
+
+def _tumor_tissue_extent_increase_specs(
+    *, explicit: bool = False
+) -> tuple[tuple[str, str, str], ...]:
+    """Concrete shape hypotheses for the non-executable burden intent."""
+
+    first_fit = "explicit" if explicit else "direct"
+    return (
+        (
+            "cohesive-boundary-expansion-v1",
+            first_fit,
+            "a certified external boundary can realize broad shallow tumor-tissue expansion",
+        ),
+        (
+            "invasive-cord-formation-v1",
+            "contextual",
+            "a certified external boundary may instead support a cell-seeded connected tumor cord",
+        ),
+        (
+            "peritumoral-tumor-nest-formation-v1",
+            "contextual",
+            "a certified peritumoral host band may instead support a small detached Tumor nest",
+        ),
+        (
+            "malignant-gland-unit-expansion-v1",
+            "contextual",
+            "a gland-instance profile may require expansion of one complete malignant gland unit",
+        ),
+        (
+            "separated-gland-unit-expansion-v1",
+            "contextual",
+            "a glandular profile may require insertion or expansion of a complete separated gland unit",
+        ),
+        (
+            "septal-surface-coverage-increase-v1",
+            "contextual",
+            "an explicitly certified septal structure may require surface-following coverage rather than boundary displacement",
+        ),
+        (
+            "acinar-papillary-unit-expansion-v1",
+            "contextual",
+            "an explicitly certified lumen- or core-bearing lung unit may require a dedicated unit executor",
+        ),
+    )
 
 
 def _rule_based_clinical_scenario(instruction: str) -> dict[str, str] | None:
@@ -1519,6 +1633,8 @@ def _direct_scope_for_primitive(primitive_id: str) -> str:
     if primitive_id in {
         "invasive-front-expansion-v1",
         "cohesive-boundary-expansion-v1",
+        "invasive-cord-formation-v1",
+        "peritumoral-tumor-nest-formation-v1",
         "infiltrative-nest-cord-extension-v1",
         "architecture-progression-v1",
     }:

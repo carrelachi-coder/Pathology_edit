@@ -203,6 +203,12 @@ def _effective_tissue_topology(
         "minimum_source_component_changed_fraction": (
             primitive.minimum_source_component_changed_fraction
         ),
+        "allow_target_component_creation": (
+            primitive.allow_target_component_creation
+        ),
+        "maximum_new_target_components": (
+            primitive.maximum_new_target_components
+        ),
         "maximum_source_component_changed_fraction": (
             primitive.maximum_source_component_changed_fraction
         ),
@@ -1372,6 +1378,12 @@ class MultiInterfaceResearchTissuePlanner:
                     ),
                     "allow_target_hole_resolution": (
                         topology["allow_target_hole_resolution"]
+                    ),
+                    "allow_target_component_creation": (
+                        topology["allow_target_component_creation"]
+                    ),
+                    "maximum_new_target_components": (
+                        topology["maximum_new_target_components"]
                     ),
                     "allow_source_component_split": (
                         topology["allow_source_component_split"]

@@ -545,6 +545,8 @@ class JointPrimitiveSkill:
     allow_source_component_resolution: bool
     allow_target_hole_resolution: bool
     minimum_source_component_changed_fraction: float
+    allow_target_component_creation: bool
+    maximum_new_target_components: int
     maximum_source_component_changed_fraction: float
     minimum_source_component_remaining_px: int
     maximum_selected_source_components: int
@@ -638,6 +640,9 @@ class JointPrimitiveSkill:
         minimum_dominant_change_component_fraction = float(
             topology.get("minimum_dominant_change_component_fraction", 0.0)
         )
+        maximum_new_target_components = int(
+            topology.get("maximum_new_target_components", 0)
+        )
         minimum_residual_components = int(
             topology.get("minimum_residual_components", 1)
         )
@@ -712,6 +717,7 @@ class JointPrimitiveSkill:
             < maximum_dominant_residual_component_fraction
             <= 1.0
             or minimum_clearance < 0
+            or maximum_new_target_components < 0
             or minimum_effect_delta < 0
             or minimum_effect_span < 0
             or minimum_effect_foci < 0
@@ -748,6 +754,10 @@ class JointPrimitiveSkill:
                 topology.get("allow_target_hole_resolution", False)
             ),
             minimum_source_component_changed_fraction=minimum_changed,
+            allow_target_component_creation=bool(
+                topology.get("allow_target_component_creation", False)
+            ),
+            maximum_new_target_components=maximum_new_target_components,
             maximum_source_component_changed_fraction=maximum_changed,
             minimum_source_component_remaining_px=minimum_remaining,
             maximum_selected_source_components=(

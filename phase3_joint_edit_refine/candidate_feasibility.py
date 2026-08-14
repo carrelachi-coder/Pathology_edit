@@ -13,10 +13,12 @@ from scipy import ndimage
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import validate_edit_plan
-from phase3_mask_edit_refine.candidates import generate_candidates
+from phase3_mask_edit_refine.candidates import (
+    compile_directional_tapered_projection_field,
+    generate_candidates,
+)
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
-    compile_edit_plan_with_witness,
 )
 from phase3_mask_edit_refine.gates import GateContext, GateRegistry
 from phase3_mask_edit_refine.models import CaseContext, EditPlan
@@ -25,6 +27,11 @@ from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 from .feasibility import (
     JointNucleiPreflight,
     augment_tissue_scene_with_nuclei_preflight,
+)
+from .invasive_architecture import (
+    SPECIALIZED_ARCHITECTURE_PRIMITIVES,
+    compile_joint_tissue_plan_with_witness,
+    generate_joint_tissue_candidates,
 )
 from .models import JointContractError
 from .scene import JointSceneAnalysis
@@ -831,7 +838,7 @@ class CandidateFeasibilityCompiler:
                     scene=tissue_scene,
                     bundle=tissue_bundle,
                 )
-                compiled, audit, parts, replay = compile_edit_plan_with_witness(
+                compiled, audit, parts, replay = compile_joint_tissue_plan_with_witness(
                     raw_plan,
                     source_mask=source_tissue,
                     schema=schema,
@@ -854,15 +861,17 @@ class CandidateFeasibilityCompiler:
                         compiler_audit=audit,
                         replay_parts=parts,
                     )
-                metrics = _measured_tissue_candidate_metrics(
-                    compiled_plan=compiled,
-                    compiler_audit=audit,
-                    replay_parts=parts,
-                    replay_audit=replay,
-                    source_tissue=source_tissue,
-                    scene=scene,
-                    nuclei_preflight=nuclei_preflight,
-                )
+                metrics = None
+                if compiled.primitive_id not in SPECIALIZED_ARCHITECTURE_PRIMITIVES:
+                    metrics = _measured_tissue_candidate_metrics(
+                        compiled_plan=compiled,
+                        compiler_audit=audit,
+                        replay_parts=parts,
+                        replay_audit=replay,
+                        source_tissue=source_tissue,
+                        scene=scene,
+                        nuclei_preflight=nuclei_preflight,
+                    )
                 tools = compile_tissue_tool_program(
                     primitive_id=compiled.primitive_id,
                     mechanism_id=joint_bundle.mechanism.mechanism_id,
@@ -882,10 +891,11 @@ class CandidateFeasibilityCompiler:
                         compiled,
                         executor=executor,
                     )
-                    candidates = generate_candidates(
+                    candidates = generate_joint_tissue_candidates(
                         source_tissue,
                         schema=schema,
-                        scene=tissue_scene,
+                        tissue_scene=tissue_scene,
+                        joint_scene=scene,
                         plan=family_plan,
                         bundle=tissue_bundle,
                         seed=tissue_case.seed,
@@ -922,6 +932,74 @@ class CandidateFeasibilityCompiler:
                 # multiple families without separate raster certificates would
                 # make the LLM choice ambiguous.
                 family, executor, candidate, report = executable_artifacts[0]
+                if metrics is None:
+                    topology_metrics = next(
+                        (
+                            item.metrics
+                            for item in report.checks
+                            if item.check_id == "edited_label_topology"
+                        ),
+                        {},
+                    )
+                    metrics = _measured_tissue_candidate_metrics(
+                        compiled_plan=compiled,
+                        compiler_audit={
+                            **audit,
+                            "resolved_pixels": int(
+                                np.count_nonzero(candidate.change_region)
+                            ),
+                        },
+                        replay_parts=(candidate,),
+                        replay_audit={
+                            "whole_mask_topology": {
+                                **dict(topology_metrics),
+                                "passed": bool(report.passed),
+                            }
+                        },
+                        source_tissue=source_tissue,
+                        scene=scene,
+                        nuclei_preflight=nuclei_preflight,
+                    )
+                if executor == "directional_tapered_projection":
+                    from .gates import audit_directional_extension_raster
+
+                    target_ids = tuple(schema.resolve_fine_ids("Tumor"))
+                    source_tumor = np.isin(source_tissue, target_ids)
+                    actual_change = np.asarray(
+                        candidate.change_region, dtype=bool
+                    )
+                    selected_anchors = np.zeros_like(actual_change)
+                    parent = np.zeros_like(actual_change)
+                    for planned in compiled.candidate_interfaces:
+                        component = scene.tissue.component_masks.get(
+                            planned.target_component_id
+                        )
+                        if component is not None:
+                            parent |= np.asarray(component, dtype=bool)
+                        for anchor_id in planned.execution_contract.anchor_segment_ids:
+                            anchor = scene.tissue.anchor_masks.get(anchor_id)
+                            if anchor is not None:
+                                selected_anchors |= np.asarray(anchor, dtype=bool)
+                    directional_audit = audit_directional_extension_raster(
+                        change=actual_change,
+                        parent=parent,
+                        other_tumor=source_tumor & ~parent,
+                        selected_anchor=selected_anchors,
+                        nominal_nucleus_diameter_px=(
+                            scene.population.nominal_nucleus_diameter_px
+                            or 8.0
+                        ),
+                    )
+                    if not directional_audit["passed"]:
+                        raise JointContractError(
+                            "compiled directional tissue raster fails the "
+                            "primitive shape audit: "
+                            + json.dumps(
+                                directional_audit,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            )
+                        )
                 metrics = {
                     **metrics,
                     "structural_risk_count": (
