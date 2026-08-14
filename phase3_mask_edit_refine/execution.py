@@ -1570,7 +1570,10 @@ def _simulate_topology_safe_execution(
             audit_lists[cleanup["assigned_work_index"]].append(
                 {
                     "fragmentation_residual_island_pixels_added": cleanup[
-                        "pixels_added"
+                        "tiny_pixels_added"
+                    ],
+                    "fragmentation_spacing_pixels_added": cleanup[
+                        "spacing_pixels_added"
                     ],
                     "fragmentation_noncritical_edge_pixels_reclaimed": cleanup[
                         "pixels_reclaimed"
@@ -1692,6 +1695,8 @@ def _rebalance_fragmentation_residual_islands(
         "applied": False,
         "pixels_added": 0,
         "pixels_reclaimed": 0,
+        "tiny_pixels_added": 0,
+        "spacing_pixels_added": 0,
         "assigned_work_index": 0,
     }
     if not selected_by_work or minimum_residual_component_area_px <= 1:
@@ -1727,20 +1732,31 @@ def _rebalance_fragmentation_residual_islands(
         if np.any(surrounding_ring) and np.any(target_after[surrounding_ring]):
             tiny_ids.append(index)
     tiny_ids = tuple(tiny_ids)
-    if not tiny_ids:
-        return selected_by_work, unchanged
     tiny = np.isin(labels, tiny_ids)
-    reclaimed = int(np.count_nonzero(tiny))
+    tiny_pixels = int(np.count_nonzero(tiny))
     # Large accidental islands are a genuinely different topology and must
     # remain an abstention.  The 512-pixel cap is still far below a valid
     # residual focus in production-scale masks, but accommodates the aggregate
     # one- and two-pixel caps produced along several long raster corridors.
-    if reclaimed <= 0 or reclaimed > 512:
+    if tiny_pixels > 512:
+        return selected_by_work, unchanged
+
+    spacing = _fragmentation_spacing_repair(
+        selected_source=selected_source,
+        target_after=target_after | tiny,
+        minimum_residual_spacing_px=minimum_residual_spacing_px,
+        maximum_added_pixels=4096 - tiny_pixels,
+    )
+    if spacing is None:
+        return selected_by_work, unchanged
+    repair = tiny | spacing
+    reclaimed = int(np.count_nonzero(repair))
+    if reclaimed <= 0 or reclaimed > 4096:
         return selected_by_work, unchanged
 
     updated = [np.array(item, copy=True) for item in selected_by_work]
     assigned_indices: list[int] = []
-    for row, col in np.argwhere(tiny):
+    for row, col in np.argwhere(repair):
         assigned = next(
             (
                 index
@@ -1776,56 +1792,69 @@ def _rebalance_fragmentation_residual_islands(
     if not filled_audit["passed"]:
         return selected_by_work, unchanged
 
-    combined_after_fill = np.logical_or.reduce(tuple(updated))
-    residual_after_fill = selected_source & ~combined_after_fill
-    residual_edge = ndimage.binary_dilation(
-        residual_after_fill, structure=np.ones((3, 3), dtype=bool)
-    )
-    candidates: list[tuple[float, int, int, int]] = []
-    for index, (work, selected) in enumerate(zip(works, updated)):
-        # Reclaim only along an existing residual-focus boundary. Removing an
-        # interior corridor pixel would immediately recreate the kind of
-        # isolated source cap that this transaction just eliminated.
-        removable = selected & ~tiny & residual_edge
-        for row, col in np.argwhere(removable):
-            candidates.append(
-                (float(work.priority[row, col]), index, int(row), int(col))
-            )
-    candidates.sort(reverse=True)
-    maximum_trials = min(4096, max(512, reclaimed * 64))
     removed = 0
-    trials = 0
-    for trials, (_priority, index, row, col) in enumerate(
-        candidates, start=1
-    ):
-        if removed >= reclaimed or trials > maximum_trials:
-            break
-        updated[index][row, col] = False
-        audit = _whole_mask_topology_audit(
-            source_region=source_region,
-            target_region=target_region,
-            selected_by_work=tuple(updated),
-            works=works,
-            allow_source_component_split=True,
-            minimum_residual_components=minimum_residual_components,
-            maximum_residual_components=maximum_residual_components,
-            minimum_residual_component_area_px=(
-                minimum_residual_component_area_px
-            ),
-            minimum_residual_spacing_px=minimum_residual_spacing_px,
-            residual_area_floor_fraction=residual_area_floor_fraction,
-            maximum_residual_area_fraction=maximum_residual_area_fraction,
-            minimum_residual_component_fraction=(
-                minimum_residual_component_fraction
-            ),
-            maximum_dominant_residual_component_fraction=(
-                maximum_dominant_residual_component_fraction
-            ),
+    maximum_rounds = min(64, reclaimed + 1)
+    for _reclaim_round in range(maximum_rounds):
+        combined_after_fill = np.logical_or.reduce(tuple(updated))
+        residual_after_fill = selected_source & ~combined_after_fill
+        residual_edge = ndimage.binary_dilation(
+            residual_after_fill, structure=np.ones((3, 3), dtype=bool)
         )
-        if audit["passed"]:
-            removed += 1
-        else:
-            updated[index][row, col] = True
+        candidates: list[tuple[float, int, int, int]] = []
+        for index, (work, selected) in enumerate(zip(works, updated)):
+            # Reclaim only along an existing residual-focus boundary.
+            # Recompute this frontier after each successful layer so a broad
+            # external retreat can donate more than one pixel of depth without
+            # ever sampling an interior corridor pixel speculatively.
+            removable = selected & ~repair & residual_edge
+            for row, col in np.argwhere(removable):
+                candidates.append(
+                    (
+                        float(work.priority[row, col]),
+                        index,
+                        int(row),
+                        int(col),
+                    )
+                )
+        candidates.sort(reverse=True)
+        maximum_trials = min(4096, max(512, reclaimed * 64))
+        progress = 0
+        for trials, (_priority, index, row, col) in enumerate(
+            candidates, start=1
+        ):
+            if removed >= reclaimed or trials > maximum_trials:
+                break
+            updated[index][row, col] = False
+            audit = _whole_mask_topology_audit(
+                source_region=source_region,
+                target_region=target_region,
+                selected_by_work=tuple(updated),
+                works=works,
+                allow_source_component_split=True,
+                minimum_residual_components=minimum_residual_components,
+                maximum_residual_components=maximum_residual_components,
+                minimum_residual_component_area_px=(
+                    minimum_residual_component_area_px
+                ),
+                minimum_residual_spacing_px=minimum_residual_spacing_px,
+                residual_area_floor_fraction=residual_area_floor_fraction,
+                maximum_residual_area_fraction=maximum_residual_area_fraction,
+                minimum_residual_component_fraction=(
+                    minimum_residual_component_fraction
+                ),
+                maximum_dominant_residual_component_fraction=(
+                    maximum_dominant_residual_component_fraction
+                ),
+            )
+            if audit["passed"]:
+                removed += 1
+                progress += 1
+            else:
+                updated[index][row, col] = True
+        if removed >= reclaimed:
+            break
+        if progress <= 0:
+            break
     if removed != reclaimed:
         return selected_by_work, unchanged
     if sum(int(np.count_nonzero(item)) for item in updated) != sum(
@@ -1836,8 +1865,81 @@ def _rebalance_fragmentation_residual_islands(
         "applied": True,
         "pixels_added": reclaimed,
         "pixels_reclaimed": removed,
+        "tiny_pixels_added": tiny_pixels,
+        "spacing_pixels_added": int(np.count_nonzero(spacing)),
         "assigned_work_index": min(assigned_indices),
     }
+
+
+def _fragmentation_spacing_repair(
+    *,
+    selected_source: np.ndarray,
+    target_after: np.ndarray,
+    minimum_residual_spacing_px: int,
+    maximum_added_pixels: int,
+) -> np.ndarray | None:
+    """Extend target-connected corridor edges until residual foci are spaced."""
+
+    repair = np.zeros_like(selected_source, dtype=bool)
+    required = max(0, int(minimum_residual_spacing_px))
+    if required <= 0:
+        return repair
+    structure = np.ones((3, 3), dtype=bool)
+    # Each iteration advances one target-connected boundary layer from one
+    # side of the closest violating focus pair.  The bounded full topology
+    # audit in the caller remains authoritative after all pairs are repaired.
+    maximum_iterations = max(8, required * 16)
+    for _ in range(maximum_iterations):
+        current_target = np.asarray(target_after, dtype=bool) | repair
+        residual = np.asarray(selected_source, dtype=bool) & ~current_target
+        labels, count = ndimage.label(residual, structure=structure)
+        violating_options: list[
+            tuple[float, int, int, np.ndarray]
+        ] = []
+        target_frontier = ndimage.binary_dilation(
+            current_target, structure=structure
+        )
+        for left in range(1, count):
+            left_component = labels == left
+            distance_to_left = ndimage.distance_transform_edt(
+                ~left_component
+            )
+            for right in range(left + 1, count + 1):
+                right_component = labels == right
+                gap = float(
+                    np.min(distance_to_left[right_component], initial=np.inf)
+                )
+                if gap + 1e-9 >= required:
+                    continue
+                distance_to_right = ndimage.distance_transform_edt(
+                    ~right_component
+                )
+                left_edge = (
+                    left_component
+                    & target_frontier
+                    & (distance_to_right < required)
+                )
+                right_edge = (
+                    right_component
+                    & target_frontier
+                    & (distance_to_left < required)
+                )
+                for side, edge in enumerate((left_edge, right_edge)):
+                    pixels = int(np.count_nonzero(edge))
+                    if pixels > 0:
+                        violating_options.append(
+                            (gap, pixels, side, edge)
+                        )
+        if not violating_options:
+            return repair
+        _gap, _pixels, _side, chosen = min(
+            violating_options,
+            key=lambda item: (item[0], item[1], item[2]),
+        )
+        repair |= chosen
+        if int(np.count_nonzero(repair)) > max(0, maximum_added_pixels):
+            return None
+    return None
 
 
 def _binding_constraint(

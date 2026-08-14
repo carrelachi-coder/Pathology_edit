@@ -26,6 +26,7 @@ from phase3_mask_edit_refine.candidates import (
 )
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
+    _minimum_component_spacing_px,
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
     _residual_fragmentation_priority,
@@ -1018,6 +1019,8 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertTrue(audit["applied"], audit)
         self.assertEqual(audit["pixels_added"], 81)
         self.assertEqual(audit["pixels_reclaimed"], 81)
+        self.assertEqual(audit["tiny_pixels_added"], 81)
+        self.assertEqual(audit["spacing_pixels_added"], 0)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
         labels, count = ndimage.label(
             source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
@@ -1070,7 +1073,57 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertTrue(audit["applied"], audit)
         self.assertEqual(audit["pixels_added"], 81)
         self.assertEqual(audit["pixels_reclaimed"], 81)
+        self.assertEqual(audit["tiny_pixels_added"], 81)
+        self.assertEqual(audit["spacing_pixels_added"], 0)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+
+    def test_fragmentation_cleanup_widens_under_spaced_corridors(self):
+        shape = (160, 300)
+        source = np.zeros(shape, dtype=bool)
+        source[5:155, 5:295] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        # Preserve a broad external retreat front from which the solver can
+        # reclaim area after widening both true fragmentation corridors.
+        change[5:155, 5:25] = True
+        change[5:155, 90:95] = True
+        change[5:155, 200:205] = True
+        priority = np.zeros(shape, dtype=float)
+        priority[:, :30] = 100.0
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=source,
+            priority=priority,
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+
+        cleaned, audit = _rebalance_fragmentation_residual_islands(
+            (change,),
+            works=(work,),
+            source_region=source,
+            target_region=target,
+            minimum_residual_components=3,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=8,
+            residual_area_floor_fraction=0.3,
+        )
+
+        self.assertTrue(audit["applied"], audit)
+        self.assertEqual(audit["tiny_pixels_added"], 0)
+        self.assertGreater(audit["spacing_pixels_added"], 0)
+        self.assertEqual(audit["pixels_added"], audit["pixels_reclaimed"])
+        self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+        labels, count = ndimage.label(
+            source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
+        )
+        self.assertEqual(count, 3)
+        self.assertGreaterEqual(
+            _minimum_component_spacing_px(labels, count), 8
+        )
 
     def test_fragmentation_priority_builds_three_balanced_traversing_foci(self):
         shape = (96, 120)
