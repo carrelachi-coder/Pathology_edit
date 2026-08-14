@@ -27,7 +27,15 @@ from phase3_mask_edit_refine.topology import (
     topology_safe_priority_grow,
 )
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v15"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v16"
+
+
+# The narrowest traversing stromal interval must be a tissue compartment, not
+# a hairline separator.  Sixteen pixels is the conservative lower bound that
+# can contain a sampled BCSS nucleus plus perinuclear stroma at this working
+# resolution.  The value is a *half-width* from the partition seam, so two
+# opposing residual-tumor fronts leave roughly a 32-pixel minimum corridor.
+_FRAGMENTATION_CELL_BEARING_HALF_WIDTH_PX = 16.0
 
 
 def _normalized_organic_field(field: np.ndarray, support: np.ndarray) -> np.ndarray:
@@ -1015,10 +1023,11 @@ def _residual_fragmentation_priority(
             ]
             # Convert a shared seam texture into an explicit local target
             # half-width.  Quantile normalization makes the profile stable
-            # across differently shaped components, while the nonlinear tail
-            # reserves a few genuinely broad rupture bays.  Unlike the former
-            # near-binary gates, this continuous radius cannot leave blocky
-            # rectangular steps at width transitions.
+            # across differently shaped components.  Every local width is
+            # large enough to read as cell-bearing stroma, while the upper
+            # tail expands into deliberately exaggerated rupture bays.  Unlike
+            # the former near-binary gates, this continuous radius cannot
+            # leave blocky rectangular steps at width transitions.
             supported_thickness = cleavage_fraction[
                 focus_zone
                 & legal
@@ -1038,15 +1047,15 @@ def _residual_fragmentation_priority(
             )
             external_scale = 0.40 + 5.0 * organic_fraction**2
             maximum_cleavage_reach = float(
-                np.clip(np.sqrt(source_area) * 0.18, 30.0, 96.0)
+                np.clip(np.sqrt(source_area) * 0.24, 48.0, 128.0)
             )
             minimum_half_gap = max(
-                2.0,
+                _FRAGMENTATION_CELL_BEARING_HALF_WIDTH_PX,
                 (minimum_residual_spacing_px + 2.0) / 2.0,
             )
             desired_half_width = minimum_half_gap + (
                 maximum_cleavage_reach - minimum_half_gap
-            ) * width_fraction**1.7
+            ) * width_fraction**1.35
             variable_cleavage_priority = np.where(
                 separator_distance <= maximum_cleavage_reach,
                 0.26 + 0.74 * separator_distance / desired_half_width,

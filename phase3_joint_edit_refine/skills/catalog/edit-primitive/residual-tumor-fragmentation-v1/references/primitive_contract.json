@@ -1,6 +1,6 @@
 {
   "primitive_id": "residual-tumor-fragmentation-v1",
-  "version": "1.1.11-draft",
+  "version": "1.1.12-draft",
   "review_status": "draft",
   "scope": "tissue_and_cell",
   "summary": "Create a bounded set of visibly shrunken residual invasive-tumor foci separated by crooked breakup regions with strongly contrasting local widths, without inventing a historical tumor bed.",
@@ -23,7 +23,7 @@
     "minimum_residual_components": 3,
     "maximum_residual_components": 8,
     "minimum_residual_component_area_px": 96,
-    "minimum_residual_spacing_px": 16,
+    "minimum_residual_spacing_px": 28,
     "residual_area_floor_fraction": 0.3,
     "maximum_residual_area_fraction": 0.88,
     "minimum_residual_component_fraction": 0.025,

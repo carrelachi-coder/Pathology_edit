@@ -1458,7 +1458,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         source = np.zeros(shape, dtype=bool)
         source[12:84, 10:110] = True
         default = ndimage.distance_transform_edt(source)
-        target_pixels = round(int(source.sum()) * 0.28)
+        target_pixels = round(int(source.sum()) * 0.32)
 
         priority = _residual_fragmentation_priority(
             source_component=source,
@@ -1561,7 +1561,10 @@ class CandidateAndSceneTests(unittest.TestCase):
         shape = (192, 240)
         source = np.zeros(shape, dtype=bool)
         source[16:176, 12:228] = True
-        target_pixels = round(int(source.sum()) * 0.28)
+        # The production high-visibility fragmentation manifest reserves 36%
+        # of the source component so both the cell-bearing floor and the
+        # deliberately broad rupture bays are observable.
+        target_pixels = round(int(source.sum()) * 0.36)
 
         priority = _residual_fragmentation_priority(
             source_component=source,
@@ -1570,7 +1573,7 @@ class CandidateAndSceneTests(unittest.TestCase):
             minimum_residual_components=3,
             maximum_residual_components=6,
             minimum_residual_component_area_px=192,
-            minimum_residual_spacing_px=16,
+            minimum_residual_spacing_px=28,
             minimum_residual_component_fraction=0.08,
             maximum_dominant_residual_component_fraction=0.75,
             target_change_pixels=target_pixels,
@@ -1584,14 +1587,14 @@ class CandidateAndSceneTests(unittest.TestCase):
 
         narrow_radius = float(np.percentile(local_radius, 25.0))
         rupture_radius = float(np.percentile(local_radius, 99.0))
-        self.assertGreaterEqual(rupture_radius, 16.0)
-        self.assertGreaterEqual(rupture_radius, 5.0 * narrow_radius)
+        self.assertGreaterEqual(rupture_radius, 18.0)
+        self.assertGreaterEqual(rupture_radius, 4.5 * narrow_radius)
         residual_labels, residual_count = ndimage.label(
             source & ~changed, structure=np.ones((3, 3), dtype=bool)
         )
         self.assertGreaterEqual(
             _minimum_component_spacing_px(residual_labels, residual_count),
-            16.0,
+            28.0,
         )
 
     def test_fragmentation_cleanup_rejects_holey_balance_bridge_and_erases_satellite(
