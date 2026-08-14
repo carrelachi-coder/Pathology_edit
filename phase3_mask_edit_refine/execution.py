@@ -1604,6 +1604,12 @@ def _simulate_topology_safe_execution(
                     "fragmentation_balance_pixels_added": cleanup[
                         "balance_pixels_added"
                     ],
+                    "fragmentation_balance_bridge_pixels_reclaimed": cleanup[
+                        "balance_bridge_pixels_reclaimed"
+                    ],
+                    "fragmentation_balance_bridge_replacement_pixels_added": cleanup[
+                        "balance_bridge_replacement_pixels_added"
+                    ],
                     "fragmentation_noncritical_edge_pixels_reclaimed": cleanup[
                         "pixels_reclaimed"
                     ],
@@ -1693,6 +1699,136 @@ def _simulate_topology_safe_execution(
     return tuple(selected_by_work), tuple(summarized)
 
 
+def _raster_line_mask(
+    shape: tuple[int, int],
+    start: tuple[int, int],
+    end: tuple[int, int],
+) -> np.ndarray:
+    """Return an inclusive deterministic Bresenham line mask."""
+
+    result = np.zeros(shape, dtype=bool)
+    row0, col0 = start
+    row1, col1 = end
+    delta_col = abs(col1 - col0)
+    step_col = 1 if col0 < col1 else -1
+    delta_row = -abs(row1 - row0)
+    step_row = 1 if row0 < row1 else -1
+    error = delta_col + delta_row
+    while True:
+        result[row0, col0] = True
+        if row0 == row1 and col0 == col1:
+            break
+        doubled = 2 * error
+        if doubled >= delta_row:
+            error += delta_row
+            col0 += step_col
+        if doubled <= delta_col:
+            error += delta_col
+            row0 += step_row
+    return result
+
+
+def _fragmentation_balance_bridge_reclaim(
+    *,
+    labels: np.ndarray,
+    sizes: np.ndarray,
+    selected_source: np.ndarray,
+    combined_change: np.ndarray,
+    minimum_residual_component_area_px: int,
+    minimum_residual_component_fraction: float,
+) -> np.ndarray:
+    """Merge sub-fraction foci into smaller valid neighbors through change."""
+
+    result = np.zeros_like(selected_source, dtype=bool)
+    if minimum_residual_component_fraction <= 0 or sizes.size < 2:
+        return result
+    residual_total = max(int(sizes.sum()), 1)
+    balance_ids = [
+        index
+        for index, size in enumerate(sizes.tolist(), start=1)
+        if int(size) >= minimum_residual_component_area_px
+        and int(size) / residual_total + 1e-9
+        < minimum_residual_component_fraction
+    ]
+    stable_ids = [
+        index
+        for index, size in enumerate(sizes.tolist(), start=1)
+        if int(size) >= minimum_residual_component_area_px
+        and int(size) / residual_total + 1e-9
+        >= minimum_residual_component_fraction
+    ]
+    if not balance_ids or not stable_ids:
+        return result
+
+    residual = selected_source & ~combined_change
+    current_count = int(
+        ndimage.label(residual, structure=np.ones((3, 3), dtype=bool))[1]
+    )
+    maximum_bridge_pixels = min(
+        4096,
+        max(64, round(np.count_nonzero(selected_source) * 0.01)),
+    )
+    for balance_id in sorted(balance_ids, key=lambda item: (sizes[item - 1], item)):
+        component = labels == balance_id
+        options: list[tuple[tuple[int, int, int], np.ndarray]] = []
+        for stable_id in stable_ids:
+            target_component = labels == stable_id
+            distance, nearest = ndimage.distance_transform_edt(
+                ~target_component, return_indices=True
+            )
+            component_distance = np.where(component, distance, np.inf)
+            flat_index = int(np.argmin(component_distance))
+            if not np.isfinite(component_distance.ravel()[flat_index]):
+                continue
+            start = tuple(int(value) for value in np.unravel_index(
+                flat_index, labels.shape
+            ))
+            end = (
+                int(nearest[0][start]),
+                int(nearest[1][start]),
+            )
+            candidate = (
+                _raster_line_mask(labels.shape, start, end)
+                & combined_change
+                & selected_source
+            )
+            candidate &= ~result
+            candidate_pixels = int(np.count_nonzero(candidate))
+            if candidate_pixels <= 0:
+                continue
+            proposed = residual | result | candidate
+            proposed_count = int(
+                ndimage.label(
+                    proposed, structure=np.ones((3, 3), dtype=bool)
+                )[1]
+            )
+            if proposed_count >= current_count:
+                continue
+            options.append(
+                (
+                    (
+                        int(sizes[stable_id - 1] + sizes[balance_id - 1]),
+                        candidate_pixels,
+                        stable_id,
+                    ),
+                    candidate,
+                )
+            )
+        if not options:
+            return np.zeros_like(result)
+        _score, selected_bridge = min(options, key=lambda item: item[0])
+        result |= selected_bridge
+        residual |= selected_bridge
+        current_count = int(
+            ndimage.label(
+                residual, structure=np.ones((3, 3), dtype=bool)
+            )[1]
+        )
+        if int(np.count_nonzero(result)) > maximum_bridge_pixels:
+            return np.zeros_like(result)
+    return result
+
+
 def _rebalance_fragmentation_residual_islands(
     selected_by_work: tuple[np.ndarray, ...],
     *,
@@ -1727,6 +1863,8 @@ def _rebalance_fragmentation_residual_islands(
         "tiny_pixels_added": 0,
         "spacing_pixels_added": 0,
         "balance_pixels_added": 0,
+        "balance_bridge_pixels_reclaimed": 0,
+        "balance_bridge_replacement_pixels_added": 0,
         "assigned_work_index": 0,
     }
     if not selected_by_work or minimum_residual_component_area_px <= 1:
@@ -1742,6 +1880,26 @@ def _rebalance_fragmentation_residual_islands(
         residual, structure=np.ones((3, 3), dtype=bool)
     )
     sizes = np.bincount(labels.ravel())[1:]
+    balance_bridge = _fragmentation_balance_bridge_reclaim(
+        labels=labels,
+        sizes=sizes,
+        selected_source=selected_source,
+        combined_change=combined,
+        minimum_residual_component_area_px=(
+            minimum_residual_component_area_px
+        ),
+        minimum_residual_component_fraction=(
+            minimum_residual_component_fraction
+        ),
+    )
+    if np.any(balance_bridge):
+        combined = combined & ~balance_bridge
+        target_after = np.asarray(target_region, dtype=bool) | combined
+        residual = selected_source & ~combined
+        labels, _count = ndimage.label(
+            residual, structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = np.bincount(labels.ravel())[1:]
     cleanup_ids = []
     tiny_ids = []
     balance_ids = []
@@ -1755,7 +1913,14 @@ def _rebalance_fragmentation_residual_islands(
             size / residual_total + 1e-9
             < float(minimum_residual_component_fraction)
         )
-        if not (below_absolute_floor or below_relative_floor):
+        if below_relative_floor and not below_absolute_floor:
+            # A meaningful but underweight focus must be merged through a
+            # residual bridge above. Erasing it as target tissue can consume
+            # thousands of pixels and destroy the traversing corridor when
+            # the exact area is rebalanced.
+            balance_ids.append(index)
+            continue
+        if not below_absolute_floor:
             continue
         component = labels == index
         surrounding_ring = ndimage.binary_dilation(
@@ -1774,14 +1939,14 @@ def _rebalance_fragmentation_residual_islands(
             cleanup_ids.append(index)
             if below_absolute_floor:
                 tiny_ids.append(index)
-            else:
-                balance_ids.append(index)
     cleanup_ids = tuple(cleanup_ids)
     tiny_ids = tuple(tiny_ids)
     balance_ids = tuple(balance_ids)
     focus_cleanup = np.isin(labels, cleanup_ids)
     tiny = np.isin(labels, tiny_ids)
     balance = np.isin(labels, balance_ids)
+    if balance_ids:
+        return selected_by_work, unchanged
     tiny_pixels = int(np.count_nonzero(tiny))
     # Large accidental islands are a genuinely different topology and must
     # remain an abstention.  The 512-pixel cap is still far below a valid
@@ -1820,7 +1985,11 @@ def _rebalance_fragmentation_residual_islands(
         return selected_by_work, unchanged
     repair = focus_cleanup | spacing
     reclaimed = int(np.count_nonzero(repair))
-    if reclaimed <= 0 or reclaimed > maximum_focus_cleanup_pixels:
+    bridge_pixels = int(np.count_nonzero(balance_bridge))
+    if (
+        (reclaimed <= 0 and bridge_pixels <= 0)
+        or reclaimed > maximum_focus_cleanup_pixels
+    ):
         return selected_by_work, unchanged
     if np.any(repair & ~owned_repair_domain):
         # A residual cap outside every compiler-owned envelope may be a
@@ -1831,6 +2000,8 @@ def _rebalance_fragmentation_residual_islands(
         return selected_by_work, unchanged
 
     updated = [np.array(item, copy=True) for item in selected_by_work]
+    for selected in updated:
+        selected[balance_bridge] = False
     assigned_indices: list[int] = []
     for row, col in np.argwhere(repair):
         assigned = next(
@@ -1868,8 +2039,9 @@ def _rebalance_fragmentation_residual_islands(
     if not filled_audit["passed"]:
         return selected_by_work, unchanged
 
+    remaining_reclaim = reclaimed - bridge_pixels
     removed = 0
-    maximum_rounds = min(64, reclaimed + 1)
+    maximum_rounds = min(64, max(remaining_reclaim, 0) + 1)
     for _reclaim_round in range(maximum_rounds):
         combined_after_fill = np.logical_or.reduce(tuple(updated))
         residual_after_fill = selected_source & ~combined_after_fill
@@ -1897,7 +2069,7 @@ def _rebalance_fragmentation_residual_islands(
         progress = 0
         offset = 0
         while offset < min(len(candidates), maximum_trials):
-            remaining = reclaimed - removed
+            remaining = remaining_reclaim - removed
             if remaining <= 0:
                 break
             batch_size = min(512, remaining, len(candidates) - offset)
@@ -1947,11 +2119,121 @@ def _rebalance_fragmentation_residual_islands(
                 # corridor pixels and can turn a linear repair into thousands
                 # of full-raster audits.
                 break
-        if removed >= reclaimed:
+        if removed >= remaining_reclaim:
             break
         if progress <= 0:
             break
-    if removed != reclaimed:
+    if removed != remaining_reclaim and remaining_reclaim >= 0:
+        return selected_by_work, unchanged
+
+    replacement_needed = max(0, -remaining_reclaim)
+    replacement_added = 0
+    maximum_replacement_rounds = min(64, replacement_needed + 1)
+    for _replacement_round in range(maximum_replacement_rounds):
+        if replacement_added >= replacement_needed:
+            break
+        combined_after_repair = np.logical_or.reduce(tuple(updated))
+        residual_after_repair = selected_source & ~combined_after_repair
+        target_front = ndimage.binary_dilation(
+            np.asarray(target_region, dtype=bool) | combined_after_repair,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        candidates: list[tuple[float, int, int, int]] = []
+        claimed = np.zeros_like(selected_source, dtype=bool)
+        for index, (work, selected) in enumerate(zip(works, updated)):
+            item_capacity_px = int(
+                getattr(
+                    work,
+                    "item_capacity_px",
+                    np.count_nonzero(work.legal_source),
+                )
+            )
+            if int(np.count_nonzero(selected)) >= item_capacity_px:
+                continue
+            expandable = (
+                residual_after_repair
+                & target_front
+                & work.legal_source
+                & ~balance_bridge
+                & ~claimed
+            )
+            claimed |= expandable
+            for row, col in np.argwhere(expandable):
+                candidates.append(
+                    (
+                        float(work.priority[row, col]),
+                        index,
+                        int(row),
+                        int(col),
+                    )
+                )
+        candidates.sort()
+        maximum_trials = min(8192, max(512, replacement_needed * 8))
+        progress = 0
+        offset = 0
+        while offset < min(len(candidates), maximum_trials):
+            remaining = replacement_needed - replacement_added
+            if remaining <= 0:
+                break
+            batch_size = min(512, remaining, len(candidates) - offset)
+            accepted = False
+            while batch_size >= 1:
+                batch = candidates[offset : offset + batch_size]
+                if any(
+                    int(np.count_nonzero(updated[index]))
+                    + sum(item[1] == index for item in batch)
+                    > int(
+                        getattr(
+                            works[index],
+                            "item_capacity_px",
+                            np.count_nonzero(works[index].legal_source),
+                        )
+                    )
+                    for index in {item[1] for item in batch}
+                ):
+                    batch_size //= 2
+                    continue
+                for _priority, index, row, col in batch:
+                    updated[index][row, col] = True
+                audit = _whole_mask_topology_audit(
+                    source_region=source_region,
+                    target_region=target_region,
+                    selected_by_work=tuple(updated),
+                    works=works,
+                    allow_source_component_split=True,
+                    minimum_residual_components=minimum_residual_components,
+                    maximum_residual_components=maximum_residual_components,
+                    minimum_residual_component_area_px=(
+                        minimum_residual_component_area_px
+                    ),
+                    minimum_residual_spacing_px=minimum_residual_spacing_px,
+                    residual_area_floor_fraction=residual_area_floor_fraction,
+                    maximum_residual_area_fraction=(
+                        maximum_residual_area_fraction
+                    ),
+                    minimum_residual_component_fraction=(
+                        minimum_residual_component_fraction
+                    ),
+                    maximum_dominant_residual_component_fraction=(
+                        maximum_dominant_residual_component_fraction
+                    ),
+                )
+                if audit["passed"]:
+                    replacement_added += batch_size
+                    progress += batch_size
+                    offset += batch_size
+                    accepted = True
+                    break
+                for _priority, index, row, col in batch:
+                    updated[index][row, col] = False
+                batch_size //= 2
+            if not accepted:
+                offset += 1
+            else:
+                break
+        if progress <= 0:
+            break
+    if replacement_added != replacement_needed:
         return selected_by_work, unchanged
     if sum(int(np.count_nonzero(item)) for item in updated) != sum(
         int(np.count_nonzero(item)) for item in selected_by_work
@@ -1959,12 +2241,14 @@ def _rebalance_fragmentation_residual_islands(
         return selected_by_work, unchanged
     return tuple(updated), {
         "applied": True,
-        "pixels_added": reclaimed,
-        "pixels_reclaimed": removed,
+        "pixels_added": reclaimed + replacement_added,
+        "pixels_reclaimed": removed + bridge_pixels,
         "tiny_pixels_added": tiny_pixels,
         "spacing_pixels_added": int(np.count_nonzero(spacing)),
         "balance_pixels_added": balance_pixels,
-        "assigned_work_index": min(assigned_indices),
+        "balance_bridge_pixels_reclaimed": bridge_pixels,
+        "balance_bridge_replacement_pixels_added": replacement_added,
+        "assigned_work_index": min(assigned_indices, default=0),
     }
 
 

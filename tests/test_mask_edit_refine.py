@@ -1106,6 +1106,53 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(audit["balance_pixels_added"], 0)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
 
+    def test_fragmentation_cleanup_merges_underweight_focus_by_residual_bridge(self):
+        shape = (100, 200)
+        source = np.zeros(shape, dtype=bool)
+        source[5:95, 5:195] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:95, 60:70] = True
+        change[5:95, 73:83] = True
+        # Offset the short residual bridge with a small raster cap so the
+        # transactional cleanup can preserve the exact edited area.
+        change[40:44, 63:67] = False
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=np.array(source, copy=True),
+            priority=np.zeros(shape, dtype=float),
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+
+        cleaned, audit = _rebalance_fragmentation_residual_islands(
+            (change,),
+            works=(work,),
+            source_region=source,
+            target_region=target,
+            minimum_residual_components=2,
+            maximum_residual_components=4,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=4,
+            residual_area_floor_fraction=0.3,
+            minimum_residual_component_fraction=0.025,
+            maximum_dominant_residual_component_fraction=0.75,
+        )
+
+        self.assertTrue(audit["applied"], audit)
+        self.assertGreater(audit["balance_bridge_pixels_reclaimed"], 0)
+        self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+        labels, count = ndimage.label(
+            source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = np.bincount(labels.ravel())[1:]
+        fractions = sizes / sizes.sum()
+        self.assertEqual(count, 2)
+        self.assertGreaterEqual(float(fractions.min()), 0.025)
+        self.assertLessEqual(float(fractions.max()), 0.75)
+
     def test_fragmentation_cleanup_preserves_nonlegal_residual_cap(self):
         shape = (160, 240)
         source = np.zeros(shape, dtype=bool)
@@ -1311,7 +1358,7 @@ class CandidateAndSceneTests(unittest.TestCase):
             _minimum_component_spacing_px(labels, count), 8
         )
 
-    def test_fragmentation_cleanup_removes_subrelative_focus(self):
+    def test_fragmentation_cleanup_merges_subrelative_focus(self):
         shape = (160, 400)
         source = np.zeros(shape, dtype=bool)
         source[5:155, 5:395] = True
@@ -1349,7 +1396,11 @@ class CandidateAndSceneTests(unittest.TestCase):
 
         self.assertTrue(audit["applied"], audit)
         self.assertEqual(audit["tiny_pixels_added"], 0)
-        self.assertGreater(audit["balance_pixels_added"], 0)
+        self.assertEqual(audit["balance_pixels_added"], 0)
+        self.assertGreater(audit["balance_bridge_pixels_reclaimed"], 0)
+        self.assertGreater(
+            audit["balance_bridge_replacement_pixels_added"], 0
+        )
         self.assertEqual(audit["pixels_added"], audit["pixels_reclaimed"])
         labels, count = ndimage.label(
             source & ~cleaned[0], structure=np.ones((3, 3), dtype=bool)
