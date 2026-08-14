@@ -4582,24 +4582,49 @@ class JointSkillTests(unittest.TestCase):
         )
 
     def test_mature_architecture_replay_preserves_group_cardinality_trace(self):
-        ledger = ((18, 24, 1), (22, 29, 1))
+        ledger = [
+            {
+                "row": 18,
+                "col": 24,
+                "class_id": 1,
+                "area_px": 350,
+                "shape_source": "compiled_reference_witness",
+                "reference_instance_id": "nuc-c1-0029",
+            },
+            {
+                "row": 22,
+                "col": 29,
+                "class_id": 1,
+                "area_px": 350,
+                "shape_source": "compiled_reference_witness",
+                "reference_instance_id": "nuc-c1-0029",
+            },
+        ]
         contract = SimpleNamespace(
             primitive_id="peritumoral-tumor-nest-formation-v1",
             packing_certificate={
                 "placements": [
-                    {"row": row + 2, "col": col - 1, "class_id": class_id}
-                    for row, col, class_id in ledger
+                    {
+                        "row": item["row"] + 2,
+                        "col": item["col"] - 1,
+                        "class_id": item["class_id"],
+                    }
+                    for item in ledger
                 ]
             },
         )
 
         placements = _architecture_placement_trace(
             contract=contract,
-            accepted_center_ledger=ledger,
+            accepted_instance_area_ledger=ledger,
         )
 
         self.assertEqual(len(placements), 2)
         self.assertEqual({item["cluster_size"] for item in placements}, {2})
+        self.assertEqual(
+            {item["reference_instance_id"] for item in placements},
+            {"nuc-c1-0029"},
+        )
         self.assertTrue(
             all(item["packing_witness_replayed"] for item in placements)
         )

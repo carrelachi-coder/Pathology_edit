@@ -605,7 +605,9 @@ class MatureProbNetCellExecutor:
                         ],
                         "placements": _architecture_placement_trace(
                             contract=contract,
-                            accepted_center_ledger=accepted_center_ledger,
+                            accepted_instance_area_ledger=(
+                                accepted_instance_area_ledger
+                            ),
                         ),
                         "accepted_instance_area_ledger": (
                             accepted_instance_area_ledger
@@ -840,7 +842,7 @@ def _compile_packing_witness(
 def _architecture_placement_trace(
     *,
     contract: ExecutableJointContract,
-    accepted_center_ledger: tuple[tuple[int, int, int], ...],
+    accepted_instance_area_ledger: list[dict],
 ) -> list[dict]:
     """Expose mature replay as the same cord/nest group audited in research mode."""
 
@@ -854,7 +856,7 @@ def _architecture_placement_trace(
         for item in (contract.packing_certificate or {}).get("placements", ())
     )
     realized_classes = sorted(
-        int(class_id) for _row, _col, class_id in accepted_center_ledger
+        int(item["class_id"]) for item in accepted_instance_area_ledger
     )
     # The mature sampler may move a non-seam witness center within the same
     # compiler-owned P/V/S domain after ProbNet ranking. ``validate_candidate``
@@ -863,7 +865,12 @@ def _architecture_placement_trace(
     # spatial authority.
     if not expected_classes or realized_classes != expected_classes:
         return []
-    group_size = len(accepted_center_ledger)
+    if any(
+        not str(item.get("reference_instance_id") or "")
+        for item in accepted_instance_area_ledger
+    ):
+        return []
+    group_size = len(accepted_instance_area_ledger)
     orientation = (
         "cell_seeded_invasion_path"
         if contract.primitive_id == "invasive-cord-formation-v1"
@@ -871,8 +878,11 @@ def _architecture_placement_trace(
     )
     return [
         {
-            "center_xy": [int(col), int(row)],
-            "cell_class": int(class_id),
+            "center_xy": [int(item["col"]), int(item["row"])],
+            "cell_class": int(item["class_id"]),
+            "area_px": int(item["area_px"]),
+            "reference_instance_id": str(item["reference_instance_id"]),
+            "reference_source": str(item.get("shape_source", "unknown")),
             "cluster_id": "certified-architecture-0001",
             "planned_cluster_size": int(group_size),
             "cluster_size": int(group_size),
@@ -880,7 +890,7 @@ def _architecture_placement_trace(
             "packing_witness_replayed": True,
             "execution_engine": MATURE_EXECUTION_VERSION,
         }
-        for row, col, class_id in accepted_center_ledger
+        for item in accepted_instance_area_ledger
     ]
 
 
@@ -1019,6 +1029,11 @@ def _accepted_instance_area_ledger(diagnostics: dict) -> list[dict]:
                     "class_id": int(class_id),
                     "area_px": area_px,
                     "shape_source": str(item.get("shape_source", "unknown")),
+                    "reference_instance_id": (
+                        str(item["reference_instance_id"])
+                        if item.get("reference_instance_id")
+                        else None
+                    ),
                 }
             )
     return result
