@@ -4587,7 +4587,7 @@ class JointSkillTests(unittest.TestCase):
             primitive_id="peritumoral-tumor-nest-formation-v1",
             packing_certificate={
                 "placements": [
-                    {"row": row, "col": col, "class_id": class_id}
+                    {"row": row + 2, "col": col - 1, "class_id": class_id}
                     for row, col, class_id in ledger
                 ]
             },

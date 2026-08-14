@@ -849,15 +849,19 @@ def _architecture_placement_trace(
         "peritumoral-tumor-nest-formation-v1",
     }:
         return []
-    expected = {
-        (int(item["row"]), int(item["col"]), int(item["class_id"]))
+    expected_classes = sorted(
+        int(item["class_id"])
         for item in (contract.packing_certificate or {}).get("placements", ())
-    }
-    realized = {
-        (int(row), int(col), int(class_id))
-        for row, col, class_id in accepted_center_ledger
-    }
-    if not expected or realized != expected:
+    )
+    realized_classes = sorted(
+        int(class_id) for _row, _col, class_id in accepted_center_ledger
+    )
+    # The mature sampler may move a non-seam witness center within the same
+    # compiler-owned P/V/S domain after ProbNet ranking. ``validate_candidate``
+    # has already certified those realized coordinates. Group identity therefore
+    # binds exact count and classes, while the final center ledger remains the
+    # spatial authority.
+    if not expected_classes or realized_classes != expected_classes:
         return []
     group_size = len(accepted_center_ledger)
     orientation = (

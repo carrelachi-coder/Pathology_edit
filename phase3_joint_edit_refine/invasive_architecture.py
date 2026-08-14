@@ -821,9 +821,30 @@ def _irregular_island(
     phase,
     lobe_separation_px=0.0,
 ):
-    rows, cols = np.indices(legal.shape)
-    dy = rows - center_y
-    dx = cols - center_x
+    equivalent_radius = float(np.sqrt(int(target_pixels) / np.pi))
+    crop_radius = max(
+        8,
+        int(
+            np.ceil(
+                2.5 * equivalent_radius
+                + max(0.0, float(lobe_separation_px))
+            )
+        ),
+    )
+    y0, y1 = (
+        max(0, int(center_y) - crop_radius),
+        min(legal.shape[0], int(center_y) + crop_radius + 1),
+    )
+    x0, x1 = (
+        max(0, int(center_x) - crop_radius),
+        min(legal.shape[1], int(center_x) + crop_radius + 1),
+    )
+    local_legal = np.asarray(legal[y0:y1, x0:x1], dtype=bool)
+    if int(np.count_nonzero(local_legal)) < int(target_pixels):
+        return None
+    rows, cols = np.indices(local_legal.shape)
+    dy = rows + y0 - center_y
+    dx = cols + x0 - center_x
     theta = np.arctan2(dy, dx)
     half_separation = max(0.0, float(lobe_separation_px)) / 2.0
     focus_y = half_separation * np.sin(float(phase))
@@ -838,20 +859,25 @@ def _irregular_island(
         + 0.07 * np.sin(5.0 * theta - 0.61 * phase)
     )
     priority = radial / np.maximum(modulation, 0.65)
-    candidates = np.argwhere(legal)
+    candidates = np.argwhere(local_legal)
     if len(candidates) < target_pixels:
         return None
-    values = priority[legal]
+    values = priority[local_legal]
     order = np.argsort(values, kind="stable")[:target_pixels]
-    island = np.zeros_like(legal)
+    local_island = np.zeros_like(local_legal)
     chosen = candidates[order]
-    island[chosen[:, 0], chosen[:, 1]] = True
-    component = _component_nearest_point(island, (center_y, center_x))
+    local_island[chosen[:, 0], chosen[:, 1]] = True
+    component = _component_nearest_point(
+        local_island,
+        (int(center_y) - y0, int(center_x) - x0),
+    )
     if int(np.count_nonzero(component)) != target_pixels:
         return None
     if np.any(ndimage.binary_fill_holes(component) & ~component):
         return None
-    return component
+    island = np.zeros_like(legal, dtype=bool)
+    island[y0:y1, x0:x1] = component
+    return island
 
 
 def _grow_connected_to_size(mask, *, envelope, target_pixels, seed):
