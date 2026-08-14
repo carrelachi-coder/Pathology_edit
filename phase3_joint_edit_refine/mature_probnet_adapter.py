@@ -865,8 +865,15 @@ def _architecture_placement_trace(
     # spatial authority.
     if not expected_classes or realized_classes != expected_classes:
         return []
+    library_sources = {
+        "library",
+        "calibrated_library",
+        "instance_library",
+        "calibrated_instance_library",
+    }
     if any(
         not str(item.get("reference_instance_id") or "")
+        and str(item.get("shape_source") or "unknown") not in library_sources
         for item in accepted_instance_area_ledger
     ):
         return []
@@ -881,8 +888,17 @@ def _architecture_placement_trace(
             "center_xy": [int(item["col"]), int(item["row"])],
             "cell_class": int(item["class_id"]),
             "area_px": int(item["area_px"]),
-            "reference_instance_id": str(item["reference_instance_id"]),
-            "reference_source": str(item.get("shape_source", "unknown")),
+            "reference_instance_id": (
+                str(item["reference_instance_id"])
+                if item.get("reference_instance_id")
+                else None
+            ),
+            "reference_source": (
+                "calibrated_instance_library"
+                if str(item.get("shape_source") or "unknown")
+                in library_sources
+                else str(item.get("shape_source", "unknown"))
+            ),
             "cluster_id": "certified-architecture-0001",
             "planned_cluster_size": int(group_size),
             "cluster_size": int(group_size),

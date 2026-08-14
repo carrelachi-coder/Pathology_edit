@@ -76,6 +76,7 @@ from phase3_joint_edit_refine.gates import (
     _fine_pattern_preserved,
     _nearest_reference_area_ratio,
     _recorded_instance_areas_by_class,
+    _reference_shape_integrity,
     audit_added_class1_foci,
     audit_cell_effect_foci,
     audit_directional_extension_raster,
@@ -4595,9 +4596,9 @@ class JointSkillTests(unittest.TestCase):
                 "row": 22,
                 "col": 29,
                 "class_id": 1,
-                "area_px": 350,
-                "shape_source": "compiled_reference_witness",
-                "reference_instance_id": "nuc-c1-0029",
+                "area_px": 307,
+                "shape_source": "library",
+                "reference_instance_id": None,
             },
         ]
         contract = SimpleNamespace(
@@ -4622,12 +4623,65 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(len(placements), 2)
         self.assertEqual({item["cluster_size"] for item in placements}, {2})
         self.assertEqual(
-            {item["reference_instance_id"] for item in placements},
+            {
+                item["reference_instance_id"]
+                for item in placements
+                if item["reference_instance_id"]
+            },
             {"nuc-c1-0029"},
+        )
+        self.assertEqual(
+            {item["reference_source"] for item in placements},
+            {"compiled_reference_witness", "calibrated_instance_library"},
         )
         self.assertTrue(
             all(item["packing_witness_replayed"] for item in placements)
         )
+
+    def test_reference_gate_distinguishes_calibrated_library_provenance(self):
+        trace = {
+            "reference_shape_ids": ["nuc-c1-0029"],
+            "reference_shape_rejections": {},
+            "reference_shape_integrity_certified": True,
+            "mature_probnet_contract": True,
+            "shape_sampling": {
+                "policy": (
+                    "component_local_same_class_reference_then_"
+                    "component_calibrated_library"
+                ),
+                "library_size_calibration": {
+                    "uncalibrated_no_reference_by_type": {}
+                },
+            },
+            "placements": [
+                {
+                    "reference_instance_id": "nuc-c1-0029",
+                    "reference_source": "compiled_reference_witness",
+                },
+                {
+                    "reference_instance_id": None,
+                    "reference_source": "calibrated_instance_library",
+                },
+            ],
+        }
+        context = SimpleNamespace(
+            plan=SimpleNamespace(
+                cell_plan=SimpleNamespace(actions=("add",), core_zone="global")
+            ),
+            candidate=SimpleNamespace(tool_trace=trace),
+            scene=SimpleNamespace(cells=SimpleNamespace(instances=())),
+        )
+
+        passed = _reference_shape_integrity(context)
+        self.assertTrue(passed.passed)
+        self.assertEqual(
+            passed.metrics["calibrated_library_placement_count"], 1
+        )
+
+        trace["placements"][1]["reference_source"] = "unknown"
+        failed = _reference_shape_integrity(context)
+        self.assertFalse(failed.passed)
+        self.assertEqual(failed.metrics["missing_reference_bindings"], ["placement:1"])
 
     def test_continuity_density_interval_compiles_to_an_exact_tool_target(self):
         nuclei = np.zeros((24, 24), dtype=np.uint8)

@@ -2473,10 +2473,16 @@ def _reference_shape_integrity(c):
     eligible = set(c.candidate.tool_trace.get("reference_shape_ids", ()))
     rejected = c.candidate.tool_trace.get("reference_shape_rejections", {})
     placements = c.candidate.tool_trace.get("placements", ())
+    library_sources = {
+        "library",
+        "calibrated_library",
+        "instance_library",
+        "calibrated_instance_library",
+    }
     selected = {
         item.get("reference_instance_id")
         for item in placements
-        if isinstance(item, dict)
+        if isinstance(item, dict) and item.get("reference_instance_id")
     }
     placement_digests = [
         str(item.get("reference_shape_sha256"))
@@ -2540,9 +2546,20 @@ def _reference_shape_integrity(c):
         for item in placements
         if isinstance(item, dict)
     )
-    missing_bindings = sorted(
-        str(value) for value in selected if not value or value not in eligible
-    )
+    missing_bindings = []
+    calibrated_library_placement_count = 0
+    for index, item in enumerate(placements):
+        if not isinstance(item, dict):
+            missing_bindings.append(f"placement:{index}:malformed")
+            continue
+        source = str(item.get("reference_source") or "unknown")
+        reference_id = item.get("reference_instance_id")
+        if source in library_sources:
+            calibrated_library_placement_count += 1
+            continue
+        if not reference_id or reference_id not in eligible:
+            missing_bindings.append(str(reference_id or f"placement:{index}"))
+    missing_bindings.sort()
     rejected_selected = sorted(
         str(value)
         for value in selected
@@ -2673,6 +2690,9 @@ def _reference_shape_integrity(c):
         metrics={
             "eligible_reference_count": len(eligible),
             "selected_reference_ids": sorted(value for value in selected if value),
+            "calibrated_library_placement_count": (
+                calibrated_library_placement_count
+            ),
             "border_censored_source_ids": border_rejections,
             "missing_reference_bindings": missing_bindings,
             "selected_rejected_reference_ids": rejected_selected,
