@@ -26,6 +26,7 @@ from phase3_mask_edit_refine.candidates import (
 )
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
+    _fragmentation_exact_area_backfill,
     _minimum_component_spacing_px,
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
@@ -1079,6 +1080,108 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(audit["spacing_pixels_added"], 0)
         self.assertEqual(audit["balance_pixels_added"], 0)
         self.assertEqual(np.count_nonzero(cleaned[0]), np.count_nonzero(change))
+
+    def test_fragmentation_cleanup_preserves_compiler_pixel_ownership(self):
+        shape = (160, 240)
+        source = np.zeros(shape, dtype=bool)
+        source[5:155, 5:235] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:155, 100:140] = True
+        change[50:59, 112:121] = False
+        legal_left = source & (np.indices(shape)[1] < 112)
+        legal_right = source & ~legal_left
+        work_left = SimpleNamespace(
+            source_component=source,
+            legal_source=legal_left,
+            anchor_mask=target,
+            priority=np.zeros(shape, dtype=float),
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+        work_right = SimpleNamespace(
+            source_component=source,
+            legal_source=legal_right,
+            anchor_mask=target,
+            priority=np.zeros(shape, dtype=float),
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+        selected = (change & legal_left, change & legal_right)
+
+        cleaned, audit = _rebalance_fragmentation_residual_islands(
+            selected,
+            works=(work_left, work_right),
+            source_region=source,
+            target_region=target,
+            minimum_residual_components=2,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=4,
+            residual_area_floor_fraction=0.3,
+        )
+
+        self.assertTrue(audit["applied"], audit)
+        self.assertFalse(np.any(cleaned[0] & ~legal_left))
+        self.assertFalse(np.any(cleaned[1] & ~legal_right))
+        self.assertTrue(np.any(cleaned[1][50:59, 112:121]))
+
+    def test_fragmentation_exact_tail_backfill_is_owned_and_topology_safe(self):
+        shape = (80, 140)
+        source = np.zeros(shape, dtype=bool)
+        source[5:75, 5:135] = True
+        target = ~source
+        change = np.zeros(shape, dtype=bool)
+        change[5:75, 60:80] = True
+        work = SimpleNamespace(
+            source_component=source,
+            legal_source=source,
+            anchor_mask=target,
+            priority=np.zeros(shape, dtype=float),
+            planned=SimpleNamespace(
+                source_component_id="tumor:1",
+                target_component_id="stroma:1",
+            ),
+        )
+
+        filled, added = _fragmentation_exact_area_backfill(
+            (change,),
+            works=(work,),
+            source_region=source,
+            target_region=target,
+            requested_pixels=6,
+            minimum_residual_components=2,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=8,
+            residual_area_floor_fraction=0.3,
+            maximum_residual_area_fraction=0.88,
+            minimum_residual_component_fraction=0.025,
+            maximum_dominant_residual_component_fraction=0.75,
+        )
+
+        self.assertEqual(added, 6)
+        self.assertEqual(np.count_nonzero(filled[0]), np.count_nonzero(change) + 6)
+        audit = _whole_mask_topology_audit(
+            source_region=source,
+            target_region=target,
+            selected_by_work=filled,
+            works=(work,),
+            allow_source_component_split=True,
+            minimum_residual_components=2,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=8,
+            residual_area_floor_fraction=0.3,
+            maximum_residual_area_fraction=0.88,
+            minimum_residual_component_fraction=0.025,
+            maximum_dominant_residual_component_fraction=0.75,
+        )
+        self.assertTrue(audit["passed"], audit)
 
     def test_fragmentation_cleanup_widens_under_spaced_corridors(self):
         shape = (160, 300)
