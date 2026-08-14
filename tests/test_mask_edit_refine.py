@@ -10,6 +10,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 from PIL import Image
@@ -1103,17 +1104,23 @@ class CandidateAndSceneTests(unittest.TestCase):
             ),
         )
 
-        cleaned, audit = _rebalance_fragmentation_residual_islands(
-            (change,),
-            works=(work,),
-            source_region=source,
-            target_region=target,
-            minimum_residual_components=2,
-            maximum_residual_components=6,
-            minimum_residual_component_area_px=96,
-            minimum_residual_spacing_px=4,
-            residual_area_floor_fraction=0.3,
-        )
+        with mock.patch(
+            "phase3_mask_edit_refine.execution._fragmentation_spacing_repair",
+            side_effect=AssertionError(
+                "nonlegal cleanup must be rejected before spacing repair"
+            ),
+        ):
+            cleaned, audit = _rebalance_fragmentation_residual_islands(
+                (change,),
+                works=(work,),
+                source_region=source,
+                target_region=target,
+                minimum_residual_components=2,
+                maximum_residual_components=6,
+                minimum_residual_component_area_px=96,
+                minimum_residual_spacing_px=4,
+                residual_area_floor_fraction=0.3,
+            )
 
         self.assertFalse(audit["applied"], audit)
         self.assertTrue(np.array_equal(cleaned[0], change))

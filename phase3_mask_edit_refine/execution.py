@@ -1771,6 +1771,16 @@ def _rebalance_fragmentation_residual_islands(
     if int(np.count_nonzero(focus_cleanup)) > maximum_focus_cleanup_pixels:
         return selected_by_work, unchanged
 
+    owned_repair_domain = np.logical_or.reduce(
+        tuple(work.legal_source for work in works)
+    )
+    if np.any(focus_cleanup & ~owned_repair_domain):
+        # Do not run the quadratic pairwise spacing repair for a candidate
+        # that is already known to require an illegal residual-cap fill.  The
+        # final combined repair is checked again below because spacing can add
+        # pixels of its own.
+        return selected_by_work, unchanged
+
     spacing = _fragmentation_spacing_repair(
         selected_source=selected_source,
         target_after=target_after | focus_cleanup,
@@ -1786,9 +1796,6 @@ def _rebalance_fragmentation_residual_islands(
     reclaimed = int(np.count_nonzero(repair))
     if reclaimed <= 0 or reclaimed > maximum_focus_cleanup_pixels:
         return selected_by_work, unchanged
-    owned_repair_domain = np.logical_or.reduce(
-        tuple(work.legal_source for work in works)
-    )
     if np.any(repair & ~owned_repair_domain):
         # A residual cap outside every compiler-owned envelope may be a
         # deliberately prohibited raster pocket. It is not legal cleanup
