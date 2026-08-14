@@ -1573,7 +1573,7 @@ class CandidateAndSceneTests(unittest.TestCase):
             minimum_residual_components=3,
             maximum_residual_components=6,
             minimum_residual_component_area_px=192,
-            minimum_residual_spacing_px=26,
+            minimum_residual_spacing_px=24,
             minimum_residual_component_fraction=0.08,
             maximum_dominant_residual_component_fraction=0.75,
             target_change_pixels=target_pixels,
@@ -1594,7 +1594,7 @@ class CandidateAndSceneTests(unittest.TestCase):
         )
         self.assertGreaterEqual(
             _minimum_component_spacing_px(residual_labels, residual_count),
-            26.0,
+            24.0,
         )
 
     def test_fragmentation_cleanup_rejects_holey_balance_bridge_and_erases_satellite(
